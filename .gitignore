@@ -1,0 +1,11 @@
+# Rust
+/target/
+Cargo.lock
+
+# Emacs
+*~
+\#*\#
+.dir-locals.el
+
+# OS
+.DS_Store
