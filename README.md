@@ -5,7 +5,8 @@
 <h1 align="center">Arca</h1>
 
 <p align="center">
-  Open source S3-compatible object storage server written in Rust.
+  Open source S3-compatible object storage server written in Rust.<br>
+  <a href="https://dxc-technology.github.io/arca/">Documentation</a>
 </p>
 
 ---
