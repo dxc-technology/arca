@@ -1,0 +1,1241 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Open source S3-compatible object storage server written in Rust">
+      
+      
+      
+        <link rel="canonical" href="https://dxc-technology.github.io/arca/api/">
+      
+      
+        <link rel="prev" href="../architecture/">
+      
+      
+        <link rel="next" href="../configuration/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.3">
+    
+    
+      
+        <title>API Reference - Arca</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="cyan" data-md-color-accent="teal">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#api-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Arca" class="md-header__button md-logo" aria-label="Arca" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Arca
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              API Reference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="cyan" data-md-color-accent="teal"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="cyan" data-md-color-accent="teal"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/dxc-technology/arca" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    dxc-technology/arca
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Arca" class="md-nav__button md-logo" aria-label="Arca" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Arca
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/dxc-technology/arca" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    dxc-technology/arca
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bucket-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bucket Operations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#object-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Object Operations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#listing-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Listing Operations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multipart-upload-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multipart Upload Operations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operation-details" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operation Details
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Operation Details">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#listbuckets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ListBuckets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#createbucket" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CreateBucket
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#headbucket" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HeadBucket
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deletebucket" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DeleteBucket
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#putobject" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PutObject
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#getobject" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GetObject
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#headobject" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HeadObject
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deleteobject" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DeleteObject
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#copyobject" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CopyObject
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#listobjectsv2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ListObjectsV2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#createmultipartupload" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CreateMultipartUpload
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#uploadpart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UploadPart
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#completemultipartupload" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CompleteMultipartUpload
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#abortmultipartupload" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AbortMultipartUpload
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bucket-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bucket Operations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#object-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Object Operations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#listing-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Listing Operations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multipart-upload-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multipart Upload Operations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operation-details" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operation Details
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Operation Details">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#listbuckets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ListBuckets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#createbucket" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CreateBucket
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#headbucket" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HeadBucket
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deletebucket" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DeleteBucket
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#putobject" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PutObject
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#getobject" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GetObject
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#headobject" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HeadObject
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deleteobject" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DeleteObject
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#copyobject" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CopyObject
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#listobjectsv2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ListObjectsV2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#createmultipartupload" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CreateMultipartUpload
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#uploadpart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UploadPart
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#completemultipartupload" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CompleteMultipartUpload
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#abortmultipartupload" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AbortMultipartUpload
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="api-reference">API Reference<a class="headerlink" href="#api-reference" title="Permanent link">&para;</a></h1>
+<p>Arca implements 15 S3 operations in its MVP. All operations follow the standard <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/Welcome.html">AWS S3 REST API</a> specification.</p>
+<h2 id="authentication">Authentication<a class="headerlink" href="#authentication" title="Permanent link">&para;</a></h2>
+<p>All requests must be signed with AWS Signature V4. Arca supports both the <code>Authorization</code> header and query string authentication methods.</p>
+<h2 id="bucket-operations">Bucket Operations<a class="headerlink" href="#bucket-operations" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Method</th>
+<th>Path</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#listbuckets">ListBuckets</a></td>
+<td><code>GET</code></td>
+<td><code>/</code></td>
+<td>List all buckets</td>
+</tr>
+<tr>
+<td><a href="#createbucket">CreateBucket</a></td>
+<td><code>PUT</code></td>
+<td><code>/{bucket}</code></td>
+<td>Create a new bucket</td>
+</tr>
+<tr>
+<td><a href="#headbucket">HeadBucket</a></td>
+<td><code>HEAD</code></td>
+<td><code>/{bucket}</code></td>
+<td>Check if a bucket exists</td>
+</tr>
+<tr>
+<td><a href="#deletebucket">DeleteBucket</a></td>
+<td><code>DELETE</code></td>
+<td><code>/{bucket}</code></td>
+<td>Delete an empty bucket</td>
+</tr>
+</tbody>
+</table>
+<h2 id="object-operations">Object Operations<a class="headerlink" href="#object-operations" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Method</th>
+<th>Path</th>
+<th>Query Params</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#putobject">PutObject</a></td>
+<td><code>PUT</code></td>
+<td><code>/{bucket}/{key+}</code></td>
+<td>—</td>
+<td>Upload an object</td>
+</tr>
+<tr>
+<td><a href="#getobject">GetObject</a></td>
+<td><code>GET</code></td>
+<td><code>/{bucket}/{key+}</code></td>
+<td>—</td>
+<td>Download an object</td>
+</tr>
+<tr>
+<td><a href="#headobject">HeadObject</a></td>
+<td><code>HEAD</code></td>
+<td><code>/{bucket}/{key+}</code></td>
+<td>—</td>
+<td>Get object metadata</td>
+</tr>
+<tr>
+<td><a href="#deleteobject">DeleteObject</a></td>
+<td><code>DELETE</code></td>
+<td><code>/{bucket}/{key+}</code></td>
+<td>—</td>
+<td>Delete an object</td>
+</tr>
+<tr>
+<td><a href="#copyobject">CopyObject</a></td>
+<td><code>PUT</code></td>
+<td><code>/{bucket}/{key+}</code></td>
+<td>—</td>
+<td>Copy an object (uses <code>x-amz-copy-source</code> header)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="listing-operations">Listing Operations<a class="headerlink" href="#listing-operations" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Method</th>
+<th>Path</th>
+<th>Query Params</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#listobjectsv2">ListObjectsV2</a></td>
+<td><code>GET</code></td>
+<td><code>/{bucket}</code></td>
+<td><code>list-type=2</code></td>
+<td>List objects in a bucket</td>
+</tr>
+</tbody>
+</table>
+<h2 id="multipart-upload-operations">Multipart Upload Operations<a class="headerlink" href="#multipart-upload-operations" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Method</th>
+<th>Path</th>
+<th>Query Params</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#createmultipartupload">CreateMultipartUpload</a></td>
+<td><code>POST</code></td>
+<td><code>/{bucket}/{key+}</code></td>
+<td><code>uploads</code></td>
+<td>Initiate a multipart upload</td>
+</tr>
+<tr>
+<td><a href="#uploadpart">UploadPart</a></td>
+<td><code>PUT</code></td>
+<td><code>/{bucket}/{key+}</code></td>
+<td><code>partNumber</code>, <code>uploadId</code></td>
+<td>Upload a part</td>
+</tr>
+<tr>
+<td><a href="#completemultipartupload">CompleteMultipartUpload</a></td>
+<td><code>POST</code></td>
+<td><code>/{bucket}/{key+}</code></td>
+<td><code>uploadId</code></td>
+<td>Complete a multipart upload</td>
+</tr>
+<tr>
+<td><a href="#abortmultipartupload">AbortMultipartUpload</a></td>
+<td><code>DELETE</code></td>
+<td><code>/{bucket}/{key+}</code></td>
+<td><code>uploadId</code></td>
+<td>Abort a multipart upload</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="operation-details">Operation Details<a class="headerlink" href="#operation-details" title="Permanent link">&para;</a></h2>
+<h3 id="listbuckets">ListBuckets<a class="headerlink" href="#listbuckets" title="Permanent link">&para;</a></h3>
+<p>List all buckets owned by the authenticated user.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>GET / HTTP/1.1
+</code></pre></div>
+<p>Returns <code>ListAllMyBucketsResult</code> XML with bucket names and creation dates.</p>
+<h3 id="createbucket">CreateBucket<a class="headerlink" href="#createbucket" title="Permanent link">&para;</a></h3>
+<p>Create a new bucket.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>PUT /{bucket} HTTP/1.1
+</code></pre></div>
+<p>Bucket names must follow <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html">S3 naming rules</a>: 3-63 characters, lowercase letters, numbers, hyphens, no consecutive periods or IP-like names.</p>
+<h3 id="headbucket">HeadBucket<a class="headerlink" href="#headbucket" title="Permanent link">&para;</a></h3>
+<p>Check whether a bucket exists and you have permission to access it.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>HEAD /{bucket} HTTP/1.1
+</code></pre></div>
+<p>Returns <code>200 OK</code> if the bucket exists, <code>404 Not Found</code> otherwise.</p>
+<h3 id="deletebucket">DeleteBucket<a class="headerlink" href="#deletebucket" title="Permanent link">&para;</a></h3>
+<p>Delete a bucket. The bucket must be empty.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>DELETE /{bucket} HTTP/1.1
+</code></pre></div>
+<p>Returns <code>204 No Content</code> on success, <code>409 BucketNotEmpty</code> if the bucket contains objects.</p>
+<h3 id="putobject">PutObject<a class="headerlink" href="#putobject" title="Permanent link">&para;</a></h3>
+<p>Upload an object. The request body is streamed directly to storage — never buffered in memory.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>PUT /{bucket}/{key+} HTTP/1.1
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>Content-Type: application/octet-stream
+</code></pre></div>
+<p>ETag is computed as the hex-encoded MD5 of the object content.</p>
+<h3 id="getobject">GetObject<a class="headerlink" href="#getobject" title="Permanent link">&para;</a></h3>
+<p>Download an object. Supports <code>Range</code> header for partial content retrieval.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>GET /{bucket}/{key+} HTTP/1.1
+</code></pre></div>
+<p>Returns the object body with <code>Content-Type</code>, <code>Content-Length</code>, <code>ETag</code>, and <code>Last-Modified</code> headers.</p>
+<h3 id="headobject">HeadObject<a class="headerlink" href="#headobject" title="Permanent link">&para;</a></h3>
+<p>Retrieve object metadata without downloading the body.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>HEAD /{bucket}/{key+} HTTP/1.1
+</code></pre></div>
+<p>Returns the same headers as GetObject, but with no response body.</p>
+<h3 id="deleteobject">DeleteObject<a class="headerlink" href="#deleteobject" title="Permanent link">&para;</a></h3>
+<p>Delete an object.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>DELETE /{bucket}/{key+} HTTP/1.1
+</code></pre></div>
+<p>Returns <code>204 No Content</code> on success. Deleting a non-existent key is not an error.</p>
+<h3 id="copyobject">CopyObject<a class="headerlink" href="#copyobject" title="Permanent link">&para;</a></h3>
+<p>Copy an object within or across buckets. The source is specified via the <code>x-amz-copy-source</code> header.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>PUT /{bucket}/{key+} HTTP/1.1
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>x-amz-copy-source: /{source-bucket}/{source-key}
+</code></pre></div>
+<p>Returns <code>CopyObjectResult</code> XML with the new ETag and last modified timestamp.</p>
+<h3 id="listobjectsv2">ListObjectsV2<a class="headerlink" href="#listobjectsv2" title="Permanent link">&para;</a></h3>
+<p>List objects in a bucket with optional prefix and delimiter filtering.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>GET /{bucket}?list-type=2 HTTP/1.1
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>prefix</code></td>
+<td>Limits results to keys beginning with the specified prefix</td>
+</tr>
+<tr>
+<td><code>delimiter</code></td>
+<td>Groups keys that share a common prefix (typically <code>/</code>)</td>
+</tr>
+<tr>
+<td><code>max-keys</code></td>
+<td>Maximum number of keys to return (default 1000)</td>
+</tr>
+<tr>
+<td><code>continuation-token</code></td>
+<td>Token from a previous truncated response</td>
+</tr>
+<tr>
+<td><code>start-after</code></td>
+<td>Start listing after this key</td>
+</tr>
+</tbody>
+</table>
+<p>Returns <code>ListBucketResult</code> XML with <code>Contents</code>, <code>CommonPrefixes</code>, <code>IsTruncated</code>, and <code>NextContinuationToken</code>.</p>
+<h3 id="createmultipartupload">CreateMultipartUpload<a class="headerlink" href="#createmultipartupload" title="Permanent link">&para;</a></h3>
+<p>Initiate a multipart upload and obtain an upload ID.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>POST /{bucket}/{key+}?uploads HTTP/1.1
+</code></pre></div>
+<p>Returns <code>InitiateMultipartUploadResult</code> XML containing the <code>UploadId</code>.</p>
+<h3 id="uploadpart">UploadPart<a class="headerlink" href="#uploadpart" title="Permanent link">&para;</a></h3>
+<p>Upload a part for a multipart upload.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>PUT /{bucket}/{key+}?partNumber={n}&amp;uploadId={id} HTTP/1.1
+</code></pre></div>
+<p>Part numbers range from 1 to 10000. Each part (except the last) must be at least 5 MB.</p>
+<h3 id="completemultipartupload">CompleteMultipartUpload<a class="headerlink" href="#completemultipartupload" title="Permanent link">&para;</a></h3>
+<p>Complete a multipart upload by assembling previously uploaded parts.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>POST<span class="w"> </span>/{bucket}/{key+}?uploadId={id}<span class="w"> </span>HTTP/1.1
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="nt">&lt;CompleteMultipartUpload&gt;</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">  </span><span class="nt">&lt;Part&gt;</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">    </span><span class="nt">&lt;PartNumber&gt;</span>1<span class="nt">&lt;/PartNumber&gt;</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">    </span><span class="nt">&lt;ETag&gt;</span>&quot;etag1&quot;<span class="nt">&lt;/ETag&gt;</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="w">  </span><span class="nt">&lt;/Part&gt;</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="w">  </span><span class="nt">&lt;Part&gt;</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">    </span><span class="nt">&lt;PartNumber&gt;</span>2<span class="nt">&lt;/PartNumber&gt;</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">    </span><span class="nt">&lt;ETag&gt;</span>&quot;etag2&quot;<span class="nt">&lt;/ETag&gt;</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="w">  </span><span class="nt">&lt;/Part&gt;</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="nt">&lt;/CompleteMultipartUpload&gt;</span>
+</code></pre></div>
+<p>The resulting ETag is a composite: <code>hex(MD5(binary_MD5(part1) || binary_MD5(part2) || ...))-{count}</code>.</p>
+<h3 id="abortmultipartupload">AbortMultipartUpload<a class="headerlink" href="#abortmultipartupload" title="Permanent link">&para;</a></h3>
+<p>Abort a multipart upload and delete all uploaded parts.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>DELETE /{bucket}/{key+}?uploadId={id} HTTP/1.1
+</code></pre></div>
+<p>Returns <code>204 No Content</code> on success.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.copy", "content.code.annotate", "navigation.sections", "navigation.top", "search.highlight", "search.share"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

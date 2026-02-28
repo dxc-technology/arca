@@ -32,6 +32,12 @@ docker compose -f docker/docker-compose.yml run --rm test pytest tests/integrati
 
 # Manual S3 CLI verification against running Arca
 aws s3 ls --endpoint-url http://localhost:9000
+
+# Build documentation site (output to docs/)
+docker compose -f docker/docker-compose.docs.yml run --rm docs-build
+
+# Serve documentation locally with live reload (http://localhost:8000)
+docker compose -f docker/docker-compose.docs.yml up docs-serve
 ```
 
 ## Architecture
