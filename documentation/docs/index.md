@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.svg" width="120" alt="Arca logo">
+</p>
+
 # Arca
 
 **Open source S3-compatible object storage server written in Rust.**

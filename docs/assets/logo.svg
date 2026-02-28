@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="legs" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#00d4ff"/>
+      <stop offset="100%" stop-color="#006699"/>
+    </linearGradient>
+    <linearGradient id="crossbar" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#00d4ff"/>
+      <stop offset="100%" stop-color="#0099cc"/>
+    </linearGradient>
+  </defs>
+  <g>
+    <!-- Left leg -->
+    <path d="M100 22 L28 170 L52 170 L100 58 Z" fill="url(#legs)"/>
+    <!-- Right leg -->
+    <path d="M100 22 L172 170 L148 170 L100 58 Z" fill="url(#legs)"/>
+    <!-- Arched crossbar -->
+    <path d="M56 130 Q100 118 144 130 L140 142 Q100 131 60 142 Z" fill="url(#crossbar)"/>
+    <!-- Keyhole circle -->
+    <circle cx="100" cy="136" r="5" fill="#002233" opacity="0.8"/>
+    <!-- Keyhole slot -->
+    <rect x="98.5" y="136" width="3" height="6" rx="1" fill="#002233" opacity="0.8"/>
+  </g>
+</svg>
