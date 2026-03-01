@@ -1,0 +1,13 @@
+[package]
+name = "arca-core"
+version = "0.1.0"
+edition = "2021"
+description = "Shared types, traits, and error types for the Arca S3 server"
+
+[dependencies]
+async-trait = { workspace = true }
+chrono = { workspace = true }
+quick-xml = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }

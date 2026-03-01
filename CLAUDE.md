@@ -17,18 +17,18 @@ All development happens inside Docker containers — never install libraries on 
 docker compose -f docker/docker-compose.yml up --build
 
 # Run all Rust unit tests (inside container)
-docker compose -f docker/docker-compose.yml exec arca cargo test --workspace
+docker compose -f docker/docker-compose.yml run --rm unit-test
 
 # Run a single crate's tests
-docker compose -f docker/docker-compose.yml exec arca cargo test -p arca-core
-docker compose -f docker/docker-compose.yml exec arca cargo test -p arca-auth
+docker compose -f docker/docker-compose.yml run --rm unit-test test -p arca-core
+docker compose -f docker/docker-compose.yml run --rm unit-test test -p arca-auth
 
 # Run a single test by name
-docker compose -f docker/docker-compose.yml exec arca cargo test -p arca-auth sigv4_test
+docker compose -f docker/docker-compose.yml run --rm unit-test test -p arca-auth sigv4_test
 
-# Integration tests (boto3/pytest, run against live Arca)
-docker compose -f docker/docker-compose.yml run --rm test pytest tests/integration/
-docker compose -f docker/docker-compose.yml run --rm test pytest tests/integration/test_buckets.py -k test_create
+# Integration tests (boto3/pytest, run against live Arca — server must be up)
+docker compose -f docker/docker-compose.yml run --rm test
+docker compose -f docker/docker-compose.yml run --rm test pytest integration/test_smoke.py -k test_root
 
 # Manual S3 CLI verification against running Arca
 aws s3 ls --endpoint-url http://localhost:9000

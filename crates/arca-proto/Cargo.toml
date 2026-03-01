@@ -1,0 +1,14 @@
+[package]
+name = "arca-proto"
+version = "0.1.0"
+edition = "2021"
+description = "S3 HTTP protocol adapter for the Arca S3 server"
+
+[dependencies]
+arca-core = { workspace = true }
+arca-auth = { workspace = true }
+axum = { workspace = true }
+http = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }

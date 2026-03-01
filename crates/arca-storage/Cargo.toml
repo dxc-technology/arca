@@ -1,0 +1,8 @@
+[package]
+name = "arca-storage"
+version = "0.1.0"
+edition = "2021"
+description = "Storage implementations (filesystem + SQLite) for the Arca S3 server"
+
+[dependencies]
+arca-core = { workspace = true }

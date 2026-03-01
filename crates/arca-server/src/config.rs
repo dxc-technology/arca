@@ -1,0 +1,65 @@
+//! Configuration loading and types.
+
+use anyhow::{Context, Result};
+use serde::Deserialize;
+use std::path::Path;
+
+/// Top-level configuration.
+#[derive(Debug, Deserialize)]
+pub struct Config {
+    pub server: ServerConfig,
+    pub storage: StorageConfig,
+}
+
+/// Server configuration.
+#[derive(Debug, Deserialize)]
+pub struct ServerConfig {
+    pub bind: String,
+    pub port: u16,
+}
+
+/// Storage configuration.
+#[derive(Debug, Deserialize)]
+pub struct StorageConfig {
+    pub data_dir: String,
+}
+
+/// Loads configuration from a TOML file.
+pub fn load_config(path: &Path) -> Result<Config> {
+    let content =
+        std::fs::read_to_string(path).with_context(|| format!("reading config: {}", path.display()))?;
+    let config: Config =
+        toml::from_str(&content).with_context(|| format!("parsing config: {}", path.display()))?;
+    Ok(config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_valid_toml() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.server.bind, "0.0.0.0");
+        assert_eq!(config.server.port, 9000);
+        assert_eq!(config.storage.data_dir, "/data");
+    }
+
+    #[test]
+    fn parse_missing_field_fails() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+"#;
+        let result: Result<Config, _> = toml::from_str(toml_str);
+        assert!(result.is_err());
+    }
+}

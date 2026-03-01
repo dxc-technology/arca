@@ -6,7 +6,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
 
 | Phase | Name | Status |
 |:-----:|------|:------:|
-| 0 | [Project Skeleton](#phase-0-project-skeleton) | :material-circle-outline: |
+| 0 | [Project Skeleton](#phase-0-project-skeleton) | :material-check-circle: |
 | 1 | [Bucket Operations](#phase-1-bucket-operations) | :material-circle-outline: |
 | 2 | [Core Object Operations](#phase-2-core-object-operations) | :material-circle-outline: |
 | 3 | [CopyObject + ListObjectsV2](#phase-3-copyobject-listobjectsv2) | :material-circle-outline: |
@@ -23,11 +23,11 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
 
 Set up the Cargo workspace with all 5 crates and the basic infrastructure.
 
-- [ ] Initialize Cargo workspace: `arca-core`, `arca-auth`, `arca-proto`, `arca-storage`, `arca-server`
-- [ ] Scaffold Axum router with stub handlers returning `S3Error::NotImplemented`
-- [ ] Wire `XmlErrorResponse` so all requests return valid S3 XML errors
-- [ ] Dockerfile (multi-stage: `rust:1.83-bookworm` builder + `debian:bookworm-slim` runtime), docker-compose.yml
-- [ ] LICENSE, README.md, CLAUDE.md, `config/default.toml`
+- [x] Initialize Cargo workspace: `arca-core`, `arca-auth`, `arca-proto`, `arca-storage`, `arca-server`
+- [x] Scaffold Axum router with stub handlers returning `S3Error::NotImplemented`
+- [x] Wire `XmlErrorResponse` so all requests return valid S3 XML errors
+- [x] Dockerfile (multi-stage: `rust:1.85-bookworm` builder + `debian:bookworm-slim` runtime), docker-compose.yml
+- [x] LICENSE, CLAUDE.md, `config/default.toml`
 
 **Verify**: `docker compose up` starts server; `aws s3 ls --endpoint-url http://localhost:9000` returns valid S3 XML error (NotImplemented).
 

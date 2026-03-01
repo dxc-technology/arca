@@ -1,0 +1,48 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/arca-core",
+    "crates/arca-auth",
+    "crates/arca-storage",
+    "crates/arca-proto",
+    "crates/arca-server",
+]
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+
+# Web framework
+axum = { version = "0.8", features = ["macros"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+hyper = { version = "1", features = ["full"] }
+http = "1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+quick-xml = { version = "0.36", features = ["serialize"] }
+toml = "0.8"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+thiserror = "1"
+anyhow = "1"
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+
+# Internal crates
+arca-core = { path = "crates/arca-core" }
+arca-auth = { path = "crates/arca-auth" }
+arca-storage = { path = "crates/arca-storage" }
+arca-proto = { path = "crates/arca-proto" }
+arca-server = { path = "crates/arca-server" }

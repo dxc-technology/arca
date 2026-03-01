@@ -1,0 +1,33 @@
+services:
+  arca:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "9000:9000"
+    volumes:
+      - arca-data:/data
+    environment:
+      - RUST_LOG=info
+
+  unit-test:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: dev
+    profiles:
+      - test
+
+  test:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.test
+    environment:
+      - ARCA_ENDPOINT=http://arca:9000
+    depends_on:
+      - arca
+    profiles:
+      - test
+
+volumes:
+  arca-data:

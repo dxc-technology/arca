@@ -1,0 +1,46 @@
+//! Core domain types for Arca.
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+/// Unique identifier for a blob in storage.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct BlobId(pub String);
+
+impl BlobId {
+    /// Generates a new random blob ID (UUID v4).
+    pub fn new() -> Self {
+        Self(uuid::Uuid::new_v4().to_string())
+    }
+}
+
+impl Default for BlobId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for BlobId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// Metadata about a bucket.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BucketInfo {
+    pub name: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Metadata about a stored object.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObjectRecord {
+    pub bucket: String,
+    pub key: String,
+    pub blob_id: BlobId,
+    pub size: u64,
+    pub etag: String,
+    pub content_type: Option<String>,
+    pub last_modified: DateTime<Utc>,
+}
