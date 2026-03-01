@@ -6,16 +6,16 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
 
 | Phase | Name | Status |
 |:-----:|------|:------:|
-| 0 | [Project Skeleton](#phase-0-project-skeleton) | :material-check-circle: |
-| 1 | [Bucket Operations](#phase-1-bucket-operations) | :material-circle-outline: |
-| 2 | [Core Object Operations](#phase-2-core-object-operations) | :material-circle-outline: |
-| 3 | [CopyObject + ListObjectsV2](#phase-3-copyobject-listobjectsv2) | :material-circle-outline: |
-| 4 | [Multipart Upload](#phase-4-multipart-upload) | :material-circle-outline: |
-| 5 | [AWS SigV4 Authentication](#phase-5-aws-sigv4-authentication) | :material-circle-outline: |
-| 6 | [Disaster Recovery + Polish](#phase-6-disaster-recovery-polish) | :material-circle-outline: |
-| 7 | [S3 Compatibility Hardening](#phase-7-s3-compatibility-hardening) | :material-circle-outline: |
+| 0 | [Project Skeleton](#phase-0-project-skeleton) | :white_check_mark: |
+| 1 | [Bucket Operations](#phase-1-bucket-operations) | |
+| 2 | [Core Object Operations](#phase-2-core-object-operations) | |
+| 3 | [CopyObject + ListObjectsV2](#phase-3-copyobject-listobjectsv2) | |
+| 4 | [Multipart Upload](#phase-4-multipart-upload) | |
+| 5 | [AWS SigV4 Authentication](#phase-5-aws-sigv4-authentication) | |
+| 6 | [Disaster Recovery + Polish](#phase-6-disaster-recovery-polish) | |
+| 7 | [S3 Compatibility Hardening](#phase-7-s3-compatibility-hardening) | |
 
-<!-- Status icons: :material-circle-outline: = not started, :material-progress-clock: = in progress, :material-check-circle: = done -->
+<!-- Status: :white_check_mark: = done, :construction: = in progress, empty = not started -->
 
 ---
 
