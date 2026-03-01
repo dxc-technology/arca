@@ -12,32 +12,27 @@ The full architecture plan lives in `.claude/plans/arca-s3-mvp-architecture.md`.
 
 All development happens inside Docker containers — never install libraries on the host.
 
+Convenience scripts live in `bin/`. They wrap docker compose commands and always work from the repo root.
+
 ```bash
 # Build and run
-docker compose -f docker/docker-compose.yml up --build
+bin/build                # build Docker image
+bin/run --build -d       # start server (flags passed to docker compose up)
+bin/stop                 # stop server
 
-# Run all Rust unit tests (inside container)
-docker compose -f docker/docker-compose.yml run --rm unit-test
-
-# Run a single crate's tests
-docker compose -f docker/docker-compose.yml run --rm unit-test test -p arca-core
-docker compose -f docker/docker-compose.yml run --rm unit-test test -p arca-auth
-
-# Run a single test by name
-docker compose -f docker/docker-compose.yml run --rm unit-test test -p arca-auth sigv4_test
-
-# Integration tests (boto3/pytest, run against live Arca — server must be up)
-docker compose -f docker/docker-compose.yml run --rm test
-docker compose -f docker/docker-compose.yml run --rm test pytest integration/test_smoke.py -k test_root
+# Tests
+bin/test                 # run unit + integration tests
+bin/test unit            # unit tests only
+bin/test integration     # integration tests only (server must be running)
+bin/test unit -p arca-core   # pass extra args to cargo test
 
 # Manual S3 CLI verification against running Arca
 aws s3 ls --endpoint-url http://localhost:9000
 
-# Build documentation site (output to docs/)
-docker compose -f docker/docker-compose.docs.yml run --rm docs-build
-
-# Serve documentation locally with live reload (http://localhost:8000)
-docker compose -f docker/docker-compose.docs.yml up docs-serve
+# Documentation
+bin/docs-build           # build mkdocs site (output to docs/)
+bin/docs-serve           # serve locally with live reload (http://localhost:8000)
+bin/docs-publish         # build + commit + push docs to update GitHub Pages
 ```
 
 ## Architecture

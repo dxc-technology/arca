@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Build documentation and commit+push to update GitHub Pages.
+
+cd "$(git rev-parse --show-toplevel)"
+
+echo "==> Building docs..."
+docker compose -f docker/docker-compose.docs.yml run --rm docs-build
+
+if git diff --quiet docs/; then
+    echo "==> No documentation changes to publish."
+    exit 0
+fi
+
+echo "==> Committing and pushing docs..."
+git add docs/
+git commit -m "Rebuild documentation site"
+git push
+
+echo "==> Documentation published."

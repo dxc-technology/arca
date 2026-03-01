@@ -343,6 +343,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#development-scripts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Development Scripts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mvp-api-surface" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -529,6 +540,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#development-scripts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Development Scripts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mvp-api-surface" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -584,7 +606,10 @@
 </ul>
 <h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Build and run with Docker</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>docker/docker-compose.yml<span class="w"> </span>up<span class="w"> </span>--build
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>bin/run<span class="w"> </span>--build<span class="w"> </span>-d
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># Run tests</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>bin/test
 </code></pre></div>
 <p>Arca listens on port <strong>9000</strong> (MinIO-compatible convention).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Create a bucket</span>
@@ -596,6 +621,46 @@
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># List objects</span>
 <a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>aws<span class="w"> </span>s3<span class="w"> </span>ls<span class="w"> </span>s3://my-bucket<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
 </code></pre></div>
+<h2 id="development-scripts">Development Scripts<a class="headerlink" href="#development-scripts" title="Permanent link">&para;</a></h2>
+<p>Convenience scripts in <code>bin/</code> wrap docker compose commands:</p>
+<table>
+<thead>
+<tr>
+<th>Script</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bin/build</code></td>
+<td>Build the Docker image</td>
+</tr>
+<tr>
+<td><code>bin/run</code></td>
+<td>Start the server (flags passed through to docker compose)</td>
+</tr>
+<tr>
+<td><code>bin/stop</code></td>
+<td>Stop the server</td>
+</tr>
+<tr>
+<td><code>bin/test</code></td>
+<td>Run unit + integration tests (<code>unit</code>, <code>integration</code>, or both)</td>
+</tr>
+<tr>
+<td><code>bin/docs-build</code></td>
+<td>Build the documentation site</td>
+</tr>
+<tr>
+<td><code>bin/docs-serve</code></td>
+<td>Serve docs locally with live reload</td>
+</tr>
+<tr>
+<td><code>bin/docs-publish</code></td>
+<td>Build, commit, and push docs to update GitHub Pages</td>
+</tr>
+</tbody>
+</table>
 <h2 id="mvp-api-surface">MVP API Surface<a class="headerlink" href="#mvp-api-surface" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

@@ -20,7 +20,10 @@ Arca is a ground-up implementation of the S3 API, designed for 100% compatibilit
 
 ```bash
 # Build and run with Docker
-docker compose -f docker/docker-compose.yml up --build
+bin/run --build -d
+
+# Run tests
+bin/test
 ```
 
 Arca listens on port **9000** (MinIO-compatible convention).
@@ -35,6 +38,20 @@ aws s3 cp myfile.txt s3://my-bucket/ --endpoint-url http://localhost:9000
 # List objects
 aws s3 ls s3://my-bucket --endpoint-url http://localhost:9000
 ```
+
+## Development Scripts
+
+Convenience scripts in `bin/` wrap docker compose commands:
+
+| Script | Description |
+|--------|-------------|
+| `bin/build` | Build the Docker image |
+| `bin/run` | Start the server (flags passed through to docker compose) |
+| `bin/stop` | Stop the server |
+| `bin/test` | Run unit + integration tests (`unit`, `integration`, or both) |
+| `bin/docs-build` | Build the documentation site |
+| `bin/docs-serve` | Serve docs locally with live reload |
+| `bin/docs-publish` | Build, commit, and push docs to update GitHub Pages |
 
 ## MVP API Surface
 

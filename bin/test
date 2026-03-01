@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run tests inside Docker.
+#
+# Usage:
+#   bin/test              Run unit tests + integration tests
+#   bin/test unit         Run unit tests only
+#   bin/test integration  Run integration tests only (server must be running)
+#   bin/test unit -p arca-core   Pass extra args to cargo test
+
+cd "$(git rev-parse --show-toplevel)"
+
+COMPOSE="docker compose -f docker/docker-compose.yml"
+
+run_unit() {
+    echo "==> Running unit tests..."
+    $COMPOSE run --rm unit-test "$@"
+}
+
+run_integration() {
+    echo "==> Running integration tests..."
+    $COMPOSE run --rm test "$@"
+}
+
+case "${1:-all}" in
+    unit)
+        shift
+        run_unit "$@"
+        ;;
+    integration)
+        shift
+        run_integration "$@"
+        ;;
+    all)
+        run_unit
+        echo ""
+        run_integration
+        ;;
+    *)
+        echo "Usage: bin/test [unit|integration|all] [extra args...]" >&2
+        exit 1
+        ;;
+esac

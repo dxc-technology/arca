@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Start the Arca server in Docker.
+# Passes any extra flags to docker compose up (e.g. --build, -d).
+
+cd "$(git rev-parse --show-toplevel)"
+docker compose -f docker/docker-compose.yml up "$@"
