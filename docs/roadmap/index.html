@@ -694,7 +694,7 @@
 <tr>
 <td style="text-align: center;">0</td>
 <td><a href="#phase-0-project-skeleton">Project Skeleton</a></td>
-<td style="text-align: center;"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 20a8 8 0 0 1-8-8 8 8 0 0 1 8-8 8 8 0 0 1 8 8 8 8 0 0 1-8 8m0-18A10 10 0 0 0 2 12a10 10 0 0 0 10 10 10 10 0 0 0 10-10A10 10 0 0 0 12 2"/></svg></span></td>
+<td style="text-align: center;"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2m-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8z"/></svg></span></td>
 </tr>
 <tr>
 <td style="text-align: center;">1</td>
@@ -739,11 +739,11 @@
 <h2 id="phase-0-project-skeleton">Phase 0 — Project Skeleton<a class="headerlink" href="#phase-0-project-skeleton" title="Permanent link">&para;</a></h2>
 <p>Set up the Cargo workspace with all 5 crates and the basic infrastructure.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Initialize Cargo workspace: <code>arca-core</code>, <code>arca-auth</code>, <code>arca-proto</code>, <code>arca-storage</code>, <code>arca-server</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Scaffold Axum router with stub handlers returning <code>S3Error::NotImplemented</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Wire <code>XmlErrorResponse</code> so all requests return valid S3 XML errors</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Dockerfile (multi-stage: <code>rust:1.83-bookworm</code> builder + <code>debian:bookworm-slim</code> runtime), docker-compose.yml</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> LICENSE, README.md, CLAUDE.md, <code>config/default.toml</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Initialize Cargo workspace: <code>arca-core</code>, <code>arca-auth</code>, <code>arca-proto</code>, <code>arca-storage</code>, <code>arca-server</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Scaffold Axum router with stub handlers returning <code>S3Error::NotImplemented</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Wire <code>XmlErrorResponse</code> so all requests return valid S3 XML errors</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Dockerfile (multi-stage: <code>rust:1.85-bookworm</code> builder + <code>debian:bookworm-slim</code> runtime), docker-compose.yml</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> LICENSE, CLAUDE.md, <code>config/default.toml</code></li>
 </ul>
 <p><strong>Verify</strong>: <code>docker compose up</code> starts server; <code>aws s3 ls --endpoint-url http://localhost:9000</code> returns valid S3 XML error (NotImplemented).</p>
 <hr />
