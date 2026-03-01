@@ -7,13 +7,14 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
 | Phase | Name | Status |
 |:-----:|------|:------:|
 | 0 | [Project Skeleton](#phase-0-project-skeleton) | :white_check_mark: |
-| 1 | [Bucket Operations](#phase-1-bucket-operations) | |
-| 2 | [Core Object Operations](#phase-2-core-object-operations) | |
-| 3 | [CopyObject + ListObjectsV2](#phase-3-copyobject-listobjectsv2) | |
-| 4 | [Multipart Upload](#phase-4-multipart-upload) | |
-| 5 | [AWS SigV4 Authentication](#phase-5-aws-sigv4-authentication) | |
-| 6 | [Disaster Recovery + Polish](#phase-6-disaster-recovery-polish) | |
-| 7 | [S3 Compatibility Hardening](#phase-7-s3-compatibility-hardening) | |
+| 1 | [Configuration & Storage Foundation](#phase-1-configuration-storage-foundation) | |
+| 2 | [Bucket Operations](#phase-2-bucket-operations) | |
+| 3 | [Core Object Operations](#phase-3-core-object-operations) | |
+| 4 | [CopyObject + ListObjectsV2](#phase-4-copyobject-listobjectsv2) | |
+| 5 | [Multipart Upload](#phase-5-multipart-upload) | |
+| 6 | [AWS SigV4 Authentication](#phase-6-aws-sigv4-authentication) | |
+| 7 | [Disaster Recovery + Polish](#phase-7-disaster-recovery-polish) | |
+| 8 | [S3 Compatibility Hardening](#phase-8-s3-compatibility-hardening) | |
 
 <!-- Status: :white_check_mark: = done, :construction: = in progress, empty = not started -->
 
@@ -33,7 +34,23 @@ Set up the Cargo workspace with all 5 crates and the basic infrastructure.
 
 ---
 
-## Phase 1 — Bucket Operations
+## Phase 1 — Configuration & Storage Foundation
+
+Establish the configuration model and SQLite database foundation. MinIO-like approach: static server settings in a TOML config file, dynamic data (credentials, users) in the database.
+
+- [ ] Config file at `/etc/arca/config.toml` (default), `config/default.toml` as repo template, `--config-path` override
+- [ ] SQLite database initialization in `arca-storage` (tokio-rusqlite, WAL mode)
+- [ ] Schema: `credentials` table (access_key_id, secret_access_key, created_at, active)
+- [ ] `arca credential add/list/remove` CLI subcommands (direct SQLite access)
+- [ ] Auto-generate root credential on first startup if none exist, print to stdout
+- [ ] Unit tests for config loading, credential CRUD, auto-generation
+- [ ] Integration test: server starts, prints generated credentials
+
+**Verify**: `bin/run --build -d` starts server and prints auto-generated credentials; `arca credential list` shows the generated credential.
+
+---
+
+## Phase 2 — Bucket Operations
 
 Implement the 4 bucket operations with SQLite metadata storage.
 
@@ -48,7 +65,7 @@ Implement the 4 bucket operations with SQLite metadata storage.
 
 ---
 
-## Phase 2 — Core Object Operations
+## Phase 3 — Core Object Operations
 
 Implement PutObject, GetObject, HeadObject, and DeleteObject with streaming I/O.
 
@@ -64,7 +81,7 @@ Implement PutObject, GetObject, HeadObject, and DeleteObject with streaming I/O.
 
 ---
 
-## Phase 3 — CopyObject + ListObjectsV2
+## Phase 4 — CopyObject + ListObjectsV2
 
 Add object copying and listing with prefix/delimiter/pagination support.
 
@@ -78,7 +95,7 @@ Add object copying and listing with prefix/delimiter/pagination support.
 
 ---
 
-## Phase 4 — Multipart Upload
+## Phase 5 — Multipart Upload
 
 Full multipart upload lifecycle with composite ETag computation.
 
@@ -94,23 +111,22 @@ Full multipart upload lifecycle with composite ETag computation.
 
 ---
 
-## Phase 5 — AWS SigV4 Authentication
+## Phase 6 — AWS SigV4 Authentication
 
-Full AWS Signature V4 implementation with auth middleware.
+Full AWS Signature V4 implementation with auth middleware. Credentials loaded from the SQLite database (managed via `arca credential` CLI from Phase 1).
 
 - [ ] `arca-auth`: Full SigV4 implementation (canonical request, string-to-sign, signing key derivation, signature verification)
 - [ ] Test against AWS SigV4 test vectors (downloadable test suite)
 - [ ] Constant-time signature comparison via `subtle`
-- [ ] Auth middleware in `arca-proto`: parse Authorization header, verify, inject identity into request extensions
+- [ ] Auth middleware in `arca-proto`: parse Authorization header, look up credential in DB, verify signature, inject identity into request extensions
 - [ ] Virtual-hosted-style middleware: rewrite `bucket.s3.domain/key` -> `/bucket/key`
-- [ ] Credentials loaded from config/env vars (MVP)
 - [ ] Integration tests: valid credentials succeed, bad credentials get `SignatureDoesNotMatch`
 
-**Verify**: Set up credentials, all operations require auth, unauthenticated requests rejected.
+**Verify**: Set up credentials via `arca credential add`, all operations require auth, unauthenticated requests rejected.
 
 ---
 
-## Phase 6 — Disaster Recovery + Polish
+## Phase 7 — Disaster Recovery + Polish
 
 Recovery tools, operational logging, and graceful shutdown.
 
@@ -123,7 +139,7 @@ Recovery tools, operational logging, and graceful shutdown.
 
 ---
 
-## Phase 7 — S3 Compatibility Hardening
+## Phase 8 — S3 Compatibility Hardening
 
 Run industry-standard compatibility tests and harden edge cases.
 

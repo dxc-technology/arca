@@ -15,7 +15,7 @@ pub enum Command {
     /// Start the Arca server
     Serve {
         /// Path to the configuration file
-        #[arg(long, default_value = "config/default.toml")]
+        #[arg(long, default_value = "/etc/arca/config.toml")]
         config_path: PathBuf,
     },
 }

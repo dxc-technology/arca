@@ -45,11 +45,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /build/target/release/arca /usr/local/bin/arca
-COPY config/default.toml /etc/arca/default.toml
+COPY config/default.toml /etc/arca/config.toml
 
 RUN mkdir -p /data
 
 EXPOSE 9000
 
 ENTRYPOINT ["arca"]
-CMD ["serve", "--config-path", "/etc/arca/default.toml"]
+CMD ["serve"]

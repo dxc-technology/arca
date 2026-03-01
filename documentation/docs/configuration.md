@@ -5,47 +5,65 @@
 
 ## Overview
 
-Arca is configured via a TOML file with environment variable overrides. The default configuration file is `config/default.toml`.
+Arca follows a MinIO-like configuration model:
 
-## Server
+- **Config file** — static server settings (bind address, storage paths, logging). Set once at deploy time, rarely changes.
+- **Database** — dynamic runtime data (credentials, users, grants). Managed via CLI commands.
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `server.bind` | `0.0.0.0:9000` | Address and port to listen on |
+The default config file is `config/default.toml` in the repository. At runtime, the binary looks for `/etc/arca/config.toml` by default (override with `--config-path`).
 
-## Storage
+## Config File
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `storage.data_dir` | `./data` | Directory for blob storage (UUID files + `.meta` sidecars) |
-| `storage.db_path` | `./data/arca.db` | Path to the SQLite metadata database |
-
-## Auth
+### Server
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `auth.access_key_id` | — | AWS access key ID for request authentication |
-| `auth.secret_access_key` | — | AWS secret access key for request authentication |
+| `server.bind` | `0.0.0.0` | Address to listen on |
+| `server.port` | `9000` | Port to listen on |
 
-## Environment Variables
+### Storage
 
-Environment variables override TOML settings. The naming convention is `ARCA_` prefix with double underscore as section separator:
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `storage.data_dir` | `/data` | Directory for blob storage (UUID files + `.meta` sidecars) and SQLite database |
+
+### Example
+
+```toml
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+```
+
+## Credentials (Database)
+
+Credentials are stored in the SQLite database and managed via CLI:
 
 ```bash
-ARCA_SERVER__BIND=0.0.0.0:9000
-ARCA_STORAGE__DATA_DIR=/var/lib/arca/data
-ARCA_AUTH__ACCESS_KEY_ID=myaccesskey
-ARCA_AUTH__SECRET_ACCESS_KEY=mysecretkey
+# Add a credential (planned for Phase 5)
+arca credential add --access-key <key> --secret-key <secret>
 ```
+
+On first startup, if no credentials exist, Arca auto-generates a root access key pair and prints it to stdout.
+
+## Config File Location
+
+| Context | Path |
+|---------|------|
+| Binary default | `/etc/arca/config.toml` |
+| Repository template | `config/default.toml` |
+| Docker | Copied to `/etc/arca/config.toml` at build time; mount your own to override |
 
 ## Docker
 
-When running with Docker Compose, configuration can be passed via environment variables in the compose file or via volume-mounted config files.
+When running with Docker Compose, you can override the config file via a volume mount:
 
 ```yaml
 services:
   arca:
-    environment:
-      ARCA_AUTH__ACCESS_KEY_ID: minioadmin
-      ARCA_AUTH__SECRET_ACCESS_KEY: minioadmin
+    volumes:
+      - ./my-config.toml:/etc/arca/config.toml:ro
 ```
