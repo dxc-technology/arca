@@ -14,7 +14,8 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
 | 5 | [Multipart Upload](#phase-5-multipart-upload) | |
 | 6 | [AWS SigV4 Authentication](#phase-6-aws-sigv4-authentication) | |
 | 7 | [Disaster Recovery + Polish](#phase-7-disaster-recovery-polish) | |
-| 8 | [S3 Compatibility Hardening](#phase-8-s3-compatibility-hardening) | |
+| 8 | [Web Console](#phase-8-web-console) | |
+| 9 | [S3 Compatibility Hardening](#phase-9-s3-compatibility-hardening) | |
 
 <!-- Status: :white_check_mark: = done, :construction: = in progress, empty = not started -->
 
@@ -139,7 +140,21 @@ Recovery tools, operational logging, and graceful shutdown.
 
 ---
 
-## Phase 8 — S3 Compatibility Hardening
+## Phase 8 — Web Console
+
+Web-based administration console and bucket browser. Serves from the Arca binary itself (embedded static assets). Design TBD.
+
+- [ ] Frontend app (framework and design to be decided)
+- [ ] Embedded static asset serving from the Arca binary
+- [ ] Admin dashboard: server status, storage usage, credential management
+- [ ] Bucket browser: list buckets, browse objects, upload/download, delete
+- [ ] Authentication via Arca credentials
+
+**Verify**: Navigate to `http://localhost:9000/console`, log in, browse buckets and objects, upload a file.
+
+---
+
+## Phase 9 — S3 Compatibility Hardening
 
 Run industry-standard compatibility tests and harden edge cases.
 
