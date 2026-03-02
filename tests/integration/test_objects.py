@@ -22,12 +22,12 @@ def setup_bucket(s3_client):
     yield
     # Cleanup: delete all objects then the bucket
     try:
-        # List and delete objects (simple, no pagination needed for tests)
-        # Since ListObjectsV2 is not implemented yet, we can't list.
-        # Tests are responsible for cleaning up their own objects.
+        response = s3_client.list_objects_v2(Bucket=BUCKET)
+        for obj in response.get("Contents", []):
+            s3_client.delete_object(Bucket=BUCKET, Key=obj["Key"])
         s3_client.delete_bucket(Bucket=BUCKET)
     except ClientError:
-        pass  # Bucket may have objects or already be deleted
+        pass  # Bucket may already be deleted
 
 
 class TestPutGetRoundtrip:
@@ -186,3 +186,94 @@ class TestRangeRequest:
 
         # Cleanup
         s3_client.delete_object(Bucket=BUCKET, Key="range-test")
+
+
+COPY_BUCKET_2 = "test-objects-copy-bucket-2"
+
+
+class TestCopyObject:
+    def test_copy_within_bucket(self, s3_client):
+        """Copy an object within the same bucket."""
+        data = b"copy me"
+        s3_client.put_object(Bucket=BUCKET, Key="original", Body=data)
+
+        s3_client.copy_object(
+            Bucket=BUCKET, Key="copy",
+            CopySource=f"{BUCKET}/original",
+        )
+
+        resp = s3_client.get_object(Bucket=BUCKET, Key="copy")
+        assert resp["Body"].read() == data
+
+    def test_copy_preserves_content_type(self, s3_client):
+        """CopyObject should preserve the source object's content type."""
+        s3_client.put_object(
+            Bucket=BUCKET, Key="typed", Body=b"<html></html>",
+            ContentType="text/html",
+        )
+
+        s3_client.copy_object(
+            Bucket=BUCKET, Key="typed-copy",
+            CopySource=f"{BUCKET}/typed",
+        )
+
+        resp = s3_client.head_object(Bucket=BUCKET, Key="typed-copy")
+        assert resp["ContentType"] == "text/html"
+
+    def test_copy_returns_etag(self, s3_client):
+        """CopyObject response should include a valid ETag."""
+        s3_client.put_object(Bucket=BUCKET, Key="for-etag", Body=b"hello")
+
+        resp = s3_client.copy_object(
+            Bucket=BUCKET, Key="etag-copy",
+            CopySource=f"{BUCKET}/for-etag",
+        )
+
+        etag = resp["CopyObjectResult"]["ETag"]
+        assert etag.startswith('"') and etag.endswith('"')
+        hex_part = etag.strip('"')
+        assert len(hex_part) == 32
+
+    def test_copy_nonexistent_source(self, s3_client):
+        """Copying from a nonexistent source key should return NoSuchKey."""
+        with pytest.raises(ClientError) as exc_info:
+            s3_client.copy_object(
+                Bucket=BUCKET, Key="copy-dest",
+                CopySource=f"{BUCKET}/nonexistent",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchKey"
+
+    def test_copy_cross_bucket(self, s3_client):
+        """Copy an object to a different bucket."""
+        try:
+            s3_client.create_bucket(Bucket=COPY_BUCKET_2)
+        except ClientError:
+            pass
+
+        data = b"cross-bucket data"
+        s3_client.put_object(Bucket=BUCKET, Key="cross-src", Body=data)
+
+        s3_client.copy_object(
+            Bucket=COPY_BUCKET_2, Key="cross-dest",
+            CopySource=f"{BUCKET}/cross-src",
+        )
+
+        resp = s3_client.get_object(Bucket=COPY_BUCKET_2, Key="cross-dest")
+        assert resp["Body"].read() == data
+
+        # Cleanup
+        s3_client.delete_object(Bucket=COPY_BUCKET_2, Key="cross-dest")
+        s3_client.delete_bucket(Bucket=COPY_BUCKET_2)
+
+    def test_copy_overwrite(self, s3_client):
+        """Copying over an existing key should overwrite it."""
+        s3_client.put_object(Bucket=BUCKET, Key="src", Body=b"new data")
+        s3_client.put_object(Bucket=BUCKET, Key="dest", Body=b"old data")
+
+        s3_client.copy_object(
+            Bucket=BUCKET, Key="dest",
+            CopySource=f"{BUCKET}/src",
+        )
+
+        resp = s3_client.get_object(Bucket=BUCKET, Key="dest")
+        assert resp["Body"].read() == b"new data"

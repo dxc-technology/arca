@@ -45,6 +45,33 @@ pub struct ObjectRecord {
     pub last_modified: DateTime<Utc>,
 }
 
+/// Projection of an object for list responses (lighter than ObjectRecord).
+#[derive(Debug, Clone)]
+pub struct ListEntry {
+    pub key: String,
+    pub last_modified: DateTime<Utc>,
+    pub etag: String,
+    pub size: u64,
+    pub storage_class: String,
+}
+
+/// Parameters for building a `ListBucketResult` XML response.
+#[derive(Debug)]
+pub struct ListBucketResultParams<'a> {
+    pub name: &'a str,
+    pub prefix: Option<&'a str>,
+    pub delimiter: Option<&'a str>,
+    pub max_keys: u32,
+    pub is_truncated: bool,
+    pub key_count: u32,
+    pub contents: &'a [ListEntry],
+    pub common_prefixes: &'a [String],
+    pub continuation_token: Option<&'a str>,
+    pub next_continuation_token: Option<&'a str>,
+    pub start_after: Option<&'a str>,
+    pub encoding_type: Option<&'a str>,
+}
+
 /// An S3 access credential (access key + secret key pair).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Credential {

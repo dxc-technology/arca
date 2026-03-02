@@ -48,4 +48,17 @@ pub trait MetadataStore: Send + Sync {
         bucket: &str,
         key: &str,
     ) -> Result<Option<ObjectRecord>, crate::error::ArcaError>;
+
+    /// Lists objects in a bucket, ordered by key.
+    ///
+    /// - `prefix`: only return keys starting with this prefix.
+    /// - `start_after`: only return keys lexicographically after this value.
+    /// - `max_keys`: maximum number of records to return.
+    async fn list_objects(
+        &self,
+        bucket: &str,
+        prefix: Option<&str>,
+        start_after: Option<&str>,
+        max_keys: u32,
+    ) -> Result<Vec<ObjectRecord>, crate::error::ArcaError>;
 }

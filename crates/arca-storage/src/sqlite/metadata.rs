@@ -180,6 +180,71 @@ impl MetadataStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("get_object: {e}")))
     }
 
+    async fn list_objects(
+        &self,
+        bucket: &str,
+        prefix: Option<&str>,
+        start_after: Option<&str>,
+        max_keys: u32,
+    ) -> Result<Vec<ObjectRecord>, ArcaError> {
+        let bucket = bucket.to_string();
+        let prefix = prefix.map(|s| s.to_string());
+        let start_after = start_after.map(|s| s.to_string());
+        self.conn
+            .call(move |conn| {
+                // Build dynamic SQL.
+                let mut sql = String::from(
+                    "SELECT bucket, key, blob_id, size, etag, content_type, last_modified
+                     FROM objects WHERE bucket = ?1",
+                );
+                let mut param_idx = 2u32;
+
+                let prefix_pattern = prefix.as_ref().map(|p| {
+                    let idx = param_idx;
+                    param_idx += 1;
+                    sql.push_str(&format!(" AND key LIKE ?{idx} ESCAPE '\\'"));
+                    format!("{}%", escape_like(p))
+                });
+
+                if start_after.is_some() {
+                    let idx = param_idx;
+                    #[allow(unused_assignments)]
+                    { param_idx += 1; }
+                    sql.push_str(&format!(" AND key > ?{idx}"));
+                }
+
+                sql.push_str(" ORDER BY key");
+                sql.push_str(&format!(" LIMIT {max_keys}"));
+
+                let mut stmt = conn.prepare(&sql)?;
+
+                // Bind parameters dynamically.
+                let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+                params_vec.push(Box::new(bucket));
+                if let Some(ref pattern) = prefix_pattern {
+                    params_vec.push(Box::new(pattern.clone()));
+                }
+                if let Some(ref sa) = start_after {
+                    params_vec.push(Box::new(sa.clone()));
+                }
+
+                let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+                    params_vec.iter().map(|p| p.as_ref()).collect();
+
+                let rows = stmt.query_map(params_refs.as_slice(), |row| {
+                    Ok(row_to_object_record(row))
+                })?;
+
+                let mut records = Vec::new();
+                for row in rows {
+                    records.push(row??);
+                }
+                Ok(records)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("list_objects: {e}")))
+    }
+
     async fn delete_object(
         &self,
         bucket: &str,
@@ -220,6 +285,23 @@ impl MetadataStore for SqliteStore {
             .await
             .map_err(|e: TrError| ArcaError::Internal(format!("delete_object: {e}")))
     }
+}
+
+/// Escapes special characters in a LIKE pattern so they are matched literally.
+///
+/// SQLite LIKE special characters are `%` and `_`. We use `\` as the escape character.
+fn escape_like(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '%' | '_' | '\\' => {
+                out.push('\\');
+                out.push(ch);
+            }
+            _ => out.push(ch),
+        }
+    }
+    out
 }
 
 /// Converts a SQLite row to a `BucketInfo`.
@@ -442,5 +524,102 @@ mod tests {
         let record = make_record("b", "key1");
         store.put_object(&record).await.unwrap();
         assert!(!store.bucket_is_empty("b").await.unwrap());
+    }
+
+    // -- list_objects tests --
+
+    #[tokio::test]
+    async fn list_objects_empty_bucket() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let records = store.list_objects("b", None, None, 1000).await.unwrap();
+        assert!(records.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_objects_all() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        for key in ["c", "a", "b"] {
+            let r = make_record("b", key);
+            store.put_object(&r).await.unwrap();
+        }
+        let records = store.list_objects("b", None, None, 1000).await.unwrap();
+        assert_eq!(records.len(), 3);
+        // Should be sorted by key
+        assert_eq!(records[0].key, "a");
+        assert_eq!(records[1].key, "b");
+        assert_eq!(records[2].key, "c");
+    }
+
+    #[tokio::test]
+    async fn list_objects_prefix_filter() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        for key in ["photos/a.jpg", "photos/b.jpg", "videos/c.mp4"] {
+            let r = make_record("b", key);
+            store.put_object(&r).await.unwrap();
+        }
+        let records = store.list_objects("b", Some("photos/"), None, 1000).await.unwrap();
+        assert_eq!(records.len(), 2);
+        assert!(records.iter().all(|r| r.key.starts_with("photos/")));
+    }
+
+    #[tokio::test]
+    async fn list_objects_start_after() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        for key in ["a", "b", "c", "d"] {
+            let r = make_record("b", key);
+            store.put_object(&r).await.unwrap();
+        }
+        let records = store.list_objects("b", None, Some("b"), 1000).await.unwrap();
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].key, "c");
+        assert_eq!(records[1].key, "d");
+    }
+
+    #[tokio::test]
+    async fn list_objects_max_keys() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        for key in ["a", "b", "c", "d"] {
+            let r = make_record("b", key);
+            store.put_object(&r).await.unwrap();
+        }
+        let records = store.list_objects("b", None, None, 2).await.unwrap();
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].key, "a");
+        assert_eq!(records[1].key, "b");
+    }
+
+    #[tokio::test]
+    async fn list_objects_combined() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        for key in ["photos/a", "photos/b", "photos/c", "videos/d"] {
+            let r = make_record("b", key);
+            store.put_object(&r).await.unwrap();
+        }
+        let records = store
+            .list_objects("b", Some("photos/"), Some("photos/a"), 1)
+            .await
+            .unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].key, "photos/b");
+    }
+
+    #[tokio::test]
+    async fn list_objects_special_chars_in_prefix() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        // Keys with SQL LIKE special characters
+        for key in ["100%_done", "100%_more", "other"] {
+            let r = make_record("b", key);
+            store.put_object(&r).await.unwrap();
+        }
+        let records = store.list_objects("b", Some("100%_"), None, 1000).await.unwrap();
+        assert_eq!(records.len(), 2);
+        assert!(records.iter().all(|r| r.key.starts_with("100%_")));
     }
 }

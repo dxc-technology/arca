@@ -11,7 +11,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">1</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">2</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">3</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">4</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">4</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">5</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">6</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">7</div>
@@ -27,7 +27,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
 | 1 | [Configuration & Storage Foundation](#phase-1-configuration-storage-foundation) | <span style="color:#4caf50">&#x2714;</span> |
 | 2 | [Bucket Operations](#phase-2-bucket-operations) | <span style="color:#4caf50">&#x2714;</span> |
 | 3 | [Core Object Operations](#phase-3-core-object-operations) | <span style="color:#4caf50">&#x2714;</span> |
-| 4 | [CopyObject + ListObjectsV2](#phase-4-copyobject-listobjectsv2) | |
+| 4 | [CopyObject + ListObjectsV2](#phase-4-copyobject-listobjectsv2) | <span style="color:#4caf50">&#x2714;</span> |
 | 5 | [Multipart Upload](#phase-5-multipart-upload) | |
 | 6 | [AWS SigV4 Authentication](#phase-6-aws-sigv4-authentication) | |
 | 7 | [Disaster Recovery + Polish](#phase-7-disaster-recovery-polish) | |
@@ -103,11 +103,11 @@ Implement PutObject, GetObject, HeadObject, and DeleteObject with streaming I/O.
 
 Add object copying and listing with prefix/delimiter/pagination support.
 
-- [ ] `ObjectUsecase::copy`: real filesystem copy (no reference counting for MVP)
-- [ ] `SqliteMetadataStore::list_objects`: SQL with `key > ?` for pagination, `key LIKE ?` for prefix, delimiter handling for common prefixes
-- [ ] Continuation token: base64-encoded last key (opaque to client)
-- [ ] XML response: `ListBucketResult` with Contents, CommonPrefixes, IsTruncated, NextContinuationToken
-- [ ] Integration tests: `test_list.py` (prefix, delimiter, pagination, max-keys, common prefixes)
+- [x] CopyObject: `PUT /{bucket}/{*key}` with `x-amz-copy-source` header, stream-through copy via BlobStore get → put
+- [x] `SqliteMetadataStore::list_objects`: SQL with `key > ?` for pagination, `key LIKE ?` for prefix, delimiter handling for common prefixes
+- [x] Continuation token: base64-encoded last key (opaque to client)
+- [x] XML response: `ListBucketResult` with Contents, CommonPrefixes, IsTruncated, NextContinuationToken
+- [x] Integration tests: `test_list.py` (~12 tests), `TestCopyObject` (~6 tests), unit tests for XML builders and list_objects
 
 **Verify**: `aws s3 ls s3://bucket/prefix/`, `aws s3 cp s3://bucket/a s3://bucket/b`.
 

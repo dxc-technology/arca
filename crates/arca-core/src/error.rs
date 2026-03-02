@@ -26,6 +26,7 @@ pub enum S3ErrorCode {
     BucketAlreadyOwnedByYou,
     BucketNotEmpty,
     InternalError,
+    InvalidArgument,
     InvalidBucketName,
     NoSuchBucket,
     NoSuchKey,
@@ -43,6 +44,7 @@ impl S3ErrorCode {
             S3ErrorCode::BucketAlreadyOwnedByYou => 409,
             S3ErrorCode::BucketNotEmpty => 409,
             S3ErrorCode::InternalError => 500,
+            S3ErrorCode::InvalidArgument => 400,
             S3ErrorCode::InvalidBucketName => 400,
             S3ErrorCode::NoSuchBucket => 404,
             S3ErrorCode::NoSuchKey => 404,
@@ -60,6 +62,7 @@ impl S3ErrorCode {
             S3ErrorCode::BucketAlreadyOwnedByYou => "BucketAlreadyOwnedByYou",
             S3ErrorCode::BucketNotEmpty => "BucketNotEmpty",
             S3ErrorCode::InternalError => "InternalError",
+            S3ErrorCode::InvalidArgument => "InvalidArgument",
             S3ErrorCode::InvalidBucketName => "InvalidBucketName",
             S3ErrorCode::NoSuchBucket => "NoSuchBucket",
             S3ErrorCode::NoSuchKey => "NoSuchKey",
@@ -87,6 +90,7 @@ impl S3ErrorCode {
             S3ErrorCode::InternalError => {
                 "We encountered an internal error. Please try again."
             }
+            S3ErrorCode::InvalidArgument => "Invalid Argument",
             S3ErrorCode::InvalidBucketName => "The specified bucket is not valid.",
             S3ErrorCode::NoSuchBucket => "The specified bucket does not exist.",
             S3ErrorCode::NoSuchKey => "The specified key does not exist.",
@@ -231,6 +235,7 @@ mod tests {
         assert_eq!(S3ErrorCode::AccessDenied.http_status(), 403);
         assert_eq!(S3ErrorCode::SignatureDoesNotMatch.http_status(), 403);
         assert_eq!(S3ErrorCode::BadDigest.http_status(), 400);
+        assert_eq!(S3ErrorCode::InvalidArgument.http_status(), 400);
         assert_eq!(S3ErrorCode::InternalError.http_status(), 500);
     }
 

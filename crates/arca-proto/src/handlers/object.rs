@@ -8,6 +8,7 @@ use axum::response::Response;
 use http::header;
 use http::StatusCode;
 
+use arca_core::s3::xml_types;
 use arca_core::store::{ByteRange, ByteStream, SidecarMeta};
 use arca_core::types::{BlobId, ObjectRecord};
 use arca_core::{S3Error, S3ErrorCode};
@@ -15,12 +16,20 @@ use arca_core::{S3Error, S3ErrorCode};
 use crate::state::AppState;
 use crate::xml::error_response::{internal_error_response, s3_error_response};
 
-/// PUT /{bucket}/{*key} — PutObject
+/// PUT /{bucket}/{*key} — PutObject or CopyObject
+///
+/// If the `x-amz-copy-source` header is present, this dispatches to `copy_object`.
+/// Otherwise, it handles a normal PutObject.
 pub async fn put_object(
     State(state): State<AppState>,
     Path((bucket, key)): Path<(String, String)>,
     request: axum::extract::Request,
 ) -> Response {
+    // Check for CopyObject (same PUT endpoint, distinguished by header).
+    if request.headers().contains_key("x-amz-copy-source") {
+        return copy_object(state, bucket, key, request).await;
+    }
+
     let resource = format!("/{bucket}/{key}");
 
     // Check bucket exists.
@@ -91,6 +100,156 @@ pub async fn put_object(
         .header("ETag", &etag)
         .body(Body::empty())
         .expect("build put_object response")
+}
+
+/// CopyObject — copies a source object to the destination bucket/key.
+///
+/// Streams the source blob through `BlobStore::get()` → `BlobStore::put()` to reuse
+/// existing code paths and correctly compute the new blob's MD5.
+async fn copy_object(
+    state: AppState,
+    dest_bucket: String,
+    dest_key: String,
+    request: axum::extract::Request,
+) -> Response {
+    let resource = format!("/{dest_bucket}/{dest_key}");
+
+    // Parse x-amz-copy-source header.
+    let copy_source = request
+        .headers()
+        .get("x-amz-copy-source")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    let (src_bucket, src_key) = match parse_copy_source(copy_source) {
+        Some(parsed) => parsed,
+        None => {
+            return s3_error_response(S3Error::with_message(
+                S3ErrorCode::InvalidArgument,
+                "Invalid x-amz-copy-source header",
+                &resource,
+            ));
+        }
+    };
+
+    // Check destination bucket exists.
+    match state.metadata.head_bucket(&dest_bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource));
+        }
+        Err(e) => return internal_error_response(e, &resource),
+    }
+
+    // Check source bucket exists.
+    match state.metadata.head_bucket(&src_bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return s3_error_response(S3Error::new(
+                S3ErrorCode::NoSuchBucket,
+                format!("/{src_bucket}/{src_key}"),
+            ));
+        }
+        Err(e) => return internal_error_response(e, &resource),
+    }
+
+    // Get source object record.
+    let src_record = match state.metadata.get_object(&src_bucket, &src_key).await {
+        Ok(Some(r)) => r,
+        Ok(None) => {
+            return s3_error_response(S3Error::new(
+                S3ErrorCode::NoSuchKey,
+                format!("/{src_bucket}/{src_key}"),
+            ));
+        }
+        Err(e) => return internal_error_response(e, &resource),
+    };
+
+    // Stream source blob through get → put to create a new copy.
+    let get_result = match state.blob.get(&src_record.blob_id, None).await {
+        Ok(r) => r,
+        Err(e) => return internal_error_response(e, &resource),
+    };
+
+    let new_blob_id = BlobId::new();
+    let put_result = match state.blob.put(&new_blob_id, get_result.stream).await {
+        Ok(r) => r,
+        Err(e) => return internal_error_response(e, &resource),
+    };
+
+    let now = chrono::Utc::now();
+
+    // Preserve source content-type.
+    let content_type = src_record.content_type.clone();
+
+    // Write sidecar.
+    let sidecar = SidecarMeta {
+        bucket: dest_bucket.clone(),
+        key: dest_key.clone(),
+        size: put_result.size,
+        etag: put_result.etag.clone(),
+        content_type: content_type.clone(),
+        last_modified: now.to_rfc3339(),
+    };
+    if let Err(e) = state.blob.write_sidecar(&new_blob_id, &sidecar).await {
+        return internal_error_response(e, &resource);
+    }
+
+    // Insert metadata record.
+    let record = ObjectRecord {
+        bucket: dest_bucket,
+        key: dest_key,
+        blob_id: new_blob_id,
+        size: put_result.size,
+        etag: put_result.etag.clone(),
+        content_type,
+        last_modified: now,
+    };
+    let old = match state.metadata.put_object(&record).await {
+        Ok(old) => old,
+        Err(e) => return internal_error_response(e, &resource),
+    };
+
+    // Clean up old blob if overwriting.
+    if let Some(old_record) = old {
+        if let Err(e) = state.blob.delete(&old_record.blob_id).await {
+            tracing::warn!(error = %e, "Failed to delete old blob during copy overwrite");
+        }
+    }
+
+    // CopyObject returns XML body (not just headers like PutObject).
+    let xml = xml_types::copy_object_result(&put_result.etag, &now);
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/xml")
+        .body(Body::from(xml))
+        .expect("build copy_object response")
+}
+
+/// Parses the `x-amz-copy-source` header value into (bucket, key).
+///
+/// The header value may be URL-encoded and may contain a `?versionId=` suffix.
+/// Format: `/bucket/key` or `bucket/key` (leading slash optional).
+fn parse_copy_source(value: &str) -> Option<(String, String)> {
+    let decoded = urlencoding::decode(value).ok()?;
+    let decoded = decoded.as_ref();
+
+    // Strip optional leading slash.
+    let path = decoded.strip_prefix('/').unwrap_or(decoded);
+
+    // Strip optional ?versionId= suffix.
+    let path = path.split('?').next().unwrap_or(path);
+
+    // Split into bucket/key.
+    let slash_pos = path.find('/')?;
+    let bucket = &path[..slash_pos];
+    let key = &path[slash_pos + 1..];
+
+    if bucket.is_empty() || key.is_empty() {
+        return None;
+    }
+
+    Some((bucket.to_string(), key.to_string()))
 }
 
 /// GET /{bucket}/{*key} — GetObject
