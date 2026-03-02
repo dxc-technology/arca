@@ -731,7 +731,7 @@
   <div style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid rgba(128,128,128,.3)">
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em">0</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">1</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">2</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">2</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">3</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">4</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">5</div>
@@ -765,7 +765,7 @@
 <tr>
 <td style="text-align: center;">2</td>
 <td><a href="#phase-2-bucket-operations">Bucket Operations</a></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">3</td>
@@ -834,12 +834,12 @@
 <h2 id="phase-2-bucket-operations">Phase 2 — Bucket Operations<a class="headerlink" href="#phase-2-bucket-operations" title="Permanent link">&para;</a></h2>
 <p>Implement the 4 bucket operations with SQLite metadata storage.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> SQLite schema (<code>buckets</code> table), <code>SqliteMetadataStore</code> bucket methods</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>BucketUsecase</code>: validate bucket name (S3 naming rules), create, delete (must be empty), head, list</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Axum handlers in <code>arca-proto/handlers/bucket.rs</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> XML response types: <code>ListAllMyBucketsResult</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Unit tests for <code>SqliteMetadataStore</code> + <code>BucketUsecase</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Integration test: <code>test_buckets.py</code> with boto3</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> SQLite schema (<code>buckets</code> table), <code>SqliteMetadataStore</code> bucket methods</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Bucket name validation (S3 naming rules) in <code>arca-core</code>, handlers call MetadataStore directly</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Axum handlers in <code>arca-proto/handlers/bucket.rs</code> with <code>AppState</code> injection</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> XML response types: <code>ListAllMyBucketsResult</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Unit tests for validation (~22 tests), <code>SqliteMetadataStore</code> (~7 tests), XML types (~3 tests)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Integration test: <code>test_buckets.py</code> with boto3 (~10 tests)</li>
 </ul>
 <p><strong>Verify</strong>: <code>aws s3 mb</code>, <code>aws s3 ls</code>, <code>aws s3 rb</code> all work.</p>
 <hr />

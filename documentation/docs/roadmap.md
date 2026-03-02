@@ -9,7 +9,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
   <div style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid rgba(128,128,128,.3)">
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em">0</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">1</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">2</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">2</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">3</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">4</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">5</div>
@@ -25,7 +25,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
 |:-----:|------|:------:|
 | 0 | [Project Skeleton](#phase-0-project-skeleton) | <span style="color:#4caf50">&#x2714;</span> |
 | 1 | [Configuration & Storage Foundation](#phase-1-configuration-storage-foundation) | <span style="color:#4caf50">&#x2714;</span> |
-| 2 | [Bucket Operations](#phase-2-bucket-operations) | |
+| 2 | [Bucket Operations](#phase-2-bucket-operations) | <span style="color:#4caf50">&#x2714;</span> |
 | 3 | [Core Object Operations](#phase-3-core-object-operations) | |
 | 4 | [CopyObject + ListObjectsV2](#phase-4-copyobject-listobjectsv2) | |
 | 5 | [Multipart Upload](#phase-5-multipart-upload) | |
@@ -72,12 +72,12 @@ Establish the configuration model and SQLite database foundation. MinIO-like app
 
 Implement the 4 bucket operations with SQLite metadata storage.
 
-- [ ] SQLite schema (`buckets` table), `SqliteMetadataStore` bucket methods
-- [ ] `BucketUsecase`: validate bucket name (S3 naming rules), create, delete (must be empty), head, list
-- [ ] Axum handlers in `arca-proto/handlers/bucket.rs`
-- [ ] XML response types: `ListAllMyBucketsResult`
-- [ ] Unit tests for `SqliteMetadataStore` + `BucketUsecase`
-- [ ] Integration test: `test_buckets.py` with boto3
+- [x] SQLite schema (`buckets` table), `SqliteMetadataStore` bucket methods
+- [x] Bucket name validation (S3 naming rules) in `arca-core`, handlers call MetadataStore directly
+- [x] Axum handlers in `arca-proto/handlers/bucket.rs` with `AppState` injection
+- [x] XML response types: `ListAllMyBucketsResult`
+- [x] Unit tests for validation (~22 tests), `SqliteMetadataStore` (~7 tests), XML types (~3 tests)
+- [x] Integration test: `test_buckets.py` with boto3 (~10 tests)
 
 **Verify**: `aws s3 mb`, `aws s3 ls`, `aws s3 rb` all work.
 

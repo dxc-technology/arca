@@ -4,12 +4,15 @@ mod cli;
 mod config;
 mod credential;
 
+use std::sync::Arc;
+
 use anyhow::Result;
 use clap::Parser;
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
 use arca_core::store::CredentialStore;
+use arca_proto::AppState;
 use cli::{Cli, Command, CredentialAction};
 
 #[tokio::main]
@@ -30,10 +33,14 @@ async fn main() -> Result<()> {
             let store = arca_storage::SqliteStore::open(&config.storage.db_path()).await?;
             credential::ensure_root_credential(&store).await?;
 
+            let state = AppState {
+                metadata: Arc::new(store),
+            };
+
             let addr = format!("{}:{}", config.server.bind, config.server.port);
             tracing::info!("Starting Arca on {addr}");
 
-            let router = arca_proto::build_router();
+            let router = arca_proto::build_router(state);
             let listener = TcpListener::bind(&addr).await?;
 
             tracing::info!("Arca is ready");

@@ -12,8 +12,8 @@ import requests
 def test_server_responds_after_credential_bootstrap(endpoint_url):
     """Server should respond to requests after credential bootstrap."""
     resp = requests.get(endpoint_url)
-    # Still returns 501 (handlers not implemented yet), but the server is up
-    assert resp.status_code == 501
+    # GET / is ListBuckets, returns 200 since Phase 2
+    assert resp.status_code == 200
 
 
 def test_still_returns_valid_s3_xml(endpoint_url):

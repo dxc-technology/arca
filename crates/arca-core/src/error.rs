@@ -174,7 +174,7 @@ impl S3Error {
 }
 
 /// Helper to write a simple `<Tag>text</Tag>` XML element.
-fn write_xml_element(writer: &mut Writer<Vec<u8>>, tag: &str, text: &str) {
+pub(crate) fn write_xml_element(writer: &mut Writer<Vec<u8>>, tag: &str, text: &str) {
     writer
         .write_event(Event::Start(BytesStart::new(tag)))
         .expect("write element start");

@@ -5,6 +5,7 @@
 //! for concurrent read performance.
 
 mod credential;
+mod metadata;
 mod migrations;
 
 use std::path::Path;

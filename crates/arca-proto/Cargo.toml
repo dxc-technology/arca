@@ -7,6 +7,7 @@ description = "S3 HTTP protocol adapter for the Arca S3 server"
 [dependencies]
 arca-core = { workspace = true }
 arca-auth = { workspace = true }
+async-trait = { workspace = true }
 axum = { workspace = true }
 http = { workspace = true }
 tower = { workspace = true }

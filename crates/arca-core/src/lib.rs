@@ -8,4 +8,5 @@ pub mod store;
 pub mod types;
 
 pub use error::{ArcaError, S3Error, S3ErrorCode};
+pub use s3::bucket_name::validate_bucket_name;
 pub use types::{BlobId, BucketInfo, Credential, ObjectRecord};

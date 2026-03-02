@@ -14,17 +14,27 @@ struct Migration {
 }
 
 /// All known migrations, in version order.
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    description: "Create credentials table",
-    sql: "CREATE TABLE credentials (
-        access_key_id     TEXT PRIMARY KEY NOT NULL,
-        secret_access_key TEXT NOT NULL,
-        description       TEXT NOT NULL DEFAULT '',
-        created_at        TEXT NOT NULL,
-        active            INTEGER NOT NULL DEFAULT 1
-    )",
-}];
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        description: "Create credentials table",
+        sql: "CREATE TABLE credentials (
+            access_key_id     TEXT PRIMARY KEY NOT NULL,
+            secret_access_key TEXT NOT NULL,
+            description       TEXT NOT NULL DEFAULT '',
+            created_at        TEXT NOT NULL,
+            active            INTEGER NOT NULL DEFAULT 1
+        )",
+    },
+    Migration {
+        version: 2,
+        description: "Create buckets table",
+        sql: "CREATE TABLE buckets (
+            name       TEXT PRIMARY KEY NOT NULL,
+            created_at TEXT NOT NULL
+        )",
+    },
+];
 
 /// Ensures the `_migrations` tracking table exists.
 fn ensure_migrations_table(conn: &Connection) -> rusqlite::Result<()> {
@@ -97,11 +107,17 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 1);
+        assert_eq!(version, 2);
 
         // Verify credentials table exists
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM credentials", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+
+        // Verify buckets table exists
+        let count: u32 = conn
+            .query_row("SELECT COUNT(*) FROM buckets", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 0);
     }
@@ -113,12 +129,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 1);
+        assert_eq!(version, 2);
 
-        // Only one migration record
+        // Two migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 1);
+        assert_eq!(count, 2);
     }
 }

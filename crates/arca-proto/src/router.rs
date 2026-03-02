@@ -5,9 +5,10 @@ use axum::Router;
 use tower_http::trace::TraceLayer;
 
 use crate::handlers::{bucket, object};
+use crate::state::AppState;
 
 /// Builds the Axum router with all S3 routes and middleware.
-pub fn build_router() -> Router {
+pub fn build_router(state: AppState) -> Router {
     Router::new()
         // Service-level: ListBuckets
         .route("/", get(bucket::list_buckets))
@@ -29,4 +30,5 @@ pub fn build_router() -> Router {
                 .post(object::post_object),
         )
         .layer(TraceLayer::new_for_http())
+        .with_state(state)
 }
