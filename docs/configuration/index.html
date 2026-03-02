@@ -484,6 +484,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#blob-storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Blob Storage
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -612,6 +623,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#blob-storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Blob Storage
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -713,6 +735,11 @@
 <td><code>/data</code></td>
 <td>Root directory for SQLite database (<code>arca.db</code>) and blob storage (<code>blobs/</code> subdirectory)</td>
 </tr>
+<tr>
+<td><code>storage.blob_prefix_depth</code></td>
+<td><code>2</code></td>
+<td>Number of 2-char prefix directory levels for blob file sharding (1–4). Higher values spread files across more directories, reducing files-per-directory at the cost of deeper paths. See <a href="#blob-storage">blob storage</a> below.</td>
+</tr>
 </tbody>
 </table>
 <h3 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h3>
@@ -722,28 +749,62 @@
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="k">[storage]</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">data_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/data&quot;</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c1"># blob_prefix_depth = 2  # optional, default is 2</span>
 </code></pre></div>
+<h3 id="blob-storage">Blob Storage<a class="headerlink" href="#blob-storage" title="Permanent link">&para;</a></h3>
+<p>Object data is stored as blob files under <code>{data_dir}/blobs/</code>, sharded into a hierarchy of 2-character prefix directories derived from the blob UUID. The <code>blob_prefix_depth</code> setting controls how many levels of prefix directories are used.</p>
+<p>With depth=2 (default), a blob with UUID <code>550e8400-e29b-41d4-a716-446655440000</code> is stored at:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>blobs/55/0e/550e8400-e29b-41d4-a716-446655440000
+</code></pre></div>
+<p>Each blob has a <code>.meta</code> sidecar file containing JSON metadata for disaster recovery.</p>
+<table>
+<thead>
+<tr>
+<th>Depth</th>
+<th>Leaf directories</th>
+<th>Files/dir (at 100M objects)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>256</td>
+<td>~390,000</td>
+</tr>
+<tr>
+<td>2</td>
+<td>65,536</td>
+<td>~1,525</td>
+</tr>
+<tr>
+<td>3</td>
+<td>16.7M</td>
+<td>~6</td>
+</tr>
+</tbody>
+</table>
+<p>The default depth of 2 works well for most deployments. Increase to 3 for very large installations (tens of millions of objects) where filesystem performance degrades with many files per directory.</p>
 <h2 id="credentials-database">Credentials (Database)<a class="headerlink" href="#credentials-database" title="Permanent link">&para;</a></h2>
 <p>Credentials are stored in the SQLite database (<code>{data_dir}/arca.db</code>) and managed via CLI:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Add a credential (auto-generates access key and secret key)</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;my app&quot;</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># List all credentials</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>arca<span class="w"> </span>credential<span class="w"> </span>list
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># Remove a credential</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>arca<span class="w"> </span>credential<span class="w"> </span>remove<span class="w"> </span>&lt;ACCESS_KEY_ID&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Add a credential (auto-generates access key and secret key)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;my app&quot;</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># List all credentials</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>arca<span class="w"> </span>credential<span class="w"> </span>list
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># Remove a credential</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>arca<span class="w"> </span>credential<span class="w"> </span>remove<span class="w"> </span>&lt;ACCESS_KEY_ID&gt;
 </code></pre></div>
 <p>On first startup, if no credentials exist, Arca auto-generates a root access key pair and prints it to stdout:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>========================================
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  Root credential created automatically
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>========================================
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  Access Key: GHUZM9QTHSJKE3N6P50O
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>  Secret Key: aNdrqpNvsbI9BeU/O+3AA508Xtey4Sp3EILSXRQy
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>========================================
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>  WARNING: This will only be shown once.
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>  Store these credentials securely.
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>========================================
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>========================================
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  Root credential created automatically
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>========================================
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  Access Key: GHUZM9QTHSJKE3N6P50O
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  Secret Key: aNdrqpNvsbI9BeU/O+3AA508Xtey4Sp3EILSXRQy
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>========================================
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  WARNING: This will only be shown once.
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>  Store these credentials securely.
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>========================================
 </code></pre></div>
 <h2 id="config-file-location">Config File Location<a class="headerlink" href="#config-file-location" title="Permanent link">&para;</a></h2>
 <table>
@@ -770,10 +831,10 @@
 </table>
 <h2 id="docker">Docker<a class="headerlink" href="#docker" title="Permanent link">&para;</a></h2>
 <p>When running with Docker Compose, you can override the config file via a volume mount:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">services</span><span class="p">:</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">arca</span><span class="p">:</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./my-config.toml:/etc/arca/config.toml:ro</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">services</span><span class="p">:</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">arca</span><span class="p">:</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./my-config.toml:/etc/arca/config.toml:ro</span>
 </code></pre></div>
 
 

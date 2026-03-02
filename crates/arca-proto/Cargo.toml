@@ -9,7 +9,10 @@ arca-core = { workspace = true }
 arca-auth = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true }
+bytes = { workspace = true }
+chrono = { workspace = true }
 http = { workspace = true }
+tokio-stream = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
 tracing = { workspace = true }

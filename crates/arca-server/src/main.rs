@@ -33,8 +33,15 @@ async fn main() -> Result<()> {
             let store = arca_storage::SqliteStore::open(&config.storage.db_path()).await?;
             credential::ensure_root_credential(&store).await?;
 
+            let blob_store = arca_storage::FsBlobStore::new(
+                config.storage.blobs_dir(),
+                config.storage.blob_prefix_depth,
+            )
+            .await?;
+
             let state = AppState {
                 metadata: Arc::new(store),
+                blob: Arc::new(blob_store),
             };
 
             let addr = format!("{}:{}", config.server.bind, config.server.port);

@@ -23,6 +23,7 @@ The default config file is `config/default.toml` in the repository. At runtime, 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `storage.data_dir` | `/data` | Root directory for SQLite database (`arca.db`) and blob storage (`blobs/` subdirectory) |
+| `storage.blob_prefix_depth` | `2` | Number of 2-char prefix directory levels for blob file sharding (1–4). Higher values spread files across more directories, reducing files-per-directory at the cost of deeper paths. See [blob storage](#blob-storage) below. |
 
 ### Example
 
@@ -33,7 +34,28 @@ port = 9000
 
 [storage]
 data_dir = "/data"
+# blob_prefix_depth = 2  # optional, default is 2
 ```
+
+### Blob Storage
+
+Object data is stored as blob files under `{data_dir}/blobs/`, sharded into a hierarchy of 2-character prefix directories derived from the blob UUID. The `blob_prefix_depth` setting controls how many levels of prefix directories are used.
+
+With depth=2 (default), a blob with UUID `550e8400-e29b-41d4-a716-446655440000` is stored at:
+
+```
+blobs/55/0e/550e8400-e29b-41d4-a716-446655440000
+```
+
+Each blob has a `.meta` sidecar file containing JSON metadata for disaster recovery.
+
+| Depth | Leaf directories | Files/dir (at 100M objects) |
+|-------|-----------------|---------------------------|
+| 1     | 256             | ~390,000                  |
+| 2     | 65,536          | ~1,525                    |
+| 3     | 16.7M           | ~6                        |
+
+The default depth of 2 works well for most deployments. Increase to 3 for very large installations (tens of millions of objects) where filesystem performance degrades with many files per directory.
 
 ## Credentials (Database)
 

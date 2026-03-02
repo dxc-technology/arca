@@ -34,6 +34,20 @@ const MIGRATIONS: &[Migration] = &[
             created_at TEXT NOT NULL
         )",
     },
+    Migration {
+        version: 3,
+        description: "Create objects table",
+        sql: "CREATE TABLE objects (
+            bucket        TEXT NOT NULL,
+            key           TEXT NOT NULL,
+            blob_id       TEXT NOT NULL,
+            size          INTEGER NOT NULL,
+            etag          TEXT NOT NULL,
+            content_type  TEXT,
+            last_modified TEXT NOT NULL,
+            PRIMARY KEY (bucket, key)
+        )",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -107,7 +121,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -120,6 +134,12 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM buckets", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 0);
+
+        // Verify objects table exists
+        let count: u32 = conn
+            .query_row("SELECT COUNT(*) FROM objects", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
     }
 
     #[test]
@@ -129,12 +149,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
 
-        // Two migration records
+        // Three migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 2);
+        assert_eq!(count, 3);
     }
 }

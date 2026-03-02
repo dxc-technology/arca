@@ -79,6 +79,25 @@ pub async fn delete_bucket(
     Path(bucket): Path<String>,
 ) -> Response {
     let resource = format!("/{bucket}");
+
+    // Check bucket exists.
+    match state.metadata.head_bucket(&bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource));
+        }
+        Err(e) => return internal_error_response(e, &resource),
+    }
+
+    // Check bucket is empty.
+    match state.metadata.bucket_is_empty(&bucket).await {
+        Ok(true) => {}
+        Ok(false) => {
+            return s3_error_response(S3Error::new(S3ErrorCode::BucketNotEmpty, &resource));
+        }
+        Err(e) => return internal_error_response(e, &resource),
+    }
+
     match state.metadata.delete_bucket(&bucket).await {
         Ok(true) => Response::builder()
             .status(StatusCode::NO_CONTENT)

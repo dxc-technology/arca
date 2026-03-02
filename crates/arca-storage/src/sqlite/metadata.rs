@@ -2,7 +2,7 @@
 
 use arca_core::error::ArcaError;
 use arca_core::store::MetadataStore;
-use arca_core::types::BucketInfo;
+use arca_core::types::{BlobId, BucketInfo, ObjectRecord};
 use chrono::DateTime;
 use rusqlite::params;
 
@@ -10,6 +10,8 @@ use super::{SqliteStore, TrError};
 
 #[async_trait::async_trait]
 impl MetadataStore for SqliteStore {
+    // -- Bucket operations --
+
     async fn list_buckets(&self) -> Result<Vec<BucketInfo>, ArcaError> {
         self.conn
             .call(move |conn| {
@@ -81,6 +83,143 @@ impl MetadataStore for SqliteStore {
             .await
             .map_err(|e: TrError| ArcaError::Internal(format!("delete_bucket: {e}")))
     }
+
+    async fn bucket_is_empty(&self, name: &str) -> Result<bool, ArcaError> {
+        let name = name.to_string();
+        self.conn
+            .call(move |conn| {
+                let count: u32 = conn.query_row(
+                    "SELECT COUNT(*) FROM objects WHERE bucket = ?1 LIMIT 1",
+                    params![name],
+                    |row| row.get(0),
+                )?;
+                Ok(count == 0)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("bucket_is_empty: {e}")))
+    }
+
+    // -- Object operations --
+
+    async fn put_object(
+        &self,
+        record: &ObjectRecord,
+    ) -> Result<Option<ObjectRecord>, ArcaError> {
+        let record = record.clone();
+        self.conn
+            .call(move |conn| {
+                let tx = conn.transaction()?;
+
+                // Check for existing object to return for cleanup.
+                let old = {
+                    let mut stmt = tx.prepare(
+                        "SELECT bucket, key, blob_id, size, etag, content_type, last_modified
+                         FROM objects WHERE bucket = ?1 AND key = ?2",
+                    )?;
+                    let result = stmt.query_row(
+                        params![record.bucket, record.key],
+                        |row| Ok(row_to_object_record(row)),
+                    );
+                    match result {
+                        Ok(rec) => Some(rec?),
+                        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+                        Err(e) => return Err(e.into()),
+                    }
+                };
+
+                // Delete old record if exists, then insert new.
+                tx.execute(
+                    "DELETE FROM objects WHERE bucket = ?1 AND key = ?2",
+                    params![record.bucket, record.key],
+                )?;
+                tx.execute(
+                    "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![
+                        record.bucket,
+                        record.key,
+                        record.blob_id.0,
+                        record.size as i64,
+                        record.etag,
+                        record.content_type,
+                        record.last_modified.to_rfc3339(),
+                    ],
+                )?;
+
+                tx.commit()?;
+                Ok(old)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("put_object: {e}")))
+    }
+
+    async fn get_object(
+        &self,
+        bucket: &str,
+        key: &str,
+    ) -> Result<Option<ObjectRecord>, ArcaError> {
+        let bucket = bucket.to_string();
+        let key = key.to_string();
+        self.conn
+            .call(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT bucket, key, blob_id, size, etag, content_type, last_modified
+                     FROM objects WHERE bucket = ?1 AND key = ?2",
+                )?;
+                let result = stmt.query_row(
+                    params![bucket, key],
+                    |row| Ok(row_to_object_record(row)),
+                );
+                match result {
+                    Ok(rec) => Ok(Some(rec?)),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(e.into()),
+                }
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("get_object: {e}")))
+    }
+
+    async fn delete_object(
+        &self,
+        bucket: &str,
+        key: &str,
+    ) -> Result<Option<ObjectRecord>, ArcaError> {
+        let bucket = bucket.to_string();
+        let key = key.to_string();
+        self.conn
+            .call(move |conn| {
+                let tx = conn.transaction()?;
+
+                let old = {
+                    let mut stmt = tx.prepare(
+                        "SELECT bucket, key, blob_id, size, etag, content_type, last_modified
+                         FROM objects WHERE bucket = ?1 AND key = ?2",
+                    )?;
+                    let result = stmt.query_row(
+                        params![bucket, key],
+                        |row| Ok(row_to_object_record(row)),
+                    );
+                    match result {
+                        Ok(rec) => Some(rec?),
+                        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+                        Err(e) => return Err(e.into()),
+                    }
+                };
+
+                if old.is_some() {
+                    tx.execute(
+                        "DELETE FROM objects WHERE bucket = ?1 AND key = ?2",
+                        params![bucket, key],
+                    )?;
+                }
+
+                tx.commit()?;
+                Ok(old)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("delete_object: {e}")))
+    }
 }
 
 /// Converts a SQLite row to a `BucketInfo`.
@@ -104,6 +243,32 @@ fn row_to_bucket_info(row: &rusqlite::Row) -> Result<BucketInfo, rusqlite::Error
     })
 }
 
+/// Converts a SQLite row to an `ObjectRecord`.
+///
+/// Expects columns: bucket, key, blob_id, size, etag, content_type, last_modified.
+fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::Error> {
+    let last_modified_str: String = row.get(6)?;
+    let last_modified = DateTime::parse_from_rfc3339(&last_modified_str)
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+        .map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(
+                6,
+                rusqlite::types::Type::Text,
+                Box::new(e),
+            )
+        })?;
+
+    Ok(ObjectRecord {
+        bucket: row.get(0)?,
+        key: row.get(1)?,
+        blob_id: BlobId(row.get(2)?),
+        size: row.get::<_, i64>(3)? as u64,
+        etag: row.get(4)?,
+        content_type: row.get(5)?,
+        last_modified,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,6 +276,20 @@ mod tests {
     async fn test_store() -> SqliteStore {
         SqliteStore::open_in_memory().await.unwrap()
     }
+
+    fn make_record(bucket: &str, key: &str) -> ObjectRecord {
+        ObjectRecord {
+            bucket: bucket.to_string(),
+            key: key.to_string(),
+            blob_id: BlobId("test-blob-id".to_string()),
+            size: 100,
+            etag: "abc123".to_string(),
+            content_type: Some("text/plain".to_string()),
+            last_modified: chrono::Utc::now(),
+        }
+    }
+
+    // -- Bucket tests --
 
     #[tokio::test]
     async fn create_and_head_bucket() {
@@ -180,5 +359,88 @@ mod tests {
         let store = test_store().await;
         let deleted = store.delete_bucket("no-such-bucket").await.unwrap();
         assert!(!deleted);
+    }
+
+    // -- Object tests --
+
+    #[tokio::test]
+    async fn put_new_object() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let record = make_record("b", "key1");
+
+        let old = store.put_object(&record).await.unwrap();
+        assert!(old.is_none());
+
+        let got = store.get_object("b", "key1").await.unwrap().unwrap();
+        assert_eq!(got.key, "key1");
+        assert_eq!(got.size, 100);
+    }
+
+    #[tokio::test]
+    async fn put_overwrite_returns_old() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+
+        let mut r1 = make_record("b", "key1");
+        r1.blob_id = BlobId("blob-1".to_string());
+        r1.size = 100;
+        store.put_object(&r1).await.unwrap();
+
+        let mut r2 = make_record("b", "key1");
+        r2.blob_id = BlobId("blob-2".to_string());
+        r2.size = 200;
+        let old = store.put_object(&r2).await.unwrap().unwrap();
+
+        assert_eq!(old.blob_id.0, "blob-1");
+        assert_eq!(old.size, 100);
+
+        let got = store.get_object("b", "key1").await.unwrap().unwrap();
+        assert_eq!(got.blob_id.0, "blob-2");
+        assert_eq!(got.size, 200);
+    }
+
+    #[tokio::test]
+    async fn get_nonexistent_object() {
+        let store = test_store().await;
+        let got = store.get_object("b", "nope").await.unwrap();
+        assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    async fn delete_object_returns_old() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let record = make_record("b", "key1");
+        store.put_object(&record).await.unwrap();
+
+        let old = store.delete_object("b", "key1").await.unwrap().unwrap();
+        assert_eq!(old.key, "key1");
+
+        let got = store.get_object("b", "key1").await.unwrap();
+        assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    async fn delete_nonexistent_object_returns_none() {
+        let store = test_store().await;
+        let old = store.delete_object("b", "nope").await.unwrap();
+        assert!(old.is_none());
+    }
+
+    #[tokio::test]
+    async fn bucket_is_empty_true() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        assert!(store.bucket_is_empty("b").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn bucket_is_empty_false() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let record = make_record("b", "key1");
+        store.put_object(&record).await.unwrap();
+        assert!(!store.bucket_is_empty("b").await.unwrap());
     }
 }

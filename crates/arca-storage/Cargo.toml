@@ -7,10 +7,18 @@ description = "Storage implementations (filesystem + SQLite) for the Arca S3 ser
 [dependencies]
 arca-core = { workspace = true }
 async-trait = { workspace = true }
+bytes = { workspace = true }
 chrono = { workspace = true }
+futures-core = { workspace = true }
+hex = { workspace = true }
+md-5 = { workspace = true }
 rusqlite = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
 tokio-rusqlite = { workspace = true }
+tokio-stream = { workspace = true }
+tokio-util = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true }
+tempfile = { workspace = true }

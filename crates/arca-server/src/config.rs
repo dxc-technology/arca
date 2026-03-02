@@ -22,12 +22,24 @@ pub struct ServerConfig {
 #[derive(Debug, Deserialize)]
 pub struct StorageConfig {
     pub data_dir: String,
+    /// Number of 2-char prefix directory levels for blob sharding (1–4, default 2).
+    #[serde(default = "default_blob_prefix_depth")]
+    pub blob_prefix_depth: u8,
+}
+
+fn default_blob_prefix_depth() -> u8 {
+    2
 }
 
 impl StorageConfig {
     /// Returns the path to the SQLite database file (`{data_dir}/arca.db`).
     pub fn db_path(&self) -> std::path::PathBuf {
         std::path::Path::new(&self.data_dir).join("arca.db")
+    }
+
+    /// Returns the path to the blob storage directory (`{data_dir}/blobs`).
+    pub fn blobs_dir(&self) -> std::path::PathBuf {
+        std::path::Path::new(&self.data_dir).join("blobs")
     }
 }
 
@@ -74,10 +86,37 @@ bind = "0.0.0.0"
     fn db_path_derivation() {
         let storage = StorageConfig {
             data_dir: "/data".to_string(),
+            blob_prefix_depth: 2,
         };
         assert_eq!(
             storage.db_path(),
             std::path::PathBuf::from("/data/arca.db")
         );
+    }
+
+    #[test]
+    fn blobs_dir_derivation() {
+        let storage = StorageConfig {
+            data_dir: "/data".to_string(),
+            blob_prefix_depth: 2,
+        };
+        assert_eq!(
+            storage.blobs_dir(),
+            std::path::PathBuf::from("/data/blobs")
+        );
+    }
+
+    #[test]
+    fn blob_prefix_depth_default() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.storage.blob_prefix_depth, 2);
     }
 }

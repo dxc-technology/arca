@@ -6,8 +6,11 @@ description = "Shared types, traits, and error types for the Arca S3 server"
 
 [dependencies]
 async-trait = { workspace = true }
+bytes = { workspace = true }
 chrono = { workspace = true }
+futures-core = { workspace = true }
 quick-xml = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }

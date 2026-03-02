@@ -40,10 +40,24 @@ anyhow = "1"
 tokio-rusqlite = "0.7"
 rusqlite = { version = "0.37", features = ["bundled"] }
 
+# Streaming / bytes
+bytes = "1"
+futures-core = "0.3"
+tokio-stream = "0.1"
+tokio-util = { version = "0.7", features = ["io"] }
+
+# Hashing
+md-5 = "0.10"
+hex = "0.4"
+
+# Serialization (extra)
+serde_json = "1"
+
 # Utilities
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 rand = "0.8"
+tempfile = "3"
 
 # Internal crates
 arca-core = { path = "crates/arca-core" }

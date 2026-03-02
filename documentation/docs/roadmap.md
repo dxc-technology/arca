@@ -10,7 +10,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em">0</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">1</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">2</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">3</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">3</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">4</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">5</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">6</div>
@@ -26,7 +26,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
 | 0 | [Project Skeleton](#phase-0-project-skeleton) | <span style="color:#4caf50">&#x2714;</span> |
 | 1 | [Configuration & Storage Foundation](#phase-1-configuration-storage-foundation) | <span style="color:#4caf50">&#x2714;</span> |
 | 2 | [Bucket Operations](#phase-2-bucket-operations) | <span style="color:#4caf50">&#x2714;</span> |
-| 3 | [Core Object Operations](#phase-3-core-object-operations) | |
+| 3 | [Core Object Operations](#phase-3-core-object-operations) | <span style="color:#4caf50">&#x2714;</span> |
 | 4 | [CopyObject + ListObjectsV2](#phase-4-copyobject-listobjectsv2) | |
 | 5 | [Multipart Upload](#phase-5-multipart-upload) | |
 | 6 | [AWS SigV4 Authentication](#phase-6-aws-sigv4-authentication) | |
@@ -87,13 +87,13 @@ Implement the 4 bucket operations with SQLite metadata storage.
 
 Implement PutObject, GetObject, HeadObject, and DeleteObject with streaming I/O.
 
-- [ ] `FsBlobStore`: UUID path generation, streaming write with concurrent MD5 computation, atomic rename (temp file + rename), sidecar write
-- [ ] `FsBlobStore.get()`: streaming read via `tokio::fs::File`, byte range support (seek + take)
-- [ ] SQLite `objects` table, `SqliteMetadataStore` object methods (put returns old record for cleanup)
-- [ ] `ObjectUsecase`: put (stream + MD5 -> ETag), get, head, delete
-- [ ] Axum handlers with streaming request/response bodies
-- [ ] Unit tests for `FsBlobStore`, `SqliteMetadataStore`, `ObjectUsecase`
-- [ ] Integration test: `test_objects.py`
+- [x] `FsBlobStore`: UUID path generation, configurable prefix depth (1–4, default 2), streaming write with concurrent MD5 computation, atomic rename (temp file + rename), sidecar `.meta` JSON write
+- [x] `FsBlobStore.get()`: streaming read via `tokio::fs::File`, byte range support (seek + take)
+- [x] SQLite `objects` table, `SqliteMetadataStore` object methods (put returns old record for cleanup), `bucket_is_empty` check
+- [x] Axum handlers with streaming request/response bodies (handlers call BlobStore + MetadataStore directly)
+- [x] DeleteBucket now checks bucket is empty before deleting (returns BucketNotEmpty 409)
+- [x] Unit tests for `FsBlobStore` (~12 tests), `SqliteMetadataStore` objects (~7 tests)
+- [x] Integration test: `test_objects.py` (~12 tests)
 
 **Verify**: `aws s3 cp localfile s3://bucket/key` and back, range requests, ETags, Content-Type.
 
