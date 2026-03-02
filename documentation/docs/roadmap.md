@@ -4,10 +4,27 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
 
 ## Progress Overview
 
+<!-- progress-bar -->
+<div style="padding:12px 0">
+  <div style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid rgba(128,128,128,.3)">
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em">0</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">1</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">2</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">3</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">4</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">5</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">6</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">7</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">8</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">9</div>
+  </div>
+</div>
+<!-- /progress-bar -->
+
 | Phase | Name | Status |
 |:-----:|------|:------:|
-| 0 | [Project Skeleton](#phase-0-project-skeleton) | :white_check_mark: |
-| 1 | [Configuration & Storage Foundation](#phase-1-configuration-storage-foundation) | :white_check_mark: |
+| 0 | [Project Skeleton](#phase-0-project-skeleton) | <span style="color:#4caf50">&#x2714;</span> |
+| 1 | [Configuration & Storage Foundation](#phase-1-configuration-storage-foundation) | <span style="color:#4caf50">&#x2714;</span> |
 | 2 | [Bucket Operations](#phase-2-bucket-operations) | |
 | 3 | [Core Object Operations](#phase-3-core-object-operations) | |
 | 4 | [CopyObject + ListObjectsV2](#phase-4-copyobject-listobjectsv2) | |
@@ -17,7 +34,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
 | 8 | [Web Console](#phase-8-web-console) | |
 | 9 | [S3 Compatibility Hardening](#phase-9-s3-compatibility-hardening) | |
 
-<!-- Status: :white_check_mark: = done, :construction: = in progress, empty = not started -->
+<!-- Status: green checkmark = done, :construction: = in progress, empty = not started -->
 
 ---
 
