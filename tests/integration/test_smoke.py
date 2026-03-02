@@ -3,12 +3,7 @@
 Verifies that unimplemented endpoints return valid S3 XML error responses
 (501 NotImplemented). As operations are implemented in later phases, the
 corresponding 501 tests are removed from here.
+
+Note: All bucket/object operations are now implemented through Phase 5
+(multipart upload). No more 501 smoke tests remain.
 """
-
-
-def test_post_object_returns_501(endpoint_url):
-    """POST /{bucket}/{key} should return 501."""
-    import requests
-
-    resp = requests.post(f"{endpoint_url}/test-bucket/test-key")
-    assert resp.status_code == 501

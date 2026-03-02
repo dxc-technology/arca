@@ -48,6 +48,25 @@ const MIGRATIONS: &[Migration] = &[
             PRIMARY KEY (bucket, key)
         )",
     },
+    Migration {
+        version: 4,
+        description: "Create multipart upload tables",
+        sql: "CREATE TABLE multipart_uploads (
+            upload_id    TEXT PRIMARY KEY NOT NULL,
+            bucket       TEXT NOT NULL,
+            key          TEXT NOT NULL,
+            content_type TEXT,
+            initiated_at TEXT NOT NULL
+        );
+        CREATE TABLE parts (
+            upload_id   TEXT NOT NULL,
+            part_number INTEGER NOT NULL,
+            blob_id     TEXT NOT NULL,
+            size        INTEGER NOT NULL,
+            etag        TEXT NOT NULL,
+            PRIMARY KEY (upload_id, part_number)
+        )",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -121,7 +140,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 3);
+        assert_eq!(version, 4);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -140,6 +159,20 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM objects", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 0);
+
+        // Verify multipart_uploads table exists
+        let count: u32 = conn
+            .query_row("SELECT COUNT(*) FROM multipart_uploads", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 0);
+
+        // Verify parts table exists
+        let count: u32 = conn
+            .query_row("SELECT COUNT(*) FROM parts", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
     }
 
     #[test]
@@ -149,12 +182,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 3);
+        assert_eq!(version, 4);
 
-        // Three migration records
+        // Four migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 3);
+        assert_eq!(count, 4);
     }
 }

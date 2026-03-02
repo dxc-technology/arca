@@ -25,11 +25,15 @@ pub enum S3ErrorCode {
     BucketAlreadyExists,
     BucketAlreadyOwnedByYou,
     BucketNotEmpty,
+    EntityTooSmall,
     InternalError,
     InvalidArgument,
     InvalidBucketName,
+    InvalidPart,
+    InvalidPartOrder,
     NoSuchBucket,
     NoSuchKey,
+    NoSuchUpload,
     NotImplemented,
     SignatureDoesNotMatch,
 }
@@ -43,11 +47,15 @@ impl S3ErrorCode {
             S3ErrorCode::BucketAlreadyExists => 409,
             S3ErrorCode::BucketAlreadyOwnedByYou => 409,
             S3ErrorCode::BucketNotEmpty => 409,
+            S3ErrorCode::EntityTooSmall => 400,
             S3ErrorCode::InternalError => 500,
             S3ErrorCode::InvalidArgument => 400,
             S3ErrorCode::InvalidBucketName => 400,
+            S3ErrorCode::InvalidPart => 400,
+            S3ErrorCode::InvalidPartOrder => 400,
             S3ErrorCode::NoSuchBucket => 404,
             S3ErrorCode::NoSuchKey => 404,
+            S3ErrorCode::NoSuchUpload => 404,
             S3ErrorCode::NotImplemented => 501,
             S3ErrorCode::SignatureDoesNotMatch => 403,
         }
@@ -61,11 +69,15 @@ impl S3ErrorCode {
             S3ErrorCode::BucketAlreadyExists => "BucketAlreadyExists",
             S3ErrorCode::BucketAlreadyOwnedByYou => "BucketAlreadyOwnedByYou",
             S3ErrorCode::BucketNotEmpty => "BucketNotEmpty",
+            S3ErrorCode::EntityTooSmall => "EntityTooSmall",
             S3ErrorCode::InternalError => "InternalError",
             S3ErrorCode::InvalidArgument => "InvalidArgument",
             S3ErrorCode::InvalidBucketName => "InvalidBucketName",
+            S3ErrorCode::InvalidPart => "InvalidPart",
+            S3ErrorCode::InvalidPartOrder => "InvalidPartOrder",
             S3ErrorCode::NoSuchBucket => "NoSuchBucket",
             S3ErrorCode::NoSuchKey => "NoSuchKey",
+            S3ErrorCode::NoSuchUpload => "NoSuchUpload",
             S3ErrorCode::NotImplemented => "NotImplemented",
             S3ErrorCode::SignatureDoesNotMatch => "SignatureDoesNotMatch",
         }
@@ -87,13 +99,25 @@ impl S3ErrorCode {
             S3ErrorCode::BucketNotEmpty => {
                 "The bucket you tried to delete is not empty."
             }
+            S3ErrorCode::EntityTooSmall => {
+                "Your proposed upload is smaller than the minimum allowed object size."
+            }
             S3ErrorCode::InternalError => {
                 "We encountered an internal error. Please try again."
             }
             S3ErrorCode::InvalidArgument => "Invalid Argument",
             S3ErrorCode::InvalidBucketName => "The specified bucket is not valid.",
+            S3ErrorCode::InvalidPart => {
+                "One or more of the specified parts could not be found."
+            }
+            S3ErrorCode::InvalidPartOrder => {
+                "The list of parts was not in ascending order."
+            }
             S3ErrorCode::NoSuchBucket => "The specified bucket does not exist.",
             S3ErrorCode::NoSuchKey => "The specified key does not exist.",
+            S3ErrorCode::NoSuchUpload => {
+                "The specified multipart upload does not exist."
+            }
             S3ErrorCode::NotImplemented => {
                 "A header you provided implies functionality that is not implemented."
             }
@@ -228,10 +252,14 @@ mod tests {
         assert_eq!(S3ErrorCode::NotImplemented.http_status(), 501);
         assert_eq!(S3ErrorCode::NoSuchBucket.http_status(), 404);
         assert_eq!(S3ErrorCode::NoSuchKey.http_status(), 404);
+        assert_eq!(S3ErrorCode::NoSuchUpload.http_status(), 404);
         assert_eq!(S3ErrorCode::BucketAlreadyExists.http_status(), 409);
         assert_eq!(S3ErrorCode::BucketAlreadyOwnedByYou.http_status(), 409);
         assert_eq!(S3ErrorCode::BucketNotEmpty.http_status(), 409);
         assert_eq!(S3ErrorCode::InvalidBucketName.http_status(), 400);
+        assert_eq!(S3ErrorCode::InvalidPart.http_status(), 400);
+        assert_eq!(S3ErrorCode::InvalidPartOrder.http_status(), 400);
+        assert_eq!(S3ErrorCode::EntityTooSmall.http_status(), 400);
         assert_eq!(S3ErrorCode::AccessDenied.http_status(), 403);
         assert_eq!(S3ErrorCode::SignatureDoesNotMatch.http_status(), 403);
         assert_eq!(S3ErrorCode::BadDigest.http_status(), 400);

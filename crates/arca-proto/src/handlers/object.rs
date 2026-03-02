@@ -16,10 +16,12 @@ use arca_core::{S3Error, S3ErrorCode};
 use crate::state::AppState;
 use crate::xml::error_response::{internal_error_response, s3_error_response};
 
-/// PUT /{bucket}/{*key} — PutObject or CopyObject
+/// PUT /{bucket}/{*key} — PutObject, CopyObject, or UploadPart
 ///
-/// If the `x-amz-copy-source` header is present, this dispatches to `copy_object`.
-/// Otherwise, it handles a normal PutObject.
+/// Dispatches based on headers and query parameters:
+/// - `x-amz-copy-source` header → CopyObject
+/// - `?partNumber=N&uploadId=X` → UploadPart
+/// - Otherwise → PutObject
 pub async fn put_object(
     State(state): State<AppState>,
     Path((bucket, key)): Path<(String, String)>,
@@ -28,6 +30,31 @@ pub async fn put_object(
     // Check for CopyObject (same PUT endpoint, distinguished by header).
     if request.headers().contains_key("x-amz-copy-source") {
         return copy_object(state, bucket, key, request).await;
+    }
+
+    // Check for UploadPart (distinguished by query params).
+    if let Some(query) = request.uri().query() {
+        let params: Vec<(String, String)> = form_urlencoded::parse(query.as_bytes())
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        let part_number = params.iter().find(|(k, _)| k == "partNumber");
+        let upload_id = params.iter().find(|(k, _)| k == "uploadId");
+
+        if let (Some((_, pn)), Some((_, uid))) = (part_number, upload_id) {
+            let pn: u32 = match pn.parse() {
+                Ok(n) => n,
+                Err(_) => {
+                    let resource = format!("/{bucket}/{key}");
+                    return s3_error_response(S3Error::with_message(
+                        S3ErrorCode::InvalidArgument,
+                        "Invalid partNumber",
+                        &resource,
+                    ));
+                }
+            };
+            return super::multipart::upload_part(state, bucket, key, pn, uid.clone(), request)
+                .await;
+        }
     }
 
     let resource = format!("/{bucket}/{key}");
@@ -340,11 +367,32 @@ pub async fn head_object(
         .expect("build head_object response")
 }
 
-/// DELETE /{bucket}/{*key} — DeleteObject
+/// DELETE /{bucket}/{*key} — DeleteObject or AbortMultipartUpload
+///
+/// Dispatches based on query parameters:
+/// - `?uploadId=X` → AbortMultipartUpload
+/// - Otherwise → DeleteObject
 pub async fn delete_object(
     State(state): State<AppState>,
     Path((bucket, key)): Path<(String, String)>,
+    request: axum::extract::Request,
 ) -> Response {
+    // Check for AbortMultipartUpload (distinguished by query param).
+    if let Some(query) = request.uri().query() {
+        let params: Vec<(String, String)> = form_urlencoded::parse(query.as_bytes())
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        if let Some((_, uid)) = params.iter().find(|(k, _)| k == "uploadId") {
+            return super::multipart::abort_multipart_upload(
+                state,
+                bucket,
+                key,
+                uid.clone(),
+            )
+            .await;
+        }
+    }
+
     let resource = format!("/{bucket}/{key}");
 
     let old = match state.metadata.delete_object(&bucket, &key).await {
@@ -366,11 +414,38 @@ pub async fn delete_object(
         .expect("build delete_object response")
 }
 
-/// POST /{bucket}/{*key} — Not implemented yet (multipart).
+/// POST /{bucket}/{*key} — CreateMultipartUpload or CompleteMultipartUpload
+///
+/// Dispatches based on query parameters:
+/// - `?uploads` → CreateMultipartUpload
+/// - `?uploadId=X` → CompleteMultipartUpload
 pub async fn post_object(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     Path((bucket, key)): Path<(String, String)>,
+    request: axum::extract::Request,
 ) -> Response {
+    if let Some(query) = request.uri().query() {
+        // ?uploads → CreateMultipartUpload
+        if query == "uploads" || query.starts_with("uploads&") || query.contains("&uploads") {
+            return super::multipart::create_multipart_upload(state, bucket, key, request).await;
+        }
+
+        // ?uploadId=X → CompleteMultipartUpload
+        let params: Vec<(String, String)> = form_urlencoded::parse(query.as_bytes())
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        if let Some((_, uid)) = params.iter().find(|(k, _)| k == "uploadId") {
+            return super::multipart::complete_multipart_upload(
+                state,
+                bucket,
+                key,
+                uid.clone(),
+                request,
+            )
+            .await;
+        }
+    }
+
     crate::xml::error_response::not_implemented_response(&format!("/{bucket}/{key}"))
 }
 

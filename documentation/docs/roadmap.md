@@ -12,7 +12,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">2</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">3</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">4</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">5</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">5</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">6</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">7</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">8</div>
@@ -28,7 +28,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
 | 2 | [Bucket Operations](#phase-2-bucket-operations) | <span style="color:#4caf50">&#x2714;</span> |
 | 3 | [Core Object Operations](#phase-3-core-object-operations) | <span style="color:#4caf50">&#x2714;</span> |
 | 4 | [CopyObject + ListObjectsV2](#phase-4-copyobject-listobjectsv2) | <span style="color:#4caf50">&#x2714;</span> |
-| 5 | [Multipart Upload](#phase-5-multipart-upload) | |
+| 5 | [Multipart Upload](#phase-5-multipart-upload) | <span style="color:#4caf50">&#x2714;</span> |
 | 6 | [AWS SigV4 Authentication](#phase-6-aws-sigv4-authentication) | |
 | 7 | [Disaster Recovery + Polish](#phase-7-disaster-recovery-polish) | |
 | 8 | [Web Console](#phase-8-web-console) | |
@@ -117,13 +117,14 @@ Add object copying and listing with prefix/delimiter/pagination support.
 
 Full multipart upload lifecycle with composite ETag computation.
 
-- [ ] SQLite tables: `multipart_uploads`, `parts`
-- [ ] `FsBlobStore`: put_part (stream to temp part file), assemble_parts (concatenate parts into final blob), delete_parts
-- [ ] `MultipartUsecase`: create (generate upload_id UUID), upload_part, complete (validate parts, assemble, compute composite ETag), abort (delete parts + DB records)
-- [ ] Composite ETag: `hex(MD5(binary_MD5(part1) || binary_MD5(part2) || ...))-{count}`
-- [ ] XML: `InitiateMultipartUploadResult`, `CompleteMultipartUploadResult`, parse `CompleteMultipartUpload` request body
-- [ ] Query-param dispatch in object/multipart handlers
-- [ ] Integration test: `test_multipart.py`
+- [x] SQLite tables: `multipart_uploads`, `parts`
+- [x] `MetadataStore` multipart methods: create/get/delete upload, put/list parts
+- [x] Parts stored as normal blobs via `BlobStore::put()`, stream-concatenated at complete time
+- [x] Composite ETag: `hex(MD5(binary_MD5(part1) || binary_MD5(part2) || ...))-{count}`
+- [x] XML: `InitiateMultipartUploadResult`, `CompleteMultipartUploadResult`, parse `CompleteMultipartUpload` request body
+- [x] Query-param dispatch in object/multipart handlers
+- [x] Part size validation at complete time (non-last parts >= 5 MB)
+- [x] Integration test: `test_multipart.py` (~12 tests)
 
 **Verify**: `aws s3 cp largefile s3://bucket/key` (triggers multipart in aws-cli), ETag format is `"<hex>-<count>"`.
 

@@ -2,7 +2,7 @@
 
 use arca_core::error::ArcaError;
 use arca_core::store::MetadataStore;
-use arca_core::types::{BlobId, BucketInfo, ObjectRecord};
+use arca_core::types::{BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord};
 use chrono::DateTime;
 use rusqlite::params;
 
@@ -285,6 +285,166 @@ impl MetadataStore for SqliteStore {
             .await
             .map_err(|e: TrError| ArcaError::Internal(format!("delete_object: {e}")))
     }
+
+    // -- Multipart upload operations --
+
+    async fn create_multipart_upload(
+        &self,
+        record: &MultipartUploadRecord,
+    ) -> Result<(), ArcaError> {
+        let record = record.clone();
+        self.conn
+            .call(move |conn| {
+                conn.execute(
+                    "INSERT INTO multipart_uploads (upload_id, bucket, key, content_type, initiated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![
+                        record.upload_id,
+                        record.bucket,
+                        record.key,
+                        record.content_type,
+                        record.initiated_at.to_rfc3339(),
+                    ],
+                )?;
+                Ok(())
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("create_multipart_upload: {e}")))
+    }
+
+    async fn get_multipart_upload(
+        &self,
+        upload_id: &str,
+    ) -> Result<Option<MultipartUploadRecord>, ArcaError> {
+        let upload_id = upload_id.to_string();
+        self.conn
+            .call(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT upload_id, bucket, key, content_type, initiated_at
+                     FROM multipart_uploads WHERE upload_id = ?1",
+                )?;
+                let result = stmt.query_row(params![upload_id], |row| {
+                    Ok(row_to_multipart_upload_record(row))
+                });
+                match result {
+                    Ok(rec) => Ok(Some(rec?)),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(e.into()),
+                }
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("get_multipart_upload: {e}")))
+    }
+
+    async fn put_part(&self, part: &PartRecord) -> Result<Option<PartRecord>, ArcaError> {
+        let part = part.clone();
+        self.conn
+            .call(move |conn| {
+                let tx = conn.transaction()?;
+
+                // Check for existing part to return for cleanup.
+                let old = {
+                    let mut stmt = tx.prepare(
+                        "SELECT upload_id, part_number, blob_id, size, etag
+                         FROM parts WHERE upload_id = ?1 AND part_number = ?2",
+                    )?;
+                    let result = stmt.query_row(
+                        params![part.upload_id, part.part_number],
+                        |row| Ok(row_to_part_record(row)),
+                    );
+                    match result {
+                        Ok(rec) => Some(rec?),
+                        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+                        Err(e) => return Err(e.into()),
+                    }
+                };
+
+                // Delete old part if exists, then insert new.
+                tx.execute(
+                    "DELETE FROM parts WHERE upload_id = ?1 AND part_number = ?2",
+                    params![part.upload_id, part.part_number],
+                )?;
+                tx.execute(
+                    "INSERT INTO parts (upload_id, part_number, blob_id, size, etag)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![
+                        part.upload_id,
+                        part.part_number,
+                        part.blob_id.0,
+                        part.size as i64,
+                        part.etag,
+                    ],
+                )?;
+
+                tx.commit()?;
+                Ok(old)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("put_part: {e}")))
+    }
+
+    async fn list_parts(&self, upload_id: &str) -> Result<Vec<PartRecord>, ArcaError> {
+        let upload_id = upload_id.to_string();
+        self.conn
+            .call(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT upload_id, part_number, blob_id, size, etag
+                     FROM parts WHERE upload_id = ?1 ORDER BY part_number",
+                )?;
+                let rows = stmt.query_map(params![upload_id], |row| {
+                    Ok(row_to_part_record(row))
+                })?;
+                let mut parts = Vec::new();
+                for row in rows {
+                    parts.push(row??);
+                }
+                Ok(parts)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("list_parts: {e}")))
+    }
+
+    async fn delete_multipart_upload(
+        &self,
+        upload_id: &str,
+    ) -> Result<Vec<PartRecord>, ArcaError> {
+        let upload_id = upload_id.to_string();
+        self.conn
+            .call(move |conn| {
+                let tx = conn.transaction()?;
+
+                // Collect parts for blob cleanup.
+                let parts = {
+                    let mut stmt = tx.prepare(
+                        "SELECT upload_id, part_number, blob_id, size, etag
+                         FROM parts WHERE upload_id = ?1",
+                    )?;
+                    let rows = stmt.query_map(params![upload_id], |row| {
+                        Ok(row_to_part_record(row))
+                    })?;
+                    let mut parts = Vec::new();
+                    for row in rows {
+                        parts.push(row??);
+                    }
+                    parts
+                };
+
+                // Delete parts and upload record.
+                tx.execute(
+                    "DELETE FROM parts WHERE upload_id = ?1",
+                    params![upload_id],
+                )?;
+                tx.execute(
+                    "DELETE FROM multipart_uploads WHERE upload_id = ?1",
+                    params![upload_id],
+                )?;
+
+                tx.commit()?;
+                Ok(parts)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("delete_multipart_upload: {e}")))
+    }
 }
 
 /// Escapes special characters in a LIKE pattern so they are matched literally.
@@ -322,6 +482,45 @@ fn row_to_bucket_info(row: &rusqlite::Row) -> Result<BucketInfo, rusqlite::Error
     Ok(BucketInfo {
         name: row.get(0)?,
         created_at,
+    })
+}
+
+/// Converts a SQLite row to a `MultipartUploadRecord`.
+///
+/// Expects columns: upload_id, bucket, key, content_type, initiated_at.
+fn row_to_multipart_upload_record(
+    row: &rusqlite::Row,
+) -> Result<MultipartUploadRecord, rusqlite::Error> {
+    let initiated_at_str: String = row.get(4)?;
+    let initiated_at = DateTime::parse_from_rfc3339(&initiated_at_str)
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+        .map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(
+                4,
+                rusqlite::types::Type::Text,
+                Box::new(e),
+            )
+        })?;
+
+    Ok(MultipartUploadRecord {
+        upload_id: row.get(0)?,
+        bucket: row.get(1)?,
+        key: row.get(2)?,
+        content_type: row.get(3)?,
+        initiated_at,
+    })
+}
+
+/// Converts a SQLite row to a `PartRecord`.
+///
+/// Expects columns: upload_id, part_number, blob_id, size, etag.
+fn row_to_part_record(row: &rusqlite::Row) -> Result<PartRecord, rusqlite::Error> {
+    Ok(PartRecord {
+        upload_id: row.get(0)?,
+        part_number: row.get(1)?,
+        blob_id: BlobId(row.get(2)?),
+        size: row.get::<_, i64>(3)? as u64,
+        etag: row.get(4)?,
     })
 }
 
@@ -621,5 +820,143 @@ mod tests {
         let records = store.list_objects("b", Some("100%_"), None, 1000).await.unwrap();
         assert_eq!(records.len(), 2);
         assert!(records.iter().all(|r| r.key.starts_with("100%_")));
+    }
+
+    // -- Multipart upload tests --
+
+    fn make_upload(upload_id: &str, bucket: &str, key: &str) -> MultipartUploadRecord {
+        MultipartUploadRecord {
+            upload_id: upload_id.to_string(),
+            bucket: bucket.to_string(),
+            key: key.to_string(),
+            content_type: Some("application/octet-stream".to_string()),
+            initiated_at: chrono::Utc::now(),
+        }
+    }
+
+    fn make_part(upload_id: &str, part_number: u32) -> PartRecord {
+        PartRecord {
+            upload_id: upload_id.to_string(),
+            part_number,
+            blob_id: BlobId(format!("blob-{upload_id}-{part_number}")),
+            size: 5_242_880,
+            etag: format!("etag-{part_number}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn create_and_get_multipart_upload() {
+        let store = test_store().await;
+        let upload = make_upload("up-1", "b", "key1");
+
+        store.create_multipart_upload(&upload).await.unwrap();
+
+        let got = store
+            .get_multipart_upload("up-1")
+            .await
+            .unwrap()
+            .expect("upload should exist");
+        assert_eq!(got.upload_id, "up-1");
+        assert_eq!(got.bucket, "b");
+        assert_eq!(got.key, "key1");
+        assert_eq!(got.content_type.as_deref(), Some("application/octet-stream"));
+    }
+
+    #[tokio::test]
+    async fn get_nonexistent_upload_returns_none() {
+        let store = test_store().await;
+        let got = store.get_multipart_upload("no-such").await.unwrap();
+        assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    async fn put_part_new() {
+        let store = test_store().await;
+        let upload = make_upload("up-1", "b", "key1");
+        store.create_multipart_upload(&upload).await.unwrap();
+
+        let part = make_part("up-1", 1);
+        let old = store.put_part(&part).await.unwrap();
+        assert!(old.is_none());
+
+        let parts = store.list_parts("up-1").await.unwrap();
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].part_number, 1);
+        assert_eq!(parts[0].blob_id.0, "blob-up-1-1");
+    }
+
+    #[tokio::test]
+    async fn put_part_overwrite_returns_old() {
+        let store = test_store().await;
+        let upload = make_upload("up-1", "b", "key1");
+        store.create_multipart_upload(&upload).await.unwrap();
+
+        let part1 = make_part("up-1", 1);
+        store.put_part(&part1).await.unwrap();
+
+        let mut part1_v2 = make_part("up-1", 1);
+        part1_v2.blob_id = BlobId("new-blob".to_string());
+        let old = store.put_part(&part1_v2).await.unwrap().unwrap();
+        assert_eq!(old.blob_id.0, "blob-up-1-1");
+
+        let parts = store.list_parts("up-1").await.unwrap();
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].blob_id.0, "new-blob");
+    }
+
+    #[tokio::test]
+    async fn list_parts_ordered() {
+        let store = test_store().await;
+        let upload = make_upload("up-1", "b", "key1");
+        store.create_multipart_upload(&upload).await.unwrap();
+
+        // Insert in reverse order.
+        for n in [3, 1, 2] {
+            let part = make_part("up-1", n);
+            store.put_part(&part).await.unwrap();
+        }
+
+        let parts = store.list_parts("up-1").await.unwrap();
+        assert_eq!(parts.len(), 3);
+        assert_eq!(parts[0].part_number, 1);
+        assert_eq!(parts[1].part_number, 2);
+        assert_eq!(parts[2].part_number, 3);
+    }
+
+    #[tokio::test]
+    async fn list_parts_empty() {
+        let store = test_store().await;
+        let parts = store.list_parts("no-such").await.unwrap();
+        assert!(parts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn delete_multipart_upload_returns_parts() {
+        let store = test_store().await;
+        let upload = make_upload("up-1", "b", "key1");
+        store.create_multipart_upload(&upload).await.unwrap();
+
+        let part1 = make_part("up-1", 1);
+        let part2 = make_part("up-1", 2);
+        store.put_part(&part1).await.unwrap();
+        store.put_part(&part2).await.unwrap();
+
+        let parts = store.delete_multipart_upload("up-1").await.unwrap();
+        assert_eq!(parts.len(), 2);
+
+        // Upload should be gone.
+        let got = store.get_multipart_upload("up-1").await.unwrap();
+        assert!(got.is_none());
+
+        // Parts should be gone.
+        let parts = store.list_parts("up-1").await.unwrap();
+        assert!(parts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn delete_nonexistent_upload_returns_empty() {
+        let store = test_store().await;
+        let parts = store.delete_multipart_upload("no-such").await.unwrap();
+        assert!(parts.is_empty());
     }
 }

@@ -72,6 +72,26 @@ pub struct ListBucketResultParams<'a> {
     pub encoding_type: Option<&'a str>,
 }
 
+/// Metadata about an in-progress multipart upload.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultipartUploadRecord {
+    pub upload_id: String,
+    pub bucket: String,
+    pub key: String,
+    pub content_type: Option<String>,
+    pub initiated_at: DateTime<Utc>,
+}
+
+/// Metadata about a single uploaded part.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PartRecord {
+    pub upload_id: String,
+    pub part_number: u32,
+    pub blob_id: BlobId,
+    pub size: u64,
+    pub etag: String,
+}
+
 /// An S3 access credential (access key + secret key pair).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Credential {

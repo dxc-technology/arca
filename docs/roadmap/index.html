@@ -734,7 +734,7 @@
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">2</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">3</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">4</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">5</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">5</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">6</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">7</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">8</div>
@@ -780,7 +780,7 @@
 <tr>
 <td style="text-align: center;">5</td>
 <td><a href="#phase-5-multipart-upload">Multipart Upload</a></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">6</td>
@@ -870,13 +870,14 @@
 <h2 id="phase-5-multipart-upload">Phase 5 — Multipart Upload<a class="headerlink" href="#phase-5-multipart-upload" title="Permanent link">&para;</a></h2>
 <p>Full multipart upload lifecycle with composite ETag computation.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> SQLite tables: <code>multipart_uploads</code>, <code>parts</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>FsBlobStore</code>: put_part (stream to temp part file), assemble_parts (concatenate parts into final blob), delete_parts</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>MultipartUsecase</code>: create (generate upload_id UUID), upload_part, complete (validate parts, assemble, compute composite ETag), abort (delete parts + DB records)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Composite ETag: <code>hex(MD5(binary_MD5(part1) || binary_MD5(part2) || ...))-{count}</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> XML: <code>InitiateMultipartUploadResult</code>, <code>CompleteMultipartUploadResult</code>, parse <code>CompleteMultipartUpload</code> request body</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Query-param dispatch in object/multipart handlers</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Integration test: <code>test_multipart.py</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> SQLite tables: <code>multipart_uploads</code>, <code>parts</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>MetadataStore</code> multipart methods: create/get/delete upload, put/list parts</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Parts stored as normal blobs via <code>BlobStore::put()</code>, stream-concatenated at complete time</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Composite ETag: <code>hex(MD5(binary_MD5(part1) || binary_MD5(part2) || ...))-{count}</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> XML: <code>InitiateMultipartUploadResult</code>, <code>CompleteMultipartUploadResult</code>, parse <code>CompleteMultipartUpload</code> request body</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Query-param dispatch in object/multipart handlers</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Part size validation at complete time (non-last parts &gt;= 5 MB)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Integration test: <code>test_multipart.py</code> (~12 tests)</li>
 </ul>
 <p><strong>Verify</strong>: <code>aws s3 cp largefile s3://bucket/key</code> (triggers multipart in aws-cli), ETag format is <code>"&lt;hex&gt;-&lt;count&gt;"</code>.</p>
 <hr />
