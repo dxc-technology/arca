@@ -8,6 +8,24 @@
 
 Arca is a ground-up implementation of the S3 API, designed for 100% compatibility on a focused subset of operations. It starts as a single-node server with a clear path toward production scale.
 
+## Why "Arca"?
+
+**Arca** is a Latin word meaning *chest*, *ark*, and *archive* — a container built to preserve what matters most.
+
+This single word captures the essence of object storage: a resilient, secure place where data is kept safe over time.
+
+The name carries multiple layers of meaning:
+
+- **Chest** — a sturdy container for valuable objects, just as Arca stores your data reliably and durably.
+- **Ark** — evoking Noah's Ark, a symbol of survival, resilience, and safeguarding through adversity.
+- **Archive** — directly tied to the purpose of long-term data preservation and retrieval.
+
+There is also a subtle architectural hint hidden in plain sight: *arca* contains the word **arc**, suggesting the solid foundation and architecture on which the project is built — and the community-driven governance that sustains it.
+
+Finally, *arca* is a word that travels well. It is immediately recognizable across Romance languages — Italian, Spanish, Portuguese, Romanian — while remaining short, clear, and easy to pronounce in English, German, French, and beyond. Four letters, no ambiguity, universally accessible.
+
+Arca is not just a name. It is a promise: your data, preserved.
+
 ## Key Features
 
 - **S3 API compatible** — works with aws-cli, boto3, rclone, and any S3 client
