@@ -1,5 +1,6 @@
 services:
   arca:
+    image: arca
     build:
       context: ..
       dockerfile: docker/Dockerfile
@@ -11,6 +12,7 @@ services:
       - RUST_LOG=info
 
   unit-test:
+    image: arca-unit-test
     build:
       context: ..
       dockerfile: docker/Dockerfile
@@ -19,6 +21,7 @@ services:
       - test
 
   test:
+    image: arca-test
     build:
       context: ..
       dockerfile: docker/Dockerfile.test
