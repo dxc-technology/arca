@@ -153,6 +153,7 @@ Recovery tools, operational logging, and graceful shutdown.
 - [ ] `arca fsck` CLI: compare DB records against filesystem, report orphaned blobs / missing blobs / metadata mismatches
 - [ ] Structured logging with tracing (JSON output for production)
 - [ ] Graceful shutdown (finish in-flight requests on SIGTERM)
+- [ ] User manual (structure, content, and style TBD before starting this phase)
 
 **Verify**: Delete SQLite DB, run `arca recover`, verify all data accessible again.
 
