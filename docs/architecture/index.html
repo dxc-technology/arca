@@ -985,7 +985,7 @@
 <h2 id="system-overview">System Overview<a class="headerlink" href="#system-overview" title="Permanent link">&para;</a></h2>
 <p>Arca is a single-binary server that accepts S3-compatible HTTP requests on port 9000. It stores object data as UUID-named blob files on a local filesystem and tracks metadata (buckets, objects, credentials) in a SQLite database. A JSON sidecar file accompanies every blob, enabling full database reconstruction without any external backup.</p>
 <pre class="mermaid"><code>graph LR
-    C["S3 Client&lt;br/&gt;aws-cli · boto3 · rclone"] --&gt;|"HTTP :9000"| A["Arca Server"]
+    C["S3 Client&lt;br/&gt;aws-cli · boto3 · mc · rclone"] --&gt;|"HTTP :9000"| A["Arca Server"]
     A --&gt; DB[("SQLite&lt;br/&gt;metadata + credentials")]
     A --&gt; FS["Filesystem&lt;br/&gt;UUID blobs + .meta sidecars"]</code></pre>
 <p>The server is organized as a <strong>five-crate Cargo workspace</strong> with strict layered dependencies. Each crate has a single, well-defined responsibility and a minimal dependency surface.</p>

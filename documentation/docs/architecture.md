@@ -10,7 +10,7 @@ Arca is a single-binary server that accepts S3-compatible HTTP requests on port 
 
 ```mermaid
 graph LR
-    C["S3 Client<br/>aws-cli · boto3 · rclone"] -->|"HTTP :9000"| A["Arca Server"]
+    C["S3 Client<br/>aws-cli · boto3 · mc · rclone"] -->|"HTTP :9000"| A["Arca Server"]
     A --> DB[("SQLite<br/>metadata + credentials")]
     A --> FS["Filesystem<br/>UUID blobs + .meta sidecars"]
 ```
