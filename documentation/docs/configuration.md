@@ -1,8 +1,5 @@
 # Configuration
 
-!!! note
-    Configuration details will be expanded as the server implementation progresses. This page documents the planned configuration surface.
-
 ## Overview
 
 Arca follows a MinIO-like configuration model:
@@ -40,14 +37,32 @@ data_dir = "/data"
 
 ## Credentials (Database)
 
-Credentials are stored in the SQLite database and managed via CLI:
+Credentials are stored in the SQLite database (`{data_dir}/arca.db`) and managed via CLI:
 
 ```bash
-# Add a credential (planned for Phase 5)
-arca credential add --access-key <key> --secret-key <secret>
+# Add a credential (auto-generates access key and secret key)
+arca credential add --description "my app"
+
+# List all credentials
+arca credential list
+
+# Remove a credential
+arca credential remove <ACCESS_KEY_ID>
 ```
 
-On first startup, if no credentials exist, Arca auto-generates a root access key pair and prints it to stdout.
+On first startup, if no credentials exist, Arca auto-generates a root access key pair and prints it to stdout:
+
+```
+========================================
+  Root credential created automatically
+========================================
+  Access Key: GHUZM9QTHSJKE3N6P50O
+  Secret Key: aNdrqpNvsbI9BeU/O+3AA508Xtey4Sp3EILSXRQy
+========================================
+  WARNING: This will only be shown once.
+  Store these credentials securely.
+========================================
+```
 
 ## Config File Location
 

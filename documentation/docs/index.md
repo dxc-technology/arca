@@ -40,9 +40,14 @@ Arca is not just a name. It is a promise: your data, preserved.
 # Build and run with Docker
 bin/run --build -d
 
+# Check logs for auto-generated root credentials
+docker compose -f docker/docker-compose.yml logs arca | grep "Access Key"
+
 # Run tests
 bin/test
 ```
+
+On first startup, Arca auto-generates a root credential and prints it to the logs. See [Configuration](configuration.md#credentials-database) for details on managing credentials.
 
 Arca listens on port **9000** (MinIO-compatible convention).
 

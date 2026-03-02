@@ -7,7 +7,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
 | Phase | Name | Status |
 |:-----:|------|:------:|
 | 0 | [Project Skeleton](#phase-0-project-skeleton) | :white_check_mark: |
-| 1 | [Configuration & Storage Foundation](#phase-1-configuration-storage-foundation) | |
+| 1 | [Configuration & Storage Foundation](#phase-1-configuration-storage-foundation) | :white_check_mark: |
 | 2 | [Bucket Operations](#phase-2-bucket-operations) | |
 | 3 | [Core Object Operations](#phase-3-core-object-operations) | |
 | 4 | [CopyObject + ListObjectsV2](#phase-4-copyobject-listobjectsv2) | |
@@ -39,13 +39,13 @@ Set up the Cargo workspace with all 5 crates and the basic infrastructure.
 
 Establish the configuration model and SQLite database foundation. MinIO-like approach: static server settings in a TOML config file, dynamic data (credentials, users) in the database.
 
-- [ ] Config file at `/etc/arca/config.toml` (default), `config/default.toml` as repo template, `--config-path` override
-- [ ] SQLite database initialization in `arca-storage` (tokio-rusqlite, WAL mode)
-- [ ] Schema: `credentials` table (access_key_id, secret_access_key, created_at, active)
-- [ ] `arca credential add/list/remove` CLI subcommands (direct SQLite access)
-- [ ] Auto-generate root credential on first startup if none exist, print to stdout
-- [ ] Unit tests for config loading, credential CRUD, auto-generation
-- [ ] Integration test: server starts, prints generated credentials
+- [x] Config file at `/etc/arca/config.toml` (default), `config/default.toml` as repo template, `--config-path` override
+- [x] SQLite database initialization in `arca-storage` (tokio-rusqlite, WAL mode)
+- [x] Schema: `credentials` table (access_key_id, secret_access_key, created_at, active)
+- [x] `arca credential add/list/remove` CLI subcommands (direct SQLite access)
+- [x] Auto-generate root credential on first startup if none exist, print to stdout
+- [x] Unit tests for config loading, credential CRUD, auto-generation
+- [x] Integration test: server starts, prints generated credentials
 
 **Verify**: `bin/run --build -d` starts server and prints auto-generated credentials; `arca credential list` shows the generated credential.
 

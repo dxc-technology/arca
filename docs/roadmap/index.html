@@ -743,7 +743,7 @@
 <tr>
 <td style="text-align: center;">1</td>
 <td><a href="#phase-1-configuration-storage-foundation">Configuration &amp; Storage Foundation</a></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><img alt="✅" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/2705.svg" title=":white_check_mark:" /></td>
 </tr>
 <tr>
 <td style="text-align: center;">2</td>
@@ -804,13 +804,13 @@
 <h2 id="phase-1-configuration-storage-foundation">Phase 1 — Configuration &amp; Storage Foundation<a class="headerlink" href="#phase-1-configuration-storage-foundation" title="Permanent link">&para;</a></h2>
 <p>Establish the configuration model and SQLite database foundation. MinIO-like approach: static server settings in a TOML config file, dynamic data (credentials, users) in the database.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Config file at <code>/etc/arca/config.toml</code> (default), <code>config/default.toml</code> as repo template, <code>--config-path</code> override</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> SQLite database initialization in <code>arca-storage</code> (tokio-rusqlite, WAL mode)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Schema: <code>credentials</code> table (access_key_id, secret_access_key, created_at, active)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>arca credential add/list/remove</code> CLI subcommands (direct SQLite access)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Auto-generate root credential on first startup if none exist, print to stdout</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Unit tests for config loading, credential CRUD, auto-generation</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Integration test: server starts, prints generated credentials</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Config file at <code>/etc/arca/config.toml</code> (default), <code>config/default.toml</code> as repo template, <code>--config-path</code> override</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> SQLite database initialization in <code>arca-storage</code> (tokio-rusqlite, WAL mode)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Schema: <code>credentials</code> table (access_key_id, secret_access_key, created_at, active)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>arca credential add/list/remove</code> CLI subcommands (direct SQLite access)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Auto-generate root credential on first startup if none exist, print to stdout</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Unit tests for config loading, credential CRUD, auto-generation</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Integration test: server starts, prints generated credentials</li>
 </ul>
 <p><strong>Verify</strong>: <code>bin/run --build -d</code> starts server and prints auto-generated credentials; <code>arca credential list</code> shows the generated credential.</p>
 <hr />
