@@ -24,6 +24,13 @@ pub struct StorageConfig {
     pub data_dir: String,
 }
 
+impl StorageConfig {
+    /// Returns the path to the SQLite database file (`{data_dir}/arca.db`).
+    pub fn db_path(&self) -> std::path::PathBuf {
+        std::path::Path::new(&self.data_dir).join("arca.db")
+    }
+}
+
 /// Loads configuration from a TOML file.
 pub fn load_config(path: &Path) -> Result<Config> {
     let content =
@@ -61,5 +68,16 @@ bind = "0.0.0.0"
 "#;
         let result: Result<Config, _> = toml::from_str(toml_str);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn db_path_derivation() {
+        let storage = StorageConfig {
+            data_dir: "/data".to_string(),
+        };
+        assert_eq!(
+            storage.db_path(),
+            std::path::PathBuf::from("/data/arca.db")
+        );
     }
 }

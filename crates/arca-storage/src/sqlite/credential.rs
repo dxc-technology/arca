@@ -1,0 +1,265 @@
+//! `CredentialStore` implementation for `SqliteStore`.
+
+use arca_core::error::ArcaError;
+use arca_core::store::CredentialStore;
+use arca_core::types::Credential;
+use chrono::DateTime;
+use rusqlite::params;
+
+use super::{SqliteStore, TrError};
+
+#[async_trait::async_trait]
+impl CredentialStore for SqliteStore {
+    async fn put_credential(&self, credential: &Credential) -> Result<(), ArcaError> {
+        let cred = credential.clone();
+        self.conn
+            .call(move |conn| {
+                conn.execute(
+                    "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![
+                        cred.access_key_id,
+                        cred.secret_access_key,
+                        cred.description,
+                        cred.created_at.to_rfc3339(),
+                        cred.active as i32,
+                    ],
+                )?;
+                Ok(())
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("put_credential: {e}")))
+    }
+
+    async fn get_credential(
+        &self,
+        access_key_id: &str,
+    ) -> Result<Option<Credential>, ArcaError> {
+        let key = access_key_id.to_string();
+        self.conn
+            .call(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT access_key_id, secret_access_key, description, created_at, active
+                     FROM credentials WHERE access_key_id = ?1",
+                )?;
+                let result = stmt.query_row(params![key], |row| {
+                    Ok(row_to_credential(row))
+                });
+                match result {
+                    Ok(cred) => Ok(Some(cred?)),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(e.into()),
+                }
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("get_credential: {e}")))
+    }
+
+    async fn list_credentials(&self) -> Result<Vec<Credential>, ArcaError> {
+        self.conn
+            .call(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT access_key_id, secret_access_key, description, created_at, active
+                     FROM credentials ORDER BY created_at",
+                )?;
+                let rows = stmt.query_map([], |row| Ok(row_to_credential(row)))?;
+                let mut creds = Vec::new();
+                for row in rows {
+                    creds.push(row??);
+                }
+                Ok(creds)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("list_credentials: {e}")))
+    }
+
+    async fn delete_credential(&self, access_key_id: &str) -> Result<bool, ArcaError> {
+        let key = access_key_id.to_string();
+        self.conn
+            .call(move |conn| {
+                let affected = conn.execute(
+                    "DELETE FROM credentials WHERE access_key_id = ?1",
+                    params![key],
+                )?;
+                Ok(affected > 0)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("delete_credential: {e}")))
+    }
+
+    async fn count_active_credentials(&self) -> Result<u64, ArcaError> {
+        self.conn
+            .call(move |conn| {
+                let count: u64 = conn.query_row(
+                    "SELECT COUNT(*) FROM credentials WHERE active = 1",
+                    [],
+                    |row| row.get(0),
+                )?;
+                Ok(count)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("count_active_credentials: {e}")))
+    }
+}
+
+/// Converts a SQLite row to a `Credential`.
+///
+/// Expects columns: access_key_id, secret_access_key, description, created_at, active.
+fn row_to_credential(row: &rusqlite::Row) -> Result<Credential, rusqlite::Error> {
+    let created_at_str: String = row.get(3)?;
+    let active_int: i32 = row.get(4)?;
+
+    let created_at = DateTime::parse_from_rfc3339(&created_at_str)
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+        .map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(
+                3,
+                rusqlite::types::Type::Text,
+                Box::new(e),
+            )
+        })?;
+
+    Ok(Credential {
+        access_key_id: row.get(0)?,
+        secret_access_key: row.get(1)?,
+        description: row.get(2)?,
+        created_at,
+        active: active_int != 0,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    async fn test_store() -> SqliteStore {
+        SqliteStore::open_in_memory().await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn put_and_get_credential() {
+        let store = test_store().await;
+        let cred = Credential {
+            access_key_id: "AKIAIOSFODNN7EXAMPLE".to_string(),
+            secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_string(),
+            description: "test key".to_string(),
+            created_at: Utc::now(),
+            active: true,
+        };
+
+        store.put_credential(&cred).await.unwrap();
+
+        let fetched = store
+            .get_credential("AKIAIOSFODNN7EXAMPLE")
+            .await
+            .unwrap()
+            .expect("credential should exist");
+
+        assert_eq!(fetched.access_key_id, cred.access_key_id);
+        assert_eq!(fetched.secret_access_key, cred.secret_access_key);
+        assert_eq!(fetched.description, "test key");
+        assert!(fetched.active);
+    }
+
+    #[tokio::test]
+    async fn get_nonexistent_returns_none() {
+        let store = test_store().await;
+        let result = store.get_credential("DOESNOTEXIST").await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn list_empty() {
+        let store = test_store().await;
+        let creds = store.list_credentials().await.unwrap();
+        assert!(creds.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_all() {
+        let store = test_store().await;
+
+        for i in 0..3 {
+            let cred = Credential {
+                access_key_id: format!("KEY{i}"),
+                secret_access_key: format!("SECRET{i}"),
+                description: format!("key {i}"),
+                created_at: Utc::now(),
+                active: true,
+            };
+            store.put_credential(&cred).await.unwrap();
+        }
+
+        let creds = store.list_credentials().await.unwrap();
+        assert_eq!(creds.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn delete_credential() {
+        let store = test_store().await;
+        let cred = Credential {
+            access_key_id: "TODELETE".to_string(),
+            secret_access_key: "SECRET".to_string(),
+            description: String::new(),
+            created_at: Utc::now(),
+            active: true,
+        };
+        store.put_credential(&cred).await.unwrap();
+
+        let deleted = store.delete_credential("TODELETE").await.unwrap();
+        assert!(deleted);
+
+        let fetched = store.get_credential("TODELETE").await.unwrap();
+        assert!(fetched.is_none());
+    }
+
+    #[tokio::test]
+    async fn delete_nonexistent_returns_false() {
+        let store = test_store().await;
+        let deleted = store.delete_credential("NOPE").await.unwrap();
+        assert!(!deleted);
+    }
+
+    #[tokio::test]
+    async fn duplicate_key_fails() {
+        let store = test_store().await;
+        let cred = Credential {
+            access_key_id: "DUPE".to_string(),
+            secret_access_key: "SECRET".to_string(),
+            description: String::new(),
+            created_at: Utc::now(),
+            active: true,
+        };
+        store.put_credential(&cred).await.unwrap();
+
+        let result = store.put_credential(&cred).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn count_active_skips_inactive() {
+        let store = test_store().await;
+
+        let active = Credential {
+            access_key_id: "ACTIVE".to_string(),
+            secret_access_key: "SECRET".to_string(),
+            description: String::new(),
+            created_at: Utc::now(),
+            active: true,
+        };
+        let inactive = Credential {
+            access_key_id: "INACTIVE".to_string(),
+            secret_access_key: "SECRET".to_string(),
+            description: String::new(),
+            created_at: Utc::now(),
+            active: false,
+        };
+
+        store.put_credential(&active).await.unwrap();
+        store.put_credential(&inactive).await.unwrap();
+
+        let count = store.count_active_credentials().await.unwrap();
+        assert_eq!(count, 1);
+    }
+}

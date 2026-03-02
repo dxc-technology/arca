@@ -15,7 +15,9 @@ arca-storage = { workspace = true }
 arca-proto = { workspace = true }
 anyhow = { workspace = true }
 axum = { workspace = true }
+chrono = { workspace = true }
 clap = { workspace = true }
+rand = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }
 toml = { workspace = true }

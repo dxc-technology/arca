@@ -8,4 +8,4 @@ pub mod store;
 pub mod types;
 
 pub use error::{ArcaError, S3Error, S3ErrorCode};
-pub use types::{BlobId, BucketInfo, ObjectRecord};
+pub use types::{BlobId, BucketInfo, Credential, ObjectRecord};

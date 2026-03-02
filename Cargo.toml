@@ -36,9 +36,14 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "1"
 anyhow = "1"
 
+# Database
+tokio-rusqlite = "0.7"
+rusqlite = { version = "0.37", features = ["bundled"] }
+
 # Utilities
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
+rand = "0.8"
 
 # Internal crates
 arca-core = { path = "crates/arca-core" }

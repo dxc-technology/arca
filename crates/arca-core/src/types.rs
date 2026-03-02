@@ -44,3 +44,13 @@ pub struct ObjectRecord {
     pub content_type: Option<String>,
     pub last_modified: DateTime<Utc>,
 }
+
+/// An S3 access credential (access key + secret key pair).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Credential {
+    pub access_key_id: String,
+    pub secret_access_key: String,
+    pub description: String,
+    pub created_at: DateTime<Utc>,
+    pub active: bool,
+}

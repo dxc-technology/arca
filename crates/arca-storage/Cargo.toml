@@ -6,3 +6,11 @@ description = "Storage implementations (filesystem + SQLite) for the Arca S3 ser
 
 [dependencies]
 arca-core = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+rusqlite = { workspace = true }
+tokio-rusqlite = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
