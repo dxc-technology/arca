@@ -477,6 +477,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#data-integrity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data Integrity
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -841,6 +852,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#data-integrity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data Integrity
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1107,7 +1129,7 @@
     META --&gt; SQLITE[("SqliteStore&lt;br/&gt;WAL mode")]
     BLOB --&gt; FS["FsBlobStore&lt;br/&gt;UUID + .meta sidecar"]
 
-    FS --&gt; DISK[("/data/")]
+    FS --&gt; DISK[("/data/blobs/")]
     SQLITE --&gt; DB[("/data/arca.db")]</code></pre>
 <p>The middleware stack is built with <a href="https://docs.rs/tower">Tower</a>, the standard Rust middleware framework. Each layer is independently testable and can be reordered or replaced without affecting the others.</p>
 <h2 id="storage-architecture">Storage Architecture<a class="headerlink" href="#storage-architecture" title="Permanent link">&para;</a></h2>
@@ -1133,17 +1155,25 @@
 <li><strong>Single database file</strong> — stored at <code>{data_dir}/arca.db</code></li>
 </ul>
 <h3 id="filesystem-blob-storage">Filesystem (Blob Storage)<a class="headerlink" href="#filesystem-blob-storage" title="Permanent link">&para;</a></h3>
-<p>Object data is stored as UUID-named files with a flat directory structure:</p>
+<p>Object data is stored as UUID-named files under a dedicated <code>blobs/</code> subdirectory, keeping the top-level data directory clean:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>/data/
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── arca.db                  # SQLite database
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── ab/cd/
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>│   ├── abcd1234-...uuid     # Blob file (raw object bytes)
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│   └── abcd1234-...uuid.meta  # JSON sidecar (metadata)
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>└── ef/01/
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    ├── ef012345-...uuid
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    └── ef012345-...uuid.meta
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── arca.db                      # SQLite database
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>└── blobs/
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    ├── ab/cd/
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    │   ├── abcd1234-...uuid       # Blob file (raw object bytes)
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    │   └── abcd1234-...uuid.meta  # JSON sidecar (metadata)
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    └── ef/01/
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        ├── ef012345-...uuid
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        └── ef012345-...uuid.meta
 </code></pre></div>
 <p>UUID-based naming eliminates path-traversal risks entirely — object keys (which can contain arbitrary characters like <code>../</code>) are never used in filesystem paths.</p>
+<p><strong>Integrity guarantees:</strong></p>
+<ul>
+<li><strong>No duplicate UUIDs</strong> — blob files are created with <code>O_CREAT | O_EXCL</code> (<code>create_new(true)</code> in Rust), which atomically fails if the file already exists</li>
+<li><strong>No duplicate keys</strong> — the <code>objects</code> table enforces a <code>UNIQUE(bucket, key)</code> constraint, so only one blob can own a given key at any time. On overwrite, <code>put_object</code> returns the old record so the caller can delete the orphaned blob</li>
+<li><strong>Conflict detection</strong> — <code>arca fsck</code> detects orphaned blobs (no DB record) and conflicting sidecars (multiple <code>.meta</code> files claiming the same <code>bucket + key</code>). <code>arca recover</code> resolves conflicts by keeping the newest sidecar (by <code>created_at</code>) and reporting discarded duplicates</li>
+<li><strong>Sidecar integrity</strong> — the <code>objects</code> table stores a SHA-256 checksum of each <code>.meta</code> sidecar file, enabling <code>arca fsck</code> to detect corruption or tampering</li>
+</ul>
 <h3 id="write-order-and-disaster-recovery">Write Order and Disaster Recovery<a class="headerlink" href="#write-order-and-disaster-recovery" title="Permanent link">&para;</a></h3>
 <p>The write order for storing an object is deliberate:</p>
 <pre class="mermaid"><code>flowchart LR
@@ -1154,7 +1184,7 @@
 <li><strong>After step 2</strong>: blob + sidecar exist but DB doesn't know → <code>arca recover</code> rebuilds the DB entry from the sidecar</li>
 <li><strong>After step 3</strong>: fully consistent</li>
 </ul>
-<p>The <code>arca recover</code> command walks the entire data directory, reads every <code>.meta</code> sidecar file, and reconstructs the SQLite database from scratch. This means the filesystem is the <strong>source of truth</strong> — the database is a queryable index that can always be rebuilt.</p>
+<p>The <code>arca recover</code> command walks the <code>blobs/</code> directory, reads every <code>.meta</code> sidecar file, and reconstructs the SQLite database from scratch. This means the filesystem is the <strong>source of truth</strong> — the database is a queryable index that can always be rebuilt.</p>
 <h3 id="sidecar-meta-format">Sidecar <code>.meta</code> Format<a class="headerlink" href="#sidecar-meta-format" title="Permanent link">&para;</a></h3>
 <p>Every blob is accompanied by a JSON sidecar file containing all metadata needed to reconstruct the database entry:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
@@ -1167,6 +1197,38 @@
 <a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">  </span><span class="nt">&quot;created_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-02-27T14:30:00Z&quot;</span>
 <a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="p">}</span>
 </code></pre></div>
+<h3 id="data-integrity">Data Integrity<a class="headerlink" href="#data-integrity" title="Permanent link">&para;</a></h3>
+<p>Arca uses two complementary checksums to cover both blob data and metadata:</p>
+<table>
+<thead>
+<tr>
+<th>What</th>
+<th>Hash</th>
+<th>Stored in</th>
+<th>Why this hash</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Blob content</td>
+<td>MD5</td>
+<td><code>objects.etag</code> + <code>.meta</code> sidecar</td>
+<td>Required by the S3 protocol — the ETag for non-multipart objects is defined by AWS as the MD5 hex digest</td>
+</tr>
+<tr>
+<td><code>.meta</code> sidecar</td>
+<td>SHA-256</td>
+<td><code>objects.sidecar_sha256</code></td>
+<td>Internal integrity field — free to use a modern, collision-resistant hash</td>
+</tr>
+</tbody>
+</table>
+<p>This gives <code>arca fsck</code> full coverage:</p>
+<ul>
+<li><strong>Blob corrupted?</strong> — recompute MD5 of the blob file, compare with the ETag in the database</li>
+<li><strong>Sidecar corrupted or tampered?</strong> — recompute SHA-256 of the <code>.meta</code> file, compare with <code>sidecar_sha256</code> in the database</li>
+</ul>
+<p>Note that these checks require the database to be intact. During <code>arca recover</code> (database is lost), the sidecars are trusted by necessity since there is nothing to compare against.</p>
 <h2 id="key-design-decisions">Key Design Decisions<a class="headerlink" href="#key-design-decisions" title="Permanent link">&para;</a></h2>
 <h3 id="no-s3s-crate">No <code>s3s</code> Crate<a class="headerlink" href="#no-s3s-crate" title="Permanent link">&para;</a></h3>
 <p>We build our own S3 HTTP protocol adapter with Axum rather than depending on the <a href="https://crates.io/crates/s3s"><code>s3s</code></a> crate. This was an explicit decision to avoid pre-1.0 dependency risk and maintain full control over the protocol layer. The S3 protocol has many subtle behaviors (error formats, header handling, query-parameter routing) where we need precise control.</p>

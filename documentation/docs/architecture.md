@@ -96,7 +96,7 @@ flowchart TD
     META --> SQLITE[("SqliteStore<br/>WAL mode")]
     BLOB --> FS["FsBlobStore<br/>UUID + .meta sidecar"]
 
-    FS --> DISK[("/data/")]
+    FS --> DISK[("/data/blobs/")]
     SQLITE --> DB[("/data/arca.db")]
 ```
 
@@ -130,20 +130,28 @@ Key characteristics:
 
 ### Filesystem (Blob Storage)
 
-Object data is stored as UUID-named files with a flat directory structure:
+Object data is stored as UUID-named files under a dedicated `blobs/` subdirectory, keeping the top-level data directory clean:
 
 ```
 /data/
-├── arca.db                  # SQLite database
-├── ab/cd/
-│   ├── abcd1234-...uuid     # Blob file (raw object bytes)
-│   └── abcd1234-...uuid.meta  # JSON sidecar (metadata)
-└── ef/01/
-    ├── ef012345-...uuid
-    └── ef012345-...uuid.meta
+├── arca.db                      # SQLite database
+└── blobs/
+    ├── ab/cd/
+    │   ├── abcd1234-...uuid       # Blob file (raw object bytes)
+    │   └── abcd1234-...uuid.meta  # JSON sidecar (metadata)
+    └── ef/01/
+        ├── ef012345-...uuid
+        └── ef012345-...uuid.meta
 ```
 
 UUID-based naming eliminates path-traversal risks entirely — object keys (which can contain arbitrary characters like `../`) are never used in filesystem paths.
+
+**Integrity guarantees:**
+
+- **No duplicate UUIDs** — blob files are created with `O_CREAT | O_EXCL` (`create_new(true)` in Rust), which atomically fails if the file already exists
+- **No duplicate keys** — the `objects` table enforces a `UNIQUE(bucket, key)` constraint, so only one blob can own a given key at any time. On overwrite, `put_object` returns the old record so the caller can delete the orphaned blob
+- **Conflict detection** — `arca fsck` detects orphaned blobs (no DB record) and conflicting sidecars (multiple `.meta` files claiming the same `bucket + key`). `arca recover` resolves conflicts by keeping the newest sidecar (by `created_at`) and reporting discarded duplicates
+- **Sidecar integrity** — the `objects` table stores a SHA-256 checksum of each `.meta` sidecar file, enabling `arca fsck` to detect corruption or tampering
 
 ### Write Order and Disaster Recovery
 
@@ -160,7 +168,7 @@ If the server crashes at any point:
 - **After step 2**: blob + sidecar exist but DB doesn't know → `arca recover` rebuilds the DB entry from the sidecar
 - **After step 3**: fully consistent
 
-The `arca recover` command walks the entire data directory, reads every `.meta` sidecar file, and reconstructs the SQLite database from scratch. This means the filesystem is the **source of truth** — the database is a queryable index that can always be rebuilt.
+The `arca recover` command walks the `blobs/` directory, reads every `.meta` sidecar file, and reconstructs the SQLite database from scratch. This means the filesystem is the **source of truth** — the database is a queryable index that can always be rebuilt.
 
 ### Sidecar `.meta` Format
 
@@ -177,6 +185,22 @@ Every blob is accompanied by a JSON sidecar file containing all metadata needed 
   "created_at": "2026-02-27T14:30:00Z"
 }
 ```
+
+### Data Integrity
+
+Arca uses two complementary checksums to cover both blob data and metadata:
+
+| What | Hash | Stored in | Why this hash |
+|------|------|-----------|---------------|
+| Blob content | MD5 | `objects.etag` + `.meta` sidecar | Required by the S3 protocol — the ETag for non-multipart objects is defined by AWS as the MD5 hex digest |
+| `.meta` sidecar | SHA-256 | `objects.sidecar_sha256` | Internal integrity field — free to use a modern, collision-resistant hash |
+
+This gives `arca fsck` full coverage:
+
+- **Blob corrupted?** — recompute MD5 of the blob file, compare with the ETag in the database
+- **Sidecar corrupted or tampered?** — recompute SHA-256 of the `.meta` file, compare with `sidecar_sha256` in the database
+
+Note that these checks require the database to be intact. During `arca recover` (database is lost), the sidecars are trusted by necessity since there is nothing to compare against.
 
 ## Key Design Decisions
 

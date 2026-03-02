@@ -22,7 +22,7 @@ The default config file is `config/default.toml` in the repository. At runtime, 
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `storage.data_dir` | `/data` | Directory for blob storage (UUID files + `.meta` sidecars) and SQLite database |
+| `storage.data_dir` | `/data` | Root directory for SQLite database (`arca.db`) and blob storage (`blobs/` subdirectory) |
 
 ### Example
 

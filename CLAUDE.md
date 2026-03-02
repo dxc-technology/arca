@@ -55,7 +55,7 @@ Dependency direction: `arca-server` -> `arca-proto`, `arca-storage`, `arca-auth`
 
 **Streaming-first** — never buffer full objects in memory. PutObject streams through MD5 hasher + file writer concurrently. GetObject streams from tokio::fs::File via ReaderStream.
 
-**Storage write order** — blob file -> sidecar `.meta` JSON -> SQLite insert. This ordering enables disaster recovery: `arca recover` walks the data directory, reads `.meta` files, and rebuilds the DB from scratch.
+**Storage write order** — blob file -> sidecar `.meta` JSON -> SQLite insert. This ordering enables disaster recovery: `arca recover` walks the `blobs/` directory, reads `.meta` files, and rebuilds the DB from scratch. Blob files use `O_CREAT | O_EXCL` to prevent UUID collision; `UNIQUE(bucket, key)` in the objects table prevents duplicate keys; `arca fsck` detects orphaned blobs and conflicting sidecars.
 
 **`put_object` returns old record** — `MetadataStore::put_object` returns `Option<ObjectRecord>` of the overwritten object so the caller can delete the orphaned blob.
 
