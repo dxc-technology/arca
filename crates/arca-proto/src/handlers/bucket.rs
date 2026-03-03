@@ -55,6 +55,12 @@ pub async fn get_bucket(
             .map(|(_, v)| v.as_str())
     };
 
+    // ListObjectVersions: mc sends ?versions= for recursive delete.
+    // Since we don't support versioning, return current objects as Version entries.
+    if params.iter().any(|(k, _)| k == "versions") {
+        return list_object_versions(state, &bucket, &resource, &params).await;
+    }
+
     // Only handle ListObjectsV2 (list-type=2). V1 returns 501.
     match get_param("list-type") {
         Some("2") => {}
@@ -158,10 +164,12 @@ async fn list_objects_v2(
         &records[..]
     };
 
-    // Extract common prefixes if delimiter is set.
+    // Extract common prefixes if delimiter is set (and non-empty).
     let (contents, common_prefixes) = match delimiter {
-        Some(delim) => extract_common_prefixes(records, prefix.unwrap_or(""), delim),
-        None => (records.iter().map(record_to_list_entry).collect(), vec![]),
+        Some(delim) if !delim.is_empty() => {
+            extract_common_prefixes(records, prefix.unwrap_or(""), delim)
+        }
+        _ => (records.iter().map(record_to_list_entry).collect(), vec![]),
     };
 
     // Build next continuation token from last key.
@@ -194,6 +202,96 @@ async fn list_objects_v2(
         .header("Content-Type", "application/xml")
         .body(Body::from(xml))
         .expect("build list_objects_v2 response")
+}
+
+/// Handles ListObjectVersions requests.
+///
+/// Since Arca doesn't support versioning, each object is returned as a single
+/// `<Version>` entry with `VersionId=null` and `IsLatest=true`. This is enough
+/// for mc's `rm --recursive` workflow which lists versions before batch-deleting.
+async fn list_object_versions(
+    state: AppState,
+    bucket: &str,
+    resource: &str,
+    params: &[(String, String)],
+) -> Response {
+    let get_param = |name: &str| -> Option<&str> {
+        params
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
+    };
+
+    // Check bucket exists.
+    match state.metadata.head_bucket(bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, resource));
+        }
+        Err(e) => return internal_error_response(e, resource),
+    }
+
+    let prefix = get_param("prefix");
+    let delimiter = get_param("delimiter");
+    let key_marker = get_param("key-marker");
+
+    let max_keys: u32 = match get_param("max-keys") {
+        Some(s) => match s.parse() {
+            Ok(n) if n <= 1000 => n,
+            Ok(_) => 1000,
+            Err(_) => {
+                return s3_error_response(S3Error::with_message(
+                    S3ErrorCode::InvalidArgument,
+                    "Invalid value for max-keys",
+                    resource,
+                ));
+            }
+        },
+        None => 1000,
+    };
+
+    // Fetch max_keys + 1 to detect truncation.
+    let fetch_limit = max_keys + 1;
+    let records = match state
+        .metadata
+        .list_objects(bucket, prefix, key_marker, fetch_limit)
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => return internal_error_response(e, resource),
+    };
+
+    let is_truncated = records.len() as u32 > max_keys;
+    let records = if is_truncated {
+        &records[..max_keys as usize]
+    } else {
+        &records[..]
+    };
+
+    // Build version entries (no delimiter grouping for versions API).
+    let _ = delimiter; // Acknowledged but not used for version listing.
+    let versions: Vec<ListEntry> = records.iter().map(record_to_list_entry).collect();
+
+    let next_key_marker = if is_truncated {
+        records.last().map(|r| r.key.as_str())
+    } else {
+        None
+    };
+
+    let xml = xml_types::list_versions_result(
+        bucket,
+        prefix,
+        key_marker,
+        max_keys,
+        is_truncated,
+        &versions,
+        next_key_marker,
+    );
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/xml")
+        .body(Body::from(xml))
+        .expect("build list_object_versions response")
 }
 
 /// Separates records into direct contents and common prefix groups based on delimiter.

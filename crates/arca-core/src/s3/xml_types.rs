@@ -315,6 +315,80 @@ pub fn complete_multipart_upload_result(bucket: &str, key: &str, etag: &str) -> 
     String::from_utf8(writer.into_inner()).expect("valid UTF-8 XML")
 }
 
+/// Builds the XML response for `ListVersionsResult` (ListObjectVersions).
+///
+/// Since Arca doesn't support versioning, each object is returned as a
+/// `<Version>` entry with `<VersionId>null</VersionId>` and `<IsLatest>true</IsLatest>`.
+pub fn list_versions_result(
+    name: &str,
+    prefix: Option<&str>,
+    key_marker: Option<&str>,
+    max_keys: u32,
+    is_truncated: bool,
+    versions: &[ListEntry],
+    next_key_marker: Option<&str>,
+) -> String {
+    let mut writer = Writer::new(Vec::new());
+
+    writer
+        .write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
+        .expect("write XML decl");
+
+    let mut root = BytesStart::new("ListVersionsResult");
+    root.push_attribute(("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
+    writer
+        .write_event(Event::Start(root))
+        .expect("write root start");
+
+    write_xml_element(&mut writer, "Name", name);
+    write_xml_element(&mut writer, "Prefix", prefix.unwrap_or(""));
+    write_xml_element(&mut writer, "KeyMarker", key_marker.unwrap_or(""));
+    write_xml_element(&mut writer, "VersionIdMarker", "");
+    write_xml_element(&mut writer, "MaxKeys", &max_keys.to_string());
+    write_xml_element(
+        &mut writer,
+        "IsTruncated",
+        if is_truncated { "true" } else { "false" },
+    );
+
+    if let Some(next) = next_key_marker {
+        write_xml_element(&mut writer, "NextKeyMarker", next);
+        write_xml_element(&mut writer, "NextVersionIdMarker", "null");
+    }
+
+    for entry in versions {
+        writer
+            .write_event(Event::Start(BytesStart::new("Version")))
+            .expect("write Version start");
+
+        write_xml_element(&mut writer, "Key", &entry.key);
+        write_xml_element(&mut writer, "VersionId", "null");
+        write_xml_element(&mut writer, "IsLatest", "true");
+
+        let date = entry
+            .last_modified
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+        write_xml_element(&mut writer, "LastModified", &date);
+
+        let quoted_etag = format!("\"{}\"", entry.etag);
+        write_xml_element(&mut writer, "ETag", &quoted_etag);
+
+        write_xml_element(&mut writer, "Size", &entry.size.to_string());
+        write_xml_element(&mut writer, "StorageClass", &entry.storage_class);
+
+        writer
+            .write_event(Event::End(BytesEnd::new("Version")))
+            .expect("write Version end");
+    }
+
+    writer
+        .write_event(Event::End(BytesEnd::new("ListVersionsResult")))
+        .expect("write root end");
+
+    String::from_utf8(writer.into_inner()).expect("valid UTF-8 XML")
+}
+
 /// A successfully deleted key in a `DeleteObjects` response.
 pub struct DeletedEntry {
     pub key: String,
