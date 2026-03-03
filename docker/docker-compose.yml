@@ -10,6 +10,8 @@ services:
       - arca-data:/data
     environment:
       - RUST_LOG=info
+      - ARCA_ROOT_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE
+      - ARCA_ROOT_SECRET_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 
   unit-test:
     image: arca-unit-test
@@ -27,6 +29,8 @@ services:
       dockerfile: docker/Dockerfile.test
     environment:
       - ARCA_ENDPOINT=http://arca:9000
+      - AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+      - AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
     depends_on:
       - arca
     profiles:

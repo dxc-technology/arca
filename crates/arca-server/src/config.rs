@@ -16,6 +16,9 @@ pub struct Config {
 pub struct ServerConfig {
     pub bind: String,
     pub port: u16,
+    /// Optional domain for virtual-hosted-style requests (e.g. "s3.example.com").
+    /// When set, requests to `bucket.s3.example.com` are rewritten to `/{bucket}/...`.
+    pub domain: Option<String>,
 }
 
 /// Storage configuration.

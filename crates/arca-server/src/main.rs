@@ -9,9 +9,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use clap::Parser;
 use tokio::net::TcpListener;
-use axum::ServiceExt;
-use tower::layer::Layer;
-use tower_http::normalize_path::NormalizePathLayer;
+use tower::Layer;
 use tracing_subscriber::EnvFilter;
 
 use arca_core::store::CredentialStore;
@@ -33,8 +31,10 @@ async fn main() -> Result<()> {
         Command::Serve { config_path } => {
             let config = config::load_config(&config_path)?;
 
-            let store = arca_storage::SqliteStore::open(&config.storage.db_path()).await?;
-            credential::ensure_root_credential(&store).await?;
+            let store = Arc::new(
+                arca_storage::SqliteStore::open(&config.storage.db_path()).await?,
+            );
+            credential::ensure_root_credential(store.as_ref()).await?;
 
             let blob_store = arca_storage::FsBlobStore::new(
                 config.storage.blobs_dir(),
@@ -43,23 +43,29 @@ async fn main() -> Result<()> {
             .await?;
 
             let state = AppState {
-                metadata: Arc::new(store),
+                metadata: store.clone() as Arc<dyn arca_core::store::MetadataStore>,
                 blob: Arc::new(blob_store),
+                credentials: store as Arc<dyn CredentialStore>,
+                domain: config.server.domain.clone(),
             };
 
             let addr = format!("{}:{}", config.server.bind, config.server.port);
             tracing::info!("Starting Arca on {addr}");
 
             let router = arca_proto::build_router(state);
-            let app = NormalizePathLayer::trim_trailing_slash().layer(router);
-            let listener = TcpListener::bind(&addr).await?;
 
+            // NormalizeLayer must wrap the Router from outside so it runs
+            // *before* Axum routing — strips trailing slashes and saves the
+            // original URI in extensions for auth to verify.
+            let app = arca_proto::middleware::normalize::NormalizeLayer.layer(router);
+            let service = {
+                use axum::ServiceExt as _;
+                app.into_make_service()
+            };
+
+            let listener = TcpListener::bind(&addr).await?;
             tracing::info!("Arca is ready");
-            axum::serve(
-                listener,
-                ServiceExt::<axum::extract::Request>::into_make_service(app),
-            )
-            .await?;
+            axum::serve(listener, service).await?;
         }
 
         Command::Credential {

@@ -2,6 +2,8 @@
 
 Verifies that the server starts with a SQLite database, auto-generates
 root credentials, and still returns valid S3 XML responses.
+
+With Phase 6 auth enabled, unauthenticated requests receive 403 AccessDenied.
 """
 
 import xml.etree.ElementTree as ET
@@ -10,21 +12,19 @@ import requests
 
 
 def test_server_responds_after_credential_bootstrap(endpoint_url):
-    """Server should respond to requests after credential bootstrap."""
+    """Server should reject unauthenticated requests with 403 AccessDenied."""
     resp = requests.get(endpoint_url)
-    # GET / is ListBuckets, returns 200 since Phase 2
-    assert resp.status_code == 200
+    assert resp.status_code == 403
 
 
-def test_still_returns_valid_s3_xml(endpoint_url):
-    """S3 XML error format should be unchanged after Phase 1 changes."""
-    resp = requests.get(f"{endpoint_url}/nonexistent-bucket-for-xml-test")
-    assert resp.status_code == 404
+def test_unauthenticated_returns_valid_s3_xml(endpoint_url):
+    """Unauthenticated request should return valid S3 XML error."""
+    resp = requests.get(endpoint_url)
+    assert resp.status_code == 403
     assert "application/xml" in resp.headers.get("Content-Type", "")
 
     root = ET.fromstring(resp.text)
     assert root.tag == "Error"
-    assert root.find("Code").text == "NoSuchBucket"
+    assert root.find("Code").text == "AccessDenied"
     assert root.find("Message").text is not None
-    assert root.find("Resource").text == "/nonexistent-bucket-for-xml-test"
     assert root.find("RequestId").text is not None

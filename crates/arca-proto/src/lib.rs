@@ -3,6 +3,7 @@
 //! Provides the HTTP routing and handler layer for the Arca S3 server.
 
 pub mod handlers;
+pub mod middleware;
 pub mod router;
 pub mod state;
 pub mod xml;

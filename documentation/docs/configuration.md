@@ -17,6 +17,7 @@ The default config file is `config/default.toml` in the repository. At runtime, 
 |---------|---------|-------------|
 | `server.bind` | `0.0.0.0` | Address to listen on |
 | `server.port` | `9000` | Port to listen on |
+| `server.domain` | *(none)* | Base domain for virtual-hosted-style requests (e.g. `s3.example.com`). When set, requests to `bucket.s3.example.com` are rewritten to path-style `/{bucket}/...`. Leave unset to use path-style only. |
 
 ### Storage
 
@@ -31,6 +32,7 @@ The default config file is `config/default.toml` in the repository. At runtime, 
 [server]
 bind = "0.0.0.0"
 port = 9000
+# domain = "s3.example.com"  # optional, enables virtual-hosted-style requests
 
 [storage]
 data_dir = "/data"
@@ -85,6 +87,16 @@ On first startup, if no credentials exist, Arca auto-generates a root access key
   Store these credentials securely.
 ========================================
 ```
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `RUST_LOG` | Logging level filter (default: `info`). Example: `RUST_LOG=debug` |
+| `ARCA_ROOT_ACCESS_KEY` | Override root credential access key (used when no active credentials exist). For testing/CI. |
+| `ARCA_ROOT_SECRET_KEY` | Override root credential secret key (used with `ARCA_ROOT_ACCESS_KEY`). Both must be set. |
+
+When both `ARCA_ROOT_ACCESS_KEY` and `ARCA_ROOT_SECRET_KEY` are set and no active credentials exist in the database, Arca uses these values instead of generating random credentials. This is useful for Docker Compose testing setups where you need known credentials.
 
 ## Config File Location
 

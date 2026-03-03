@@ -2,11 +2,13 @@
 
 use std::sync::Arc;
 
-use arca_core::store::{BlobStore, MetadataStore};
+use arca_core::store::{BlobStore, CredentialStore, MetadataStore};
 
 /// Application state shared across all handlers.
 #[derive(Clone)]
 pub struct AppState {
     pub metadata: Arc<dyn MetadataStore>,
     pub blob: Arc<dyn BlobStore>,
+    pub credentials: Arc<dyn CredentialStore>,
+    pub domain: Option<String>,
 }

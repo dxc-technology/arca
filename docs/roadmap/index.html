@@ -735,7 +735,7 @@
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">3</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">4</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">5</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">6</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">6</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">7</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">8</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">9</div>
@@ -785,7 +785,7 @@
 <tr>
 <td style="text-align: center;">6</td>
 <td><a href="#phase-6-aws-sigv4-authentication">AWS SigV4 Authentication</a></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">7</td>
@@ -884,12 +884,14 @@
 <h2 id="phase-6-aws-sigv4-authentication">Phase 6 — AWS SigV4 Authentication<a class="headerlink" href="#phase-6-aws-sigv4-authentication" title="Permanent link">&para;</a></h2>
 <p>Full AWS Signature V4 implementation with auth middleware. Credentials loaded from the SQLite database (managed via <code>arca credential</code> CLI from Phase 1).</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>arca-auth</code>: Full SigV4 implementation (canonical request, string-to-sign, signing key derivation, signature verification)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Test against AWS SigV4 test vectors (downloadable test suite)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Constant-time signature comparison via <code>subtle</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Auth middleware in <code>arca-proto</code>: parse Authorization header, look up credential in DB, verify signature, inject identity into request extensions</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Virtual-hosted-style middleware: rewrite <code>bucket.s3.domain/key</code> -&gt; <code>/bucket/key</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Integration tests: valid credentials succeed, bad credentials get <code>SignatureDoesNotMatch</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>arca-auth</code>: Full SigV4 implementation (canonical request, string-to-sign, signing key derivation, signature verification)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Test against AWS SigV4 test vectors (downloadable test suite)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Constant-time signature comparison via <code>subtle</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Auth middleware in <code>arca-proto</code>: parse Authorization header, look up credential in DB, verify signature</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Virtual-hosted-style middleware: rewrite <code>bucket.s3.domain/key</code> -&gt; <code>/bucket/key</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Trailing-slash normalization with original URI preservation (mc compatibility)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Environment variable credential override (<code>ARCA_ROOT_ACCESS_KEY</code>/<code>ARCA_ROOT_SECRET_KEY</code>) for testing</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Integration tests: valid credentials succeed, bad credentials get <code>SignatureDoesNotMatch</code> / <code>InvalidAccessKeyId</code></li>
 </ul>
 <p><strong>Verify</strong>: Set up credentials via <code>arca credential add</code>, all operations require auth, unauthenticated requests rejected.</p>
 <hr />

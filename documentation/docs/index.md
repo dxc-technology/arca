@@ -49,9 +49,13 @@ bin/test
 
 On first startup, Arca auto-generates a root credential and prints it to the logs. See [Configuration](configuration.md#credentials-database) for details on managing credentials.
 
-Arca listens on port **9000** (MinIO-compatible convention).
+Arca listens on port **9000** (MinIO-compatible convention). All requests require AWS SigV4 authentication.
 
 ```bash
+# Set credentials (from server logs or ARCA_ROOT_ACCESS_KEY/ARCA_ROOT_SECRET_KEY env vars)
+export AWS_ACCESS_KEY_ID=<your-access-key>
+export AWS_SECRET_ACCESS_KEY=<your-secret-key>
+
 # Create a bucket
 aws s3 mb s3://my-bucket --endpoint-url http://localhost:9000
 

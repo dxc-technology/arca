@@ -5,4 +5,10 @@ edition = "2021"
 description = "AWS SigV4 authentication for the Arca S3 server"
 
 [dependencies]
-arca-core = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+subtle = { workspace = true }
+chrono = { workspace = true }
+form_urlencoded = { workspace = true }
+urlencoding = { workspace = true }

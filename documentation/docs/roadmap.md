@@ -13,7 +13,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">3</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">4</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">5</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">6</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">6</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">7</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">8</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">9</div>
@@ -29,7 +29,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
 | 3 | [Core Object Operations](#phase-3-core-object-operations) | <span style="color:#4caf50">&#x2714;</span> |
 | 4 | [CopyObject + ListObjectsV2](#phase-4-copyobject-listobjectsv2) | <span style="color:#4caf50">&#x2714;</span> |
 | 5 | [Multipart Upload](#phase-5-multipart-upload) | <span style="color:#4caf50">&#x2714;</span> |
-| 6 | [AWS SigV4 Authentication](#phase-6-aws-sigv4-authentication) | |
+| 6 | [AWS SigV4 Authentication](#phase-6-aws-sigv4-authentication) | <span style="color:#4caf50">&#x2714;</span> |
 | 7 | [Disaster Recovery + Polish](#phase-7-disaster-recovery-polish) | |
 | 8 | [Web Console](#phase-8-web-console) | |
 | 9 | [S3 Compatibility Hardening](#phase-9-s3-compatibility-hardening) | |
@@ -134,12 +134,14 @@ Full multipart upload lifecycle with composite ETag computation.
 
 Full AWS Signature V4 implementation with auth middleware. Credentials loaded from the SQLite database (managed via `arca credential` CLI from Phase 1).
 
-- [ ] `arca-auth`: Full SigV4 implementation (canonical request, string-to-sign, signing key derivation, signature verification)
-- [ ] Test against AWS SigV4 test vectors (downloadable test suite)
-- [ ] Constant-time signature comparison via `subtle`
-- [ ] Auth middleware in `arca-proto`: parse Authorization header, look up credential in DB, verify signature, inject identity into request extensions
-- [ ] Virtual-hosted-style middleware: rewrite `bucket.s3.domain/key` -> `/bucket/key`
-- [ ] Integration tests: valid credentials succeed, bad credentials get `SignatureDoesNotMatch`
+- [x] `arca-auth`: Full SigV4 implementation (canonical request, string-to-sign, signing key derivation, signature verification)
+- [x] Test against AWS SigV4 test vectors (downloadable test suite)
+- [x] Constant-time signature comparison via `subtle`
+- [x] Auth middleware in `arca-proto`: parse Authorization header, look up credential in DB, verify signature
+- [x] Virtual-hosted-style middleware: rewrite `bucket.s3.domain/key` -> `/bucket/key`
+- [x] Trailing-slash normalization with original URI preservation (mc compatibility)
+- [x] Environment variable credential override (`ARCA_ROOT_ACCESS_KEY`/`ARCA_ROOT_SECRET_KEY`) for testing
+- [x] Integration tests: valid credentials succeed, bad credentials get `SignatureDoesNotMatch` / `InvalidAccessKeyId`
 
 **Verify**: Set up credentials via `arca credential add`, all operations require auth, unauthenticated requests rejected.
 

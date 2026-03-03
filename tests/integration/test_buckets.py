@@ -3,10 +3,7 @@
 Tests CreateBucket, HeadBucket, ListBuckets, and DeleteBucket using boto3.
 """
 
-import xml.etree.ElementTree as ET
-
 import pytest
-import requests
 from botocore.exceptions import ClientError
 
 
@@ -77,18 +74,14 @@ class TestListBuckets:
         # Cleanup
         s3_client.delete_bucket(Bucket="test-list-bucket")
 
-    def test_list_xml_format(self, endpoint_url):
-        """GET / should return valid S3 XML with xmlns and Owner."""
-        resp = requests.get(endpoint_url)
-        assert resp.status_code == 200
-        assert "application/xml" in resp.headers.get("Content-Type", "")
-
-        root = ET.fromstring(resp.text)
-        # Namespace-aware tag check
-        ns = "http://s3.amazonaws.com/doc/2006-03-01/"
-        assert root.tag == f"{{{ns}}}ListAllMyBucketsResult"
-        assert root.find(f"{{{ns}}}Owner") is not None
-        assert root.find(f"{{{ns}}}Buckets") is not None
+    def test_list_xml_format(self, s3_client):
+        """ListBuckets should return valid S3 XML with Owner and Buckets."""
+        # If boto3 parses the response successfully, the XML is well-formed.
+        result = s3_client.list_buckets()
+        assert "Owner" in result
+        assert "Buckets" in result
+        assert "ID" in result["Owner"]
+        assert "DisplayName" in result["Owner"]
 
 
 class TestDeleteBucket:
