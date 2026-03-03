@@ -6,11 +6,14 @@ use axum::response::Response;
 use http::StatusCode;
 
 use arca_core::s3::xml_types;
+use arca_core::s3::xml_types::{DeleteErrorEntry, DeletedEntry};
 use arca_core::types::{ListBucketResultParams, ListEntry, ObjectRecord};
 use arca_core::{validate_bucket_name, S3Error, S3ErrorCode};
 
 use crate::state::AppState;
-use crate::xml::error_response::{internal_error_response, not_implemented_response, s3_error_response};
+use crate::xml::error_response::{
+    internal_error_response, not_implemented_response, s3_error_response,
+};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -313,4 +316,118 @@ pub async fn delete_bucket(
         }
         Err(e) => internal_error_response(e, &resource),
     }
+}
+
+/// POST /{bucket} — DeleteObjects (dispatched when `?delete` is present).
+pub async fn post_bucket(
+    State(state): State<AppState>,
+    Path(bucket): Path<String>,
+    request: axum::extract::Request,
+) -> Response {
+    let query = request.uri().query().unwrap_or("");
+
+    // Check for ?delete or ?delete= (mc sends ?delete=).
+    let is_delete = query == "delete"
+        || query == "delete="
+        || query.starts_with("delete&")
+        || query.starts_with("delete=&")
+        || query.contains("&delete")
+        || query.contains("&delete=");
+
+    if !is_delete {
+        return not_implemented_response(&format!("/{bucket}"));
+    }
+
+    delete_objects(state, bucket, request).await
+}
+
+/// Handles the DeleteObjects (`POST /{bucket}?delete`) operation.
+async fn delete_objects(
+    state: AppState,
+    bucket: String,
+    request: axum::extract::Request,
+) -> Response {
+    let resource = format!("/{bucket}");
+
+    // Check bucket exists.
+    match state.metadata.head_bucket(&bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource));
+        }
+        Err(e) => return internal_error_response(e, &resource),
+    }
+
+    // Read and parse XML body (1 MB limit).
+    let body_bytes = match axum::body::to_bytes(request.into_body(), 1_048_576).await {
+        Ok(b) => b,
+        Err(_) => {
+            return s3_error_response(S3Error::with_message(
+                S3ErrorCode::InvalidArgument,
+                "Request body too large or invalid",
+                &resource,
+            ));
+        }
+    };
+    let body_str = match std::str::from_utf8(&body_bytes) {
+        Ok(s) => s,
+        Err(_) => {
+            return s3_error_response(S3Error::with_message(
+                S3ErrorCode::InvalidArgument,
+                "Request body is not valid UTF-8",
+                &resource,
+            ));
+        }
+    };
+
+    let delete_body = match xml_types::parse_delete_objects(body_str) {
+        Ok(b) => b,
+        Err(_) => {
+            return s3_error_response(S3Error::with_message(
+                S3ErrorCode::InvalidArgument,
+                "Invalid Delete XML",
+                &resource,
+            ));
+        }
+    };
+
+    let quiet = delete_body.quiet;
+    let mut deleted = Vec::new();
+    let mut errors = Vec::new();
+
+    for obj in &delete_body.objects {
+        match state.metadata.delete_object(&bucket, &obj.key).await {
+            Ok(old) => {
+                // Delete blob if record existed.
+                if let Some(old_record) = old {
+                    if let Err(e) = state.blob.delete(&old_record.blob_id).await {
+                        tracing::warn!(
+                            error = %e,
+                            key = %obj.key,
+                            "Failed to delete blob for deleted object"
+                        );
+                    }
+                }
+                // S3 reports success even if the key didn't exist.
+                deleted.push(DeletedEntry {
+                    key: obj.key.clone(),
+                });
+            }
+            Err(e) => {
+                tracing::error!(error = %e, key = %obj.key, "Error deleting object");
+                errors.push(DeleteErrorEntry {
+                    key: obj.key.clone(),
+                    code: "InternalError".to_string(),
+                    message: "We encountered an internal error. Please try again.".to_string(),
+                });
+            }
+        }
+    }
+
+    let xml = xml_types::delete_objects_result(&deleted, &errors, quiet);
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/xml")
+        .body(Body::from(xml))
+        .expect("build delete_objects response")
 }

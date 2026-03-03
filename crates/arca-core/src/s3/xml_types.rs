@@ -32,6 +32,30 @@ pub fn parse_complete_multipart_upload(
     quick_xml::de::from_str(xml)
 }
 
+// -- DeleteObjects XML types --
+
+/// Parsed body of a `DeleteObjects` request (`POST /{bucket}?delete`).
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename = "Delete")]
+pub struct DeleteObjectsBody {
+    #[serde(rename = "Quiet", default)]
+    pub quiet: bool,
+    #[serde(rename = "Object")]
+    pub objects: Vec<DeleteObject>,
+}
+
+/// A single object key in a `DeleteObjects` request.
+#[derive(Debug, serde::Deserialize)]
+pub struct DeleteObject {
+    #[serde(rename = "Key")]
+    pub key: String,
+}
+
+/// Parses a `DeleteObjects` XML request body.
+pub fn parse_delete_objects(xml: &str) -> Result<DeleteObjectsBody, quick_xml::DeError> {
+    quick_xml::de::from_str(xml)
+}
+
 /// Builds the XML response for the `ListAllMyBucketsResult` (ListBuckets).
 ///
 /// Produces XML like:
@@ -286,6 +310,69 @@ pub fn complete_multipart_upload_result(bucket: &str, key: &str, etag: &str) -> 
 
     writer
         .write_event(Event::End(BytesEnd::new("CompleteMultipartUploadResult")))
+        .expect("write root end");
+
+    String::from_utf8(writer.into_inner()).expect("valid UTF-8 XML")
+}
+
+/// A successfully deleted key in a `DeleteObjects` response.
+pub struct DeletedEntry {
+    pub key: String,
+}
+
+/// A failed key in a `DeleteObjects` response.
+pub struct DeleteErrorEntry {
+    pub key: String,
+    pub code: String,
+    pub message: String,
+}
+
+/// Builds the XML response for `DeleteResult` (DeleteObjects).
+///
+/// When `quiet` is true, only `<Error>` elements are included.
+pub fn delete_objects_result(
+    deleted: &[DeletedEntry],
+    errors: &[DeleteErrorEntry],
+    quiet: bool,
+) -> String {
+    let mut writer = Writer::new(Vec::new());
+
+    writer
+        .write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
+        .expect("write XML decl");
+
+    let mut root = BytesStart::new("DeleteResult");
+    root.push_attribute(("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
+    writer
+        .write_event(Event::Start(root))
+        .expect("write root start");
+
+    if !quiet {
+        for entry in deleted {
+            writer
+                .write_event(Event::Start(BytesStart::new("Deleted")))
+                .expect("write Deleted start");
+            write_xml_element(&mut writer, "Key", &entry.key);
+            writer
+                .write_event(Event::End(BytesEnd::new("Deleted")))
+                .expect("write Deleted end");
+        }
+    }
+
+    for entry in errors {
+        writer
+            .write_event(Event::Start(BytesStart::new("Error")))
+            .expect("write Error start");
+        write_xml_element(&mut writer, "Key", &entry.key);
+        write_xml_element(&mut writer, "Code", &entry.code);
+        write_xml_element(&mut writer, "Message", &entry.message);
+        writer
+            .write_event(Event::End(BytesEnd::new("Error")))
+            .expect("write Error end");
+    }
+
+    writer
+        .write_event(Event::End(BytesEnd::new("DeleteResult")))
         .expect("write root end");
 
     String::from_utf8(writer.into_inner()).expect("valid UTF-8 XML")
@@ -566,5 +653,95 @@ mod tests {
         let body = parse_complete_multipart_upload(xml).unwrap();
         assert_eq!(body.parts.len(), 1);
         assert_eq!(body.parts[0].part_number, 1);
+    }
+
+    // -- DeleteObjects XML parser tests --
+
+    #[test]
+    fn parse_delete_objects_basic() {
+        let xml = r#"<Delete>
+            <Quiet>false</Quiet>
+            <Object><Key>key1</Key></Object>
+            <Object><Key>key2</Key></Object>
+        </Delete>"#;
+
+        let body = parse_delete_objects(xml).unwrap();
+        assert!(!body.quiet);
+        assert_eq!(body.objects.len(), 2);
+        assert_eq!(body.objects[0].key, "key1");
+        assert_eq!(body.objects[1].key, "key2");
+    }
+
+    #[test]
+    fn parse_delete_objects_quiet() {
+        let xml = r#"<Delete>
+            <Quiet>true</Quiet>
+            <Object><Key>only-key</Key></Object>
+        </Delete>"#;
+
+        let body = parse_delete_objects(xml).unwrap();
+        assert!(body.quiet);
+        assert_eq!(body.objects.len(), 1);
+    }
+
+    #[test]
+    fn parse_delete_objects_no_quiet_defaults_false() {
+        let xml = r#"<Delete>
+            <Object><Key>k</Key></Object>
+        </Delete>"#;
+
+        let body = parse_delete_objects(xml).unwrap();
+        assert!(!body.quiet);
+    }
+
+    // -- DeleteResult XML builder tests --
+
+    #[test]
+    fn delete_objects_result_verbose() {
+        let deleted = vec![
+            DeletedEntry { key: "a.txt".to_string() },
+            DeletedEntry { key: "b.txt".to_string() },
+        ];
+        let errors = vec![DeleteErrorEntry {
+            key: "c.txt".to_string(),
+            code: "InternalError".to_string(),
+            message: "oops".to_string(),
+        }];
+        let xml = delete_objects_result(&deleted, &errors, false);
+
+        assert!(xml.contains("<DeleteResult"));
+        assert!(xml.contains("xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\""));
+        assert_eq!(xml.matches("<Deleted>").count(), 2);
+        assert!(xml.contains("<Key>a.txt</Key>"));
+        assert!(xml.contains("<Key>b.txt</Key>"));
+        assert_eq!(xml.matches("<Error>").count(), 1);
+        assert!(xml.contains("<Key>c.txt</Key>"));
+        assert!(xml.contains("<Code>InternalError</Code>"));
+        assert!(xml.contains("<Message>oops</Message>"));
+    }
+
+    #[test]
+    fn delete_objects_result_quiet_omits_deleted() {
+        let deleted = vec![DeletedEntry { key: "a.txt".to_string() }];
+        let errors: Vec<DeleteErrorEntry> = vec![];
+        let xml = delete_objects_result(&deleted, &errors, true);
+
+        assert!(!xml.contains("<Deleted>"));
+        assert!(!xml.contains("<Key>a.txt</Key>"));
+    }
+
+    #[test]
+    fn delete_objects_result_quiet_includes_errors() {
+        let deleted = vec![DeletedEntry { key: "a.txt".to_string() }];
+        let errors = vec![DeleteErrorEntry {
+            key: "b.txt".to_string(),
+            code: "AccessDenied".to_string(),
+            message: "denied".to_string(),
+        }];
+        let xml = delete_objects_result(&deleted, &errors, true);
+
+        assert!(!xml.contains("<Key>a.txt</Key>"));
+        assert!(xml.contains("<Key>b.txt</Key>"));
+        assert!(xml.contains("<Code>AccessDenied</Code>"));
     }
 }

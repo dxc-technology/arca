@@ -31,7 +31,8 @@ pub fn build_router(state: AppState) -> Router {
             get(bucket::get_bucket)
                 .head(bucket::head_bucket)
                 .put(bucket::create_bucket)
-                .delete(bucket::delete_bucket),
+                .delete(bucket::delete_bucket)
+                .post(bucket::post_bucket),
         )
         // Object operations
         .route(

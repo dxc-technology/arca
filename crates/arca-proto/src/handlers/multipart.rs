@@ -100,8 +100,9 @@ pub async fn upload_part(
         return s3_error_response(S3Error::new(S3ErrorCode::NoSuchUpload, &resource));
     }
 
+    let headers = request.headers().clone();
     let body = request.into_body();
-    let stream = body_to_byte_stream(body);
+    let stream = super::body::body_to_byte_stream(body, &headers);
 
     // Write part blob.
     let blob_id = BlobId::new();
@@ -371,14 +372,3 @@ pub async fn abort_multipart_upload(
         .expect("build abort_multipart_upload response")
 }
 
-/// Converts an Axum body into a `ByteStream`.
-fn body_to_byte_stream(body: Body) -> ByteStream {
-    use std::io;
-    use tokio_stream::StreamExt;
-
-    let stream = body.into_data_stream();
-    let mapped = stream.map(|result| {
-        result.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
-    });
-    Box::pin(mapped)
-}

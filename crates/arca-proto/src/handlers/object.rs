@@ -1,7 +1,5 @@
 //! Object operation handlers.
 
-use std::io;
-
 use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::response::Response;
@@ -9,7 +7,7 @@ use http::header;
 use http::StatusCode;
 
 use arca_core::s3::xml_types;
-use arca_core::store::{ByteRange, ByteStream, SidecarMeta};
+use arca_core::store::{ByteRange, SidecarMeta};
 use arca_core::types::{BlobId, ObjectRecord};
 use arca_core::{S3Error, S3ErrorCode};
 
@@ -74,8 +72,9 @@ pub async fn put_object(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
 
+    let headers = request.headers().clone();
     let body = request.into_body();
-    let stream = body_to_byte_stream(body);
+    let stream = super::body::body_to_byte_stream(body, &headers);
 
     // Write blob.
     let blob_id = BlobId::new();
@@ -426,7 +425,14 @@ pub async fn post_object(
 ) -> Response {
     if let Some(query) = request.uri().query() {
         // ?uploads → CreateMultipartUpload
-        if query == "uploads" || query.starts_with("uploads&") || query.contains("&uploads") {
+        // Also handle ?uploads= (mc sends this form)
+        if query == "uploads"
+            || query == "uploads="
+            || query.starts_with("uploads&")
+            || query.starts_with("uploads=&")
+            || query.contains("&uploads")
+            || query.contains("&uploads=")
+        {
             return super::multipart::create_multipart_upload(state, bucket, key, request).await;
         }
 
@@ -447,17 +453,6 @@ pub async fn post_object(
     }
 
     crate::xml::error_response::not_implemented_response(&format!("/{bucket}/{key}"))
-}
-
-/// Converts an Axum body into a `ByteStream`.
-fn body_to_byte_stream(body: Body) -> ByteStream {
-    use tokio_stream::StreamExt;
-
-    let stream = body.into_data_stream();
-    let mapped = stream.map(|result| {
-        result.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
-    });
-    Box::pin(mapped)
 }
 
 /// Parses the `Range` header into a `ByteRange`.
