@@ -4,6 +4,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      target: ${BUILD_TARGET:-production}
     ports:
       - "9000:9000"
     volumes:

@@ -1,5 +1,7 @@
-# Stage 1: Build
-FROM rust:1.85-bookworm AS builder
+# Stage 1: Build (Alpine for static musl linking — binary runs in scratch)
+FROM rust:1.85-alpine AS builder
+
+RUN apk add --no-cache musl-dev
 
 WORKDIR /build
 
@@ -31,14 +33,26 @@ RUN touch crates/*/src/*.rs
 # Build the actual binary
 RUN cargo build --release --workspace
 
-# Stage 2: Development (for running tests)
+# Stage 2: Development tools (for running unit tests)
 FROM builder AS dev
 
 ENTRYPOINT ["cargo"]
 CMD ["test", "--workspace"]
 
-# Stage 3: Runtime
-FROM debian:bookworm-slim
+# Stage 3: Production runtime (minimal — no OS, no shell, no tools)
+FROM scratch AS production
+
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=builder /build/target/release/arca /usr/local/bin/arca
+COPY config/default.toml /etc/arca/config.toml
+
+EXPOSE 9000
+
+ENTRYPOINT ["/usr/local/bin/arca"]
+CMD ["serve"]
+
+# Stage 4: Development runtime (with shell for debugging)
+FROM debian:bookworm-slim AS development
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
