@@ -9,6 +9,9 @@ use std::sync::Arc;
 use anyhow::Result;
 use clap::Parser;
 use tokio::net::TcpListener;
+use axum::ServiceExt;
+use tower::layer::Layer;
+use tower_http::normalize_path::NormalizePathLayer;
 use tracing_subscriber::EnvFilter;
 
 use arca_core::store::CredentialStore;
@@ -48,10 +51,15 @@ async fn main() -> Result<()> {
             tracing::info!("Starting Arca on {addr}");
 
             let router = arca_proto::build_router(state);
+            let app = NormalizePathLayer::trim_trailing_slash().layer(router);
             let listener = TcpListener::bind(&addr).await?;
 
             tracing::info!("Arca is ready");
-            axum::serve(listener, router).await?;
+            axum::serve(
+                listener,
+                ServiceExt::<axum::extract::Request>::into_make_service(app),
+            )
+            .await?;
         }
 
         Command::Credential {

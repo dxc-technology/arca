@@ -16,7 +16,7 @@ async-trait = "0.1"
 # Web framework
 axum = { version = "0.8", features = ["macros"] }
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.6", features = ["trace", "cors"] }
+tower-http = { version = "0.6", features = ["trace", "cors", "normalize-path"] }
 hyper = { version = "1", features = ["full"] }
 http = "1"
 
