@@ -14,7 +14,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">4</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">5</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">6</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">7</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">7</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">8</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">9</div>
   </div>
@@ -30,7 +30,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
 | 4 | [CopyObject + ListObjectsV2](#phase-4-copyobject-listobjectsv2) | <span style="color:#4caf50">&#x2714;</span> |
 | 5 | [Multipart Upload](#phase-5-multipart-upload) | <span style="color:#4caf50">&#x2714;</span> |
 | 6 | [AWS SigV4 Authentication](#phase-6-aws-sigv4-authentication) | <span style="color:#4caf50">&#x2714;</span> |
-| 7 | [Disaster Recovery + Polish](#phase-7-disaster-recovery-polish) | |
+| 7 | [Disaster Recovery + Polish](#phase-7-disaster-recovery-polish) | <span style="color:#4caf50">&#x2714;</span> |
 | 8 | [Web Console](#phase-8-web-console) | |
 | 9 | [S3 Compatibility Hardening](#phase-9-s3-compatibility-hardening) | |
 
@@ -151,11 +151,11 @@ Full AWS Signature V4 implementation with auth middleware. Credentials loaded fr
 
 Recovery tools, operational logging, and graceful shutdown.
 
-- [ ] `arca recover` CLI: walk `data/` tree, read all `.meta` sidecar files, rebuild SQLite DB from scratch
-- [ ] `arca fsck` CLI: compare DB records against filesystem, report orphaned blobs / missing blobs / metadata mismatches
-- [ ] Structured logging with tracing (JSON output for production)
-- [ ] Graceful shutdown (finish in-flight requests on SIGTERM)
-- [ ] User manual (structure, content, and style TBD before starting this phase)
+- [x] `arca recover` CLI: walk `data/` tree, read all `.meta` sidecar files, rebuild SQLite DB from scratch. Supports `--dry-run` for preview and `--skip-verify` to skip MD5 checksum verification. Preserves credentials across DB rebuild. Skips orphaned/malformed/corrupt sidecars with warnings.
+- [x] `arca fsck` CLI: compare DB records against filesystem, report orphaned blobs / missing blobs / sidecar mismatches / orphaned sidecars / stale temp files. Optional `--verify-checksums` for MD5 verification of every blob. Exit code 0 = clean, 1 = issues found.
+- [x] Structured logging with tracing (`--log-format text|json` on `serve` command)
+- [x] Graceful shutdown (finish in-flight requests on SIGTERM/SIGINT)
+- [ ] User manual (structure, content, and style TBD)
 
 **Verify**: Delete SQLite DB, run `arca recover`, verify all data accessible again.
 

@@ -1,6 +1,6 @@
 //! Command-line interface definition.
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -17,6 +17,10 @@ pub enum Command {
         /// Path to the configuration file
         #[arg(long, default_value = "/etc/arca/config.toml")]
         config_path: PathBuf,
+
+        /// Log output format
+        #[arg(long, default_value = "text")]
+        log_format: LogFormat,
     },
 
     /// Manage S3 access credentials
@@ -28,6 +32,40 @@ pub enum Command {
         #[command(subcommand)]
         action: CredentialAction,
     },
+
+    /// Rebuild the database from sidecar metadata files (disaster recovery)
+    Recover {
+        /// Path to the configuration file
+        #[arg(long, default_value = "/etc/arca/config.toml")]
+        config_path: PathBuf,
+
+        /// Print what would be recovered without modifying the database
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Skip MD5 checksum verification of blob files
+        #[arg(long)]
+        skip_verify: bool,
+    },
+
+    /// Check database and filesystem consistency
+    Fsck {
+        /// Path to the configuration file
+        #[arg(long, default_value = "/etc/arca/config.toml")]
+        config_path: PathBuf,
+
+        /// Verify blob checksums against stored ETags (reads every blob file)
+        #[arg(long)]
+        verify_checksums: bool,
+    },
+}
+
+#[derive(Debug, Clone, ValueEnum)]
+pub enum LogFormat {
+    /// Human-readable text output (default)
+    Text,
+    /// Structured JSON output for log aggregation
+    Json,
 }
 
 #[derive(Subcommand)]

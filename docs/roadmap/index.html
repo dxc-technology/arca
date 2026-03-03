@@ -736,7 +736,7 @@
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">4</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">5</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">6</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">7</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">7</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">8</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">9</div>
   </div>
@@ -790,7 +790,7 @@
 <tr>
 <td style="text-align: center;">7</td>
 <td><a href="#phase-7-disaster-recovery-polish">Disaster Recovery + Polish</a></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">8</td>
@@ -898,11 +898,11 @@
 <h2 id="phase-7-disaster-recovery-polish">Phase 7 — Disaster Recovery + Polish<a class="headerlink" href="#phase-7-disaster-recovery-polish" title="Permanent link">&para;</a></h2>
 <p>Recovery tools, operational logging, and graceful shutdown.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>arca recover</code> CLI: walk <code>data/</code> tree, read all <code>.meta</code> sidecar files, rebuild SQLite DB from scratch</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>arca fsck</code> CLI: compare DB records against filesystem, report orphaned blobs / missing blobs / metadata mismatches</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Structured logging with tracing (JSON output for production)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Graceful shutdown (finish in-flight requests on SIGTERM)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> User manual (structure, content, and style TBD before starting this phase)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>arca recover</code> CLI: walk <code>data/</code> tree, read all <code>.meta</code> sidecar files, rebuild SQLite DB from scratch. Supports <code>--dry-run</code> for preview and <code>--skip-verify</code> to skip MD5 checksum verification. Preserves credentials across DB rebuild. Skips orphaned/malformed/corrupt sidecars with warnings.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>arca fsck</code> CLI: compare DB records against filesystem, report orphaned blobs / missing blobs / sidecar mismatches / orphaned sidecars / stale temp files. Optional <code>--verify-checksums</code> for MD5 verification of every blob. Exit code 0 = clean, 1 = issues found.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Structured logging with tracing (<code>--log-format text|json</code> on <code>serve</code> command)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Graceful shutdown (finish in-flight requests on SIGTERM/SIGINT)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> User manual (structure, content, and style TBD)</li>
 </ul>
 <p><strong>Verify</strong>: Delete SQLite DB, run <code>arca recover</code>, verify all data accessible again.</p>
 <hr />
