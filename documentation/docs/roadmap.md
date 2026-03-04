@@ -17,6 +17,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">7</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">8</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">9</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">10</div>
   </div>
 </div>
 <!-- /progress-bar -->
@@ -31,8 +32,9 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
 | 5 | [Multipart Upload](#phase-5-multipart-upload) | <span style="color:#4caf50">&#x2714;</span> |
 | 6 | [AWS SigV4 Authentication](#phase-6-aws-sigv4-authentication) | <span style="color:#4caf50">&#x2714;</span> |
 | 7 | [Disaster Recovery + Polish](#phase-7-disaster-recovery-polish) | <span style="color:#4caf50">&#x2714;</span> |
-| 8 | [Web Console](#phase-8-web-console) | |
-| 9 | [S3 Compatibility Hardening](#phase-9-s3-compatibility-hardening) | |
+| 8 | [Admin API](#phase-8-admin-api) | |
+| 9 | [Web Console](#phase-9-web-console) | |
+| 10 | [S3 Compatibility Hardening](#phase-10-s3-compatibility-hardening) | |
 
 <!-- Status: green checkmark = done, :construction: = in progress, empty = not started -->
 
@@ -159,22 +161,34 @@ Recovery tools, operational logging, and graceful shutdown.
 
 ---
 
-## Phase 8 — Web Console
+## Phase 8 — Admin API
 
-Web-based administration console and bucket browser. Serves from the Arca binary itself (embedded static assets). Design TBD.
+JSON-based administration API for the web console and other management tools.
+Endpoints live under `/admin/*` on the same port (9000), using SigV4 auth.
 
-- [ ] Frontend app (framework and design to be decided)
-- [ ] Embedded static asset serving from the Arca binary
-- [ ] Admin dashboard: server status, storage usage, credential management
-- [ ] Bucket browser: list buckets, browse objects, upload/download, delete
-- [ ] Authentication via Arca credentials
-- [ ] User manual (structure, content, and style TBD)
+- [ ] Health, info, stats endpoints (`GET /admin/health`, `/admin/info`, `/admin/stats`)
+- [ ] Credential CRUD (`GET/POST /admin/credentials`, `DELETE /admin/credentials/{access_key_id}`)
+- [ ] Unit + integration tests
 
-**Verify**: Navigate to `http://localhost:9000/console`, log in, browse buckets and objects, upload a file.
+**Verify**: Admin API responds to health/info/stats requests; credential CRUD works via API.
 
 ---
 
-## Phase 9 — S3 Compatibility Hardening
+## Phase 9 — Web Console
+
+Web-based administration console and bucket browser, deployed as a **separate application**
+(`console/` directory) that communicates with Arca exclusively via S3 API and Admin API.
+
+- [ ] Web console app (framework and design TBD)
+- [ ] Admin dashboard: server status, storage usage, credential management
+- [ ] Bucket browser: list buckets, browse objects, upload/download, delete
+- [ ] User manual
+
+**Verify**: Web console connects to Arca and provides dashboard and bucket browsing.
+
+---
+
+## Phase 10 — S3 Compatibility Hardening
 
 Run industry-standard compatibility tests and harden edge cases.
 
