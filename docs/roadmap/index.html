@@ -901,10 +901,9 @@
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>arca recover</code> CLI: walk <code>data/</code> tree, read all <code>.meta</code> sidecar files, rebuild SQLite DB from scratch. Supports <code>--dry-run</code> for preview and <code>--skip-verify</code> to skip MD5 checksum verification. Preserves credentials across DB rebuild. Skips orphaned/malformed/corrupt sidecars with warnings.</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>arca fsck</code> CLI: compare DB records against filesystem, report orphaned blobs / missing blobs / sidecar mismatches / orphaned sidecars / stale temp files. Optional <code>--verify-checksums</code> for MD5 verification of every blob. Exit code 0 = clean, 1 = issues found.</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Structured logging with tracing (<code>--log-format text|json</code> on <code>serve</code> command)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Graceful shutdown (finish in-flight requests on SIGTERM/SIGINT)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> User manual (structure, content, and style TBD)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Graceful shutdown (finish in-flight requests on SIGTERM/SIGINT)
+<strong>Verify</strong>: Delete SQLite DB, run <code>arca recover</code>, verify all data accessible again.</li>
 </ul>
-<p><strong>Verify</strong>: Delete SQLite DB, run <code>arca recover</code>, verify all data accessible again.</p>
 <hr />
 <h2 id="phase-8-web-console">Phase 8 — Web Console<a class="headerlink" href="#phase-8-web-console" title="Permanent link">&para;</a></h2>
 <p>Web-based administration console and bucket browser. Serves from the Arca binary itself (embedded static assets). Design TBD.</p>
@@ -914,6 +913,7 @@
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Admin dashboard: server status, storage usage, credential management</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Bucket browser: list buckets, browse objects, upload/download, delete</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Authentication via Arca credentials</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> User manual (structure, content, and style TBD)</li>
 </ul>
 <p><strong>Verify</strong>: Navigate to <code>http://localhost:9000/console</code>, log in, browse buckets and objects, upload a file.</p>
 <hr />

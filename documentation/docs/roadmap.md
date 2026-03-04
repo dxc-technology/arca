@@ -155,8 +155,6 @@ Recovery tools, operational logging, and graceful shutdown.
 - [x] `arca fsck` CLI: compare DB records against filesystem, report orphaned blobs / missing blobs / sidecar mismatches / orphaned sidecars / stale temp files. Optional `--verify-checksums` for MD5 verification of every blob. Exit code 0 = clean, 1 = issues found.
 - [x] Structured logging with tracing (`--log-format text|json` on `serve` command)
 - [x] Graceful shutdown (finish in-flight requests on SIGTERM/SIGINT)
-- [ ] User manual (structure, content, and style TBD)
-
 **Verify**: Delete SQLite DB, run `arca recover`, verify all data accessible again.
 
 ---
@@ -170,6 +168,7 @@ Web-based administration console and bucket browser. Serves from the Arca binary
 - [ ] Admin dashboard: server status, storage usage, credential management
 - [ ] Bucket browser: list buckets, browse objects, upload/download, delete
 - [ ] Authentication via Arca credentials
+- [ ] User manual (structure, content, and style TBD)
 
 **Verify**: Navigate to `http://localhost:9000/console`, log in, browse buckets and objects, upload a file.
 
