@@ -19,6 +19,7 @@ Arca is a ground-up implementation of the S3 API, designed for 100% compatibilit
 - **Streaming-first** — never buffers full objects in memory
 - **Disaster recovery** — sidecar `.meta` files alongside every blob enable full database rebuild
 - **Modular storage** — metadata backend behind traits (SQLite now, Postgres later)
+- **[S3 compatibility tested](https://dxc-technology.github.io/arca/s3-compatibility/)** — validated against Ceph s3-tests (198 passing)
 
 ## MVP API Surface
 
@@ -26,7 +27,7 @@ Arca is a ground-up implementation of the S3 API, designed for 100% compatibilit
 |-----------|-----------------------------------------------------------------------|
 | Bucket    | CreateBucket, DeleteBucket, HeadBucket, ListBuckets                   |
 | Object    | PutObject, GetObject, DeleteObject, HeadObject, CopyObject            |
-| Listing   | ListObjectsV2                                                         |
+| Listing   | ListObjectsV1, ListObjectsV2                                          |
 | Multipart | CreateMultipartUpload, UploadPart, CompleteMultipartUpload, AbortMultipartUpload |
 | Auth      | AWS Signature V4                                                      |
 

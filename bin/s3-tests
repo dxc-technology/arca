@@ -87,6 +87,16 @@ if [[ -f "s3-tests/results.xml" ]]; then
     $COMPOSE run --rm --entrypoint python s3-tests /s3-tests/report.py \
         /s3-tests/output/results.xml /s3-tests/output/report.html \
         /s3-tests/output/passlist.txt 2>/dev/null || true
+
+    # Publish report to GitHub Pages documentation
+    if [[ -f "s3-tests/report.html" ]]; then
+        GH_PAGES_DIR="documentation/docs/s3-compatibility"
+        DOCS_OUT_DIR="docs/s3-compatibility"
+        mkdir -p "$GH_PAGES_DIR" "$DOCS_OUT_DIR"
+        cp s3-tests/report.html "$GH_PAGES_DIR/index.html"
+        cp s3-tests/report.html "$DOCS_OUT_DIR/index.html"
+        echo "==> Report published to $GH_PAGES_DIR/index.html"
+    fi
 fi
 
 exit $EXIT_CODE
