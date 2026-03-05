@@ -198,4 +198,7 @@ Run industry-standard compatibility tests and harden edge cases.
 - [ ] Fix XML namespace/formatting issues, header edge cases, error code mismatches
 - [ ] Track pass/fail list, prevent regressions in CI
 - [ ] Performance testing with concurrent requests + large files
-- [ ] Documentation
+- [ ] User manual: installation, configuration, CLI reference
+- [ ] Admin manual: Admin API reference, credential management, disaster recovery (`recover`, `fsck`)
+- [ ] Console manual: setup, Docker deployment, dashboard, bucket browser, credential management
+- [ ] Operations guide: backup/restore, monitoring, logging, production deployment
