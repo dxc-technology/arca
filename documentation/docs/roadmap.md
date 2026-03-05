@@ -18,6 +18,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">8</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">9</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">10</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">11</div>
   </div>
 </div>
 <!-- /progress-bar -->
@@ -35,6 +36,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
 | 8 | [Admin API](#phase-8-admin-api) | <span style="color:#4caf50">&#x2714;</span> |
 | 9 | [Web Console](#phase-9-web-console) | <span style="color:#4caf50">&#x2714;</span> |
 | 10 | [S3 Compatibility Hardening](#phase-10-s3-compatibility-hardening) | |
+| 11 | [Documentation](#phase-11-documentation) | |
 
 <!-- Status: green checkmark = done, :construction: = in progress, empty = not started -->
 
@@ -198,7 +200,18 @@ Run industry-standard compatibility tests and harden edge cases.
 - [ ] Fix XML namespace/formatting issues, header edge cases, error code mismatches
 - [ ] Track pass/fail list, prevent regressions in CI
 - [ ] Performance testing with concurrent requests + large files
+
+**Verify**: Ceph s3-tests running in CI, pass/fail list tracked, no regressions.
+
+---
+
+## Phase 11 — Documentation
+
+Comprehensive manuals and guides for users, administrators, and operators.
+
 - [ ] User manual: installation, configuration, CLI reference
 - [ ] Admin manual: Admin API reference, credential management, disaster recovery (`recover`, `fsck`)
 - [ ] Console manual: setup, Docker deployment, dashboard, bucket browser, credential management
 - [ ] Operations guide: backup/restore, monitoring, logging, production deployment
+
+**Verify**: All manuals published on GitHub Pages, covering installation through production operations.

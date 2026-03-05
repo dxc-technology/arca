@@ -562,6 +562,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#phase-11-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 11 — Documentation
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -755,6 +766,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#phase-11-documentation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 11 — Documentation
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -789,6 +811,7 @@
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">8</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">9</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">10</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">11</div>
   </div>
 </div>
 <!-- /progress-bar -->
@@ -855,6 +878,11 @@
 <tr>
 <td style="text-align: center;">10</td>
 <td><a href="#phase-10-s3-compatibility-hardening">S3 Compatibility Hardening</a></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr>
+<td style="text-align: center;">11</td>
+<td><a href="#phase-11-documentation">Documentation</a></td>
 <td style="text-align: center;"></td>
 </tr>
 </tbody>
@@ -990,11 +1018,18 @@ Endpoints live under <code>/admin/*</code> on the same port (9000), using SigV4 
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Fix XML namespace/formatting issues, header edge cases, error code mismatches</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Track pass/fail list, prevent regressions in CI</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Performance testing with concurrent requests + large files</li>
+</ul>
+<p><strong>Verify</strong>: Ceph s3-tests running in CI, pass/fail list tracked, no regressions.</p>
+<hr />
+<h2 id="phase-11-documentation">Phase 11 — Documentation<a class="headerlink" href="#phase-11-documentation" title="Permanent link">&para;</a></h2>
+<p>Comprehensive manuals and guides for users, administrators, and operators.</p>
+<ul class="task-list">
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> User manual: installation, configuration, CLI reference</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Admin manual: Admin API reference, credential management, disaster recovery (<code>recover</code>, <code>fsck</code>)</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Console manual: setup, Docker deployment, dashboard, bucket browser, credential management</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Operations guide: backup/restore, monitoring, logging, production deployment</li>
 </ul>
+<p><strong>Verify</strong>: All manuals published on GitHub Pages, covering installation through production operations.</p>
 
 
 
