@@ -389,6 +389,60 @@ def generate_html(tests: list, output_path: str, old_passlist: set | None = None
     Path(output_path).write_text(html, encoding="utf-8")
 
 
+def generate_badge_svg(tests: list, output_path: str):
+    """Generate an SVG progress badge for the README."""
+    total = len(tests)
+    passed = sum(1 for t in tests if t["status"] == "passed")
+    rate = (passed / total * 100) if total > 0 else 0
+
+    # Badge dimensions
+    label_w = 130
+    bar_w = 160
+    stats_w = 100
+    total_w = label_w + bar_w + stats_w
+    h = 28
+    r = 5  # corner radius
+
+    # Progress bar geometry (with padding inside the bar area)
+    bar_pad = 6
+    bar_inner_w = bar_w - bar_pad * 2
+    bar_inner_h = h - bar_pad * 2
+    bar_fill_w = max(1, bar_inner_w * rate / 100)
+
+    # Color: green if >= 50%, yellow if >= 25%, red otherwise
+    if rate >= 50:
+        bar_color = "#9ece6a"
+    elif rate >= 25:
+        bar_color = "#e0af68"
+    else:
+        bar_color = "#f7768e"
+
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="{total_w}" height="{h}" role="img" aria-label="S3 Compatibility: {passed}/{total} ({rate:.0f}%)">
+  <title>S3 Compatibility: {passed}/{total} ({rate:.0f}%)</title>
+  <defs>
+    <clipPath id="cr"><rect width="{total_w}" height="{h}" rx="{r}"/></clipPath>
+  </defs>
+  <g clip-path="url(#cr)">
+    <!-- label background -->
+    <rect width="{label_w}" height="{h}" fill="#24283b"/>
+    <!-- bar background -->
+    <rect x="{label_w}" width="{bar_w}" height="{h}" fill="#1a1b26"/>
+    <!-- stats background -->
+    <rect x="{label_w + bar_w}" width="{stats_w}" height="{h}" fill="#24283b"/>
+    <!-- progress bar track -->
+    <rect x="{label_w + bar_pad}" y="{bar_pad}" width="{bar_inner_w}" height="{bar_inner_h}" rx="3" fill="#414868"/>
+    <!-- progress bar fill -->
+    <rect x="{label_w + bar_pad}" y="{bar_pad}" width="{bar_fill_w:.1f}" height="{bar_inner_h}" rx="3" fill="{bar_color}"/>
+  </g>
+  <!-- label text -->
+  <text x="{label_w / 2}" y="{h / 2 + 1}" fill="#c0caf5" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" text-anchor="middle" dominant-baseline="middle">S3 Compatibility</text>
+  <!-- stats text -->
+  <text x="{label_w + bar_w + stats_w / 2}" y="{h / 2 + 1}" fill="{bar_color}" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="700" text-anchor="middle" dominant-baseline="middle">{passed}/{total} · {rate:.0f}%</text>
+</svg>
+"""
+    Path(output_path).write_text(svg, encoding="utf-8")
+
+
 def generate_passlist(tests: list, output_path: str):
     """Write a passlist of all passing test names."""
     passing = sorted(t["name"] for t in tests if t["status"] == "passed")
@@ -426,6 +480,11 @@ def main():
     terminal_summary(tests)
     generate_html(tests, report_html, old_passlist)
     print(f"HTML report written to: {report_html}")
+
+    # Generate SVG badge alongside the HTML report
+    badge_path = str(Path(report_html).parent / "s3-compatibility-badge.svg")
+    generate_badge_svg(tests, badge_path)
+    print(f"SVG badge written to: {badge_path}")
 
     if passlist_path:
         generate_passlist(tests, passlist_path)

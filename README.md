@@ -9,6 +9,10 @@
   <a href="https://dxc-technology.github.io/arca/">Documentation</a>
 </p>
 
+<p align="center">
+  <a href="https://dxc-technology.github.io/arca/s3-compatibility/"><img src="s3-compatibility-badge.svg" alt="S3 Compatibility"></a>
+</p>
+
 ---
 
 Arca is a ground-up implementation of the S3 API, designed for 100% compatibility on a focused subset of operations. It starts as a single-node server with a clear path toward production scale.
@@ -19,7 +23,7 @@ Arca is a ground-up implementation of the S3 API, designed for 100% compatibilit
 - **Streaming-first** — never buffers full objects in memory
 - **Disaster recovery** — sidecar `.meta` files alongside every blob enable full database rebuild
 - **Modular storage** — metadata backend behind traits (SQLite now, Postgres later)
-- **[S3 compatibility tested](https://dxc-technology.github.io/arca/s3-compatibility/)** — validated against Ceph s3-tests (198 passing)
+- **[S3 compatibility tested](https://dxc-technology.github.io/arca/s3-compatibility/)** — validated against [Ceph s3-tests](https://github.com/ceph/s3-tests) (198 passing)
 
 ## MVP API Surface
 

@@ -88,7 +88,7 @@ if [[ -f "s3-tests/results.xml" ]]; then
         /s3-tests/output/results.xml /s3-tests/output/report.html \
         /s3-tests/output/passlist.txt 2>/dev/null || true
 
-    # Publish report to GitHub Pages documentation
+    # Publish report and badge to GitHub Pages documentation
     if [[ -f "s3-tests/report.html" ]]; then
         GH_PAGES_DIR="documentation/docs/s3-compatibility"
         DOCS_OUT_DIR="docs/s3-compatibility"
@@ -96,6 +96,10 @@ if [[ -f "s3-tests/results.xml" ]]; then
         cp s3-tests/report.html "$GH_PAGES_DIR/index.html"
         cp s3-tests/report.html "$DOCS_OUT_DIR/index.html"
         echo "==> Report published to $GH_PAGES_DIR/index.html"
+    fi
+    if [[ -f "s3-tests/s3-compatibility-badge.svg" ]]; then
+        cp s3-tests/s3-compatibility-badge.svg s3-compatibility-badge.svg
+        echo "==> Badge updated: s3-compatibility-badge.svg"
     fi
 fi
 
