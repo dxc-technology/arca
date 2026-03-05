@@ -92,6 +92,14 @@ pub struct PartRecord {
     pub etag: String,
 }
 
+/// Aggregate storage statistics.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageStats {
+    pub bucket_count: u64,
+    pub object_count: u64,
+    pub total_size_bytes: u64,
+}
+
 /// An S3 access credential (access key + secret key pair).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Credential {

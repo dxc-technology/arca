@@ -11,4 +11,6 @@ pub struct AppState {
     pub blob: Arc<dyn BlobStore>,
     pub credentials: Arc<dyn CredentialStore>,
     pub domain: Option<String>,
+    pub started_at: std::time::Instant,
+    pub version: String,
 }

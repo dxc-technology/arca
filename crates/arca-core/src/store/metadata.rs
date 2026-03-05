@@ -1,6 +1,6 @@
 //! Metadata storage trait.
 
-use crate::types::{BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord};
+use crate::types::{BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats};
 
 /// Trait for metadata storage operations.
 #[async_trait::async_trait]
@@ -24,6 +24,9 @@ pub trait MetadataStore: Send + Sync {
 
     /// Returns true if the bucket has no objects.
     async fn bucket_is_empty(&self, name: &str) -> Result<bool, crate::error::ArcaError>;
+
+    /// Returns aggregate storage statistics (bucket count, object count, total size).
+    async fn get_stats(&self) -> Result<StorageStats, crate::error::ArcaError>;
 
     // -- Object operations --
 

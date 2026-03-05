@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://dxc-technology.github.io/arca/roadmap/">
       
       
-        <link rel="prev" href="../api/">
+        <link rel="prev" href="../admin-api/">
       
       
         <link rel="next" href="../configuration/">
@@ -325,6 +325,33 @@
     
   
     API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin API
   
 
     
@@ -759,7 +786,7 @@
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">5</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">6</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">7</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">8</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">8</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">9</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">10</div>
   </div>
@@ -818,7 +845,7 @@
 <tr>
 <td style="text-align: center;">8</td>
 <td><a href="#phase-8-admin-api">Admin API</a></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">9</td>
@@ -937,9 +964,9 @@
 <p>JSON-based administration API for the web console and other management tools.
 Endpoints live under <code>/admin/*</code> on the same port (9000), using SigV4 auth.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Health, info, stats endpoints (<code>GET /admin/health</code>, <code>/admin/info</code>, <code>/admin/stats</code>)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Credential CRUD (<code>GET/POST /admin/credentials</code>, <code>DELETE /admin/credentials/{access_key_id}</code>)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Unit + integration tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Health, info, stats endpoints (<code>GET /admin/health</code>, <code>/admin/info</code>, <code>/admin/stats</code>)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Credential CRUD (<code>GET/POST /admin/credentials</code>, <code>DELETE /admin/credentials/{access_key_id}</code>)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Unit + integration tests</li>
 </ul>
 <p><strong>Verify</strong>: Admin API responds to health/info/stats requests; credential CRUD works via API.</p>
 <hr />

@@ -15,7 +15,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">5</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">6</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">7</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">8</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">8</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">9</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">10</div>
   </div>
@@ -32,7 +32,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
 | 5 | [Multipart Upload](#phase-5-multipart-upload) | <span style="color:#4caf50">&#x2714;</span> |
 | 6 | [AWS SigV4 Authentication](#phase-6-aws-sigv4-authentication) | <span style="color:#4caf50">&#x2714;</span> |
 | 7 | [Disaster Recovery + Polish](#phase-7-disaster-recovery-polish) | <span style="color:#4caf50">&#x2714;</span> |
-| 8 | [Admin API](#phase-8-admin-api) | |
+| 8 | [Admin API](#phase-8-admin-api) | <span style="color:#4caf50">&#x2714;</span> |
 | 9 | [Web Console](#phase-9-web-console) | |
 | 10 | [S3 Compatibility Hardening](#phase-10-s3-compatibility-hardening) | |
 
@@ -166,9 +166,9 @@ Recovery tools, operational logging, and graceful shutdown.
 JSON-based administration API for the web console and other management tools.
 Endpoints live under `/admin/*` on the same port (9000), using SigV4 auth.
 
-- [ ] Health, info, stats endpoints (`GET /admin/health`, `/admin/info`, `/admin/stats`)
-- [ ] Credential CRUD (`GET/POST /admin/credentials`, `DELETE /admin/credentials/{access_key_id}`)
-- [ ] Unit + integration tests
+- [x] Health, info, stats endpoints (`GET /admin/health`, `/admin/info`, `/admin/stats`)
+- [x] Credential CRUD (`GET/POST /admin/credentials`, `DELETE /admin/credentials/{access_key_id}`)
+- [x] Unit + integration tests
 
 **Verify**: Admin API responds to health/info/stats requests; credential CRUD works via API.
 

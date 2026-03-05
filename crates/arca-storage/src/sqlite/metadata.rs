@@ -2,7 +2,9 @@
 
 use arca_core::error::ArcaError;
 use arca_core::store::MetadataStore;
-use arca_core::types::{BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord};
+use arca_core::types::{
+    BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
+};
 use chrono::DateTime;
 use rusqlite::params;
 
@@ -10,6 +12,29 @@ use super::{SqliteStore, TrError};
 
 #[async_trait::async_trait]
 impl MetadataStore for SqliteStore {
+    async fn get_stats(&self) -> Result<StorageStats, ArcaError> {
+        self.conn
+            .call(move |conn| {
+                let stats = conn.query_row(
+                    "SELECT
+                        (SELECT COUNT(*) FROM buckets),
+                        (SELECT COUNT(*) FROM objects),
+                        (SELECT COALESCE(SUM(size), 0) FROM objects)",
+                    [],
+                    |row| {
+                        Ok(StorageStats {
+                            bucket_count: row.get::<_, i64>(0)? as u64,
+                            object_count: row.get::<_, i64>(1)? as u64,
+                            total_size_bytes: row.get::<_, i64>(2)? as u64,
+                        })
+                    },
+                )?;
+                Ok(stats)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("get_stats: {e}")))
+    }
+
     // -- Bucket operations --
 
     async fn list_buckets(&self) -> Result<Vec<BucketInfo>, ArcaError> {
@@ -568,6 +593,55 @@ mod tests {
             content_type: Some("text/plain".to_string()),
             last_modified: chrono::Utc::now(),
         }
+    }
+
+    // -- Stats tests --
+
+    #[tokio::test]
+    async fn get_stats_empty() {
+        let store = test_store().await;
+        let stats = store.get_stats().await.unwrap();
+        assert_eq!(stats.bucket_count, 0);
+        assert_eq!(stats.object_count, 0);
+        assert_eq!(stats.total_size_bytes, 0);
+    }
+
+    #[tokio::test]
+    async fn get_stats_with_data() {
+        let store = test_store().await;
+        store.create_bucket("a").await.unwrap();
+        store.create_bucket("b").await.unwrap();
+
+        let mut r1 = make_record("a", "key1");
+        r1.size = 100;
+        store.put_object(&r1).await.unwrap();
+
+        let mut r2 = make_record("a", "key2");
+        r2.size = 250;
+        r2.blob_id = BlobId("blob-2".to_string());
+        store.put_object(&r2).await.unwrap();
+
+        let stats = store.get_stats().await.unwrap();
+        assert_eq!(stats.bucket_count, 2);
+        assert_eq!(stats.object_count, 2);
+        assert_eq!(stats.total_size_bytes, 350);
+    }
+
+    #[tokio::test]
+    async fn get_stats_after_delete() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+
+        let mut r1 = make_record("b", "key1");
+        r1.size = 100;
+        store.put_object(&r1).await.unwrap();
+
+        store.delete_object("b", "key1").await.unwrap();
+
+        let stats = store.get_stats().await.unwrap();
+        assert_eq!(stats.bucket_count, 1);
+        assert_eq!(stats.object_count, 0);
+        assert_eq!(stats.total_size_bytes, 0);
     }
 
     // -- Bucket tests --

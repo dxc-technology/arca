@@ -2,6 +2,7 @@
 //!
 //! This crate has zero I/O dependencies and is independently testable.
 
+pub mod credential;
 pub mod error;
 pub mod s3;
 pub mod store;
@@ -11,5 +12,5 @@ pub use error::{ArcaError, S3Error, S3ErrorCode};
 pub use s3::bucket_name::validate_bucket_name;
 pub use types::{
     BlobId, BucketInfo, Credential, ListBucketResultParams, ListEntry, MultipartUploadRecord,
-    ObjectRecord, PartRecord,
+    ObjectRecord, PartRecord, StorageStats,
 };

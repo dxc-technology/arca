@@ -1,20 +1,23 @@
-//! S3-compatible HTTP router.
+//! S3-compatible HTTP router with Admin API.
 
 use std::time::Duration;
 
-use axum::routing::get;
+use axum::routing::{delete, get, post};
 use axum::Router;
 use tower_http::trace::{DefaultMakeSpan, OnRequest, OnResponse, TraceLayer};
 use tracing::Level;
 
-use crate::handlers::{bucket, object};
+use crate::handlers::{admin, bucket, object};
 use crate::middleware;
 use crate::state::AppState;
 
-/// Builds the Axum router with all S3 routes and middleware.
+/// Builds the Axum router with all S3 routes, Admin API routes, and middleware.
 ///
 /// Layer order (outermost → innermost, i.e. request flows top-down):
 ///   TraceLayer → Auth → [VirtualHost] → handlers
+///
+/// Admin routes live under `/admin/*` with their own auth middleware
+/// (JSON errors instead of S3 XML). `/admin/health` is unauthenticated.
 ///
 /// **NormalizeLayer must be applied outside the Router** (in main.rs)
 /// because it needs to modify the URI *before* Axum routing.
@@ -22,7 +25,8 @@ use crate::state::AppState;
 pub fn build_router(state: AppState) -> Router {
     let has_domain = state.domain.is_some();
 
-    let mut app = Router::new()
+    // --- S3 router ---
+    let mut s3_app = Router::new()
         // Service-level: ListBuckets
         .route("/", get(bucket::list_buckets))
         // Bucket operations
@@ -46,26 +50,54 @@ pub fn build_router(state: AppState) -> Router {
 
     // Virtual-host rewrite runs innermost (closest to handlers).
     if has_domain {
-        app = app.layer(axum::middleware::from_fn_with_state(
+        s3_app = s3_app.layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::virtual_host::virtual_host_middleware,
         ));
     }
 
-    // Auth middleware verifies the original URI (saved by NormalizeLayer).
-    app = app.layer(axum::middleware::from_fn_with_state(
+    // S3 auth middleware (returns S3 XML errors).
+    s3_app = s3_app.layer(axum::middleware::from_fn_with_state(
         state.clone(),
         middleware::auth::auth_middleware,
     ));
 
-    // TraceLayer is outermost on the Router — logs all requests including auth failures.
-    app.layer(
-        TraceLayer::new_for_http()
-            .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
-            .on_request(RequestLogger)
-            .on_response(ResponseLogger),
-    )
-    .with_state(state)
+    // --- Admin router (authenticated endpoints) ---
+    let admin_auth = Router::new()
+        .route("/info", get(admin::info))
+        .route("/stats", get(admin::stats))
+        .route(
+            "/credentials",
+            get(admin::list_credentials).post(admin::create_credential),
+        )
+        .route(
+            "/credentials/{access_key_id}",
+            delete(admin::delete_credential),
+        )
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            middleware::admin_auth::admin_auth_middleware,
+        ));
+
+    // --- Admin router (public endpoints) ---
+    let admin_public = Router::new().route("/health", get(admin::health));
+
+    // --- Combine admin routers ---
+    let admin = Router::new().merge(admin_public).merge(admin_auth);
+
+    // --- Merge everything ---
+    // Admin routes are nested under /admin, S3 routes at root.
+    // TraceLayer is outermost — logs all requests including auth failures.
+    Router::new()
+        .nest("/admin", admin)
+        .merge(s3_app)
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+                .on_request(RequestLogger)
+                .on_response(ResponseLogger),
+        )
+        .with_state(state)
 }
 
 #[derive(Clone)]

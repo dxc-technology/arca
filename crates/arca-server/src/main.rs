@@ -48,6 +48,8 @@ async fn main() -> Result<()> {
                 blob: Arc::new(blob_store),
                 credentials: store as Arc<dyn CredentialStore>,
                 domain: config.server.domain.clone(),
+                started_at: std::time::Instant::now(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
             };
 
             let addr = format!("{}:{}", config.server.bind, config.server.port);
