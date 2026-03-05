@@ -37,5 +37,19 @@ services:
     profiles:
       - test
 
+  console:
+    image: arca-console
+    build:
+      context: ../console
+      dockerfile: Dockerfile
+    ports:
+      - "9080:3000"
+    environment:
+      - ARCA_ENDPOINT=http://localhost:9000
+    depends_on:
+      - arca
+    profiles:
+      - console
+
 volumes:
   arca-data:

@@ -13,7 +13,7 @@ use crate::xml::error_response::s3_error_response;
 /// Axum middleware that verifies AWS SigV4 signatures on every request.
 pub async fn auth_middleware(
     State(state): State<AppState>,
-    mut request: axum::extract::Request,
+    request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
     // 1. Extract Authorization header

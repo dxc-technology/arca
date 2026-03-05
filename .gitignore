@@ -8,3 +8,6 @@
 
 # OS
 .DS_Store
+
+# Playwright MCP
+.playwright-mcp/

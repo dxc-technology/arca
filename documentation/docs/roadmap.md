@@ -16,7 +16,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">6</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">7</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">8</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">9</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">9</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">10</div>
   </div>
 </div>
@@ -33,7 +33,7 @@ Implementation plan for Arca's MVP. Each phase builds on the previous one and en
 | 6 | [AWS SigV4 Authentication](#phase-6-aws-sigv4-authentication) | <span style="color:#4caf50">&#x2714;</span> |
 | 7 | [Disaster Recovery + Polish](#phase-7-disaster-recovery-polish) | <span style="color:#4caf50">&#x2714;</span> |
 | 8 | [Admin API](#phase-8-admin-api) | <span style="color:#4caf50">&#x2714;</span> |
-| 9 | [Web Console](#phase-9-web-console) | |
+| 9 | [Web Console](#phase-9-web-console) | <span style="color:#4caf50">&#x2714;</span> |
 | 10 | [S3 Compatibility Hardening](#phase-10-s3-compatibility-hardening) | |
 
 <!-- Status: green checkmark = done, :construction: = in progress, empty = not started -->
@@ -179,10 +179,11 @@ Endpoints live under `/admin/*` on the same port (9000), using SigV4 auth.
 Web-based administration console and bucket browser, deployed as a **separate application**
 (`console/` directory) that communicates with Arca exclusively via S3 API and Admin API.
 
-- [ ] Web console app (framework and design TBD)
-- [ ] Admin dashboard: server status, storage usage, credential management
-- [ ] Bucket browser: list buckets, browse objects, upload/download, delete
-- [ ] User manual
+- [x] Web console app: single-file Alpine.js + Tailwind CSS, "The Vault" dark theme, nginx:alpine Docker image
+- [x] Admin dashboard: bento-grid layout with server info, storage stats, SVG donut chart, health indicator, auto-refresh
+- [x] Bucket browser: list/create/delete buckets, prefix navigation with breadcrumbs, upload/download/delete objects, detail panel, treemap visualization
+- [x] Credential management: card grid, create with reveal-once secret, delete with confirmation, lockout warning
+- [x] Browser SigV4 signing via Web Crypto API, CORS middleware in Arca
 
 **Verify**: Web console connects to Arca and provides dashboard and bucket browsing.
 

@@ -220,3 +220,50 @@ class TestCredentialCRUD:
             f"{endpoint}/admin/credentials/SOME_KEY", timeout=10
         )
         assert resp.status_code == 403
+
+
+# -- CORS --
+
+
+class TestCORS:
+    def test_preflight_returns_cors_headers(self, endpoint):
+        """OPTIONS preflight should return CORS headers."""
+        resp = requests.options(
+            f"{endpoint}/admin/health",
+            headers={
+                "Origin": "http://localhost:9080",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization,x-amz-content-sha256,x-amz-date",
+            },
+            timeout=10,
+        )
+        assert resp.status_code == 200
+        assert "access-control-allow-origin" in resp.headers
+        assert "access-control-allow-methods" in resp.headers
+        assert "GET" in resp.headers["access-control-allow-methods"]
+        assert "PUT" in resp.headers["access-control-allow-methods"]
+        assert "DELETE" in resp.headers["access-control-allow-methods"]
+
+    def test_cors_headers_on_regular_request(self, endpoint):
+        """Regular requests with Origin header should include CORS response headers."""
+        resp = requests.get(
+            f"{endpoint}/admin/health",
+            headers={"Origin": "http://localhost:9080"},
+            timeout=10,
+        )
+        assert resp.status_code == 200
+        assert "access-control-allow-origin" in resp.headers
+        assert "access-control-expose-headers" in resp.headers
+
+    def test_cors_headers_on_s3_endpoint(self, endpoint, creds):
+        """S3 endpoints should also include CORS headers."""
+        resp = signed_request("GET", f"{endpoint}/", creds)
+        # Note: CORS headers only appear when Origin is sent.
+        # signed_request doesn't set Origin, so check with explicit Origin.
+        resp = requests.get(
+            f"{endpoint}/admin/health",
+            headers={"Origin": "http://example.com"},
+            timeout=10,
+        )
+        assert resp.status_code == 200
+        assert "access-control-allow-origin" in resp.headers

@@ -1,0 +1,1579 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arca Console</title>
+
+  <!-- Env var injection (replaced by docker-entrypoint.sh) -->
+  <script>
+    window.__ARCA_CONFIG__ = {
+      endpoint: "ARCA_INJECT_ENDPOINT_HERE"
+    };
+  </script>
+
+  <!-- Favicons -->
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            vault: {
+              bg: '#0f172a',
+              card: '#1e293b',
+              border: '#334155',
+              text: '#e2e8f0',
+              muted: '#94a3b8',
+              accent: '#00d4ff',
+              indigo: '#6366f1',
+            }
+          },
+          fontFamily: {
+            display: ['"DM Sans"', 'system-ui', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <style>
+    [x-cloak] { display: none !important; }
+
+    body {
+      font-family: 'DM Sans', system-ui, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+
+    /* Glassmorphism card */
+    .glass {
+      background: rgba(30, 41, 59, 0.6);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(51, 65, 85, 0.5);
+    }
+
+    /* Subtle glow on hover */
+    .glass-hover:hover {
+      border-color: rgba(0, 212, 255, 0.3);
+      box-shadow: 0 0 20px rgba(0, 212, 255, 0.05);
+    }
+
+    /* Pulse animation for health dot */
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.4); }
+      50% { box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); }
+    }
+    .pulse-green { animation: pulse-glow 2s ease-in-out infinite; }
+
+    @keyframes pulse-red {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.4); }
+      50% { box-shadow: 0 0 0 6px rgba(248, 113, 113, 0); }
+    }
+    .pulse-red { animation: pulse-red 2s ease-in-out infinite; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+    /* Drag-drop zone active */
+    .drop-active {
+      border-color: #00d4ff !important;
+      background: rgba(0, 212, 255, 0.05) !important;
+    }
+
+    /* Ring chart transition */
+    .ring-segment { transition: opacity 0.2s ease; }
+    .ring-segment:hover { opacity: 0.8; }
+
+    /* Treemap rect */
+    .treemap-rect { transition: opacity 0.15s ease; cursor: pointer; }
+    .treemap-rect:hover { opacity: 0.85; }
+
+    /* Slide-in panel */
+    .slide-panel {
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Login glow */
+    .login-glow {
+      background: radial-gradient(ellipse at 50% 0%, rgba(0, 212, 255, 0.08) 0%, transparent 60%);
+    }
+
+    /* Fade in animation */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in { animation: fadeIn 0.4s ease-out forwards; }
+    .fade-in-delay-1 { animation-delay: 0.05s; opacity: 0; }
+    .fade-in-delay-2 { animation-delay: 0.1s; opacity: 0; }
+    .fade-in-delay-3 { animation-delay: 0.15s; opacity: 0; }
+    .fade-in-delay-4 { animation-delay: 0.2s; opacity: 0; }
+  </style>
+</head>
+
+<body x-data="app()" x-init="init()" class="min-h-screen bg-vault-bg">
+
+  <!-- ==================== LOGIN SCREEN ==================== -->
+  <template x-if="!authenticated">
+    <div class="min-h-screen flex items-center justify-center login-glow" x-cloak>
+      <div class="w-full max-w-sm mx-4">
+        <!-- Logo -->
+        <div class="flex justify-center mb-8">
+          <svg class="w-20 h-20" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="l-legs" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#00d4ff"/>
+                <stop offset="100%" stop-color="#006699"/>
+              </linearGradient>
+              <linearGradient id="l-crossbar" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#00d4ff"/>
+                <stop offset="100%" stop-color="#0099cc"/>
+              </linearGradient>
+            </defs>
+            <path d="M100 22 L28 170 L52 170 L100 58 Z" fill="url(#l-legs)"/>
+            <path d="M100 22 L172 170 L148 170 L100 58 Z" fill="url(#l-legs)"/>
+            <path d="M56 130 Q100 118 144 130 L140 142 Q100 131 60 142 Z" fill="url(#l-crossbar)"/>
+            <circle cx="100" cy="136" r="5" fill="#002233" opacity="0.8"/>
+            <rect x="98.5" y="136" width="3" height="6" rx="1" fill="#002233" opacity="0.8"/>
+          </svg>
+        </div>
+
+        <h1 class="text-2xl font-semibold text-center mb-1 tracking-tight">Arca Console</h1>
+        <p class="text-vault-muted text-sm text-center mb-8">Sign in to manage your storage</p>
+
+        <form @submit.prevent="login()" class="space-y-4">
+          <!-- Endpoint field (shown only if not injected) -->
+          <div x-show="showEndpointField">
+            <label class="block text-xs font-medium text-vault-muted mb-1.5 uppercase tracking-wider">Endpoint URL</label>
+            <input type="url" x-model="loginForm.endpoint"
+              placeholder="http://localhost:9000"
+              class="w-full px-3.5 py-2.5 rounded-lg bg-vault-card border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition text-sm font-mono">
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-vault-muted mb-1.5 uppercase tracking-wider">Access Key ID</label>
+            <input type="text" x-model="loginForm.accessKey" required autocomplete="username"
+              placeholder="AKIAIOSFODNN7EXAMPLE"
+              class="w-full px-3.5 py-2.5 rounded-lg bg-vault-card border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition text-sm font-mono">
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-vault-muted mb-1.5 uppercase tracking-wider">Secret Access Key</label>
+            <input type="password" x-model="loginForm.secretKey" required autocomplete="current-password"
+              placeholder="wJalrXUtnFEMI/..."
+              class="w-full px-3.5 py-2.5 rounded-lg bg-vault-card border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition text-sm font-mono">
+          </div>
+
+          <button type="submit" :disabled="loginLoading"
+            class="w-full py-2.5 rounded-lg bg-gradient-to-r from-vault-accent to-cyan-400 text-vault-bg font-semibold text-sm hover:opacity-90 transition disabled:opacity-50 mt-2">
+            <span x-show="!loginLoading">Sign In</span>
+            <span x-show="loginLoading" class="flex items-center justify-center gap-2">
+              <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+              Connecting...
+            </span>
+          </button>
+
+          <p x-show="loginError" x-text="loginError" class="text-red-400 text-xs text-center mt-2"></p>
+        </form>
+      </div>
+    </div>
+  </template>
+
+  <!-- ==================== MAIN LAYOUT ==================== -->
+  <template x-if="authenticated">
+    <div class="flex min-h-screen" x-cloak>
+
+      <!-- Sidebar -->
+      <aside class="w-56 flex-shrink-0 border-r border-vault-border/50 flex flex-col bg-vault-bg/80">
+        <!-- Logo area -->
+        <div class="px-5 py-5 flex items-center gap-3">
+          <svg class="w-8 h-8 flex-shrink-0" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="s-legs" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#00d4ff"/>
+                <stop offset="100%" stop-color="#006699"/>
+              </linearGradient>
+              <linearGradient id="s-crossbar" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#00d4ff"/>
+                <stop offset="100%" stop-color="#0099cc"/>
+              </linearGradient>
+            </defs>
+            <path d="M100 22 L28 170 L52 170 L100 58 Z" fill="url(#s-legs)"/>
+            <path d="M100 22 L172 170 L148 170 L100 58 Z" fill="url(#s-legs)"/>
+            <path d="M56 130 Q100 118 144 130 L140 142 Q100 131 60 142 Z" fill="url(#s-crossbar)"/>
+            <circle cx="100" cy="136" r="5" fill="#002233" opacity="0.8"/>
+            <rect x="98.5" y="136" width="3" height="6" rx="1" fill="#002233" opacity="0.8"/>
+          </svg>
+          <div>
+            <div class="text-sm font-semibold tracking-tight">Arca</div>
+            <div class="text-[10px] text-vault-muted uppercase tracking-widest">Console</div>
+          </div>
+        </div>
+
+        <!-- Nav links -->
+        <nav class="flex-1 px-3 mt-2 space-y-0.5">
+          <a href="#/dashboard" @click="navigate('dashboard')"
+            :class="view === 'dashboard' ? 'bg-vault-accent/10 text-vault-accent border-vault-accent/30' : 'text-vault-muted hover:text-vault-text hover:bg-white/[0.03] border-transparent'"
+            class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition border">
+            <!-- Chart icon -->
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5"/></svg>
+            Dashboard
+          </a>
+          <a href="#/buckets" @click="navigate('buckets')"
+            :class="(view === 'buckets' || view === 'bucket-detail') ? 'bg-vault-accent/10 text-vault-accent border-vault-accent/30' : 'text-vault-muted hover:text-vault-text hover:bg-white/[0.03] border-transparent'"
+            class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition border">
+            <!-- Bucket icon -->
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/></svg>
+            Buckets
+          </a>
+          <a href="#/credentials" @click="navigate('credentials')"
+            :class="view === 'credentials' ? 'bg-vault-accent/10 text-vault-accent border-vault-accent/30' : 'text-vault-muted hover:text-vault-text hover:bg-white/[0.03] border-transparent'"
+            class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition border">
+            <!-- Key icon -->
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/></svg>
+            Credentials
+          </a>
+        </nav>
+
+        <!-- Logout -->
+        <div class="px-3 pb-4">
+          <button @click="logout()"
+            class="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-sm text-vault-muted hover:text-red-400 hover:bg-red-500/5 transition">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9"/></svg>
+            Sign Out
+          </button>
+        </div>
+      </aside>
+
+      <!-- Main content -->
+      <main class="flex-1 overflow-auto">
+
+        <!-- ==================== DASHBOARD ==================== -->
+        <template x-if="view === 'dashboard'">
+          <div class="p-6 max-w-6xl" x-data="dashboardView()" x-init="load()">
+            <div class="flex items-center justify-between mb-6">
+              <h2 class="text-xl font-semibold tracking-tight">Dashboard</h2>
+              <div class="flex items-center gap-2 text-xs text-vault-muted">
+                <div :class="health === 'ok' ? 'bg-green-400 pulse-green' : 'bg-red-400 pulse-red'" class="w-2 h-2 rounded-full"></div>
+                <span x-text="health === 'ok' ? 'Healthy' : 'Unreachable'"></span>
+              </div>
+            </div>
+
+            <!-- Bento grid -->
+            <div class="grid grid-cols-4 gap-4">
+              <!-- Server info (spans 2 cols) -->
+              <div class="col-span-2 glass rounded-xl p-5 glass-hover fade-in">
+                <div class="flex items-center gap-2 mb-4">
+                  <svg class="w-4 h-4 text-vault-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 01-3-3m3 3a3 3 0 100 6h13.5a3 3 0 100-6m-16.5-3a3 3 0 013-3h13.5a3 3 0 013 3m-19.5 0a4.5 4.5 0 01.9-2.7L5.737 5.1a3.375 3.375 0 012.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 01.9 2.7m0 0a3 3 0 01-3 3m0 3h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008zm-3 6h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008z"/></svg>
+                  <span class="text-xs font-medium text-vault-muted uppercase tracking-wider">Server</span>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <div class="text-vault-muted text-xs mb-1">Version</div>
+                    <div class="text-lg font-semibold font-mono" x-text="info.version || '—'"></div>
+                  </div>
+                  <div>
+                    <div class="text-vault-muted text-xs mb-1">Uptime</div>
+                    <div class="text-lg font-semibold" x-text="formatUptime(info.uptime_seconds)"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Bucket count -->
+              <div class="glass rounded-xl p-5 glass-hover fade-in fade-in-delay-1">
+                <div class="text-vault-muted text-xs mb-3 uppercase tracking-wider font-medium">Buckets</div>
+                <div class="text-3xl font-semibold text-vault-accent" x-text="stats.bucket_count ?? '—'"></div>
+              </div>
+
+              <!-- Object count -->
+              <div class="glass rounded-xl p-5 glass-hover fade-in fade-in-delay-2">
+                <div class="text-vault-muted text-xs mb-3 uppercase tracking-wider font-medium">Objects</div>
+                <div class="text-3xl font-semibold text-vault-indigo" x-text="stats.object_count ?? '—'"></div>
+              </div>
+
+              <!-- Storage ring (spans 2 cols, 2 rows) -->
+              <div class="col-span-2 row-span-2 glass rounded-xl p-5 glass-hover fade-in fade-in-delay-3">
+                <div class="flex items-center gap-2 mb-4">
+                  <svg class="w-4 h-4 text-vault-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 107.5 7.5h-7.5V6z"/><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0013.5 3v7.5z"/></svg>
+                  <span class="text-xs font-medium text-vault-muted uppercase tracking-wider">Storage Distribution</span>
+                </div>
+                <div class="flex flex-col items-center">
+                  <!-- Donut chart -->
+                  <div x-html="renderRing()"></div>
+                  <!-- Legend -->
+                  <div class="mt-3 w-full space-y-1.5 max-h-32 overflow-y-auto" x-show="bucketSizes.length > 0">
+                    <template x-for="(b, i) in bucketSizes" :key="b.name">
+                      <div class="flex items-center gap-2 text-xs">
+                        <div class="w-2.5 h-2.5 rounded-sm flex-shrink-0" :style="'background:' + ringColors[i % ringColors.length]"></div>
+                        <span class="truncate flex-1" x-text="b.name"></span>
+                        <span class="text-vault-muted font-mono" x-text="formatBytes(b.size)"></span>
+                      </div>
+                    </template>
+                  </div>
+                  <div x-show="bucketSizes.length === 0" class="text-vault-muted text-xs mt-4">No buckets yet</div>
+                </div>
+              </div>
+
+              <!-- Total storage -->
+              <div class="col-span-2 glass rounded-xl p-5 glass-hover fade-in fade-in-delay-4">
+                <div class="text-vault-muted text-xs mb-3 uppercase tracking-wider font-medium">Total Storage</div>
+                <div class="text-3xl font-semibold">
+                  <span class="bg-gradient-to-r from-vault-accent to-vault-indigo bg-clip-text text-transparent" x-text="formatBytes(stats.total_size_bytes || 0)"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- ==================== BUCKETS LIST ==================== -->
+        <template x-if="view === 'buckets'">
+          <div class="p-6 max-w-6xl" x-data="bucketsView()" x-init="load()">
+            <div class="flex items-center justify-between mb-6">
+              <h2 class="text-xl font-semibold tracking-tight">Buckets</h2>
+              <button @click="showCreateModal = true"
+                class="px-3.5 py-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 text-sm font-medium hover:bg-vault-accent/20 transition">
+                + Create Bucket
+              </button>
+            </div>
+
+            <!-- Bucket cards -->
+            <div x-show="!loading" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <template x-for="b in buckets" :key="b.name">
+                <div @click="openBucket(b.name)"
+                  class="glass rounded-xl p-5 glass-hover cursor-pointer transition group">
+                  <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-2">
+                      <svg class="w-5 h-5 text-vault-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/></svg>
+                      <span class="font-medium text-sm" x-text="b.name"></span>
+                    </div>
+                    <button @click.stop="confirmDeleteBucket(b.name)"
+                      class="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/10 text-vault-muted hover:text-red-400 transition">
+                      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+                    </button>
+                  </div>
+                  <div class="text-xs text-vault-muted">
+                    Created <span x-text="new Date(b.creationDate).toLocaleDateString()"></span>
+                  </div>
+                </div>
+              </template>
+            </div>
+
+            <div x-show="!loading && buckets.length === 0" class="text-center py-16">
+              <svg class="w-12 h-12 mx-auto text-vault-border mb-4" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/></svg>
+              <p class="text-vault-muted text-sm">No buckets yet. Create one to get started.</p>
+            </div>
+
+            <div x-show="loading" class="flex justify-center py-16">
+              <svg class="animate-spin h-6 w-6 text-vault-accent" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            </div>
+
+            <!-- Create bucket modal -->
+            <div x-show="showCreateModal" x-transition.opacity class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="showCreateModal = false">
+              <div class="glass rounded-xl p-6 w-full max-w-sm mx-4" @click.stop>
+                <h3 class="text-lg font-semibold mb-4">Create Bucket</h3>
+                <form @submit.prevent="createBucket()">
+                  <input type="text" x-model="newBucketName" required
+                    placeholder="my-bucket-name" pattern="[a-z0-9][a-z0-9.\-]{1,61}[a-z0-9]"
+                    class="w-full px-3.5 py-2.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition text-sm font-mono mb-1">
+                  <p class="text-[10px] text-vault-muted mb-4">Lowercase letters, numbers, hyphens, dots. 3-63 characters.</p>
+                  <div class="flex gap-3 justify-end">
+                    <button type="button" @click="showCreateModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                    <button type="submit" :disabled="creating" class="px-4 py-2 rounded-lg bg-vault-accent text-vault-bg text-sm font-medium hover:opacity-90 transition disabled:opacity-50">Create</button>
+                  </div>
+                  <p x-show="createError" x-text="createError" class="text-red-400 text-xs mt-2"></p>
+                </form>
+              </div>
+            </div>
+
+            <!-- Delete confirm modal -->
+            <div x-show="showDeleteModal" x-transition.opacity class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="showDeleteModal = false">
+              <div class="glass rounded-xl p-6 w-full max-w-sm mx-4" @click.stop>
+                <h3 class="text-lg font-semibold mb-2">Delete Bucket</h3>
+                <p class="text-sm text-vault-muted mb-4">Are you sure you want to delete <span class="text-vault-text font-mono" x-text="deleteBucketName"></span>? This cannot be undone.</p>
+                <div class="flex gap-3 justify-end">
+                  <button @click="showDeleteModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                  <button @click="deleteBucket()" class="px-4 py-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 text-sm font-medium hover:bg-red-500/30 transition">Delete</button>
+                </div>
+                <p x-show="deleteError" x-text="deleteError" class="text-red-400 text-xs mt-2"></p>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- ==================== BUCKET DETAIL (Object Browser) ==================== -->
+        <template x-if="view === 'bucket-detail'">
+          <div class="p-6 max-w-6xl" x-data="bucketDetailView()" x-init="load()">
+            <!-- Header with breadcrumbs -->
+            <div class="flex items-center justify-between mb-6">
+              <div class="flex items-center gap-2 text-sm">
+                <a href="#/buckets" @click="$store.app && navigate('buckets')" class="text-vault-muted hover:text-vault-accent transition">Buckets</a>
+                <span class="text-vault-border">/</span>
+                <button @click="navigatePrefix('')" class="text-vault-accent hover:underline font-medium" x-text="bucketName"></button>
+                <template x-for="(part, i) in prefixParts" :key="i">
+                  <span class="flex items-center gap-2">
+                    <span class="text-vault-border">/</span>
+                    <button @click="navigatePrefix(prefixUpTo(i))" class="text-vault-accent hover:underline" x-text="part"></button>
+                  </span>
+                </template>
+              </div>
+              <div class="flex items-center gap-2">
+                <button @click="showTreemap = !showTreemap"
+                  :class="showTreemap ? 'bg-vault-accent/20 text-vault-accent' : 'text-vault-muted'"
+                  class="p-2 rounded-lg border border-vault-border/50 hover:border-vault-accent/30 transition" title="Treemap view">
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"/></svg>
+                </button>
+                <label class="px-3.5 py-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 text-sm font-medium hover:bg-vault-accent/20 transition cursor-pointer">
+                  Upload Files
+                  <input type="file" multiple class="hidden" @change="uploadFiles($event.target.files)">
+                </label>
+              </div>
+            </div>
+
+            <!-- Drop zone -->
+            <div x-show="!showTreemap"
+              @dragover.prevent="dragActive = true"
+              @dragleave.prevent="dragActive = false"
+              @drop.prevent="dragActive = false; uploadFiles($event.dataTransfer.files)"
+              :class="dragActive ? 'drop-active' : ''"
+              class="border-2 border-dashed border-vault-border/50 rounded-xl mb-4 transition"
+              :style="dragActive ? '' : 'border-color: transparent'">
+
+              <!-- Upload progress -->
+              <div x-show="uploading" class="px-5 py-3">
+                <div class="flex items-center justify-between text-sm mb-2">
+                  <span class="text-vault-muted">Uploading <span x-text="uploadFileName"></span></span>
+                  <span class="text-vault-accent font-mono" x-text="uploadProgress + '%'"></span>
+                </div>
+                <div class="w-full h-1.5 rounded-full bg-vault-border/30 overflow-hidden">
+                  <div class="h-full bg-gradient-to-r from-vault-accent to-vault-indigo rounded-full transition-all duration-300" :style="'width:' + uploadProgress + '%'"></div>
+                </div>
+              </div>
+
+              <!-- Object list -->
+              <div x-show="!loading">
+                <!-- Directories -->
+                <template x-for="dir in directories" :key="dir">
+                  <div @click="navigatePrefix(dir)" class="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] cursor-pointer transition border-b border-vault-border/20">
+                    <svg class="w-5 h-5 text-vault-accent/70" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+                    <span class="text-sm" x-text="dirName(dir)"></span>
+                  </div>
+                </template>
+
+                <!-- Files -->
+                <template x-for="obj in objects" :key="obj.key">
+                  <div @click="selectObject(obj)" class="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] cursor-pointer transition border-b border-vault-border/20 group">
+                    <svg class="w-5 h-5 text-vault-muted" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+                    <span class="text-sm flex-1 truncate" x-text="fileName(obj.key)"></span>
+                    <span class="text-xs text-vault-muted font-mono" x-text="formatBytes(obj.size)"></span>
+                    <span class="text-xs text-vault-muted" x-text="new Date(obj.lastModified).toLocaleDateString()"></span>
+                    <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                      <button @click.stop="downloadObject(obj.key)" class="p-1 rounded hover:bg-vault-accent/10 text-vault-muted hover:text-vault-accent transition" title="Download">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                      </button>
+                      <button @click.stop="confirmDeleteObject(obj.key)" class="p-1 rounded hover:bg-red-500/10 text-vault-muted hover:text-red-400 transition" title="Delete">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+
+              <!-- Empty state -->
+              <div x-show="!loading && directories.length === 0 && objects.length === 0" class="py-16 text-center">
+                <svg class="w-12 h-12 mx-auto text-vault-border mb-4" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/></svg>
+                <p class="text-vault-muted text-sm mb-1">This location is empty</p>
+                <p class="text-vault-muted/60 text-xs">Drag and drop files here or click Upload</p>
+              </div>
+
+              <div x-show="loading" class="flex justify-center py-16">
+                <svg class="animate-spin h-6 w-6 text-vault-accent" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+              </div>
+            </div>
+
+            <!-- Treemap -->
+            <div x-show="showTreemap && objects.length > 0" class="glass rounded-xl p-4"
+              x-html="renderTreemap()"></div>
+
+            <!-- Object detail panel -->
+            <div x-show="selectedObject" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0"
+              class="fixed right-0 top-0 h-full w-80 glass border-l border-vault-border/50 z-40 slide-panel overflow-y-auto">
+              <div class="p-5">
+                <div class="flex items-center justify-between mb-5">
+                  <h3 class="text-sm font-semibold uppercase tracking-wider text-vault-muted">Object Detail</h3>
+                  <button @click="selectedObject = null" class="p-1 rounded hover:bg-white/5 text-vault-muted hover:text-vault-text transition">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                  </button>
+                </div>
+                <template x-if="selectedObject">
+                  <div class="space-y-4">
+                    <div>
+                      <div class="text-xs text-vault-muted mb-1">Key</div>
+                      <div class="text-sm font-mono break-all" x-text="selectedObject.key"></div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-vault-muted mb-1">Size</div>
+                      <div class="text-sm font-mono" x-text="formatBytes(selectedObject.size)"></div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-vault-muted mb-1">ETag</div>
+                      <div class="text-sm font-mono break-all" x-text="selectedObject.etag"></div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-vault-muted mb-1">Last Modified</div>
+                      <div class="text-sm" x-text="new Date(selectedObject.lastModified).toLocaleString()"></div>
+                    </div>
+                    <div class="flex gap-2 pt-2">
+                      <button @click="downloadObject(selectedObject.key)" class="flex-1 py-2 rounded-lg bg-vault-accent/10 text-vault-accent text-sm font-medium hover:bg-vault-accent/20 transition">Download</button>
+                      <button @click="confirmDeleteObject(selectedObject.key)" class="flex-1 py-2 rounded-lg bg-red-500/10 text-red-400 text-sm font-medium hover:bg-red-500/20 transition">Delete</button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- Delete object modal -->
+            <div x-show="showDeleteObjModal" x-transition.opacity class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="showDeleteObjModal = false">
+              <div class="glass rounded-xl p-6 w-full max-w-sm mx-4" @click.stop>
+                <h3 class="text-lg font-semibold mb-2">Delete Object</h3>
+                <p class="text-sm text-vault-muted mb-1">Are you sure you want to delete:</p>
+                <p class="text-sm font-mono text-vault-text mb-4 break-all" x-text="deleteObjKey"></p>
+                <div class="flex gap-3 justify-end">
+                  <button @click="showDeleteObjModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                  <button @click="deleteObject()" class="px-4 py-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 text-sm font-medium hover:bg-red-500/30 transition">Delete</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- ==================== CREDENTIALS ==================== -->
+        <template x-if="view === 'credentials'">
+          <div class="p-6 max-w-6xl" x-data="credentialsView()" x-init="load()">
+            <div class="flex items-center justify-between mb-6">
+              <h2 class="text-xl font-semibold tracking-tight">Credentials</h2>
+              <button @click="showCreateModal = true"
+                class="px-3.5 py-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 text-sm font-medium hover:bg-vault-accent/20 transition">
+                + Create Credential
+              </button>
+            </div>
+
+            <!-- Warning: only one credential -->
+            <div x-show="credentials.filter(c => c.active).length <= 1 && credentials.length > 0"
+              class="mb-4 px-4 py-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm flex items-center gap-2">
+              <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+              Only one active credential remains. Deleting it will lock you out.
+            </div>
+
+            <!-- Credential cards -->
+            <div x-show="!loading" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <template x-for="cred in credentials" :key="cred.access_key_id">
+                <div class="glass rounded-xl p-5 glass-hover transition">
+                  <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-2">
+                      <svg class="w-5 h-5 text-vault-indigo" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/></svg>
+                      <span :class="cred.active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'"
+                        class="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase" x-text="cred.active ? 'Active' : 'Inactive'"></span>
+                    </div>
+                    <button @click="confirmDeleteCred(cred.access_key_id)"
+                      class="p-1 rounded hover:bg-red-500/10 text-vault-muted hover:text-red-400 transition">
+                      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+                    </button>
+                  </div>
+                  <div class="font-mono text-xs text-vault-text mb-2 break-all" x-text="cred.access_key_id"></div>
+                  <div class="text-xs text-vault-muted" x-text="cred.description || '(no description)'"></div>
+                  <div class="text-[10px] text-vault-muted/60 mt-2" x-text="'Created ' + new Date(cred.created_at).toLocaleDateString()"></div>
+                </div>
+              </template>
+            </div>
+
+            <div x-show="loading" class="flex justify-center py-16">
+              <svg class="animate-spin h-6 w-6 text-vault-accent" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            </div>
+
+            <!-- Create credential modal -->
+            <div x-show="showCreateModal" x-transition.opacity class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="showCreateModal = false; newCredential = null">
+              <div class="glass rounded-xl p-6 w-full max-w-md mx-4" @click.stop>
+                <!-- Create form -->
+                <template x-if="!newCredential">
+                  <div>
+                    <h3 class="text-lg font-semibold mb-4">Create Credential</h3>
+                    <form @submit.prevent="createCredential()">
+                      <label class="block text-xs font-medium text-vault-muted mb-1.5 uppercase tracking-wider">Description (optional)</label>
+                      <input type="text" x-model="newCredDescription"
+                        placeholder="My application"
+                        class="w-full px-3.5 py-2.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition text-sm mb-4">
+                      <div class="flex gap-3 justify-end">
+                        <button type="button" @click="showCreateModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                        <button type="submit" :disabled="creating" class="px-4 py-2 rounded-lg bg-vault-accent text-vault-bg text-sm font-medium hover:opacity-90 transition disabled:opacity-50">Create</button>
+                      </div>
+                      <p x-show="createError" x-text="createError" class="text-red-400 text-xs mt-2"></p>
+                    </form>
+                  </div>
+                </template>
+                <!-- Show new credential (once) -->
+                <template x-if="newCredential">
+                  <div>
+                    <h3 class="text-lg font-semibold mb-1">Credential Created</h3>
+                    <p class="text-xs text-amber-400 mb-4">Save the secret key now — it won't be shown again.</p>
+                    <div class="space-y-3">
+                      <div>
+                        <div class="text-xs text-vault-muted mb-1">Access Key ID</div>
+                        <div class="flex items-center gap-2">
+                          <code class="text-sm font-mono bg-vault-bg px-3 py-1.5 rounded flex-1 break-all" x-text="newCredential.access_key_id"></code>
+                          <button @click="copyToClipboard(newCredential.access_key_id)" class="p-1.5 rounded hover:bg-white/5 text-vault-muted hover:text-vault-accent transition" title="Copy">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184"/></svg>
+                          </button>
+                        </div>
+                      </div>
+                      <div>
+                        <div class="text-xs text-vault-muted mb-1">Secret Access Key</div>
+                        <div class="flex items-center gap-2">
+                          <code class="text-sm font-mono bg-vault-bg px-3 py-1.5 rounded flex-1 break-all text-amber-400" x-text="newCredential.secret_access_key"></code>
+                          <button @click="copyToClipboard(newCredential.secret_access_key)" class="p-1.5 rounded hover:bg-white/5 text-vault-muted hover:text-vault-accent transition" title="Copy">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184"/></svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <button @click="showCreateModal = false; newCredential = null; load()"
+                      class="w-full mt-5 py-2 rounded-lg bg-vault-accent/10 text-vault-accent text-sm font-medium hover:bg-vault-accent/20 transition">
+                      Done
+                    </button>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- Delete confirm modal -->
+            <div x-show="showDeleteModal" x-transition.opacity class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="showDeleteModal = false">
+              <div class="glass rounded-xl p-6 w-full max-w-sm mx-4" @click.stop>
+                <h3 class="text-lg font-semibold mb-2">Delete Credential</h3>
+                <p class="text-sm text-vault-muted mb-1">Are you sure you want to delete:</p>
+                <p class="text-sm font-mono text-vault-text mb-4 break-all" x-text="deleteCredId"></p>
+                <div class="flex gap-3 justify-end">
+                  <button @click="showDeleteModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                  <button @click="deleteCred()" class="px-4 py-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 text-sm font-medium hover:bg-red-500/30 transition">Delete</button>
+                </div>
+                <p x-show="deleteError" x-text="deleteError" class="text-red-400 text-xs mt-2"></p>
+              </div>
+            </div>
+          </div>
+        </template>
+
+      </main>
+    </div>
+  </template>
+
+  <!-- ==================== TOAST NOTIFICATION ==================== -->
+  <div x-show="toast" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-1 translate-y-0"
+    x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-1" x-transition:leave-end="opacity-0"
+    class="fixed bottom-6 right-6 z-50 glass rounded-lg px-4 py-3 text-sm max-w-sm"
+    :class="toastType === 'error' ? 'border-red-500/30 text-red-400' : 'border-vault-accent/30 text-vault-accent'">
+    <span x-text="toast"></span>
+  </div>
+
+  <script>
+    // ==================== SigV4 SIGNER ====================
+    const SigV4 = {
+      async sha256(data) {
+        const buffer = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+        const hash = await crypto.subtle.digest('SHA-256', buffer);
+        return this.hexEncode(hash);
+      },
+
+      async hmac(key, data) {
+        const keyBuffer = typeof key === 'string' ? new TextEncoder().encode(key) : key;
+        const dataBuffer = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+        const cryptoKey = await crypto.subtle.importKey('raw', keyBuffer, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+        return await crypto.subtle.sign('HMAC', cryptoKey, dataBuffer);
+      },
+
+      hexEncode(buffer) {
+        return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+      },
+
+      uriEncode(str, encodeSlash = true) {
+        let result = '';
+        for (let i = 0; i < str.length; i++) {
+          const c = str[i];
+          if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c === '-' || c === '.' || c === '_' || c === '~') {
+            result += c;
+          } else if (c === '/' && !encodeSlash) {
+            result += '/';
+          } else {
+            const bytes = new TextEncoder().encode(c);
+            for (const b of bytes) result += '%' + b.toString(16).toUpperCase().padStart(2, '0');
+          }
+        }
+        return result;
+      },
+
+      async signingKey(secretKey, dateStamp, region, service) {
+        const kDate = await this.hmac('AWS4' + secretKey, dateStamp);
+        const kRegion = await this.hmac(kDate, region);
+        const kService = await this.hmac(kRegion, service);
+        return await this.hmac(kService, 'aws4_request');
+      },
+
+      async sign(method, url, headers, body, accessKey, secretKey, region = 'us-east-1', service = 's3') {
+        const parsedUrl = new URL(url);
+        const path = parsedUrl.pathname || '/';
+        const queryString = parsedUrl.search ? parsedUrl.search.slice(1) : '';
+
+        const now = new Date();
+        const dateStamp = now.toISOString().replace(/[-:]/g, '').slice(0, 8);
+        const amzDate = dateStamp + 'T' + now.toISOString().replace(/[-:]/g, '').slice(9, 15) + 'Z';
+
+        // Compute payload hash
+        let payloadHash;
+        if (body instanceof ArrayBuffer || body instanceof Uint8Array) {
+          payloadHash = await this.sha256(body);
+        } else if (typeof body === 'string' && body.length > 0) {
+          payloadHash = await this.sha256(body);
+        } else if (body === null || body === undefined || body === '') {
+          payloadHash = await this.sha256('');
+        } else {
+          // For File/Blob, use UNSIGNED-PAYLOAD to avoid reading entire file
+          payloadHash = 'UNSIGNED-PAYLOAD';
+        }
+
+        // Set required headers
+        headers['host'] = parsedUrl.host;
+        headers['x-amz-date'] = amzDate;
+        headers['x-amz-content-sha256'] = payloadHash;
+
+        // Signed headers (sorted, lowercase)
+        const signedHeaderNames = Object.keys(headers).map(h => h.toLowerCase()).sort();
+        const signedHeadersStr = signedHeaderNames.join(';');
+
+        // Canonical headers
+        const canonicalHeaders = signedHeaderNames.map(name => {
+          const val = headers[Object.keys(headers).find(k => k.toLowerCase() === name)];
+          return name + ':' + val.trim().replace(/\s+/g, ' ') + '\n';
+        }).join('');
+
+        // Canonical query string
+        let canonicalQueryString = '';
+        if (queryString) {
+          const params = [];
+          for (const part of queryString.split('&')) {
+            const eqIdx = part.indexOf('=');
+            if (eqIdx >= 0) {
+              params.push([decodeURIComponent(part.slice(0, eqIdx)), decodeURIComponent(part.slice(eqIdx + 1))]);
+            } else {
+              params.push([decodeURIComponent(part), '']);
+            }
+          }
+          params.sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0);
+          canonicalQueryString = params.map(([k, v]) => this.uriEncode(k, true) + '=' + this.uriEncode(v, true)).join('&');
+        }
+
+        // Canonical request
+        const canonicalRequest = [
+          method,
+          path,  // S3: path used verbatim
+          canonicalQueryString,
+          canonicalHeaders,
+          signedHeadersStr,
+          payloadHash,
+        ].join('\n');
+
+        const canonicalRequestHash = await this.sha256(canonicalRequest);
+
+        // Credential scope
+        const scope = `${dateStamp}/${region}/${service}/aws4_request`;
+
+        // String to sign
+        const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${scope}\n${canonicalRequestHash}`;
+
+        // Signing key and signature
+        const key = await this.signingKey(secretKey, dateStamp, region, service);
+        const signatureBuffer = await this.hmac(key, stringToSign);
+        const signature = this.hexEncode(signatureBuffer);
+
+        // Authorization header
+        headers['Authorization'] = `AWS4-HMAC-SHA256 Credential=${accessKey}/${scope}, SignedHeaders=${signedHeadersStr}, Signature=${signature}`;
+
+        return headers;
+      }
+    };
+
+    // ==================== API CLIENT ====================
+    function apiClient() {
+      const getEndpoint = () => sessionStorage.getItem('arca_endpoint') || '';
+      const getAccessKey = () => sessionStorage.getItem('arca_access_key') || '';
+      const getSecretKey = () => sessionStorage.getItem('arca_secret_key') || '';
+
+      return {
+        async request(method, path, { body = null, contentType = null, rawResponse = false, queryParams = {} } = {}) {
+          const endpoint = getEndpoint();
+          let url = endpoint + path;
+
+          // Append query params
+          const qp = Object.entries(queryParams).filter(([, v]) => v !== undefined);
+          if (qp.length > 0) {
+            const qs = qp.map(([k, v]) => v === '' ? encodeURIComponent(k) + '=' : encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');
+            url += (url.includes('?') ? '&' : '?') + qs;
+          }
+
+          const headers = {};
+          if (contentType) headers['Content-Type'] = contentType;
+
+          // Determine body for signing
+          let signBody = body;
+          if (body instanceof File || body instanceof Blob) {
+            signBody = body; // Will use UNSIGNED-PAYLOAD
+          }
+
+          await SigV4.sign(method, url, headers, signBody, getAccessKey(), getSecretKey());
+
+          const fetchOpts = { method, headers };
+          if (body !== null && body !== undefined) fetchOpts.body = body;
+
+          const resp = await fetch(url, fetchOpts);
+          if (rawResponse) return resp;
+          return resp;
+        },
+
+        // Admin API helpers (JSON)
+        async adminGet(path) {
+          const resp = await this.request('GET', '/admin' + path);
+          if (!resp.ok) throw new Error(`Admin API error: ${resp.status}`);
+          return resp.json();
+        },
+
+        async adminPost(path, data) {
+          const resp = await this.request('POST', '/admin' + path, {
+            body: JSON.stringify(data),
+            contentType: 'application/json',
+          });
+          return resp;
+        },
+
+        async adminDelete(path) {
+          return await this.request('DELETE', '/admin' + path);
+        },
+
+        // S3 API helpers (XML)
+        async s3ListBuckets() {
+          const resp = await this.request('GET', '/');
+          if (!resp.ok) throw new Error('Failed to list buckets');
+          const xml = await resp.text();
+          return this.parseListBuckets(xml);
+        },
+
+        async s3ListObjects(bucket, prefix = '', continuationToken = '') {
+          const params = { 'list-type': '2', delimiter: '/', prefix };
+          if (continuationToken) params['continuation-token'] = continuationToken;
+          const resp = await this.request('GET', '/' + encodeURIComponent(bucket), { queryParams: params });
+          if (!resp.ok) throw new Error('Failed to list objects');
+          const xml = await resp.text();
+          return this.parseListObjects(xml);
+        },
+
+        async s3CreateBucket(name) {
+          return await this.request('PUT', '/' + encodeURIComponent(name));
+        },
+
+        async s3DeleteBucket(name) {
+          return await this.request('DELETE', '/' + encodeURIComponent(name));
+        },
+
+        async s3PutObject(bucket, key, file) {
+          const headers = {};
+          if (file.type) headers['Content-Type'] = file.type;
+          return await this.request('PUT', '/' + encodeURIComponent(bucket) + '/' + key, { body: file });
+        },
+
+        async s3GetObject(bucket, key) {
+          return await this.request('GET', '/' + encodeURIComponent(bucket) + '/' + key, { rawResponse: true });
+        },
+
+        async s3DeleteObject(bucket, key) {
+          return await this.request('DELETE', '/' + encodeURIComponent(bucket) + '/' + key);
+        },
+
+        // Multipart upload
+        async s3CreateMultipartUpload(bucket, key) {
+          const resp = await this.request('POST', '/' + encodeURIComponent(bucket) + '/' + key, { queryParams: { uploads: '' } });
+          if (!resp.ok) throw new Error('Failed to create multipart upload');
+          const xml = await resp.text();
+          const doc = new DOMParser().parseFromString(xml, 'text/xml');
+          return doc.querySelector('UploadId')?.textContent || '';
+        },
+
+        async s3UploadPart(bucket, key, uploadId, partNumber, data) {
+          const resp = await this.request('PUT', '/' + encodeURIComponent(bucket) + '/' + key, {
+            body: data,
+            queryParams: { partNumber: String(partNumber), uploadId },
+          });
+          if (!resp.ok) throw new Error(`Failed to upload part ${partNumber}`);
+          return resp.headers.get('ETag');
+        },
+
+        async s3CompleteMultipartUpload(bucket, key, uploadId, parts) {
+          let xml = '<CompleteMultipartUpload>';
+          for (const p of parts) {
+            xml += `<Part><PartNumber>${p.partNumber}</PartNumber><ETag>${p.etag}</ETag></Part>`;
+          }
+          xml += '</CompleteMultipartUpload>';
+          return await this.request('POST', '/' + encodeURIComponent(bucket) + '/' + key, {
+            body: xml,
+            contentType: 'application/xml',
+            queryParams: { uploadId },
+          });
+        },
+
+        // XML parsing
+        parseListBuckets(xml) {
+          const doc = new DOMParser().parseFromString(xml, 'text/xml');
+          const buckets = [];
+          for (const b of doc.querySelectorAll('Bucket')) {
+            buckets.push({
+              name: b.querySelector('Name')?.textContent || '',
+              creationDate: b.querySelector('CreationDate')?.textContent || '',
+            });
+          }
+          return buckets;
+        },
+
+        parseListObjects(xml) {
+          const doc = new DOMParser().parseFromString(xml, 'text/xml');
+          const objects = [];
+          for (const c of doc.querySelectorAll('Contents')) {
+            objects.push({
+              key: c.querySelector('Key')?.textContent || '',
+              size: parseInt(c.querySelector('Size')?.textContent || '0', 10),
+              lastModified: c.querySelector('LastModified')?.textContent || '',
+              etag: c.querySelector('ETag')?.textContent || '',
+            });
+          }
+          const directories = [];
+          for (const cp of doc.querySelectorAll('CommonPrefixes')) {
+            directories.push(cp.querySelector('Prefix')?.textContent || '');
+          }
+          const isTruncated = doc.querySelector('IsTruncated')?.textContent === 'true';
+          const nextToken = doc.querySelector('NextContinuationToken')?.textContent || '';
+          return { objects, directories, isTruncated, nextToken };
+        },
+      };
+    }
+
+    const api = apiClient();
+
+    // ==================== SHARED HELPERS ====================
+    const ringColors = ['#00d4ff', '#6366f1', '#06b6d4', '#818cf8', '#22d3ee', '#a78bfa', '#67e8f9', '#c4b5fd'];
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function formatUptime(seconds) {
+      if (!seconds && seconds !== 0) return '—';
+      const d = Math.floor(seconds / 86400);
+      const h = Math.floor((seconds % 86400) / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      if (d > 0) return `${d}d ${h}h`;
+      if (h > 0) return `${h}h ${m}m`;
+      return `${m}m`;
+    }
+
+    // ==================== MAIN APP ====================
+    function app() {
+      // Pre-compute injected endpoint before Alpine wraps the data
+      const cfg = window.__ARCA_CONFIG__;
+      const hasEndpoint = cfg && cfg.endpoint && !cfg.endpoint.startsWith('ARCA_INJECT_') && cfg.endpoint.trim() !== '';
+      const hasSession = !!sessionStorage.getItem('arca_access_key');
+
+      return {
+        authenticated: hasSession,
+        view: 'dashboard',
+        currentBucket: '',
+        currentPrefix: '',
+        toast: '',
+        toastType: 'success',
+        toastTimeout: null,
+
+        // Login
+        loginForm: { endpoint: hasEndpoint ? cfg.endpoint : '', accessKey: '', secretKey: '' },
+        loginLoading: false,
+        loginError: '',
+        showEndpointField: !hasEndpoint,
+
+        init() {
+          // Hash router
+          this.handleRoute();
+          window.addEventListener('hashchange', () => this.handleRoute());
+        },
+
+        handleRoute() {
+          const hash = window.location.hash || '#/dashboard';
+          if (hash.startsWith('#/buckets/')) {
+            this.currentBucket = decodeURIComponent(hash.slice('#/buckets/'.length).split('?')[0]);
+            const prefixMatch = hash.match(/[?&]prefix=([^&]*)/);
+            this.currentPrefix = prefixMatch ? decodeURIComponent(prefixMatch[1]) : '';
+            this.view = 'bucket-detail';
+          } else if (hash === '#/buckets') {
+            this.view = 'buckets';
+          } else if (hash === '#/credentials') {
+            this.view = 'credentials';
+          } else {
+            this.view = 'dashboard';
+          }
+        },
+
+        navigate(view, params = {}) {
+          if (view === 'bucket-detail') {
+            let hash = '#/buckets/' + encodeURIComponent(params.bucket);
+            if (params.prefix) hash += '?prefix=' + encodeURIComponent(params.prefix);
+            window.location.hash = hash;
+          } else {
+            window.location.hash = '#/' + view;
+          }
+        },
+
+        async login() {
+          this.loginError = '';
+          this.loginLoading = true;
+          try {
+            const endpoint = this.loginForm.endpoint.replace(/\/+$/, '');
+            if (!endpoint) { this.loginError = 'Endpoint URL is required'; this.loginLoading = false; return; }
+            if (!this.loginForm.accessKey || !this.loginForm.secretKey) { this.loginError = 'Credentials are required'; this.loginLoading = false; return; }
+
+            sessionStorage.setItem('arca_endpoint', endpoint);
+            sessionStorage.setItem('arca_access_key', this.loginForm.accessKey);
+            sessionStorage.setItem('arca_secret_key', this.loginForm.secretKey);
+
+            // Test connection: health (unauthenticated)
+            const healthResp = await fetch(endpoint + '/admin/health', { timeout: 5000 });
+            if (!healthResp.ok) throw new Error('Cannot reach Arca server');
+
+            // Test credentials: signed info request
+            const info = await api.adminGet('/info');
+            if (!info.version) throw new Error('Unexpected response');
+
+            this.authenticated = true;
+            window.location.hash = '#/dashboard';
+          } catch (e) {
+            sessionStorage.clear();
+            this.loginError = e.message || 'Connection failed';
+          }
+          this.loginLoading = false;
+        },
+
+        logout() {
+          sessionStorage.clear();
+          this.authenticated = false;
+          this.loginForm.accessKey = '';
+          this.loginForm.secretKey = '';
+          window.location.hash = '#/dashboard';
+        },
+
+        showToast(message, type = 'success') {
+          this.toast = message;
+          this.toastType = type;
+          clearTimeout(this.toastTimeout);
+          this.toastTimeout = setTimeout(() => { this.toast = ''; }, 3000);
+        },
+
+        copyToClipboard(text) {
+          navigator.clipboard.writeText(text).then(() => this.showToast('Copied to clipboard'));
+        },
+      };
+    }
+
+    // ==================== DASHBOARD VIEW ====================
+    function dashboardView() {
+      return {
+        health: 'unknown',
+        info: {},
+        stats: {},
+        bucketSizes: [],
+        ringSegments: [],
+        ringColors,
+        refreshInterval: null,
+
+        async load() {
+          await this.refresh();
+          this.refreshInterval = setInterval(() => this.refresh(), 30000);
+        },
+
+        async refresh() {
+          try {
+            // Health (unauthenticated)
+            const endpoint = sessionStorage.getItem('arca_endpoint');
+            const hResp = await fetch(endpoint + '/admin/health');
+            const hBody = await hResp.json();
+            this.health = hBody.status || 'error';
+          } catch { this.health = 'error'; }
+
+          try { this.info = await api.adminGet('/info'); } catch {}
+          try { this.stats = await api.adminGet('/stats'); } catch {}
+
+          // Get per-bucket sizes via ListBuckets + ListObjects
+          try {
+            const buckets = await api.s3ListBuckets();
+            const sizes = [];
+            for (const b of buckets) {
+              try {
+                // Get all objects to sum sizes
+                let totalSize = 0;
+                let token = '';
+                do {
+                  const params = { 'list-type': '2' };
+                  if (token) params['continuation-token'] = token;
+                  const resp = await api.request('GET', '/' + encodeURIComponent(b.name), { queryParams: params });
+                  const xml = await resp.text();
+                  const result = api.parseListObjects(xml);
+                  for (const obj of result.objects) totalSize += obj.size;
+                  token = result.isTruncated ? result.nextToken : '';
+                } while (token);
+                sizes.push({ name: b.name, size: totalSize });
+              } catch { sizes.push({ name: b.name, size: 0 }); }
+            }
+            this.bucketSizes = sizes;
+            this.computeRing(sizes);
+          } catch {}
+        },
+
+        computeRing(sizes) {
+          const total = sizes.reduce((s, b) => s + b.size, 0);
+          if (total === 0) { this.ringSegments = []; return; }
+
+          const circumference = 2 * Math.PI * 70; // r=70
+          let offset = 0;
+          this.ringSegments = sizes.filter(b => b.size > 0).map((b, i) => {
+            const fraction = b.size / total;
+            const dash = fraction * circumference;
+            const gap = circumference - dash;
+            const seg = {
+              color: this.ringColors[i % this.ringColors.length],
+              dash: `${dash} ${gap}`,
+              offset: -offset,
+            };
+            offset += dash;
+            return seg;
+          });
+        },
+
+        renderRing() {
+          let circles = '';
+          if (this.ringSegments.length === 0) {
+            circles = '<circle cx="100" cy="100" r="70" fill="none" stroke="#334155" stroke-width="24" opacity="0.3"/>';
+          } else {
+            for (const seg of this.ringSegments) {
+              circles += `<circle cx="100" cy="100" r="70" fill="none" stroke="${seg.color}" stroke-width="24" stroke-dasharray="${seg.dash}" stroke-dashoffset="${seg.offset}" transform="rotate(-90 100 100)" class="ring-segment" stroke-linecap="round"/>`;
+            }
+          }
+          const totalLabel = formatBytes(this.stats.total_size_bytes || 0);
+          return `<svg viewBox="0 0 200 200" class="w-48 h-48">${circles}<text x="100" y="95" text-anchor="middle" fill="#e2e8f0" font-size="16" font-weight="600" font-family="DM Sans, system-ui">${totalLabel}</text><text x="100" y="115" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="DM Sans, system-ui">Total</text></svg>`;
+        },
+
+        formatBytes,
+        formatUptime,
+
+        destroy() { clearInterval(this.refreshInterval); },
+      };
+    }
+
+    // ==================== BUCKETS VIEW ====================
+    function bucketsView() {
+      return {
+        buckets: [],
+        loading: true,
+        showCreateModal: false,
+        showDeleteModal: false,
+        newBucketName: '',
+        deleteBucketName: '',
+        creating: false,
+        createError: '',
+        deleteError: '',
+
+        async load() {
+          this.loading = true;
+          try { this.buckets = await api.s3ListBuckets(); } catch {}
+          this.loading = false;
+        },
+
+        openBucket(name) {
+          this.$root.__x_app = this;
+          window.location.hash = '#/buckets/' + encodeURIComponent(name);
+        },
+
+        async createBucket() {
+          this.creating = true;
+          this.createError = '';
+          try {
+            const resp = await api.s3CreateBucket(this.newBucketName);
+            if (!resp.ok) {
+              const text = await resp.text();
+              throw new Error(text.match(/<Message>(.*?)<\/Message>/)?.[1] || `Error ${resp.status}`);
+            }
+            this.showCreateModal = false;
+            this.newBucketName = '';
+            await this.load();
+          } catch (e) { this.createError = e.message; }
+          this.creating = false;
+        },
+
+        confirmDeleteBucket(name) {
+          this.deleteBucketName = name;
+          this.deleteError = '';
+          this.showDeleteModal = true;
+        },
+
+        async deleteBucket() {
+          this.deleteError = '';
+          try {
+            const resp = await api.s3DeleteBucket(this.deleteBucketName);
+            if (!resp.ok) {
+              const text = await resp.text();
+              throw new Error(text.match(/<Message>(.*?)<\/Message>/)?.[1] || `Error ${resp.status}`);
+            }
+            this.showDeleteModal = false;
+            await this.load();
+          } catch (e) { this.deleteError = e.message; }
+        },
+      };
+    }
+
+    // ==================== BUCKET DETAIL VIEW ====================
+    function bucketDetailView() {
+      // Parse bucket name and prefix from hash at construction time
+      const hash = window.location.hash || '';
+      const bucketFromHash = decodeURIComponent(hash.slice('#/buckets/'.length).split('?')[0]);
+      const prefixMatch = hash.match(/[?&]prefix=([^&]*)/);
+      const prefixFromHash = prefixMatch ? decodeURIComponent(prefixMatch[1]) : '';
+
+      return {
+        bucketName: bucketFromHash,
+        prefix: prefixFromHash,
+        objects: [],
+        directories: [],
+        loading: true,
+        selectedObject: null,
+        showTreemap: false,
+        treemapRects: [],
+        dragActive: false,
+        uploading: false,
+        uploadFileName: '',
+        uploadProgress: 0,
+        showDeleteObjModal: false,
+        deleteObjKey: '',
+        ringColors,
+
+        get prefixParts() {
+          if (!this.prefix) return [];
+          return this.prefix.split('/').filter(Boolean);
+        },
+
+        prefixUpTo(index) {
+          return this.prefixParts.slice(0, index + 1).join('/') + '/';
+        },
+
+        async load() {
+          this.loading = true;
+          const bucket = this.bucketName;
+          try {
+            const result = await api.s3ListObjects(bucket, this.prefix);
+            this.objects = result.objects;
+            this.directories = result.directories;
+            if (this.showTreemap) this.computeTreemap();
+          } catch (e) { console.error(e); }
+          this.loading = false;
+        },
+
+        navigatePrefix(newPrefix) {
+          this.prefix = newPrefix;
+          let hash = '#/buckets/' + encodeURIComponent(this.bucketName);
+          if (newPrefix) hash += '?prefix=' + encodeURIComponent(newPrefix);
+          window.location.hash = hash;
+          this.selectedObject = null;
+          this.$nextTick(() => this.load());
+        },
+
+        dirName(dir) {
+          const parts = dir.replace(/\/$/, '').split('/');
+          return parts[parts.length - 1] + '/';
+        },
+
+        fileName(key) {
+          const parts = key.split('/');
+          return parts[parts.length - 1];
+        },
+
+        selectObject(obj) {
+          this.selectedObject = obj;
+        },
+
+        async downloadObject(key) {
+          const bucket = this.bucketName;
+          try {
+            const resp = await api.s3GetObject(bucket, key);
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = this.fileName(key);
+            a.click();
+            URL.revokeObjectURL(url);
+          } catch (e) {
+            this.$dispatch('show-toast', { message: 'Download failed: ' + e.message, type: 'error' });
+          }
+        },
+
+        confirmDeleteObject(key) {
+          this.deleteObjKey = key;
+          this.showDeleteObjModal = true;
+        },
+
+        async deleteObject() {
+          const bucket = this.bucketName;
+          try {
+            const resp = await api.s3DeleteObject(bucket, this.deleteObjKey);
+            if (!resp.ok) throw new Error('Delete failed');
+            this.showDeleteObjModal = false;
+            this.selectedObject = null;
+            await this.load();
+          } catch (e) {
+            console.error(e);
+          }
+        },
+
+        async uploadFiles(files) {
+          if (!files || files.length === 0) return;
+          const bucket = this.bucketName;
+          const prefix = this.prefix;
+
+          for (const file of files) {
+            const key = prefix + file.name;
+            this.uploading = true;
+            this.uploadFileName = file.name;
+            this.uploadProgress = 0;
+
+            try {
+              const MULTIPART_THRESHOLD = 100 * 1024 * 1024; // 100MB
+              if (file.size > MULTIPART_THRESHOLD) {
+                await this.multipartUpload(bucket, key, file);
+              } else {
+                await api.s3PutObject(bucket, key, file);
+                this.uploadProgress = 100;
+              }
+            } catch (e) {
+              console.error('Upload failed:', e);
+            }
+          }
+
+          this.uploading = false;
+          await this.load();
+        },
+
+        async multipartUpload(bucket, key, file) {
+          const PART_SIZE = 5 * 1024 * 1024; // 5MB
+          const uploadId = await api.s3CreateMultipartUpload(bucket, key);
+          const parts = [];
+          const totalParts = Math.ceil(file.size / PART_SIZE);
+
+          for (let i = 0; i < totalParts; i++) {
+            const start = i * PART_SIZE;
+            const end = Math.min(start + PART_SIZE, file.size);
+            const chunk = file.slice(start, end);
+            const data = await chunk.arrayBuffer();
+
+            const etag = await api.s3UploadPart(bucket, key, uploadId, i + 1, data);
+            parts.push({ partNumber: i + 1, etag: etag });
+            this.uploadProgress = Math.round(((i + 1) / totalParts) * 100);
+          }
+
+          await api.s3CompleteMultipartUpload(bucket, key, uploadId, parts);
+        },
+
+        // Treemap (squarified layout)
+        computeTreemap() {
+          const items = this.objects.filter(o => o.size > 0).map(o => ({ obj: o, size: o.size }));
+          if (items.length === 0) { this.treemapRects = []; return; }
+          items.sort((a, b) => b.size - a.size);
+          this.treemapRects = squarify(items, 0, 0, 800, 400);
+        },
+
+        renderTreemap() {
+          if (this.treemapRects.length === 0) return '';
+          let rects = '';
+          for (let i = 0; i < this.treemapRects.length; i++) {
+            const r = this.treemapRects[i];
+            const color = ringColors[i % ringColors.length];
+            const label = (r.w > 50 && r.h > 20) ? `<text x="${r.x + r.w/2}" y="${r.y + r.h/2}" text-anchor="middle" dominant-baseline="middle" fill="white" font-size="10" font-family="DM Sans, system-ui">${this.fileName(r.obj.key)}</text>` : '';
+            rects += `<g class="treemap-rect" style="cursor:pointer"><rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" fill="${color}" rx="3" opacity="0.7"/>${label}</g>`;
+          }
+          return `<svg viewBox="0 0 800 400" class="w-full" style="height:350px">${rects}</svg>`;
+        },
+
+        formatBytes,
+      };
+    }
+
+    // Squarified treemap algorithm
+    function squarify(items, x, y, w, h) {
+      if (items.length === 0) return [];
+      if (items.length === 1) return [{ ...items[0], x, y, w, h }];
+
+      const total = items.reduce((s, i) => s + i.size, 0);
+      const rects = [];
+
+      let remaining = [...items];
+      let cx = x, cy = y, cw = w, ch = h;
+
+      while (remaining.length > 0) {
+        const isWide = cw >= ch;
+        const side = isWide ? ch : cw;
+        const totalRemaining = remaining.reduce((s, i) => s + i.size, 0);
+
+        // Find best row
+        let row = [remaining[0]];
+        let rowArea = (remaining[0].size / totalRemaining) * cw * ch;
+        let bestRatio = worstRatio(row, side, totalRemaining, cw * ch);
+
+        for (let i = 1; i < remaining.length; i++) {
+          const testRow = [...row, remaining[i]];
+          const testRatio = worstRatio(testRow, side, totalRemaining, cw * ch);
+          if (testRatio <= bestRatio) {
+            row = testRow;
+            bestRatio = testRatio;
+          } else {
+            break;
+          }
+        }
+
+        // Lay out row
+        const rowTotalSize = row.reduce((s, i) => s + i.size, 0);
+        const rowFraction = rowTotalSize / totalRemaining;
+
+        if (isWide) {
+          const rowWidth = cw * rowFraction;
+          let ry = cy;
+          for (const item of row) {
+            const itemHeight = ch * (item.size / rowTotalSize);
+            rects.push({ ...item, x: cx, y: ry, w: rowWidth, h: itemHeight });
+            ry += itemHeight;
+          }
+          cx += rowWidth;
+          cw -= rowWidth;
+        } else {
+          const rowHeight = ch * rowFraction;
+          let rx = cx;
+          for (const item of row) {
+            const itemWidth = cw * (item.size / rowTotalSize);
+            rects.push({ ...item, x: rx, y: cy, w: itemWidth, h: rowHeight });
+            rx += itemWidth;
+          }
+          cy += rowHeight;
+          ch -= rowHeight;
+        }
+
+        remaining = remaining.slice(row.length);
+      }
+
+      return rects;
+    }
+
+    function worstRatio(row, side, total, area) {
+      const rowTotal = row.reduce((s, i) => s + i.size, 0);
+      const rowArea = (rowTotal / total) * area;
+      const rowSide = rowArea / side;
+      let worst = 0;
+      for (const item of row) {
+        const itemArea = (item.size / total) * area;
+        const itemSide = itemArea / rowSide;
+        const ratio = Math.max(itemSide / rowSide, rowSide / itemSide);
+        worst = Math.max(worst, ratio);
+      }
+      return worst;
+    }
+
+    // ==================== CREDENTIALS VIEW ====================
+    function credentialsView() {
+      return {
+        credentials: [],
+        loading: true,
+        showCreateModal: false,
+        showDeleteModal: false,
+        newCredDescription: '',
+        newCredential: null,
+        deleteCredId: '',
+        creating: false,
+        createError: '',
+        deleteError: '',
+
+        async load() {
+          this.loading = true;
+          try { this.credentials = await api.adminGet('/credentials'); } catch {}
+          this.loading = false;
+        },
+
+        async createCredential() {
+          this.creating = true;
+          this.createError = '';
+          try {
+            const resp = await api.adminPost('/credentials', { description: this.newCredDescription });
+            if (!resp.ok) {
+              const body = await resp.json();
+              throw new Error(body.error || `Error ${resp.status}`);
+            }
+            this.newCredential = await resp.json();
+            this.newCredDescription = '';
+          } catch (e) { this.createError = e.message; }
+          this.creating = false;
+        },
+
+        confirmDeleteCred(id) {
+          this.deleteCredId = id;
+          this.deleteError = '';
+          this.showDeleteModal = true;
+        },
+
+        async deleteCred() {
+          this.deleteError = '';
+          try {
+            const resp = await api.adminDelete('/credentials/' + this.deleteCredId);
+            if (!resp.ok) {
+              const body = await resp.json();
+              throw new Error(body.message || body.error || `Error ${resp.status}`);
+            }
+            this.showDeleteModal = false;
+            await this.load();
+          } catch (e) { this.deleteError = e.message; }
+        },
+
+        copyToClipboard(text) {
+          navigator.clipboard.writeText(text);
+        },
+      };
+    }
+  </script>
+</body>
+</html>

@@ -2,8 +2,11 @@
 
 use std::time::Duration;
 
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get};
 use axum::Router;
+use http::header::{AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE, ETAG};
+use http::{HeaderName, Method};
+use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, OnRequest, OnResponse, TraceLayer};
 use tracing::Level;
 
@@ -85,12 +88,39 @@ pub fn build_router(state: AppState) -> Router {
     // --- Combine admin routers ---
     let admin = Router::new().merge(admin_public).merge(admin_auth);
 
+    // --- CORS layer ---
+    // Allows the web console (running on a different origin) and third-party
+    // clients to access both S3 and Admin API endpoints.
+    let cors = CorsLayer::very_permissive()
+        .allow_methods([
+            Method::GET,
+            Method::PUT,
+            Method::POST,
+            Method::DELETE,
+            Method::HEAD,
+            Method::OPTIONS,
+        ])
+        .allow_headers(AllowHeaders::list([
+            AUTHORIZATION,
+            CONTENT_TYPE,
+            HeaderName::from_static("x-amz-content-sha256"),
+            HeaderName::from_static("x-amz-date"),
+            HeaderName::from_static("x-amz-copy-source"),
+            HeaderName::from_static("x-amz-metadata-directive"),
+        ]))
+        .expose_headers([
+            ETAG,
+            CONTENT_LENGTH,
+            HeaderName::from_static("x-amz-request-id"),
+        ]);
+
     // --- Merge everything ---
     // Admin routes are nested under /admin, S3 routes at root.
-    // TraceLayer is outermost — logs all requests including auth failures.
+    // Layer order (outermost → innermost): Trace → CORS → Auth → Handlers
     Router::new()
         .nest("/admin", admin)
         .merge(s3_app)
+        .layer(cors)
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
