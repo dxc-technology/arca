@@ -810,7 +810,7 @@
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">7</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">8</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">9</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">10</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">10</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">11</div>
   </div>
 </div>
@@ -878,7 +878,7 @@
 <tr>
 <td style="text-align: center;">10</td>
 <td><a href="#phase-10-s3-compatibility-hardening">S3 Compatibility Hardening</a></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">11</td>
@@ -1013,11 +1013,11 @@ Endpoints live under <code>/admin/*</code> on the same port (9000), using SigV4 
 <h2 id="phase-10-s3-compatibility-hardening">Phase 10 — S3 Compatibility Hardening<a class="headerlink" href="#phase-10-s3-compatibility-hardening" title="Permanent link">&para;</a></h2>
 <p>Run industry-standard compatibility tests and harden edge cases.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Set up Ceph s3-tests in Docker (<code>s3-tests/Dockerfile</code> + <code>s3tests.conf</code>)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Run test suite, triage failures (many expected: ACLs, versioning, etc.)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Fix XML namespace/formatting issues, header edge cases, error code mismatches</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Track pass/fail list, prevent regressions in CI</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Performance testing with concurrent requests + large files</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Set up Ceph s3-tests in Docker (<code>docker/s3-tests/Dockerfile</code> + <code>s3tests.conf</code>, <code>bin/s3-tests</code> runner)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Run test suite, triage failures — 198 pass / 540 fail / 91 skip (see <code>s3-tests/TRIAGE.md</code>)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Fix compatibility issues: <code>x-amz-request-id</code>/<code>x-amz-id-2</code>/<code>Server</code> headers, <code>GetBucketLocation</code>, <code>CreateBucket</code> idempotency, <code>ListObjectsV1</code>, empty delimiter handling, whitespace-preserving <code>DeleteObjects</code> XML parser, unimplemented PUT bucket ops return 501</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Track pass/fail list (<code>s3-tests/passlist.txt</code>), HTML compatibility dashboard (<code>s3-tests/report.html</code>)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Performance testing with concurrent requests + large files (<code>tests/perf/perf_test.py</code>, <code>bin/perf-test</code>)</li>
 </ul>
 <p><strong>Verify</strong>: Ceph s3-tests running in CI, pass/fail list tracked, no regressions.</p>
 <hr />

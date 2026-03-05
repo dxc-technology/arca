@@ -19,13 +19,11 @@ class TestCreateBucket:
         s3_client.delete_bucket(Bucket="test-create")
 
     def test_create_duplicate_bucket(self, s3_client):
-        """Creating the same bucket twice should return BucketAlreadyOwnedByYou."""
+        """Creating the same bucket twice should succeed (idempotent, 200)."""
         s3_client.create_bucket(Bucket="test-dupe")
 
-        with pytest.raises(ClientError) as exc_info:
-            s3_client.create_bucket(Bucket="test-dupe")
-
-        assert exc_info.value.response["Error"]["Code"] == "BucketAlreadyOwnedByYou"
+        # Re-creating a bucket you own should succeed (not raise).
+        s3_client.create_bucket(Bucket="test-dupe")
 
         # Cleanup
         s3_client.delete_bucket(Bucket="test-dupe")

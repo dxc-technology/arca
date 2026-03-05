@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run performance tests against a running Arca instance.
+#
+# Usage:
+#   bin/perf-test                    Run with defaults
+#   bin/perf-test --threads 20       Override thread count
+#   bin/perf-test --build            Rebuild the perf image first
+
+cd "$(git rev-parse --show-toplevel)"
+
+COMPOSE="docker compose -f docker/docker-compose.yml --profile perf"
+BUILD=false
+EXTRA_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --build)
+            BUILD=true
+            shift
+            ;;
+        *)
+            EXTRA_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if $BUILD; then
+    echo "==> Building perf-test image..."
+    $COMPOSE build perf-test
+fi
+
+echo "==> Running performance tests..."
+$COMPOSE run --rm perf-test "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"

@@ -17,7 +17,7 @@ use crate::state::AppState;
 /// Builds the Axum router with all S3 routes, Admin API routes, and middleware.
 ///
 /// Layer order (outermost → innermost, i.e. request flows top-down):
-///   TraceLayer → Auth → [VirtualHost] → handlers
+///   RequestId → TraceLayer → Auth → [VirtualHost] → handlers
 ///
 /// Admin routes live under `/admin/*` with their own auth middleware
 /// (JSON errors instead of S3 XML). `/admin/health` is unauthenticated.
@@ -116,7 +116,8 @@ pub fn build_router(state: AppState) -> Router {
 
     // --- Merge everything ---
     // Admin routes are nested under /admin, S3 routes at root.
-    // Layer order (outermost → innermost): Trace → CORS → Auth → Handlers
+    // Layer order (outermost → innermost):
+    //   RequestId → Trace → CORS → Auth → Handlers
     Router::new()
         .nest("/admin", admin)
         .merge(s3_app)
@@ -127,6 +128,9 @@ pub fn build_router(state: AppState) -> Router {
                 .on_request(RequestLogger)
                 .on_response(ResponseLogger),
         )
+        .layer(axum::middleware::from_fn(
+            middleware::request_id::request_id_middleware,
+        ))
         .with_state(state)
 }
 

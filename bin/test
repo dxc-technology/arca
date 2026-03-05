@@ -23,6 +23,11 @@ run_integration() {
     $COMPOSE run --rm test "$@"
 }
 
+run_s3_compat() {
+    echo "==> Running s3-tests compatibility suite..."
+    exec "$(git rev-parse --show-toplevel)/bin/s3-tests" "$@"
+}
+
 case "${1:-all}" in
     unit)
         shift
@@ -32,13 +37,17 @@ case "${1:-all}" in
         shift
         run_integration "$@"
         ;;
+    s3-compat)
+        shift
+        run_s3_compat "$@"
+        ;;
     all)
         run_unit
         echo ""
         run_integration
         ;;
     *)
-        echo "Usage: bin/test [unit|integration|all] [extra args...]" >&2
+        echo "Usage: bin/test [unit|integration|s3-compat|all] [extra args...]" >&2
         exit 1
         ;;
 esac

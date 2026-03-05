@@ -7,7 +7,7 @@ use http::StatusCode;
 
 use arca_core::s3::xml_types;
 use arca_core::s3::xml_types::{DeleteErrorEntry, DeletedEntry};
-use arca_core::types::{ListBucketResultParams, ListEntry, ObjectRecord};
+use arca_core::types::{ListBucketResultParams, ListBucketV1ResultParams, ListEntry, ObjectRecord};
 use arca_core::{validate_bucket_name, S3Error, S3ErrorCode};
 
 use crate::state::AppState;
@@ -55,25 +55,38 @@ pub async fn get_bucket(
             .map(|(_, v)| v.as_str())
     };
 
+    // GetBucketLocation: s3-tests and clients call ?location during setup.
+    if params.iter().any(|(k, _)| k == "location") {
+        // Check bucket exists first.
+        match state.metadata.head_bucket(&bucket).await {
+            Ok(Some(_)) => {
+                let xml = xml_types::location_constraint();
+                return Response::builder()
+                    .status(StatusCode::OK)
+                    .header("Content-Type", "application/xml")
+                    .body(Body::from(xml))
+                    .expect("build location response");
+            }
+            Ok(None) => {
+                return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource));
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
+    }
+
     // ListObjectVersions: mc sends ?versions= for recursive delete.
     // Since we don't support versioning, return current objects as Version entries.
     if params.iter().any(|(k, _)| k == "versions") {
         return list_object_versions(state, &bucket, &resource, &params).await;
     }
 
-    // Only handle ListObjectsV2 (list-type=2). V1 returns 501.
+    // Dispatch based on list-type parameter.
     match get_param("list-type") {
-        Some("2") => {}
-        Some(_) => return not_implemented_response(&resource),
-        None => {
-            // No list-type param at all — treat as V2 (boto3 sends list-type=2,
-            // but aws cli without --query may not; be lenient).
-            // Actually, aws CLI always sends list-type=2 for `aws s3 ls`.
-            // For strict S3 compat, we could 501 here, but being lenient is safer.
-        }
+        Some("2") => list_objects_v2(state, &bucket, &resource, &params).await,
+        Some(_) => not_implemented_response(&resource),
+        // No list-type: ListObjects V1 (used by older SDKs and s3-tests).
+        None => list_objects_v1(state, &bucket, &resource, &params).await,
     }
-
-    list_objects_v2(state, &bucket, &resource, &params).await
 }
 
 /// Handles ListObjectsV2 requests.
@@ -202,6 +215,104 @@ async fn list_objects_v2(
         .header("Content-Type", "application/xml")
         .body(Body::from(xml))
         .expect("build list_objects_v2 response")
+}
+
+/// Handles ListObjects V1 requests.
+///
+/// V1 uses `Marker`/`NextMarker` instead of `ContinuationToken`/`NextContinuationToken`.
+async fn list_objects_v1(
+    state: AppState,
+    bucket: &str,
+    resource: &str,
+    params: &[(String, String)],
+) -> Response {
+    let get_param = |name: &str| -> Option<&str> {
+        params
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
+    };
+
+    // Check bucket exists.
+    match state.metadata.head_bucket(bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, resource));
+        }
+        Err(e) => return internal_error_response(e, resource),
+    }
+
+    let prefix = get_param("prefix");
+    let delimiter = get_param("delimiter");
+    let marker = get_param("marker");
+
+    let max_keys: u32 = match get_param("max-keys") {
+        Some(s) => match s.parse() {
+            Ok(n) if n <= 1000 => n,
+            Ok(_) => 1000,
+            Err(_) => {
+                return s3_error_response(S3Error::with_message(
+                    S3ErrorCode::InvalidArgument,
+                    "Invalid value for max-keys",
+                    resource,
+                ));
+            }
+        },
+        None => 1000,
+    };
+
+    // Fetch max_keys + 1 to detect truncation.
+    let fetch_limit = max_keys + 1;
+    let records = match state
+        .metadata
+        .list_objects(bucket, prefix, marker, fetch_limit)
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => return internal_error_response(e, resource),
+    };
+
+    let is_truncated = records.len() as u32 > max_keys;
+    let records = if is_truncated {
+        &records[..max_keys as usize]
+    } else {
+        &records[..]
+    };
+
+    // Extract common prefixes if delimiter is set.
+    let (contents, common_prefixes) = match delimiter {
+        Some(delim) if !delim.is_empty() => {
+            extract_common_prefixes(records, prefix.unwrap_or(""), delim)
+        }
+        _ => (records.iter().map(record_to_list_entry).collect(), vec![]),
+    };
+
+    // NextMarker: set when truncated and delimiter is used (or just use last key).
+    let next_marker = if is_truncated {
+        records.last().map(|r| r.key.as_str())
+    } else {
+        None
+    };
+
+    let xml_params = ListBucketV1ResultParams {
+        name: bucket,
+        prefix,
+        delimiter,
+        marker,
+        next_marker,
+        max_keys,
+        is_truncated,
+        contents: &contents,
+        common_prefixes: &common_prefixes,
+        encoding_type: None,
+    };
+
+    let xml = xml_types::list_bucket_v1_result(&xml_params);
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/xml")
+        .body(Body::from(xml))
+        .expect("build list_objects_v1 response")
 }
 
 /// Handles ListObjectVersions requests.
@@ -356,12 +467,31 @@ pub async fn head_bucket(
     }
 }
 
-/// PUT /{bucket} — CreateBucket
+/// PUT /{bucket} — CreateBucket or other bucket-level PUT operations.
+///
+/// S3 overloads `PUT /{bucket}` with query parameters for versioning,
+/// logging, lifecycle, etc. We dispatch unimplemented operations to 501.
 pub async fn create_bucket(
     State(state): State<AppState>,
     Path(bucket): Path<String>,
+    request: axum::extract::Request,
 ) -> Response {
     let resource = format!("/{bucket}");
+    let query = request.uri().query().unwrap_or("");
+
+    // Dispatch unimplemented bucket-level PUT operations.
+    let unimplemented_ops = [
+        "versioning", "acl", "lifecycle", "cors", "logging",
+        "notification", "policy", "replication", "tagging",
+        "encryption", "object-lock", "website", "accelerate",
+        "requestPayment", "inventory", "analytics", "metrics",
+        "ownershipControls", "publicAccessBlock", "intelligenttiering",
+    ];
+    for op in &unimplemented_ops {
+        if query.starts_with(op) || query.starts_with(&format!("{op}=")) || query.starts_with(&format!("{op}&")) {
+            return not_implemented_response(&resource);
+        }
+    }
 
     // Validate bucket name
     if let Err(e) = validate_bucket_name(&bucket) {
@@ -374,6 +504,16 @@ pub async fn create_bucket(
             .header("Location", format!("/{bucket}"))
             .body(axum::body::Body::empty())
             .expect("build create bucket response"),
+        Err(arca_core::ArcaError::S3(ref s3err))
+            if s3err.code == S3ErrorCode::BucketAlreadyOwnedByYou =>
+        {
+            // Idempotent: re-creating a bucket you own returns 200 (not 409).
+            Response::builder()
+                .status(StatusCode::OK)
+                .header("Location", format!("/{bucket}"))
+                .body(axum::body::Body::empty())
+                .expect("build create bucket response")
+        }
         Err(e) => internal_error_response(e, &resource),
     }
 }

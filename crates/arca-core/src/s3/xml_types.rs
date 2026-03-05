@@ -4,7 +4,8 @@ use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, Event};
 use quick_xml::Writer;
 
 use crate::error::write_xml_element;
-use crate::types::{BucketInfo, ListBucketResultParams, ListEntry};
+use crate::types::{BucketInfo, ListBucketResultParams, ListBucketV1ResultParams, ListEntry};
+
 
 // -- Multipart upload XML types --
 
@@ -52,8 +53,57 @@ pub struct DeleteObject {
 }
 
 /// Parses a `DeleteObjects` XML request body.
+///
+/// Uses the event-based API instead of serde because quick_xml's serde
+/// deserializer trims whitespace from text nodes, which corrupts keys
+/// that are whitespace-only (e.g. `" "`).
 pub fn parse_delete_objects(xml: &str) -> Result<DeleteObjectsBody, quick_xml::DeError> {
-    quick_xml::de::from_str(xml)
+    use quick_xml::events::Event;
+    use quick_xml::Reader;
+
+    let mut reader = Reader::from_str(xml);
+    // Ensure whitespace in text content is preserved.
+    reader.config_mut().trim_text(false);
+
+    let mut quiet = false;
+    let mut objects = Vec::new();
+    let mut current_key: Option<String> = None;
+    let mut inside_tag: Option<String> = None;
+    let mut buf = Vec::new();
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) => {
+                let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                inside_tag = Some(name);
+            }
+            Ok(Event::Text(e)) => {
+                if let Some(ref tag) = inside_tag {
+                    let text = e.unescape().map_err(|e| quick_xml::DeError::InvalidXml(e.into()))?.to_string();
+                    match tag.as_str() {
+                        "Key" => current_key = Some(text),
+                        "Quiet" => quiet = text.trim() == "true",
+                        _ => {}
+                    }
+                }
+            }
+            Ok(Event::End(e)) => {
+                let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                if name == "Object" {
+                    if let Some(key) = current_key.take() {
+                        objects.push(DeleteObject { key });
+                    }
+                }
+                inside_tag = None;
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(quick_xml::DeError::InvalidXml(e.into())),
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    Ok(DeleteObjectsBody { quiet, objects })
 }
 
 /// Builds the XML response for the `ListAllMyBucketsResult` (ListBuckets).
@@ -198,7 +248,9 @@ pub fn list_bucket_result(params: &ListBucketResultParams) -> String {
     );
 
     if let Some(delimiter) = params.delimiter {
-        write_xml_element(&mut writer, "Delimiter", delimiter);
+        if !delimiter.is_empty() {
+            write_xml_element(&mut writer, "Delimiter", delimiter);
+        }
     }
 
     if let Some(token) = params.continuation_token {
@@ -211,6 +263,76 @@ pub fn list_bucket_result(params: &ListBucketResultParams) -> String {
 
     if let Some(start_after) = params.start_after {
         write_xml_element(&mut writer, "StartAfter", start_after);
+    }
+
+    if let Some(encoding) = params.encoding_type {
+        write_xml_element(&mut writer, "EncodingType", encoding);
+    }
+
+    // <Contents> entries
+    for entry in params.contents {
+        write_list_entry(&mut writer, entry);
+    }
+
+    // <CommonPrefixes>
+    for prefix in params.common_prefixes {
+        writer
+            .write_event(Event::Start(BytesStart::new("CommonPrefixes")))
+            .expect("write CommonPrefixes start");
+        write_xml_element(&mut writer, "Prefix", prefix);
+        writer
+            .write_event(Event::End(BytesEnd::new("CommonPrefixes")))
+            .expect("write CommonPrefixes end");
+    }
+
+    writer
+        .write_event(Event::End(BytesEnd::new("ListBucketResult")))
+        .expect("write root end");
+
+    String::from_utf8(writer.into_inner()).expect("valid UTF-8 XML")
+}
+
+/// Builds the XML response for `ListBucketResult` (ListObjects V1).
+///
+/// V1 uses `Marker`/`NextMarker` instead of `ContinuationToken`/`NextContinuationToken`,
+/// and does not include `KeyCount`.
+pub fn list_bucket_v1_result(params: &ListBucketV1ResultParams) -> String {
+    let mut writer = Writer::new(Vec::new());
+
+    writer
+        .write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
+        .expect("write XML decl");
+
+    let mut root = BytesStart::new("ListBucketResult");
+    root.push_attribute(("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
+    writer
+        .write_event(Event::Start(root))
+        .expect("write root start");
+
+    write_xml_element(&mut writer, "Name", params.name);
+
+    if let Some(prefix) = params.prefix {
+        write_xml_element(&mut writer, "Prefix", prefix);
+    } else {
+        write_xml_element(&mut writer, "Prefix", "");
+    }
+
+    // V1: Marker (always present, empty string if not set)
+    write_xml_element(&mut writer, "Marker", params.marker.unwrap_or(""));
+
+    if let Some(next_marker) = params.next_marker {
+        write_xml_element(&mut writer, "NextMarker", next_marker);
+    }
+
+    write_xml_element(&mut writer, "MaxKeys", &params.max_keys.to_string());
+    write_xml_element(
+        &mut writer,
+        "IsTruncated",
+        if params.is_truncated { "true" } else { "false" },
+    );
+
+    if let Some(delimiter) = params.delimiter {
+        write_xml_element(&mut writer, "Delimiter", delimiter);
     }
 
     if let Some(encoding) = params.encoding_type {
@@ -385,6 +507,31 @@ pub fn list_versions_result(
     writer
         .write_event(Event::End(BytesEnd::new("ListVersionsResult")))
         .expect("write root end");
+
+    String::from_utf8(writer.into_inner()).expect("valid UTF-8 XML")
+}
+
+/// Builds the XML response for `GetBucketLocation`.
+///
+/// Returns an empty `LocationConstraint` element, which indicates US Standard
+/// (the default region). This is what S3 returns for `us-east-1`.
+///
+/// ```xml
+/// <?xml version="1.0" encoding="UTF-8"?>
+/// <LocationConstraint xmlns="http://s3.amazonaws.com/doc/2006-03-01/"/>
+/// ```
+pub fn location_constraint() -> String {
+    let mut writer = Writer::new(Vec::new());
+
+    writer
+        .write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
+        .expect("write XML decl");
+
+    let mut elem = BytesStart::new("LocationConstraint");
+    elem.push_attribute(("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
+    writer
+        .write_event(Event::Empty(elem))
+        .expect("write LocationConstraint");
 
     String::from_utf8(writer.into_inner()).expect("valid UTF-8 XML")
 }
@@ -759,6 +906,17 @@ mod tests {
     }
 
     #[test]
+    fn parse_delete_objects_preserves_whitespace_key() {
+        let xml = r#"<Delete>
+            <Object><Key> </Key></Object>
+        </Delete>"#;
+
+        let body = parse_delete_objects(xml).unwrap();
+        assert_eq!(body.objects.len(), 1);
+        assert_eq!(body.objects[0].key, " ");
+    }
+
+    #[test]
     fn parse_delete_objects_no_quiet_defaults_false() {
         let xml = r#"<Delete>
             <Object><Key>k</Key></Object>
@@ -802,6 +960,15 @@ mod tests {
 
         assert!(!xml.contains("<Deleted>"));
         assert!(!xml.contains("<Key>a.txt</Key>"));
+    }
+
+    #[test]
+    fn location_constraint_xml() {
+        let xml = location_constraint();
+        assert!(xml.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
+        assert!(xml.contains("<LocationConstraint"));
+        assert!(xml.contains("xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\""));
+        assert!(xml.contains("/>"));
     }
 
     #[test]

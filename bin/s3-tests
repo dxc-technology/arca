@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run Ceph s3-tests against a running Arca instance.
+#
+# Usage:
+#   bin/s3-tests                          Run default test_s3.py
+#   bin/s3-tests -- -k bucket_list        Filter by name
+#   bin/s3-tests --passlist               Run only pass-listed tests
+#   bin/s3-tests --build                  Rebuild the s3-tests image first
+
+cd "$(git rev-parse --show-toplevel)"
+
+COMPOSE="docker compose -f docker/docker-compose.yml --profile s3-tests"
+PASSLIST="s3-tests/passlist.txt"
+BUILD=false
+PASSLIST_MODE=false
+EXTRA_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --build)
+            BUILD=true
+            shift
+            ;;
+        --passlist)
+            PASSLIST_MODE=true
+            shift
+            ;;
+        --)
+            shift
+            EXTRA_ARGS+=("$@")
+            break
+            ;;
+        *)
+            EXTRA_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if $BUILD; then
+    echo "==> Building s3-tests image..."
+    $COMPOSE build s3-tests
+fi
+
+# Build pytest arguments
+PYTEST_ARGS=("s3tests/functional/test_s3.py" "-v" "--tb=short" "--timeout=30")
+PYTEST_ARGS+=("--junitxml=/s3-tests/output/results.xml")
+
+if $PASSLIST_MODE; then
+    if [[ ! -f "$PASSLIST" ]]; then
+        echo "Error: passlist not found at $PASSLIST" >&2
+        exit 1
+    fi
+    # Build a -k expression using exact test names joined with "or".
+    # Wrap each name in parentheses to avoid substring matches.
+    EXPR=""
+    while IFS= read -r line; do
+        line="${line%%#*}"       # strip comments
+        line="$(echo "$line" | tr -d '[:space:]')"
+        [[ -z "$line" ]] && continue
+        if [[ -z "$EXPR" ]]; then
+            EXPR="$line"
+        else
+            EXPR="$EXPR or $line"
+        fi
+    done < "$PASSLIST"
+
+    if [[ -z "$EXPR" ]]; then
+        echo "Error: passlist is empty" >&2
+        exit 1
+    fi
+    PYTEST_ARGS+=("-k" "$EXPR")
+fi
+
+PYTEST_ARGS+=("${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}")
+
+echo "==> Running s3-tests..."
+$COMPOSE run --rm s3-tests "${PYTEST_ARGS[@]}"
+EXIT_CODE=$?
+
+# Generate HTML report if results.xml exists
+if [[ -f "s3-tests/results.xml" ]]; then
+    echo ""
+    echo "==> Generating compatibility report..."
+    $COMPOSE run --rm --entrypoint python s3-tests /s3-tests/report.py \
+        /s3-tests/output/results.xml /s3-tests/output/report.html \
+        /s3-tests/output/passlist.txt 2>/dev/null || true
+fi
+
+exit $EXIT_CODE

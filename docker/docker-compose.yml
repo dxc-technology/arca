@@ -51,5 +51,33 @@ services:
     profiles:
       - console
 
+  s3-tests:
+    image: arca-s3-tests
+    build:
+      context: s3-tests
+      dockerfile: Dockerfile
+    environment:
+      - S3TEST_CONF=/s3-tests/s3tests.conf
+    volumes:
+      - ../s3-tests:/s3-tests/output
+    depends_on:
+      - arca
+    profiles:
+      - s3-tests
+
+  perf-test:
+    image: arca-perf-test
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.perf
+    environment:
+      - ARCA_ENDPOINT=http://arca:9000
+      - AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+      - AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+    depends_on:
+      - arca
+    profiles:
+      - perf
+
 volumes:
   arca-data:

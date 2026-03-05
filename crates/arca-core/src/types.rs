@@ -72,6 +72,21 @@ pub struct ListBucketResultParams<'a> {
     pub encoding_type: Option<&'a str>,
 }
 
+/// Parameters for building a `ListBucketResult` XML response (V1 format).
+#[derive(Debug)]
+pub struct ListBucketV1ResultParams<'a> {
+    pub name: &'a str,
+    pub prefix: Option<&'a str>,
+    pub delimiter: Option<&'a str>,
+    pub marker: Option<&'a str>,
+    pub next_marker: Option<&'a str>,
+    pub max_keys: u32,
+    pub is_truncated: bool,
+    pub contents: &'a [ListEntry],
+    pub common_prefixes: &'a [String],
+    pub encoding_type: Option<&'a str>,
+}
+
 /// Metadata about an in-progress multipart upload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultipartUploadRecord {

@@ -46,7 +46,7 @@ impl S3ErrorCode {
             S3ErrorCode::AccessDenied => 403,
             S3ErrorCode::BadDigest => 400,
             S3ErrorCode::BucketAlreadyExists => 409,
-            S3ErrorCode::BucketAlreadyOwnedByYou => 409,
+            S3ErrorCode::BucketAlreadyOwnedByYou => 200,
             S3ErrorCode::BucketNotEmpty => 409,
             S3ErrorCode::EntityTooSmall => 400,
             S3ErrorCode::InternalError => 500,
@@ -260,7 +260,7 @@ mod tests {
         assert_eq!(S3ErrorCode::NoSuchKey.http_status(), 404);
         assert_eq!(S3ErrorCode::NoSuchUpload.http_status(), 404);
         assert_eq!(S3ErrorCode::BucketAlreadyExists.http_status(), 409);
-        assert_eq!(S3ErrorCode::BucketAlreadyOwnedByYou.http_status(), 409);
+        assert_eq!(S3ErrorCode::BucketAlreadyOwnedByYou.http_status(), 200);
         assert_eq!(S3ErrorCode::BucketNotEmpty.http_status(), 409);
         assert_eq!(S3ErrorCode::InvalidBucketName.http_status(), 400);
         assert_eq!(S3ErrorCode::InvalidPart.http_status(), 400);
