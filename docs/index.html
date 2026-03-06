@@ -351,6 +351,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Quick Start">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#web-console" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Web Console
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -586,6 +603,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Quick Start">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#web-console" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Web Console
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -663,6 +697,7 @@
 <li><strong>Streaming-first</strong> — never buffers full objects in memory</li>
 <li><strong>Disaster recovery</strong> — sidecar <code>.meta</code> files alongside every blob enable full database rebuild</li>
 <li><strong>Modular storage</strong> — metadata backend behind traits (SQLite now, Postgres later)</li>
+<li><strong>Web console</strong> — browser-based UI for managing buckets, objects, and credentials</li>
 <li><strong>Written in Rust</strong> — memory safety, performance, zero-cost abstractions</li>
 </ul>
 <h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
@@ -690,6 +725,11 @@
 <a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="c1"># List objects</span>
 <a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>aws<span class="w"> </span>s3<span class="w"> </span>ls<span class="w"> </span>s3://my-bucket<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
 </code></pre></div>
+<h3 id="web-console">Web Console<a class="headerlink" href="#web-console" title="Permanent link">&para;</a></h3>
+<p>Arca includes a browser-based web console for managing buckets, objects, and credentials. Start it alongside the server:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>bin/console<span class="w"> </span>--build<span class="w"> </span>-d
+</code></pre></div>
+<p>Open <a href="http://localhost:9080">http://localhost:9080</a>, enter the Arca endpoint (<code>http://localhost:9000</code>) and your credentials to get started. Admin credentials unlock additional features like credential management and server stats.</p>
 <h2 id="development-scripts">Development Scripts<a class="headerlink" href="#development-scripts" title="Permanent link">&para;</a></h2>
 <p>Convenience scripts in <code>bin/</code> wrap docker compose commands:</p>
 <table>

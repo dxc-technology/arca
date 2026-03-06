@@ -23,6 +23,7 @@ Arca is a ground-up implementation of the S3 API, designed for 100% compatibilit
 - **Streaming-first** — never buffers full objects in memory
 - **Disaster recovery** — sidecar `.meta` files alongside every blob enable full database rebuild
 - **Modular storage** — metadata backend behind traits (SQLite now, Postgres later)
+- **Web console** — browser-based UI for managing buckets, objects, and credentials
 - **[S3 compatibility tested](https://dxc-technology.github.io/arca/s3-compatibility/)** — validated against [Ceph s3-tests](https://github.com/ceph/s3-tests) (198 passing)
 
 ## MVP API Surface
@@ -48,6 +49,16 @@ aws s3 mb s3://my-bucket --endpoint-url http://localhost:9000
 aws s3 cp myfile.txt s3://my-bucket/ --endpoint-url http://localhost:9000
 aws s3 ls s3://my-bucket --endpoint-url http://localhost:9000
 ```
+
+### Web Console
+
+Arca ships with a browser-based web console for managing buckets, objects, and credentials:
+
+```bash
+docker compose -f docker/docker-compose.yml --profile console up -d
+```
+
+Open [http://localhost:9080](http://localhost:9080), enter the Arca endpoint and your credentials to get started.
 
 ## Architecture
 

@@ -32,6 +32,7 @@ Arca is not just a name. It is a promise: your data, preserved.
 - **Streaming-first** — never buffers full objects in memory
 - **Disaster recovery** — sidecar `.meta` files alongside every blob enable full database rebuild
 - **Modular storage** — metadata backend behind traits (SQLite now, Postgres later)
+- **Web console** — browser-based UI for managing buckets, objects, and credentials
 - **Written in Rust** — memory safety, performance, zero-cost abstractions
 
 ## Quick Start
@@ -65,6 +66,16 @@ aws s3 cp myfile.txt s3://my-bucket/ --endpoint-url http://localhost:9000
 # List objects
 aws s3 ls s3://my-bucket --endpoint-url http://localhost:9000
 ```
+
+### Web Console
+
+Arca includes a browser-based web console for managing buckets, objects, and credentials. Start it alongside the server:
+
+```bash
+bin/console --build -d
+```
+
+Open [http://localhost:9080](http://localhost:9080), enter the Arca endpoint (`http://localhost:9000`) and your credentials to get started. Admin credentials unlock additional features like credential management and server stats.
 
 ## Development Scripts
 
