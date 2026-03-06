@@ -186,6 +186,10 @@ Web-based administration console and bucket browser, deployed as a **separate ap
 - [x] Bucket browser: list/create/delete buckets, prefix navigation with breadcrumbs, upload/download/delete objects, detail panel, treemap visualization
 - [x] Credential management: card grid, create with reveal-once secret, delete with confirmation, lockout warning
 - [x] Browser SigV4 signing via Web Crypto API, CORS middleware in Arca
+- [x] Admin flag on credentials: `admin` boolean field, migration v5, CLI `--admin` flag
+- [x] Admin-only access to Admin API endpoints (non-admin gets 403)
+- [x] Role-aware console: admin sees dashboard + credentials + buckets; non-admin sees buckets only
+- [x] Lockout prevention: cannot delete last admin credential
 
 **Verify**: Web console connects to Arca and provides dashboard and bucket browsing.
 

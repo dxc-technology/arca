@@ -9,5 +9,8 @@
 # OS
 .DS_Store
 
+# Python
+__pycache__/
+
 # Playwright MCP
 .playwright-mcp/

@@ -123,4 +123,5 @@ pub struct Credential {
     pub description: String,
     pub created_at: DateTime<Utc>,
     pub active: bool,
+    pub admin: bool,
 }

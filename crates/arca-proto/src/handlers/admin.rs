@@ -76,12 +76,15 @@ struct CredentialResponse {
     description: String,
     created_at: String,
     active: bool,
+    admin: bool,
 }
 
 #[derive(Deserialize)]
 pub struct CreateCredentialRequest {
     #[serde(default)]
     description: String,
+    #[serde(default)]
+    admin: bool,
 }
 
 // -- Handlers --
@@ -127,6 +130,7 @@ pub async fn list_credentials(
             description: c.description,
             created_at: c.created_at.to_rfc3339(),
             active: c.active,
+            admin: c.admin,
         })
         .collect();
 
@@ -138,7 +142,7 @@ pub async fn create_credential(
     State(state): State<AppState>,
     Json(body): Json<CreateCredentialRequest>,
 ) -> Result<impl IntoResponse, AdminError> {
-    let cred = arca_core::credential::generate_credential(&body.description);
+    let cred = arca_core::credential::generate_credential(&body.description, body.admin);
 
     state
         .credentials
@@ -152,6 +156,7 @@ pub async fn create_credential(
         description: cred.description,
         created_at: cred.created_at.to_rfc3339(),
         active: cred.active,
+        admin: cred.admin,
     };
 
     Ok((StatusCode::CREATED, Json(response)))
@@ -176,11 +181,26 @@ pub async fn delete_credential(
         .await
         .map_err(|e| AdminError::internal(e.to_string()))?;
 
-    match target {
+    match &target {
         None => {
             return Err(AdminError::not_found(format!(
                 "Credential {access_key_id} not found"
             )));
+        }
+        Some(cred) if cred.active && cred.admin => {
+            // Prevent deleting the last admin credential (checked before active lockout
+            // since it's the more specific constraint).
+            let all_creds = state
+                .credentials
+                .list_credentials()
+                .await
+                .map_err(|e| AdminError::internal(e.to_string()))?;
+            let admin_count = all_creds.iter().filter(|c| c.active && c.admin).count();
+            if admin_count <= 1 {
+                return Err(AdminError::conflict(
+                    "Cannot delete the last admin credential",
+                ));
+            }
         }
         Some(cred) if cred.active && active_count <= 1 => {
             return Err(AdminError::conflict(

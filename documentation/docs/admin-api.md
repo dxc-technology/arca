@@ -4,7 +4,7 @@ JSON-based administration API for managing the Arca server. All endpoints live u
 
 ## Authentication
 
-All endpoints except `/admin/health` require **AWS SigV4** authentication — the same mechanism used for S3 requests. Use the same credentials you configured for S3 access.
+All endpoints except `/admin/health` require **AWS SigV4** authentication — the same mechanism used for S3 requests. Only credentials with the **admin** flag can access admin endpoints. Non-admin credentials receive a `403 AccessDenied` response but can still use the S3 API normally.
 
 ## Error Responses
 
@@ -96,7 +96,8 @@ Returns all credentials. Secret keys are **never** included in list responses.
         "access_key_id": "AKIAIOSFODNN7EXAMPLE",
         "description": "root credential",
         "created_at": "2025-01-15T10:30:00+00:00",
-        "active": true
+        "active": true,
+        "admin": true
     }
 ]
 ```
@@ -115,11 +116,12 @@ POST /admin/credentials
 
 ```json
 {
-    "description": "CI/CD pipeline"
+    "description": "CI/CD pipeline",
+    "admin": false
 }
 ```
 
-The `description` field is optional (defaults to empty string).
+Both fields are optional. `description` defaults to empty string, `admin` defaults to `false`.
 
 **Response** `201`:
 
@@ -129,7 +131,8 @@ The `description` field is optional (defaults to empty string).
     "secret_access_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
     "description": "CI/CD pipeline",
     "created_at": "2025-06-01T12:00:00+00:00",
-    "active": true
+    "active": true,
+    "admin": false
 }
 ```
 
@@ -150,4 +153,4 @@ DELETE /admin/credentials/{access_key_id}
 
 **Response** `404`: Credential not found.
 
-**Response** `409`: Cannot delete the last active credential (prevents lockout).
+**Response** `409`: Cannot delete the last active credential or last admin credential (prevents lockout).

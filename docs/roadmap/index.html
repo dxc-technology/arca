@@ -1007,6 +1007,10 @@ Endpoints live under <code>/admin/*</code> on the same port (9000), using SigV4 
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Bucket browser: list/create/delete buckets, prefix navigation with breadcrumbs, upload/download/delete objects, detail panel, treemap visualization</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Credential management: card grid, create with reveal-once secret, delete with confirmation, lockout warning</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Browser SigV4 signing via Web Crypto API, CORS middleware in Arca</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Admin flag on credentials: <code>admin</code> boolean field, migration v5, CLI <code>--admin</code> flag</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Admin-only access to Admin API endpoints (non-admin gets 403)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Role-aware console: admin sees dashboard + credentials + buckets; non-admin sees buckets only</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Lockout prevention: cannot delete last admin credential</li>
 </ul>
 <p><strong>Verify</strong>: Web console connects to Arca and provides dashboard and bucket browsing.</p>
 <hr />

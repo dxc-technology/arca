@@ -67,6 +67,14 @@ const MIGRATIONS: &[Migration] = &[
             PRIMARY KEY (upload_id, part_number)
         )",
     },
+    Migration {
+        version: 5,
+        description: "Add admin flag to credentials",
+        // Existing credentials are promoted to admin (they had full access before);
+        // new credentials created via API default to non-admin (INSERT sets explicitly).
+        sql: "ALTER TABLE credentials ADD COLUMN admin INTEGER NOT NULL DEFAULT 0;
+              UPDATE credentials SET admin = 1",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -140,7 +148,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 4);
+        assert_eq!(version, 5);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -182,12 +190,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 4);
+        assert_eq!(version, 5);
 
-        // Four migration records
+        // Five migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 4);
+        assert_eq!(count, 5);
     }
 }

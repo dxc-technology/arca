@@ -503,6 +503,7 @@ mod tests {
             description: "test credential".into(),
             created_at: chrono::Utc::now(),
             active: true,
+            admin: true,
         };
         store.put_credential(&cred).await.unwrap();
         drop(store);

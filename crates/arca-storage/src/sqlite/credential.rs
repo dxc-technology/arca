@@ -15,14 +15,15 @@ impl CredentialStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 conn.execute(
-                    "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active)
-                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, admin)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                     params![
                         cred.access_key_id,
                         cred.secret_access_key,
                         cred.description,
                         cred.created_at.to_rfc3339(),
                         cred.active as i32,
+                        cred.admin as i32,
                     ],
                 )?;
                 Ok(())
@@ -39,7 +40,7 @@ impl CredentialStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT access_key_id, secret_access_key, description, created_at, active
+                    "SELECT access_key_id, secret_access_key, description, created_at, active, admin
                      FROM credentials WHERE access_key_id = ?1",
                 )?;
                 let result = stmt.query_row(params![key], |row| {
@@ -59,7 +60,7 @@ impl CredentialStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT access_key_id, secret_access_key, description, created_at, active
+                    "SELECT access_key_id, secret_access_key, description, created_at, active, admin
                      FROM credentials ORDER BY created_at",
                 )?;
                 let rows = stmt.query_map([], |row| Ok(row_to_credential(row)))?;
@@ -104,10 +105,11 @@ impl CredentialStore for SqliteStore {
 
 /// Converts a SQLite row to a `Credential`.
 ///
-/// Expects columns: access_key_id, secret_access_key, description, created_at, active.
+/// Expects columns: access_key_id, secret_access_key, description, created_at, active, admin.
 fn row_to_credential(row: &rusqlite::Row) -> Result<Credential, rusqlite::Error> {
     let created_at_str: String = row.get(3)?;
     let active_int: i32 = row.get(4)?;
+    let admin_int: i32 = row.get(5)?;
 
     let created_at = DateTime::parse_from_rfc3339(&created_at_str)
         .map(|dt| dt.with_timezone(&chrono::Utc))
@@ -125,6 +127,7 @@ fn row_to_credential(row: &rusqlite::Row) -> Result<Credential, rusqlite::Error>
         description: row.get(2)?,
         created_at,
         active: active_int != 0,
+        admin: admin_int != 0,
     })
 }
 
@@ -146,6 +149,7 @@ mod tests {
             description: "test key".to_string(),
             created_at: Utc::now(),
             active: true,
+            admin: true,
         };
 
         store.put_credential(&cred).await.unwrap();
@@ -160,6 +164,7 @@ mod tests {
         assert_eq!(fetched.secret_access_key, cred.secret_access_key);
         assert_eq!(fetched.description, "test key");
         assert!(fetched.active);
+        assert!(fetched.admin);
     }
 
     #[tokio::test]
@@ -187,6 +192,7 @@ mod tests {
                 description: format!("key {i}"),
                 created_at: Utc::now(),
                 active: true,
+                admin: false,
             };
             store.put_credential(&cred).await.unwrap();
         }
@@ -204,6 +210,7 @@ mod tests {
             description: String::new(),
             created_at: Utc::now(),
             active: true,
+            admin: false,
         };
         store.put_credential(&cred).await.unwrap();
 
@@ -230,6 +237,7 @@ mod tests {
             description: String::new(),
             created_at: Utc::now(),
             active: true,
+            admin: false,
         };
         store.put_credential(&cred).await.unwrap();
 
@@ -247,6 +255,7 @@ mod tests {
             description: String::new(),
             created_at: Utc::now(),
             active: true,
+            admin: false,
         };
         let inactive = Credential {
             access_key_id: "INACTIVE".to_string(),
@@ -254,6 +263,7 @@ mod tests {
             description: String::new(),
             created_at: Utc::now(),
             active: false,
+            admin: false,
         };
 
         store.put_credential(&active).await.unwrap();

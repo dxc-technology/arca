@@ -75,6 +75,10 @@ pub enum CredentialAction {
         /// Human-readable description for this credential
         #[arg(long, default_value = "")]
         description: String,
+
+        /// Grant admin privileges (access to Admin API)
+        #[arg(long)]
+        admin: bool,
     },
 
     /// List all credentials

@@ -8,13 +8,18 @@ use axum::response::Response;
 use http::StatusCode;
 
 use arca_auth::{parse_authorization, verify_request, VerifyInput};
+use arca_core::types::Credential;
 
 use crate::state::AppState;
+
+/// Wrapper for the authenticated credential, stored in request extensions.
+#[derive(Debug, Clone)]
+pub struct AuthenticatedCredential(pub Credential);
 
 /// Axum middleware that verifies AWS SigV4 signatures, returning JSON errors.
 pub async fn admin_auth_middleware(
     State(state): State<AppState>,
-    request: axum::extract::Request,
+    mut request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
     // 1. Extract Authorization header
@@ -124,7 +129,19 @@ pub async fn admin_auth_middleware(
         );
     }
 
-    // 9. Signature valid — proceed to the next handler
+    // 9. Require admin privilege for admin API endpoints
+    if !credential.admin {
+        return json_error(
+            StatusCode::FORBIDDEN,
+            "AccessDenied",
+            "Admin privileges required",
+        );
+    }
+
+    // 10. Signature valid + admin — store credential and proceed
+    request
+        .extensions_mut()
+        .insert(AuthenticatedCredential(credential));
     next.run(request).await
 }
 

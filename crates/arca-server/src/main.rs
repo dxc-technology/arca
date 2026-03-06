@@ -84,13 +84,14 @@ async fn main() -> Result<()> {
             let store = arca_storage::SqliteStore::open(&config.storage.db_path()).await?;
 
             match action {
-                CredentialAction::Add { description } => {
-                    let cred = credential::generate_credential(&description);
+                CredentialAction::Add { description, admin } => {
+                    let cred = credential::generate_credential(&description, admin);
                     store.put_credential(&cred).await?;
 
                     println!("Credential created:");
                     println!("  Access Key: {}", cred.access_key_id);
                     println!("  Secret Key: {}", cred.secret_access_key);
+                    println!("  Admin:      {}", if cred.admin { "yes" } else { "no" });
                     if !cred.description.is_empty() {
                         println!("  Description: {}", cred.description);
                     }
@@ -102,16 +103,17 @@ async fn main() -> Result<()> {
                         println!("No credentials found.");
                     } else {
                         println!(
-                            "{:<22} {:<10} {:<20} {}",
-                            "ACCESS KEY", "STATUS", "CREATED", "DESCRIPTION"
+                            "{:<22} {:<10} {:<7} {:<20} {}",
+                            "ACCESS KEY", "STATUS", "ROLE", "CREATED", "DESCRIPTION"
                         );
-                        println!("{}", "-".repeat(72));
+                        println!("{}", "-".repeat(81));
                         for cred in creds {
                             let status = if cred.active { "active" } else { "inactive" };
+                            let role = if cred.admin { "admin" } else { "user" };
                             let created = cred.created_at.format("%Y-%m-%d %H:%M:%S");
                             println!(
-                                "{:<22} {:<10} {:<20} {}",
-                                cred.access_key_id, status, created, cred.description
+                                "{:<22} {:<10} {:<7} {:<20} {}",
+                                cred.access_key_id, status, role, created, cred.description
                             );
                         }
                     }

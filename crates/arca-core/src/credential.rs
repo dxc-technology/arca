@@ -28,13 +28,14 @@ fn random_string(charset: &[u8], len: usize) -> String {
 }
 
 /// Generates a new credential with random access key and secret key.
-pub fn generate_credential(description: &str) -> Credential {
+pub fn generate_credential(description: &str, admin: bool) -> Credential {
     Credential {
         access_key_id: random_string(KEY_CHARSET, ACCESS_KEY_LEN),
         secret_access_key: random_string(SECRET_CHARSET, SECRET_KEY_LEN),
         description: description.to_string(),
         created_at: chrono::Utc::now(),
         active: true,
+        admin,
     }
 }
 
@@ -44,19 +45,19 @@ mod tests {
 
     #[test]
     fn access_key_length() {
-        let cred = generate_credential("test");
+        let cred = generate_credential("test", false);
         assert_eq!(cred.access_key_id.len(), ACCESS_KEY_LEN);
     }
 
     #[test]
     fn secret_key_length() {
-        let cred = generate_credential("test");
+        let cred = generate_credential("test", false);
         assert_eq!(cred.secret_access_key.len(), SECRET_KEY_LEN);
     }
 
     #[test]
     fn access_key_valid_charset() {
-        let cred = generate_credential("test");
+        let cred = generate_credential("test", false);
         assert!(cred
             .access_key_id
             .chars()
@@ -65,17 +66,26 @@ mod tests {
 
     #[test]
     fn credential_fields_set() {
-        let cred = generate_credential("my description");
+        let cred = generate_credential("my description", false);
         assert_eq!(cred.description, "my description");
         assert!(cred.active);
+        assert!(!cred.admin);
         let elapsed = chrono::Utc::now() - cred.created_at;
         assert!(elapsed.num_seconds() < 2);
     }
 
     #[test]
+    fn credential_admin_flag() {
+        let admin = generate_credential("admin", true);
+        assert!(admin.admin);
+        let user = generate_credential("user", false);
+        assert!(!user.admin);
+    }
+
+    #[test]
     fn generated_credentials_are_unique() {
-        let cred1 = generate_credential("test");
-        let cred2 = generate_credential("test");
+        let cred1 = generate_credential("test", false);
+        let cred2 = generate_credential("test", false);
         assert_ne!(cred1.access_key_id, cred2.access_key_id);
         assert_ne!(cred1.secret_access_key, cred2.secret_access_key);
     }
