@@ -327,13 +327,13 @@
                   <!-- Donut chart -->
                   <div x-html="renderRing()"></div>
                   <!-- Legend -->
-                  <div class="mt-3 w-full space-y-1.5 max-h-32 overflow-y-auto" x-show="bucketSizes.length > 0">
+                  <div class="mt-3 w-full space-y-1 overflow-hidden" x-show="bucketSizes.length > 0">
                     <template x-for="(b, i) in bucketSizes" :key="b.name">
-                      <div class="flex items-center gap-2 text-xs">
+                      <a :href="'#/buckets/' + encodeURIComponent(b.name)" class="flex items-center gap-2 text-xs rounded px-1 -mx-1 py-1 hover:bg-white/[0.03] transition group cursor-pointer no-underline text-inherit">
                         <div class="w-2.5 h-2.5 rounded-sm flex-shrink-0" :style="'background:' + ringColors[i % ringColors.length]"></div>
-                        <span class="truncate flex-1" x-text="b.name"></span>
+                        <span class="truncate flex-1 group-hover:text-vault-accent transition" x-text="b.name"></span>
                         <span class="text-vault-muted font-mono" x-text="formatBytes(b.size)"></span>
-                      </div>
+                      </a>
                     </template>
                   </div>
                   <div x-show="bucketSizes.length === 0" class="text-vault-muted text-xs mt-4">No buckets yet</div>
@@ -347,6 +347,8 @@
                   <span class="bg-gradient-to-r from-vault-accent to-vault-indigo bg-clip-text text-transparent" x-text="formatBytes(stats.total_size_bytes || 0)"></span>
                 </div>
               </div>
+
+
             </div>
           </div>
         </template>
