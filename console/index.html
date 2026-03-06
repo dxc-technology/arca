@@ -450,6 +450,10 @@
                   class="p-2 rounded-lg border border-vault-border/50 hover:border-vault-accent/30 transition" title="Treemap view">
                   <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"/></svg>
                 </button>
+                <button @click="showCreateFolderModal = true"
+                  class="px-3.5 py-1.5 rounded-lg bg-vault-indigo/10 text-vault-indigo border border-vault-indigo/20 text-sm font-medium hover:bg-vault-indigo/20 transition">
+                  + Folder
+                </button>
                 <label class="px-3.5 py-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 text-sm font-medium hover:bg-vault-accent/20 transition cursor-pointer">
                   Upload Files
                   <input type="file" multiple class="hidden" @change="uploadFiles($event.target.files)">
@@ -481,9 +485,14 @@
               <div x-show="!loading">
                 <!-- Directories -->
                 <template x-for="dir in directories" :key="dir">
-                  <div @click="navigatePrefix(dir)" class="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] cursor-pointer transition border-b border-vault-border/20">
+                  <div @click="navigatePrefix(dir)" class="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] cursor-pointer transition border-b border-vault-border/20 group">
                     <svg class="w-5 h-5 text-vault-accent/70" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
-                    <span class="text-sm" x-text="dirName(dir)"></span>
+                    <span class="text-sm flex-1" x-text="dirName(dir)"></span>
+                    <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                      <button @click.stop="confirmDeleteDir(dir)" class="p-1 rounded hover:bg-red-500/10 text-vault-muted hover:text-red-400 transition" title="Delete folder">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+                      </button>
+                    </div>
                   </div>
                 </template>
 
@@ -562,13 +571,44 @@
             <!-- Delete object modal -->
             <div x-show="showDeleteObjModal" x-transition.opacity class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="showDeleteObjModal = false">
               <div class="glass rounded-xl p-6 w-full max-w-sm mx-4" @click.stop>
-                <h3 class="text-lg font-semibold mb-2">Delete Object</h3>
+                <h3 class="text-lg font-semibold mb-2" x-text="deleteIsDir ? 'Delete Folder' : 'Delete Object'"></h3>
                 <p class="text-sm text-vault-muted mb-1">Are you sure you want to delete:</p>
-                <p class="text-sm font-mono text-vault-text mb-4 break-all" x-text="deleteObjKey"></p>
+                <p class="text-sm font-mono text-vault-text mb-3 break-all" x-text="deleteObjKey"></p>
+                <template x-if="deleteIsDir">
+                  <div class="mb-3">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" x-model="deleteRecursive"
+                        class="w-4 h-4 rounded border-vault-border bg-vault-bg text-red-500 focus:ring-red-500/30 focus:ring-offset-0">
+                      <span class="text-sm text-vault-muted">Delete all contents recursively</span>
+                    </label>
+                    <p x-show="!deleteRecursive" class="text-[10px] text-vault-muted/60 mt-1 ml-6">Only the empty folder marker will be deleted.</p>
+                    <p x-show="deleteRecursive" class="text-[10px] text-red-400/80 mt-1 ml-6">All objects under this folder will be permanently deleted.</p>
+                  </div>
+                </template>
+                <p x-show="deleteError" x-text="deleteError" class="text-red-400 text-xs mb-3"></p>
+                <p x-show="deleteProgress" x-text="deleteProgress" class="text-vault-muted text-xs mb-3"></p>
                 <div class="flex gap-3 justify-end">
                   <button @click="showDeleteObjModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
-                  <button @click="deleteObject()" class="px-4 py-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 text-sm font-medium hover:bg-red-500/30 transition">Delete</button>
+                  <button @click="deleteObject()" :disabled="deleting" class="px-4 py-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 text-sm font-medium hover:bg-red-500/30 transition disabled:opacity-50" x-text="deleting ? 'Deleting...' : 'Delete'"></button>
                 </div>
+              </div>
+            </div>
+
+            <!-- Create folder modal -->
+            <div x-show="showCreateFolderModal" x-transition.opacity x-effect="if (showCreateFolderModal) $nextTick(() => $refs.folderNameInput?.focus())" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="showCreateFolderModal = false">
+              <div class="glass rounded-xl p-6 w-full max-w-sm mx-4" @click.stop>
+                <h3 class="text-lg font-semibold mb-4">Create Folder</h3>
+                <form @submit.prevent="createFolder()">
+                  <input type="text" x-model="newFolderName" x-ref="folderNameInput" required
+                    placeholder="folder-name"
+                    class="w-full px-3.5 py-2.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition text-sm font-mono mb-1">
+                  <p class="text-[10px] text-vault-muted mb-4">Folder name. Avoid leading/trailing slashes.</p>
+                  <div class="flex gap-3 justify-end">
+                    <button type="button" @click="showCreateFolderModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                    <button type="submit" class="px-4 py-2 rounded-lg bg-vault-accent text-vault-bg text-sm font-medium hover:opacity-90 transition">Create</button>
+                  </div>
+                  <p x-show="createFolderError" x-text="createFolderError" class="text-red-400 text-xs mt-2"></p>
+                </form>
               </div>
             </div>
           </div>
@@ -839,6 +879,8 @@
       const getEndpoint = () => sessionStorage.getItem('arca_endpoint') || '';
       const getAccessKey = () => sessionStorage.getItem('arca_access_key') || '';
       const getSecretKey = () => sessionStorage.getItem('arca_secret_key') || '';
+      // Encode each segment of an S3 key path, preserving '/' separators
+      const encodeKeyPath = (key) => key.split('/').map(s => encodeURIComponent(s)).join('/');
 
       return {
         async request(method, path, { body = null, contentType = null, rawResponse = false, queryParams = {} } = {}) {
@@ -918,20 +960,35 @@
         async s3PutObject(bucket, key, file) {
           const headers = {};
           if (file.type) headers['Content-Type'] = file.type;
-          return await this.request('PUT', '/' + encodeURIComponent(bucket) + '/' + key, { body: file });
+          return await this.request('PUT', '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key), { body: file });
         },
 
         async s3GetObject(bucket, key) {
-          return await this.request('GET', '/' + encodeURIComponent(bucket) + '/' + key, { rawResponse: true });
+          return await this.request('GET', '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key), { rawResponse: true });
         },
 
         async s3DeleteObject(bucket, key) {
-          return await this.request('DELETE', '/' + encodeURIComponent(bucket) + '/' + key);
+          return await this.request('DELETE', '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key));
+        },
+
+        async s3DeleteObjects(bucket, keys) {
+          let xml = '<?xml version="1.0" encoding="UTF-8"?><Delete><Quiet>true</Quiet>';
+          for (const key of keys) {
+            xml += '<Object><Key>' + key.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</Key></Object>';
+          }
+          xml += '</Delete>';
+          const resp = await this.request('POST', '/' + encodeURIComponent(bucket), {
+            body: xml,
+            contentType: 'application/xml',
+            queryParams: { delete: '' },
+          });
+          if (!resp.ok) throw new Error('Delete objects failed');
+          return resp;
         },
 
         // Multipart upload
         async s3CreateMultipartUpload(bucket, key) {
-          const resp = await this.request('POST', '/' + encodeURIComponent(bucket) + '/' + key, { queryParams: { uploads: '' } });
+          const resp = await this.request('POST', '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key), { queryParams: { uploads: '' } });
           if (!resp.ok) throw new Error('Failed to create multipart upload');
           const xml = await resp.text();
           const doc = new DOMParser().parseFromString(xml, 'text/xml');
@@ -939,7 +996,7 @@
         },
 
         async s3UploadPart(bucket, key, uploadId, partNumber, data) {
-          const resp = await this.request('PUT', '/' + encodeURIComponent(bucket) + '/' + key, {
+          const resp = await this.request('PUT', '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key), {
             body: data,
             queryParams: { partNumber: String(partNumber), uploadId },
           });
@@ -953,7 +1010,7 @@
             xml += `<Part><PartNumber>${p.partNumber}</PartNumber><ETag>${p.etag}</ETag></Part>`;
           }
           xml += '</CompleteMultipartUpload>';
-          return await this.request('POST', '/' + encodeURIComponent(bucket) + '/' + key, {
+          return await this.request('POST', '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key), {
             body: xml,
             contentType: 'application/xml',
             queryParams: { uploadId },
@@ -1313,6 +1370,14 @@
         uploadProgress: 0,
         showDeleteObjModal: false,
         deleteObjKey: '',
+        deleteIsDir: false,
+        deleteRecursive: false,
+        deleteError: '',
+        deleteProgress: '',
+        deleting: false,
+        showCreateFolderModal: false,
+        newFolderName: '',
+        createFolderError: '',
         ringColors,
 
         get prefixParts() {
@@ -1329,7 +1394,9 @@
           const bucket = this.bucketName;
           try {
             const result = await api.s3ListObjects(bucket, this.prefix);
-            this.objects = result.objects;
+            // Filter out directory marker objects (zero-byte objects with keys
+            // ending in '/') — they represent folders, not real files
+            this.objects = result.objects.filter(o => !o.key.endsWith('/'));
             this.directories = result.directories;
             if (this.showTreemap) this.computeTreemap();
           } catch (e) { console.error(e); }
@@ -1377,19 +1444,89 @@
 
         confirmDeleteObject(key) {
           this.deleteObjKey = key;
+          this.deleteIsDir = false;
+          this.deleteRecursive = false;
+          this.deleteError = '';
+          this.deleteProgress = '';
+          this.showDeleteObjModal = true;
+        },
+
+        confirmDeleteDir(dir) {
+          this.deleteObjKey = dir;
+          this.deleteIsDir = true;
+          this.deleteRecursive = false;
+          this.deleteError = '';
+          this.deleteProgress = '';
           this.showDeleteObjModal = true;
         },
 
         async deleteObject() {
           const bucket = this.bucketName;
+          this.deleteError = '';
+          this.deleteProgress = '';
+          this.deleting = true;
           try {
-            const resp = await api.s3DeleteObject(bucket, this.deleteObjKey);
-            if (!resp.ok) throw new Error('Delete failed');
+            if (this.deleteIsDir && this.deleteRecursive) {
+              // List all objects under the prefix and delete them in batches
+              let token = '';
+              let totalDeleted = 0;
+              do {
+                const result = await api.s3ListObjects(bucket, this.deleteObjKey, token);
+                const keys = result.objects.map(o => o.key);
+                // Also include the directory marker itself
+                if (!token && keys.indexOf(this.deleteObjKey) === -1) {
+                  keys.push(this.deleteObjKey);
+                }
+                // Recursively list subdirectories too
+                for (const dir of result.directories) {
+                  keys.push(dir); // directory marker
+                }
+                if (keys.length > 0) {
+                  await api.s3DeleteObjects(bucket, keys);
+                  totalDeleted += keys.length;
+                  this.deleteProgress = `Deleted ${totalDeleted} objects...`;
+                }
+                token = result.isTruncated ? result.nextToken : '';
+              } while (token);
+              // Final pass: re-list to catch any remaining objects (from nested dirs)
+              let remaining = true;
+              while (remaining) {
+                const result = await api.s3ListObjects(bucket, this.deleteObjKey);
+                const keys = result.objects.map(o => o.key);
+                for (const dir of result.directories) keys.push(dir);
+                if (keys.length === 0) { remaining = false; break; }
+                await api.s3DeleteObjects(bucket, keys);
+                totalDeleted += keys.length;
+                this.deleteProgress = `Deleted ${totalDeleted} objects...`;
+              }
+              // Delete the directory marker itself
+              await api.s3DeleteObject(bucket, this.deleteObjKey);
+            } else {
+              const resp = await api.s3DeleteObject(bucket, this.deleteObjKey);
+              if (!resp.ok) throw new Error('Delete failed');
+            }
             this.showDeleteObjModal = false;
             this.selectedObject = null;
             await this.load();
           } catch (e) {
-            console.error(e);
+            this.deleteError = e.message;
+          }
+          this.deleting = false;
+        },
+
+        async createFolder() {
+          this.createFolderError = '';
+          const name = this.newFolderName.replace(/^\/+|\/+$/g, '').trim();
+          if (!name) { this.createFolderError = 'Folder name is required.'; return; }
+          const key = this.prefix + name + '/';
+          try {
+            const resp = await api.s3PutObject(this.bucketName, key, new Blob([], { type: 'application/x-directory' }));
+            if (!resp.ok) throw new Error('Failed to create folder');
+            this.showCreateFolderModal = false;
+            this.newFolderName = '';
+            await this.load();
+          } catch (e) {
+            this.createFolderError = e.message;
           }
         },
 

@@ -272,4 +272,68 @@ mod tests {
         let count = store.count_active_credentials().await.unwrap();
         assert_eq!(count, 1);
     }
+
+    #[tokio::test]
+    async fn admin_flag_persisted() {
+        let store = test_store().await;
+
+        let admin_cred = Credential {
+            access_key_id: "ADMIN1".to_string(),
+            secret_access_key: "SECRET".to_string(),
+            description: "admin".to_string(),
+            created_at: Utc::now(),
+            active: true,
+            admin: true,
+        };
+        let user_cred = Credential {
+            access_key_id: "USER1".to_string(),
+            secret_access_key: "SECRET".to_string(),
+            description: "user".to_string(),
+            created_at: Utc::now(),
+            active: true,
+            admin: false,
+        };
+
+        store.put_credential(&admin_cred).await.unwrap();
+        store.put_credential(&user_cred).await.unwrap();
+
+        let admin = store.get_credential("ADMIN1").await.unwrap().unwrap();
+        assert!(admin.admin);
+
+        let user = store.get_credential("USER1").await.unwrap().unwrap();
+        assert!(!user.admin);
+    }
+
+    #[tokio::test]
+    async fn list_credentials_includes_admin_flag() {
+        let store = test_store().await;
+
+        let admin_cred = Credential {
+            access_key_id: "ADMIN2".to_string(),
+            secret_access_key: "SECRET".to_string(),
+            description: String::new(),
+            created_at: Utc::now(),
+            active: true,
+            admin: true,
+        };
+        let user_cred = Credential {
+            access_key_id: "USER2".to_string(),
+            secret_access_key: "SECRET".to_string(),
+            description: String::new(),
+            created_at: Utc::now(),
+            active: true,
+            admin: false,
+        };
+
+        store.put_credential(&admin_cred).await.unwrap();
+        store.put_credential(&user_cred).await.unwrap();
+
+        let creds = store.list_credentials().await.unwrap();
+        let admins: Vec<_> = creds.iter().filter(|c| c.admin).collect();
+        let users: Vec<_> = creds.iter().filter(|c| !c.admin).collect();
+        assert_eq!(admins.len(), 1);
+        assert_eq!(admins[0].access_key_id, "ADMIN2");
+        assert_eq!(users.len(), 1);
+        assert_eq!(users[0].access_key_id, "USER2");
+    }
 }

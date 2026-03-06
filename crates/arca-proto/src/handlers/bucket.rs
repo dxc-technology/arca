@@ -420,6 +420,11 @@ fn extract_common_prefixes(
     let mut seen_prefixes = std::collections::HashSet::new();
 
     for record in records {
+        // Skip directory marker objects whose key matches the listing prefix
+        // exactly (e.g. key "folder/" when prefix is "folder/").
+        if record.key == prefix {
+            continue;
+        }
         let after_prefix = &record.key[prefix.len()..];
         if let Some(pos) = after_prefix.find(delimiter) {
             // This key has a delimiter after the prefix → common prefix.
@@ -668,4 +673,107 @@ async fn delete_objects(
         .header("Content-Type", "application/xml")
         .body(Body::from(xml))
         .expect("build delete_objects response")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    fn make_record(key: &str) -> ObjectRecord {
+        ObjectRecord {
+            bucket: "test".to_string(),
+            key: key.to_string(),
+            blob_id: arca_core::types::BlobId("00000000-0000-0000-0000-000000000000".to_string()),
+            size: 0,
+            etag: "\"d41d8cd98f00b204e9800998ecf8427e\"".to_string(),
+            content_type: None,
+            last_modified: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn extract_common_prefixes_basic() {
+        let records = vec![
+            make_record("photos/2024/a.jpg"),
+            make_record("photos/2025/b.jpg"),
+            make_record("photos/top.jpg"),
+        ];
+        let (contents, prefixes) = extract_common_prefixes(&records, "photos/", "/");
+        assert_eq!(contents.len(), 1);
+        assert_eq!(contents[0].key, "photos/top.jpg");
+        assert_eq!(prefixes, vec!["photos/2024/", "photos/2025/"]);
+    }
+
+    #[test]
+    fn extract_common_prefixes_deduplicates() {
+        let records = vec![
+            make_record("dir/a.txt"),
+            make_record("dir/b.txt"),
+        ];
+        let (contents, prefixes) = extract_common_prefixes(&records, "", "/");
+        assert!(contents.is_empty());
+        assert_eq!(prefixes, vec!["dir/"]);
+    }
+
+    #[test]
+    fn extract_common_prefixes_no_delimiter_match() {
+        let records = vec![
+            make_record("a.txt"),
+            make_record("b.txt"),
+        ];
+        let (contents, prefixes) = extract_common_prefixes(&records, "", "/");
+        assert_eq!(contents.len(), 2);
+        assert!(prefixes.is_empty());
+    }
+
+    #[test]
+    fn extract_common_prefixes_skips_directory_marker_at_prefix() {
+        // The directory marker "photos/" should be skipped when prefix is "photos/"
+        let records = vec![
+            make_record("photos/"),
+            make_record("photos/a.jpg"),
+            make_record("photos/sub/b.jpg"),
+        ];
+        let (contents, prefixes) = extract_common_prefixes(&records, "photos/", "/");
+        let content_keys: Vec<&str> = contents.iter().map(|e| e.key.as_str()).collect();
+        assert_eq!(content_keys, vec!["photos/a.jpg"]);
+        assert_eq!(prefixes, vec!["photos/sub/"]);
+    }
+
+    #[test]
+    fn extract_common_prefixes_skips_nested_directory_marker() {
+        // When listing "a/", the marker "a/" should be skipped
+        let records = vec![
+            make_record("a/"),
+            make_record("a/b/"),
+            make_record("a/b/file.txt"),
+        ];
+        let (contents, prefixes) = extract_common_prefixes(&records, "a/", "/");
+        let content_keys: Vec<&str> = contents.iter().map(|e| e.key.as_str()).collect();
+        assert!(!content_keys.contains(&"a/"));
+        assert_eq!(prefixes, vec!["a/b/"]);
+    }
+
+    #[test]
+    fn extract_common_prefixes_marker_at_root() {
+        // Directory marker "data/" at root listing should go to CommonPrefixes, not Contents
+        let records = vec![
+            make_record("data/"),
+            make_record("data/file.txt"),
+            make_record("root.txt"),
+        ];
+        let (contents, prefixes) = extract_common_prefixes(&records, "", "/");
+        let content_keys: Vec<&str> = contents.iter().map(|e| e.key.as_str()).collect();
+        assert_eq!(content_keys, vec!["root.txt"]);
+        assert_eq!(prefixes, vec!["data/"]);
+    }
+
+    #[test]
+    fn extract_common_prefixes_empty_input() {
+        let records: Vec<ObjectRecord> = vec![];
+        let (contents, prefixes) = extract_common_prefixes(&records, "", "/");
+        assert!(contents.is_empty());
+        assert!(prefixes.is_empty());
+    }
 }
