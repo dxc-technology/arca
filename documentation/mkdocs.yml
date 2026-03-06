@@ -38,11 +38,22 @@ theme:
 
 nav:
   - Home: index.md
-  - Architecture: architecture.md
-  - API Reference: api.md
-  - Admin API: admin-api.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quick-start.md
+  - User Guide:
+    - Configuration: guide/configuration.md
+    - Web Console: guide/console.md
+    - CLI Reference: guide/cli.md
+  - Reference:
+    - S3 API: reference/s3-api.md
+    - Admin API: reference/admin-api.md
+    - Architecture: reference/architecture.md
+  - Operations:
+    - Disaster Recovery: operations/recovery.md
+    - Monitoring & Logging: operations/monitoring.md
+    - Production Deployment: operations/deployment.md
   - Roadmap: roadmap.md
-  - Configuration: configuration.md
 
 markdown_extensions:
   - admonition

@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Take automated screenshots of the Arca web console for documentation.
+# Outputs PNG files to documentation/docs/assets/screenshots/.
+#
+# Usage:
+#   bin/screenshots              Run screenshots (images must be built)
+#   bin/screenshots --build      Rebuild all images first
+
+cd "$(git rev-parse --show-toplevel)"
+
+COMPOSE="docker compose -f docker/docker-compose.yml"
+BUILD=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --build)
+            BUILD=true
+            shift
+            ;;
+        *)
+            echo "Usage: bin/screenshots [--build]" >&2
+            exit 1
+            ;;
+    esac
+done
+
+cleanup() {
+    echo "==> Tearing down screenshot services..."
+    $COMPOSE --profile screenshots down --remove-orphans 2>/dev/null || true
+}
+trap cleanup EXIT
+
+if $BUILD; then
+    echo "==> Building images..."
+    $COMPOSE build arca
+    $COMPOSE --profile screenshots build screenshots-console screenshots
+fi
+
+echo "==> Starting Arca server..."
+$COMPOSE up -d arca
+
+echo "==> Waiting for Arca health check..."
+for i in $(seq 1 30); do
+    if curl -sf http://localhost:9000/admin/health >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+
+echo "==> Starting console for screenshots..."
+$COMPOSE --profile screenshots up -d screenshots-console
+
+echo "==> Running screenshot tool..."
+$COMPOSE --profile screenshots run --rm screenshots
+
+echo "==> Screenshots complete."
+ls -la documentation/docs/assets/screenshots/*.png 2>/dev/null || echo "Warning: no PNG files found"

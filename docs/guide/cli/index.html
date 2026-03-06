@@ -10,29 +10,31 @@
       
       
       
-        <link rel="canonical" href="https://dxc-technology.github.io/arca/configuration/">
+        <link rel="canonical" href="https://dxc-technology.github.io/arca/guide/cli/">
       
       
-        <link rel="prev" href="../roadmap/">
+        <link rel="prev" href="../console/">
       
+      
+        <link rel="next" href="../../reference/s3-api/">
       
       
         
       
       
-      <link rel="icon" href="../assets/logo.svg">
+      <link rel="icon" href="../../assets/logo.svg">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.3">
     
     
       
-        <title>Configuration - Arca</title>
+        <title>CLI Reference - Arca</title>
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -51,7 +53,7 @@
       
     
     
-    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -76,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#configuration" class="md-skip">
+        <a href="#cli-reference" class="md-skip">
           Skip to content
         </a>
       
@@ -92,9 +94,9 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href=".." title="Arca" class="md-header__button md-logo" aria-label="Arca" data-md-component="logo">
+    <a href="../.." title="Arca" class="md-header__button md-logo" aria-label="Arca" data-md-component="logo">
       
-  <img src="../assets/logo.svg" alt="logo">
+  <img src="../../assets/logo.svg" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -111,7 +113,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Configuration
+              CLI Reference
             
           </span>
         </div>
@@ -232,9 +234,9 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href=".." title="Arca" class="md-nav__button md-logo" aria-label="Arca" data-md-component="logo">
+    <a href="../.." title="Arca" class="md-nav__button md-logo" aria-label="Arca" data-md-component="logo">
       
-  <img src="../assets/logo.svg" alt="logo">
+  <img src="../../assets/logo.svg" alt="logo">
 
     </a>
     Arca
@@ -261,7 +263,7 @@
   
   
     <li class="md-nav__item">
-      <a href=".." class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -287,15 +289,67 @@
   
   
   
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
     <li class="md-nav__item">
-      <a href="../architecture/" class="md-nav__link">
+      <a href="../../getting-started/installation/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Architecture
+    Installation
   
 
     
@@ -307,22 +361,23 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
   
   
     <li class="md-nav__item">
-      <a href="../api/" class="md-nav__link">
+      <a href="../../getting-started/quick-start/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    API Reference
+    Quick Start
   
 
     
@@ -334,22 +389,84 @@
     </li>
   
 
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
     
       
       
   
   
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
   
   
     <li class="md-nav__item">
-      <a href="../admin-api/" class="md-nav__link">
+      <a href="../configuration/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Admin API
+    Configuration
   
 
     
@@ -361,22 +478,23 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
   
   
     <li class="md-nav__item">
-      <a href="../roadmap/" class="md-nav__link">
+      <a href="../console/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Roadmap
+    Web Console
   
 
     
@@ -388,9 +506,10 @@
     </li>
   
 
-    
-      
-      
+              
+            
+              
+                
   
   
     
@@ -412,7 +531,7 @@
   <span class="md-ellipsis">
     
   
-    Configuration
+    CLI Reference
   
 
     
@@ -430,7 +549,7 @@
   <span class="md-ellipsis">
     
   
-    Configuration
+    CLI Reference
   
 
     
@@ -456,101 +575,6 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Overview
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#config-file" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Config File
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Config File">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#server" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Server
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#storage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Storage
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#blob-storage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Blob Storage
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#credentials-database" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Credentials (Database)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#cli-commands" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        CLI Commands
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="CLI Commands">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
   <a href="#arca-serve" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -560,8 +584,8 @@
   </a>
   
 </li>
-        
-          <li class="md-nav__item">
+      
+        <li class="md-nav__item">
   <a href="#arca-credential" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -570,13 +594,14 @@
     </span>
   </a>
   
-</li>
+    <nav class="md-nav" aria-label="arca credential">
+      <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#arca-recover" class="md-nav__link">
+  <a href="#arca-credential-add" class="md-nav__link">
     <span class="md-ellipsis">
       
-        arca recover
+        arca credential add
       
     </span>
   </a>
@@ -584,10 +609,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#arca-fsck" class="md-nav__link">
+  <a href="#arca-credential-list" class="md-nav__link">
     <span class="md-ellipsis">
       
-        arca fsck
+        arca credential list
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#arca-credential-remove" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca credential remove
       
     </span>
   </a>
@@ -600,10 +636,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#environment-variables" class="md-nav__link">
+  <a href="#arca-recover" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Environment Variables
+        arca recover
       
     </span>
   </a>
@@ -611,24 +647,41 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#config-file-location" class="md-nav__link">
+  <a href="#arca-fsck" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Config File Location
+        arca fsck
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="arca fsck">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#check-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check Types
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#docker" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#exit-codes" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Docker
+        Exit Codes
       
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -636,6 +689,327 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/s3-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    S3 API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/admin-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operations/recovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Disaster Recovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operations/monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitoring & Logging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operations/deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Production Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -667,101 +1041,6 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Overview
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#config-file" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Config File
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Config File">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#server" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Server
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#storage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Storage
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#example" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Example
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#blob-storage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Blob Storage
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#credentials-database" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Credentials (Database)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#cli-commands" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        CLI Commands
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="CLI Commands">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
   <a href="#arca-serve" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -771,8 +1050,8 @@
   </a>
   
 </li>
-        
-          <li class="md-nav__item">
+      
+        <li class="md-nav__item">
   <a href="#arca-credential" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -781,13 +1060,14 @@
     </span>
   </a>
   
-</li>
+    <nav class="md-nav" aria-label="arca credential">
+      <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#arca-recover" class="md-nav__link">
+  <a href="#arca-credential-add" class="md-nav__link">
     <span class="md-ellipsis">
       
-        arca recover
+        arca credential add
       
     </span>
   </a>
@@ -795,10 +1075,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#arca-fsck" class="md-nav__link">
+  <a href="#arca-credential-list" class="md-nav__link">
     <span class="md-ellipsis">
       
-        arca fsck
+        arca credential list
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#arca-credential-remove" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca credential remove
       
     </span>
   </a>
@@ -811,10 +1102,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#environment-variables" class="md-nav__link">
+  <a href="#arca-recover" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Environment Variables
+        arca recover
       
     </span>
   </a>
@@ -822,24 +1113,41 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#config-file-location" class="md-nav__link">
+  <a href="#arca-fsck" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Config File Location
+        arca fsck
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="arca fsck">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#check-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check Types
       
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#docker" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#exit-codes" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Docker
+        Exit Codes
       
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -860,141 +1168,11 @@
 
 
 
-<h1 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h1>
-<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
-<p>Arca follows a MinIO-like configuration model:</p>
-<ul>
-<li><strong>Config file</strong> — static server settings (bind address, storage paths, logging). Set once at deploy time, rarely changes.</li>
-<li><strong>Database</strong> — dynamic runtime data (credentials, users, grants). Managed via CLI commands.</li>
-</ul>
-<p>The default config file is <code>config/default.toml</code> in the repository. At runtime, the binary looks for <code>/etc/arca/config.toml</code> by default (override with <code>--config-path</code>).</p>
-<h2 id="config-file">Config File<a class="headerlink" href="#config-file" title="Permanent link">&para;</a></h2>
-<h3 id="server">Server<a class="headerlink" href="#server" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Setting</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>server.bind</code></td>
-<td><code>0.0.0.0</code></td>
-<td>Address to listen on</td>
-</tr>
-<tr>
-<td><code>server.port</code></td>
-<td><code>9000</code></td>
-<td>Port to listen on</td>
-</tr>
-<tr>
-<td><code>server.domain</code></td>
-<td><em>(none)</em></td>
-<td>Base domain for virtual-hosted-style requests (e.g. <code>s3.example.com</code>). When set, requests to <code>bucket.s3.example.com</code> are rewritten to path-style <code>/{bucket}/...</code>. Leave unset to use path-style only.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="storage">Storage<a class="headerlink" href="#storage" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Setting</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>storage.data_dir</code></td>
-<td><code>/data</code></td>
-<td>Root directory for SQLite database (<code>arca.db</code>) and blob storage (<code>blobs/</code> subdirectory)</td>
-</tr>
-<tr>
-<td><code>storage.blob_prefix_depth</code></td>
-<td><code>2</code></td>
-<td>Number of 2-char prefix directory levels for blob file sharding (1–4). Higher values spread files across more directories, reducing files-per-directory at the cost of deeper paths. See <a href="#blob-storage">blob storage</a> below.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">[server]</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">bind</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;0.0.0.0&quot;</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">9000</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># domain = &quot;s3.example.com&quot;  # optional, enables virtual-hosted-style requests</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="k">[storage]</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">data_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/data&quot;</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="c1"># blob_prefix_depth = 2  # optional, default is 2</span>
-</code></pre></div>
-<h3 id="blob-storage">Blob Storage<a class="headerlink" href="#blob-storage" title="Permanent link">&para;</a></h3>
-<p>Object data is stored as blob files under <code>{data_dir}/blobs/</code>, sharded into a hierarchy of 2-character prefix directories derived from the blob UUID. The <code>blob_prefix_depth</code> setting controls how many levels of prefix directories are used.</p>
-<p>With depth=2 (default), a blob with UUID <code>550e8400-e29b-41d4-a716-446655440000</code> is stored at:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>blobs/55/0e/550e8400-e29b-41d4-a716-446655440000
-</code></pre></div>
-<p>Each blob has a <code>.meta</code> sidecar file containing JSON metadata for disaster recovery.</p>
-<table>
-<thead>
-<tr>
-<th>Depth</th>
-<th>Leaf directories</th>
-<th>Files/dir (at 100M objects)</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td>256</td>
-<td>~390,000</td>
-</tr>
-<tr>
-<td>2</td>
-<td>65,536</td>
-<td>~1,525</td>
-</tr>
-<tr>
-<td>3</td>
-<td>16.7M</td>
-<td>~6</td>
-</tr>
-</tbody>
-</table>
-<p>The default depth of 2 works well for most deployments. Increase to 3 for very large installations (tens of millions of objects) where filesystem performance degrades with many files per directory.</p>
-<h2 id="credentials-database">Credentials (Database)<a class="headerlink" href="#credentials-database" title="Permanent link">&para;</a></h2>
-<p>Credentials are stored in the SQLite database (<code>{data_dir}/arca.db</code>) and managed via CLI:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Add a credential (auto-generates access key and secret key)</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;my app&quot;</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># Add an admin credential (required for Admin API and web console management)</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;admin user&quot;</span><span class="w"> </span>--admin
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># List all credentials (shows access key, description, role, and status)</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>arca<span class="w"> </span>credential<span class="w"> </span>list
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="c1"># Remove a credential</span>
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>arca<span class="w"> </span>credential<span class="w"> </span>remove<span class="w"> </span>&lt;ACCESS_KEY_ID&gt;
-</code></pre></div>
-<p>Credentials have an <strong>admin</strong> flag that controls access to the <a href="../admin-api/">Admin API</a> and management features in the web console. Non-admin credentials can only use the S3 API. The root credential generated on first startup is always an admin credential.</p>
-<div class="admonition warning">
-<p class="admonition-title">Lockout Prevention</p>
-<p>Arca prevents deleting the last admin credential or the last active credential to avoid lockout.</p>
-</div>
-<p>On first startup, if no credentials exist, Arca auto-generates a root access key pair and prints it to stdout:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>========================================
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  Root credential created automatically
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>========================================
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  Access Key: GHUZM9QTHSJKE3N6P50O
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  Secret Key: aNdrqpNvsbI9BeU/O+3AA508Xtey4Sp3EILSXRQy
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>========================================
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  WARNING: This will only be shown once.
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>  Store these credentials securely.
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>========================================
-</code></pre></div>
-<h2 id="cli-commands">CLI Commands<a class="headerlink" href="#cli-commands" title="Permanent link">&para;</a></h2>
-<h3 id="arca-serve"><code>arca serve</code><a class="headerlink" href="#arca-serve" title="Permanent link">&para;</a></h3>
-<p>Starts the Arca server.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>arca<span class="w"> </span>serve<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--log-format<span class="w"> </span>&lt;FORMAT&gt;<span class="o">]</span>
+<h1 id="cli-reference">CLI Reference<a class="headerlink" href="#cli-reference" title="Permanent link">&para;</a></h1>
+<p>The <code>arca</code> binary provides subcommands for starting the server, managing credentials, and performing disaster recovery. All subcommands accept <code>--config-path</code> (default: <code>/etc/arca/config.toml</code>) to locate the configuration file.</p>
+<h2 id="arca-serve"><code>arca serve</code><a class="headerlink" href="#arca-serve" title="Permanent link">&para;</a></h2>
+<p>Start the S3-compatible server.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>arca<span class="w"> </span>serve<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--log-format<span class="w"> </span>&lt;FORMAT&gt;<span class="o">]</span>
 </code></pre></div>
 <table>
 <thead>
@@ -1018,11 +1196,59 @@
 </tbody>
 </table>
 <p>The server handles SIGTERM and SIGINT for graceful shutdown — it finishes in-flight requests before stopping.</p>
-<h3 id="arca-credential"><code>arca credential</code><a class="headerlink" href="#arca-credential" title="Permanent link">&para;</a></h3>
-<p>Manage S3 access credentials. See <a href="#credentials-database">Credentials</a> below.</p>
-<h3 id="arca-recover"><code>arca recover</code><a class="headerlink" href="#arca-recover" title="Permanent link">&para;</a></h3>
-<p>Rebuild the SQLite database from <code>.meta</code> sidecar files (disaster recovery).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>arca<span class="w"> </span>recover<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--dry-run<span class="o">]</span><span class="w"> </span><span class="o">[</span>--skip-verify<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Start with default config</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>arca<span class="w"> </span>serve
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Start with custom config and JSON logging</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>arca<span class="w"> </span>serve<span class="w"> </span>--config-path<span class="w"> </span>/opt/arca/config.toml<span class="w"> </span>--log-format<span class="w"> </span>json
+</code></pre></div>
+<h2 id="arca-credential"><code>arca credential</code><a class="headerlink" href="#arca-credential" title="Permanent link">&para;</a></h2>
+<p>Manage S3 access credentials stored in the SQLite database. See <a href="../configuration/#credentials">Configuration — Credentials</a> for background.</p>
+<h3 id="arca-credential-add"><code>arca credential add</code><a class="headerlink" href="#arca-credential-add" title="Permanent link">&para;</a></h3>
+<p>Generate a new access key pair.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span><span class="o">[</span>--description<span class="w"> </span>&lt;TEXT&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--admin<span class="o">]</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--description</code></td>
+<td>Human-readable label for the credential</td>
+</tr>
+<tr>
+<td><code>--admin</code></td>
+<td>Grant admin privileges (access to <a href="../../reference/admin-api/">Admin API</a> and console management)</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Create a regular credential</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;my app&quot;</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Create an admin credential</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;admin user&quot;</span><span class="w"> </span>--admin
+</code></pre></div>
+<p>The generated access key and secret key are printed to stdout. The secret key is shown only once — store it securely.</p>
+<h3 id="arca-credential-list"><code>arca credential list</code><a class="headerlink" href="#arca-credential-list" title="Permanent link">&para;</a></h3>
+<p>List all credentials.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>arca<span class="w"> </span>credential<span class="w"> </span>list<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span>
+</code></pre></div>
+<p>Shows access key ID, description, role (Admin/User), and status (active/inactive) for each credential.</p>
+<h3 id="arca-credential-remove"><code>arca credential remove</code><a class="headerlink" href="#arca-credential-remove" title="Permanent link">&para;</a></h3>
+<p>Delete a credential by its access key ID.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>arca<span class="w"> </span>credential<span class="w"> </span>remove<span class="w"> </span>&lt;ACCESS_KEY_ID&gt;<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span>
+</code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">Lockout Prevention</p>
+<p>Arca prevents deleting the last admin credential or the last active credential to avoid lockout.</p>
+</div>
+<h2 id="arca-recover"><code>arca recover</code><a class="headerlink" href="#arca-recover" title="Permanent link">&para;</a></h2>
+<p>Rebuild the SQLite database from <code>.meta</code> sidecar files. Use this for disaster recovery when the database is lost or corrupted. See <a href="../../operations/recovery/">Disaster Recovery</a> for a detailed guide.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>arca<span class="w"> </span>recover<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--dry-run<span class="o">]</span><span class="w"> </span><span class="o">[</span>--skip-verify<span class="o">]</span>
 </code></pre></div>
 <table>
 <thead>
@@ -1055,9 +1281,18 @@
 <li>Recreates all buckets and objects from sidecar data</li>
 </ol>
 <p>Multipart objects (ETag contains <code>-</code>) skip checksum verification since the composite ETag is not a simple MD5 of the assembled blob. Orphaned sidecars (no blob file), malformed JSON, and checksum mismatches are skipped with warnings.</p>
-<h3 id="arca-fsck"><code>arca fsck</code><a class="headerlink" href="#arca-fsck" title="Permanent link">&para;</a></h3>
-<p>Check database and filesystem consistency.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>arca<span class="w"> </span>fsck<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--verify-checksums<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Preview what would be recovered</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>arca<span class="w"> </span>recover<span class="w"> </span>--dry-run
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Full recovery (with checksum verification)</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>arca<span class="w"> </span>recover
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="c1"># Fast recovery (skip checksum verification)</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>arca<span class="w"> </span>recover<span class="w"> </span>--skip-verify
+</code></pre></div>
+<h2 id="arca-fsck"><code>arca fsck</code><a class="headerlink" href="#arca-fsck" title="Permanent link">&para;</a></h2>
+<p>Check database and filesystem consistency. See <a href="../../operations/recovery/">Disaster Recovery</a> for a detailed guide.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>arca<span class="w"> </span>fsck<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--verify-checksums<span class="o">]</span>
 </code></pre></div>
 <table>
 <thead>
@@ -1077,7 +1312,7 @@
 </tr>
 </tbody>
 </table>
-<p>The fsck command performs these checks:</p>
+<h3 id="check-types">Check Types<a class="headerlink" href="#check-types" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -1112,60 +1347,30 @@
 </tr>
 </tbody>
 </table>
-<p>Exit code: 0 if no issues found, 1 if any issues detected.</p>
-<h2 id="environment-variables">Environment Variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h2>
+<h3 id="exit-codes">Exit Codes<a class="headerlink" href="#exit-codes" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
-<th>Variable</th>
-<th>Description</th>
+<th>Code</th>
+<th>Meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>RUST_LOG</code></td>
-<td>Logging level filter (default: <code>info</code>). Example: <code>RUST_LOG=debug</code></td>
+<td>0</td>
+<td>No issues found</td>
 </tr>
 <tr>
-<td><code>ARCA_ROOT_ACCESS_KEY</code></td>
-<td>Override root credential access key (used when no active credentials exist). For testing/CI.</td>
-</tr>
-<tr>
-<td><code>ARCA_ROOT_SECRET_KEY</code></td>
-<td>Override root credential secret key (used with <code>ARCA_ROOT_ACCESS_KEY</code>). Both must be set.</td>
+<td>1</td>
+<td>One or more issues detected</td>
 </tr>
 </tbody>
 </table>
-<p>When both <code>ARCA_ROOT_ACCESS_KEY</code> and <code>ARCA_ROOT_SECRET_KEY</code> are set and no active credentials exist in the database, Arca uses these values instead of generating random credentials. This is useful for Docker Compose testing setups where you need known credentials.</p>
-<h2 id="config-file-location">Config File Location<a class="headerlink" href="#config-file-location" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Context</th>
-<th>Path</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Binary default</td>
-<td><code>/etc/arca/config.toml</code></td>
-</tr>
-<tr>
-<td>Repository template</td>
-<td><code>config/default.toml</code></td>
-</tr>
-<tr>
-<td>Docker</td>
-<td>Copied to <code>/etc/arca/config.toml</code> at build time; mount your own to override</td>
-</tr>
-</tbody>
-</table>
-<h2 id="docker">Docker<a class="headerlink" href="#docker" title="Permanent link">&para;</a></h2>
-<p>When running with Docker Compose, you can override the config file via a volume mount:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">services</span><span class="p">:</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">arca</span><span class="p">:</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./my-config.toml:/etc/arca/config.toml:ro</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Quick consistency check</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>arca<span class="w"> </span>fsck
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># Full check including blob checksums (slow for large datasets)</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>arca<span class="w"> </span>fsck<span class="w"> </span>--verify-checksums
 </code></pre></div>
 
 
@@ -1222,10 +1427,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.copy", "content.code.annotate", "navigation.sections", "navigation.top", "search.highlight", "search.share"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.code.copy", "content.code.annotate", "navigation.sections", "navigation.top", "search.highlight", "search.share"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

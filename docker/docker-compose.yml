@@ -79,5 +79,33 @@ services:
     profiles:
       - perf
 
+  screenshots-console:
+    image: arca-console
+    build:
+      context: ../console
+      dockerfile: Dockerfile
+    depends_on:
+      - arca
+    profiles:
+      - screenshots
+
+  screenshots:
+    image: arca-screenshots
+    build:
+      context: screenshots
+      dockerfile: Dockerfile
+    environment:
+      - ARCA_ENDPOINT=http://arca:9000
+      - CONSOLE_URL=http://screenshots-console:3000
+      - AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+      - AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+    volumes:
+      - ../documentation/docs/assets/screenshots:/app/output
+    depends_on:
+      - arca
+      - screenshots-console
+    profiles:
+      - screenshots
+
 volumes:
   arca-data:
