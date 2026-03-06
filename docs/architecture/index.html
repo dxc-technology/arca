@@ -1326,11 +1326,11 @@
 </tr>
 <tr>
 <td><code>arca credential add</code></td>
-<td>Generate a new access key pair</td>
+<td>Generate a new access key pair (<code>--admin</code> for admin privileges)</td>
 </tr>
 <tr>
 <td><code>arca credential list</code></td>
-<td>List all credentials</td>
+<td>List all credentials (shows role: Admin/User)</td>
 </tr>
 <tr>
 <td><code>arca credential remove</code></td>
@@ -1338,11 +1338,11 @@
 </tr>
 <tr>
 <td><code>arca recover</code></td>
-<td>Rebuild SQLite DB from <code>.meta</code> sidecar files <em>(planned)</em></td>
+<td>Rebuild SQLite DB from <code>.meta</code> sidecar files</td>
 </tr>
 <tr>
 <td><code>arca fsck</code></td>
-<td>Check consistency between DB and filesystem <em>(planned)</em></td>
+<td>Check consistency between DB and filesystem</td>
 </tr>
 </tbody>
 </table>
@@ -1400,7 +1400,7 @@
 </tbody>
 </table>
 <h2 id="whats-not-in-mvp">What's NOT in MVP<a class="headerlink" href="#whats-not-in-mvp" title="Permanent link">&para;</a></h2>
-<p>Object versioning, ACLs / bucket policies, server-side encryption, object tagging, lifecycle rules, CORS, object lock, presigned URLs, admin API, metrics endpoint, replication, multi-node / distributed mode.</p>
+<p>Object versioning, ACLs / bucket policies, server-side encryption, object tagging, lifecycle rules, object lock, presigned URLs, metrics endpoint, replication, multi-node / distributed mode.</p>
 <p>These are excluded by design to keep the MVP focused and shippable. The trait-based architecture ensures they can be added incrementally without architectural changes.</p>
 
 

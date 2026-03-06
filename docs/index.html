@@ -717,6 +717,18 @@
 <td>Run unit + integration tests (<code>unit</code>, <code>integration</code>, or both)</td>
 </tr>
 <tr>
+<td><code>bin/console</code></td>
+<td>Start the web console (flags passed through to docker compose)</td>
+</tr>
+<tr>
+<td><code>bin/s3-tests</code></td>
+<td>Run Ceph s3-tests compatibility suite</td>
+</tr>
+<tr>
+<td><code>bin/perf-test</code></td>
+<td>Run performance tests</td>
+</tr>
+<tr>
 <td><code>bin/docs-build</code></td>
 <td>Build the documentation site</td>
 </tr>
@@ -741,15 +753,15 @@
 <tbody>
 <tr>
 <td>Bucket</td>
-<td>CreateBucket, DeleteBucket, HeadBucket, ListBuckets</td>
+<td>CreateBucket, DeleteBucket, HeadBucket, ListBuckets, GetBucketLocation</td>
 </tr>
 <tr>
 <td>Object</td>
-<td>PutObject, GetObject, DeleteObject, HeadObject, CopyObject</td>
+<td>PutObject, GetObject, DeleteObject, HeadObject, CopyObject, DeleteObjects</td>
 </tr>
 <tr>
 <td>Listing</td>
-<td>ListObjectsV2</td>
+<td>ListObjectsV1, ListObjectsV2</td>
 </tr>
 <tr>
 <td>Multipart</td>

@@ -488,6 +488,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#getbucketlocation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GetBucketLocation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#putobject" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -532,10 +543,32 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#deleteobjects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DeleteObjects
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#copyobject" class="md-nav__link">
     <span class="md-ellipsis">
       
         CopyObject
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#listobjectsv1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ListObjectsV1
       
     </span>
   </a>
@@ -829,6 +862,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#getbucketlocation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GetBucketLocation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#putobject" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -873,10 +917,32 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#deleteobjects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DeleteObjects
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#copyobject" class="md-nav__link">
     <span class="md-ellipsis">
       
         CopyObject
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#listobjectsv1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ListObjectsV1
       
     </span>
   </a>
@@ -961,7 +1027,7 @@
 
 
 <h1 id="api-reference">API Reference<a class="headerlink" href="#api-reference" title="Permanent link">&para;</a></h1>
-<p>Arca implements 15 S3 operations in its MVP. All operations follow the standard <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/Welcome.html">AWS S3 REST API</a> specification.</p>
+<p>Arca implements 19 S3 operations in its MVP. All operations follow the standard <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/Welcome.html">AWS S3 REST API</a> specification.</p>
 <h2 id="authentication">Authentication<a class="headerlink" href="#authentication" title="Permanent link">&para;</a></h2>
 <p>All requests must be signed with AWS Signature V4. Arca supports both the <code>Authorization</code> header and query string authentication methods.</p>
 <h2 id="bucket-operations">Bucket Operations<a class="headerlink" href="#bucket-operations" title="Permanent link">&para;</a></h2>
@@ -998,6 +1064,12 @@
 <td><code>DELETE</code></td>
 <td><code>/{bucket}</code></td>
 <td>Delete an empty bucket</td>
+</tr>
+<tr>
+<td><a href="#getbucketlocation">GetBucketLocation</a></td>
+<td><code>GET</code></td>
+<td><code>/{bucket}?location</code></td>
+<td>Get bucket region</td>
 </tr>
 </tbody>
 </table>
@@ -1042,6 +1114,13 @@
 <td>Delete an object</td>
 </tr>
 <tr>
+<td><a href="#deleteobjects">DeleteObjects</a></td>
+<td><code>POST</code></td>
+<td><code>/{bucket}</code></td>
+<td><code>delete</code></td>
+<td>Delete multiple objects in one request</td>
+</tr>
+<tr>
 <td><a href="#copyobject">CopyObject</a></td>
 <td><code>PUT</code></td>
 <td><code>/{bucket}/{key+}</code></td>
@@ -1062,6 +1141,13 @@
 </tr>
 </thead>
 <tbody>
+<tr>
+<td><a href="#listobjectsv1">ListObjectsV1</a></td>
+<td><code>GET</code></td>
+<td><code>/{bucket}</code></td>
+<td>—</td>
+<td>List objects in a bucket (legacy)</td>
+</tr>
 <tr>
 <td><a href="#listobjectsv2">ListObjectsV2</a></td>
 <td><code>GET</code></td>
@@ -1135,36 +1221,89 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>DELETE /{bucket} HTTP/1.1
 </code></pre></div>
 <p>Returns <code>204 No Content</code> on success, <code>409 BucketNotEmpty</code> if the bucket contains objects.</p>
+<h3 id="getbucketlocation">GetBucketLocation<a class="headerlink" href="#getbucketlocation" title="Permanent link">&para;</a></h3>
+<p>Get the region of a bucket.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>GET /{bucket}?location HTTP/1.1
+</code></pre></div>
+<p>Returns a <code>LocationConstraint</code> XML element. Arca always returns an empty location constraint (equivalent to <code>us-east-1</code>).</p>
 <h3 id="putobject">PutObject<a class="headerlink" href="#putobject" title="Permanent link">&para;</a></h3>
 <p>Upload an object. The request body is streamed directly to storage — never buffered in memory.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>PUT /{bucket}/{key+} HTTP/1.1
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>Content-Type: application/octet-stream
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>PUT /{bucket}/{key+} HTTP/1.1
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>Content-Type: application/octet-stream
 </code></pre></div>
 <p>ETag is computed as the hex-encoded MD5 of the object content.</p>
 <h3 id="getobject">GetObject<a class="headerlink" href="#getobject" title="Permanent link">&para;</a></h3>
 <p>Download an object. Supports <code>Range</code> header for partial content retrieval.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>GET /{bucket}/{key+} HTTP/1.1
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>GET /{bucket}/{key+} HTTP/1.1
 </code></pre></div>
 <p>Returns the object body with <code>Content-Type</code>, <code>Content-Length</code>, <code>ETag</code>, and <code>Last-Modified</code> headers.</p>
 <h3 id="headobject">HeadObject<a class="headerlink" href="#headobject" title="Permanent link">&para;</a></h3>
 <p>Retrieve object metadata without downloading the body.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>HEAD /{bucket}/{key+} HTTP/1.1
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>HEAD /{bucket}/{key+} HTTP/1.1
 </code></pre></div>
 <p>Returns the same headers as GetObject, but with no response body.</p>
 <h3 id="deleteobject">DeleteObject<a class="headerlink" href="#deleteobject" title="Permanent link">&para;</a></h3>
 <p>Delete an object.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>DELETE /{bucket}/{key+} HTTP/1.1
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>DELETE /{bucket}/{key+} HTTP/1.1
 </code></pre></div>
 <p>Returns <code>204 No Content</code> on success. Deleting a non-existent key is not an error.</p>
+<div class="admonition tip">
+<p class="admonition-title">Directory Markers</p>
+<p>S3 uses zero-byte objects with keys ending in <code>/</code> as directory markers (e.g., <code>photos/</code>). Arca preserves trailing slashes in object keys, so you can create, list, and delete directory markers just like any other object. When listing with a delimiter, directory markers whose key matches the listing prefix are excluded from <code>Contents</code> (they appear only as <code>CommonPrefixes</code>).</p>
+</div>
+<h3 id="deleteobjects">DeleteObjects<a class="headerlink" href="#deleteobjects" title="Permanent link">&para;</a></h3>
+<p>Delete multiple objects in a single request.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>POST<span class="w"> </span>/{bucket}?delete<span class="w"> </span>HTTP/1.1
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="nt">&lt;Delete&gt;</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">  </span><span class="nt">&lt;Quiet&gt;</span>true<span class="nt">&lt;/Quiet&gt;</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">  </span><span class="nt">&lt;Object&gt;&lt;Key&gt;</span>file1.txt<span class="nt">&lt;/Key&gt;&lt;/Object&gt;</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">  </span><span class="nt">&lt;Object&gt;&lt;Key&gt;</span>file2.txt<span class="nt">&lt;/Key&gt;&lt;/Object&gt;</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">  </span><span class="nt">&lt;Object&gt;&lt;Key&gt;</span>photos/<span class="nt">&lt;/Key&gt;&lt;/Object&gt;</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="nt">&lt;/Delete&gt;</span>
+</code></pre></div>
+<p>When <code>Quiet</code> is <code>true</code>, the response only includes errors. When <code>false</code> (default), the response includes both successfully deleted keys and errors.</p>
+<p>Returns <code>DeleteResult</code> XML. Deleting non-existent keys is not an error.</p>
 <h3 id="copyobject">CopyObject<a class="headerlink" href="#copyobject" title="Permanent link">&para;</a></h3>
 <p>Copy an object within or across buckets. The source is specified via the <code>x-amz-copy-source</code> header.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>PUT /{bucket}/{key+} HTTP/1.1
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>x-amz-copy-source: /{source-bucket}/{source-key}
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>PUT /{bucket}/{key+} HTTP/1.1
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>x-amz-copy-source: /{source-bucket}/{source-key}
 </code></pre></div>
 <p>Returns <code>CopyObjectResult</code> XML with the new ETag and last modified timestamp.</p>
+<h3 id="listobjectsv1">ListObjectsV1<a class="headerlink" href="#listobjectsv1" title="Permanent link">&para;</a></h3>
+<p>List objects in a bucket (legacy API). Prefer ListObjectsV2 for new applications.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>GET /{bucket} HTTP/1.1
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>prefix</code></td>
+<td>Limits results to keys beginning with the specified prefix</td>
+</tr>
+<tr>
+<td><code>delimiter</code></td>
+<td>Groups keys that share a common prefix (typically <code>/</code>)</td>
+</tr>
+<tr>
+<td><code>max-keys</code></td>
+<td>Maximum number of keys to return (default 1000)</td>
+</tr>
+<tr>
+<td><code>marker</code></td>
+<td>Start listing after this key</td>
+</tr>
+</tbody>
+</table>
+<p>Returns <code>ListBucketResult</code> XML with <code>Contents</code>, <code>CommonPrefixes</code>, <code>IsTruncated</code>, and <code>NextMarker</code>.</p>
 <h3 id="listobjectsv2">ListObjectsV2<a class="headerlink" href="#listobjectsv2" title="Permanent link">&para;</a></h3>
 <p>List objects in a bucket with optional prefix and delimiter filtering.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>GET /{bucket}?list-type=2 HTTP/1.1
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>GET /{bucket}?list-type=2 HTTP/1.1
 </code></pre></div>
 <table>
 <thead>
@@ -1199,33 +1338,33 @@
 <p>Returns <code>ListBucketResult</code> XML with <code>Contents</code>, <code>CommonPrefixes</code>, <code>IsTruncated</code>, and <code>NextContinuationToken</code>.</p>
 <h3 id="createmultipartupload">CreateMultipartUpload<a class="headerlink" href="#createmultipartupload" title="Permanent link">&para;</a></h3>
 <p>Initiate a multipart upload and obtain an upload ID.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>POST /{bucket}/{key+}?uploads HTTP/1.1
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>POST /{bucket}/{key+}?uploads HTTP/1.1
 </code></pre></div>
 <p>Returns <code>InitiateMultipartUploadResult</code> XML containing the <code>UploadId</code>.</p>
 <h3 id="uploadpart">UploadPart<a class="headerlink" href="#uploadpart" title="Permanent link">&para;</a></h3>
 <p>Upload a part for a multipart upload.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>PUT /{bucket}/{key+}?partNumber={n}&amp;uploadId={id} HTTP/1.1
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>PUT /{bucket}/{key+}?partNumber={n}&amp;uploadId={id} HTTP/1.1
 </code></pre></div>
 <p>Part numbers range from 1 to 10000. Each part (except the last) must be at least 5 MB.</p>
 <h3 id="completemultipartupload">CompleteMultipartUpload<a class="headerlink" href="#completemultipartupload" title="Permanent link">&para;</a></h3>
 <p>Complete a multipart upload by assembling previously uploaded parts.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>POST<span class="w"> </span>/{bucket}/{key+}?uploadId={id}<span class="w"> </span>HTTP/1.1
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="nt">&lt;CompleteMultipartUpload&gt;</span>
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">  </span><span class="nt">&lt;Part&gt;</span>
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">    </span><span class="nt">&lt;PartNumber&gt;</span>1<span class="nt">&lt;/PartNumber&gt;</span>
-<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">    </span><span class="nt">&lt;ETag&gt;</span>&quot;etag1&quot;<span class="nt">&lt;/ETag&gt;</span>
-<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="w">  </span><span class="nt">&lt;/Part&gt;</span>
-<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="w">  </span><span class="nt">&lt;Part&gt;</span>
-<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">    </span><span class="nt">&lt;PartNumber&gt;</span>2<span class="nt">&lt;/PartNumber&gt;</span>
-<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">    </span><span class="nt">&lt;ETag&gt;</span>&quot;etag2&quot;<span class="nt">&lt;/ETag&gt;</span>
-<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="w">  </span><span class="nt">&lt;/Part&gt;</span>
-<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="nt">&lt;/CompleteMultipartUpload&gt;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>POST<span class="w"> </span>/{bucket}/{key+}?uploadId={id}<span class="w"> </span>HTTP/1.1
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="nt">&lt;CompleteMultipartUpload&gt;</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">  </span><span class="nt">&lt;Part&gt;</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="w">    </span><span class="nt">&lt;PartNumber&gt;</span>1<span class="nt">&lt;/PartNumber&gt;</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="w">    </span><span class="nt">&lt;ETag&gt;</span>&quot;etag1&quot;<span class="nt">&lt;/ETag&gt;</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="w">  </span><span class="nt">&lt;/Part&gt;</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="w">  </span><span class="nt">&lt;Part&gt;</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="w">    </span><span class="nt">&lt;PartNumber&gt;</span>2<span class="nt">&lt;/PartNumber&gt;</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="w">    </span><span class="nt">&lt;ETag&gt;</span>&quot;etag2&quot;<span class="nt">&lt;/ETag&gt;</span>
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="w">  </span><span class="nt">&lt;/Part&gt;</span>
+<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a><span class="nt">&lt;/CompleteMultipartUpload&gt;</span>
 </code></pre></div>
 <p>The resulting ETag is a composite: <code>hex(MD5(binary_MD5(part1) || binary_MD5(part2) || ...))-{count}</code>.</p>
 <h3 id="abortmultipartupload">AbortMultipartUpload<a class="headerlink" href="#abortmultipartupload" title="Permanent link">&para;</a></h3>
 <p>Abort a multipart upload and delete all uploaded parts.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>DELETE /{bucket}/{key+}?uploadId={id} HTTP/1.1
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>DELETE /{bucket}/{key+}?uploadId={id} HTTP/1.1
 </code></pre></div>
 <p>Returns <code>204 No Content</code> on success.</p>
 

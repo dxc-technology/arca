@@ -256,11 +256,11 @@ The `arca` binary exposes subcommands via [clap](https://docs.rs/clap):
 | Command | Description |
 |---------|-------------|
 | `arca serve` | Start the S3 server |
-| `arca credential add` | Generate a new access key pair |
-| `arca credential list` | List all credentials |
+| `arca credential add` | Generate a new access key pair (`--admin` for admin privileges) |
+| `arca credential list` | List all credentials (shows role: Admin/User) |
 | `arca credential remove` | Delete a credential by access key ID |
-| `arca recover` | Rebuild SQLite DB from `.meta` sidecar files *(planned)* |
-| `arca fsck` | Check consistency between DB and filesystem *(planned)* |
+| `arca recover` | Rebuild SQLite DB from `.meta` sidecar files |
+| `arca fsck` | Check consistency between DB and filesystem |
 
 All subcommands accept `--config-path` (default: `/etc/arca/config.toml`) to locate the configuration file, which provides the `data_dir` path used to find the database and blob storage.
 
@@ -279,6 +279,6 @@ All subcommands accept `--config-path` (default: `/etc/arca/config.toml`) to loc
 
 ## What's NOT in MVP
 
-Object versioning, ACLs / bucket policies, server-side encryption, object tagging, lifecycle rules, CORS, object lock, presigned URLs, admin API, metrics endpoint, replication, multi-node / distributed mode.
+Object versioning, ACLs / bucket policies, server-side encryption, object tagging, lifecycle rules, object lock, presigned URLs, metrics endpoint, replication, multi-node / distributed mode.
 
 These are excluded by design to keep the MVP focused and shippable. The trait-based architecture ensures they can be added incrementally without architectural changes.

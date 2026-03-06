@@ -67,12 +67,20 @@ Credentials are stored in the SQLite database (`{data_dir}/arca.db`) and managed
 # Add a credential (auto-generates access key and secret key)
 arca credential add --description "my app"
 
-# List all credentials
+# Add an admin credential (required for Admin API and web console management)
+arca credential add --description "admin user" --admin
+
+# List all credentials (shows access key, description, role, and status)
 arca credential list
 
 # Remove a credential
 arca credential remove <ACCESS_KEY_ID>
 ```
+
+Credentials have an **admin** flag that controls access to the [Admin API](admin-api.md) and management features in the web console. Non-admin credentials can only use the S3 API. The root credential generated on first startup is always an admin credential.
+
+!!! warning "Lockout Prevention"
+    Arca prevents deleting the last admin credential or the last active credential to avoid lockout.
 
 On first startup, if no credentials exist, Arca auto-generates a root access key pair and prints it to stdout:
 

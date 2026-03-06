@@ -1,6 +1,6 @@
 # API Reference
 
-Arca implements 15 S3 operations in its MVP. All operations follow the standard [AWS S3 REST API](https://docs.aws.amazon.com/AmazonS3/latest/API/Welcome.html) specification.
+Arca implements 19 S3 operations in its MVP. All operations follow the standard [AWS S3 REST API](https://docs.aws.amazon.com/AmazonS3/latest/API/Welcome.html) specification.
 
 ## Authentication
 
@@ -14,6 +14,7 @@ All requests must be signed with AWS Signature V4. Arca supports both the `Autho
 | [CreateBucket](#createbucket) | `PUT` | `/{bucket}` | Create a new bucket |
 | [HeadBucket](#headbucket) | `HEAD` | `/{bucket}` | Check if a bucket exists |
 | [DeleteBucket](#deletebucket) | `DELETE` | `/{bucket}` | Delete an empty bucket |
+| [GetBucketLocation](#getbucketlocation) | `GET` | `/{bucket}?location` | Get bucket region |
 
 ## Object Operations
 
@@ -23,12 +24,14 @@ All requests must be signed with AWS Signature V4. Arca supports both the `Autho
 | [GetObject](#getobject) | `GET` | `/{bucket}/{key+}` | — | Download an object |
 | [HeadObject](#headobject) | `HEAD` | `/{bucket}/{key+}` | — | Get object metadata |
 | [DeleteObject](#deleteobject) | `DELETE` | `/{bucket}/{key+}` | — | Delete an object |
+| [DeleteObjects](#deleteobjects) | `POST` | `/{bucket}` | `delete` | Delete multiple objects in one request |
 | [CopyObject](#copyobject) | `PUT` | `/{bucket}/{key+}` | — | Copy an object (uses `x-amz-copy-source` header) |
 
 ## Listing Operations
 
 | Operation | Method | Path | Query Params | Description |
 |-----------|--------|------|--------------|-------------|
+| [ListObjectsV1](#listobjectsv1) | `GET` | `/{bucket}` | — | List objects in a bucket (legacy) |
 | [ListObjectsV2](#listobjectsv2) | `GET` | `/{bucket}` | `list-type=2` | List objects in a bucket |
 
 ## Multipart Upload Operations
@@ -84,6 +87,16 @@ DELETE /{bucket} HTTP/1.1
 
 Returns `204 No Content` on success, `409 BucketNotEmpty` if the bucket contains objects.
 
+### GetBucketLocation
+
+Get the region of a bucket.
+
+```
+GET /{bucket}?location HTTP/1.1
+```
+
+Returns a `LocationConstraint` XML element. Arca always returns an empty location constraint (equivalent to `us-east-1`).
+
 ### PutObject
 
 Upload an object. The request body is streamed directly to storage — never buffered in memory.
@@ -125,6 +138,28 @@ DELETE /{bucket}/{key+} HTTP/1.1
 
 Returns `204 No Content` on success. Deleting a non-existent key is not an error.
 
+!!! tip "Directory Markers"
+    S3 uses zero-byte objects with keys ending in `/` as directory markers (e.g., `photos/`). Arca preserves trailing slashes in object keys, so you can create, list, and delete directory markers just like any other object. When listing with a delimiter, directory markers whose key matches the listing prefix are excluded from `Contents` (they appear only as `CommonPrefixes`).
+
+### DeleteObjects
+
+Delete multiple objects in a single request.
+
+```xml
+POST /{bucket}?delete HTTP/1.1
+
+<Delete>
+  <Quiet>true</Quiet>
+  <Object><Key>file1.txt</Key></Object>
+  <Object><Key>file2.txt</Key></Object>
+  <Object><Key>photos/</Key></Object>
+</Delete>
+```
+
+When `Quiet` is `true`, the response only includes errors. When `false` (default), the response includes both successfully deleted keys and errors.
+
+Returns `DeleteResult` XML. Deleting non-existent keys is not an error.
+
 ### CopyObject
 
 Copy an object within or across buckets. The source is specified via the `x-amz-copy-source` header.
@@ -135,6 +170,23 @@ x-amz-copy-source: /{source-bucket}/{source-key}
 ```
 
 Returns `CopyObjectResult` XML with the new ETag and last modified timestamp.
+
+### ListObjectsV1
+
+List objects in a bucket (legacy API). Prefer ListObjectsV2 for new applications.
+
+```
+GET /{bucket} HTTP/1.1
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `prefix` | Limits results to keys beginning with the specified prefix |
+| `delimiter` | Groups keys that share a common prefix (typically `/`) |
+| `max-keys` | Maximum number of keys to return (default 1000) |
+| `marker` | Start listing after this key |
+
+Returns `ListBucketResult` XML with `Contents`, `CommonPrefixes`, `IsTruncated`, and `NextMarker`.
 
 ### ListObjectsV2
 

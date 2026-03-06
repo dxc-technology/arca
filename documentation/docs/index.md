@@ -76,6 +76,9 @@ Convenience scripts in `bin/` wrap docker compose commands:
 | `bin/run` | Start the server (flags passed through to docker compose) |
 | `bin/stop` | Stop the server |
 | `bin/test` | Run unit + integration tests (`unit`, `integration`, or both) |
+| `bin/console` | Start the web console (flags passed through to docker compose) |
+| `bin/s3-tests` | Run Ceph s3-tests compatibility suite |
+| `bin/perf-test` | Run performance tests |
 | `bin/docs-build` | Build the documentation site |
 | `bin/docs-serve` | Serve docs locally with live reload |
 | `bin/docs-publish` | Build, commit, and push docs to update GitHub Pages |
@@ -84,9 +87,9 @@ Convenience scripts in `bin/` wrap docker compose commands:
 
 | Category  | Operations                                                            |
 |-----------|-----------------------------------------------------------------------|
-| Bucket    | CreateBucket, DeleteBucket, HeadBucket, ListBuckets                   |
-| Object    | PutObject, GetObject, DeleteObject, HeadObject, CopyObject            |
-| Listing   | ListObjectsV2                                                         |
+| Bucket    | CreateBucket, DeleteBucket, HeadBucket, ListBuckets, GetBucketLocation |
+| Object    | PutObject, GetObject, DeleteObject, HeadObject, CopyObject, DeleteObjects |
+| Listing   | ListObjectsV1, ListObjectsV2                                          |
 | Multipart | CreateMultipartUpload, UploadPart, CompleteMultipartUpload, AbortMultipartUpload |
 | Auth      | AWS Signature V4                                                      |
 
