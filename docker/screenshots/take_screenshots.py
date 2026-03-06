@@ -6,11 +6,8 @@ Phase B: Captures screenshots using Playwright.
 """
 
 import os
-import hashlib
-import hmac
 import json
 import time
-from datetime import datetime, timezone, timedelta
 
 import boto3
 import requests
@@ -146,6 +143,13 @@ def create_extra_credential():
         print(f"  Warning: credential creation returned {resp.status_code}: {resp.text}")
 
 
+def screenshot(page, name):
+    """Take a screenshot with a short stabilization delay."""
+    page.wait_for_timeout(500)
+    page.screenshot(path=f"{OUTPUT_DIR}/{name}")
+    print(f"    Saved {name}")
+
+
 def take_screenshots():
     """Capture screenshots of the web console using Playwright."""
     print("\n=== Phase B: Taking screenshots ===")
@@ -160,108 +164,86 @@ def take_screenshots():
         # Disable animations for deterministic captures
         page.add_style_tag(content=DISABLE_ANIMATIONS_CSS)
 
-        # 1. Login screen
+        # ----- 1. Login screen -----
         print("  1/8 console-login.png")
         page.goto(CONSOLE_URL)
         page.wait_for_load_state("networkidle")
         # Fill endpoint field (visible because ARCA_ENDPOINT is not set on screenshots-console)
-        endpoint_input = page.locator('input[placeholder*="endpoint" i], input[placeholder*="Endpoint" i], input[id*="endpoint" i]')
-        if endpoint_input.count() > 0:
-            endpoint_input.first.fill("http://arca:9000")
-        else:
-            # Try a more generic approach — find the first input
-            inputs = page.locator("input")
-            if inputs.count() >= 3:
-                inputs.nth(0).fill("http://arca:9000")
-        page.screenshot(path=f"{OUTPUT_DIR}/console-login.png")
+        page.fill('input[placeholder="http://localhost:9000"]', "http://arca:9000")
+        screenshot(page, "console-login.png")
 
-        # 2. Dashboard
+        # ----- 2. Dashboard (login + navigate) -----
         print("  2/8 console-dashboard.png")
-        # Fill credentials and login
-        access_key_input = page.locator('input[placeholder*="Access Key" i], input[id*="access" i]')
-        secret_key_input = page.locator('input[placeholder*="Secret Key" i], input[id*="secret" i], input[type="password"]')
-        if access_key_input.count() > 0:
-            access_key_input.first.fill(ACCESS_KEY)
-        if secret_key_input.count() > 0:
-            secret_key_input.first.fill(SECRET_KEY)
-        # Click login button
-        login_button = page.locator('button:has-text("Connect"), button:has-text("Login"), button:has-text("Sign In"), button[type="submit"]')
-        if login_button.count() > 0:
-            login_button.first.click()
-        page.wait_for_load_state("networkidle")
-        # Wait a moment for dashboard data to load
+        page.fill('input[placeholder="AKIAIOSFODNN7EXAMPLE"]', ACCESS_KEY)
+        page.fill('input[placeholder="wJalrXUtnFEMI/..."]', SECRET_KEY)
+        page.click('button:has-text("Sign In")')
+        # Wait for dashboard heading (admin login lands on dashboard)
+        page.wait_for_selector('h2:has-text("Dashboard")', timeout=15000)
         page.wait_for_timeout(2000)
-        page.screenshot(path=f"{OUTPUT_DIR}/console-dashboard.png")
+        screenshot(page, "console-dashboard.png")
 
-        # 3. Buckets view
+        # ----- 3. Buckets view -----
         print("  3/8 console-buckets.png")
-        buckets_nav = page.locator('a:has-text("Buckets"), button:has-text("Buckets"), [data-nav="buckets"]')
-        if buckets_nav.count() > 0:
-            buckets_nav.first.click()
+        # Navigate via hash (most reliable — avoids Alpine.js click timing issues)
+        page.goto(f"{CONSOLE_URL}#/buckets")
         page.wait_for_load_state("networkidle")
+        # Wait for bucket cards to appear — they contain bucket names set via x-text
+        page.wait_for_selector('.glass.rounded-xl.cursor-pointer', timeout=10000)
         page.wait_for_timeout(1000)
-        page.screenshot(path=f"{OUTPUT_DIR}/console-buckets.png")
+        screenshot(page, "console-buckets.png")
 
-        # 4. Bucket browser — documents
+        # ----- 4. Bucket browser — documents -----
         print("  4/8 console-bucket-browser.png")
-        doc_bucket = page.locator('text="documents"').first
-        doc_bucket.click()
+        page.goto(f"{CONSOLE_URL}#/buckets/documents")
         page.wait_for_load_state("networkidle")
+        # Wait for file/folder rows to render (hover:bg-white rows are file/dir items)
+        page.wait_for_selector('[class*="cursor-pointer"][class*="border-b"]', timeout=10000)
         page.wait_for_timeout(1000)
-        page.screenshot(path=f"{OUTPUT_DIR}/console-bucket-browser.png")
+        screenshot(page, "console-bucket-browser.png")
 
-        # 5. Object detail — readme.txt
+        # ----- 5. Object detail — readme.txt -----
         print("  5/8 console-object-detail.png")
-        readme = page.locator('text="readme.txt"').first
-        readme.click()
-        page.wait_for_timeout(1000)
-        page.screenshot(path=f"{OUTPUT_DIR}/console-object-detail.png")
+        # Click the readme.txt file row
+        page.locator('[class*="cursor-pointer"][class*="border-b"]:has-text("readme.txt")').click()
+        # Wait for detail panel to appear
+        page.wait_for_selector('text=Object Detail', timeout=10000)
+        page.wait_for_timeout(500)
+        screenshot(page, "console-object-detail.png")
 
-        # 6. Treemap — navigate to media bucket
+        # ----- 6. Treemap — media bucket -----
         print("  6/8 console-treemap.png")
-        # Go back to buckets
-        buckets_nav = page.locator('a:has-text("Buckets"), button:has-text("Buckets"), [data-nav="buckets"]')
-        if buckets_nav.count() > 0:
-            buckets_nav.first.click()
-        page.wait_for_load_state("networkidle")
+        # Navigate to media bucket — reload page to clear the detail panel from step 5
+        page.goto(f"{CONSOLE_URL}#/buckets/media")
+        page.reload(wait_until="networkidle")
+        page.wait_for_selector('[class*="cursor-pointer"][class*="border-b"]', timeout=10000)
         page.wait_for_timeout(500)
-        media_bucket = page.locator('text="media"').first
-        media_bucket.click()
-        page.wait_for_load_state("networkidle")
-        page.wait_for_timeout(500)
-        # Toggle treemap
-        treemap_toggle = page.locator('button:has-text("Treemap"), button:has-text("treemap"), [title*="treemap" i], [data-action="treemap"]')
-        if treemap_toggle.count() > 0:
-            treemap_toggle.first.click()
-            page.wait_for_timeout(1000)
-        page.screenshot(path=f"{OUTPUT_DIR}/console-treemap.png")
-
-        # 7. Credentials view
-        print("  7/8 console-credentials.png")
-        creds_nav = page.locator('a:has-text("Credentials"), button:has-text("Credentials"), [data-nav="credentials"]')
-        if creds_nav.count() > 0:
-            creds_nav.first.click()
-        page.wait_for_load_state("networkidle")
+        # Click the treemap toggle button (has title="Treemap view")
+        page.click('[title="Treemap view"]')
         page.wait_for_timeout(1000)
-        page.screenshot(path=f"{OUTPUT_DIR}/console-credentials.png")
+        screenshot(page, "console-treemap.png")
 
-        # 8. Create credential
+        # ----- 7. Credentials view -----
+        print("  7/8 console-credentials.png")
+        page.goto(f"{CONSOLE_URL}#/credentials")
+        page.wait_for_load_state("networkidle")
+        # Wait for credential cards
+        page.wait_for_selector('.glass.rounded-xl:has-text("Active")', timeout=10000)
+        page.wait_for_timeout(1000)
+        screenshot(page, "console-credentials.png")
+
+        # ----- 8. Create credential -----
         print("  8/8 console-credential-created.png")
-        create_btn = page.locator('button:has-text("Create"), button:has-text("Add"), button:has-text("New")')
-        if create_btn.count() > 0:
-            create_btn.first.click()
-            page.wait_for_timeout(500)
-            # Fill description
-            desc_input = page.locator('input[placeholder*="description" i], input[placeholder*="Description" i], input[id*="description" i]')
-            if desc_input.count() > 0:
-                desc_input.first.fill("CI/CD Pipeline")
-            # Submit
-            submit_btn = page.locator('button:has-text("Create"), button:has-text("Save"), button:has-text("Submit"), button[type="submit"]')
-            if submit_btn.count() > 0:
-                # Click the submit button inside the modal (last match is usually the modal one)
-                submit_btn.last.click()
-            page.wait_for_timeout(1500)
-        page.screenshot(path=f"{OUTPUT_DIR}/console-credential-created.png")
+        # Click "+ Create Credential" button
+        page.click('button:has-text("Create Credential")')
+        page.wait_for_timeout(500)
+        # Fill description in the modal
+        page.fill('input[placeholder="My application"]', "CI/CD Pipeline")
+        # Click Create button inside the modal form
+        page.locator('.fixed button:has-text("Create")').click()
+        # Wait for the "Credential Created" success view with the secret key
+        page.wait_for_selector('text=Credential Created', timeout=10000)
+        page.wait_for_timeout(500)
+        screenshot(page, "console-credential-created.png")
 
         browser.close()
 
