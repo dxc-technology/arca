@@ -93,19 +93,19 @@
 <body>
 
 <h1>Arca S3 Compatibility Report</h1>
-<p class="meta">2026-03-05 18:11:25 UTC</p>
+<p class="meta">2026-03-07 10:26:40 UTC</p>
 
 <div class="cards">
   <div class="card"><div class="value">829</div><div class="label">Total</div></div>
-  <div class="card passed"><div class="value">198</div><div class="label">Passed</div></div>
-  <div class="card failed"><div class="value">540</div><div class="label">Failed</div></div>
+  <div class="card passed"><div class="value">207</div><div class="label">Passed</div></div>
+  <div class="card failed"><div class="value">531</div><div class="label">Failed</div></div>
   <div class="card skipped"><div class="value">91</div><div class="label">Skipped</div></div>
   <div class="card expected"><div class="value">310</div><div class="label">Expected Fail</div></div>
-  <div class="card rate"><div class="value">23.9%</div><div class="label">Pass Rate</div></div>
+  <div class="card rate"><div class="value">25.0%</div><div class="label">Pass Rate</div></div>
 </div>
 
 <div class="progress-bar">
-  <div class="progress-fill" style="width: 23.88419782870929%"></div>
+  <div class="progress-fill" style="width: 24.96984318455971%"></div>
 </div>
 
 <h2>Category Breakdown</h2>
@@ -124,18 +124,18 @@
         <tr>
           <td>Auth</td>
           <td class="num">5</td>
-          <td class="num passed">3</td>
-          <td class="num failed">2</td>
+          <td class="num passed">4</td>
+          <td class="num failed">1</td>
           <td class="num skipped">0</td>
-          <td class="num warn">60%</td>
+          <td class="num good">80%</td>
         </tr>
         <tr>
           <td>Bucket</td>
           <td class="num">160</td>
-          <td class="num passed">91</td>
-          <td class="num failed">66</td>
+          <td class="num passed">96</td>
+          <td class="num failed">61</td>
           <td class="num skipped">3</td>
-          <td class="num warn">57%</td>
+          <td class="num warn">60%</td>
         </tr>
         <tr>
           <td>CORS</td>
@@ -188,10 +188,10 @@
         <tr>
           <td>Multipart</td>
           <td class="num">62</td>
-          <td class="num passed">11</td>
-          <td class="num failed">51</td>
+          <td class="num passed">12</td>
+          <td class="num failed">50</td>
           <td class="num skipped">0</td>
-          <td class="num bad">18%</td>
+          <td class="num bad">19%</td>
         </tr>
         <tr>
           <td>Notifications</td>
@@ -220,10 +220,10 @@
         <tr>
           <td>Other</td>
           <td class="num">155</td>
-          <td class="num passed">32</td>
-          <td class="num failed">50</td>
+          <td class="num passed">34</td>
+          <td class="num failed">48</td>
           <td class="num skipped">73</td>
-          <td class="num bad">21%</td>
+          <td class="num bad">22%</td>
         </tr>
         <tr>
           <td>Presigned/POST</td>
@@ -252,8 +252,19 @@
 </table>
 
 
+        <h2>Passlist Diff</h2>
+        <div class="diff-box"><div class="diff-new">+ test_abort_multipart_upload_not_found</div>
+<div class="diff-new">+ test_bucket_create_naming_dns_dash_dot</div>
+<div class="diff-new">+ test_bucket_create_naming_dns_dot_dash</div>
+<div class="diff-new">+ test_bucket_list_delimiter_empty</div>
+<div class="diff-new">+ test_bucket_list_maxkeys_zero</div>
+<div class="diff-new">+ test_bucket_listv2_maxkeys_zero</div>
+<div class="diff-new">+ test_multi_object_delete_key_limit</div>
+<div class="diff-new">+ test_multi_objectv2_delete_key_limit</div>
+<div class="diff-new">+ test_object_raw_authenticated_bucket_gone</div>
+</div>
 
-<h2>Failures (540)</h2>
+<h2>Failures (531)</h2>
 
         <details class="fail-item">
           <summary>
@@ -262,14 +273,6 @@
             <code>test_100_continue</code>
           </summary>
           <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Multipart</span>
-            <code>test_abort_multipart_upload_not_found</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -317,7 +320,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_acl_canned</code>
           </summary>
-          <pre>KeyError: 'Grants'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -325,7 +328,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_acl_canned_authenticatedread</code>
           </summary>
-          <pre>KeyError: 'Grants'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -333,7 +336,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_acl_canned_during_create</code>
           </summary>
-          <pre>KeyError: 'Grants'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -349,7 +352,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_acl_canned_publicreadwrite</code>
           </summary>
-          <pre>KeyError: 'Grants'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -357,7 +360,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_acl_default</code>
           </summary>
-          <pre>KeyError: 'Owner'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -365,7 +368,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_acl_grant_email</code>
           </summary>
-          <pre>KeyError: 'Grants'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -373,7 +376,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_acl_grant_email_not_exist</code>
           </summary>
-          <pre>KeyError: 'Grants'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -381,7 +384,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_acl_grant_nonexist_user</code>
           </summary>
-          <pre>KeyError: 'Grants'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -389,7 +392,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_acl_grant_userid_fullcontrol</code>
           </summary>
-          <pre>KeyError: 'Grants'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -397,7 +400,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_acl_grant_userid_read</code>
           </summary>
-          <pre>KeyError: 'Grants'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -405,7 +408,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_acl_grant_userid_readacp</code>
           </summary>
-          <pre>KeyError: 'Grants'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -413,7 +416,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_acl_grant_userid_write</code>
           </summary>
-          <pre>KeyError: 'Grants'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -421,7 +424,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_acl_grant_userid_writeacp</code>
           </summary>
-          <pre>KeyError: 'Grants'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -429,7 +432,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_acl_revoke_all</code>
           </summary>
-          <pre>KeyError: 'Grants'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -451,22 +454,6 @@
           <summary>
             <span class="badge unexpected">Unexpected</span>
             <span class="cat-tag">Bucket</span>
-            <code>test_bucket_create_naming_dns_dash_dot</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Bucket</span>
-            <code>test_bucket_create_naming_dns_dot_dash</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Bucket</span>
             <code>test_bucket_head_extended</code>
           </summary>
           <pre>KeyError: 'x-rgw-object-count'</pre>
@@ -477,15 +464,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_header_acl_grants</code>
           </summary>
-          <pre>KeyError: 'Grants'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Bucket</span>
-            <code>test_bucket_list_delimiter_empty</code>
-          </summary>
-          <pre>assert not 'Delimiter' in {'Contents': [{'ETag': '&quot;37b51d194a7513e45b56f6524f2d51f2&quot;', 'Key': 'bar', 'LastModified': datetime.datetime(2026, 3, ...3, 5, 18, 7, 25, 893000, tzinfo=tzlocal()), 'Size': 3</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -493,11 +472,16 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_list_delimiter_not_skip_special</code>
           </summary>
-          <pre>AssertionError: assert ['0'] == ['1999', '199...999+', '2000']
+          <pre>AssertionError: assert [] == ['1999', '199...999+', '2000']
   
-  At index 0 diff: '0' != '1999'
-  Right contains 3 more items, first extra item: '1999#'
-  Use -v to get more diff</pre>
+  Right contains 4 more items, first extra item: '1999'
+  
+  Full diff:
+  + []
+  - [
+  -     '1999',...
+  
+  ...Full output truncated (4 </pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -541,15 +525,13 @@
           <pre>AssertionError: assert ['asdf+b'] == ['asdf%2Bb']
   
   At index 0 diff: 'asdf+b' != 'asdf%2Bb'
-  Use -v to get more diff</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Bucket</span>
-            <code>test_bucket_list_maxkeys_zero</code>
-          </summary>
-          <pre>assert True == False</pre>
+  
+  Full diff:
+    [
+  -     'asdf%2Bb',
+  ?          ^^^...
+  
+  ...Full output truncated (3 lines hidd</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -618,7 +600,13 @@
           <pre>AssertionError: assert ['asdf+b'] == ['asdf%2Bb']
   
   At index 0 diff: 'asdf+b' != 'asdf%2Bb'
-  Use -v to get more diff</pre>
+  
+  Full diff:
+    [
+  -     'asdf%2Bb',
+  ?          ^^^...
+  
+  ...Full output truncated (3 lines hidd</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -626,15 +614,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_listv2_fetchowner_notempty</code>
           </summary>
-          <pre>assert 'Owner' in {'ETag': '&quot;82d0f0fa8551de8b7eb5ecb65eae0261&quot;', 'Key': 'foo/bar', 'LastModified': datetime.datetime(2026, 3, 5, 18, 7, 26, 102000, tzinfo=tzlocal()), 'Size': 7, ...}</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Bucket</span>
-            <code>test_bucket_listv2_maxkeys_zero</code>
-          </summary>
-          <pre>assert True == False</pre>
+          <pre>assert 'Owner' in {'ETag': '&quot;82d0f0fa8551de8b7eb5ecb65eae0261&quot;', 'Key': 'foo/bar', 'LastModified': datetime.datetime(2026, 3, 7, 9, 51, 13, 967000, tzinfo=tzlocal()), 'Size': 7, ...}</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -922,7 +902,7 @@
             <span class="cat-tag">Other</span>
             <code>test_create_bucket_bucket_owner_enforced</code>
           </summary>
-          <pre>KeyError: 'Rules'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketOwnershipControls operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -930,7 +910,7 @@
             <span class="cat-tag">Other</span>
             <code>test_create_bucket_bucket_owner_preferred</code>
           </summary>
-          <pre>KeyError: 'Rules'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketOwnershipControls operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -938,7 +918,16 @@
             <span class="cat-tag">Other</span>
             <code>test_create_bucket_no_ownership_controls</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>AssertionError: assert (404, 'Owners...otFoundError') == (501, 'NotImplemented')
+  
+  At index 0 diff: 404 != 501
+  
+  Full diff:
+    (
+  -     501,
+  ?     ^ ^...
+  
+  ...Full output truncated (5 lin</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -946,7 +935,7 @@
             <span class="cat-tag">Object</span>
             <code>test_create_bucket_object_writer</code>
           </summary>
-          <pre>KeyError: 'Rules'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketOwnershipControls operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1094,7 +1083,12 @@
   
   Right contains 1 more item:
   {'foo': 'bar'}
-  Use -v to get more diff</pre>
+  
+  Full diff:
+  + {}
+  - {
+  -     'foo': 'bar',
+  - }</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1122,7 +1116,12 @@
   
   Right contains 1 more item:
   {'foo': 'bar'}
-  Use -v to get more diff</pre>
+  
+  Full diff:
+  + {}
+  - {
+  -     'foo': 'bar',
+  - }</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1134,7 +1133,12 @@
   
   Right contains 1 more item:
   {'foo': 'bar'}
-  Use -v to get more diff</pre>
+  
+  Full diff:
+  + {}
+  - {
+  -     'foo': 'bar',
+  - }</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1150,9 +1154,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_get_bucket_encryption_kms</code>
           </summary>
-          <pre>AssertionError: assert '' == 'ServerSideEn...NotFoundError'
-  
-  - ServerSideEncryptionConfigurationNotFoundError</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketEncryption operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1160,9 +1162,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_get_bucket_encryption_s3</code>
           </summary>
-          <pre>AssertionError: assert '' == 'ServerSideEn...NotFoundError'
-  
-  - ServerSideEncryptionConfigurationNotFoundError</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketEncryption operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1170,7 +1170,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_get_bucket_policy_status</code>
           </summary>
-          <pre>KeyError: 'IsPublic'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketPolicyStatus operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1242,7 +1242,7 @@
             <span class="cat-tag">Object</span>
             <code>test_get_object_torrent</code>
           </summary>
-          <pre>AssertionError: assert 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA...AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA</pre>
+          <pre>AssertionError: assert 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1306,8 +1306,8 @@
             <span class="cat-tag">Bucket</span>
             <code>test_list_buckets_paginated</code>
           </summary>
-          <pre>AssertionError: assert 9 == 0
- +  where 9 = len([{'CreationDate': datetime.datetime(2026, 3, 5, 16, 52, 1, 143000, tzinfo=tzlocal()), 'Name': 'arca-test-78up6fmd82x2f...3-240'}, {'CreationDate': datet</pre>
+          <pre>AssertionError: assert 4 == 0
+ +  where 4 = len([{'CreationDate': datetime.datetime(2026, 3, 6, 18, 31, 55, 866000, tzinfo=tzlocal()), 'Name': 'backups'}, {'CreationDate': datetime.datetime(2026, 3, 6</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1324,22 +1324,6 @@
             <code>test_list_multipart_upload_owner</code>
           </summary>
           <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Other</span>
-            <code>test_multi_object_delete_key_limit</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Other</span>
-            <code>test_multi_objectv2_delete_key_limit</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1498,7 +1482,12 @@
   
   Right contains 1 more item:
   {'foo': 'bar'}
-  Use -v to get more diff</pre>
+  
+  Full diff:
+  + {}
+  - {
+  -     'foo': 'bar',
+  - }</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1633,7 +1622,12 @@
   
   Left contains 2 more items:
   {'key1': 'value1', 'key2': 'value2'}
-  Use -v to get more diff</pre>
+  
+  Full diff:
+  - {}
+  + {...
+  
+  ...Full output truncated (3 lin</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1653,7 +1647,12 @@
   
   Right contains 1 more item:
   {'foo': 'bar'}
-  Use -v to get more diff</pre>
+  
+  Full diff:
+  + {}
+  - {
+  -     'foo': 'bar',
+  - }</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1702,17 +1701,6 @@
             <code>test_object_lock_delete_multipart_object_with_retention</code>
           </summary>
           <pre>KeyError: 'VersionId'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Auth</span>
-            <code>test_object_raw_authenticated_bucket_gone</code>
-          </summary>
-          <pre>AssertionError: assert 'NoSuchKey' == 'NoSuchBucket'
-  
-  - NoSuchBucket
-  + NoSuchKey</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1771,10 +1759,10 @@
             <span class="cat-tag">Headers</span>
             <code>test_object_requestid_matches_header_on_error</code>
           </summary>
-          <pre>AssertionError: assert '1f437365-828...-046e3fe029dd' == '473ca671-8d5...-f8ab2c1b9344'
+          <pre>AssertionError: assert '6d36c8ff-6a0...-3c45d7c3d8a3' == 'd48c6af1-caa...-095a095e85f2'
   
-  - 473ca671-8d5d-4a2d-87aa-f8ab2c1b9344
-  + 1f437365-8280-4eac-bb3b-046e3fe029dd</pre>
+  - d48c6af1-caad-4804-828a-095a095e85f2
+  + 6d36c8ff-6a0e-4c3c-a183-3c45d7c3d8a3</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1822,7 +1810,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_put_bucket_acl_grant_group_read</code>
           </summary>
-          <pre>KeyError: 'Grants'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2092,7 +2080,12 @@
   
   Right contains 1 more item:
   {'foo': 'bar'}
-  Use -v to get more diff</pre>
+  
+  Full diff:
+  + {}
+  - {
+  -     'foo': 'bar',
+  - }</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3052,7 +3045,7 @@
             <span class="cat-tag">CORS</span>
             <code>test_cors_header_option</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>assert 501 == 404</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3060,7 +3053,7 @@
             <span class="cat-tag">CORS</span>
             <code>test_cors_origin_response</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>assert 501 == 404</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3068,7 +3061,7 @@
             <span class="cat-tag">CORS</span>
             <code>test_cors_origin_wildcard</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>assert 501 == 404</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3309,7 +3302,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_get_nonpublicpolicy_acl_bucket_policy_status</code>
           </summary>
-          <pre>KeyError: 'IsPublic'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketPolicyStatus operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3349,7 +3342,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_get_publicpolicy_acl_bucket_policy_status</code>
           </summary>
-          <pre>KeyError: 'IsPublic'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketPolicyStatus operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3373,10 +3366,10 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_get_undefined_public_block</code>
           </summary>
-          <pre>AssertionError: assert 'NoSuchBucket' == 'NoSuchPublic...Configuration'
+          <pre>AssertionError: assert 'NotImplemented' == 'NoSuchPublic...Configuration'
   
   - NoSuchPublicAccessBlockConfiguration
-  + NoSuchBucket</pre>
+  + NotImplemented</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3392,7 +3385,7 @@
             <span class="cat-tag">Lifecycle</span>
             <code>test_lifecycle_delete</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>assert 501 == 404</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3683,7 +3676,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_object_acl_canned_bucketownerfullcontrol</code>
           </summary>
-          <pre>KeyError: 'Grants'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3691,7 +3684,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_object_acl_canned_bucketownerread</code>
           </summary>
-          <pre>KeyError: 'Grants'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3835,7 +3828,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_get_obj_lock_invalid_bucket</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>assert 501 == 404</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4393,7 +4386,7 @@
             <span class="cat-tag">Tagging</span>
             <code>test_set_bucket_tagging</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>assert 501 == 404</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4401,7 +4394,7 @@
             <span class="cat-tag">CORS</span>
             <code>test_set_cors</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>assert 501 == 404</pre>
         </details>
         <details class="fail-item">
           <summary>

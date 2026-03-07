@@ -74,6 +74,37 @@ pub async fn get_bucket(
         }
     }
 
+    // GetBucketEncryption: return specific error code when not configured.
+    if params.iter().any(|(k, _)| k == "encryption") {
+        // Check bucket exists first.
+        match state.metadata.head_bucket(&bucket).await {
+            Ok(Some(_)) => {
+                return s3_error_response(S3Error::new(
+                    S3ErrorCode::ServerSideEncryptionConfigurationNotFoundError,
+                    &resource,
+                ));
+            }
+            Ok(None) => {
+                return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource));
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
+    }
+
+    // Unimplemented GET bucket operations that should return 501.
+    let unimplemented_get_ops = [
+        "acl", "cors", "lifecycle", "logging", "notification",
+        "policy", "replication", "tagging", "website", "object-lock",
+        "ownershipControls", "publicAccessBlock", "policyStatus",
+        "accelerate", "requestPayment", "inventory", "analytics",
+        "metrics", "intelligenttiering",
+    ];
+    for op in &unimplemented_get_ops {
+        if params.iter().any(|(k, _)| k == *op) {
+            return not_implemented_response(&resource);
+        }
+    }
+
     // ListObjectVersions: mc sends ?versions= for recursive delete.
     // Since we don't support versioning, return current objects as Version entries.
     if params.iter().any(|(k, _)| k == "versions") {
@@ -113,7 +144,7 @@ async fn list_objects_v2(
     }
 
     let prefix = get_param("prefix");
-    let delimiter = get_param("delimiter");
+    let delimiter = get_param("delimiter").filter(|d| !d.is_empty());
     let start_after = get_param("start-after");
     let continuation_token = get_param("continuation-token");
 
@@ -131,6 +162,30 @@ async fn list_objects_v2(
         },
         None => 1000,
     };
+
+    // max-keys=0: return empty results with IsTruncated=false.
+    if max_keys == 0 {
+        let xml_params = ListBucketResultParams {
+            name: bucket,
+            prefix,
+            delimiter,
+            max_keys,
+            is_truncated: false,
+            key_count: 0,
+            contents: &[],
+            common_prefixes: &[],
+            continuation_token,
+            next_continuation_token: None,
+            start_after,
+            encoding_type: None,
+        };
+        let xml = xml_types::list_bucket_result(&xml_params);
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/xml")
+            .body(Body::from(xml))
+            .expect("build list_objects_v2 response");
+    }
 
     // Decode continuation token → use as start_after.
     let decoded_token: Option<String> = match continuation_token {
@@ -177,12 +232,10 @@ async fn list_objects_v2(
         &records[..]
     };
 
-    // Extract common prefixes if delimiter is set (and non-empty).
+    // Extract common prefixes if delimiter is set.
     let (contents, common_prefixes) = match delimiter {
-        Some(delim) if !delim.is_empty() => {
-            extract_common_prefixes(records, prefix.unwrap_or(""), delim)
-        }
-        _ => (records.iter().map(record_to_list_entry).collect(), vec![]),
+        Some(delim) => extract_common_prefixes(records, prefix.unwrap_or(""), delim),
+        None => (records.iter().map(record_to_list_entry).collect(), vec![]),
     };
 
     // Build next continuation token from last key.
@@ -243,7 +296,7 @@ async fn list_objects_v1(
     }
 
     let prefix = get_param("prefix");
-    let delimiter = get_param("delimiter");
+    let delimiter = get_param("delimiter").filter(|d| !d.is_empty());
     let marker = get_param("marker");
 
     let max_keys: u32 = match get_param("max-keys") {
@@ -260,6 +313,28 @@ async fn list_objects_v1(
         },
         None => 1000,
     };
+
+    // max-keys=0: return empty results with IsTruncated=false.
+    if max_keys == 0 {
+        let xml_params = ListBucketV1ResultParams {
+            name: bucket,
+            prefix,
+            delimiter,
+            marker,
+            next_marker: None,
+            max_keys,
+            is_truncated: false,
+            contents: &[],
+            common_prefixes: &[],
+            encoding_type: None,
+        };
+        let xml = xml_types::list_bucket_v1_result(&xml_params);
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/xml")
+            .body(Body::from(xml))
+            .expect("build list_objects_v1 response");
+    }
 
     // Fetch max_keys + 1 to detect truncation.
     let fetch_limit = max_keys + 1;
@@ -281,10 +356,8 @@ async fn list_objects_v1(
 
     // Extract common prefixes if delimiter is set.
     let (contents, common_prefixes) = match delimiter {
-        Some(delim) if !delim.is_empty() => {
-            extract_common_prefixes(records, prefix.unwrap_or(""), delim)
-        }
-        _ => (records.iter().map(record_to_list_entry).collect(), vec![]),
+        Some(delim) => extract_common_prefixes(records, prefix.unwrap_or(""), delim),
+        None => (records.iter().map(record_to_list_entry).collect(), vec![]),
     };
 
     // NextMarker: set when truncated and delimiter is used (or just use last key).
@@ -633,6 +706,15 @@ async fn delete_objects(
             ));
         }
     };
+
+    // S3 limits DeleteObjects to 1000 keys.
+    if delete_body.objects.len() > 1000 {
+        return s3_error_response(S3Error::with_message(
+            S3ErrorCode::MalformedXML,
+            "The delete request contained more than 1000 objects",
+            &resource,
+        ));
+    }
 
     let quiet = delete_body.quiet;
     let mut deleted = Vec::new();

@@ -353,9 +353,10 @@ class TestAbortMultipartUpload:
             )
         assert exc_info.value.response["Error"]["Code"] == "NoSuchUpload"
 
-    def test_abort_nonexistent_ok(self, s3_client):
-        """Aborting a nonexistent upload should succeed (like DeleteObject)."""
-        # Should not raise
-        s3_client.abort_multipart_upload(
-            Bucket=BUCKET, Key="no-such-key", UploadId="nonexistent-id",
-        )
+    def test_abort_nonexistent_returns_no_such_upload(self, s3_client):
+        """Aborting a nonexistent upload should return NoSuchUpload."""
+        with pytest.raises(ClientError) as exc_info:
+            s3_client.abort_multipart_upload(
+                Bucket=BUCKET, Key="no-such-key", UploadId="nonexistent-id",
+            )
+        assert exc_info.value.response["Error"]["Code"] == "NoSuchUpload"

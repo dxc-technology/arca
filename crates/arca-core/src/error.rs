@@ -34,8 +34,10 @@ pub enum S3ErrorCode {
     InvalidPartOrder,
     NoSuchBucket,
     NoSuchKey,
+    MalformedXML,
     NoSuchUpload,
     NotImplemented,
+    ServerSideEncryptionConfigurationNotFoundError,
     SignatureDoesNotMatch,
 }
 
@@ -55,10 +57,12 @@ impl S3ErrorCode {
             S3ErrorCode::InvalidBucketName => 400,
             S3ErrorCode::InvalidPart => 400,
             S3ErrorCode::InvalidPartOrder => 400,
+            S3ErrorCode::MalformedXML => 400,
             S3ErrorCode::NoSuchBucket => 404,
             S3ErrorCode::NoSuchKey => 404,
             S3ErrorCode::NoSuchUpload => 404,
             S3ErrorCode::NotImplemented => 501,
+            S3ErrorCode::ServerSideEncryptionConfigurationNotFoundError => 400,
             S3ErrorCode::SignatureDoesNotMatch => 403,
         }
     }
@@ -78,10 +82,14 @@ impl S3ErrorCode {
             S3ErrorCode::InvalidBucketName => "InvalidBucketName",
             S3ErrorCode::InvalidPart => "InvalidPart",
             S3ErrorCode::InvalidPartOrder => "InvalidPartOrder",
+            S3ErrorCode::MalformedXML => "MalformedXML",
             S3ErrorCode::NoSuchBucket => "NoSuchBucket",
             S3ErrorCode::NoSuchKey => "NoSuchKey",
             S3ErrorCode::NoSuchUpload => "NoSuchUpload",
             S3ErrorCode::NotImplemented => "NotImplemented",
+            S3ErrorCode::ServerSideEncryptionConfigurationNotFoundError => {
+                "ServerSideEncryptionConfigurationNotFoundError"
+            }
             S3ErrorCode::SignatureDoesNotMatch => "SignatureDoesNotMatch",
         }
     }
@@ -119,6 +127,9 @@ impl S3ErrorCode {
             S3ErrorCode::InvalidPartOrder => {
                 "The list of parts was not in ascending order."
             }
+            S3ErrorCode::MalformedXML => {
+                "The XML you provided was not well-formed or did not validate against our published schema."
+            }
             S3ErrorCode::NoSuchBucket => "The specified bucket does not exist.",
             S3ErrorCode::NoSuchKey => "The specified key does not exist.",
             S3ErrorCode::NoSuchUpload => {
@@ -126,6 +137,9 @@ impl S3ErrorCode {
             }
             S3ErrorCode::NotImplemented => {
                 "A header you provided implies functionality that is not implemented."
+            }
+            S3ErrorCode::ServerSideEncryptionConfigurationNotFoundError => {
+                "The server side encryption configuration was not found."
             }
             S3ErrorCode::SignatureDoesNotMatch => {
                 "The request signature we calculated does not match the signature you provided."
@@ -272,6 +286,11 @@ mod tests {
         assert_eq!(S3ErrorCode::BadDigest.http_status(), 400);
         assert_eq!(S3ErrorCode::InvalidArgument.http_status(), 400);
         assert_eq!(S3ErrorCode::InternalError.http_status(), 500);
+        assert_eq!(S3ErrorCode::MalformedXML.http_status(), 400);
+        assert_eq!(
+            S3ErrorCode::ServerSideEncryptionConfigurationNotFoundError.http_status(),
+            400
+        );
     }
 
     #[test]

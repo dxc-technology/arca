@@ -44,8 +44,8 @@ pub fn validate_bucket_name(name: &str) -> Result<(), S3Error> {
         }
     }
 
-    // No consecutive dots
-    if name.contains("..") {
+    // No consecutive dots, and no adjacent dot-hyphen or hyphen-dot
+    if name.contains("..") || name.contains(".-") || name.contains("-.") {
         return Err(make_err());
     }
 
@@ -130,6 +130,16 @@ mod tests {
     #[test]
     fn invalid_consecutive_dots() {
         assert!(validate_bucket_name("my..bucket").is_err());
+    }
+
+    #[test]
+    fn invalid_dot_dash() {
+        assert!(validate_bucket_name("my.-bucket").is_err());
+    }
+
+    #[test]
+    fn invalid_dash_dot() {
+        assert!(validate_bucket_name("my-.bucket").is_err());
     }
 
     #[test]

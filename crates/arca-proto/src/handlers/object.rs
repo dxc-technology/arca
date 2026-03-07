@@ -286,6 +286,15 @@ pub async fn get_object(
 ) -> Response {
     let resource = format!("/{bucket}/{key}");
 
+    // Check bucket exists (S3 returns NoSuchBucket, not NoSuchKey).
+    match state.metadata.head_bucket(&bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource));
+        }
+        Err(e) => return internal_error_response(e, &resource),
+    }
+
     let record = match state.metadata.get_object(&bucket, &key).await {
         Ok(Some(r)) => r,
         Ok(None) => {
@@ -341,6 +350,15 @@ pub async fn head_object(
 ) -> Response {
     let resource = format!("/{bucket}/{key}");
 
+    // Check bucket exists.
+    match state.metadata.head_bucket(&bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource));
+        }
+        Err(e) => return internal_error_response(e, &resource),
+    }
+
     let record = match state.metadata.get_object(&bucket, &key).await {
         Ok(Some(r)) => r,
         Ok(None) => {
@@ -393,6 +411,15 @@ pub async fn delete_object(
     }
 
     let resource = format!("/{bucket}/{key}");
+
+    // Check bucket exists (S3 returns NoSuchBucket, not NoSuchKey).
+    match state.metadata.head_bucket(&bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource));
+        }
+        Err(e) => return internal_error_response(e, &resource),
+    }
 
     let old = match state.metadata.delete_object(&bucket, &key).await {
         Ok(old) => old,

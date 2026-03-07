@@ -197,11 +197,7 @@ pub async fn complete_multipart_upload(
 
     // Validate parts in ascending order and non-empty.
     if complete_body.parts.is_empty() {
-        return s3_error_response(S3Error::with_message(
-            S3ErrorCode::InvalidArgument,
-            "You must specify at least one part",
-            &resource,
-        ));
+        return s3_error_response(S3Error::new(S3ErrorCode::MalformedXML, &resource));
     }
 
     for i in 1..complete_body.parts.len() {
@@ -352,6 +348,15 @@ pub async fn abort_multipart_upload(
 ) -> Response {
     let resource = format!("/{bucket}/{key}");
 
+    // Verify upload exists.
+    match state.metadata.get_multipart_upload(&upload_id).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return s3_error_response(S3Error::new(S3ErrorCode::NoSuchUpload, &resource));
+        }
+        Err(e) => return internal_error_response(e, &resource),
+    }
+
     // Delete upload + parts from DB.
     let parts = match state.metadata.delete_multipart_upload(&upload_id).await {
         Ok(p) => p,
@@ -365,7 +370,6 @@ pub async fn abort_multipart_upload(
         }
     }
 
-    // S3 returns 204 regardless of whether the upload existed.
     Response::builder()
         .status(StatusCode::NO_CONTENT)
         .body(Body::empty())
