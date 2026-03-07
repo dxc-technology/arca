@@ -8,6 +8,9 @@ The default setup is designed for local development:
 bin/arca start -d --build
 ```
 
+!!! tip
+    Drop the `-d` flag to run in the foreground and see logs in real time. Press ++ctrl+c++ to stop the server.
+
 This starts Arca with:
 
 - Auto-generated or environment-provided credentials

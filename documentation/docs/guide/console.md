@@ -17,6 +17,9 @@ The console is intentionally not embedded in the Arca binary. This keeps the ser
 bin/console start -d --build
 ```
 
+!!! tip
+    Drop the `-d` flag to run in the foreground and see container logs in real time. Press ++ctrl+c++ to stop.
+
 This starts the console on [http://localhost:9080](http://localhost:9080).
 
 The `ARCA_ENDPOINT` environment variable controls which Arca server the console connects to. In the default Docker Compose setup, it's set to `http://localhost:9000` so the browser (running on the host) can reach Arca directly.

@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - **Docker** and **Docker Compose** (v2)
-- **aws-cli** (optional, for S3 CLI operations)
+- **aws-cli** or **MinIO Client (mc)** (optional, for S3 CLI operations)
 - **Git**
 
 ## Clone and Build
@@ -38,20 +38,33 @@ Start the server:
 bin/arca start -d --build
 ```
 
+!!! tip
+    Drop the `-d` flag to run in the foreground and see logs in real time. Press ++ctrl+c++ to stop the server.
+
 Check that it's running:
 
 ```bash
 bin/arca logs | grep "Access Key"
 ```
 
-Arca auto-generates a root credential on first startup and prints it to the logs. Set the credentials and verify with aws-cli:
+Arca auto-generates a root credential on first startup and prints it to the logs. Set the credentials and verify with your S3 client of choice:
 
-```bash
-export AWS_ACCESS_KEY_ID=<your-access-key>
-export AWS_SECRET_ACCESS_KEY=<your-secret-key>
+=== "aws-cli"
 
-aws s3 ls --endpoint-url http://localhost:9000
-```
+    ```bash
+    export AWS_ACCESS_KEY_ID=<your-access-key>
+    export AWS_SECRET_ACCESS_KEY=<your-secret-key>
+
+    aws s3 ls --endpoint-url http://localhost:9000
+    ```
+
+=== "MinIO Client (mc)"
+
+    ```bash
+    mc alias set arca http://localhost:9000 <your-access-key> <your-secret-key>
+
+    mc ls arca
+    ```
 
 ## Docker Images
 

@@ -1325,6 +1325,10 @@
 <h2 id="starting-the-console">Starting the Console<a class="headerlink" href="#starting-the-console" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
 </code></pre></div>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>Drop the <code>-d</code> flag to run in the foreground and see container logs in real time. Press <span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-c">C</kbd></span> to stop.</p>
+</div>
 <p>This starts the console on <a href="http://localhost:9080">http://localhost:9080</a>.</p>
 <p>The <code>ARCA_ENDPOINT</code> environment variable controls which Arca server the console connects to. In the default Docker Compose setup, it's set to <code>http://localhost:9000</code> so the browser (running on the host) can reach Arca directly.</p>
 <h2 id="login">Login<a class="headerlink" href="#login" title="Permanent link">&para;</a></h2>

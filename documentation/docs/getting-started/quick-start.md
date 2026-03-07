@@ -8,6 +8,9 @@ Get Arca running and perform your first S3 operations.
 bin/arca start -d --build
 ```
 
+!!! tip
+    Drop the `-d` flag to run in the foreground and see logs in real time. Press ++ctrl+c++ to stop the server.
+
 On first startup, Arca auto-generates a root credential and prints it to the logs:
 
 ```bash
@@ -26,35 +29,70 @@ bin/arca logs | grep "Access Key"
 ========================================
 ```
 
-Set the credentials in your shell:
+Configure your S3 client:
 
-```bash
-export AWS_ACCESS_KEY_ID=<your-access-key>
-export AWS_SECRET_ACCESS_KEY=<your-secret-key>
-```
+=== "aws-cli"
+
+    ```bash
+    export AWS_ACCESS_KEY_ID=<your-access-key>
+    export AWS_SECRET_ACCESS_KEY=<your-secret-key>
+    ```
+
+=== "MinIO Client (mc)"
+
+    ```bash
+    mc alias set arca http://localhost:9000 <your-access-key> <your-secret-key>
+    ```
 
 ## Your First Bucket
 
-```bash
-# Create a bucket
-aws s3 mb s3://my-bucket --endpoint-url http://localhost:9000
+=== "aws-cli"
 
-# List buckets
-aws s3 ls --endpoint-url http://localhost:9000
-```
+    ```bash
+    # Create a bucket
+    aws s3 mb s3://my-bucket --endpoint-url http://localhost:9000
+
+    # List buckets
+    aws s3 ls --endpoint-url http://localhost:9000
+    ```
+
+=== "MinIO Client (mc)"
+
+    ```bash
+    # Create a bucket
+    mc mb arca/my-bucket
+
+    # List buckets
+    mc ls arca
+    ```
 
 ## Upload and Download Objects
 
-```bash
-# Upload a file
-aws s3 cp myfile.txt s3://my-bucket/ --endpoint-url http://localhost:9000
+=== "aws-cli"
 
-# List objects
-aws s3 ls s3://my-bucket --endpoint-url http://localhost:9000
+    ```bash
+    # Upload a file
+    aws s3 cp myfile.txt s3://my-bucket/ --endpoint-url http://localhost:9000
 
-# Download a file
-aws s3 cp s3://my-bucket/myfile.txt downloaded.txt --endpoint-url http://localhost:9000
-```
+    # List objects
+    aws s3 ls s3://my-bucket --endpoint-url http://localhost:9000
+
+    # Download a file
+    aws s3 cp s3://my-bucket/myfile.txt downloaded.txt --endpoint-url http://localhost:9000
+    ```
+
+=== "MinIO Client (mc)"
+
+    ```bash
+    # Upload a file
+    mc cp myfile.txt arca/my-bucket/
+
+    # List objects
+    mc ls arca/my-bucket
+
+    # Download a file
+    mc cp arca/my-bucket/myfile.txt downloaded.txt
+    ```
 
 ## Start the Web Console
 
@@ -63,6 +101,9 @@ Arca includes a browser-based web console for managing buckets, objects, and cre
 ```bash
 bin/console start -d --build
 ```
+
+!!! tip
+    As with `bin/arca`, drop the `-d` flag to see console container logs in real time.
 
 Open [http://localhost:9080](http://localhost:9080), enter the Arca endpoint (`http://localhost:9000`) and your credentials to get started. Admin credentials unlock additional features like credential management and server stats.
 
