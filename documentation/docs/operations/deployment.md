@@ -5,7 +5,7 @@
 The default setup is designed for local development:
 
 ```bash
-bin/run --build -d
+bin/arca start -d --build
 ```
 
 This starts Arca with:

@@ -5,13 +5,13 @@ Get Arca running and perform your first S3 operations.
 ## Start the Server
 
 ```bash
-bin/run --build -d
+bin/arca start -d --build
 ```
 
 On first startup, Arca auto-generates a root credential and prints it to the logs:
 
 ```bash
-docker compose -f docker/docker-compose.yml logs arca | grep "Access Key"
+bin/arca logs | grep "Access Key"
 ```
 
 ```
@@ -61,7 +61,7 @@ aws s3 cp s3://my-bucket/myfile.txt downloaded.txt --endpoint-url http://localho
 Arca includes a browser-based web console for managing buckets, objects, and credentials:
 
 ```bash
-bin/console --build -d
+bin/console start -d --build
 ```
 
 Open [http://localhost:9080](http://localhost:9080), enter the Arca endpoint (`http://localhost:9000`) and your credentials to get started. Admin credentials unlock additional features like credential management and server stats.
@@ -75,10 +75,9 @@ Convenience scripts in `bin/` wrap docker compose commands:
 | Script | Description |
 |--------|-------------|
 | `bin/build` | Build the Docker image |
-| `bin/run` | Start the server (flags passed through to docker compose) |
-| `bin/stop` | Stop the server |
+| `bin/arca` | Manage the Arca server (`start`, `stop`, `status`, `logs`) |
+| `bin/console` | Manage the web console (`start`, `stop`, `status`, `logs`) |
 | `bin/test` | Run unit + integration tests (`unit`, `integration`, or both) |
-| `bin/console` | Start the web console (flags passed through to docker compose) |
 | `bin/screenshots` | Take automated console screenshots for documentation |
 | `bin/s3-tests` | Run Ceph s3-tests compatibility suite |
 | `bin/perf-test` | Run performance tests |

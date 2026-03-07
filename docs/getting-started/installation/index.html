@@ -1129,15 +1129,15 @@
 <p>For debugging, build the development image which includes a shell (debian-slim based):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>bin/build<span class="w"> </span>--dev
 </code></pre></div>
-<p>Or set the <code>BUILD_TARGET</code> environment variable:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nv">BUILD_TARGET</span><span class="o">=</span>development<span class="w"> </span>bin/run<span class="w"> </span>--build<span class="w"> </span>-d
+<p>Or start the development image directly:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--dev
 </code></pre></div>
 <h2 id="verify">Verify<a class="headerlink" href="#verify" title="Permanent link">&para;</a></h2>
 <p>Start the server:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>bin/run<span class="w"> </span>--build<span class="w"> </span>-d
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
 </code></pre></div>
 <p>Check that it's running:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>docker/docker-compose.yml<span class="w"> </span>logs<span class="w"> </span>arca<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">&quot;Access Key&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>bin/arca<span class="w"> </span>logs<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">&quot;Access Key&quot;</span>
 </code></pre></div>
 <p>Arca auto-generates a root credential on first startup and prints it to the logs. Set the credentials and verify with aws-cli:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AWS_ACCESS_KEY_ID</span><span class="o">=</span>&lt;your-access-key&gt;
@@ -1172,10 +1172,10 @@
 </table>
 <p>Switch between them using <code>BUILD_TARGET</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Production (default)</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>bin/run<span class="w"> </span>--build<span class="w"> </span>-d
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
 <a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># Development</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="nv">BUILD_TARGET</span><span class="o">=</span>development<span class="w"> </span>bin/run<span class="w"> </span>--build<span class="w"> </span>-d
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--dev
 </code></pre></div>
 <h2 id="running-tests">Running Tests<a class="headerlink" href="#running-tests" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># All tests (unit + integration)</span>

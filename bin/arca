@@ -1,33 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Manage the Arca web console container.
+# Manage the Arca server container.
 #
 # Usage:
-#   bin/console start                Start in foreground
-#   bin/console start -d             Start in background
-#   bin/console start -d --build     Start in background, rebuild image first
-#   bin/console stop                 Stop the console
-#   bin/console status               Show container status
-#   bin/console logs                 Show logs
-#   bin/console logs -f              Follow logs
+#   bin/arca start                Start in foreground
+#   bin/arca start -d             Start in background
+#   bin/arca start -d --build     Start in background, rebuild image first
+#   bin/arca start -d --dev       Start development image (has shell)
+#   bin/arca stop                 Stop the server
+#   bin/arca status               Show container status
+#   bin/arca logs                 Show logs
+#   bin/arca logs -f              Follow logs
 
 cd "$(git rev-parse --show-toplevel)"
 
-COMPOSE="docker compose -f docker/docker-compose.yml --profile console"
+COMPOSE="docker compose -f docker/docker-compose.yml"
 
 usage() {
-    echo "Usage: bin/console <command> [options]"
+    echo "Usage: bin/arca <command> [options]"
     echo ""
     echo "Commands:"
-    echo "  start [-d] [--build]   Start the web console"
-    echo "  stop                   Stop the web console"
-    echo "  status                 Show container status"
-    echo "  logs [-f]              Show console logs"
+    echo "  start [-d] [--build] [--dev]   Start the Arca server"
+    echo "  stop                           Stop the Arca server"
+    echo "  status                         Show container status"
+    echo "  logs [-f]                      Show server logs"
     echo ""
     echo "Options:"
     echo "  -d         Run in background (detached)"
     echo "  --build    Rebuild the Docker image before starting"
+    echo "  --dev      Use development image (debian-slim, has shell)"
     echo "  -f         Follow log output"
     exit 0
 }
@@ -41,20 +43,21 @@ cmd_start() {
         case "$1" in
             -d)       detach=true; shift ;;
             --build)  build=true; shift ;;
+            --dev)    export BUILD_TARGET=development; shift ;;
             *)        echo "Unknown option: $1" >&2; usage ;;
         esac
     done
 
     if $build; then
-        echo "Building console image..."
-        $COMPOSE build console
+        echo "Building ${BUILD_TARGET:-production} image..."
+        $COMPOSE build arca
     fi
 
     if $detach; then
         args+=("-d")
     fi
 
-    $COMPOSE up "${args[@]+"${args[@]}"}" console
+    $COMPOSE up "${args[@]+"${args[@]}"}" arca
 }
 
 cmd_stop() {
@@ -62,7 +65,7 @@ cmd_stop() {
 }
 
 cmd_status() {
-    $COMPOSE ps console
+    $COMPOSE ps arca
 }
 
 cmd_logs() {
@@ -80,7 +83,7 @@ cmd_logs() {
         args+=("-f")
     fi
 
-    $COMPOSE logs "${args[@]+"${args[@]}"}" console
+    $COMPOSE logs "${args[@]+"${args[@]}"}" arca
 }
 
 [[ $# -lt 1 ]] && usage

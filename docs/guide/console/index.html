@@ -1323,7 +1323,7 @@
 </ul>
 <p>The console is intentionally not embedded in the Arca binary. This keeps the server binary small (~8.6 MB), allows independent release cycles, and supports split deployment (Arca on a hardened VM, console on a separate host).</p>
 <h2 id="starting-the-console">Starting the Console<a class="headerlink" href="#starting-the-console" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>bin/console<span class="w"> </span>--build<span class="w"> </span>-d
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
 </code></pre></div>
 <p>This starts the console on <a href="http://localhost:9080">http://localhost:9080</a>.</p>
 <p>The <code>ARCA_ENDPOINT</code> environment variable controls which Arca server the console connects to. In the default Docker Compose setup, it's set to <code>http://localhost:9000</code> so the browser (running on the host) can reach Arca directly.</p>

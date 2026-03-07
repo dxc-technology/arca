@@ -14,7 +14,7 @@ The console is intentionally not embedded in the Arca binary. This keeps the ser
 ## Starting the Console
 
 ```bash
-bin/console --build -d
+bin/console start -d --build
 ```
 
 This starts the console on [http://localhost:9080](http://localhost:9080).

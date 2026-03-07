@@ -1346,7 +1346,7 @@
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Unit tests for config loading, credential CRUD, auto-generation</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Integration test: server starts, prints generated credentials</li>
 </ul>
-<p><strong>Verify</strong>: <code>bin/run --build -d</code> starts server and prints auto-generated credentials; <code>arca credential list</code> shows the generated credential.</p>
+<p><strong>Verify</strong>: <code>bin/arca start -d --build</code> starts server and prints auto-generated credentials; <code>arca credential list</code> shows the generated credential.</p>
 <hr />
 <h2 id="phase-2-bucket-operations">Phase 2 — Bucket Operations<a class="headerlink" href="#phase-2-bucket-operations" title="Permanent link">&para;</a></h2>
 <p>Implement the 4 bucket operations with SQLite metadata storage.</p>

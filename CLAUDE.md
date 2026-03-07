@@ -17,8 +17,11 @@ Convenience scripts live in `bin/`. They wrap docker compose commands and always
 ```bash
 # Build and run
 bin/build                # build Docker image
-bin/run --build -d       # start server (flags passed to docker compose up)
-bin/stop                 # stop server
+bin/arca start -d        # start server in background
+bin/arca start -d --build  # start server, rebuild image first
+bin/arca stop            # stop server
+bin/arca status          # show container status
+bin/arca logs -f         # follow server logs
 
 # Tests
 bin/test                 # run unit + integration tests

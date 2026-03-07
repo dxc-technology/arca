@@ -1081,10 +1081,10 @@
 <h1 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h1>
 <p>Get Arca running and perform your first S3 operations.</p>
 <h2 id="start-the-server">Start the Server<a class="headerlink" href="#start-the-server" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>bin/run<span class="w"> </span>--build<span class="w"> </span>-d
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
 </code></pre></div>
 <p>On first startup, Arca auto-generates a root credential and prints it to the logs:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>docker/docker-compose.yml<span class="w"> </span>logs<span class="w"> </span>arca<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">&quot;Access Key&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>bin/arca<span class="w"> </span>logs<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">&quot;Access Key&quot;</span>
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>========================================
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  Root credential created automatically
@@ -1119,7 +1119,7 @@
 </code></pre></div>
 <h2 id="start-the-web-console">Start the Web Console<a class="headerlink" href="#start-the-web-console" title="Permanent link">&para;</a></h2>
 <p>Arca includes a browser-based web console for managing buckets, objects, and credentials:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>bin/console<span class="w"> </span>--build<span class="w"> </span>-d
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
 </code></pre></div>
 <p>Open <a href="http://localhost:9080">http://localhost:9080</a>, enter the Arca endpoint (<code>http://localhost:9000</code>) and your credentials to get started. Admin credentials unlock additional features like credential management and server stats.</p>
 <p>See the <a href="../../guide/console/">Web Console guide</a> for details.</p>
@@ -1138,20 +1138,16 @@
 <td>Build the Docker image</td>
 </tr>
 <tr>
-<td><code>bin/run</code></td>
-<td>Start the server (flags passed through to docker compose)</td>
+<td><code>bin/arca</code></td>
+<td>Manage the Arca server (<code>start</code>, <code>stop</code>, <code>status</code>, <code>logs</code>)</td>
 </tr>
 <tr>
-<td><code>bin/stop</code></td>
-<td>Stop the server</td>
+<td><code>bin/console</code></td>
+<td>Manage the web console (<code>start</code>, <code>stop</code>, <code>status</code>, <code>logs</code>)</td>
 </tr>
 <tr>
 <td><code>bin/test</code></td>
 <td>Run unit + integration tests (<code>unit</code>, <code>integration</code>, or both)</td>
-</tr>
-<tr>
-<td><code>bin/console</code></td>
-<td>Start the web console (flags passed through to docker compose)</td>
 </tr>
 <tr>
 <td><code>bin/screenshots</code></td>

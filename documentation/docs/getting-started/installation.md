@@ -24,10 +24,10 @@ For debugging, build the development image which includes a shell (debian-slim b
 bin/build --dev
 ```
 
-Or set the `BUILD_TARGET` environment variable:
+Or start the development image directly:
 
 ```bash
-BUILD_TARGET=development bin/run --build -d
+bin/arca start -d --build --dev
 ```
 
 ## Verify
@@ -35,13 +35,13 @@ BUILD_TARGET=development bin/run --build -d
 Start the server:
 
 ```bash
-bin/run --build -d
+bin/arca start -d --build
 ```
 
 Check that it's running:
 
 ```bash
-docker compose -f docker/docker-compose.yml logs arca | grep "Access Key"
+bin/arca logs | grep "Access Key"
 ```
 
 Arca auto-generates a root credential on first startup and prints it to the logs. Set the credentials and verify with aws-cli:
@@ -64,10 +64,10 @@ Switch between them using `BUILD_TARGET`:
 
 ```bash
 # Production (default)
-bin/run --build -d
+bin/arca start -d --build
 
 # Development
-BUILD_TARGET=development bin/run --build -d
+bin/arca start -d --build --dev
 ```
 
 ## Running Tests

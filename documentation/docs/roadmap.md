@@ -68,7 +68,7 @@ Establish the configuration model and SQLite database foundation. MinIO-like app
 - [x] Unit tests for config loading, credential CRUD, auto-generation
 - [x] Integration test: server starts, prints generated credentials
 
-**Verify**: `bin/run --build -d` starts server and prints auto-generated credentials; `arca credential list` shows the generated credential.
+**Verify**: `bin/arca start -d --build` starts server and prints auto-generated credentials; `arca credential list` shows the generated credential.
 
 ---
 
