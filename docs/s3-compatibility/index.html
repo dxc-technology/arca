@@ -93,19 +93,19 @@
 <body>
 
 <h1>Arca S3 Compatibility Report</h1>
-<p class="meta">2026-03-07 10:26:40 UTC</p>
+<p class="meta">2026-03-07 13:07:53 UTC</p>
 
 <div class="cards">
   <div class="card"><div class="value">829</div><div class="label">Total</div></div>
-  <div class="card passed"><div class="value">207</div><div class="label">Passed</div></div>
-  <div class="card failed"><div class="value">531</div><div class="label">Failed</div></div>
+  <div class="card passed"><div class="value">218</div><div class="label">Passed</div></div>
+  <div class="card failed"><div class="value">520</div><div class="label">Failed</div></div>
   <div class="card skipped"><div class="value">91</div><div class="label">Skipped</div></div>
-  <div class="card expected"><div class="value">310</div><div class="label">Expected Fail</div></div>
-  <div class="card rate"><div class="value">25.0%</div><div class="label">Pass Rate</div></div>
+  <div class="card expected"><div class="value">307</div><div class="label">Expected Fail</div></div>
+  <div class="card rate"><div class="value">26.3%</div><div class="label">Pass Rate</div></div>
 </div>
 
 <div class="progress-bar">
-  <div class="progress-fill" style="width: 24.96984318455971%"></div>
+  <div class="progress-fill" style="width: 26.29674306393245%"></div>
 </div>
 
 <h2>Category Breakdown</h2>
@@ -132,10 +132,10 @@
         <tr>
           <td>Bucket</td>
           <td class="num">160</td>
-          <td class="num passed">96</td>
-          <td class="num failed">61</td>
+          <td class="num passed">97</td>
+          <td class="num failed">60</td>
           <td class="num skipped">3</td>
-          <td class="num warn">60%</td>
+          <td class="num warn">61%</td>
         </tr>
         <tr>
           <td>CORS</td>
@@ -156,10 +156,10 @@
         <tr>
           <td>Encryption</td>
           <td class="num">121</td>
-          <td class="num passed">21</td>
-          <td class="num failed">100</td>
+          <td class="num passed">24</td>
+          <td class="num failed">97</td>
           <td class="num skipped">0</td>
-          <td class="num bad">17%</td>
+          <td class="num bad">20%</td>
         </tr>
         <tr>
           <td>Headers</td>
@@ -188,10 +188,10 @@
         <tr>
           <td>Multipart</td>
           <td class="num">62</td>
-          <td class="num passed">12</td>
-          <td class="num failed">50</td>
+          <td class="num passed">16</td>
+          <td class="num failed">46</td>
           <td class="num skipped">0</td>
-          <td class="num bad">19%</td>
+          <td class="num bad">26%</td>
         </tr>
         <tr>
           <td>Notifications</td>
@@ -204,10 +204,10 @@
         <tr>
           <td>Object</td>
           <td class="num">65</td>
-          <td class="num passed">18</td>
-          <td class="num failed">47</td>
+          <td class="num passed">20</td>
+          <td class="num failed">45</td>
           <td class="num skipped">0</td>
-          <td class="num bad">28%</td>
+          <td class="num bad">31%</td>
         </tr>
         <tr>
           <td>Object Lock</td>
@@ -220,10 +220,10 @@
         <tr>
           <td>Other</td>
           <td class="num">155</td>
-          <td class="num passed">34</td>
-          <td class="num failed">48</td>
+          <td class="num passed">35</td>
+          <td class="num failed">47</td>
           <td class="num skipped">73</td>
-          <td class="num bad">22%</td>
+          <td class="num bad">23%</td>
         </tr>
         <tr>
           <td>Presigned/POST</td>
@@ -253,18 +253,20 @@
 
 
         <h2>Passlist Diff</h2>
-        <div class="diff-box"><div class="diff-new">+ test_abort_multipart_upload_not_found</div>
-<div class="diff-new">+ test_bucket_create_naming_dns_dash_dot</div>
-<div class="diff-new">+ test_bucket_create_naming_dns_dot_dash</div>
-<div class="diff-new">+ test_bucket_list_delimiter_empty</div>
-<div class="diff-new">+ test_bucket_list_maxkeys_zero</div>
-<div class="diff-new">+ test_bucket_listv2_maxkeys_zero</div>
-<div class="diff-new">+ test_multi_object_delete_key_limit</div>
-<div class="diff-new">+ test_multi_objectv2_delete_key_limit</div>
-<div class="diff-new">+ test_object_raw_authenticated_bucket_gone</div>
+        <div class="diff-box"><div class="diff-new">+ test_bucket_list_delimiter_not_skip_special</div>
+<div class="diff-new">+ test_copy_part_enc[sse-c-unencrypted-STANDARD-STANDARD-8388608]</div>
+<div class="diff-new">+ test_copy_part_enc[sse-kms-unencrypted-STANDARD-STANDARD-8388608]</div>
+<div class="diff-new">+ test_copy_part_enc[unencrypted-unencrypted-STANDARD-STANDARD-8388608]</div>
+<div class="diff-new">+ test_get_object_ifnonematch_good</div>
+<div class="diff-new">+ test_multipart_copy_improper_range</div>
+<div class="diff-new">+ test_multipart_copy_multiple_sizes</div>
+<div class="diff-new">+ test_multipart_copy_small</div>
+<div class="diff-new">+ test_multipart_copy_without_range</div>
+<div class="diff-new">+ test_object_copy_to_itself</div>
+<div class="diff-new">+ test_ranged_request_return_trailing_bytes_response_code</div>
 </div>
 
-<h2>Failures (531)</h2>
+<h2>Failures (520)</h2>
 
         <details class="fail-item">
           <summary>
@@ -304,7 +306,10 @@
             <span class="cat-tag">Other</span>
             <code>test_atomic_dual_conditional_write_1mb</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>AssertionError: assert '412' == 'PreconditionFailed'
+  
+  - PreconditionFailed
+  + 412</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -470,29 +475,9 @@
           <summary>
             <span class="badge unexpected">Unexpected</span>
             <span class="cat-tag">Bucket</span>
-            <code>test_bucket_list_delimiter_not_skip_special</code>
-          </summary>
-          <pre>AssertionError: assert [] == ['1999', '199...999+', '2000']
-  
-  Right contains 4 more items, first extra item: '1999'
-  
-  Full diff:
-  + []
-  - [
-  -     '1999',...
-  
-  ...Full output truncated (4 </pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Bucket</span>
             <code>test_bucket_list_delimiter_prefix</code>
           </summary>
-          <pre>AssertionError: assert 'boo/bar' == 'boo/'
-  
-  - boo/
-  + boo/bar</pre>
+          <pre>assert True == False</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -510,11 +495,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_list_delimiter_prefix_underscore</code>
           </summary>
-          <pre>AssertionError: assert '_under1/bar' == '_under1/'
-  
-  - _under1/
-  + _under1/bar
-  ?         +++</pre>
+          <pre>assert True == False</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -522,16 +503,15 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_list_encoding_basic</code>
           </summary>
-          <pre>AssertionError: assert ['asdf+b'] == ['asdf%2Bb']
+          <pre>AssertionError: assert ['foo%2B1%2F'...quux%20ab%2F'] == ['foo%2B1/', ... 'quux%20ab/']
   
-  At index 0 diff: 'asdf+b' != 'asdf%2Bb'
+  At index 0 diff: 'foo%2B1%2F' != 'foo%2B1/'
   
   Full diff:
     [
-  -     'asdf%2Bb',
-  ?          ^^^...
-  
-  ...Full output truncated (3 lines hidd</pre>
+  -     'foo%2B1/',
+  ?             ^...
+</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -597,16 +577,15 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_listv2_encoding_basic</code>
           </summary>
-          <pre>AssertionError: assert ['asdf+b'] == ['asdf%2Bb']
+          <pre>AssertionError: assert ['foo%2B1%2F'...quux%20ab%2F'] == ['foo%2B1/', ... 'quux%20ab/']
   
-  At index 0 diff: 'asdf+b' != 'asdf%2Bb'
+  At index 0 diff: 'foo%2B1%2F' != 'foo%2B1/'
   
   Full diff:
     [
-  -     'asdf%2Bb',
-  ?          ^^^...
-  
-  ...Full output truncated (3 lines hidd</pre>
+  -     'foo%2B1/',
+  ?             ^...
+</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -614,7 +593,7 @@
             <span class="cat-tag">Bucket</span>
             <code>test_bucket_listv2_fetchowner_notempty</code>
           </summary>
-          <pre>assert 'Owner' in {'ETag': '&quot;82d0f0fa8551de8b7eb5ecb65eae0261&quot;', 'Key': 'foo/bar', 'LastModified': datetime.datetime(2026, 3, 7, 9, 51, 13, 967000, tzinfo=tzlocal()), 'Size': 7, ...}</pre>
+          <pre>assert 'Owner' in {'ETag': '&quot;82d0f0fa8551de8b7eb5ecb65eae0261&quot;', 'Key': 'foo/bar', 'LastModified': datetime.datetime(2026, 3, 7, 13, 2, 15, 521000, tzinfo=tzlocal()), 'Size': 7, ...}</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -886,7 +865,10 @@
             <span class="cat-tag">Copy</span>
             <code>test_copy_object_ifmatch_failed</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>AssertionError: assert '412' == 'PreconditionFailed'
+  
+  - PreconditionFailed
+  + 412</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -894,7 +876,10 @@
             <span class="cat-tag">Copy</span>
             <code>test_copy_object_ifnonematch_good</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>AssertionError: assert '412' == 'PreconditionFailed'
+  
+  - PreconditionFailed
+  + 412</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1210,7 +1195,10 @@
             <span class="cat-tag">Object</span>
             <code>test_get_object_ifmatch_failed</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>AssertionError: assert '412' == 'PreconditionFailed'
+  
+  - PreconditionFailed
+  + 412</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1218,15 +1206,7 @@
             <span class="cat-tag">Object</span>
             <code>test_get_object_ifmodifiedsince_failed</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Object</span>
-            <code>test_get_object_ifnonematch_good</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>KeyError: 'etag'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1234,7 +1214,10 @@
             <span class="cat-tag">Object</span>
             <code>test_get_object_ifunmodifiedsince_good</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>AssertionError: assert '412' == 'PreconditionFailed'
+  
+  - PreconditionFailed
+  + 412</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1337,14 +1320,6 @@
           <summary>
             <span class="badge unexpected">Unexpected</span>
             <span class="cat-tag">Multipart</span>
-            <code>test_multipart_copy_improper_range</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Multipart</span>
             <code>test_multipart_copy_invalid_range</code>
           </summary>
           <pre>AssertionError: ClientError not raised</pre>
@@ -1353,25 +1328,9 @@
           <summary>
             <span class="badge unexpected">Unexpected</span>
             <span class="cat-tag">Multipart</span>
-            <code>test_multipart_copy_multiple_sizes</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (InvalidPart) when calling the CompleteMultipartUpload operation: One or more of the specified parts could not be found.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Multipart</span>
-            <code>test_multipart_copy_small</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (InvalidPart) when calling the CompleteMultipartUpload operation: One or more of the specified parts could not be found.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Multipart</span>
             <code>test_multipart_copy_special_names</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (InvalidPart) when calling the CompleteMultipartUpload operation: One or more of the specified parts could not be found.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the UploadPartCopy operation: Invalid x-amz-copy-source header</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1380,14 +1339,6 @@
             <code>test_multipart_copy_versioned</code>
           </summary>
           <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Multipart</span>
-            <code>test_multipart_copy_without_range</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (InvalidPart) when calling the CompleteMultipartUpload operation: One or more of the specified parts could not be found.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1632,14 +1583,6 @@
         <details class="fail-item">
           <summary>
             <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Other</span>
-            <code>test_object_copy_to_itself</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
             <span class="cat-tag">Object</span>
             <code>test_object_copy_to_itself_with_metadata</code>
           </summary>
@@ -1759,10 +1702,10 @@
             <span class="cat-tag">Headers</span>
             <code>test_object_requestid_matches_header_on_error</code>
           </summary>
-          <pre>AssertionError: assert '6d36c8ff-6a0...-3c45d7c3d8a3' == 'd48c6af1-caa...-095a095e85f2'
+          <pre>AssertionError: assert '94b4e572-044...-73d8160ecb77' == '1c672415-0a8...-279dd0da4c1a'
   
-  - d48c6af1-caad-4804-828a-095a095e85f2
-  + 6d36c8ff-6a0e-4c3c-a183-3c45d7c3d8a3</pre>
+  - 1c672415-0a8b-4512-9fcf-279dd0da4c1a
+  + 94b4e572-0449-40b1-879b-73d8160ecb77</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1992,7 +1935,16 @@
             <span class="cat-tag">Object</span>
             <code>test_put_object_if_match</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>AssertionError: assert (412, 'PreconditionFailed') == (412, '412')
+  
+  At index 1 diff: 'PreconditionFailed' != '412'
+  
+  Full diff:
+    (
+        412,
+  -     '412',
+  +     'PreconditionFailed',
+ </pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2000,7 +1952,10 @@
             <span class="cat-tag">Object</span>
             <code>test_put_object_ifmatch_failed</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>AssertionError: assert '412' == 'PreconditionFailed'
+  
+  - PreconditionFailed
+  + 412</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2008,7 +1963,7 @@
             <span class="cat-tag">Object</span>
             <code>test_put_object_ifmatch_nonexisted_failed</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>assert 412 == 404</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2016,7 +1971,10 @@
             <span class="cat-tag">Object</span>
             <code>test_put_object_ifnonmatch_failed</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>AssertionError: assert '412' == 'PreconditionFailed'
+  
+  - PreconditionFailed
+  + 412</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2024,7 +1982,10 @@
             <span class="cat-tag">Object</span>
             <code>test_put_object_ifnonmatch_overwrite_existed_failed</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>AssertionError: assert '412' == 'PreconditionFailed'
+  
+  - PreconditionFailed
+  + 412</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2032,7 +1993,10 @@
             <span class="cat-tag">Object</span>
             <code>test_ranged_request_empty_object</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>AssertionError: assert '416' == 'InvalidRange'
+  
+  - InvalidRange
+  + 416</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2040,19 +2004,10 @@
             <span class="cat-tag">Object</span>
             <code>test_ranged_request_invalid_range</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Object</span>
-            <code>test_ranged_request_return_trailing_bytes_response_code</code>
-          </summary>
-          <pre>AssertionError: assert 'testcontent' == 'content'
+          <pre>AssertionError: assert '416' == 'InvalidRange'
   
-  - content
-  + testcontent
-  ? ++++</pre>
+  - InvalidRange
+  + 416</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2939,14 +2894,6 @@
           <summary>
             <span class="badge expected">Expected</span>
             <span class="cat-tag">Encryption</span>
-            <code>test_copy_part_enc[sse-c-unencrypted-STANDARD-STANDARD-8388608]</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (InvalidPart) when calling the CompleteMultipartUpload operation: One or more of the specified parts could not be found.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
             <code>test_copy_part_enc[sse-kms-sse-c-STANDARD-STANDARD-8388608]</code>
           </summary>
           <pre>KeyError: 'x-amz-server-side-encryption-customer-algorithm'</pre>
@@ -2966,14 +2913,6 @@
             <code>test_copy_part_enc[sse-kms-sse-s3-STANDARD-STANDARD-8388608]</code>
           </summary>
           <pre>KeyError: 'x-amz-server-side-encryption'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_part_enc[sse-kms-unencrypted-STANDARD-STANDARD-8388608]</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (InvalidPart) when calling the CompleteMultipartUpload operation: One or more of the specified parts could not be found.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3030,14 +2969,6 @@
             <code>test_copy_part_enc[unencrypted-sse-s3-STANDARD-STANDARD-8388608]</code>
           </summary>
           <pre>KeyError: 'x-amz-server-side-encryption'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_part_enc[unencrypted-unencrypted-STANDARD-STANDARD-8388608]</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (InvalidPart) when calling the CompleteMultipartUpload operation: One or more of the specified parts could not be found.</pre>
         </details>
         <details class="fail-item">
           <summary>

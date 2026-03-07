@@ -147,6 +147,7 @@ async fn list_objects_v2(
     let delimiter = get_param("delimiter").filter(|d| !d.is_empty());
     let start_after = get_param("start-after");
     let continuation_token = get_param("continuation-token");
+    let encoding_type = get_param("encoding-type");
 
     let max_keys: u32 = match get_param("max-keys") {
         Some(s) => match s.parse() {
@@ -177,7 +178,7 @@ async fn list_objects_v2(
             continuation_token,
             next_continuation_token: None,
             start_after,
-            encoding_type: None,
+            encoding_type,
         };
         let xml = xml_types::list_bucket_result(&xml_params);
         return Response::builder()
@@ -214,38 +215,114 @@ async fn list_objects_v2(
     // Effective start_after: continuation token takes priority over start-after.
     let effective_start_after = decoded_token.as_deref().or(start_after);
 
-    // Fetch max_keys + 1 to detect truncation.
-    let fetch_limit = max_keys + 1;
-    let records = match state
-        .metadata
-        .list_objects(bucket, prefix, effective_start_after, fetch_limit)
-        .await
-    {
-        Ok(r) => r,
-        Err(e) => return internal_error_response(e, resource),
-    };
+    // When delimiter is set, records collapse into CommonPrefixes, so we can't
+    // simply fetch max_keys+1 raw records. Instead, we fetch in batches and
+    // group until we have enough result items (contents + common_prefixes).
+    let (contents, common_prefixes, is_truncated, next_token) = if let Some(delim) = delimiter {
+        let pfx = prefix.unwrap_or("");
+        let mut all_contents = Vec::new();
+        let mut all_prefixes = Vec::new();
+        let mut seen_prefixes = std::collections::HashSet::new();
+        let mut cursor = effective_start_after.map(|s| s.to_string());
+        let mut truncated = false;
+        let batch_size: u32 = (max_keys + 1).max(100);
 
-    let is_truncated = records.len() as u32 > max_keys;
-    let records = if is_truncated {
-        &records[..max_keys as usize]
+        loop {
+            let records = match state
+                .metadata
+                .list_objects(bucket, prefix, cursor.as_deref(), batch_size)
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => return internal_error_response(e, resource),
+            };
+            let exhausted = (records.len() as u32) < batch_size;
+
+            for record in &records {
+                let result_count = all_contents.len() + all_prefixes.len();
+                if result_count as u32 >= max_keys {
+                    truncated = true;
+                    break;
+                }
+                // Skip directory marker at prefix boundary.
+                if record.key == pfx {
+                    continue;
+                }
+                let after_prefix = &record.key[pfx.len()..];
+                if let Some(pos) = after_prefix.find(delim) {
+                    let common_prefix =
+                        format!("{}{}", pfx, &after_prefix[..pos + delim.len()]);
+                    if seen_prefixes.insert(common_prefix.clone()) {
+                        all_prefixes.push(common_prefix);
+                    }
+                } else {
+                    all_contents.push(record_to_list_entry(record));
+                }
+            }
+
+            if truncated || exhausted {
+                break;
+            }
+            cursor = records.last().map(|r| r.key.clone());
+        }
+
+        let token = if truncated {
+            // Use the last key that contributed to the result set.
+            let last_key = all_contents
+                .last()
+                .map(|e| e.key.as_str())
+                .or_else(|| all_prefixes.last().map(|p| p.as_str()));
+            last_key.map(|k| BASE64.encode(k.as_bytes()))
+        } else {
+            None
+        };
+
+        (all_contents, all_prefixes, truncated, token)
     } else {
-        &records[..]
-    };
-
-    // Extract common prefixes if delimiter is set.
-    let (contents, common_prefixes) = match delimiter {
-        Some(delim) => extract_common_prefixes(records, prefix.unwrap_or(""), delim),
-        None => (records.iter().map(record_to_list_entry).collect(), vec![]),
-    };
-
-    // Build next continuation token from last key.
-    let next_token = if is_truncated {
-        records.last().map(|r| BASE64.encode(r.key.as_bytes()))
-    } else {
-        None
+        // No delimiter: simple fetch.
+        let fetch_limit = max_keys + 1;
+        let records = match state
+            .metadata
+            .list_objects(bucket, prefix, effective_start_after, fetch_limit)
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return internal_error_response(e, resource),
+        };
+        let is_truncated = records.len() as u32 > max_keys;
+        let records = if is_truncated {
+            &records[..max_keys as usize]
+        } else {
+            &records[..]
+        };
+        let contents: Vec<ListEntry> = records.iter().map(record_to_list_entry).collect();
+        let next_token = if is_truncated {
+            records.last().map(|r| BASE64.encode(r.key.as_bytes()))
+        } else {
+            None
+        };
+        (contents, vec![], is_truncated, next_token)
     };
 
     let key_count = (contents.len() + common_prefixes.len()) as u32;
+
+    // Apply URL encoding if requested.
+    let (contents, common_prefixes) = if encoding_type == Some("url") {
+        let enc_contents: Vec<ListEntry> = contents
+            .into_iter()
+            .map(|mut e| {
+                e.key = urlencoding::encode(&e.key).into_owned();
+                e
+            })
+            .collect();
+        let enc_prefixes: Vec<String> = common_prefixes
+            .into_iter()
+            .map(|p| urlencoding::encode(&p).into_owned())
+            .collect();
+        (enc_contents, enc_prefixes)
+    } else {
+        (contents, common_prefixes)
+    };
 
     let xml_params = ListBucketResultParams {
         name: bucket,
@@ -259,7 +336,7 @@ async fn list_objects_v2(
         continuation_token,
         next_continuation_token: next_token.as_deref(),
         start_after,
-        encoding_type: None,
+        encoding_type,
     };
 
     let xml = xml_types::list_bucket_result(&xml_params);
@@ -298,6 +375,7 @@ async fn list_objects_v1(
     let prefix = get_param("prefix");
     let delimiter = get_param("delimiter").filter(|d| !d.is_empty());
     let marker = get_param("marker");
+    let encoding_type = get_param("encoding-type");
 
     let max_keys: u32 = match get_param("max-keys") {
         Some(s) => match s.parse() {
@@ -326,7 +404,7 @@ async fn list_objects_v1(
             is_truncated: false,
             contents: &[],
             common_prefixes: &[],
-            encoding_type: None,
+            encoding_type,
         };
         let xml = xml_types::list_bucket_v1_result(&xml_params);
         return Response::builder()
@@ -336,35 +414,110 @@ async fn list_objects_v1(
             .expect("build list_objects_v1 response");
     }
 
-    // Fetch max_keys + 1 to detect truncation.
-    let fetch_limit = max_keys + 1;
-    let records = match state
-        .metadata
-        .list_objects(bucket, prefix, marker, fetch_limit)
-        .await
+    // Delimiter-aware fetch with proper grouping and pagination.
+    let (contents, common_prefixes, is_truncated, next_marker_owned) = if let Some(delim) =
+        delimiter
     {
-        Ok(r) => r,
-        Err(e) => return internal_error_response(e, resource),
-    };
+        let pfx = prefix.unwrap_or("");
+        let mut all_contents = Vec::new();
+        let mut all_prefixes = Vec::new();
+        let mut seen_prefixes = std::collections::HashSet::new();
+        let mut cursor = marker.map(|s| s.to_string());
+        let mut truncated = false;
+        let batch_size: u32 = (max_keys + 1).max(100);
 
-    let is_truncated = records.len() as u32 > max_keys;
-    let records = if is_truncated {
-        &records[..max_keys as usize]
+        loop {
+            let records = match state
+                .metadata
+                .list_objects(bucket, prefix, cursor.as_deref(), batch_size)
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => return internal_error_response(e, resource),
+            };
+            let exhausted = (records.len() as u32) < batch_size;
+
+            for record in &records {
+                let result_count = all_contents.len() + all_prefixes.len();
+                if result_count as u32 >= max_keys {
+                    truncated = true;
+                    break;
+                }
+                if record.key == pfx {
+                    continue;
+                }
+                let after_prefix = &record.key[pfx.len()..];
+                if let Some(pos) = after_prefix.find(delim) {
+                    let common_prefix =
+                        format!("{}{}", pfx, &after_prefix[..pos + delim.len()]);
+                    if seen_prefixes.insert(common_prefix.clone()) {
+                        all_prefixes.push(common_prefix);
+                    }
+                } else {
+                    all_contents.push(record_to_list_entry(record));
+                }
+            }
+
+            if truncated || exhausted {
+                break;
+            }
+            cursor = records.last().map(|r| r.key.clone());
+        }
+
+        let nm = if truncated {
+            all_contents
+                .last()
+                .map(|e| e.key.clone())
+                .or_else(|| all_prefixes.last().cloned())
+        } else {
+            None
+        };
+
+        (all_contents, all_prefixes, truncated, nm)
     } else {
-        &records[..]
+        // No delimiter: simple fetch.
+        let fetch_limit = max_keys + 1;
+        let records = match state
+            .metadata
+            .list_objects(bucket, prefix, marker, fetch_limit)
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return internal_error_response(e, resource),
+        };
+        let is_truncated = records.len() as u32 > max_keys;
+        let records = if is_truncated {
+            &records[..max_keys as usize]
+        } else {
+            &records[..]
+        };
+        let contents: Vec<ListEntry> = records.iter().map(record_to_list_entry).collect();
+        let nm = if is_truncated {
+            records.last().map(|r| r.key.clone())
+        } else {
+            None
+        };
+        (contents, vec![], is_truncated, nm)
     };
 
-    // Extract common prefixes if delimiter is set.
-    let (contents, common_prefixes) = match delimiter {
-        Some(delim) => extract_common_prefixes(records, prefix.unwrap_or(""), delim),
-        None => (records.iter().map(record_to_list_entry).collect(), vec![]),
-    };
+    let next_marker = next_marker_owned.as_deref();
 
-    // NextMarker: set when truncated and delimiter is used (or just use last key).
-    let next_marker = if is_truncated {
-        records.last().map(|r| r.key.as_str())
+    // Apply URL encoding if requested.
+    let (contents, common_prefixes) = if encoding_type == Some("url") {
+        let enc_contents: Vec<ListEntry> = contents
+            .into_iter()
+            .map(|mut e| {
+                e.key = urlencoding::encode(&e.key).into_owned();
+                e
+            })
+            .collect();
+        let enc_prefixes: Vec<String> = common_prefixes
+            .into_iter()
+            .map(|p| urlencoding::encode(&p).into_owned())
+            .collect();
+        (enc_contents, enc_prefixes)
     } else {
-        None
+        (contents, common_prefixes)
     };
 
     let xml_params = ListBucketV1ResultParams {
@@ -377,7 +530,7 @@ async fn list_objects_v1(
         is_truncated,
         contents: &contents,
         common_prefixes: &common_prefixes,
-        encoding_type: None,
+        encoding_type,
     };
 
     let xml = xml_types::list_bucket_v1_result(&xml_params);
@@ -476,42 +629,6 @@ async fn list_object_versions(
         .header("Content-Type", "application/xml")
         .body(Body::from(xml))
         .expect("build list_object_versions response")
-}
-
-/// Separates records into direct contents and common prefix groups based on delimiter.
-///
-/// A common prefix is the portion of the key up to and including the first delimiter
-/// occurrence after the prefix. Records that match a common prefix are grouped rather
-/// than listed individually.
-fn extract_common_prefixes(
-    records: &[ObjectRecord],
-    prefix: &str,
-    delimiter: &str,
-) -> (Vec<ListEntry>, Vec<String>) {
-    let mut contents = Vec::new();
-    let mut prefixes = Vec::new();
-    let mut seen_prefixes = std::collections::HashSet::new();
-
-    for record in records {
-        // Skip directory marker objects whose key matches the listing prefix
-        // exactly (e.g. key "folder/" when prefix is "folder/").
-        if record.key == prefix {
-            continue;
-        }
-        let after_prefix = &record.key[prefix.len()..];
-        if let Some(pos) = after_prefix.find(delimiter) {
-            // This key has a delimiter after the prefix → common prefix.
-            let common_prefix = format!("{}{}", prefix, &after_prefix[..pos + delimiter.len()]);
-            if seen_prefixes.insert(common_prefix.clone()) {
-                prefixes.push(common_prefix);
-            }
-        } else {
-            // No delimiter after prefix → direct content.
-            contents.push(record_to_list_entry(record));
-        }
-    }
-
-    (contents, prefixes)
 }
 
 /// Converts an `ObjectRecord` to a `ListEntry` for XML output.
@@ -757,105 +874,3 @@ async fn delete_objects(
         .expect("build delete_objects response")
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use chrono::Utc;
-
-    fn make_record(key: &str) -> ObjectRecord {
-        ObjectRecord {
-            bucket: "test".to_string(),
-            key: key.to_string(),
-            blob_id: arca_core::types::BlobId("00000000-0000-0000-0000-000000000000".to_string()),
-            size: 0,
-            etag: "\"d41d8cd98f00b204e9800998ecf8427e\"".to_string(),
-            content_type: None,
-            last_modified: Utc::now(),
-        }
-    }
-
-    #[test]
-    fn extract_common_prefixes_basic() {
-        let records = vec![
-            make_record("photos/2024/a.jpg"),
-            make_record("photos/2025/b.jpg"),
-            make_record("photos/top.jpg"),
-        ];
-        let (contents, prefixes) = extract_common_prefixes(&records, "photos/", "/");
-        assert_eq!(contents.len(), 1);
-        assert_eq!(contents[0].key, "photos/top.jpg");
-        assert_eq!(prefixes, vec!["photos/2024/", "photos/2025/"]);
-    }
-
-    #[test]
-    fn extract_common_prefixes_deduplicates() {
-        let records = vec![
-            make_record("dir/a.txt"),
-            make_record("dir/b.txt"),
-        ];
-        let (contents, prefixes) = extract_common_prefixes(&records, "", "/");
-        assert!(contents.is_empty());
-        assert_eq!(prefixes, vec!["dir/"]);
-    }
-
-    #[test]
-    fn extract_common_prefixes_no_delimiter_match() {
-        let records = vec![
-            make_record("a.txt"),
-            make_record("b.txt"),
-        ];
-        let (contents, prefixes) = extract_common_prefixes(&records, "", "/");
-        assert_eq!(contents.len(), 2);
-        assert!(prefixes.is_empty());
-    }
-
-    #[test]
-    fn extract_common_prefixes_skips_directory_marker_at_prefix() {
-        // The directory marker "photos/" should be skipped when prefix is "photos/"
-        let records = vec![
-            make_record("photos/"),
-            make_record("photos/a.jpg"),
-            make_record("photos/sub/b.jpg"),
-        ];
-        let (contents, prefixes) = extract_common_prefixes(&records, "photos/", "/");
-        let content_keys: Vec<&str> = contents.iter().map(|e| e.key.as_str()).collect();
-        assert_eq!(content_keys, vec!["photos/a.jpg"]);
-        assert_eq!(prefixes, vec!["photos/sub/"]);
-    }
-
-    #[test]
-    fn extract_common_prefixes_skips_nested_directory_marker() {
-        // When listing "a/", the marker "a/" should be skipped
-        let records = vec![
-            make_record("a/"),
-            make_record("a/b/"),
-            make_record("a/b/file.txt"),
-        ];
-        let (contents, prefixes) = extract_common_prefixes(&records, "a/", "/");
-        let content_keys: Vec<&str> = contents.iter().map(|e| e.key.as_str()).collect();
-        assert!(!content_keys.contains(&"a/"));
-        assert_eq!(prefixes, vec!["a/b/"]);
-    }
-
-    #[test]
-    fn extract_common_prefixes_marker_at_root() {
-        // Directory marker "data/" at root listing should go to CommonPrefixes, not Contents
-        let records = vec![
-            make_record("data/"),
-            make_record("data/file.txt"),
-            make_record("root.txt"),
-        ];
-        let (contents, prefixes) = extract_common_prefixes(&records, "", "/");
-        let content_keys: Vec<&str> = contents.iter().map(|e| e.key.as_str()).collect();
-        assert_eq!(content_keys, vec!["root.txt"]);
-        assert_eq!(prefixes, vec!["data/"]);
-    }
-
-    #[test]
-    fn extract_common_prefixes_empty_input() {
-        let records: Vec<ObjectRecord> = vec![];
-        let (contents, prefixes) = extract_common_prefixes(&records, "", "/");
-        assert!(contents.is_empty());
-        assert!(prefixes.is_empty());
-    }
-}

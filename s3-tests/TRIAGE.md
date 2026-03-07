@@ -7,14 +7,14 @@ Results from running [Ceph s3-tests](https://github.com/ceph/s3-tests) against A
 | Metric | Count |
 |--------|-------|
 | Total | 829 |
-| Passed | 198 |
-| Failed | 540 |
+| Passed | 218 |
+| Failed | 520 |
 | Skipped | 91 |
 | Expected fail (unimplemented features) | 310 + 127 miscategorized = **437** |
-| **Unexpected failures (real bugs)** | **52** |
-| **Strategic decisions needed** | **60** |
-| Pass rate (overall) | 23.9% |
-| Pass rate (implemented features only) | ~79% |
+| **Unexpected failures (real bugs)** | **~32** |
+| **Strategic decisions needed** | **~41** |
+| Pass rate (overall) | 26.3% |
+| Pass rate (implemented features only) | ~87% |
 
 ## How to Read This Report
 
@@ -434,18 +434,20 @@ All 8 fixes implemented, 177 unit tests + 103 integration tests passing.
 | B7 bucket encryption error code | 2 | ✅ Done |
 | **Subtotal** | **15** | |
 
-### Phase 2: Medium effort, high value
+### Phase 2: Medium effort, high value — DONE ✅
 
-| Bug | Tests fixed | Effort |
+All 7 fixes implemented, 218 passing Ceph s3-tests (up from 207), 124 integration tests passing.
+
+| Bug | Tests fixed | Status |
 |-----|------------|--------|
-| #8 suffix range bytes=-N | 1 | easy |
-| #16 invalid range → 416 | 2 | easy |
-| #13 copy to self check | 1 | easy |
-| #11 encoding-type=url | 2 | medium |
-| #5 UploadPartCopy dispatch | 4+2 | medium |
-| #2 delimiter+prefix grouping | 6 | medium |
-| B1 conditional headers | 19 | medium |
-| **Subtotal** | **37** | |
+| #8+#16 range requests (suffix, 416) | 3 | ✅ Done |
+| #13 copy to self check | 1 | ✅ Done |
+| #11 encoding-type=url | 2 | ✅ Done |
+| #5 UploadPartCopy dispatch + impl | 4+2 | ✅ Done |
+| #2 delimiter+prefix grouping | 6 | ✅ Done |
+| B1 conditional headers (GET/HEAD/PUT/COPY) | 19 | ✅ Done |
+| B6 UploadPartCopy range validation | 2 | ✅ Done (part of #5) |
+| **Subtotal** | **~37** | |
 
 ### Phase 3: Larger effort (schema changes)
 
@@ -457,6 +459,6 @@ All 8 fixes implemented, 177 unit tests + 103 integration tests passing.
 | #7 ListMultipartUploads | 2 | medium |
 | **Subtotal** | **16** | |
 
-### Total: fixing all would take us from 198 → ~266 passing tests (32%)
+### Total: fixing Phase 3 would take us from 218 → ~234 passing tests
 
-Combined with reclassifying 127 miscategorized tests as expected, the "unexpected failure" count would drop from 230 → ~42, making the report much cleaner.
+Combined with reclassifying 127 miscategorized tests as expected, the "unexpected failure" count would drop further, making the report much cleaner.

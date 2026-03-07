@@ -32,6 +32,8 @@ pub enum S3ErrorCode {
     InvalidBucketName,
     InvalidPart,
     InvalidPartOrder,
+    InvalidRange,
+    InvalidRequest,
     NoSuchBucket,
     NoSuchKey,
     MalformedXML,
@@ -57,6 +59,8 @@ impl S3ErrorCode {
             S3ErrorCode::InvalidBucketName => 400,
             S3ErrorCode::InvalidPart => 400,
             S3ErrorCode::InvalidPartOrder => 400,
+            S3ErrorCode::InvalidRange => 416,
+            S3ErrorCode::InvalidRequest => 400,
             S3ErrorCode::MalformedXML => 400,
             S3ErrorCode::NoSuchBucket => 404,
             S3ErrorCode::NoSuchKey => 404,
@@ -82,6 +86,8 @@ impl S3ErrorCode {
             S3ErrorCode::InvalidBucketName => "InvalidBucketName",
             S3ErrorCode::InvalidPart => "InvalidPart",
             S3ErrorCode::InvalidPartOrder => "InvalidPartOrder",
+            S3ErrorCode::InvalidRange => "InvalidRange",
+            S3ErrorCode::InvalidRequest => "InvalidRequest",
             S3ErrorCode::MalformedXML => "MalformedXML",
             S3ErrorCode::NoSuchBucket => "NoSuchBucket",
             S3ErrorCode::NoSuchKey => "NoSuchKey",
@@ -127,6 +133,10 @@ impl S3ErrorCode {
             S3ErrorCode::InvalidPartOrder => {
                 "The list of parts was not in ascending order."
             }
+            S3ErrorCode::InvalidRange => {
+                "The requested range is not satisfiable."
+            }
+            S3ErrorCode::InvalidRequest => "Invalid Request",
             S3ErrorCode::MalformedXML => {
                 "The XML you provided was not well-formed or did not validate against our published schema."
             }
