@@ -105,6 +105,11 @@ pub async fn get_bucket(
         }
     }
 
+    // ListMultipartUploads: GET /{bucket}?uploads
+    if params.iter().any(|(k, _)| k == "uploads") {
+        return list_multipart_uploads(state, &bucket, &resource, &params).await;
+    }
+
     // ListObjectVersions: mc sends ?versions= for recursive delete.
     // Since we don't support versioning, return current objects as Version entries.
     if params.iter().any(|(k, _)| k == "versions") {
@@ -148,6 +153,7 @@ async fn list_objects_v2(
     let start_after = get_param("start-after");
     let continuation_token = get_param("continuation-token");
     let encoding_type = get_param("encoding-type");
+    let fetch_owner = get_param("fetch-owner") == Some("true");
 
     let max_keys: u32 = match get_param("max-keys") {
         Some(s) => match s.parse() {
@@ -179,6 +185,7 @@ async fn list_objects_v2(
             next_continuation_token: None,
             start_after,
             encoding_type,
+            fetch_owner,
         };
         let xml = xml_types::list_bucket_result(&xml_params);
         return Response::builder()
@@ -256,7 +263,7 @@ async fn list_objects_v2(
                         all_prefixes.push(common_prefix);
                     }
                 } else {
-                    all_contents.push(record_to_list_entry(record));
+                    all_contents.push(record_to_list_entry(record, fetch_owner));
                 }
             }
 
@@ -295,7 +302,7 @@ async fn list_objects_v2(
         } else {
             &records[..]
         };
-        let contents: Vec<ListEntry> = records.iter().map(record_to_list_entry).collect();
+        let contents: Vec<ListEntry> = records.iter().map(|r| record_to_list_entry(r, fetch_owner)).collect();
         let next_token = if is_truncated {
             records.last().map(|r| BASE64.encode(r.key.as_bytes()))
         } else {
@@ -337,6 +344,7 @@ async fn list_objects_v2(
         next_continuation_token: next_token.as_deref(),
         start_after,
         encoding_type,
+        fetch_owner,
     };
 
     let xml = xml_types::list_bucket_result(&xml_params);
@@ -454,7 +462,7 @@ async fn list_objects_v1(
                         all_prefixes.push(common_prefix);
                     }
                 } else {
-                    all_contents.push(record_to_list_entry(record));
+                    all_contents.push(record_to_list_entry(record, false));
                 }
             }
 
@@ -491,7 +499,7 @@ async fn list_objects_v1(
         } else {
             &records[..]
         };
-        let contents: Vec<ListEntry> = records.iter().map(record_to_list_entry).collect();
+        let contents: Vec<ListEntry> = records.iter().map(|r| record_to_list_entry(r, false)).collect();
         let nm = if is_truncated {
             records.last().map(|r| r.key.clone())
         } else {
@@ -608,7 +616,7 @@ async fn list_object_versions(
 
     // Build version entries (no delimiter grouping for versions API).
     let _ = delimiter; // Acknowledged but not used for version listing.
-    let versions: Vec<ListEntry> = records.iter().map(record_to_list_entry).collect();
+    let versions: Vec<ListEntry> = records.iter().map(|r| record_to_list_entry(r, false)).collect();
 
     let next_key_marker = if is_truncated {
         records.last().map(|r| r.key.as_str())
@@ -632,14 +640,100 @@ async fn list_object_versions(
         .expect("build list_object_versions response")
 }
 
+/// Handles ListMultipartUploads requests (`GET /{bucket}?uploads`).
+async fn list_multipart_uploads(
+    state: AppState,
+    bucket: &str,
+    resource: &str,
+    params: &[(String, String)],
+) -> Response {
+    let get_param = |name: &str| -> Option<&str> {
+        params
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
+    };
+
+    // Check bucket exists.
+    match state.metadata.head_bucket(bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, resource));
+        }
+        Err(e) => return internal_error_response(e, resource),
+    }
+
+    let prefix = get_param("prefix");
+    let key_marker = get_param("key-marker");
+    let upload_id_marker = get_param("upload-id-marker");
+
+    let max_uploads: u32 = match get_param("max-uploads") {
+        Some(s) => match s.parse() {
+            Ok(n) if n <= 1000 => n,
+            Ok(_) => 1000,
+            Err(_) => {
+                return s3_error_response(S3Error::with_message(
+                    S3ErrorCode::InvalidArgument,
+                    "Invalid value for max-uploads",
+                    resource,
+                ));
+            }
+        },
+        None => 1000,
+    };
+
+    let fetch_limit = max_uploads + 1;
+    let uploads = match state
+        .metadata
+        .list_multipart_uploads(bucket, prefix, key_marker, upload_id_marker, fetch_limit)
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => return internal_error_response(e, resource),
+    };
+
+    let is_truncated = uploads.len() as u32 > max_uploads;
+    let uploads = if is_truncated {
+        &uploads[..max_uploads as usize]
+    } else {
+        &uploads[..]
+    };
+
+    let (next_key_marker, next_upload_id_marker) = if is_truncated {
+        uploads.last().map(|u| (u.key.as_str(), u.upload_id.as_str())).unzip()
+    } else {
+        (None, None)
+    };
+
+    let xml = xml_types::list_multipart_uploads_result(
+        bucket,
+        prefix,
+        key_marker,
+        upload_id_marker,
+        max_uploads,
+        is_truncated,
+        uploads,
+        next_key_marker,
+        next_upload_id_marker,
+    );
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/xml")
+        .body(Body::from(xml))
+        .expect("build list_multipart_uploads response")
+}
+
 /// Converts an `ObjectRecord` to a `ListEntry` for XML output.
-fn record_to_list_entry(record: &ObjectRecord) -> ListEntry {
+fn record_to_list_entry(record: &ObjectRecord, fetch_owner: bool) -> ListEntry {
     ListEntry {
         key: record.key.clone(),
         last_modified: record.last_modified,
         etag: record.etag.clone(),
         size: record.size,
         storage_class: "STANDARD".to_string(), // TECHDEBT(TD-002): hardcoded storage class
+        // TECHDEBT(TD-001): Owner hardcoded to "arca" — needs account/user model
+        owner_id: if fetch_owner { Some("arca".to_string()) } else { None },
+        owner_display_name: if fetch_owner { Some("arca".to_string()) } else { None },
     }
 }
 

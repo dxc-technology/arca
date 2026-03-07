@@ -7,14 +7,14 @@ Results from running [Ceph s3-tests](https://github.com/ceph/s3-tests) against A
 | Metric | Count |
 |--------|-------|
 | Total | 829 |
-| Passed | 218 |
-| Failed | 520 |
+| Passed | 232 |
+| Failed | 506 |
 | Skipped | 91 |
 | Expected fail (unimplemented features) | 310 + 127 miscategorized = **437** |
-| **Unexpected failures (real bugs)** | **~32** |
+| **Unexpected failures (real bugs)** | **~18** |
 | **Strategic decisions needed** | **~41** |
-| Pass rate (overall) | 26.3% |
-| Pass rate (implemented features only) | ~87% |
+| Pass rate (overall) | 28.0% |
+| Pass rate (implemented features only) | ~91% |
 
 ## How to Read This Report
 
@@ -449,16 +449,18 @@ All 7 fixes implemented, 218 passing Ceph s3-tests (up from 207), 124 integratio
 | B6 UploadPartCopy range validation | 2 | ✅ Done (part of #5) |
 | **Subtotal** | **~37** | |
 
-### Phase 3: Larger effort (schema changes)
+### Phase 3: Schema changes — DONE ✅
 
-| Bug | Tests fixed | Effort |
+All 4 fixes implemented, 232 passing Ceph s3-tests (up from 218), 146 integration tests passing.
+
+| Bug | Tests fixed | Status |
 |-----|------------|--------|
-| #4 + #6 user metadata storage | 10 | large (schema migration) |
-| #3 metadata-directive | 3 | medium (depends on #4) |
-| #12 fetch-owner | 1 | medium |
-| #7 ListMultipartUploads | 2 | medium |
-| **Subtotal** | **16** | |
+| #4 + #6 user metadata storage | 10 | ✅ Done |
+| #3 metadata-directive | 3 | ✅ Done |
+| #12 fetch-owner | 1 | ✅ Done |
+| #7 ListMultipartUploads | 2 | ✅ Done |
+| **Subtotal** | **~16** | |
 
-### Total: fixing Phase 3 would take us from 218 → ~234 passing tests
+### Total: 232 / 829 passing (28%)
 
 Combined with reclassifying 127 miscategorized tests as expected, the "unexpected failure" count would drop further, making the report much cleaner.

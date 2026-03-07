@@ -47,6 +47,10 @@ pub struct SidecarMeta {
     pub etag: String,
     pub content_type: Option<String>,
     pub last_modified: String,
+    /// User and system metadata (`x-amz-meta-*`, `cache-control`, etc.).
+    /// Defaults to empty for backward compatibility with older sidecar files.
+    #[serde(default)]
+    pub metadata: std::collections::HashMap<String, String>,
 }
 
 /// Trait for blob (binary data) storage operations.

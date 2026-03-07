@@ -98,4 +98,20 @@ pub trait MetadataStore: Send + Sync {
         &self,
         upload_id: &str,
     ) -> Result<Vec<PartRecord>, crate::error::ArcaError>;
+
+    /// Lists in-progress multipart uploads for a bucket.
+    ///
+    /// - `prefix`: only return uploads whose key starts with this prefix.
+    /// - `key_marker`: only return uploads whose key is lexicographically after this value.
+    /// - `upload_id_marker`: when `key_marker` matches a key exactly, skip uploads with
+    ///   upload_id <= this value (for pagination within a key).
+    /// - `max_uploads`: maximum number of uploads to return.
+    async fn list_multipart_uploads(
+        &self,
+        bucket: &str,
+        prefix: Option<&str>,
+        key_marker: Option<&str>,
+        upload_id_marker: Option<&str>,
+        max_uploads: u32,
+    ) -> Result<Vec<MultipartUploadRecord>, crate::error::ArcaError>;
 }

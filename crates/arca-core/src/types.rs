@@ -1,5 +1,7 @@
 //! Core domain types for Arca.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -43,6 +45,11 @@ pub struct ObjectRecord {
     pub etag: String,
     pub content_type: Option<String>,
     pub last_modified: DateTime<Utc>,
+    /// User metadata (`x-amz-meta-*`) and system metadata headers
+    /// (`cache-control`, `content-encoding`, `content-disposition`,
+    /// `content-language`, `expires`).
+    #[serde(default)]
+    pub metadata: HashMap<String, String>,
 }
 
 /// Projection of an object for list responses (lighter than ObjectRecord).
@@ -53,6 +60,10 @@ pub struct ListEntry {
     pub etag: String,
     pub size: u64,
     pub storage_class: String,
+    /// Owner ID (populated when `fetch-owner=true` in ListObjectsV2).
+    pub owner_id: Option<String>,
+    /// Owner display name (populated when `fetch-owner=true` in ListObjectsV2).
+    pub owner_display_name: Option<String>,
 }
 
 /// Parameters for building a `ListBucketResult` XML response.
@@ -70,6 +81,8 @@ pub struct ListBucketResultParams<'a> {
     pub next_continuation_token: Option<&'a str>,
     pub start_after: Option<&'a str>,
     pub encoding_type: Option<&'a str>,
+    /// When true, each `<Contents>` entry includes `<Owner>`.
+    pub fetch_owner: bool,
 }
 
 /// Parameters for building a `ListBucketResult` XML response (V1 format).
@@ -95,6 +108,11 @@ pub struct MultipartUploadRecord {
     pub key: String,
     pub content_type: Option<String>,
     pub initiated_at: DateTime<Utc>,
+    /// User metadata (`x-amz-meta-*`) and system metadata headers,
+    /// captured at `CreateMultipartUpload` time and applied to the
+    /// final object at `CompleteMultipartUpload`.
+    #[serde(default)]
+    pub metadata: HashMap<String, String>,
 }
 
 /// Metadata about a single uploaded part.

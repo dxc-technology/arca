@@ -4,7 +4,10 @@ use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, Event};
 use quick_xml::Writer;
 
 use crate::error::write_xml_element;
-use crate::types::{BucketInfo, ListBucketResultParams, ListBucketV1ResultParams, ListEntry};
+use crate::types::{
+    BucketInfo, ListBucketResultParams, ListBucketV1ResultParams, ListEntry,
+    MultipartUploadRecord,
+};
 
 
 // -- Multipart upload XML types --
@@ -616,11 +619,123 @@ fn write_list_entry(writer: &mut Writer<Vec<u8>>, entry: &ListEntry) {
     write_xml_element(writer, "ETag", &quoted_etag);
 
     write_xml_element(writer, "Size", &entry.size.to_string());
+
+    // TECHDEBT(TD-001): Owner hardcoded to "arca" — emitted when fetch-owner=true
+    if let (Some(ref id), Some(ref name)) = (&entry.owner_id, &entry.owner_display_name) {
+        writer
+            .write_event(Event::Start(BytesStart::new("Owner")))
+            .expect("write Owner start");
+        write_xml_element(writer, "ID", id);
+        write_xml_element(writer, "DisplayName", name);
+        writer
+            .write_event(Event::End(BytesEnd::new("Owner")))
+            .expect("write Owner end");
+    }
+
     write_xml_element(writer, "StorageClass", &entry.storage_class);
 
     writer
         .write_event(Event::End(BytesEnd::new("Contents")))
         .expect("write Contents end");
+}
+
+/// Builds the XML response for `ListMultipartUploadsResult`.
+pub fn list_multipart_uploads_result(
+    bucket: &str,
+    prefix: Option<&str>,
+    key_marker: Option<&str>,
+    upload_id_marker: Option<&str>,
+    max_uploads: u32,
+    is_truncated: bool,
+    uploads: &[MultipartUploadRecord],
+    next_key_marker: Option<&str>,
+    next_upload_id_marker: Option<&str>,
+) -> String {
+    let mut writer = Writer::new(Vec::new());
+
+    writer
+        .write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
+        .expect("write XML decl");
+
+    let mut root = BytesStart::new("ListMultipartUploadsResult");
+    root.push_attribute(("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
+    writer
+        .write_event(Event::Start(root))
+        .expect("write root start");
+
+    write_xml_element(&mut writer, "Bucket", bucket);
+    write_xml_element(&mut writer, "KeyMarker", key_marker.unwrap_or(""));
+    write_xml_element(
+        &mut writer,
+        "UploadIdMarker",
+        upload_id_marker.unwrap_or(""),
+    );
+
+    if let Some(next) = next_key_marker {
+        write_xml_element(&mut writer, "NextKeyMarker", next);
+    }
+    if let Some(next) = next_upload_id_marker {
+        write_xml_element(&mut writer, "NextUploadIdMarker", next);
+    }
+
+    write_xml_element(&mut writer, "MaxUploads", &max_uploads.to_string());
+    write_xml_element(
+        &mut writer,
+        "IsTruncated",
+        if is_truncated { "true" } else { "false" },
+    );
+
+    if let Some(pfx) = prefix {
+        write_xml_element(&mut writer, "Prefix", pfx);
+    } else {
+        write_xml_element(&mut writer, "Prefix", "");
+    }
+
+    for upload in uploads {
+        writer
+            .write_event(Event::Start(BytesStart::new("Upload")))
+            .expect("write Upload start");
+
+        write_xml_element(&mut writer, "Key", &upload.key);
+        write_xml_element(&mut writer, "UploadId", &upload.upload_id);
+
+        // TECHDEBT(TD-001): Owner/Initiator hardcoded to "arca"
+        writer
+            .write_event(Event::Start(BytesStart::new("Initiator")))
+            .expect("write Initiator start");
+        write_xml_element(&mut writer, "ID", "arca");
+        write_xml_element(&mut writer, "DisplayName", "arca");
+        writer
+            .write_event(Event::End(BytesEnd::new("Initiator")))
+            .expect("write Initiator end");
+
+        writer
+            .write_event(Event::Start(BytesStart::new("Owner")))
+            .expect("write Owner start");
+        write_xml_element(&mut writer, "ID", "arca");
+        write_xml_element(&mut writer, "DisplayName", "arca");
+        writer
+            .write_event(Event::End(BytesEnd::new("Owner")))
+            .expect("write Owner end");
+
+        write_xml_element(&mut writer, "StorageClass", "STANDARD");
+
+        let date = upload
+            .initiated_at
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+        write_xml_element(&mut writer, "Initiated", &date);
+
+        writer
+            .write_event(Event::End(BytesEnd::new("Upload")))
+            .expect("write Upload end");
+    }
+
+    writer
+        .write_event(Event::End(BytesEnd::new("ListMultipartUploadsResult")))
+        .expect("write root end");
+
+    String::from_utf8(writer.into_inner()).expect("valid UTF-8 XML")
 }
 
 #[cfg(test)]
@@ -704,6 +819,7 @@ mod tests {
             next_continuation_token: None,
             start_after: None,
             encoding_type: None,
+            fetch_owner: false,
         };
         let xml = list_bucket_result(&params);
 
@@ -727,6 +843,8 @@ mod tests {
             etag: "abc123".to_string(),
             size: 42,
             storage_class: "STANDARD".to_string(),
+            owner_id: None,
+            owner_display_name: None,
         }];
         let params = ListBucketResultParams {
             name: "my-bucket",
@@ -741,6 +859,7 @@ mod tests {
             next_continuation_token: None,
             start_after: None,
             encoding_type: None,
+            fetch_owner: false,
         };
         let xml = list_bucket_result(&params);
 
@@ -768,6 +887,7 @@ mod tests {
             next_continuation_token: None,
             start_after: None,
             encoding_type: None,
+            fetch_owner: false,
         };
         let xml = list_bucket_result(&params);
 
@@ -792,6 +912,7 @@ mod tests {
             next_continuation_token: Some("next-token"),
             start_after: None,
             encoding_type: None,
+            fetch_owner: false,
         };
         let xml = list_bucket_result(&params);
 
@@ -815,6 +936,7 @@ mod tests {
             next_continuation_token: None,
             start_after: Some("key-abc"),
             encoding_type: None,
+            fetch_owner: false,
         };
         let xml = list_bucket_result(&params);
 

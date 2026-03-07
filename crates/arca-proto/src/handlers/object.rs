@@ -6,10 +6,46 @@ use axum::response::Response;
 use http::header;
 use http::StatusCode;
 
+use std::collections::HashMap;
+
 use arca_core::s3::xml_types;
 use arca_core::store::{ByteRange, SidecarMeta};
 use arca_core::types::{BlobId, ObjectRecord};
 use arca_core::{S3Error, S3ErrorCode};
+
+/// S3 system metadata headers that are stored and returned alongside user
+/// metadata (`x-amz-meta-*`). These are stored in the metadata HashMap
+/// with their lowercase header name as key.
+const S3_SYSTEM_METADATA_HEADERS: &[&str] = &[
+    "cache-control",
+    "content-encoding",
+    "content-disposition",
+    "content-language",
+    "expires",
+];
+
+/// Extracts user metadata (`x-amz-meta-*`) and S3 system metadata headers
+/// from the request headers. Returns a HashMap of lowercased key → value.
+pub(super) fn extract_metadata(headers: &http::HeaderMap) -> HashMap<String, String> {
+    let mut metadata = HashMap::new();
+
+    for (name, value) in headers {
+        let name_lower = name.as_str().to_lowercase();
+        if name_lower.starts_with("x-amz-meta-") {
+            if let Ok(v) = value.to_str() {
+                metadata.insert(name_lower, v.to_string());
+            }
+        }
+    }
+
+    for &header_name in S3_SYSTEM_METADATA_HEADERS {
+        if let Some(value) = headers.get(header_name).and_then(|v| v.to_str().ok()) {
+            metadata.insert(header_name.to_string(), value.to_string());
+        }
+    }
+
+    metadata
+}
 
 use crate::state::AppState;
 use crate::xml::error_response::{internal_error_response, s3_error_response};
@@ -286,6 +322,8 @@ pub async fn put_object(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
 
+    let metadata = extract_metadata(request.headers());
+
     let headers = request.headers().clone();
     let body = request.into_body();
     let stream = super::body::body_to_byte_stream(body, &headers);
@@ -307,6 +345,7 @@ pub async fn put_object(
         etag: put_result.etag.clone(),
         content_type: content_type.clone(),
         last_modified: now.to_rfc3339(),
+        metadata: metadata.clone(),
     };
     if let Err(e) = state.blob.write_sidecar(&blob_id, &sidecar).await {
         return internal_error_response(e, &resource);
@@ -321,6 +360,7 @@ pub async fn put_object(
         etag: put_result.etag.clone(),
         content_type,
         last_modified: now,
+        metadata,
     };
     let old = match state.metadata.put_object(&record).await {
         Ok(old) => old,
@@ -434,6 +474,21 @@ async fn copy_object(
         ));
     }
 
+    // Determine content-type and metadata based on directive.
+    let (content_type, metadata) = if metadata_directive.eq_ignore_ascii_case("REPLACE") {
+        // REPLACE: use headers from the copy request.
+        let ct = request
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+        let md = extract_metadata(request.headers());
+        (ct, md)
+    } else {
+        // COPY (default): preserve source metadata.
+        (src_record.content_type.clone(), src_record.metadata.clone())
+    };
+
     // Stream source blob through get → put to create a new copy.
     let get_result = match state.blob.get(&src_record.blob_id, None).await {
         Ok(r) => r,
@@ -448,9 +503,6 @@ async fn copy_object(
 
     let now = chrono::Utc::now();
 
-    // Preserve source content-type.
-    let content_type = src_record.content_type.clone();
-
     // Write sidecar.
     let sidecar = SidecarMeta {
         bucket: dest_bucket.clone(),
@@ -459,6 +511,7 @@ async fn copy_object(
         etag: put_result.etag.clone(),
         content_type: content_type.clone(),
         last_modified: now.to_rfc3339(),
+        metadata: metadata.clone(),
     };
     if let Err(e) = state.blob.write_sidecar(&new_blob_id, &sidecar).await {
         return internal_error_response(e, &resource);
@@ -473,6 +526,7 @@ async fn copy_object(
         etag: put_result.etag.clone(),
         content_type,
         last_modified: now,
+        metadata,
     };
     let old = match state.metadata.put_object(&record).await {
         Ok(old) => old,
@@ -745,6 +799,11 @@ pub async fn get_object(
         builder = builder.header("Content-Range", range_str);
     }
 
+    // Return stored metadata as response headers.
+    for (key, value) in &record.metadata {
+        builder = builder.header(key.as_str(), value.as_str());
+    }
+
     builder
         .body(Body::from_stream(get_result.stream))
         .expect("build get_object response")
@@ -788,13 +847,20 @@ pub async fn head_object(
         .content_type
         .unwrap_or_else(|| "application/octet-stream".to_string());
 
-    Response::builder()
+    let mut builder = Response::builder()
         .status(StatusCode::OK)
         .header("ETag", &etag)
         .header("Last-Modified", &last_modified)
         .header("Content-Length", record.size)
         .header("Content-Type", &content_type)
-        .header("Accept-Ranges", "bytes")
+        .header("Accept-Ranges", "bytes");
+
+    // Return stored metadata as response headers.
+    for (key, value) in &record.metadata {
+        builder = builder.header(key.as_str(), value.as_str());
+    }
+
+    builder
         .body(Body::empty())
         .expect("build head_object response")
 }

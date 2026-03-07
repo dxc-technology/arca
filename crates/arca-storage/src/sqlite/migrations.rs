@@ -75,6 +75,13 @@ const MIGRATIONS: &[Migration] = &[
         sql: "ALTER TABLE credentials ADD COLUMN admin INTEGER NOT NULL DEFAULT 0;
               UPDATE credentials SET admin = 1",
     },
+    Migration {
+        version: 6,
+        description: "Add metadata column to objects and multipart_uploads",
+        // JSON-encoded HashMap<String, String>. Defaults to '{}' for existing rows.
+        sql: "ALTER TABLE objects ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}';
+              ALTER TABLE multipart_uploads ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -148,7 +155,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -190,12 +197,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
 
-        // Five migration records
+        // Six migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 5);
+        assert_eq!(count, 6);
     }
 }

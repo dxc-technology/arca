@@ -324,6 +324,7 @@ mod tests {
             etag: "abc123".to_string(),
             content_type: Some("text/plain".to_string()),
             last_modified: "2024-01-01T00:00:00Z".to_string(),
+            metadata: std::collections::HashMap::new(),
         };
         store.write_sidecar(&blob_id, &meta).await.unwrap();
 
@@ -349,6 +350,7 @@ mod tests {
             etag: "e".to_string(),
             content_type: None,
             last_modified: "t".to_string(),
+            metadata: std::collections::HashMap::new(),
         };
         store.write_sidecar(&blob_id, &meta).await.unwrap();
 

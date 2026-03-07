@@ -5,6 +5,7 @@ use arca_core::store::MetadataStore;
 use arca_core::types::{
     BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
 };
+use std::collections::HashMap;
 use chrono::DateTime;
 use rusqlite::params;
 
@@ -138,7 +139,7 @@ impl MetadataStore for SqliteStore {
                 // Check for existing object to return for cleanup.
                 let old = {
                     let mut stmt = tx.prepare(
-                        "SELECT bucket, key, blob_id, size, etag, content_type, last_modified
+                        "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata
                          FROM objects WHERE bucket = ?1 AND key = ?2",
                     )?;
                     let result = stmt.query_row(
@@ -152,14 +153,17 @@ impl MetadataStore for SqliteStore {
                     }
                 };
 
+                let metadata_json = serde_json::to_string(&record.metadata)
+                    .unwrap_or_else(|_| "{}".to_string());
+
                 // Delete old record if exists, then insert new.
                 tx.execute(
                     "DELETE FROM objects WHERE bucket = ?1 AND key = ?2",
                     params![record.bucket, record.key],
                 )?;
                 tx.execute(
-                    "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                     params![
                         record.bucket,
                         record.key,
@@ -168,6 +172,7 @@ impl MetadataStore for SqliteStore {
                         record.etag,
                         record.content_type,
                         record.last_modified.to_rfc3339(),
+                        metadata_json,
                     ],
                 )?;
 
@@ -188,7 +193,7 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT bucket, key, blob_id, size, etag, content_type, last_modified
+                    "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata
                      FROM objects WHERE bucket = ?1 AND key = ?2",
                 )?;
                 let result = stmt.query_row(
@@ -219,7 +224,7 @@ impl MetadataStore for SqliteStore {
             .call(move |conn| {
                 // Build dynamic SQL.
                 let mut sql = String::from(
-                    "SELECT bucket, key, blob_id, size, etag, content_type, last_modified
+                    "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata
                      FROM objects WHERE bucket = ?1",
                 );
                 let mut param_idx = 2u32;
@@ -283,7 +288,7 @@ impl MetadataStore for SqliteStore {
 
                 let old = {
                     let mut stmt = tx.prepare(
-                        "SELECT bucket, key, blob_id, size, etag, content_type, last_modified
+                        "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata
                          FROM objects WHERE bucket = ?1 AND key = ?2",
                     )?;
                     let result = stmt.query_row(
@@ -320,15 +325,18 @@ impl MetadataStore for SqliteStore {
         let record = record.clone();
         self.conn
             .call(move |conn| {
+                let metadata_json = serde_json::to_string(&record.metadata)
+                    .unwrap_or_else(|_| "{}".to_string());
                 conn.execute(
-                    "INSERT INTO multipart_uploads (upload_id, bucket, key, content_type, initiated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    "INSERT INTO multipart_uploads (upload_id, bucket, key, content_type, initiated_at, metadata)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                     params![
                         record.upload_id,
                         record.bucket,
                         record.key,
                         record.content_type,
                         record.initiated_at.to_rfc3339(),
+                        metadata_json,
                     ],
                 )?;
                 Ok(())
@@ -345,7 +353,7 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT upload_id, bucket, key, content_type, initiated_at
+                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata
                      FROM multipart_uploads WHERE upload_id = ?1",
                 )?;
                 let result = stmt.query_row(params![upload_id], |row| {
@@ -470,6 +478,100 @@ impl MetadataStore for SqliteStore {
             .await
             .map_err(|e: TrError| ArcaError::Internal(format!("delete_multipart_upload: {e}")))
     }
+
+    async fn list_multipart_uploads(
+        &self,
+        bucket: &str,
+        prefix: Option<&str>,
+        key_marker: Option<&str>,
+        upload_id_marker: Option<&str>,
+        max_uploads: u32,
+    ) -> Result<Vec<MultipartUploadRecord>, ArcaError> {
+        let bucket = bucket.to_string();
+        let prefix = prefix.map(|s| s.to_string());
+        let key_marker = key_marker.map(|s| s.to_string());
+        let upload_id_marker = upload_id_marker.map(|s| s.to_string());
+        self.conn
+            .call(move |conn| {
+                let mut sql = String::from(
+                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata
+                     FROM multipart_uploads WHERE bucket = ?1",
+                );
+                let mut param_idx = 2u32;
+
+                let prefix_pattern = prefix.as_ref().map(|p| {
+                    let idx = param_idx;
+                    param_idx += 1;
+                    sql.push_str(&format!(" AND key LIKE ?{idx} ESCAPE '\\'"));
+                    format!("{}%", escape_like(p))
+                });
+
+                // Pagination: key_marker + upload_id_marker
+                if let Some(ref km) = key_marker {
+                    if let Some(ref uim) = upload_id_marker {
+                        if !uim.is_empty() {
+                            let kid = param_idx;
+                            param_idx += 1;
+                            let uid = param_idx;
+                            #[allow(unused_assignments)]
+                            { param_idx += 1; }
+                            sql.push_str(&format!(
+                                " AND (key > ?{kid} OR (key = ?{kid} AND upload_id > ?{uid}))"
+                            ));
+                            // We'll bind km twice and uim once — handled below.
+                        } else if !km.is_empty() {
+                            let idx = param_idx;
+                            #[allow(unused_assignments)]
+                            { param_idx += 1; }
+                            sql.push_str(&format!(" AND key > ?{idx}"));
+                        }
+                    } else if !km.is_empty() {
+                        let idx = param_idx;
+                        #[allow(unused_assignments)]
+                        { param_idx += 1; }
+                        sql.push_str(&format!(" AND key > ?{idx}"));
+                    }
+                }
+
+                sql.push_str(" ORDER BY key, upload_id");
+                sql.push_str(&format!(" LIMIT {max_uploads}"));
+
+                let mut stmt = conn.prepare(&sql)?;
+
+                let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+                params_vec.push(Box::new(bucket));
+                if let Some(ref pattern) = prefix_pattern {
+                    params_vec.push(Box::new(pattern.clone()));
+                }
+                if let Some(ref km) = key_marker {
+                    if let Some(ref uim) = upload_id_marker {
+                        if !uim.is_empty() {
+                            params_vec.push(Box::new(km.clone()));
+                            params_vec.push(Box::new(uim.clone()));
+                        } else if !km.is_empty() {
+                            params_vec.push(Box::new(km.clone()));
+                        }
+                    } else if !km.is_empty() {
+                        params_vec.push(Box::new(km.clone()));
+                    }
+                }
+
+                let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+                    params_vec.iter().map(|p| p.as_ref()).collect();
+
+                let rows = stmt.query_map(params_refs.as_slice(), |row| {
+                    Ok(row_to_multipart_upload_record(row))
+                })?;
+
+                let mut records = Vec::new();
+                for row in rows {
+                    records.push(row??);
+                }
+                Ok(records)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("list_multipart_uploads: {e}")))
+    }
 }
 
 /// Escapes special characters in a LIKE pattern so they are matched literally.
@@ -512,7 +614,7 @@ fn row_to_bucket_info(row: &rusqlite::Row) -> Result<BucketInfo, rusqlite::Error
 
 /// Converts a SQLite row to a `MultipartUploadRecord`.
 ///
-/// Expects columns: upload_id, bucket, key, content_type, initiated_at.
+/// Expects columns: upload_id, bucket, key, content_type, initiated_at, metadata.
 fn row_to_multipart_upload_record(
     row: &rusqlite::Row,
 ) -> Result<MultipartUploadRecord, rusqlite::Error> {
@@ -527,12 +629,17 @@ fn row_to_multipart_upload_record(
             )
         })?;
 
+    let metadata_json: String = row.get(5)?;
+    let metadata: HashMap<String, String> =
+        serde_json::from_str(&metadata_json).unwrap_or_default();
+
     Ok(MultipartUploadRecord {
         upload_id: row.get(0)?,
         bucket: row.get(1)?,
         key: row.get(2)?,
         content_type: row.get(3)?,
         initiated_at,
+        metadata,
     })
 }
 
@@ -551,7 +658,7 @@ fn row_to_part_record(row: &rusqlite::Row) -> Result<PartRecord, rusqlite::Error
 
 /// Converts a SQLite row to an `ObjectRecord`.
 ///
-/// Expects columns: bucket, key, blob_id, size, etag, content_type, last_modified.
+/// Expects columns: bucket, key, blob_id, size, etag, content_type, last_modified, metadata.
 fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::Error> {
     let last_modified_str: String = row.get(6)?;
     let last_modified = DateTime::parse_from_rfc3339(&last_modified_str)
@@ -564,6 +671,10 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
             )
         })?;
 
+    let metadata_json: String = row.get(7)?;
+    let metadata: HashMap<String, String> =
+        serde_json::from_str(&metadata_json).unwrap_or_default();
+
     Ok(ObjectRecord {
         bucket: row.get(0)?,
         key: row.get(1)?,
@@ -572,6 +683,7 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
         etag: row.get(4)?,
         content_type: row.get(5)?,
         last_modified,
+        metadata,
     })
 }
 
@@ -592,6 +704,7 @@ mod tests {
             etag: "abc123".to_string(),
             content_type: Some("text/plain".to_string()),
             last_modified: chrono::Utc::now(),
+            metadata: HashMap::new(),
         }
     }
 
@@ -905,6 +1018,7 @@ mod tests {
             key: key.to_string(),
             content_type: Some("application/octet-stream".to_string()),
             initiated_at: chrono::Utc::now(),
+            metadata: HashMap::new(),
         }
     }
 

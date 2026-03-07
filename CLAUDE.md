@@ -72,6 +72,18 @@ Dependency direction: `arca-server` -> `arca-proto`, `arca-storage`, `arca-auth`
 
 **Admin API on same port** — Admin endpoints live under `/admin/*` on port 9000, coexisting with the S3 API via path-prefix routing. Auth uses SigV4 (same as S3). Response format is JSON (not S3 XML).
 
+## Technical Debt
+
+Workarounds and known shortcuts are tracked in `TECH_DEBT.md` at the repo root. The roadmap (`documentation/docs/roadmap.md`) also has a tech debt section that should be kept in sync.
+
+When implementing a workaround or shortcut instead of a proper solution:
+
+1. Add a `TECHDEBT(TD-XXX)` comment in the code at the workaround site.
+2. Add a corresponding entry in `TECH_DEBT.md` with the same ID, description, affected files, and proposed fix.
+3. Update the tech debt section at the bottom of `documentation/docs/roadmap.md`.
+
+When fixing a tech debt item, remove the `TECHDEBT` markers from code, mark it resolved in `TECH_DEBT.md`, and update the roadmap.
+
 ## Not in MVP
 
 Object versioning, ACLs/bucket policies, server-side encryption, object tagging, lifecycle rules, CORS, object lock, presigned URLs, metrics, replication, multi-node.

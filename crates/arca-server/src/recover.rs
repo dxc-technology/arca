@@ -105,6 +105,7 @@ pub async fn run_recover(config: &Config, dry_run: bool, skip_verify: bool) -> R
             etag: entry.meta.etag.clone(),
             content_type: entry.meta.content_type.clone(),
             last_modified,
+            metadata: entry.meta.metadata.clone(),
         };
         store.put_object(&record).await?;
         object_count += 1;
@@ -265,7 +266,7 @@ async fn load_credentials(db_path: &Path) -> Option<Vec<Credential>> {
 mod tests {
     use super::*;
     use crate::config::{Config, ServerConfig, StorageConfig};
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
 
     /// Creates a test config pointing at a temp directory.
     fn test_config(dir: &Path) -> Config {
@@ -337,6 +338,7 @@ mod tests {
                 etag: md5_hex(content_a),
                 content_type: Some("text/plain".into()),
                 last_modified: "2024-01-01T00:00:00Z".into(),
+                metadata: HashMap::new(),
             },
         )
         .await;
@@ -352,6 +354,7 @@ mod tests {
                 etag: md5_hex(content_b),
                 content_type: None,
                 last_modified: "2024-01-02T00:00:00Z".into(),
+                metadata: HashMap::new(),
             },
         )
         .await;
@@ -367,6 +370,7 @@ mod tests {
                 etag: md5_hex(content_c),
                 content_type: None,
                 last_modified: "2024-01-03T00:00:00Z".into(),
+                metadata: HashMap::new(),
             },
         )
         .await;
@@ -414,6 +418,7 @@ mod tests {
                 etag: md5_hex(content),
                 content_type: None,
                 last_modified: "2024-01-01T00:00:00Z".into(),
+                metadata: HashMap::new(),
             },
         )
         .await;
@@ -444,6 +449,7 @@ mod tests {
             etag: "abcd1234".into(),
             content_type: None,
             last_modified: "2024-01-01T00:00:00Z".into(),
+            metadata: HashMap::new(),
         };
         let json = serde_json::to_string(&meta).unwrap();
         fs::write(dir.join(format!("{id}.meta")), json).await.unwrap();
@@ -522,6 +528,7 @@ mod tests {
                 etag: md5_hex(content),
                 content_type: None,
                 last_modified: "2024-01-01T00:00:00Z".into(),
+                metadata: HashMap::new(),
             },
         )
         .await;
@@ -559,6 +566,7 @@ mod tests {
                 etag: "0000000000000000000000000000dead".into(),
                 content_type: None,
                 last_modified: "2024-01-01T00:00:00Z".into(),
+                metadata: HashMap::new(),
             },
         )
         .await;
@@ -595,6 +603,7 @@ mod tests {
                 etag: "d41d8cd98f00b204e9800998ecf8427e-3".into(),
                 content_type: Some("application/octet-stream".into()),
                 last_modified: "2024-06-15T12:00:00Z".into(),
+                metadata: HashMap::new(),
             },
         )
         .await;

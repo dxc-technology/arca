@@ -11,6 +11,8 @@ use arca_core::store::{ByteStream, SidecarMeta};
 use arca_core::types::{BlobId, MultipartUploadRecord, ObjectRecord, PartRecord};
 use arca_core::{S3Error, S3ErrorCode};
 
+use super::object::extract_metadata;
+
 use crate::state::AppState;
 use crate::xml::error_response::{internal_error_response, s3_error_response};
 
@@ -45,6 +47,8 @@ pub async fn create_multipart_upload(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
 
+    let metadata = extract_metadata(request.headers());
+
     let upload_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now();
 
@@ -54,6 +58,7 @@ pub async fn create_multipart_upload(
         key: key.clone(),
         content_type,
         initiated_at: now,
+        metadata,
     };
 
     if let Err(e) = state.metadata.create_multipart_upload(&record).await {
@@ -291,6 +296,7 @@ pub async fn complete_multipart_upload(
         etag: composite_etag.clone(),
         content_type: upload.content_type.clone(),
         last_modified: now.to_rfc3339(),
+        metadata: upload.metadata.clone(),
     };
     if let Err(e) = state.blob.write_sidecar(&final_blob_id, &sidecar).await {
         return internal_error_response(e, &resource);
@@ -305,6 +311,7 @@ pub async fn complete_multipart_upload(
         etag: composite_etag.clone(),
         content_type: upload.content_type,
         last_modified: now,
+        metadata: upload.metadata,
     };
     let old = match state.metadata.put_object(&record).await {
         Ok(old) => old,

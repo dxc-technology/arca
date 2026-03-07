@@ -475,6 +475,7 @@ mod tests {
             etag: etag.clone(),
             content_type: Some("text/plain".into()),
             last_modified: "2024-01-01T00:00:00Z".into(),
+            metadata: HashMap::new(),
         };
         write_sidecar(&blobs_dir, blob_id, &meta).await;
 
@@ -488,6 +489,7 @@ mod tests {
             last_modified: chrono::DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
                 .unwrap()
                 .with_timezone(&chrono::Utc),
+            metadata: HashMap::new(),
         };
         store.put_object(&record).await.unwrap();
     }
@@ -553,6 +555,7 @@ mod tests {
             etag: "abc123".into(),
             content_type: None,
             last_modified: chrono::Utc::now(),
+            metadata: HashMap::new(),
         };
         store.put_object(&record).await.unwrap();
         drop(store);
@@ -584,6 +587,7 @@ mod tests {
             etag: md5_hex(b"hello"),
             content_type: None,
             last_modified: "2024-01-01T00:00:00Z".into(),
+            metadata: HashMap::new(),
         };
         write_sidecar(&blobs_dir, id, &bad_meta).await;
         drop(store);
@@ -661,6 +665,7 @@ mod tests {
             etag: "d41d8cd98f00b204e9800998ecf8427e-3".into(),
             content_type: None,
             last_modified: "2024-01-01T00:00:00Z".into(),
+            metadata: HashMap::new(),
         };
         write_sidecar(&blobs_dir, id, &meta).await;
 
@@ -675,6 +680,7 @@ mod tests {
             last_modified: chrono::DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
                 .unwrap()
                 .with_timezone(&chrono::Utc),
+            metadata: HashMap::new(),
         };
         store.put_object(&record).await.unwrap();
         drop(store);

@@ -200,7 +200,7 @@ Web-based administration console and bucket browser, deployed as a **separate ap
 Run industry-standard compatibility tests and harden edge cases.
 
 - [x] Set up Ceph s3-tests in Docker (`docker/s3-tests/Dockerfile` + `s3tests.conf`, `bin/s3-tests` runner)
-- [x] Run test suite, triage failures — 198 pass / 540 fail / 91 skip (see `s3-tests/TRIAGE.md`)
+- [x] Run test suite, triage failures — 232 pass / 506 fail / 91 skip (see `s3-tests/TRIAGE.md`)
 - [x] Fix compatibility issues: `x-amz-request-id`/`x-amz-id-2`/`Server` headers, `GetBucketLocation`, `CreateBucket` idempotency, `ListObjectsV1`, empty delimiter handling, whitespace-preserving `DeleteObjects` XML parser, unimplemented PUT bucket ops return 501
 - [x] Track pass/fail list (`s3-tests/passlist.txt`), HTML compatibility dashboard (`s3-tests/report.html`)
 - [x] Performance testing with concurrent requests + large files (`tests/perf/perf_test.py`, `bin/perf-test`)
