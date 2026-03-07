@@ -74,7 +74,7 @@ pub async fn get_bucket(
         }
     }
 
-    // GetBucketEncryption: return specific error code when not configured.
+    // TECHDEBT(TD-006): GetBucketEncryption always returns "not configured" error.
     if params.iter().any(|(k, _)| k == "encryption") {
         // Check bucket exists first.
         match state.metadata.head_bucket(&bucket).await {
@@ -91,7 +91,7 @@ pub async fn get_bucket(
         }
     }
 
-    // Unimplemented GET bucket operations that should return 501.
+    // TECHDEBT(TD-007): Unimplemented GET bucket operations return 501.
     let unimplemented_get_ops = [
         "acl", "cors", "lifecycle", "logging", "notification",
         "policy", "replication", "tagging", "website", "object-lock",
@@ -543,9 +543,10 @@ async fn list_objects_v1(
 
 /// Handles ListObjectVersions requests.
 ///
-/// Since Arca doesn't support versioning, each object is returned as a single
-/// `<Version>` entry with `VersionId=null` and `IsLatest=true`. This is enough
-/// for mc's `rm --recursive` workflow which lists versions before batch-deleting.
+/// TECHDEBT(TD-003): Since Arca doesn't support versioning, each object is
+/// returned as a single `<Version>` entry with `VersionId=null` and
+/// `IsLatest=true`. This is enough for mc's `rm --recursive` workflow which
+/// lists versions before batch-deleting.
 async fn list_object_versions(
     state: AppState,
     bucket: &str,
@@ -638,7 +639,7 @@ fn record_to_list_entry(record: &ObjectRecord) -> ListEntry {
         last_modified: record.last_modified,
         etag: record.etag.clone(),
         size: record.size,
-        storage_class: "STANDARD".to_string(),
+        storage_class: "STANDARD".to_string(), // TECHDEBT(TD-002): hardcoded storage class
     }
 }
 
@@ -651,7 +652,7 @@ pub async fn head_bucket(
     match state.metadata.head_bucket(&bucket).await {
         Ok(Some(_)) => Response::builder()
             .status(StatusCode::OK)
-            .header("x-amz-bucket-region", "us-east-1")
+            .header("x-amz-bucket-region", "us-east-1") // TECHDEBT(TD-004): hardcoded region
             .body(axum::body::Body::empty())
             .expect("build head bucket response"),
         Ok(None) => {
@@ -674,7 +675,7 @@ pub async fn create_bucket(
     let resource = format!("/{bucket}");
     let query = request.uri().query().unwrap_or("");
 
-    // Dispatch unimplemented bucket-level PUT operations.
+    // TECHDEBT(TD-007): Unimplemented bucket-level PUT operations return 501.
     let unimplemented_ops = [
         "versioning", "acl", "lifecycle", "cors", "logging",
         "notification", "policy", "replication", "tagging",

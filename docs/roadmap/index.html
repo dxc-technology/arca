@@ -1034,6 +1034,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#post-mvp-technical-debt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Post-MVP — Technical Debt
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1205,6 +1216,17 @@
     <span class="md-ellipsis">
       
         Phase 11 — Documentation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#post-mvp-technical-debt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Post-MVP — Technical Debt
       
     </span>
   </a>
@@ -1472,6 +1494,23 @@ Endpoints live under <code>/admin/*</code> on the same port (9000), using SigV4 
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Automated screenshot tool (<code>bin/screenshots</code>, Playwright + Docker)</li>
 </ul>
 <p><strong>Verify</strong>: All manuals published on GitHub Pages, covering installation through production operations.</p>
+<hr />
+<h2 id="post-mvp-technical-debt">Post-MVP — Technical Debt<a class="headerlink" href="#post-mvp-technical-debt" title="Permanent link">&para;</a></h2>
+<p>The MVP includes several workarounds and hardcoded values that pass compatibility
+tests but need proper implementation for production use. These are tracked in
+<a href="https://github.com/dxc-technology/arca/blob/main/TECH_DEBT.md"><code>TECH_DEBT.md</code></a>
+with unique IDs (<code>TD-XXX</code>) referenced in source code comments.</p>
+<p>Key themes:</p>
+<ul>
+<li><strong>Ownership model</strong> (TD-001): Owner ID hardcoded to <code>"arca"</code> — needs account/user model tied to credentials</li>
+<li><strong>Storage classes</strong> (TD-002): Always <code>STANDARD</code> — no storage tiering</li>
+<li><strong>Versioning</strong> (TD-003): Faked for mc compatibility — no real version tracking</li>
+<li><strong>Region support</strong> (TD-004): Hardcoded <code>us-east-1</code> — no per-bucket regions</li>
+<li><strong>Request ID consistency</strong> (TD-005): Error XML and response header use different UUIDs</li>
+<li><strong>Encryption</strong> (TD-006): Always returns "not configured" — no SSE support</li>
+<li><strong>Unimplemented ops</strong> (TD-007): ~35 bucket operations return 501</li>
+<li><strong>Multipart Content-Type</strong> (TD-008): Captured at init time — verify against AWS semantics</li>
+</ul>
 
 
 

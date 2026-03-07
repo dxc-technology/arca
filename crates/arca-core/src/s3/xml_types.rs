@@ -138,6 +138,7 @@ pub fn list_all_my_buckets_result(buckets: &[BucketInfo]) -> String {
         .write_event(Event::Start(root))
         .expect("write root start");
 
+    // TECHDEBT(TD-001): Owner ID/DisplayName hardcoded to "arca"
     // <Owner>
     writer
         .write_event(Event::Start(BytesStart::new("Owner")))
@@ -439,8 +440,9 @@ pub fn complete_multipart_upload_result(bucket: &str, key: &str, etag: &str) -> 
 
 /// Builds the XML response for `ListVersionsResult` (ListObjectVersions).
 ///
-/// Since Arca doesn't support versioning, each object is returned as a
-/// `<Version>` entry with `<VersionId>null</VersionId>` and `<IsLatest>true</IsLatest>`.
+/// TECHDEBT(TD-003): Since Arca doesn't support versioning, each object is
+/// returned as a `<Version>` entry with `<VersionId>null</VersionId>` and
+/// `<IsLatest>true</IsLatest>`.
 pub fn list_versions_result(
     name: &str,
     prefix: Option<&str>,
@@ -513,8 +515,8 @@ pub fn list_versions_result(
 
 /// Builds the XML response for `GetBucketLocation`.
 ///
-/// Returns an empty `LocationConstraint` element, which indicates US Standard
-/// (the default region). This is what S3 returns for `us-east-1`.
+/// TECHDEBT(TD-004): Returns an empty `LocationConstraint` element, which
+/// indicates US Standard (us-east-1). Hardcoded — no per-bucket region support.
 ///
 /// ```xml
 /// <?xml version="1.0" encoding="UTF-8"?>

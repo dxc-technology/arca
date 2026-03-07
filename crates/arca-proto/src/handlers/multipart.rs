@@ -38,6 +38,7 @@ pub async fn create_multipart_upload(
         Err(e) => return internal_error_response(e, &resource),
     }
 
+    // TECHDEBT(TD-008): Content-Type captured from CreateMultipartUpload init request.
     let content_type = request
         .headers()
         .get(header::CONTENT_TYPE)

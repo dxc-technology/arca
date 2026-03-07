@@ -223,3 +223,23 @@ Comprehensive manuals and guides for users, administrators, and operators.
 - [x] Automated screenshot tool (`bin/screenshots`, Playwright + Docker)
 
 **Verify**: All manuals published on GitHub Pages, covering installation through production operations.
+
+---
+
+## Post-MVP — Technical Debt
+
+The MVP includes several workarounds and hardcoded values that pass compatibility
+tests but need proper implementation for production use. These are tracked in
+[`TECH_DEBT.md`](https://github.com/dxc-technology/arca/blob/main/TECH_DEBT.md)
+with unique IDs (`TD-XXX`) referenced in source code comments.
+
+Key themes:
+
+- **Ownership model** (TD-001): Owner ID hardcoded to `"arca"` — needs account/user model tied to credentials
+- **Storage classes** (TD-002): Always `STANDARD` — no storage tiering
+- **Versioning** (TD-003): Faked for mc compatibility — no real version tracking
+- **Region support** (TD-004): Hardcoded `us-east-1` — no per-bucket regions
+- **Request ID consistency** (TD-005): Error XML and response header use different UUIDs
+- **Encryption** (TD-006): Always returns "not configured" — no SSE support
+- **Unimplemented ops** (TD-007): ~35 bucket operations return 501
+- **Multipart Content-Type** (TD-008): Captured at init time — verify against AWS semantics
