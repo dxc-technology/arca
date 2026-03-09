@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Arca is an open source S3-compatible object storage server written in Rust. It targets 100% S3 API compatibility for a focused MVP subset (15 operations), starting as single-node with eventual production scale in mind. Licensed under AGPL-3.0-or-later.
+Arca is an open source S3-compatible object storage server written in Rust. It is designed as a drop-in replacement for AWS S3, MinIO, and other S3-compatible storage services, targeting 100% S3 API compatibility for a focused MVP subset (15 operations). Starts as single-node with eventual production scale in mind. Licensed under AGPL-3.0-or-later.
 
 The full architecture plan lives in `.claude/plans/arca-s3-mvp-architecture.md`.
 
