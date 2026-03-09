@@ -40,7 +40,20 @@ pub(super) fn extract_metadata(headers: &http::HeaderMap) -> HashMap<String, Str
 
     for &header_name in S3_SYSTEM_METADATA_HEADERS {
         if let Some(value) = headers.get(header_name).and_then(|v| v.to_str().ok()) {
-            metadata.insert(header_name.to_string(), value.to_string());
+            let value = if header_name == "content-encoding" {
+                // Strip "aws-chunked" — it's a transport encoding, not content encoding.
+                value
+                    .split(',')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.eq_ignore_ascii_case("aws-chunked"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            } else {
+                value.to_string()
+            };
+            if !value.is_empty() {
+                metadata.insert(header_name.to_string(), value);
+            }
         }
     }
 
@@ -104,6 +117,7 @@ fn check_conditionals(
                     return Some(
                         Response::builder()
                             .status(StatusCode::NOT_MODIFIED)
+                            .header("ETag", &quoted_etag)
                             .body(Body::empty())
                             .expect("build 304 response"),
                     );
@@ -277,9 +291,12 @@ pub async fn put_object(
                 }
             }
             None => {
-                // If-Match on non-existent object → 412.
+                // If-Match on non-existent object → 404 NoSuchKey.
                 if request.headers().contains_key("if-match") {
-                    return precondition_failed_response(&resource);
+                    return s3_error_response(S3Error::new(
+                        S3ErrorCode::NoSuchKey,
+                        &resource,
+                    ));
                 }
                 // If-None-Match: * on non-existent object → proceed (condition met).
             }
@@ -867,6 +884,7 @@ pub async fn delete_object(
     }
 
     let resource = format!("/{bucket}/{key}");
+    let headers = request.headers().clone();
 
     // Check bucket exists (S3 returns NoSuchBucket, not NoSuchKey).
     match state.metadata.head_bucket(&bucket).await {
@@ -875,6 +893,54 @@ pub async fn delete_object(
             return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource));
         }
         Err(e) => return internal_error_response(e, &resource),
+    }
+
+    // Check conditional headers on delete (If-Match, x-amz-if-match-*).
+    let has_delete_conditionals = headers.contains_key("if-match")
+        || headers.contains_key("x-amz-if-match-last-modified-time")
+        || headers.contains_key("x-amz-if-match-size");
+
+    if has_delete_conditionals {
+        let existing = match state.metadata.get_object(&bucket, &key).await {
+            Ok(obj) => obj,
+            Err(e) => return internal_error_response(e, &resource),
+        };
+        if let Some(ref obj) = existing {
+            // If-Match: check ETag.
+            if let Some(val) = headers.get("if-match").and_then(|v| v.to_str().ok()) {
+                let quoted_etag = format!("\"{}\"", obj.etag);
+                if !etag_matches(val, &quoted_etag) {
+                    return precondition_failed_response(&resource);
+                }
+            }
+            // x-amz-if-match-last-modified-time: check Last-Modified.
+            if let Some(val) = headers
+                .get("x-amz-if-match-last-modified-time")
+                .and_then(|v| v.to_str().ok())
+            {
+                if let Ok(expected) = httpdate::parse_http_date(val) {
+                    let expected_dt: chrono::DateTime<chrono::Utc> = expected.into();
+                    // Truncate both to seconds for comparison (HTTP dates have 1s resolution).
+                    let obj_secs = obj.last_modified.timestamp();
+                    let exp_secs = expected_dt.timestamp();
+                    if obj_secs != exp_secs {
+                        return precondition_failed_response(&resource);
+                    }
+                }
+            }
+            // x-amz-if-match-size: check object size.
+            if let Some(val) = headers
+                .get("x-amz-if-match-size")
+                .and_then(|v| v.to_str().ok())
+            {
+                if let Ok(expected_size) = val.parse::<u64>() {
+                    if obj.size != expected_size {
+                        return precondition_failed_response(&resource);
+                    }
+                }
+            }
+        }
+        // If object doesn't exist, DELETE is a no-op — fall through to 204.
     }
 
     let old = match state.metadata.delete_object(&bucket, &key).await {

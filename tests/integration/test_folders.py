@@ -88,8 +88,13 @@ class TestDirectoryMarkerCreation:
 
 
 class TestDirectoryMarkerListing:
-    def test_marker_hidden_from_delimiter_listing_at_prefix(self, s3_client):
-        """Directory marker should NOT appear in Contents when listing its own prefix."""
+    def test_marker_visible_in_delimiter_listing_at_prefix(self, s3_client):
+        """Directory marker appears in Contents when listing its own prefix with delimiter.
+
+        With Prefix="photos/" and Delimiter="/", the key "photos/" has an empty
+        remainder after stripping the prefix — no delimiter found, so it's a
+        regular Content entry (not collapsed into CommonPrefixes).
+        """
         s3_client.put_object(Bucket=BUCKET, Key="photos/", Body=b"")
         s3_client.put_object(Bucket=BUCKET, Key="photos/a.jpg", Body=b"img")
 
@@ -97,9 +102,8 @@ class TestDirectoryMarkerListing:
             Bucket=BUCKET, Prefix="photos/", Delimiter="/",
         )
         content_keys = [obj["Key"] for obj in resp.get("Contents", [])]
-        # The directory marker 'photos/' should NOT be in Contents
-        assert "photos/" not in content_keys
-        # But the actual file should be
+        # The directory marker 'photos/' IS in Contents (S3 behavior)
+        assert "photos/" in content_keys
         assert "photos/a.jpg" in content_keys
 
     def test_marker_hidden_from_root_delimiter_listing(self, s3_client):
@@ -117,28 +121,32 @@ class TestDirectoryMarkerListing:
         assert "data/" in prefixes
         assert "root.txt" in content_keys
 
-    def test_nested_marker_hidden(self, s3_client):
-        """Nested directory markers should be hidden when listing their parent."""
+    def test_nested_marker_visible(self, s3_client):
+        """Nested directory markers appear in Contents when listing their own prefix.
+
+        S3 returns zero-byte directory markers as Content entries when the key
+        exactly matches the prefix (empty remainder after stripping prefix).
+        """
         s3_client.put_object(Bucket=BUCKET, Key="a/", Body=b"")
         s3_client.put_object(Bucket=BUCKET, Key="a/b/", Body=b"")
         s3_client.put_object(Bucket=BUCKET, Key="a/b/file.txt", Body=b"x")
 
-        # List a/ with delimiter — should see b/ as CommonPrefix, not a/ marker
+        # List a/ with delimiter — a/ marker in Contents, b/ as CommonPrefix
         resp = s3_client.list_objects_v2(
             Bucket=BUCKET, Prefix="a/", Delimiter="/",
         )
         content_keys = [obj["Key"] for obj in resp.get("Contents", [])]
         prefixes = [p["Prefix"] for p in resp.get("CommonPrefixes", [])]
 
-        assert "a/" not in content_keys
+        assert "a/" in content_keys
         assert "a/b/" in prefixes
 
-        # List a/b/ with delimiter — should see file, not b/ marker
+        # List a/b/ with delimiter — a/b/ marker in Contents, plus the file
         resp = s3_client.list_objects_v2(
             Bucket=BUCKET, Prefix="a/b/", Delimiter="/",
         )
         content_keys = [obj["Key"] for obj in resp.get("Contents", [])]
-        assert "a/b/" not in content_keys
+        assert "a/b/" in content_keys
         assert "a/b/file.txt" in content_keys
 
     def test_marker_visible_without_delimiter(self, s3_client):

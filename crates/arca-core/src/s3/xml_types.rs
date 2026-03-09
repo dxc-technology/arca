@@ -53,6 +53,9 @@ pub struct DeleteObjectsBody {
 pub struct DeleteObject {
     #[serde(rename = "Key")]
     pub key: String,
+    /// Optional ETag for conditional delete (If-Match semantics per-key).
+    #[serde(rename = "ETag", default)]
+    pub etag: Option<String>,
 }
 
 /// Parses a `DeleteObjects` XML request body.
@@ -71,6 +74,7 @@ pub fn parse_delete_objects(xml: &str) -> Result<DeleteObjectsBody, quick_xml::D
     let mut quiet = false;
     let mut objects = Vec::new();
     let mut current_key: Option<String> = None;
+    let mut current_etag: Option<String> = None;
     let mut inside_tag: Option<String> = None;
     let mut buf = Vec::new();
 
@@ -85,6 +89,7 @@ pub fn parse_delete_objects(xml: &str) -> Result<DeleteObjectsBody, quick_xml::D
                     let text = e.unescape().map_err(|e| quick_xml::DeError::InvalidXml(e.into()))?.to_string();
                     match tag.as_str() {
                         "Key" => current_key = Some(text),
+                        "ETag" => current_etag = Some(text),
                         "Quiet" => quiet = text.trim() == "true",
                         _ => {}
                     }
@@ -94,7 +99,10 @@ pub fn parse_delete_objects(xml: &str) -> Result<DeleteObjectsBody, quick_xml::D
                 let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
                 if name == "Object" {
                     if let Some(key) = current_key.take() {
-                        objects.push(DeleteObject { key });
+                        objects.push(DeleteObject {
+                            key,
+                            etag: current_etag.take(),
+                        });
                     }
                 }
                 inside_tag = None;

@@ -155,10 +155,24 @@ pub async fn complete_multipart_upload(
 ) -> Response {
     let resource = format!("/{bucket}/{key}");
 
-    // Verify upload exists.
+    // Verify upload exists. If already completed, return idempotent success
+    // by looking up the assembled object (S3 CompleteMultipartUpload is idempotent).
     let upload = match state.metadata.get_multipart_upload(&upload_id).await {
         Ok(Some(u)) => u,
         Ok(None) => {
+            // Upload already completed? Return success if object exists.
+            if let Ok(Some(obj)) = state.metadata.get_object(&bucket, &key).await {
+                if obj.etag.contains('-') {
+                    let xml = xml_types::complete_multipart_upload_result(
+                        &bucket, &key, &obj.etag,
+                    );
+                    return Response::builder()
+                        .status(StatusCode::OK)
+                        .header("Content-Type", "application/xml")
+                        .body(Body::from(xml))
+                        .expect("build idempotent complete_multipart_upload response");
+                }
+            }
             return s3_error_response(S3Error::new(S3ErrorCode::NoSuchUpload, &resource));
         }
         Err(e) => return internal_error_response(e, &resource),
@@ -193,11 +207,7 @@ pub async fn complete_multipart_upload(
     let complete_body = match xml_types::parse_complete_multipart_upload(body_str) {
         Ok(b) => b,
         Err(_) => {
-            return s3_error_response(S3Error::with_message(
-                S3ErrorCode::InvalidArgument,
-                "Invalid CompleteMultipartUpload XML",
-                &resource,
-            ));
+            return s3_error_response(S3Error::new(S3ErrorCode::MalformedXML, &resource));
         }
     };
 

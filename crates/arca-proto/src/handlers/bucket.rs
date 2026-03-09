@@ -18,6 +18,17 @@ use crate::xml::error_response::{
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 
+/// URL-encode a string for S3's encoding-type=url, preserving '/'.
+///
+/// S3 percent-encodes all characters except unreserved chars (RFC 3986:
+/// `A-Z a-z 0-9 - _ . ~`) and the path separator `/`.
+fn s3_url_encode(s: &str) -> String {
+    s.split('/')
+        .map(|seg| urlencoding::encode(seg).into_owned())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 /// GET / — ListBuckets
 pub async fn list_buckets(State(state): State<AppState>) -> Response {
     let resource = "/";
@@ -225,12 +236,21 @@ async fn list_objects_v2(
     // When delimiter is set, records collapse into CommonPrefixes, so we can't
     // simply fetch max_keys+1 raw records. Instead, we fetch in batches and
     // group until we have enough result items (contents + common_prefixes).
+    //
+    // Key subtleties:
+    // - Multiple raw keys may collapse into one CommonPrefix (only counted once).
+    // - When paginating, the continuation token may point into the middle of a
+    //   CommonPrefix group. We must skip prefix groups already returned on a
+    //   previous page by comparing against the effective_start_after value.
+    // - IsTruncated should only be true if there are genuinely NEW result items
+    //   beyond max_keys (not just duplicate keys in an already-seen prefix group).
     let (contents, common_prefixes, is_truncated, next_token) = if let Some(delim) = delimiter {
         let pfx = prefix.unwrap_or("");
         let mut all_contents = Vec::new();
         let mut all_prefixes = Vec::new();
         let mut seen_prefixes = std::collections::HashSet::new();
         let mut cursor = effective_start_after.map(|s| s.to_string());
+        let skip_prefix_up_to = effective_start_after.map(|s| s.to_string());
         let mut truncated = false;
         let batch_size: u32 = (max_keys + 1).max(100);
 
@@ -246,21 +266,37 @@ async fn list_objects_v2(
             let exhausted = (records.len() as u32) < batch_size;
 
             for record in &records {
-                let result_count = all_contents.len() + all_prefixes.len();
-                if result_count as u32 >= max_keys {
-                    truncated = true;
-                    break;
-                }
-                // Skip directory marker at prefix boundary.
-                if record.key == pfx {
-                    continue;
-                }
                 let after_prefix = &record.key[pfx.len()..];
-                if let Some(pos) = after_prefix.find(delim) {
-                    let common_prefix =
-                        format!("{}{}", pfx, &after_prefix[..pos + delim.len()]);
-                    if seen_prefixes.insert(common_prefix.clone()) {
-                        all_prefixes.push(common_prefix);
+                let common_prefix_opt = after_prefix.find(delim).map(|pos| {
+                    format!("{}{}", pfx, &after_prefix[..pos + delim.len()])
+                });
+
+                // Skip prefix groups already returned on a previous page.
+                if let Some(ref cp) = common_prefix_opt {
+                    if let Some(ref skip) = skip_prefix_up_to {
+                        if cp.as_str() <= skip.as_str() {
+                            continue;
+                        }
+                    }
+                }
+
+                // Check if this record would produce a new result item.
+                let is_new_item = match &common_prefix_opt {
+                    Some(cp) => !seen_prefixes.contains(cp.as_str()),
+                    None => true,
+                };
+
+                if is_new_item {
+                    let result_count = all_contents.len() + all_prefixes.len();
+                    if result_count as u32 >= max_keys {
+                        truncated = true;
+                        break;
+                    }
+                }
+
+                if let Some(cp) = common_prefix_opt {
+                    if seen_prefixes.insert(cp.clone()) {
+                        all_prefixes.push(cp);
                     }
                 } else {
                     all_contents.push(record_to_list_entry(record, fetch_owner));
@@ -274,11 +310,17 @@ async fn list_objects_v2(
         }
 
         let token = if truncated {
-            // Use the last key that contributed to the result set.
-            let last_key = all_contents
-                .last()
-                .map(|e| e.key.as_str())
-                .or_else(|| all_prefixes.last().map(|p| p.as_str()));
+            // Use the lexicographically greatest result (content key or
+            // CommonPrefix). This ensures the next page's skip_prefix_up_to
+            // correctly skips prefix groups already returned.
+            let last_content = all_contents.last().map(|e| e.key.as_str());
+            let last_prefix = all_prefixes.last().map(|p| p.as_str());
+            let last_key = match (last_content, last_prefix) {
+                (Some(c), Some(p)) => Some(std::cmp::max(c, p)),
+                (Some(c), None) => Some(c),
+                (None, Some(p)) => Some(p),
+                (None, None) => None,
+            };
             last_key.map(|k| BASE64.encode(k.as_bytes()))
         } else {
             None
@@ -313,18 +355,19 @@ async fn list_objects_v2(
 
     let key_count = (contents.len() + common_prefixes.len()) as u32;
 
-    // Apply URL encoding if requested.
+    // Apply URL encoding if requested. S3 encodes special characters but
+    // preserves '/' (the path separator) in keys and CommonPrefixes.
     let (contents, common_prefixes) = if encoding_type == Some("url") {
         let enc_contents: Vec<ListEntry> = contents
             .into_iter()
             .map(|mut e| {
-                e.key = urlencoding::encode(&e.key).into_owned();
+                e.key = s3_url_encode(&e.key);
                 e
             })
             .collect();
         let enc_prefixes: Vec<String> = common_prefixes
             .into_iter()
-            .map(|p| urlencoding::encode(&p).into_owned())
+            .map(|p| s3_url_encode(&p))
             .collect();
         (enc_contents, enc_prefixes)
     } else {
@@ -423,6 +466,7 @@ async fn list_objects_v1(
     }
 
     // Delimiter-aware fetch with proper grouping and pagination.
+    // See list_objects_v2 for detailed comments on the algorithm.
     let (contents, common_prefixes, is_truncated, next_marker_owned) = if let Some(delim) =
         delimiter
     {
@@ -431,6 +475,7 @@ async fn list_objects_v1(
         let mut all_prefixes = Vec::new();
         let mut seen_prefixes = std::collections::HashSet::new();
         let mut cursor = marker.map(|s| s.to_string());
+        let skip_prefix_up_to = marker.map(|s| s.to_string());
         let mut truncated = false;
         let batch_size: u32 = (max_keys + 1).max(100);
 
@@ -446,20 +491,36 @@ async fn list_objects_v1(
             let exhausted = (records.len() as u32) < batch_size;
 
             for record in &records {
-                let result_count = all_contents.len() + all_prefixes.len();
-                if result_count as u32 >= max_keys {
-                    truncated = true;
-                    break;
-                }
-                if record.key == pfx {
-                    continue;
-                }
                 let after_prefix = &record.key[pfx.len()..];
-                if let Some(pos) = after_prefix.find(delim) {
-                    let common_prefix =
-                        format!("{}{}", pfx, &after_prefix[..pos + delim.len()]);
-                    if seen_prefixes.insert(common_prefix.clone()) {
-                        all_prefixes.push(common_prefix);
+                let common_prefix_opt = after_prefix.find(delim).map(|pos| {
+                    format!("{}{}", pfx, &after_prefix[..pos + delim.len()])
+                });
+
+                // Skip prefix groups already returned on a previous page.
+                if let Some(ref cp) = common_prefix_opt {
+                    if let Some(ref skip) = skip_prefix_up_to {
+                        if cp.as_str() <= skip.as_str() {
+                            continue;
+                        }
+                    }
+                }
+
+                let is_new_item = match &common_prefix_opt {
+                    Some(cp) => !seen_prefixes.contains(cp.as_str()),
+                    None => true,
+                };
+
+                if is_new_item {
+                    let result_count = all_contents.len() + all_prefixes.len();
+                    if result_count as u32 >= max_keys {
+                        truncated = true;
+                        break;
+                    }
+                }
+
+                if let Some(cp) = common_prefix_opt {
+                    if seen_prefixes.insert(cp.clone()) {
+                        all_prefixes.push(cp);
                     }
                 } else {
                     all_contents.push(record_to_list_entry(record, false));
@@ -473,10 +534,14 @@ async fn list_objects_v1(
         }
 
         let nm = if truncated {
-            all_contents
-                .last()
-                .map(|e| e.key.clone())
-                .or_else(|| all_prefixes.last().cloned())
+            let last_content = all_contents.last().map(|e| e.key.as_str());
+            let last_prefix = all_prefixes.last().map(|p| p.as_str());
+            match (last_content, last_prefix) {
+                (Some(c), Some(p)) => Some(std::cmp::max(c, p).to_string()),
+                (Some(c), None) => Some(c.to_string()),
+                (None, Some(p)) => Some(p.to_string()),
+                (None, None) => None,
+            }
         } else {
             None
         };
@@ -515,13 +580,13 @@ async fn list_objects_v1(
         let enc_contents: Vec<ListEntry> = contents
             .into_iter()
             .map(|mut e| {
-                e.key = urlencoding::encode(&e.key).into_owned();
+                e.key = s3_url_encode(&e.key);
                 e
             })
             .collect();
         let enc_prefixes: Vec<String> = common_prefixes
             .into_iter()
-            .map(|p| urlencoding::encode(&p).into_owned())
+            .map(|p| s3_url_encode(&p))
             .collect();
         (enc_contents, enc_prefixes)
     } else {
@@ -933,6 +998,42 @@ async fn delete_objects(
     let mut errors = Vec::new();
 
     for obj in &delete_body.objects {
+        // Per-key ETag conditional check (If-Match semantics).
+        if let Some(ref expected_etag) = obj.etag {
+            match state.metadata.get_object(&bucket, &obj.key).await {
+                Ok(Some(existing)) => {
+                    let quoted = format!("\"{}\"", existing.etag);
+                    if expected_etag != &existing.etag
+                        && expected_etag != &quoted
+                        && expected_etag != "*"
+                    {
+                        errors.push(DeleteErrorEntry {
+                            key: obj.key.clone(),
+                            code: "PreconditionFailed".to_string(),
+                            message: "At least one of the pre-conditions you specified did not hold.".to_string(),
+                        });
+                        continue;
+                    }
+                }
+                Ok(None) => {
+                    // Object doesn't exist — delete is a no-op, report success.
+                    deleted.push(DeletedEntry {
+                        key: obj.key.clone(),
+                    });
+                    continue;
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, key = %obj.key, "Error checking object for conditional delete");
+                    errors.push(DeleteErrorEntry {
+                        key: obj.key.clone(),
+                        code: "InternalError".to_string(),
+                        message: "We encountered an internal error. Please try again.".to_string(),
+                    });
+                    continue;
+                }
+            }
+        }
+
         match state.metadata.delete_object(&bucket, &obj.key).await {
             Ok(old) => {
                 // Delete blob if record existed.

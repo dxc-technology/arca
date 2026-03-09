@@ -93,19 +93,19 @@
 <body>
 
 <h1>Arca S3 Compatibility Report</h1>
-<p class="meta">2026-03-09 09:30:10 UTC</p>
+<p class="meta">2026-03-09 14:29:16 UTC</p>
 
 <div class="cards">
   <div class="card"><div class="value">829</div><div class="label">Total</div></div>
-  <div class="card passed"><div class="value">242</div><div class="label">Passed</div></div>
-  <div class="card failed"><div class="value">496</div><div class="label">Failed</div></div>
+  <div class="card passed"><div class="value">261</div><div class="label">Passed</div></div>
+  <div class="card failed"><div class="value">477</div><div class="label">Failed</div></div>
   <div class="card skipped"><div class="value">91</div><div class="label">Skipped</div></div>
   <div class="card expected"><div class="value">446</div><div class="label">Expected Fail</div></div>
-  <div class="card rate"><div class="value">29.2%</div><div class="label">Pass Rate</div></div>
+  <div class="card rate"><div class="value">31.5%</div><div class="label">Pass Rate</div></div>
 </div>
 
 <div class="progress-bar">
-  <div class="progress-fill" style="width: 29.191797346200243%"></div>
+  <div class="progress-fill" style="width: 31.48371531966224%"></div>
 </div>
 
 <h2>Category Breakdown</h2>
@@ -140,10 +140,10 @@
         <tr>
           <td>Bucket</td>
           <td class="num">111</td>
-          <td class="num passed">95</td>
-          <td class="num failed">16</td>
+          <td class="num passed">103</td>
+          <td class="num failed">8</td>
           <td class="num skipped">0</td>
-          <td class="num good">86%</td>
+          <td class="num good">93%</td>
         </tr>
         <tr>
           <td>CORS</td>
@@ -204,18 +204,18 @@
         <tr>
           <td>Multipart</td>
           <td class="num">29</td>
-          <td class="num passed">16</td>
-          <td class="num failed">13</td>
+          <td class="num passed">19</td>
+          <td class="num failed">10</td>
           <td class="num skipped">0</td>
-          <td class="num warn">55%</td>
+          <td class="num warn">66%</td>
         </tr>
         <tr>
           <td>Object</td>
           <td class="num">46</td>
-          <td class="num passed">32</td>
-          <td class="num failed">14</td>
+          <td class="num passed">39</td>
+          <td class="num failed">7</td>
           <td class="num skipped">0</td>
-          <td class="num warn">70%</td>
+          <td class="num good">85%</td>
         </tr>
         <tr>
           <td>Object Lock</td>
@@ -228,10 +228,10 @@
         <tr>
           <td>Other</td>
           <td class="num">32</td>
-          <td class="num passed">24</td>
-          <td class="num failed">3</td>
+          <td class="num passed">25</td>
+          <td class="num failed">2</td>
           <td class="num skipped">5</td>
-          <td class="num warn">75%</td>
+          <td class="num warn">78%</td>
         </tr>
         <tr>
           <td>Presigned/POST</td>
@@ -261,19 +261,264 @@
 
 
         <h2>Passlist Diff</h2>
-        <div class="diff-box"><div class="diff-new">+ test_atomic_dual_conditional_write_1mb</div>
+        <div class="diff-box"><div class="diff-new">+ test_100_continue_error_retry</div>
+<div class="diff-new">+ test_abort_multipart_upload</div>
+<div class="diff-new">+ test_abort_multipart_upload_not_found</div>
+<div class="diff-new">+ test_atomic_conditional_write_1mb</div>
+<div class="diff-new">+ test_atomic_dual_conditional_write_1mb</div>
+<div class="diff-new">+ test_atomic_dual_write_1mb</div>
+<div class="diff-new">+ test_atomic_dual_write_4mb</div>
+<div class="diff-new">+ test_atomic_dual_write_8mb</div>
+<div class="diff-new">+ test_atomic_multipart_upload_write</div>
+<div class="diff-new">+ test_atomic_read_1mb</div>
+<div class="diff-new">+ test_atomic_read_4mb</div>
+<div class="diff-new">+ test_atomic_read_8mb</div>
+<div class="diff-new">+ test_atomic_write_1mb</div>
+<div class="diff-new">+ test_atomic_write_4mb</div>
+<div class="diff-new">+ test_atomic_write_8mb</div>
+<div class="diff-new">+ test_atomic_write_bucket_gone</div>
+<div class="diff-new">+ test_basic_key_count</div>
+<div class="diff-new">+ test_bucket_create_delete</div>
+<div class="diff-new">+ test_bucket_create_exists</div>
+<div class="diff-new">+ test_bucket_create_naming_bad_ip</div>
+<div class="diff-new">+ test_bucket_create_naming_bad_short_one</div>
+<div class="diff-new">+ test_bucket_create_naming_bad_short_two</div>
+<div class="diff-new">+ test_bucket_create_naming_bad_starts_nonalpha</div>
+<div class="diff-new">+ test_bucket_create_naming_dns_dash_at_end</div>
+<div class="diff-new">+ test_bucket_create_naming_dns_dash_dot</div>
+<div class="diff-new">+ test_bucket_create_naming_dns_dot_dash</div>
+<div class="diff-new">+ test_bucket_create_naming_dns_dot_dot</div>
+<div class="diff-new">+ test_bucket_create_naming_dns_long</div>
+<div class="diff-new">+ test_bucket_create_naming_dns_underscore</div>
+<div class="diff-new">+ test_bucket_create_naming_good_contains_hyphen</div>
+<div class="diff-new">+ test_bucket_create_naming_good_contains_period</div>
+<div class="diff-new">+ test_bucket_create_naming_good_long_60</div>
+<div class="diff-new">+ test_bucket_create_naming_good_long_61</div>
+<div class="diff-new">+ test_bucket_create_naming_good_long_62</div>
+<div class="diff-new">+ test_bucket_create_naming_good_long_63</div>
+<div class="diff-new">+ test_bucket_create_naming_good_starts_alpha</div>
+<div class="diff-new">+ test_bucket_create_naming_good_starts_digit</div>
+<div class="diff-new">+ test_bucket_create_special_key_names</div>
+<div class="diff-new">+ test_bucket_delete_nonempty</div>
+<div class="diff-new">+ test_bucket_delete_notexist</div>
+<div class="diff-new">+ test_bucket_head</div>
+<div class="diff-new">+ test_bucket_head_notexist</div>
+<div class="diff-new">+ test_bucket_list_delimiter_alt</div>
+<div class="diff-new">+ test_bucket_list_delimiter_basic</div>
+<div class="diff-new">+ test_bucket_list_delimiter_dot</div>
+<div class="diff-new">+ test_bucket_list_delimiter_empty</div>
+<div class="diff-new">+ test_bucket_list_delimiter_none</div>
+<div class="diff-new">+ test_bucket_list_delimiter_not_exist</div>
+<div class="diff-new">+ test_bucket_list_delimiter_not_skip_special</div>
+<div class="diff-new">+ test_bucket_list_delimiter_percentage</div>
+<div class="diff-new">+ test_bucket_list_delimiter_prefix</div>
+<div class="diff-new">+ test_bucket_list_delimiter_prefix_ends_with_delimiter</div>
+<div class="diff-new">+ test_bucket_list_delimiter_prefix_underscore</div>
+<div class="diff-new">+ test_bucket_list_delimiter_unreadable</div>
+<div class="diff-new">+ test_bucket_list_delimiter_whitespace</div>
+<div class="diff-new">+ test_bucket_list_distinct</div>
+<div class="diff-new">+ test_bucket_list_empty</div>
+<div class="diff-new">+ test_bucket_list_encoding_basic</div>
+<div class="diff-new">+ test_bucket_list_long_name</div>
+<div class="diff-new">+ test_bucket_list_many</div>
+<div class="diff-new">+ test_bucket_list_marker_after_list</div>
+<div class="diff-new">+ test_bucket_list_marker_empty</div>
+<div class="diff-new">+ test_bucket_list_marker_none</div>
+<div class="diff-new">+ test_bucket_list_marker_not_in_list</div>
+<div class="diff-new">+ test_bucket_list_marker_unreadable</div>
+<div class="diff-new">+ test_bucket_list_maxkeys_invalid</div>
+<div class="diff-new">+ test_bucket_list_maxkeys_none</div>
+<div class="diff-new">+ test_bucket_list_maxkeys_one</div>
+<div class="diff-new">+ test_bucket_list_maxkeys_zero</div>
+<div class="diff-new">+ test_bucket_list_objects_anonymous_fail</div>
+<div class="diff-new">+ test_bucket_list_prefix_alt</div>
+<div class="diff-new">+ test_bucket_list_prefix_basic</div>
+<div class="diff-new">+ test_bucket_list_prefix_delimiter_alt</div>
+<div class="diff-new">+ test_bucket_list_prefix_delimiter_basic</div>
+<div class="diff-new">+ test_bucket_list_prefix_delimiter_delimiter_not_exist</div>
+<div class="diff-new">+ test_bucket_list_prefix_delimiter_prefix_delimiter_not_exist</div>
+<div class="diff-new">+ test_bucket_list_prefix_delimiter_prefix_not_exist</div>
+<div class="diff-new">+ test_bucket_list_prefix_empty</div>
+<div class="diff-new">+ test_bucket_list_prefix_none</div>
+<div class="diff-new">+ test_bucket_list_prefix_not_exist</div>
+<div class="diff-new">+ test_bucket_list_prefix_unreadable</div>
+<div class="diff-new">+ test_bucket_list_special_prefix</div>
+<div class="diff-new">+ test_bucket_listv2_both_continuationtoken_startafter</div>
+<div class="diff-new">+ test_bucket_listv2_continuationtoken</div>
+<div class="diff-new">+ test_bucket_listv2_continuationtoken_empty</div>
+<div class="diff-new">+ test_bucket_listv2_delimiter_alt</div>
+<div class="diff-new">+ test_bucket_listv2_delimiter_basic</div>
+<div class="diff-new">+ test_bucket_listv2_delimiter_dot</div>
+<div class="diff-new">+ test_bucket_listv2_delimiter_empty</div>
+<div class="diff-new">+ test_bucket_listv2_delimiter_none</div>
+<div class="diff-new">+ test_bucket_listv2_delimiter_not_exist</div>
+<div class="diff-new">+ test_bucket_listv2_delimiter_percentage</div>
+<div class="diff-new">+ test_bucket_listv2_delimiter_prefix</div>
+<div class="diff-new">+ test_bucket_listv2_delimiter_prefix_ends_with_delimiter</div>
+<div class="diff-new">+ test_bucket_listv2_delimiter_prefix_underscore</div>
+<div class="diff-new">+ test_bucket_listv2_delimiter_unreadable</div>
+<div class="diff-new">+ test_bucket_listv2_delimiter_whitespace</div>
+<div class="diff-new">+ test_bucket_listv2_encoding_basic</div>
+<div class="diff-new">+ test_bucket_listv2_fetchowner_defaultempty</div>
+<div class="diff-new">+ test_bucket_listv2_fetchowner_empty</div>
+<div class="diff-new">+ test_bucket_listv2_fetchowner_notempty</div>
+<div class="diff-new">+ test_bucket_listv2_many</div>
+<div class="diff-new">+ test_bucket_listv2_maxkeys_none</div>
+<div class="diff-new">+ test_bucket_listv2_maxkeys_one</div>
+<div class="diff-new">+ test_bucket_listv2_maxkeys_zero</div>
+<div class="diff-new">+ test_bucket_listv2_objects_anonymous_fail</div>
+<div class="diff-new">+ test_bucket_listv2_prefix_alt</div>
+<div class="diff-new">+ test_bucket_listv2_prefix_basic</div>
+<div class="diff-new">+ test_bucket_listv2_prefix_delimiter_alt</div>
+<div class="diff-new">+ test_bucket_listv2_prefix_delimiter_basic</div>
+<div class="diff-new">+ test_bucket_listv2_prefix_delimiter_delimiter_not_exist</div>
+<div class="diff-new">+ test_bucket_listv2_prefix_delimiter_prefix_delimiter_not_exist</div>
+<div class="diff-new">+ test_bucket_listv2_prefix_delimiter_prefix_not_exist</div>
+<div class="diff-new">+ test_bucket_listv2_prefix_empty</div>
+<div class="diff-new">+ test_bucket_listv2_prefix_none</div>
+<div class="diff-new">+ test_bucket_listv2_prefix_not_exist</div>
+<div class="diff-new">+ test_bucket_listv2_prefix_unreadable</div>
+<div class="diff-new">+ test_bucket_listv2_startafter_after_list</div>
+<div class="diff-new">+ test_bucket_listv2_startafter_not_in_list</div>
+<div class="diff-new">+ test_bucket_listv2_startafter_unreadable</div>
+<div class="diff-new">+ test_bucket_notexist</div>
+<div class="diff-new">+ test_bucket_recreate_not_overriding</div>
+<div class="diff-new">+ test_buckets_create_then_list</div>
+<div class="diff-new">+ test_buckets_list_ctime</div>
+<div class="diff-new">+ test_bucketv2_notexist</div>
+<div class="diff-new">+ test_copy_enc[sse-c-unencrypted-STANDARD-STANDARD-1024]</div>
+<div class="diff-new">+ test_copy_enc[sse-c-unencrypted-STANDARD-STANDARD-1048576]</div>
+<div class="diff-new">+ test_copy_enc[sse-c-unencrypted-STANDARD-STANDARD-1]</div>
+<div class="diff-new">+ test_copy_enc[sse-c-unencrypted-STANDARD-STANDARD-8388608]</div>
+<div class="diff-new">+ test_copy_enc[sse-kms-unencrypted-STANDARD-STANDARD-1024]</div>
+<div class="diff-new">+ test_copy_enc[sse-kms-unencrypted-STANDARD-STANDARD-1048576]</div>
+<div class="diff-new">+ test_copy_enc[sse-kms-unencrypted-STANDARD-STANDARD-1]</div>
+<div class="diff-new">+ test_copy_enc[sse-kms-unencrypted-STANDARD-STANDARD-8388608]</div>
+<div class="diff-new">+ test_copy_enc[unencrypted-unencrypted-STANDARD-STANDARD-1024]</div>
+<div class="diff-new">+ test_copy_enc[unencrypted-unencrypted-STANDARD-STANDARD-1048576]</div>
+<div class="diff-new">+ test_copy_enc[unencrypted-unencrypted-STANDARD-STANDARD-1]</div>
+<div class="diff-new">+ test_copy_enc[unencrypted-unencrypted-STANDARD-STANDARD-8388608]</div>
 <div class="diff-new">+ test_copy_object_ifmatch_failed</div>
+<div class="diff-new">+ test_copy_object_ifmatch_good</div>
+<div class="diff-new">+ test_copy_object_ifnonematch_failed</div>
 <div class="diff-new">+ test_copy_object_ifnonematch_good</div>
+<div class="diff-new">+ test_copy_part_enc[sse-c-unencrypted-STANDARD-STANDARD-8388608]</div>
+<div class="diff-new">+ test_copy_part_enc[sse-kms-unencrypted-STANDARD-STANDARD-8388608]</div>
+<div class="diff-new">+ test_copy_part_enc[unencrypted-unencrypted-STANDARD-STANDARD-8388608]</div>
+<div class="diff-new">+ test_delete_object_if_match</div>
+<div class="diff-new">+ test_delete_object_if_match_last_modified_time</div>
+<div class="diff-new">+ test_delete_object_if_match_size</div>
+<div class="diff-new">+ test_delete_objects_if_match</div>
+<div class="diff-new">+ test_encrypted_transfer_13b</div>
+<div class="diff-new">+ test_encrypted_transfer_1MB</div>
+<div class="diff-new">+ test_encrypted_transfer_1b</div>
+<div class="diff-new">+ test_encrypted_transfer_1kb</div>
+<div class="diff-new">+ test_encryption_sse_c_multipart_upload</div>
+<div class="diff-new">+ test_encryption_sse_c_unaligned_multipart_upload</div>
+<div class="diff-new">+ test_get_obj_tagging</div>
 <div class="diff-new">+ test_get_object_ifmatch_failed</div>
+<div class="diff-new">+ test_get_object_ifmatch_good</div>
+<div class="diff-new">+ test_get_object_ifmodifiedsince_failed</div>
+<div class="diff-new">+ test_get_object_ifmodifiedsince_good</div>
+<div class="diff-new">+ test_get_object_ifnonematch_failed</div>
+<div class="diff-new">+ test_get_object_ifnonematch_good</div>
+<div class="diff-new">+ test_get_object_ifunmodifiedsince_failed</div>
 <div class="diff-new">+ test_get_object_ifunmodifiedsince_good</div>
+<div class="diff-new">+ test_list_buckets_bad_auth</div>
+<div class="diff-new">+ test_list_buckets_invalid_auth</div>
+<div class="diff-new">+ test_list_multipart_upload</div>
+<div class="diff-new">+ test_multi_object_delete</div>
+<div class="diff-new">+ test_multi_object_delete_key_limit</div>
+<div class="diff-new">+ test_multi_objectv2_delete</div>
+<div class="diff-new">+ test_multi_objectv2_delete_key_limit</div>
+<div class="diff-new">+ test_multipart_copy_improper_range</div>
+<div class="diff-new">+ test_multipart_copy_multiple_sizes</div>
+<div class="diff-new">+ test_multipart_copy_small</div>
+<div class="diff-new">+ test_multipart_copy_without_range</div>
+<div class="diff-new">+ test_multipart_upload_empty</div>
+<div class="diff-new">+ test_multipart_upload_resend_part</div>
+<div class="diff-new">+ test_multipart_upload_size_too_small</div>
+<div class="diff-new">+ test_multipart_upload_small</div>
+<div class="diff-new">+ test_object_acl_full_control_verify_owner</div>
+<div class="diff-new">+ test_object_anon_put</div>
+<div class="diff-new">+ test_object_content_encoding_aws_chunked</div>
+<div class="diff-new">+ test_object_copy_16m</div>
+<div class="diff-new">+ test_object_copy_bucket_not_found</div>
+<div class="diff-new">+ test_object_copy_canned_acl</div>
+<div class="diff-new">+ test_object_copy_diff_bucket</div>
+<div class="diff-new">+ test_object_copy_key_not_found</div>
+<div class="diff-new">+ test_object_copy_replacing_metadata</div>
+<div class="diff-new">+ test_object_copy_retaining_metadata</div>
+<div class="diff-new">+ test_object_copy_same_bucket</div>
+<div class="diff-new">+ test_object_copy_to_itself</div>
+<div class="diff-new">+ test_object_copy_to_itself_with_metadata</div>
+<div class="diff-new">+ test_object_copy_verify_contenttype</div>
+<div class="diff-new">+ test_object_copy_zero_size</div>
+<div class="diff-new">+ test_object_head_zero_bytes</div>
+<div class="diff-new">+ test_object_lock_changing_mode_from_governance_with_bypass</div>
+<div class="diff-new">+ test_object_lock_get_legal_hold</div>
+<div class="diff-new">+ test_object_lock_put_legal_hold</div>
+<div class="diff-new">+ test_object_metadata_replaced_on_put</div>
+<div class="diff-new">+ test_object_put_authenticated</div>
+<div class="diff-new">+ test_object_raw_authenticated</div>
+<div class="diff-new">+ test_object_raw_authenticated_bucket_acl</div>
+<div class="diff-new">+ test_object_raw_authenticated_bucket_gone</div>
+<div class="diff-new">+ test_object_raw_authenticated_object_acl</div>
+<div class="diff-new">+ test_object_raw_authenticated_object_gone</div>
+<div class="diff-new">+ test_object_raw_get_object_acl</div>
+<div class="diff-new">+ test_object_raw_get_x_amz_expires_out_max_range</div>
+<div class="diff-new">+ test_object_raw_get_x_amz_expires_out_positive_range</div>
+<div class="diff-new">+ test_object_raw_get_x_amz_expires_out_range_zero</div>
+<div class="diff-new">+ test_object_raw_put_authenticated_expired</div>
+<div class="diff-new">+ test_object_read_not_exist</div>
+<div class="diff-new">+ test_object_set_get_metadata_none_to_empty</div>
+<div class="diff-new">+ test_object_set_get_metadata_none_to_good</div>
+<div class="diff-new">+ test_object_set_get_metadata_overwrite_to_empty</div>
+<div class="diff-new">+ test_object_write_cache_control</div>
+<div class="diff-new">+ test_object_write_check_etag</div>
+<div class="diff-new">+ test_object_write_expires</div>
+<div class="diff-new">+ test_object_write_file</div>
+<div class="diff-new">+ test_object_write_read_update_read_delete</div>
+<div class="diff-new">+ test_object_write_to_nonexist_bucket</div>
+<div class="diff-new">+ test_object_write_with_chunked_transfer_encoding</div>
+<div class="diff-new">+ test_post_object_authenticated_request_bad_access_key</div>
+<div class="diff-new">+ test_post_object_expired_policy</div>
+<div class="diff-new">+ test_post_object_invalid_access_key</div>
+<div class="diff-new">+ test_post_object_invalid_request_field_value</div>
+<div class="diff-new">+ test_post_object_invalid_signature</div>
+<div class="diff-new">+ test_post_object_missing_policy_condition</div>
+<div class="diff-new">+ test_post_object_request_missing_policy_specified_field</div>
+<div class="diff-new">+ test_post_object_wrong_bucket</div>
+<div class="diff-new">+ test_put_max_kvsize_tags</div>
+<div class="diff-new">+ test_put_max_tags</div>
+<div class="diff-new">+ test_put_modify_tags</div>
+<div class="diff-new">+ test_put_object_if_match</div>
 <div class="diff-new">+ test_put_object_ifmatch_failed</div>
+<div class="diff-new">+ test_put_object_ifmatch_good</div>
+<div class="diff-new">+ test_put_object_ifmatch_nonexisted_failed</div>
+<div class="diff-new">+ test_put_object_ifmatch_overwrite_existed_good</div>
 <div class="diff-new">+ test_put_object_ifnonmatch_failed</div>
+<div class="diff-new">+ test_put_object_ifnonmatch_good</div>
+<div class="diff-new">+ test_put_object_ifnonmatch_nonexisted_good</div>
 <div class="diff-new">+ test_put_object_ifnonmatch_overwrite_existed_failed</div>
+<div class="diff-new">+ test_ranged_big_request_response_code</div>
 <div class="diff-new">+ test_ranged_request_empty_object</div>
 <div class="diff-new">+ test_ranged_request_invalid_range</div>
+<div class="diff-new">+ test_ranged_request_response_code</div>
+<div class="diff-new">+ test_ranged_request_return_trailing_bytes_response_code</div>
+<div class="diff-new">+ test_ranged_request_skip_leading_bytes_response_code</div>
+<div class="diff-new">+ test_sse_kms_multipart_invalid_chunks_1</div>
+<div class="diff-new">+ test_sse_kms_multipart_invalid_chunks_2</div>
+<div class="diff-new">+ test_sse_kms_multipart_upload</div>
+<div class="diff-new">+ test_sse_kms_present</div>
+<div class="diff-new">+ test_sse_kms_transfer_13b</div>
+<div class="diff-new">+ test_sse_kms_transfer_1MB</div>
+<div class="diff-new">+ test_sse_kms_transfer_1b</div>
+<div class="diff-new">+ test_sse_kms_transfer_1kb</div>
+<div class="diff-new">+ test_upload_part_copy_percent_encoded_key</div>
 </div>
 
-<h2>Failures (496)</h2>
+<h2>Failures (477)</h2>
 
         <details class="fail-item">
           <summary>
@@ -303,48 +548,6 @@
           <summary>
             <span class="badge unexpected">Unexpected</span>
             <span class="cat-tag">Bucket</span>
-            <code>test_bucket_list_delimiter_prefix</code>
-          </summary>
-          <pre>assert True == False</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Bucket</span>
-            <code>test_bucket_list_delimiter_prefix_ends_with_delimiter</code>
-          </summary>
-          <pre>AssertionError: assert 0 == 1
- +  where 0 = len([])
- +  and   1 = len(['asdf/'])</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Bucket</span>
-            <code>test_bucket_list_delimiter_prefix_underscore</code>
-          </summary>
-          <pre>assert True == False</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Bucket</span>
-            <code>test_bucket_list_encoding_basic</code>
-          </summary>
-          <pre>AssertionError: assert ['foo%2B1%2F'...quux%20ab%2F'] == ['foo%2B1/', ... 'quux%20ab/']
-  
-  At index 0 diff: 'foo%2B1%2F' != 'foo%2B1/'
-  
-  Full diff:
-    [
-  -     'foo%2B1/',
-  ?             ^...
-</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Bucket</span>
             <code>test_bucket_list_return_data</code>
           </summary>
           <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
@@ -361,83 +564,9 @@
           <summary>
             <span class="badge unexpected">Unexpected</span>
             <span class="cat-tag">Bucket</span>
-            <code>test_bucket_listv2_delimiter_prefix</code>
-          </summary>
-          <pre>assert True == False</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Bucket</span>
-            <code>test_bucket_listv2_delimiter_prefix_ends_with_delimiter</code>
-          </summary>
-          <pre>AssertionError: assert 0 == 1
- +  where 0 = len([])
- +  and   1 = len(['asdf/'])</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Bucket</span>
-            <code>test_bucket_listv2_delimiter_prefix_underscore</code>
-          </summary>
-          <pre>assert True == False</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Bucket</span>
-            <code>test_bucket_listv2_encoding_basic</code>
-          </summary>
-          <pre>AssertionError: assert ['foo%2B1%2F'...quux%20ab%2F'] == ['foo%2B1/', ... 'quux%20ab/']
-  
-  At index 0 diff: 'foo%2B1%2F' != 'foo%2B1/'
-  
-  Full diff:
-    [
-  -     'foo%2B1/',
-  ?             ^...
-</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Bucket</span>
             <code>test_bucket_listv2_unordered</code>
           </summary>
           <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Object</span>
-            <code>test_delete_object_if_match</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Object</span>
-            <code>test_delete_object_if_match_last_modified_time</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Object</span>
-            <code>test_delete_object_if_match_size</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Object</span>
-            <code>test_delete_objects_if_match</code>
-          </summary>
-          <pre>KeyError: 'Errors'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -470,14 +599,6 @@
             <code>test_get_object_attributes</code>
           </summary>
           <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAttributes operation (reached max retries: 4): Internal Server Error</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Object</span>
-            <code>test_get_object_ifmodifiedsince_failed</code>
-          </summary>
-          <pre>KeyError: 'etag'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -572,47 +693,9 @@
           <summary>
             <span class="badge unexpected">Unexpected</span>
             <span class="cat-tag">Multipart</span>
-            <code>test_multipart_upload</code>
-          </summary>
-          <pre>botocore.errorfactory.NoSuchUpload: An error occurred (NoSuchUpload) when calling the CompleteMultipartUpload operation: The specified multipart upload does not exist.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Multipart</span>
-            <code>test_multipart_upload_empty</code>
-          </summary>
-          <pre>AssertionError: assert 'InvalidArgument' == 'MalformedXML'
-  
-  - MalformedXML
-  + InvalidArgument</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Multipart</span>
-            <code>test_multipart_upload_small</code>
-          </summary>
-          <pre>botocore.errorfactory.NoSuchUpload: An error occurred (NoSuchUpload) when calling the CompleteMultipartUpload operation: The specified multipart upload does not exist.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Multipart</span>
             <code>test_non_multipart_get_part</code>
           </summary>
           <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Other</span>
-            <code>test_object_content_encoding_aws_chunked</code>
-          </summary>
-          <pre>AssertionError: assert 'gzip, aws-chunked' == 'gzip'
-  
-  - gzip
-  + gzip, aws-chunked</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -679,10 +762,10 @@
             <span class="cat-tag">Headers</span>
             <code>test_object_requestid_matches_header_on_error</code>
           </summary>
-          <pre>AssertionError: assert '99c43d8f-8d8...-90b33e27d070' == '813de515-15a...-5a1714f6cc30'
+          <pre>AssertionError: assert 'bd079bd0-9b9...-41d6fbafcacc' == '6247f8d0-ca2...-35965cb61155'
   
-  - 813de515-15a0-4a70-a8e5-5a1714f6cc30
-  + 99c43d8f-8d8b-4655-ae88-90b33e27d070</pre>
+  - 6247f8d0-ca2e-40e1-a1e6-35965cb61155
+  + bd079bd0-9b91-44fd-9e7d-41d6fbafcacc</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -691,31 +774,6 @@
             <code>test_object_set_get_unicode_metadata</code>
           </summary>
           <pre>botocore.exceptions.ClientError: An error occurred (SignatureDoesNotMatch) when calling the PutObject operation: The request signature we calculated does not match the signature you provided.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Object</span>
-            <code>test_put_object_if_match</code>
-          </summary>
-          <pre>AssertionError: assert (404, 'NoSuchKey') == (412, 'PreconditionFailed')
-  
-  At index 0 diff: 404 != 412
-  
-  Full diff:
-    (
-  -     412,
-  ?      ^^...
-  
-  ...Full output truncated (5 lines hidde</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Object</span>
-            <code>test_put_object_ifmatch_nonexisted_failed</code>
-          </summary>
-          <pre>assert 412 == 404</pre>
         </details>
         <details class="fail-item">
           <summary>
