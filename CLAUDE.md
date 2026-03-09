@@ -84,6 +84,10 @@ When implementing a workaround or shortcut instead of a proper solution:
 
 When fixing a tech debt item, remove the `TECHDEBT` markers from code, mark it resolved in `TECH_DEBT.md`, and update the roadmap.
 
+## Test Coverage Table
+
+`README.md` contains a "Test Coverage" table with counts for unit tests, integration tests (boto3 + MinIO), and Ceph s3-tests. **Update this table whenever test counts change** — after adding/removing tests, running Ceph s3-tests with new results, or any change that affects the numbers.
+
 ## Not in MVP
 
 Object versioning, ACLs/bucket policies, server-side encryption, object tagging, lifecycle rules, CORS, object lock, presigned URLs, metrics, replication, multi-node.

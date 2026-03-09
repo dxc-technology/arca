@@ -15,7 +15,7 @@
 
 ---
 
-Arca is a ground-up implementation of the S3 API, designed for 100% compatibility on a focused subset of operations. It starts as a single-node server with a clear path toward production scale.
+Arca is a ground-up implementation of the S3 API, designed as a **drop-in replacement** for AWS S3, MinIO, and other S3-compatible storage services. It targets 100% compatibility on a focused subset of operations, starting as a single-node server with a clear path toward production scale.
 
 ## Features
 
@@ -24,7 +24,7 @@ Arca is a ground-up implementation of the S3 API, designed for 100% compatibilit
 - **Disaster recovery** — sidecar `.meta` files alongside every blob enable full database rebuild
 - **Modular storage** — metadata backend behind traits (SQLite now, Postgres later)
 - **Web console** — browser-based UI for managing buckets, objects, and credentials
-- **[S3 compatibility tested](https://dxc-technology.github.io/arca/s3-compatibility/)** — validated against [Ceph s3-tests](https://github.com/ceph/s3-tests) (198 passing)
+- **[S3 compatibility tested](https://dxc-technology.github.io/arca/s3-compatibility/)** — validated against [Ceph s3-tests](https://github.com/ceph/s3-tests) (232 passing)
 
 ## MVP API Surface
 
@@ -71,6 +71,16 @@ Five-crate Cargo workspace:
 | `arca-proto` | S3 HTTP protocol adapter (Axum + Tower). Handlers, XML, middleware. |
 | `arca-storage` | Storage implementations: filesystem blobs (UUID + sidecar), SQLite metadata. |
 | `arca-server` | Binary. Config, CLI, use-case layer, dependency wiring. |
+
+## Test Coverage
+
+| Suite | Tests | Details |
+|-------|------:|---------|
+| Unit tests (Rust) | 172 | arca-auth: 25, arca-storage: 56, arca-core: 17, arca-proto: 19, arca-server: 55 |
+| Integration — boto3 | 146 | buckets, objects, list, multipart, folders, auth, admin, phases 2–3 |
+| Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
+| [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 829 | 232 pass, 506 fail, 91 skip |
+| **Total** | **1,246** | |
 
 ## License
 
