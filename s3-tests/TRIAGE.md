@@ -10,9 +10,8 @@ Results from running [Ceph s3-tests](https://github.com/ceph/s3-tests) against A
 | Passed | 232 |
 | Failed | 506 |
 | Skipped | 91 |
-| Expected fail (unimplemented features) | 310 + 127 miscategorized = **437** |
-| **Unexpected failures (real bugs)** | **~18** |
-| **Strategic decisions needed** | **~41** |
+| Expected fail (unimplemented features) | **446** |
+| **Unexpected failures (real bugs + strategic)** | **60** |
 | Pass rate (overall) | 28.0% |
 | Pass rate (implemented features only) | ~91% |
 
@@ -395,24 +394,16 @@ GET (4), PUT (6), DELETE (6), COPY (2), multipart (1)
 
 ---
 
-## C. Miscategorized Expected Failures (127 tests)
+## C. Miscategorized Expected Failures — DONE ✅
 
-These tests fail because they use unimplemented features (policies, ACLs, versioning, etc.) but are categorized under "Bucket", "Object", or "Multipart" in the report tool. They should be reclassified as expected failures.
+Fixed `report.py` categorizer: 140 tests reclassified as expected failures (200 → 60 unexpected).
 
-| Root cause | Count | Details |
-|------------|-------|---------|
-| Requires PutBucketPolicy | 28 | Bucket logging, policy-gated ops |
-| Requires PutBucketVersioning | 38 | Version-specific ops miscategorized |
-| Requires PutBucketAcl / ACL grants | 25 | ACL-gated access, bucket grants |
-| Requires Ownership Controls | 8 | BucketOwnerEnforced/Preferred |
-| Requires Tagging | 6 | Object/bucket tagging |
-| Requires Encryption | 5 | PutBucketEncryption |
-| Requires Anonymous access | 4 | Unauthenticated requests |
-| Checksums (new AWS feature) | 10 | CRC32, SHA256, CRC64NVME |
-| Requires Lifecycle | 1 | PutBucketLifecycleConfiguration |
-| Other NotImplemented | 2 | Logging error codes |
-
-**Action**: Update `report.py` categorizer to correctly classify these as expected failures.
+Changes to `docker/s3-tests/report.py`:
+- Reordered: unimplemented-feature categories checked **before** generic Bucket/Object/Multipart
+- Added new expected-fail categories: **Logging**, **Checksums**, **Anonymous**
+- Added missing keywords: `versioned`, `version_`, `delete_marker`, `_current_`, `logging`, `_tags`, `public_block`, `ownership`, `bucket_owner`, `object_writer`, `access_bucket`, `x_amz_expires`, `sse_`, `sse-`, `_anon_`
+- Added explicit override dict for 4 tests whose names don't indicate their true category
+- Fixed false positive: removed overly broad `sts` keyword (matched "exists")
 
 ---
 
@@ -461,6 +452,4 @@ All 4 fixes implemented, 232 passing Ceph s3-tests (up from 218), 146 integratio
 | #7 ListMultipartUploads | 2 | ✅ Done |
 | **Subtotal** | **~16** | |
 
-### Total: 232 / 829 passing (28%)
-
-Combined with reclassifying 127 miscategorized tests as expected, the "unexpected failure" count would drop further, making the report much cleaner.
+### Total: 232 / 829 passing (28%), 60 unexpected failures

@@ -16,7 +16,7 @@ use crate::types::{
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename = "CompleteMultipartUpload")]
 pub struct CompleteMultipartUploadBody {
-    #[serde(rename = "Part")]
+    #[serde(rename = "Part", default)]
     pub parts: Vec<CompletePart>,
 }
 

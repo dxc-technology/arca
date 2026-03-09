@@ -34,9 +34,11 @@ pub enum S3ErrorCode {
     InvalidPartOrder,
     InvalidRange,
     InvalidRequest,
+    NotModified,
     NoSuchBucket,
     NoSuchKey,
     MalformedXML,
+    PreconditionFailed,
     NoSuchUpload,
     NotImplemented,
     ServerSideEncryptionConfigurationNotFoundError,
@@ -62,10 +64,12 @@ impl S3ErrorCode {
             S3ErrorCode::InvalidRange => 416,
             S3ErrorCode::InvalidRequest => 400,
             S3ErrorCode::MalformedXML => 400,
+            S3ErrorCode::NotModified => 304,
             S3ErrorCode::NoSuchBucket => 404,
             S3ErrorCode::NoSuchKey => 404,
             S3ErrorCode::NoSuchUpload => 404,
             S3ErrorCode::NotImplemented => 501,
+            S3ErrorCode::PreconditionFailed => 412,
             S3ErrorCode::ServerSideEncryptionConfigurationNotFoundError => 400,
             S3ErrorCode::SignatureDoesNotMatch => 403,
         }
@@ -89,10 +93,12 @@ impl S3ErrorCode {
             S3ErrorCode::InvalidRange => "InvalidRange",
             S3ErrorCode::InvalidRequest => "InvalidRequest",
             S3ErrorCode::MalformedXML => "MalformedXML",
+            S3ErrorCode::NotModified => "NotModified",
             S3ErrorCode::NoSuchBucket => "NoSuchBucket",
             S3ErrorCode::NoSuchKey => "NoSuchKey",
             S3ErrorCode::NoSuchUpload => "NoSuchUpload",
             S3ErrorCode::NotImplemented => "NotImplemented",
+            S3ErrorCode::PreconditionFailed => "PreconditionFailed",
             S3ErrorCode::ServerSideEncryptionConfigurationNotFoundError => {
                 "ServerSideEncryptionConfigurationNotFoundError"
             }
@@ -140,6 +146,7 @@ impl S3ErrorCode {
             S3ErrorCode::MalformedXML => {
                 "The XML you provided was not well-formed or did not validate against our published schema."
             }
+            S3ErrorCode::NotModified => "Not Modified",
             S3ErrorCode::NoSuchBucket => "The specified bucket does not exist.",
             S3ErrorCode::NoSuchKey => "The specified key does not exist.",
             S3ErrorCode::NoSuchUpload => {
@@ -147,6 +154,9 @@ impl S3ErrorCode {
             }
             S3ErrorCode::NotImplemented => {
                 "A header you provided implies functionality that is not implemented."
+            }
+            S3ErrorCode::PreconditionFailed => {
+                "At least one of the pre-conditions you specified did not hold."
             }
             S3ErrorCode::ServerSideEncryptionConfigurationNotFoundError => {
                 "The server side encryption configuration was not found."
@@ -301,6 +311,8 @@ mod tests {
         assert_eq!(S3ErrorCode::InvalidArgument.http_status(), 400);
         assert_eq!(S3ErrorCode::InternalError.http_status(), 500);
         assert_eq!(S3ErrorCode::MalformedXML.http_status(), 400);
+        assert_eq!(S3ErrorCode::NotModified.http_status(), 304);
+        assert_eq!(S3ErrorCode::PreconditionFailed.http_status(), 412);
         assert_eq!(
             S3ErrorCode::ServerSideEncryptionConfigurationNotFoundError.http_status(),
             400

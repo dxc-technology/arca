@@ -50,6 +50,11 @@ pub(super) fn extract_metadata(headers: &http::HeaderMap) -> HashMap<String, Str
 use crate::state::AppState;
 use crate::xml::error_response::{internal_error_response, s3_error_response};
 
+/// Builds a 412 PreconditionFailed S3 XML error response.
+fn precondition_failed_response(resource: &str) -> Response {
+    s3_error_response(S3Error::new(S3ErrorCode::PreconditionFailed, resource))
+}
+
 /// Checks conditional headers (If-Match, If-None-Match, If-Modified-Since,
 /// If-Unmodified-Since) against an object's ETag and Last-Modified.
 ///
@@ -59,18 +64,14 @@ fn check_conditionals(
     etag: &str,
     last_modified: &chrono::DateTime<chrono::Utc>,
     is_get_or_head: bool,
+    resource: &str,
 ) -> Option<Response> {
     let quoted_etag = format!("\"{}\"", etag);
 
     // If-Match: succeed only if ETag matches one of the listed values.
     if let Some(val) = headers.get("if-match").and_then(|v| v.to_str().ok()) {
         if !etag_matches(val, &quoted_etag) {
-            return Some(
-                Response::builder()
-                    .status(StatusCode::PRECONDITION_FAILED)
-                    .body(Body::empty())
-                    .expect("build 412 response"),
-            );
+            return Some(precondition_failed_response(resource));
         }
     }
 
@@ -86,12 +87,7 @@ fn check_conditionals(
                         .expect("build 304 response"),
                 );
             } else {
-                return Some(
-                    Response::builder()
-                        .status(StatusCode::PRECONDITION_FAILED)
-                        .body(Body::empty())
-                        .expect("build 412 response"),
-                );
+                return Some(precondition_failed_response(resource));
             }
         }
     }
@@ -124,12 +120,7 @@ fn check_conditionals(
         if let Ok(since) = httpdate::parse_http_date(val) {
             let since_dt: chrono::DateTime<chrono::Utc> = since.into();
             if *last_modified > since_dt {
-                return Some(
-                    Response::builder()
-                        .status(StatusCode::PRECONDITION_FAILED)
-                        .body(Body::empty())
-                        .expect("build 412 response"),
-                );
+                return Some(precondition_failed_response(resource));
             }
         }
     }
@@ -146,6 +137,7 @@ fn check_copy_source_conditionals(
     headers: &http::HeaderMap,
     etag: &str,
     last_modified: &chrono::DateTime<chrono::Utc>,
+    resource: &str,
 ) -> Option<Response> {
     let quoted_etag = format!("\"{}\"", etag);
 
@@ -154,12 +146,7 @@ fn check_copy_source_conditionals(
         .and_then(|v| v.to_str().ok())
     {
         if !etag_matches(val, &quoted_etag) {
-            return Some(
-                Response::builder()
-                    .status(StatusCode::PRECONDITION_FAILED)
-                    .body(Body::empty())
-                    .expect("build 412 response"),
-            );
+            return Some(precondition_failed_response(resource));
         }
     }
 
@@ -168,12 +155,7 @@ fn check_copy_source_conditionals(
         .and_then(|v| v.to_str().ok())
     {
         if etag_matches(val, &quoted_etag) {
-            return Some(
-                Response::builder()
-                    .status(StatusCode::PRECONDITION_FAILED)
-                    .body(Body::empty())
-                    .expect("build 412 response"),
-            );
+            return Some(precondition_failed_response(resource));
         }
     }
 
@@ -184,12 +166,7 @@ fn check_copy_source_conditionals(
         if let Ok(since) = httpdate::parse_http_date(val) {
             let since_dt: chrono::DateTime<chrono::Utc> = since.into();
             if *last_modified <= since_dt {
-                return Some(
-                    Response::builder()
-                        .status(StatusCode::PRECONDITION_FAILED)
-                        .body(Body::empty())
-                        .expect("build 412 response"),
-                );
+                return Some(precondition_failed_response(resource));
             }
         }
     }
@@ -201,12 +178,7 @@ fn check_copy_source_conditionals(
         if let Ok(since) = httpdate::parse_http_date(val) {
             let since_dt: chrono::DateTime<chrono::Utc> = since.into();
             if *last_modified > since_dt {
-                return Some(
-                    Response::builder()
-                        .status(StatusCode::PRECONDITION_FAILED)
-                        .body(Body::empty())
-                        .expect("build 412 response"),
-                );
+                return Some(precondition_failed_response(resource));
             }
         }
     }
@@ -299,6 +271,7 @@ pub async fn put_object(
                     &obj.etag,
                     &obj.last_modified,
                     false,
+                    &resource,
                 ) {
                     return resp;
                 }
@@ -306,10 +279,7 @@ pub async fn put_object(
             None => {
                 // If-Match on non-existent object → 412.
                 if request.headers().contains_key("if-match") {
-                    return Response::builder()
-                        .status(StatusCode::PRECONDITION_FAILED)
-                        .body(Body::empty())
-                        .expect("build 412 response");
+                    return precondition_failed_response(&resource);
                 }
                 // If-None-Match: * on non-existent object → proceed (condition met).
             }
@@ -451,6 +421,7 @@ async fn copy_object(
         request.headers(),
         &src_record.etag,
         &src_record.last_modified,
+        &resource,
     ) {
         return resp;
     }
@@ -746,9 +717,13 @@ pub async fn get_object(
     };
 
     // Check conditional headers (If-Match, If-None-Match, etc.).
-    if let Some(resp) =
-        check_conditionals(request.headers(), &record.etag, &record.last_modified, true)
-    {
+    if let Some(resp) = check_conditionals(
+        request.headers(),
+        &record.etag,
+        &record.last_modified,
+        true,
+        &resource,
+    ) {
         return resp;
     }
 
@@ -758,11 +733,7 @@ pub async fn get_object(
         RangeParseResult::Range(r) => Some(r),
         RangeParseResult::None => None,
         RangeParseResult::Invalid => {
-            return Response::builder()
-                .status(StatusCode::RANGE_NOT_SATISFIABLE)
-                .header("Content-Range", format!("bytes */{}", record.size))
-                .body(Body::empty())
-                .expect("build 416 response");
+            return s3_error_response(S3Error::new(S3ErrorCode::InvalidRange, &resource));
         }
     };
 
@@ -835,9 +806,13 @@ pub async fn head_object(
     };
 
     // Check conditional headers (If-Match, If-None-Match, etc.).
-    if let Some(resp) =
-        check_conditionals(request.headers(), &record.etag, &record.last_modified, true)
-    {
+    if let Some(resp) = check_conditionals(
+        request.headers(),
+        &record.etag,
+        &record.last_modified,
+        true,
+        &resource,
+    ) {
         return resp;
     }
 

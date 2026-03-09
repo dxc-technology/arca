@@ -18,46 +18,112 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+# Explicit overrides for tests whose names don't indicate their true category
+CATEGORY_OVERRIDES = {
+    "test_100_continue": "ACL/Policy",
+    "test_object_raw_get": "Anonymous",
+    "test_list_multipart_upload_owner": "ACL/Policy",
+    "test_put_obj_enc_conflict_c_s3": "Encryption",
+}
+
+
 def categorize_test(name: str) -> str:
-    """Infer category from test function name."""
+    """Infer category from test function name.
+
+    Unimplemented-feature categories are checked first to prevent tests
+    from being miscategorized under generic 'Bucket', 'Object', or
+    'Multipart' when they actually test unimplemented features.
+    """
+    if name in CATEGORY_OVERRIDES:
+        return CATEGORY_OVERRIDES[name]
+
     name_lower = name.lower()
+
+    # --- Unimplemented features (checked first) ---
+
+    # Versioning — before List and Bucket/Object
+    if any(k in name_lower for k in ("versioning", "versioned", "version_id",
+                                      "version_", "delete_marker", "_current_")):
+        return "Versioning"
+
+    # Logging — before Bucket/Object/Copy (logging tests call PutBucketPolicy)
+    if "logging" in name_lower:
+        return "Logging"
+
+    # Presigned/POST — before ACL/Policy (POST tests have "policy" for signing)
+    if any(k in name_lower for k in ("presign", "post_object", "post_",
+                                      "x_amz_expires")):
+        return "Presigned/POST"
+
+    # ACL/Policy — before Bucket/Object
+    if any(k in name_lower for k in ("_acl", "policy", "grant", "permission",
+                                      "public_access", "publicread",
+                                      "publicreadwrite", "block_public",
+                                      "public_block", "ownership",
+                                      "owner_enforced", "owner_preferred",
+                                      "object_writer", "access_bucket",
+                                      "bucket_owner")):
+        return "ACL/Policy"
+
+    # Checksums — before Multipart/Object
+    if any(k in name_lower for k in ("checksum", "cksum")):
+        return "Checksums"
+
+    # Encryption — before Multipart/Object
+    if any(k in name_lower for k in ("encrypt", "sse_", "sse-", "kms")):
+        return "Encryption"
+
+    # Tagging — before Object
+    if any(k in name_lower for k in ("tagging", "_tags")):
+        return "Tagging"
+
+    # Object Lock — before Object
+    if any(k in name_lower for k in ("object_lock", "retention", "legal_hold",
+                                      "governance", "compliance")):
+        return "Object Lock"
+
+    # Anonymous access
+    if any(k in name_lower for k in ("anonymous", "_anon_")):
+        return "Anonymous"
+
+    if "cors" in name_lower:
+        return "CORS"
+
+    if "lifecycle" in name_lower:
+        return "Lifecycle"
+
+    if any(k in name_lower for k in ("notification", "event")):
+        return "Notifications"
+
+    if any(k in name_lower for k in ("select", "sql")):
+        return "S3 Select"
+
+    if any(k in name_lower for k in ("assume_role", "web_identity",
+                                      "session_token")):
+        return "STS/IAM"
+
+    # --- Implemented features ---
+
     if any(k in name_lower for k in ("bucket_list", "bucket_create", "bucket_delete",
-                                      "bucket_head", "bucket_acl", "get_bucket",
+                                      "bucket_head", "get_bucket",
                                       "put_bucket", "head_bucket", "delete_bucket",
                                       "list_buckets")):
         return "Bucket"
+
     if any(k in name_lower for k in ("multipart", "upload_part", "complete_upload",
                                       "abort_upload", "list_upload")):
         return "Multipart"
+
     if any(k in name_lower for k in ("list_object", "list_under", "list_marker",
                                       "list_delimiter", "list_prefix", "list_maxkeys",
-                                      "list_continuation", "versions")):
+                                      "list_continuation")):
         return "List"
-    if any(k in name_lower for k in ("copy_object", "copy_source", "copy_dest",
-                                      "copy_if", "copy_meta")):
+
+    if any(k in name_lower for k in ("copy_object", "object_copy", "copy_source",
+                                      "copy_dest", "copy_if", "copy_meta",
+                                      "copy_enc", "copy_part")):
         return "Copy"
-    if any(k in name_lower for k in ("object_acl", "bucket_policy", "acl", "policy",
-                                      "grant", "permission", "public")):
-        return "ACL/Policy"
-    if any(k in name_lower for k in ("cors", "option")):
-        return "CORS"
-    if any(k in name_lower for k in ("lifecycle", "expir")):
-        return "Lifecycle"
-    if any(k in name_lower for k in ("versioning", "version_")):
-        return "Versioning"
-    if any(k in name_lower for k in ("encrypt", "sse", "kms")):
-        return "Encryption"
-    if any(k in name_lower for k in ("tagging", "tag_")):
-        return "Tagging"
-    if any(k in name_lower for k in ("lock", "retention", "legal_hold",
-                                      "governance", "compliance")):
-        return "Object Lock"
-    if any(k in name_lower for k in ("notification", "event")):
-        return "Notifications"
-    if any(k in name_lower for k in ("select", "sql")):
-        return "S3 Select"
-    if any(k in name_lower for k in ("presign", "post_object", "post_")):
-        return "Presigned/POST"
+
     if any(k in name_lower for k in ("get_object", "put_object", "head_object",
                                       "delete_object", "object_read", "object_write",
                                       "set_content", "get_content", "range",
@@ -65,14 +131,14 @@ def categorize_test(name: str) -> str:
                                       "content_type", "content_length",
                                       "content_md5", "etag", "metadata")):
         return "Object"
+
     if any(k in name_lower for k in ("auth", "sigv4", "sigv2", "credential",
-                                      "anonymous", "signed")):
+                                      "signed")):
         return "Auth"
+
     if any(k in name_lower for k in ("header", "request_id", "date", "server")):
         return "Headers"
-    if any(k in name_lower for k in ("sts", "iam", "assume_role", "session",
-                                      "web_identity")):
-        return "STS/IAM"
+
     return "Other"
 
 
@@ -80,7 +146,7 @@ def categorize_test(name: str) -> str:
 EXPECTED_FAIL_CATEGORIES = {
     "ACL/Policy", "CORS", "Lifecycle", "Versioning", "Encryption",
     "Tagging", "Object Lock", "Notifications", "S3 Select",
-    "Presigned/POST", "STS/IAM",
+    "Presigned/POST", "STS/IAM", "Logging", "Checksums", "Anonymous",
 }
 
 
