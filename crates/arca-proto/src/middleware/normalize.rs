@@ -87,8 +87,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     /// Helper: determine what the normalize logic does to a given path.
     /// Returns the normalized path (or the original if unchanged).
     fn normalize_path(path: &str) -> String {
