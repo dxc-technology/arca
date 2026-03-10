@@ -1,6 +1,6 @@
 [package]
 name = "arca-proto"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 description = "S3 HTTP protocol adapter for the Arca S3 server"
 
