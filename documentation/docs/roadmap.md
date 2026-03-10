@@ -1,8 +1,18 @@
 # Roadmap
 
-Implementation plan for Arca's MVP. Each phase builds on the previous one and ends with verification: unit tests, boto3 integration tests, and manual `aws s3` CLI checks — all inside Docker containers.
+## MVP Status: COMPLETE
 
-## Progress Overview
+The Arca MVP is complete. All 12 phases (0–11) have been implemented, tested, and verified. The server implements 15 S3 operations with 100% pass rate on implemented features against the Ceph s3-tests compatibility suite (270/829 passing — all 468 failures are in unimplemented feature categories).
+
+See [S3 Compatibility Report](../s3-compatibility/) for the full breakdown.
+
+---
+
+## MVP Implementation Plan
+
+Each phase built on the previous one and ended with verification: unit tests, boto3 integration tests, and manual `aws s3` CLI checks — all inside Docker containers.
+
+### Progress Overview
 
 <!-- progress-bar -->
 <div style="padding:12px 0">
@@ -233,13 +243,13 @@ tests but need proper implementation for production use. These are tracked in
 [`TECH_DEBT.md`](https://github.com/dxc-technology/arca/blob/main/TECH_DEBT.md)
 with unique IDs (`TD-XXX`) referenced in source code comments.
 
-Key themes:
+Remaining items:
 
 - **Ownership model** (TD-001): Owner ID hardcoded to `"arca"` — needs account/user model tied to credentials
 - **Storage classes** (TD-002): Always `STANDARD` — no storage tiering
 - **Versioning** (TD-003): Faked for mc compatibility — no real version tracking
 - **Region support** (TD-004): Hardcoded `us-east-1` — no per-bucket regions
-- **Request ID consistency** (TD-005): Error XML and response header use different UUIDs
+- ~~**Request ID consistency** (TD-005)~~: **Resolved** — error XML and response header now match
 - **Encryption** (TD-006): Always returns "not configured" — no SSE support
 - **Unimplemented ops** (TD-007): ~35 bucket operations return 501
 - **Multipart Content-Type** (TD-008): Captured at init time — verify against AWS semantics

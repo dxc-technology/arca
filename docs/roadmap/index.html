@@ -892,6 +892,29 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#mvp-status-complete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MVP Status: COMPLETE
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mvp-implementation-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MVP Implementation Plan
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="MVP Implementation Plan">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#progress-overview" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -899,6 +922,11 @@
       
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1080,6 +1108,29 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#mvp-status-complete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MVP Status: COMPLETE
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mvp-implementation-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MVP Implementation Plan
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="MVP Implementation Plan">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#progress-overview" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1087,6 +1138,11 @@
       
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1251,8 +1307,13 @@
 
 
 <h1 id="roadmap">Roadmap<a class="headerlink" href="#roadmap" title="Permanent link">&para;</a></h1>
-<p>Implementation plan for Arca's MVP. Each phase builds on the previous one and ends with verification: unit tests, boto3 integration tests, and manual <code>aws s3</code> CLI checks — all inside Docker containers.</p>
-<h2 id="progress-overview">Progress Overview<a class="headerlink" href="#progress-overview" title="Permanent link">&para;</a></h2>
+<h2 id="mvp-status-complete">MVP Status: COMPLETE<a class="headerlink" href="#mvp-status-complete" title="Permanent link">&para;</a></h2>
+<p>The Arca MVP is complete. All 12 phases (0–11) have been implemented, tested, and verified. The server implements 15 S3 operations with 100% pass rate on implemented features against the Ceph s3-tests compatibility suite (270/829 passing — all 468 failures are in unimplemented feature categories).</p>
+<p>See <a href="../s3-compatibility/">S3 Compatibility Report</a> for the full breakdown.</p>
+<hr />
+<h2 id="mvp-implementation-plan">MVP Implementation Plan<a class="headerlink" href="#mvp-implementation-plan" title="Permanent link">&para;</a></h2>
+<p>Each phase built on the previous one and ended with verification: unit tests, boto3 integration tests, and manual <code>aws s3</code> CLI checks — all inside Docker containers.</p>
+<h3 id="progress-overview">Progress Overview<a class="headerlink" href="#progress-overview" title="Permanent link">&para;</a></h3>
 <!-- progress-bar -->
 <div style="padding:12px 0">
   <div style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid rgba(128,128,128,.3)">
@@ -1500,13 +1561,13 @@ Endpoints live under <code>/admin/*</code> on the same port (9000), using SigV4 
 tests but need proper implementation for production use. These are tracked in
 <a href="https://github.com/dxc-technology/arca/blob/main/TECH_DEBT.md"><code>TECH_DEBT.md</code></a>
 with unique IDs (<code>TD-XXX</code>) referenced in source code comments.</p>
-<p>Key themes:</p>
+<p>Remaining items:</p>
 <ul>
 <li><strong>Ownership model</strong> (TD-001): Owner ID hardcoded to <code>"arca"</code> — needs account/user model tied to credentials</li>
 <li><strong>Storage classes</strong> (TD-002): Always <code>STANDARD</code> — no storage tiering</li>
 <li><strong>Versioning</strong> (TD-003): Faked for mc compatibility — no real version tracking</li>
 <li><strong>Region support</strong> (TD-004): Hardcoded <code>us-east-1</code> — no per-bucket regions</li>
-<li><strong>Request ID consistency</strong> (TD-005): Error XML and response header use different UUIDs</li>
+<li>~~<strong>Request ID consistency</strong> (TD-005)~~: <strong>Resolved</strong> — error XML and response header now match</li>
 <li><strong>Encryption</strong> (TD-006): Always returns "not configured" — no SSE support</li>
 <li><strong>Unimplemented ops</strong> (TD-007): ~35 bucket operations return 501</li>
 <li><strong>Multipart Content-Type</strong> (TD-008): Captured at init time — verify against AWS semantics</li>
