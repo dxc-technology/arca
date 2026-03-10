@@ -107,11 +107,7 @@ pub async fn auth_middleware(
         .headers()
         .iter()
         .map(|(name, value)| {
-            let val = match value.to_str() {
-                Ok(s) => s.to_string(),
-                Err(_) => String::from_utf8_lossy(value.as_bytes()).into_owned(),
-            };
-            (name.as_str().to_string(), val)
+            (name.as_str().to_string(), crate::header_value_to_string(value))
         })
         .collect();
 

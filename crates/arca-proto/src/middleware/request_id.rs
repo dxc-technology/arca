@@ -45,6 +45,7 @@ pub async fn request_id_middleware(request: axum::extract::Request, next: Next) 
                 );
                 return Response::from_parts(parts, Body::from(fixed));
             }
+            tracing::warn!("Failed to read error response body for request ID replacement");
             response = Response::from_parts(parts, Body::empty());
         }
     }

@@ -40,13 +40,7 @@ pub(super) fn extract_metadata(headers: &http::HeaderMap) -> HashMap<String, Str
     for (name, value) in headers {
         let name_lower = name.as_str().to_lowercase();
         if name_lower.starts_with("x-amz-meta-") {
-            // Header values may contain non-ASCII bytes (e.g. unicode metadata).
-            // botocore sends UTF-8 bytes on the wire, so decode as UTF-8.
-            let v = match value.to_str() {
-                Ok(s) => s.to_string(),
-                Err(_) => String::from_utf8_lossy(value.as_bytes()).into_owned(),
-            };
-            metadata.insert(name_lower, v);
+            metadata.insert(name_lower, crate::header_value_to_string(value));
         }
     }
 
@@ -214,7 +208,7 @@ fn check_copy_source_conditionals(
 
 /// Checks if an ETag value matches the If-Match / If-None-Match header value.
 /// The header can be `*` (matches everything) or a comma-separated list of ETags.
-fn etag_matches(header_val: &str, etag: &str) -> bool {
+pub(super) fn etag_matches(header_val: &str, etag: &str) -> bool {
     let trimmed = header_val.trim();
     if trimmed == "*" {
         return true;
@@ -930,8 +924,10 @@ pub async fn head_object(
         .header("Accept-Ranges", "bytes");
 
     // Return stored metadata as response headers.
+    // Values may contain unicode chars; encode as Latin-1 for HTTP headers
+    // (clients like boto3 decode header bytes as Latin-1 per HTTP spec).
     for (key, value) in &record.metadata {
-        if let Ok(hv) = http::HeaderValue::from_bytes(value.as_bytes()) {
+        if let Ok(hv) = http::HeaderValue::from_bytes(&string_to_latin1(value)) {
             builder = builder.header(key.as_str(), hv);
         }
     }

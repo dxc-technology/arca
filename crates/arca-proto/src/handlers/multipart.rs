@@ -434,8 +434,8 @@ async fn check_complete_conditionals(
     if let Some(expected) = if_match {
         match &existing {
             Some(obj) => {
-                let obj_etag = format!("\"{}\"", obj.etag);
-                if expected != "*" && expected != &obj_etag && expected != &obj.etag {
+                let quoted_etag = format!("\"{}\"", obj.etag);
+                if !super::object::etag_matches(expected, &quoted_etag) {
                     return Some(s3_error_response(S3Error::new(
                         S3ErrorCode::PreconditionFailed,
                         resource,
@@ -454,8 +454,8 @@ async fn check_complete_conditionals(
     // If-None-Match: object must not exist or ETag must not match.
     if let Some(expected) = if_none_match {
         if let Some(obj) = &existing {
-            let obj_etag = format!("\"{}\"", obj.etag);
-            if expected == "*" || expected == &obj_etag || expected == &obj.etag {
+            let quoted_etag = format!("\"{}\"", obj.etag);
+            if super::object::etag_matches(expected, &quoted_etag) {
                 return Some(s3_error_response(S3Error::new(
                     S3ErrorCode::PreconditionFailed,
                     resource,

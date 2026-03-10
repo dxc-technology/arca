@@ -1050,7 +1050,7 @@ async fn delete_objects(
                     if failed {
                         errors.push(DeleteErrorEntry {
                             key: obj.key.clone(),
-                            code: "PreconditionFailed".to_string(),
+                            code: S3ErrorCode::PreconditionFailed.as_str().to_string(),
                             message: "At least one of the pre-conditions you specified did not hold.".to_string(),
                         });
                         continue;
@@ -1067,7 +1067,7 @@ async fn delete_objects(
                     tracing::error!(error = %e, key = %obj.key, "Error checking object for conditional delete");
                     errors.push(DeleteErrorEntry {
                         key: obj.key.clone(),
-                        code: "InternalError".to_string(),
+                        code: S3ErrorCode::InternalError.as_str().to_string(),
                         message: "We encountered an internal error. Please try again.".to_string(),
                     });
                     continue;
@@ -1096,7 +1096,7 @@ async fn delete_objects(
                 tracing::error!(error = %e, key = %obj.key, "Error deleting object");
                 errors.push(DeleteErrorEntry {
                     key: obj.key.clone(),
-                    code: "InternalError".to_string(),
+                    code: S3ErrorCode::InternalError.as_str().to_string(),
                     message: "We encountered an internal error. Please try again.".to_string(),
                 });
             }
