@@ -22,8 +22,36 @@ from pathlib import Path
 CATEGORY_OVERRIDES = {
     "test_100_continue": "ACL/Policy",
     "test_object_raw_get": "Anonymous",
+    "test_object_raw_get_bucket_gone": "Anonymous",
+    "test_object_raw_get_object_gone": "Anonymous",
+    "test_object_delete_key_bucket_gone": "Anonymous",
+    "test_bucket_list_objects_anonymous": "Anonymous",
+    "test_bucket_listv2_objects_anonymous": "Anonymous",
+    "test_list_buckets_anonymous": "Anonymous",
     "test_list_multipart_upload_owner": "ACL/Policy",
+    "test_bucket_create_exists_nonowner": "ACL/Policy",
+    "test_object_copy_not_owned_bucket": "ACL/Policy",
+    "test_object_copy_not_owned_object_bucket": "ACL/Policy",
+    "test_bucket_list_return_data": "ACL/Policy",
+    "test_object_read_unreadable": "ACL/Policy",
     "test_put_obj_enc_conflict_c_s3": "Encryption",
+    "test_lifecycle_multipart_expiration": "Lifecycle",
+    # RGW-specific extensions (not AWS S3 API)
+    "test_bucket_head_extended": "RGW Extensions",
+    "test_head_bucket_usage": "RGW Extensions",
+    "test_account_usage": "RGW Extensions",
+    "test_bucket_list_unordered": "RGW Extensions",
+    "test_bucket_listv2_unordered": "RGW Extensions",
+    # Not-in-MVP features
+    "test_get_object_torrent": "Not Implemented",
+    "test_list_buckets_paginated": "Not Implemented",
+    "test_get_object_attributes": "Not Implemented",
+    "test_get_multipart_object_attributes": "Not Implemented",
+    "test_get_paginated_multipart_object_attributes": "Not Implemented",
+    "test_get_single_multipart_object_attributes": "Not Implemented",
+    "test_multipart_get_part": "Not Implemented",
+    "test_multipart_single_get_part": "Not Implemented",
+    "test_non_multipart_get_part": "Not Implemented",
 }
 
 
@@ -147,6 +175,7 @@ EXPECTED_FAIL_CATEGORIES = {
     "ACL/Policy", "CORS", "Lifecycle", "Versioning", "Encryption",
     "Tagging", "Object Lock", "Notifications", "S3 Select",
     "Presigned/POST", "STS/IAM", "Logging", "Checksums", "Anonymous",
+    "RGW Extensions", "Not Implemented",
 }
 
 

@@ -186,8 +186,8 @@ class TestCompleteMultipartUpload:
             )
         assert exc_info.value.response["Error"]["Code"] == "NoSuchUpload"
 
-    def test_complete_wrong_part_order(self, s3_client):
-        """CompleteMultipartUpload with wrong part order should fail."""
+    def test_complete_wrong_part_order_succeeds(self, s3_client):
+        """CompleteMultipartUpload with wrong part order succeeds (server sorts)."""
         key = "mp-bad-order"
         resp = s3_client.create_multipart_upload(Bucket=BUCKET, Key=key)
         upload_id = resp["UploadId"]
@@ -201,22 +201,20 @@ class TestCompleteMultipartUpload:
             PartNumber=2, Body=os.urandom(PART_SIZE),
         )["ETag"]
 
-        with pytest.raises(ClientError) as exc_info:
-            s3_client.complete_multipart_upload(
-                Bucket=BUCKET, Key=key, UploadId=upload_id,
-                MultipartUpload={
-                    "Parts": [
-                        {"PartNumber": 2, "ETag": etag2},
-                        {"PartNumber": 1, "ETag": etag1},
-                    ],
-                },
-            )
-        assert exc_info.value.response["Error"]["Code"] == "InvalidPartOrder"
+        # S3 sorts parts by number — wrong order in the request still succeeds.
+        resp = s3_client.complete_multipart_upload(
+            Bucket=BUCKET, Key=key, UploadId=upload_id,
+            MultipartUpload={
+                "Parts": [
+                    {"PartNumber": 2, "ETag": etag2},
+                    {"PartNumber": 1, "ETag": etag1},
+                ],
+            },
+        )
+        assert "ETag" in resp
 
         # Cleanup
-        s3_client.abort_multipart_upload(
-            Bucket=BUCKET, Key=key, UploadId=upload_id,
-        )
+        s3_client.delete_object(Bucket=BUCKET, Key=key)
 
     def test_part_too_small(self, s3_client):
         """Non-last parts smaller than 5MB should fail at complete time."""

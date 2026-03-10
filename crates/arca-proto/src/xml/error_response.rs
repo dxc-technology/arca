@@ -5,17 +5,31 @@ use http::StatusCode;
 
 use arca_core::{ArcaError, S3Error, S3ErrorCode};
 
+/// Marker extension placed on error responses so the request_id middleware
+/// can replace the placeholder `<RequestId>` in the XML body with the real
+/// middleware-assigned request ID.
+#[derive(Clone, Debug)]
+pub struct ErrorRequestId(pub String);
+
 /// Converts an [`S3Error`] into an Axum HTTP response with XML body.
+///
+/// Stores the S3Error's placeholder request_id in a response extension so
+/// the request_id middleware can swap it with the real one.
 pub fn s3_error_response(err: S3Error) -> Response {
     let status =
         StatusCode::from_u16(err.http_status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    let placeholder_id = err.request_id.clone();
     let body = err.to_xml();
 
-    Response::builder()
+    let mut response = Response::builder()
         .status(status)
         .header("Content-Type", "application/xml")
         .body(axum::body::Body::from(body))
-        .expect("build error response")
+        .expect("build error response");
+    response
+        .extensions_mut()
+        .insert(ErrorRequestId(placeholder_id));
+    response
 }
 
 /// Returns a 501 NotImplemented S3 XML error response.

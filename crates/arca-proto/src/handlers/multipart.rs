@@ -182,6 +182,24 @@ pub async fn complete_multipart_upload(
         return s3_error_response(S3Error::new(S3ErrorCode::NoSuchUpload, &resource));
     }
 
+    // Check conditional headers (If-Match, If-None-Match) against existing object.
+    let if_match = request
+        .headers()
+        .get("if-match")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    let if_none_match = request
+        .headers()
+        .get("if-none-match")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    if let Some(resp) =
+        check_complete_conditionals(&state, &bucket, &key, &if_match, &if_none_match, &resource)
+            .await
+    {
+        return resp;
+    }
+
     // Read and parse XML body (1 MB limit).
     let body_bytes = match axum::body::to_bytes(request.into_body(), 1_048_576).await {
         Ok(b) => b,
@@ -204,23 +222,23 @@ pub async fn complete_multipart_upload(
         }
     };
 
-    let complete_body = match xml_types::parse_complete_multipart_upload(body_str) {
+    let mut complete_body = match xml_types::parse_complete_multipart_upload(body_str) {
         Ok(b) => b,
         Err(_) => {
             return s3_error_response(S3Error::new(S3ErrorCode::MalformedXML, &resource));
         }
     };
 
-    // Validate parts in ascending order and non-empty.
+    // Validate non-empty, sort by part number, and deduplicate (keep last entry per part).
     if complete_body.parts.is_empty() {
         return s3_error_response(S3Error::new(S3ErrorCode::MalformedXML, &resource));
     }
 
-    for i in 1..complete_body.parts.len() {
-        if complete_body.parts[i].part_number <= complete_body.parts[i - 1].part_number {
-            return s3_error_response(S3Error::new(S3ErrorCode::InvalidPartOrder, &resource));
-        }
-    }
+    // Stable sort + reverse dedup: keep the last-submitted entry for each part number.
+    complete_body.parts.sort_by_key(|p| p.part_number);
+    complete_body.parts.reverse();
+    complete_body.parts.dedup_by_key(|p| p.part_number);
+    complete_body.parts.reverse();
 
     // Get stored parts.
     let stored_parts = match state.metadata.list_parts(&upload_id).await {
@@ -392,5 +410,60 @@ pub async fn abort_multipart_upload(
         .status(StatusCode::NO_CONTENT)
         .body(Body::empty())
         .expect("build abort_multipart_upload response")
+}
+
+/// Checks If-Match / If-None-Match conditionals on CompleteMultipartUpload.
+async fn check_complete_conditionals(
+    state: &AppState,
+    bucket: &str,
+    key: &str,
+    if_match: &Option<String>,
+    if_none_match: &Option<String>,
+    resource: &str,
+) -> Option<Response> {
+    if if_match.is_none() && if_none_match.is_none() {
+        return None;
+    }
+
+    let existing = match state.metadata.get_object(bucket, key).await {
+        Ok(obj) => obj,
+        Err(_) => return None,
+    };
+
+    // If-Match: object must exist and ETag must match.
+    if let Some(expected) = if_match {
+        match &existing {
+            Some(obj) => {
+                let obj_etag = format!("\"{}\"", obj.etag);
+                if expected != "*" && expected != &obj_etag && expected != &obj.etag {
+                    return Some(s3_error_response(S3Error::new(
+                        S3ErrorCode::PreconditionFailed,
+                        resource,
+                    )));
+                }
+            }
+            None => {
+                return Some(s3_error_response(S3Error::new(
+                    S3ErrorCode::NoSuchKey,
+                    resource,
+                )));
+            }
+        }
+    }
+
+    // If-None-Match: object must not exist or ETag must not match.
+    if let Some(expected) = if_none_match {
+        if let Some(obj) = &existing {
+            let obj_etag = format!("\"{}\"", obj.etag);
+            if expected == "*" || expected == &obj_etag || expected == &obj.etag {
+                return Some(s3_error_response(S3Error::new(
+                    S3ErrorCode::PreconditionFailed,
+                    resource,
+                )));
+            }
+        }
+    }
+
+    None
 }
 

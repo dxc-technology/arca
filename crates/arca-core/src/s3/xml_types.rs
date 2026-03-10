@@ -56,6 +56,12 @@ pub struct DeleteObject {
     /// Optional ETag for conditional delete (If-Match semantics per-key).
     #[serde(rename = "ETag", default)]
     pub etag: Option<String>,
+    /// Optional last-modified-time conditional.
+    #[serde(rename = "LastModifiedTime", default)]
+    pub last_modified_time: Option<String>,
+    /// Optional size conditional.
+    #[serde(rename = "Size", default)]
+    pub size: Option<String>,
 }
 
 /// Parses a `DeleteObjects` XML request body.
@@ -75,6 +81,8 @@ pub fn parse_delete_objects(xml: &str) -> Result<DeleteObjectsBody, quick_xml::D
     let mut objects = Vec::new();
     let mut current_key: Option<String> = None;
     let mut current_etag: Option<String> = None;
+    let mut current_last_modified_time: Option<String> = None;
+    let mut current_if_match_size: Option<String> = None;
     let mut inside_tag: Option<String> = None;
     let mut buf = Vec::new();
 
@@ -90,6 +98,8 @@ pub fn parse_delete_objects(xml: &str) -> Result<DeleteObjectsBody, quick_xml::D
                     match tag.as_str() {
                         "Key" => current_key = Some(text),
                         "ETag" => current_etag = Some(text),
+                        "LastModifiedTime" => current_last_modified_time = Some(text),
+                        "Size" => current_if_match_size = Some(text),
                         "Quiet" => quiet = text.trim() == "true",
                         _ => {}
                     }
@@ -102,6 +112,8 @@ pub fn parse_delete_objects(xml: &str) -> Result<DeleteObjectsBody, quick_xml::D
                         objects.push(DeleteObject {
                             key,
                             etag: current_etag.take(),
+                            last_modified_time: current_last_modified_time.take(),
+                            size: current_if_match_size.take(),
                         });
                     }
                 }

@@ -604,9 +604,16 @@ async fn upload_part_copy(
         Some(ref range_str) => {
             match parse_copy_source_range(range_str, src_record.size) {
                 Ok(r) => Some(r),
-                Err(msg) => {
+                Err(CopyRangeError::InvalidFormat(msg)) => {
                     return s3_error_response(S3Error::with_message(
                         S3ErrorCode::InvalidArgument,
+                        msg,
+                        &resource,
+                    ));
+                }
+                Err(CopyRangeError::OutOfRange(msg)) => {
+                    return s3_error_response(S3Error::with_message(
+                        S3ErrorCode::InvalidRange,
                         msg,
                         &resource,
                     ));
@@ -662,20 +669,37 @@ async fn upload_part_copy(
 }
 
 /// Parses `x-amz-copy-source-range` header (format: `bytes=START-END`).
-fn parse_copy_source_range(value: &str, file_size: u64) -> Result<ByteRange, &'static str> {
+enum CopyRangeError {
+    /// Malformed format (400 InvalidArgument).
+    InvalidFormat(&'static str),
+    /// Valid format but out of bounds (416 InvalidRange).
+    OutOfRange(&'static str),
+}
+
+fn parse_copy_source_range(value: &str, file_size: u64) -> Result<ByteRange, CopyRangeError> {
     let range_str = value
         .strip_prefix("bytes=")
-        .ok_or("Invalid range format")?;
+        .ok_or(CopyRangeError::InvalidFormat("Invalid range format"))?;
     let parts: Vec<&str> = range_str.splitn(2, '-').collect();
-    if parts.len() != 2 {
-        return Err("Invalid range format");
+    if parts.len() != 2 || parts[1].is_empty() {
+        return Err(CopyRangeError::InvalidFormat("Invalid range format"));
     }
-    let start: u64 = parts[0].parse().map_err(|_| "Invalid range start")?;
-    let end: u64 = parts[1].parse().map_err(|_| "Invalid range end")?;
-    if start > end || start >= file_size {
-        return Err("The requested range is not satisfiable");
+    // Reject multi-range (e.g. "0-2,3-5").
+    if parts[1].contains(',') {
+        return Err(CopyRangeError::InvalidFormat("Invalid range format"));
     }
-    let end = end.min(file_size - 1);
+    let start: u64 = parts[0]
+        .parse()
+        .map_err(|_| CopyRangeError::InvalidFormat("Invalid range start"))?;
+    let end: u64 = parts[1]
+        .parse()
+        .map_err(|_| CopyRangeError::InvalidFormat("Invalid range end"))?;
+    // For copy-source ranges, both start and end must be within the source.
+    if start > end || end >= file_size {
+        return Err(CopyRangeError::OutOfRange(
+            "The requested range is not satisfiable",
+        ));
+    }
     Ok(ByteRange {
         start,
         end: Some(end),
@@ -687,14 +711,15 @@ fn parse_copy_source_range(value: &str, file_size: u64) -> Result<ByteRange, &'s
 /// The header value may be URL-encoded and may contain a `?versionId=` suffix.
 /// Format: `/bucket/key` or `bucket/key` (leading slash optional).
 fn parse_copy_source(value: &str) -> Option<(String, String)> {
-    let decoded = urlencoding::decode(value).ok()?;
+    // Strip optional ?versionId= suffix BEFORE URL-decoding, since a literal
+    // '?' in the key would be encoded as %3F in the URL.
+    let path = value.split('?').next().unwrap_or(value);
+
+    let decoded = urlencoding::decode(path).ok()?;
     let decoded = decoded.as_ref();
 
     // Strip optional leading slash.
     let path = decoded.strip_prefix('/').unwrap_or(decoded);
-
-    // Strip optional ?versionId= suffix.
-    let path = path.split('?').next().unwrap_or(path);
 
     // Split into bucket/key.
     let slash_pos = path.find('/')?;
@@ -771,9 +796,35 @@ pub async fn get_object(
 
     let etag = format!("\"{}\"", record.etag);
     let last_modified = record.last_modified.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
-    let content_type = record
+    let mut content_type = record
         .content_type
         .unwrap_or_else(|| "application/octet-stream".to_string());
+
+    // Parse response override query parameters (response-content-type, etc.).
+    let mut override_cache_control = None;
+    let mut override_content_disposition = None;
+    let mut override_content_encoding = None;
+    let mut override_content_language = None;
+    let mut override_content_type = None;
+    let mut override_expires = None;
+    if let Some(query) = request.uri().query() {
+        for (k, v) in form_urlencoded::parse(query.as_bytes()) {
+            match k.as_ref() {
+                "response-cache-control" => override_cache_control = Some(v.into_owned()),
+                "response-content-disposition" => {
+                    override_content_disposition = Some(v.into_owned())
+                }
+                "response-content-encoding" => override_content_encoding = Some(v.into_owned()),
+                "response-content-language" => override_content_language = Some(v.into_owned()),
+                "response-content-type" => override_content_type = Some(v.into_owned()),
+                "response-expires" => override_expires = Some(v.into_owned()),
+                _ => {}
+            }
+        }
+    }
+    if let Some(ct) = override_content_type {
+        content_type = ct;
+    }
 
     let mut builder = Response::builder()
         .status(status)
@@ -785,6 +836,21 @@ pub async fn get_object(
 
     if let Some(range_str) = content_range {
         builder = builder.header("Content-Range", range_str);
+    }
+    if let Some(v) = override_cache_control {
+        builder = builder.header("Cache-Control", v);
+    }
+    if let Some(v) = override_content_disposition {
+        builder = builder.header("Content-Disposition", v);
+    }
+    if let Some(v) = override_content_encoding {
+        builder = builder.header("Content-Encoding", v);
+    }
+    if let Some(v) = override_content_language {
+        builder = builder.header("Content-Language", v);
+    }
+    if let Some(v) = override_expires {
+        builder = builder.header("Expires", v);
     }
 
     // Return stored metadata as response headers.

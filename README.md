@@ -24,7 +24,7 @@ Arca is a ground-up implementation of the S3 API, designed as a **drop-in replac
 - **Disaster recovery** — sidecar `.meta` files alongside every blob enable full database rebuild
 - **Modular storage** — metadata backend behind traits (SQLite now, Postgres later)
 - **Web console** — browser-based UI for managing buckets, objects, and credentials
-- **[S3 compatibility tested](https://dxc-technology.github.io/arca/s3-compatibility/)** — validated against [Ceph s3-tests](https://github.com/ceph/s3-tests) (261 passing)
+- **[S3 compatibility tested](https://dxc-technology.github.io/arca/s3-compatibility/)** — validated against [Ceph s3-tests](https://github.com/ceph/s3-tests) (269 passing)
 
 ## MVP API Surface
 
@@ -79,7 +79,7 @@ Five-crate Cargo workspace:
 | Unit tests (Rust) | 172 | arca-auth: 25, arca-storage: 56, arca-core: 17, arca-proto: 19, arca-server: 55 |
 | Integration — boto3 | 238 | buckets, objects, list, multipart, folders, auth, admin, phases 2–3 |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
-| [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 829 | 261 pass, 477 fail, 91 skip |
+| [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 829 | 269 pass, 469 fail, 91 skip |
 | **Total** | **1,338** | |
 
 ## License

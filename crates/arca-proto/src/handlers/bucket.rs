@@ -998,15 +998,56 @@ async fn delete_objects(
     let mut errors = Vec::new();
 
     for obj in &delete_body.objects {
-        // Per-key ETag conditional check (If-Match semantics).
-        if let Some(ref expected_etag) = obj.etag {
+        // Per-key conditional checks (ETag, LastModifiedTime, IfMatchSize).
+        let has_condition = obj.etag.is_some()
+            || obj.last_modified_time.is_some()
+            || obj.size.is_some();
+        if has_condition {
             match state.metadata.get_object(&bucket, &obj.key).await {
                 Ok(Some(existing)) => {
-                    let quoted = format!("\"{}\"", existing.etag);
-                    if expected_etag != &existing.etag
-                        && expected_etag != &quoted
-                        && expected_etag != "*"
-                    {
+                    let mut failed = false;
+
+                    // ETag check.
+                    if let Some(ref expected_etag) = obj.etag {
+                        let quoted = format!("\"{}\"", existing.etag);
+                        if expected_etag != &existing.etag
+                            && expected_etag != &quoted
+                            && expected_etag != "*"
+                        {
+                            failed = true;
+                        }
+                    }
+
+                    // LastModifiedTime check.
+                    // boto3 sends RFC 2822 format: "Sun, 09 Mar 2025 16:58:47 GMT".
+                    // Compare at second precision since RFC 2822 has no sub-seconds.
+                    if let Some(ref expected_time) = obj.last_modified_time {
+                        let parsed = chrono::DateTime::parse_from_rfc2822(expected_time)
+                            .or_else(|_| chrono::DateTime::parse_from_rfc3339(expected_time));
+                        if let Ok(expected) = parsed {
+                            let expected_secs = expected.timestamp();
+                            let existing_secs = existing.last_modified.timestamp();
+                            if expected_secs != existing_secs {
+                                failed = true;
+                            }
+                        } else {
+                            // Unknown format — treat as mismatch.
+                            failed = true;
+                        }
+                    }
+
+                    // Size check.
+                    if let Some(ref expected_size) = obj.size {
+                        if let Ok(size) = expected_size.parse::<u64>() {
+                            if size != existing.size {
+                                failed = true;
+                            }
+                        } else {
+                            failed = true;
+                        }
+                    }
+
+                    if failed {
                         errors.push(DeleteErrorEntry {
                             key: obj.key.clone(),
                             code: "PreconditionFailed".to_string(),

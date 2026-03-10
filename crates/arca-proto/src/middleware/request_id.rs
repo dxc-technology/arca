@@ -4,6 +4,9 @@
 //! - `x-amz-request-id`: the UUID
 //! - `x-amz-id-2`: base64-encoded UUID (secondary request identifier)
 //! - `Server: Arca`
+//!
+//! For S3 error XML responses, the middleware also replaces the placeholder
+//! `<RequestId>` in the body so it matches the header value.
 
 use axum::body::Body;
 use axum::middleware::Next;
@@ -12,11 +15,39 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use http::HeaderName;
 
+use crate::xml::error_response::ErrorRequestId;
+
 pub async fn request_id_middleware(request: axum::extract::Request, next: Next) -> Response {
     let request_id = uuid::Uuid::new_v4().to_string();
     let id2 = BASE64.encode(request_id.as_bytes());
 
     let mut response = next.run(request).await;
+
+    // If the response carries an ErrorRequestId extension (from s3_error_response),
+    // replace the placeholder request ID in the XML body with the real one.
+    if let Some(placeholder) = response.extensions_mut().remove::<ErrorRequestId>() {
+        if placeholder.0 != request_id {
+            let (mut parts, body) = response.into_parts();
+            if let Ok(bytes) = axum::body::to_bytes(body, 64 * 1024).await {
+                let xml = String::from_utf8_lossy(&bytes);
+                let fixed: String = xml.replace(&placeholder.0, &request_id);
+                parts.headers.insert(
+                    HeaderName::from_static("x-amz-request-id"),
+                    request_id.parse().expect("valid header value"),
+                );
+                parts.headers.insert(
+                    HeaderName::from_static("x-amz-id-2"),
+                    id2.parse().expect("valid header value"),
+                );
+                parts.headers.insert(
+                    HeaderName::from_static("server"),
+                    "Arca".parse().expect("valid header value"),
+                );
+                return Response::from_parts(parts, Body::from(fixed));
+            }
+            response = Response::from_parts(parts, Body::empty());
+        }
+    }
 
     let headers = response.headers_mut();
     headers.insert(
