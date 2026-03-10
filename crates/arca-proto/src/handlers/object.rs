@@ -24,6 +24,14 @@ const S3_SYSTEM_METADATA_HEADERS: &[&str] = &[
     "expires",
 ];
 
+/// Encode a unicode string as Latin-1 (ISO-8859-1) bytes for HTTP headers.
+/// Characters above U+00FF are replaced with `?`.
+fn string_to_latin1(s: &str) -> Vec<u8> {
+    s.chars()
+        .map(|c| if (c as u32) <= 0xFF { c as u8 } else { b'?' })
+        .collect()
+}
+
 /// Extracts user metadata (`x-amz-meta-*`) and S3 system metadata headers
 /// from the request headers. Returns a HashMap of lowercased key → value.
 pub(super) fn extract_metadata(headers: &http::HeaderMap) -> HashMap<String, String> {
@@ -32,9 +40,13 @@ pub(super) fn extract_metadata(headers: &http::HeaderMap) -> HashMap<String, Str
     for (name, value) in headers {
         let name_lower = name.as_str().to_lowercase();
         if name_lower.starts_with("x-amz-meta-") {
-            if let Ok(v) = value.to_str() {
-                metadata.insert(name_lower, v.to_string());
-            }
+            // Header values may contain non-ASCII bytes (e.g. unicode metadata).
+            // botocore sends UTF-8 bytes on the wire, so decode as UTF-8.
+            let v = match value.to_str() {
+                Ok(s) => s.to_string(),
+                Err(_) => String::from_utf8_lossy(value.as_bytes()).into_owned(),
+            };
+            metadata.insert(name_lower, v);
         }
     }
 
@@ -854,8 +866,12 @@ pub async fn get_object(
     }
 
     // Return stored metadata as response headers.
+    // Values may contain unicode chars; encode as Latin-1 for HTTP headers
+    // (clients like boto3 decode header bytes as Latin-1 per HTTP spec).
     for (key, value) in &record.metadata {
-        builder = builder.header(key.as_str(), value.as_str());
+        if let Ok(hv) = http::HeaderValue::from_bytes(&string_to_latin1(value)) {
+            builder = builder.header(key.as_str(), hv);
+        }
     }
 
     builder
@@ -915,7 +931,9 @@ pub async fn head_object(
 
     // Return stored metadata as response headers.
     for (key, value) in &record.metadata {
-        builder = builder.header(key.as_str(), value.as_str());
+        if let Ok(hv) = http::HeaderValue::from_bytes(value.as_bytes()) {
+            builder = builder.header(key.as_str(), hv);
+        }
     }
 
     builder

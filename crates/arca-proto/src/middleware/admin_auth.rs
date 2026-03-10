@@ -87,15 +87,17 @@ pub async fn admin_auth_middleware(
         .unwrap_or("UNSIGNED-PAYLOAD")
         .to_string();
 
-    // 6. Collect headers as (name, value) pairs
+    // 6. Collect headers as (name, value) pairs.
+    //    Non-ASCII bytes decoded as UTF-8 (see auth.rs for rationale).
     let headers: Vec<(String, String)> = request
         .headers()
         .iter()
         .map(|(name, value)| {
-            (
-                name.as_str().to_string(),
-                value.to_str().unwrap_or("").to_string(),
-            )
+            let val = match value.to_str() {
+                Ok(s) => s.to_string(),
+                Err(_) => String::from_utf8_lossy(value.as_bytes()).into_owned(),
+            };
+            (name.as_str().to_string(), val)
         })
         .collect();
 

@@ -98,15 +98,20 @@ pub async fn auth_middleware(
         .unwrap_or("UNSIGNED-PAYLOAD")
         .to_string();
 
-    // 6. Collect headers as (name, value) pairs
+    // 6. Collect headers as (name, value) pairs.
+    //    Header values may contain non-ASCII bytes (e.g. unicode metadata).
+    //    botocore sends UTF-8 bytes on the wire and signs using the unicode
+    //    string (then encodes to UTF-8 for SHA256). So we decode as UTF-8
+    //    first to produce the same string botocore used for signing.
     let headers: Vec<(String, String)> = request
         .headers()
         .iter()
         .map(|(name, value)| {
-            (
-                name.as_str().to_string(),
-                value.to_str().unwrap_or("").to_string(),
-            )
+            let val = match value.to_str() {
+                Ok(s) => s.to_string(),
+                Err(_) => String::from_utf8_lossy(value.as_bytes()).into_owned(),
+            };
+            (name.as_str().to_string(), val)
         })
         .collect();
 

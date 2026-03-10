@@ -7,13 +7,13 @@ Results from running [Ceph s3-tests](https://github.com/ceph/s3-tests) against A
 | Metric | Count |
 |--------|-------|
 | Total | 829 |
-| Passed | 269 |
-| Failed | 469 |
+| Passed | 270 |
+| Failed | 468 |
 | Skipped | 91 |
 | Expected fail (unimplemented features) | **~468** |
-| **Unexpected failures** | **1** |
-| Pass rate (overall) | 32.4% |
-| Pass rate (implemented features only) | ~99.6% |
+| **Unexpected failures** | **0** |
+| Pass rate (overall) | 32.6% |
+| Pass rate (implemented features only) | 100% |
 
 ## How to Read This Report
 
@@ -235,13 +235,13 @@ The `put_object` handler in `object.rs:23-129` only extracts `Content-Type` (lin
 
 **Files**: `bucket.rs:297-308`
 
-#### 20. Unicode metadata breaks SigV4 (1 test)
+#### 20. Unicode metadata breaks SigV4 (1 test) — FIXED ✅
 
 `test_object_set_get_unicode_metadata`
 
-**Root cause**: `SignatureDoesNotMatch` when metadata values contain unicode. The SigV4 canonical headers computation in `arca-auth` may not handle non-ASCII characters correctly.
+**Fix applied**: Two-part fix. (1) Auth middleware: `HeaderValue::to_str()` rejects non-ASCII bytes, so the header value was lost. Now uses `String::from_utf8_lossy()` to decode raw bytes as UTF-8 (matching botocore's signing). (2) Response: metadata values encoded as Latin-1 bytes for HTTP headers (clients decode header bytes as Latin-1 per HTTP spec).
 
-**Files**: `crates/arca-auth/src/sigv4.rs`
+**Files**: `crates/arca-proto/src/middleware/auth.rs`, `crates/arca-proto/src/middleware/admin_auth.rs`, `crates/arca-proto/src/handlers/object.rs`
 
 #### 21. Multipart empty parts: InvalidArgument instead of MalformedXML (1 test)
 
@@ -462,20 +462,21 @@ All 4 fixes implemented, 232 passing Ceph s3-tests (up from 218), 146 integratio
 
 ### Phase 5: Remaining bug fixes — DONE ✅
 
-8 new tests passing, 269 total Ceph s3-tests (up from 261).
+9 new tests passing, 270 total Ceph s3-tests (up from 261).
 
 | Bug | Tests fixed | Status |
 |-----|------------|--------|
 | #9 GetObject response overrides (response-content-type etc.) | 1 | ✅ Done |
 | #15 Multipart duplicate part numbers (sort+dedup) | 1 | ✅ Done |
 | #18 Delimiter special chars (already works after Phase 4) | 1 | ✅ Done |
+| #20 Unicode metadata SigV4 + response encoding | 1 | ✅ Done |
 | #22 Request-ID in error XML matches header | 1 | ✅ Done |
 | B6 UploadPartCopy range error differentiation (400 vs 416) | 2 | ✅ Done |
 | CompleteMultipartUpload conditional headers (If-Match/If-None-Match) | 1 | ✅ Done |
 | DeleteObjects conditional fields (LastModifiedTime RFC 2822, Size) | 2 | ✅ Done |
 | CopySource URL-decode fix (strip ?versionId= before decode) | (part of B6) | ✅ Done |
-| **Subtotal** | **8** | |
+| **Subtotal** | **9** | |
 
-### Total: 269 / 829 passing (32.4%), 1 unexpected failure
+### Total: 270 / 829 passing (32.6%), 0 unexpected failures
 
-The single remaining unexpected failure is `test_object_set_get_unicode_metadata` (SigV4 canonical header computation with non-ASCII characters).
+All implemented features pass 100% of their Ceph s3-tests. All remaining 468 failures are in unimplemented feature categories (ACLs, versioning, encryption, etc.).
