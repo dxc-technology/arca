@@ -1820,7 +1820,7 @@ continuing from the MVP phases (0–11).</p>
 <!-- post-mvp-progress-bar -->
 <div style="padding:12px 0">
   <div style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid rgba(128,128,128,.3)">
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;opacity:.5">12</div>
+    <div style="background:#ff9800;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em">12</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">13</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">14</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">15</div>
@@ -1980,16 +1980,21 @@ continuing from the MVP phases (0–11).</p>
 </table>
 <hr />
 <h3 id="phase-12-tlsssl-and-transport-security-p0">Phase 12 — TLS/SSL and Transport Security [P0]<a class="headerlink" href="#phase-12-tlsssl-and-transport-security-p0" title="Permanent link">&para;</a></h3>
-<p>Native TLS termination in the Arca binary, enabling encrypted transport without
-requiring a reverse proxy.</p>
+<p>Native TLS termination in the Arca binary via <code>tokio-rustls</code>, enabling encrypted
+transport without requiring a reverse proxy.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>tokio-rustls</code> integration: TLS acceptor wrapping the Axum listener</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> New <code>[server.tls]</code> config section: <code>cert_path</code>, <code>key_path</code>, optional <code>ca_path</code> for mTLS</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Dual-port option: HTTPS on primary port for S3 traffic, plain HTTP on separate port for health checks</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Config model: <code>[server.tls]</code> section with <code>cert_path</code>, <code>key_path</code>, optional <code>ca_path</code> (mTLS), optional <code>health_port</code>, <code>redirect_http</code> (default true)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> TLS module: cert/key loading from PEM files, <code>ArcSwap</code>-based config for hot reload</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>arca tls generate</code> CLI: self-signed CA + server cert + key via <code>rcgen</code>, with configurable SANs and validity</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> TLS listener: <code>tokio-rustls</code> acceptor + <code>hyper_util</code> connection serving, replacing <code>axum::serve</code> when TLS is enabled</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Certificate reload on SIGHUP for rotation without downtime</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> HTTP-to-HTTPS redirect (config-controlled, off by default)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Optional health port: plain HTTP listener for <code>/admin/health</code>, HTTP-to-HTTPS redirect for all other paths</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>tls_enabled</code> in AppState and <code>/admin/info</code> response</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Docker TLS test infrastructure: compose override, test config, <code>bin/test tls</code> mode</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Integration tests: HTTPS health/list/put/get/multipart, health port redirect, wrong CA rejection</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> (Console) TLS lock icon indicator in dashboard, derived from endpoint URL and <code>/admin/info</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Documentation: dedicated TLS guide, config reference, CLI reference, deployment guide updates</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Reverse-proxy documentation: nginx and Caddy example configurations</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> (Console) Support <code>https://</code> endpoints in connection dialog, TLS status indicator in dashboard</li>
 </ul>
 <hr />
 <h3 id="phase-13-server-side-encryption-sse-s3-p0">Phase 13 — Server-Side Encryption: SSE-S3 [P0]<a class="headerlink" href="#phase-13-server-side-encryption-sse-s3-p0" title="Permanent link">&para;</a></h3>
