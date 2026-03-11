@@ -46,9 +46,9 @@ nav:
     - Web Console: guide/console.md
     - CLI Reference: guide/cli.md
   - Reference:
+    - Architecture: reference/architecture.md
     - S3 API: reference/s3-api.md
     - Admin API: reference/admin-api.md
-    - Architecture: reference/architecture.md
   - Operations:
     - Disaster Recovery: operations/recovery.md
     - Monitoring & Logging: operations/monitoring.md
