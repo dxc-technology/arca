@@ -23,20 +23,70 @@ continuing from the MVP phases (0–11).
 | **P2** | Medium — improves completeness and operational maturity |
 | **P3** | Low — advanced features, long-term vision |
 
+### Progress Overview
+
+<!-- post-mvp-progress-bar -->
+<div style="padding:12px 0">
+  <div style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid rgba(128,128,128,.3)">
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em">12</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">13</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">14</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">15</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">16</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">17</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">18</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">19</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">20</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">21</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">22</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">23</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">24</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">25</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">26</div>
+  </div>
+</div>
+<!-- /post-mvp-progress-bar -->
+
 ### Dependency Overview
 
-```
-TLS (12) ──────────────────────────────────┐
-                                           ├──> Presigned URLs + SSE-C (15)
-SSE-S3 (13) ──> SSE-KMS/Vault (14) ───────┘
+```mermaid
+graph LR
+    12["12 TLS"] --> 15["15 Presigned URLs\n+ SSE-C"]
+    13["13 SSE-S3"] --> 14["14 SSE-KMS\nVault/OpenBAO"]
+    14 --> 15
+    13 --> 16["16 Access Control\n+ Policies"]
+    13 --> 19["19 Tagging\n+ Lifecycle"]
+    16 --> 17["17 Object\nVersioning"]
+    17 --> 20["20 Object Lock\nWORM"]
+    19 --> 24["24 Notifications\n+ Events"]
+    17 --> 25["25 Replication"]
+    23["23 PostgreSQL\nBackend"] --> 25
+    25 --> 26["26 Multi-Node\n+ Erasure Coding"]
 
-Bucket config table (13) ──┬──> Access Control (16) ──> Versioning (17) ──> Object Lock (20)
-                           ├──> Lifecycle (19)
-                           └──> CORS persistence (16)
+    style 12 fill:#c62828,color:#fff
+    style 13 fill:#c62828,color:#fff
+    style 14 fill:#c62828,color:#fff
+    style 15 fill:#e65100,color:#fff
+    style 16 fill:#e65100,color:#fff
+    style 17 fill:#e65100,color:#fff
+    style 18 fill:#e65100,color:#fff
+    style 19 fill:#2e7d32,color:#fff
+    style 20 fill:#2e7d32,color:#fff
+    style 21 fill:#2e7d32,color:#fff
+    style 22 fill:#2e7d32,color:#fff
+    style 23 fill:#2e7d32,color:#fff
+    style 24 fill:#1565c0,color:#fff
+    style 25 fill:#1565c0,color:#fff
+    style 26 fill:#1565c0,color:#fff
 
-Background worker (19) ──> Notifications (24)
-Versioning (17) + PostgreSQL (23) ──> Replication (25) ──> Multi-Node (26)
+    18["18 Monitoring\n+ Audit"]
+    21["21 S3 API\nCompleteness"]
+    22["22 Performance\n+ Hardening"]
 ```
+
+<span style="font-size:.8em">
+**Legend**: <span style="color:#c62828">P0 Critical</span> · <span style="color:#e65100">P1 High</span> · <span style="color:#2e7d32">P2 Medium</span> · <span style="color:#1565c0">P3 Low</span> — Arrows indicate dependencies
+</span>
 
 ### Phase Summary
 

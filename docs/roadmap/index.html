@@ -926,6 +926,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#progress-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Progress Overview
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#dependency-overview" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1141,7 +1152,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#progress-overview" class="md-nav__link">
+  <a href="#progress-overview_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Progress Overview
@@ -1368,6 +1379,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#progress-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Progress Overview
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#dependency-overview" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1583,7 +1605,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#progress-overview" class="md-nav__link">
+  <a href="#progress-overview_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Progress Overview
@@ -1794,18 +1816,65 @@ continuing from the MVP phases (0–11).</p>
 </tr>
 </tbody>
 </table>
+<h3 id="progress-overview">Progress Overview<a class="headerlink" href="#progress-overview" title="Permanent link">&para;</a></h3>
+<!-- post-mvp-progress-bar -->
+<div style="padding:12px 0">
+  <div style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid rgba(128,128,128,.3)">
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em">12</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">13</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">14</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">15</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">16</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">17</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">18</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">19</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">20</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">21</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">22</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">23</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">24</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">25</div>
+    <div style="background:#9e9e9e;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">26</div>
+  </div>
+</div>
+<!-- /post-mvp-progress-bar -->
+
 <h3 id="dependency-overview">Dependency Overview<a class="headerlink" href="#dependency-overview" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>TLS (12) ──────────────────────────────────┐
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>                                           ├──&gt; Presigned URLs + SSE-C (15)
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>SSE-S3 (13) ──&gt; SSE-KMS/Vault (14) ───────┘
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>Bucket config table (13) ──┬──&gt; Access Control (16) ──&gt; Versioning (17) ──&gt; Object Lock (20)
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>                           ├──&gt; Lifecycle (19)
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>                           └──&gt; CORS persistence (16)
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>Background worker (19) ──&gt; Notifications (24)
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>Versioning (17) + PostgreSQL (23) ──&gt; Replication (25) ──&gt; Multi-Node (26)
-</code></pre></div>
+<pre class="mermaid"><code>graph LR
+    12["12 TLS"] --&gt; 15["15 Presigned URLs\n+ SSE-C"]
+    13["13 SSE-S3"] --&gt; 14["14 SSE-KMS\nVault/OpenBAO"]
+    14 --&gt; 15
+    13 --&gt; 16["16 Access Control\n+ Policies"]
+    13 --&gt; 19["19 Tagging\n+ Lifecycle"]
+    16 --&gt; 17["17 Object\nVersioning"]
+    17 --&gt; 20["20 Object Lock\nWORM"]
+    19 --&gt; 24["24 Notifications\n+ Events"]
+    17 --&gt; 25["25 Replication"]
+    23["23 PostgreSQL\nBackend"] --&gt; 25
+    25 --&gt; 26["26 Multi-Node\n+ Erasure Coding"]
+
+    style 12 fill:#c62828,color:#fff
+    style 13 fill:#c62828,color:#fff
+    style 14 fill:#c62828,color:#fff
+    style 15 fill:#e65100,color:#fff
+    style 16 fill:#e65100,color:#fff
+    style 17 fill:#e65100,color:#fff
+    style 18 fill:#e65100,color:#fff
+    style 19 fill:#2e7d32,color:#fff
+    style 20 fill:#2e7d32,color:#fff
+    style 21 fill:#2e7d32,color:#fff
+    style 22 fill:#2e7d32,color:#fff
+    style 23 fill:#2e7d32,color:#fff
+    style 24 fill:#1565c0,color:#fff
+    style 25 fill:#1565c0,color:#fff
+    style 26 fill:#1565c0,color:#fff
+
+    18["18 Monitoring\n+ Audit"]
+    21["21 S3 API\nCompleteness"]
+    22["22 Performance\n+ Hardening"]</code></pre>
+<p><span style="font-size:.8em">
+<strong>Legend</strong>: <span style="color:#c62828">P0 Critical</span> · <span style="color:#e65100">P1 High</span> · <span style="color:#2e7d32">P2 Medium</span> · <span style="color:#1565c0">P3 Low</span> — Arrows indicate dependencies
+</span></p>
 <h3 id="phase-summary">Phase Summary<a class="headerlink" href="#phase-summary" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -2103,7 +2172,7 @@ no intermediate KES layer.</p>
 <hr />
 <h2 id="mvp-implementation-plan">MVP Implementation Plan<a class="headerlink" href="#mvp-implementation-plan" title="Permanent link">&para;</a></h2>
 <p>Each phase built on the previous one and ended with verification: unit tests, boto3 integration tests, and manual <code>aws s3</code> CLI checks — all inside Docker containers.</p>
-<h3 id="progress-overview">Progress Overview<a class="headerlink" href="#progress-overview" title="Permanent link">&para;</a></h3>
+<h3 id="progress-overview_1">Progress Overview<a class="headerlink" href="#progress-overview_1" title="Permanent link">&para;</a></h3>
 <!-- progress-bar -->
 <div style="padding:12px 0">
   <div style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid rgba(128,128,128,.3)">
