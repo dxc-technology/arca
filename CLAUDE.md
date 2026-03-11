@@ -66,6 +66,8 @@ Dependency direction: `arca-server` -> `arca-proto`, `arca-storage`, `arca-auth`
 
 **Auth body hash** — Accept `UNSIGNED-PAYLOAD` for streaming uploads. Verify request signature only (headers + URI), not body hash. Body integrity relies on Content-MD5.
 
+**Configuration migration without data migration** — Arca must allow any configuration change (storage backend, encryption, node topology, etc.) without requiring data migration to a new instance. Changes are applied via offline CLI tools (`arca migrate-*`) or live reconfiguration that operate in-place on the existing data directory. This is a hard architectural constraint: unlike MinIO, which forces a fresh instance when changing topology, Arca must always provide a migration path that preserves existing data in place.
+
 ## Web Console & Admin API
 
 **Separated console** — The web console is a separate application in `console/`, not embedded in the Arca binary. Reasons: keeps the binary small (8.6 MB scratch image), allows independent release cycles, supports split deployment (Arca on hardened VM, console on k8s), minimizes attack surface on the storage engine. The console is just another API client.

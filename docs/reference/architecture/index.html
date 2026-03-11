@@ -874,6 +874,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#configuration-migration-without-data-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration Migration Without Data Migration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#no-s3s-crate" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1346,6 +1357,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#configuration-migration-without-data-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration Migration Without Data Migration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#no-s3s-crate" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1695,6 +1717,15 @@
 </ul>
 <p>Note that these checks require the database to be intact. During <code>arca recover</code> (database is lost), the sidecars are trusted by necessity since there is nothing to compare against.</p>
 <h2 id="key-design-decisions">Key Design Decisions<a class="headerlink" href="#key-design-decisions" title="Permanent link">&para;</a></h2>
+<h3 id="configuration-migration-without-data-migration">Configuration Migration Without Data Migration<a class="headerlink" href="#configuration-migration-without-data-migration" title="Permanent link">&para;</a></h3>
+<p>A core architectural principle: <strong>any configuration change must be possible without migrating data to a new instance</strong>. This includes switching storage backends (SQLite to PostgreSQL), enabling encryption on existing data, changing node topology, and any other setting change.</p>
+<p>Many S3-compatible servers (notably MinIO) make certain configuration choices permanent — for example, you cannot move from a multi-node erasure-coded setup to a single node without standing up a fresh instance and copying all data over. Arca explicitly rejects this pattern.</p>
+<p>Instead, Arca provides offline CLI migration tools (e.g., <code>arca migrate-db</code>) that transform data and metadata in place. When designing new features, this constraint means:</p>
+<ul>
+<li><strong>Storage formats must be evolvable</strong> — sidecars, blob layouts, and DB schemas must support incremental migration.</li>
+<li><strong>Configuration changes must have a migration path</strong> — every new config option that affects data layout must include a CLI command or startup procedure that converts existing data.</li>
+<li><strong>The data directory is sacred</strong> — users should never need to re-upload objects because of an infrastructure change.</li>
+</ul>
 <h3 id="no-s3s-crate">No <code>s3s</code> Crate<a class="headerlink" href="#no-s3s-crate" title="Permanent link">&para;</a></h3>
 <p>We build our own S3 HTTP protocol adapter with Axum rather than depending on the <a href="https://crates.io/crates/s3s"><code>s3s</code></a> crate. This was an explicit decision to avoid pre-1.0 dependency risk and maintain full control over the protocol layer. The S3 protocol has many subtle behaviors (error formats, header handling, query-parameter routing) where we need precise control.</p>
 <h3 id="s3-query-parameter-routing">S3 Query-Parameter Routing<a class="headerlink" href="#s3-query-parameter-routing" title="Permanent link">&para;</a></h3>

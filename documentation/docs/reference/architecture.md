@@ -204,6 +204,18 @@ Note that these checks require the database to be intact. During `arca recover` 
 
 ## Key Design Decisions
 
+### Configuration Migration Without Data Migration
+
+A core architectural principle: **any configuration change must be possible without migrating data to a new instance**. This includes switching storage backends (SQLite to PostgreSQL), enabling encryption on existing data, changing node topology, and any other setting change.
+
+Many S3-compatible servers (notably MinIO) make certain configuration choices permanent — for example, you cannot move from a multi-node erasure-coded setup to a single node without standing up a fresh instance and copying all data over. Arca explicitly rejects this pattern.
+
+Instead, Arca provides offline CLI migration tools (e.g., `arca migrate-db`) that transform data and metadata in place. When designing new features, this constraint means:
+
+- **Storage formats must be evolvable** — sidecars, blob layouts, and DB schemas must support incremental migration.
+- **Configuration changes must have a migration path** — every new config option that affects data layout must include a CLI command or startup procedure that converts existing data.
+- **The data directory is sacred** — users should never need to re-upload objects because of an infrastructure change.
+
 ### No `s3s` Crate
 
 We build our own S3 HTTP protocol adapter with Axum rather than depending on the [`s3s`](https://crates.io/crates/s3s) crate. This was an explicit decision to avoid pre-1.0 dependency risk and maintain full control over the protocol layer. The S3 protocol has many subtle behaviors (error formats, header handling, query-parameter routing) where we need precise control.
