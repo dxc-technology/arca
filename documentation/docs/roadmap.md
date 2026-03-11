@@ -8,6 +8,290 @@ See [S3 Compatibility Report](../s3-compatibility/) for the full breakdown.
 
 ---
 
+## Full Product Roadmap
+
+The post-MVP roadmap covers the path from a functional single-node S3 server to a
+production-grade, enterprise-ready storage platform. Phases are numbered from 12 onward,
+continuing from the MVP phases (0–11).
+
+### Priority Legend
+
+| Tag | Meaning |
+|-----|---------|
+| **P0** | Critical — required for production deployment |
+| **P1** | High — expected by most users |
+| **P2** | Medium — improves completeness and operational maturity |
+| **P3** | Low — advanced features, long-term vision |
+
+### Dependency Overview
+
+```
+TLS (12) ──────────────────────────────────┐
+                                           ├──> Presigned URLs + SSE-C (15)
+SSE-S3 (13) ──> SSE-KMS/Vault (14) ───────┘
+
+Bucket config table (13) ──┬──> Access Control (16) ──> Versioning (17) ──> Object Lock (20)
+                           ├──> Lifecycle (19)
+                           └──> CORS persistence (16)
+
+Background worker (19) ──> Notifications (24)
+Versioning (17) + PostgreSQL (23) ──> Replication (25) ──> Multi-Node (26)
+```
+
+### Phase Summary
+
+| Phase | Name | Priority | Dependencies |
+|:-----:|------|:--------:|:------------:|
+| 12 | [TLS/SSL and Transport Security](#phase-12-tlsssl-and-transport-security-p0) | P0 | — |
+| 13 | [Server-Side Encryption: SSE-S3](#phase-13-server-side-encryption-sse-s3-p0) | P0 | — |
+| 14 | [SSE-KMS with HashiCorp Vault/OpenBAO](#phase-14-sse-kms-with-hashicorp-vaultopenbao-p0) | P0 | 13 |
+| 15 | [Presigned URLs, Query-String Auth, and SSE-C](#phase-15-presigned-urls-query-string-auth-and-sse-c-p1) | P1 | 12, 13 |
+| 16 | [Access Control and Bucket Policies](#phase-16-access-control-and-bucket-policies-p1) | P1 | 13 |
+| 17 | [Object Versioning](#phase-17-object-versioning-p1) | P1 | 16 |
+| 18 | [Monitoring, Metrics, and Audit](#phase-18-monitoring-metrics-and-audit-p1) | P1 | — |
+| 19 | [Object Tagging and Lifecycle Rules](#phase-19-object-tagging-and-lifecycle-rules-p2) | P2 | 13 |
+| 20 | [Object Lock (WORM Compliance)](#phase-20-object-lock-worm-compliance-p2) | P2 | 17 |
+| 21 | [S3 API Completeness](#phase-21-s3-api-completeness-p2) | P2 | — |
+| 22 | [Performance and Hardening](#phase-22-performance-and-hardening-p2) | P2 | — |
+| 23 | [PostgreSQL Backend](#phase-23-postgresql-backend-p2) | P2 | — |
+| 24 | [Notifications and Event System](#phase-24-notifications-and-event-system-p3) | P3 | 19 |
+| 25 | [Replication](#phase-25-replication-p3) | P3 | 17, 23 |
+| 26 | [Multi-Node and Erasure Coding](#phase-26-multi-node-and-erasure-coding-p3) | P3 | All prior |
+
+---
+
+### Phase 12 — TLS/SSL and Transport Security [P0]
+
+Native TLS termination in the Arca binary, enabling encrypted transport without
+requiring a reverse proxy.
+
+- [ ] `tokio-rustls` integration: TLS acceptor wrapping the Axum listener
+- [ ] New `[server.tls]` config section: `cert_path`, `key_path`, optional `ca_path` for mTLS
+- [ ] Dual-port option: HTTPS on primary port for S3 traffic, plain HTTP on separate port for health checks
+- [ ] Certificate reload on SIGHUP for rotation without downtime
+- [ ] HTTP-to-HTTPS redirect (config-controlled, off by default)
+- [ ] Reverse-proxy documentation: nginx and Caddy example configurations
+- [ ] (Console) Support `https://` endpoints in connection dialog, TLS status indicator in dashboard
+
+---
+
+### Phase 13 — Server-Side Encryption: SSE-S3 [P0]
+
+Transparent at-rest encryption using AES-256-GCM with per-object data encryption keys (DEKs).
+Local master key from config provides a bootstrap mode before Vault integration.
+
+- [ ] Encryption pipeline in `FsBlobStore`: wrap write stream with AES-256-GCM, random DEK per object
+- [ ] Master key encrypts DEKs — loaded from `[encryption]` config section (local secret, base64-encoded)
+- [ ] New `bucket_config` table in SQLite (foundation for versioning, lifecycle, policies in later phases)
+- [ ] `PutBucketEncryption` / `GetBucketEncryption` / `DeleteBucketEncryption` handlers
+- [ ] New fields on `ObjectRecord`: `encryption_algorithm`, `encryption_key_id`. DB migration v7
+- [ ] Sidecar `.meta` extended with encrypted DEK blob. `arca recover` handles encrypted objects
+- [ ] S3 response header: `x-amz-server-side-encryption: AES256`
+- [ ] (Console) Encryption status on object detail panel, bucket encryption settings page
+- [ ] Resolves: TD-006
+
+---
+
+### Phase 14 — SSE-KMS with HashiCorp Vault/OpenBAO [P0]
+
+Envelope encryption with external key management. Vault/OpenBAO Transit engine wraps and
+unwraps DEKs — Arca never sees or stores the master key material. Direct integration,
+no intermediate KES layer.
+
+- [ ] New `arca-kms` crate with `trait KeyManager` (`wrap_key` / `unwrap_key` / `generate_dek`)
+- [ ] `LocalKeyManager`: wraps DEKs with the config-file master key (Phase 13 logic extracted here)
+- [ ] `VaultKeyManager`: HTTP client for Vault Transit engine (`encrypt` / `decrypt` endpoints)
+- [ ] Vault auth methods: token and AppRole. Compatible with OpenBAO (same API)
+- [ ] Config: `[encryption.kms]` with `type` (`local` | `vault`), `endpoint`, `auth`, `transit_mount`, `default_key`
+- [ ] S3 headers: `x-amz-server-side-encryption: aws:kms`, `x-amz-server-side-encryption-aws-kms-key-id`
+- [ ] Key rotation: Vault versioned keys, key version stored in sidecar metadata
+- [ ] (Console) KMS key selection in bucket encryption settings, Vault connection status in dashboard
+
+**Depends on**: Phase 13 (encryption pipeline and bucket encryption config)
+
+---
+
+### Phase 15 — Presigned URLs, Query-String Auth, and SSE-C [P1]
+
+Enable URL-based authentication for direct browser downloads and customer-provided encryption keys.
+
+- [ ] Query-string SigV4 in `arca-auth`: parse `X-Amz-Algorithm`, `X-Amz-Credential`, `X-Amz-Date`, `X-Amz-Expires`, `X-Amz-SignedHeaders`, `X-Amz-Signature` from query params
+- [ ] Auth middleware fallback: no `Authorization` header → check query-string params
+- [ ] URL expiration validation (reject expired presigned URLs)
+- [ ] SSE-C: customer-provided keys via `x-amz-server-side-encryption-customer-algorithm`, `x-amz-server-side-encryption-customer-key`, `x-amz-server-side-encryption-customer-key-MD5` headers. Key used for encrypt/decrypt, never stored
+- [ ] Optional admin endpoint: `POST /admin/presign` for server-side URL generation
+- [ ] (Console) "Share" button on objects: generate presigned URL with configurable expiry, copy-to-clipboard
+
+**Depends on**: Phase 12 (TLS recommended for production presigned URLs), Phase 13 (encryption pipeline for SSE-C)
+
+---
+
+### Phase 16 — Access Control and Bucket Policies [P1]
+
+Replace the current "all credentials have full access" model with proper ownership, policies, and ACLs.
+
+- [ ] Owner model: replace hardcoded `"arca"` owner with credential-linked `owner_id`
+- [ ] Bucket policies: `PutBucketPolicy` / `GetBucketPolicy` / `DeleteBucketPolicy`. JSON policy documents (IAM policy subset: Effect, Principal, Action, Resource). Policy evaluation in auth middleware
+- [ ] Canned ACLs: `PutBucketAcl` / `GetBucketAcl`, `PutObjectAcl` / `GetObjectAcl` (private, public-read, public-read-write, authenticated-read)
+- [ ] Public access block: `PutPublicAccessBlock` / `GetPublicAccessBlock` / `DeletePublicAccessBlock`
+- [ ] CORS persistence: `PutBucketCors` / `GetBucketCors` / `DeleteBucketCors` (currently static middleware — make per-bucket, stored in `bucket_config`)
+- [ ] (Console) Bucket settings panel: policy editor (JSON), ACL selector, CORS rules editor
+- [ ] Resolves: TD-001, large portion of TD-007
+
+**Depends on**: Phase 13 (`bucket_config` table)
+
+---
+
+### Phase 17 — Object Versioning [P1]
+
+Full object versioning with version IDs, delete markers, and version-specific operations.
+
+- [ ] Versioning state per bucket: `PutBucketVersioning` / `GetBucketVersioning` (Disabled / Enabled / Suspended)
+- [ ] Version IDs (UUID) on `put_object` when versioning is enabled
+- [ ] Schema migration: `objects` table gains `version_id`, `is_latest`, `is_delete_marker` columns
+- [ ] Delete markers: `DeleteObject` on versioned bucket inserts a delete marker instead of removing the object
+- [ ] Version-specific operations: `GetObject?versionId=X`, `HeadObject?versionId=X`, `DeleteObject?versionId=X`
+- [ ] `ListObjectVersions` with real version data (replace TD-003 fake implementation)
+- [ ] `arca recover` updated for versioned objects (multiple sidecars per bucket/key pair)
+- [ ] (Console) Version history panel, restore previous version, delete marker indicator
+- [ ] Resolves: TD-003
+
+**Depends on**: Phase 16 (access control interacts with versioning)
+
+---
+
+### Phase 18 — Monitoring, Metrics, and Audit [P1]
+
+Operational visibility through metrics, distributed tracing, and audit logging.
+
+- [ ] Prometheus metrics endpoint: `GET /metrics`. Counters: request count by operation/status. Histograms: request latency. Gauges: active connections, storage bytes used, object count, bucket count
+- [ ] OpenTelemetry tracing: optional OTLP exporter, distributed trace IDs in request headers
+- [ ] Audit logging: structured JSON for every S3 operation (who, what, where, when, result). Configurable output: file, stdout, syslog. Optional S3 server access log format
+- [ ] Configurable region in `config.toml`, per-bucket region stored in `bucket_config`
+- [ ] (Console) Real-time metrics dashboard, audit log viewer with filtering
+- [ ] Resolves: TD-004
+
+---
+
+### Phase 19 — Object Tagging and Lifecycle Rules [P2]
+
+Object metadata tagging and automated lifecycle management for storage hygiene.
+
+- [ ] Object tagging: `PutObjectTagging` / `GetObjectTagging` / `DeleteObjectTagging`. New `object_tags` table. Tags on `PutObject` via `x-amz-tagging` header
+- [ ] Lifecycle rules: `PutBucketLifecycleConfiguration` / `GetBucketLifecycleConfiguration` / `DeleteBucketLifecycleConfiguration`. Rules stored in `bucket_config`
+- [ ] Expiration (delete after N days), abort incomplete multipart uploads after N days, tag-based filtering
+- [ ] Background worker framework: tokio task scheduler in `main.rs` for periodic lifecycle evaluation (reused by notifications later)
+- [ ] (Console) Object tagging UI (view/edit key-value pairs), lifecycle rules editor in bucket settings
+
+**Depends on**: Phase 13 (`bucket_config` table)
+
+---
+
+### Phase 20 — Object Lock (WORM Compliance) [P2]
+
+Write-Once-Read-Many compliance for regulatory and data protection requirements.
+
+- [ ] Object Lock config: `PutObjectLockConfiguration` / `GetObjectLockConfiguration`. Per-bucket default retention mode (GOVERNANCE / COMPLIANCE) and period
+- [ ] Per-object retention: `PutObjectRetention` / `GetObjectRetention`. Mode + retain-until-date per version
+- [ ] Legal hold: `PutObjectLegalHold` / `GetObjectLegalHold`. Binary flag per object version
+- [ ] Enforcement: locked objects cannot be deleted or overwritten. GOVERNANCE mode allows bypass with permission. COMPLIANCE mode: no bypass whatsoever
+- [ ] (Console) Object lock status indicator, retention date display, legal hold toggle
+
+**Depends on**: Phase 17 (versioning — Object Lock operates on object versions)
+
+---
+
+### Phase 21 — S3 API Completeness [P2]
+
+Fill remaining gaps in the S3 API surface to maximize compatibility.
+
+- [ ] `ListParts`: `GET /{bucket}/{key}?uploadId=X` (MetadataStore method already exists)
+- [ ] `GetObjectAttributes`: `GET /{bucket}/{key}?attributes`
+- [ ] Checksum algorithms: `x-amz-checksum-sha256`, `x-amz-checksum-crc32`, `x-amz-checksum-crc64nvme`
+- [ ] Storage classes: `storage_class` field on `ObjectRecord`, accept `x-amz-storage-class` header on PutObject
+- [ ] Chunked transfer with SigV4 payload signing (`STREAMING-AWS4-HMAC-SHA256-PAYLOAD`)
+- [ ] Resolves: TD-002, TD-008
+
+---
+
+### Phase 22 — Performance and Hardening [P2]
+
+Production-grade limits, caching, and graceful operations.
+
+- [ ] Request size limits: configurable max body size (default 5 GB for PutObject)
+- [ ] Rate limiting: per-credential and per-IP via Tower middleware
+- [ ] In-memory LRU cache for metadata lookups (bucket existence, HEAD). Invalidation on writes
+- [ ] Graceful rolling upgrades: drain connections, health endpoint reports "draining", configurable drain timeout
+- [ ] Performance benchmarking suite: automated benchmarks (concurrent uploads, large files, metadata ops/sec)
+- [ ] Security hardening: request validation, header size limits
+
+---
+
+### Phase 23 — PostgreSQL Backend [P2]
+
+Alternative metadata backend for deployments requiring a shared database.
+
+- [ ] `PgMetadataStore` implementing the existing `MetadataStore` trait (`sqlx` or `tokio-postgres`)
+- [ ] `PgCredentialStore` implementation
+- [ ] Config switch: `[storage.metadata] type = "sqlite" | "postgres"` with connection string
+- [ ] Data migration tool: `arca migrate-db --from sqlite --to postgres`
+- [ ] (Console) Server info panel shows database backend type
+
+---
+
+### Phase 24 — Notifications and Event System [P3]
+
+S3-compatible bucket notifications for event-driven architectures.
+
+- [ ] Bucket notifications: `PutBucketNotificationConfiguration` / `GetBucketNotificationConfiguration`
+- [ ] Events: `s3:ObjectCreated:*`, `s3:ObjectRemoved:*`
+- [ ] Webhook destination (HTTP POST). Optional: AMQP, Redis Streams, NATS
+- [ ] S3-compatible JSON event format (`Records[].s3.bucket/object/eventName`)
+- [ ] (Console) Notification rules editor, event log viewer
+
+**Benefits from**: Phase 19 (background worker framework)
+
+---
+
+### Phase 25 — Replication [P3]
+
+Asynchronous cross-instance replication for disaster recovery and geographic distribution.
+
+- [ ] Change journal in metadata DB, replication worker forwards objects to destination Arca instance
+- [ ] `PutBucketReplication` / `GetBucketReplication` / `DeleteBucketReplication` config
+- [ ] `x-amz-replication-status` headers (PENDING / COMPLETED / FAILED / REPLICA)
+- [ ] Conflict resolution: last-writer-wins by timestamp
+
+**Depends on**: Phase 17 (versioning), Phase 23 (PostgreSQL for production)
+
+---
+
+### Phase 26 — Multi-Node and Erasure Coding [P3]
+
+Distributed storage for horizontal scalability and data durability beyond single-node.
+
+- [ ] Erasure coding: data + parity shards across storage volumes (e.g., EC:4+2)
+- [ ] Multi-node clustering: service discovery, consistent hashing, distributed metadata
+- [ ] S3 Batch Operations API
+- [ ] `SelectObjectContent` (SQL queries on CSV/JSON)
+
+**Depends on**: All prior phases. Major architecture evolution.
+
+---
+
+### Console Enhancements
+
+Independent of server phases — can ship at any time.
+
+- [ ] Object preview: images, text, JSON, PDF (P2)
+- [ ] Multipart upload with progress bar (P2)
+- [ ] Drag-and-drop upload (P2)
+- [ ] Search and filter within buckets (P2)
+- [ ] Dark/light theme toggle (P3)
+- [ ] Responsive mobile layout (P3)
+
+---
+
 ## MVP Implementation Plan
 
 Each phase built on the previous one and ended with verification: unit tests, boto3 integration tests, and manual `aws s3` CLI checks — all inside Docker containers.
