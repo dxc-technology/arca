@@ -13,4 +13,5 @@ pub struct AppState {
     pub domain: Option<String>,
     pub started_at: std::time::Instant,
     pub version: String,
+    pub tls_enabled: bool,
 }

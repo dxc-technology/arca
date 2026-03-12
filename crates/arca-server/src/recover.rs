@@ -275,6 +275,7 @@ mod tests {
                 bind: "127.0.0.1".to_string(),
                 port: 9000,
                 domain: None,
+                tls: None,
             },
             storage: StorageConfig {
                 data_dir: dir.to_str().unwrap().to_string(),

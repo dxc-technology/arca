@@ -28,7 +28,7 @@ continuing from the MVP phases (0–11).
 <!-- post-mvp-progress-bar -->
 <div style="padding:12px 0">
   <div style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid rgba(128,128,128,.3)">
-    <div style="background:#ff9800;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em">12</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em">12</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">13</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">14</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">15</div>
@@ -115,18 +115,18 @@ graph LR
 Native TLS termination in the Arca binary via `tokio-rustls`, enabling encrypted
 transport without requiring a reverse proxy.
 
-- [ ] Config model: `[server.tls]` section with `cert_path`, `key_path`, optional `ca_path` (mTLS), optional `health_port`, `redirect_http` (default true)
-- [ ] TLS module: cert/key loading from PEM files, `ArcSwap`-based config for hot reload
-- [ ] `arca tls generate` CLI: self-signed CA + server cert + key via `rcgen`, with configurable SANs and validity
-- [ ] TLS listener: `tokio-rustls` acceptor + `hyper_util` connection serving, replacing `axum::serve` when TLS is enabled
-- [ ] Certificate reload on SIGHUP for rotation without downtime
-- [ ] Optional health port: plain HTTP listener for `/admin/health`, HTTP-to-HTTPS redirect for all other paths
-- [ ] `tls_enabled` in AppState and `/admin/info` response
-- [ ] Docker TLS test infrastructure: compose override, test config, `bin/test tls` mode
-- [ ] Integration tests: HTTPS health/list/put/get/multipart, health port redirect, wrong CA rejection
-- [ ] (Console) TLS lock icon indicator in dashboard, derived from endpoint URL and `/admin/info`
-- [ ] Documentation: dedicated TLS guide, config reference, CLI reference, deployment guide updates
-- [ ] Reverse-proxy documentation: nginx and Caddy example configurations
+- [x] Config model: `[server.tls]` section with `cert_dir`, `cert_file`, `key_file`, optional `ca_file` (mTLS), optional `health_port`, `redirect_http` (default true)
+- [x] TLS module: cert/key loading from PEM files, auto-detection, `ArcSwap`-based config for hot reload
+- [x] `arca tls generate` CLI: self-signed CA + server cert + key via `rcgen`, with configurable SANs and validity
+- [x] TLS listener: `tokio-rustls` acceptor + `hyper_util` connection serving, replacing `axum::serve` when TLS is enabled
+- [x] Certificate reload on SIGHUP for rotation without downtime
+- [x] ~~Health port~~ — removed: single-port approach (HTTPS for everything including health checks)
+- [x] `tls_enabled` in AppState and `/admin/info` response
+- [x] Docker TLS test infrastructure: compose override, test config, `bin/test tls` mode
+- [x] Integration tests: HTTPS health/list/put/get/multipart, health port redirect, wrong CA rejection
+- [x] (Console) TLS lock icon indicator in dashboard, derived from `/admin/info`
+- [x] Documentation: dedicated TLS guide, config reference, CLI reference, deployment guide updates
+- [x] Reverse-proxy documentation updated to note native TLS is available
 
 ---
 

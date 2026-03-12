@@ -5,10 +5,13 @@ mod config;
 mod credential;
 mod fsck;
 mod recover;
+mod tls;
+mod tls_generate;
 
 use std::sync::Arc;
 
 use anyhow::Result;
+use axum::Router;
 use clap::Parser;
 use tokio::net::TcpListener;
 use tower::Layer;
@@ -16,7 +19,11 @@ use tracing_subscriber::EnvFilter;
 
 use arca_core::store::CredentialStore;
 use arca_proto::AppState;
-use cli::{Cli, Command, CredentialAction, LogFormat};
+use arca_proto::middleware::normalize::NormalizeService;
+use cli::{Cli, Command, CredentialAction, LogFormat, TlsAction};
+
+/// The normalized app type used by both HTTP and HTTPS code paths.
+pub type NormalizedApp = NormalizeService<Router>;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -43,6 +50,8 @@ async fn main() -> Result<()> {
             )
             .await?;
 
+            let tls_enabled = config.server.tls.is_some();
+
             let state = AppState {
                 metadata: store.clone() as Arc<dyn arca_core::store::MetadataStore>,
                 blob: Arc::new(blob_store),
@@ -50,6 +59,7 @@ async fn main() -> Result<()> {
                 domain: config.server.domain.clone(),
                 started_at: std::time::Instant::now(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
+                tls_enabled,
             };
 
             let addr = format!("{}:{}", config.server.bind, config.server.port);
@@ -61,16 +71,51 @@ async fn main() -> Result<()> {
             // *before* Axum routing — strips trailing slashes and saves the
             // original URI in extensions for auth to verify.
             let app = arca_proto::middleware::normalize::NormalizeLayer.layer(router);
-            let service = {
-                use axum::ServiceExt as _;
-                app.into_make_service()
-            };
 
-            let listener = TcpListener::bind(&addr).await?;
-            tracing::info!("Arca is ready");
-            axum::serve(listener, service)
-                .with_graceful_shutdown(shutdown_signal())
-                .await?;
+            match config.server.tls {
+                None => {
+                    // Plain HTTP
+                    let service = {
+                        use axum::ServiceExt as _;
+                        app.into_make_service()
+                    };
+
+                    let listener = TcpListener::bind(&addr).await?;
+                    tracing::info!("Arca is ready (HTTP on {addr})");
+                    axum::serve(listener, service)
+                        .with_graceful_shutdown(shutdown_signal())
+                        .await?;
+                }
+                Some(tls_config) => {
+                    let paths = tls_config.resolve_paths()?;
+                    let server_config = tls::load_rustls_config(&paths)?;
+                    let reloader = Arc::new(tls::TlsReloader::new(server_config, tls_config.clone()));
+
+                    // SIGHUP handler for certificate reload.
+                    #[cfg(unix)]
+                    {
+                        let reloader_handle = reloader.clone();
+                        tokio::spawn(async move {
+                            let mut sighup = tokio::signal::unix::signal(
+                                tokio::signal::unix::SignalKind::hangup(),
+                            )
+                            .expect("install SIGHUP handler");
+                            loop {
+                                sighup.recv().await;
+                                match reloader_handle.reload() {
+                                    Ok(()) => tracing::info!("TLS certificates reloaded"),
+                                    Err(e) => tracing::error!(error = %e, "TLS reload failed (keeping old config)"),
+                                }
+                            }
+                        });
+                    }
+
+                    let listener = TcpListener::bind(&addr).await?;
+                    tracing::info!("Arca is ready (HTTPS on {addr})");
+                    tls::serve_tls(listener, reloader, app, shutdown_signal()).await?;
+                }
+            }
+
             tracing::info!("Arca stopped");
         }
 
@@ -150,6 +195,18 @@ async fn main() -> Result<()> {
             let config = config::load_config(&config_path)?;
             let exit_code = fsck::run_fsck(&config, verify_checksums).await?;
             std::process::exit(exit_code);
+        }
+
+        Command::Tls { action } => {
+            match action {
+                TlsAction::Generate {
+                    output_dir,
+                    sans,
+                    days,
+                } => {
+                    tls_generate::generate(&output_dir, &sans, days)?;
+                }
+            }
         }
     }
 

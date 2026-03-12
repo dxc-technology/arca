@@ -58,6 +58,12 @@ pub enum Command {
         #[arg(long)]
         verify_checksums: bool,
     },
+
+    /// Manage TLS certificates
+    Tls {
+        #[command(subcommand)]
+        action: TlsAction,
+    },
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -66,6 +72,22 @@ pub enum LogFormat {
     Text,
     /// Structured JSON output for log aggregation
     Json,
+}
+
+#[derive(Subcommand)]
+pub enum TlsAction {
+    /// Generate a self-signed CA and server certificate
+    Generate {
+        /// Output directory for certificate files
+        #[arg(long, default_value = "/etc/arca/certs")]
+        output_dir: PathBuf,
+        /// Subject Alternative Names (comma-separated DNS names and IPs)
+        #[arg(long, default_value = "localhost,127.0.0.1,::1")]
+        sans: String,
+        /// Certificate validity in days
+        #[arg(long, default_value = "365")]
+        days: u32,
+    },
 }
 
 #[derive(Subcommand)]

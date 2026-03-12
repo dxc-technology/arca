@@ -26,6 +26,17 @@ The default config file is `config/default.toml` in the repository. At runtime, 
 | `storage.data_dir` | `/data` | Root directory for SQLite database (`arca.db`) and blob storage (`blobs/` subdirectory) |
 | `storage.blob_prefix_depth` | `2` | Number of 2-char prefix directory levels for blob file sharding (1–4). Higher values spread files across more directories, reducing files-per-directory at the cost of deeper paths. See [blob storage](#blob-storage) below. |
 
+### TLS
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `server.tls.cert_dir` | *(none)* | Base directory for certificates. Enables auto-detection or relative path resolution. |
+| `server.tls.cert_file` | *(none)* | Certificate chain PEM file (relative to `cert_dir`, or absolute). |
+| `server.tls.key_file` | *(none)* | Private key PEM file (relative to `cert_dir`, or absolute). |
+| `server.tls.ca_file` | *(none)* | Client CA certificate for mTLS (relative to `cert_dir`, or absolute). |
+
+When `[server.tls]` is present, the server listens on HTTPS. See the [TLS guide](tls.md) for details on the three configuration scenarios (auto-detect, relative paths, absolute paths).
+
 ### Example
 
 ```toml
@@ -33,6 +44,11 @@ The default config file is `config/default.toml` in the repository. At runtime, 
 bind = "0.0.0.0"
 port = 9000
 # domain = "s3.example.com"  # optional, enables virtual-hosted-style requests
+
+# [server.tls]               # optional, enables HTTPS
+# cert_dir = "/etc/arca/certs"
+# cert_file = "arca-server.crt"
+# key_file = "arca-server.key"
 
 [storage]
 data_dir = "/data"

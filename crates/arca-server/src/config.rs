@@ -1,8 +1,8 @@
 //! Configuration loading and types.
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use serde::Deserialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Top-level configuration.
 #[derive(Debug, Deserialize)]
@@ -19,6 +19,109 @@ pub struct ServerConfig {
     /// Optional domain for virtual-hosted-style requests (e.g. "s3.example.com").
     /// When set, requests to `bucket.s3.example.com` are rewritten to `/{bucket}/...`.
     pub domain: Option<String>,
+    /// Optional TLS configuration. When set, the server serves HTTPS.
+    pub tls: Option<TlsConfig>,
+}
+
+/// TLS configuration for native HTTPS support.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TlsConfig {
+    /// Base directory for certificate files. Enables auto-detection or relative paths.
+    pub cert_dir: Option<String>,
+    /// Certificate chain PEM file (relative to cert_dir, or absolute).
+    pub cert_file: Option<String>,
+    /// Private key PEM file (relative to cert_dir, or absolute).
+    pub key_file: Option<String>,
+    /// Client CA PEM for mTLS (relative to cert_dir, or absolute). Always explicit.
+    pub ca_file: Option<String>,
+}
+
+/// Resolved absolute paths for TLS certificate and key files.
+pub struct ResolvedPaths {
+    pub cert_path: PathBuf,
+    pub key_path: PathBuf,
+    pub ca_path: Option<PathBuf>,
+}
+
+impl TlsConfig {
+    /// Validate the TLS configuration.
+    ///
+    /// Valid scenarios:
+    /// 1. `cert_dir` only — auto-detect cert and key by scanning PEM headers
+    /// 2. `cert_dir` + `cert_file` + `key_file` — relative paths
+    /// 3. `cert_file` + `key_file` (both absolute) — files in different dirs
+    ///
+    /// Invalid: no `cert_dir` and missing either `cert_file` or `key_file`.
+    pub fn validate(&self) -> Result<()> {
+        match (&self.cert_dir, &self.cert_file, &self.key_file) {
+            // Scenario 1: cert_dir only — auto-detect
+            (Some(_), None, None) => Ok(()),
+            // Scenario 2: cert_dir + both files
+            (Some(_), Some(_), Some(_)) => Ok(()),
+            // Scenario 3: absolute paths, no cert_dir
+            (None, Some(_), Some(_)) => Ok(()),
+            // Invalid: cert_dir + only one of cert_file/key_file
+            (Some(_), Some(_), None) | (Some(_), None, Some(_)) => {
+                bail!("[server.tls] when cert_dir is set with explicit files, both cert_file and key_file are required")
+            }
+            // Invalid: no cert_dir and missing one or both files
+            (None, _, _) => {
+                bail!("[server.tls] requires either cert_dir alone, cert_dir + cert_file + key_file, or cert_file + key_file")
+            }
+        }
+    }
+
+    /// Resolve certificate and key file paths.
+    ///
+    /// For scenario 1 (cert_dir only), delegates to auto-detection.
+    /// For scenarios 2 and 3, resolves relative paths against cert_dir.
+    pub fn resolve_paths(&self) -> Result<ResolvedPaths> {
+        self.validate()?;
+
+        let (cert_path, key_path) = match (&self.cert_dir, &self.cert_file, &self.key_file) {
+            // Scenario 1: auto-detect
+            (Some(dir), None, None) => {
+                crate::tls::detect_pem_files(Path::new(dir))?
+            }
+            // Scenario 2: cert_dir + relative filenames
+            (Some(dir), Some(cert), Some(key)) => {
+                let base = Path::new(dir);
+                let cert_path = if Path::new(cert).is_absolute() {
+                    PathBuf::from(cert)
+                } else {
+                    base.join(cert)
+                };
+                let key_path = if Path::new(key).is_absolute() {
+                    PathBuf::from(key)
+                } else {
+                    base.join(key)
+                };
+                (cert_path, key_path)
+            }
+            // Scenario 3: absolute paths
+            (None, Some(cert), Some(key)) => {
+                (PathBuf::from(cert), PathBuf::from(key))
+            }
+            _ => unreachable!("validate() should catch this"),
+        };
+
+        let ca_path = self.ca_file.as_ref().map(|ca| {
+            let p = Path::new(ca);
+            if p.is_absolute() {
+                p.to_path_buf()
+            } else if let Some(dir) = &self.cert_dir {
+                Path::new(dir).join(ca)
+            } else {
+                p.to_path_buf()
+            }
+        });
+
+        Ok(ResolvedPaths {
+            cert_path,
+            key_path,
+            ca_path,
+        })
+    }
 }
 
 /// Storage configuration.
@@ -52,6 +155,9 @@ pub fn load_config(path: &Path) -> Result<Config> {
         std::fs::read_to_string(path).with_context(|| format!("reading config: {}", path.display()))?;
     let config: Config =
         toml::from_str(&content).with_context(|| format!("parsing config: {}", path.display()))?;
+    if let Some(tls) = &config.server.tls {
+        tls.validate()?;
+    }
     Ok(config)
 }
 
@@ -121,5 +227,112 @@ data_dir = "/data"
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(config.storage.blob_prefix_depth, 2);
+    }
+
+    #[test]
+    fn parse_config_without_tls() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.server.tls.is_none());
+    }
+
+    #[test]
+    fn parse_config_tls_cert_dir_only() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[server.tls]
+cert_dir = "/etc/arca/certs"
+
+[storage]
+data_dir = "/data"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let tls = config.server.tls.unwrap();
+        assert_eq!(tls.cert_dir.as_deref(), Some("/etc/arca/certs"));
+        assert!(tls.cert_file.is_none());
+        assert!(tls.key_file.is_none());
+    }
+
+    #[test]
+    fn parse_config_tls_dir_and_files() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[server.tls]
+cert_dir = "/etc/arca/certs"
+cert_file = "server.crt"
+key_file = "server.key"
+
+[storage]
+data_dir = "/data"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let tls = config.server.tls.unwrap();
+        assert_eq!(tls.cert_dir.as_deref(), Some("/etc/arca/certs"));
+        assert_eq!(tls.cert_file.as_deref(), Some("server.crt"));
+        assert_eq!(tls.key_file.as_deref(), Some("server.key"));
+    }
+
+    #[test]
+    fn parse_config_tls_absolute_paths() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[server.tls]
+cert_file = "/etc/ssl/certs/arca.pem"
+key_file = "/etc/ssl/private/arca.key"
+
+[storage]
+data_dir = "/data"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let tls = config.server.tls.unwrap();
+        assert!(tls.cert_dir.is_none());
+        assert_eq!(tls.cert_file.as_deref(), Some("/etc/ssl/certs/arca.pem"));
+        assert_eq!(tls.key_file.as_deref(), Some("/etc/ssl/private/arca.key"));
+    }
+
+    #[test]
+    fn validate_no_cert_dir_no_files_fails() {
+        let tls = TlsConfig {
+            cert_dir: None,
+            cert_file: None,
+            key_file: None,
+            ca_file: None,
+        };
+        assert!(tls.validate().is_err());
+    }
+
+    #[test]
+    fn validate_cert_dir_plus_only_one_file_fails() {
+        let tls = TlsConfig {
+            cert_dir: Some("/certs".into()),
+            cert_file: Some("server.crt".into()),
+            key_file: None,
+            ca_file: None,
+        };
+        assert!(tls.validate().is_err());
+
+        let tls = TlsConfig {
+            cert_dir: Some("/certs".into()),
+            cert_file: None,
+            key_file: Some("server.key".into()),
+            ca_file: None,
+        };
+        assert!(tls.validate().is_err());
     }
 }

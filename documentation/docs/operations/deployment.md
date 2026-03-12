@@ -77,9 +77,34 @@ docker compose exec arca arca credential add --description "backup service"
 
 Reserve admin credentials for the web console and administrative tasks.
 
+## Native TLS
+
+Arca supports native HTTPS without a reverse proxy. See the [TLS guide](../guide/tls.md) for full details.
+
+### Quick Setup
+
+```bash
+# Generate self-signed certificates
+docker compose exec arca arca tls generate --output-dir /etc/arca/certs --sans "arca,localhost,127.0.0.1,::1"
+```
+
+Add to your config:
+
+```toml
+[server.tls]
+cert_dir = "/etc/arca/certs"
+cert_file = "arca-server.crt"
+key_file = "arca-server.key"
+```
+
+For production, use CA-issued certificates. Certificate rotation is supported via `kill -HUP` without downtime.
+
 ## Reverse Proxy
 
-For TLS termination, place a reverse proxy in front of Arca.
+If you prefer external TLS termination, or need features like rate limiting and caching, place a reverse proxy in front of Arca.
+
+!!! note
+    With [native TLS](#native-tls) available, a reverse proxy is optional. Use it when you need additional features beyond what Arca provides natively.
 
 ### nginx Example
 

@@ -487,6 +487,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../tls/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TLS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../console/" class="md-nav__link">
         
   
@@ -632,6 +660,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arca-tls-generate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca tls generate
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1102,6 +1141,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#arca-tls-generate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca tls generate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#arca-recover" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1246,9 +1296,83 @@
 <p class="admonition-title">Lockout Prevention</p>
 <p>Arca prevents deleting the last admin credential or the last active credential to avoid lockout.</p>
 </div>
+<h2 id="arca-tls-generate"><code>arca tls generate</code><a class="headerlink" href="#arca-tls-generate" title="Permanent link">&para;</a></h2>
+<p>Generate a self-signed CA and server certificate for development and testing.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>arca<span class="w"> </span>tls<span class="w"> </span>generate<span class="w"> </span><span class="o">[</span>--output-dir<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--sans<span class="w"> </span>&lt;NAMES&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--days<span class="w"> </span>&lt;N&gt;<span class="o">]</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--output-dir</code></td>
+<td><code>/etc/arca/certs</code></td>
+<td>Directory to write certificate files</td>
+</tr>
+<tr>
+<td><code>--sans</code></td>
+<td><code>localhost,127.0.0.1,::1</code></td>
+<td>Subject Alternative Names (comma-separated DNS names and IP addresses)</td>
+</tr>
+<tr>
+<td><code>--days</code></td>
+<td><code>365</code></td>
+<td>Certificate validity period in days</td>
+</tr>
+</tbody>
+</table>
+<p>Generates four files in the output directory:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>arca-ca.crt</code></td>
+<td>CA certificate</td>
+</tr>
+<tr>
+<td><code>arca-ca.key</code></td>
+<td>CA private key</td>
+</tr>
+<tr>
+<td><code>arca-server.crt</code></td>
+<td>Server certificate (signed by the CA)</td>
+</tr>
+<tr>
+<td><code>arca-server.key</code></td>
+<td>Server private key</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Generate certs for local development</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>arca<span class="w"> </span>tls<span class="w"> </span>generate
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Generate certs with custom SANs and validity</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>arca<span class="w"> </span>tls<span class="w"> </span>generate<span class="w"> </span>--output-dir<span class="w"> </span>/etc/arca/certs<span class="w"> </span>--sans<span class="w"> </span><span class="s2">&quot;myhost.example.com,localhost,127.0.0.1,::1&quot;</span><span class="w"> </span>--days<span class="w"> </span><span class="m">730</span>
+</code></pre></div>
+<p>After generating, add the TLS section to your config file:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">[server.tls]</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">cert_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs&quot;</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;arca-server.crt&quot;</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">key_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;arca-server.key&quot;</span>
+</code></pre></div>
+<p>Distribute <code>arca-ca.crt</code> to clients that need to trust the self-signed certificate.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Self-signed certificates are suitable for development and internal testing. For production, use certificates issued by a trusted Certificate Authority.</p>
+</div>
 <h2 id="arca-recover"><code>arca recover</code><a class="headerlink" href="#arca-recover" title="Permanent link">&para;</a></h2>
 <p>Rebuild the SQLite database from <code>.meta</code> sidecar files. Use this for disaster recovery when the database is lost or corrupted. See <a href="../../operations/recovery/">Disaster Recovery</a> for a detailed guide.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>arca<span class="w"> </span>recover<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--dry-run<span class="o">]</span><span class="w"> </span><span class="o">[</span>--skip-verify<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>arca<span class="w"> </span>recover<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--dry-run<span class="o">]</span><span class="w"> </span><span class="o">[</span>--skip-verify<span class="o">]</span>
 </code></pre></div>
 <table>
 <thead>
@@ -1281,18 +1405,18 @@
 <li>Recreates all buckets and objects from sidecar data</li>
 </ol>
 <p>Multipart objects (ETag contains <code>-</code>) skip checksum verification since the composite ETag is not a simple MD5 of the assembled blob. Orphaned sidecars (no blob file), malformed JSON, and checksum mismatches are skipped with warnings.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Preview what would be recovered</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>arca<span class="w"> </span>recover<span class="w"> </span>--dry-run
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Full recovery (with checksum verification)</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>arca<span class="w"> </span>recover
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="c1"># Fast recovery (skip checksum verification)</span>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>arca<span class="w"> </span>recover<span class="w"> </span>--skip-verify
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Preview what would be recovered</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>arca<span class="w"> </span>recover<span class="w"> </span>--dry-run
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c1"># Full recovery (with checksum verification)</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>arca<span class="w"> </span>recover
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="c1"># Fast recovery (skip checksum verification)</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>arca<span class="w"> </span>recover<span class="w"> </span>--skip-verify
 </code></pre></div>
 <h2 id="arca-fsck"><code>arca fsck</code><a class="headerlink" href="#arca-fsck" title="Permanent link">&para;</a></h2>
 <p>Check database and filesystem consistency. See <a href="../../operations/recovery/">Disaster Recovery</a> for a detailed guide.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>arca<span class="w"> </span>fsck<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--verify-checksums<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>arca<span class="w"> </span>fsck<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--verify-checksums<span class="o">]</span>
 </code></pre></div>
 <table>
 <thead>
@@ -1366,11 +1490,11 @@
 </tr>
 </tbody>
 </table>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Quick consistency check</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>arca<span class="w"> </span>fsck
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># Full check including blob checksums (slow for large datasets)</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>arca<span class="w"> </span>fsck<span class="w"> </span>--verify-checksums
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># Quick consistency check</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>arca<span class="w"> </span>fsck
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="c1"># Full check including blob checksums (slow for large datasets)</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>arca<span class="w"> </span>fsck<span class="w"> </span>--verify-checksums
 </code></pre></div>
 
 

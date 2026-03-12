@@ -52,9 +52,16 @@ GET /admin/info
 ```json
 {
     "version": "0.1.0",
-    "uptime_seconds": 3600
+    "uptime_seconds": 3600,
+    "tls_enabled": true
 }
 ```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `version` | string | Arca server version |
+| `uptime_seconds` | integer | Seconds since server start |
+| `tls_enabled` | boolean | Whether TLS is enabled on the main listener |
 
 ---
 

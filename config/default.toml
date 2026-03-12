@@ -2,5 +2,11 @@
 bind = "0.0.0.0"
 port = 9000
 
+# [server.tls]
+# cert_dir = "/etc/arca/certs"       # auto-detect cert and key in this directory
+# cert_file = "arca-server.crt"      # relative to cert_dir, or absolute path
+# key_file = "arca-server.key"       # relative to cert_dir, or absolute path
+# ca_file = "arca-ca.crt"            # client CA for mTLS (optional)
+
 [storage]
 data_dir = "/data"

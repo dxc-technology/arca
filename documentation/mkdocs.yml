@@ -43,6 +43,7 @@ nav:
     - Quick Start: getting-started/quick-start.md
   - User Guide:
     - Configuration: guide/configuration.md
+    - TLS: guide/tls.md
     - Web Console: guide/console.md
     - CLI Reference: guide/cli.md
   - Reference:

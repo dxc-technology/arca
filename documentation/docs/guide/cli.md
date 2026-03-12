@@ -73,6 +73,51 @@ arca credential remove <ACCESS_KEY_ID> [--config-path <PATH>]
 !!! warning "Lockout Prevention"
     Arca prevents deleting the last admin credential or the last active credential to avoid lockout.
 
+## `arca tls generate`
+
+Generate a self-signed CA and server certificate for development and testing.
+
+```bash
+arca tls generate [--output-dir <PATH>] [--sans <NAMES>] [--days <N>]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--output-dir` | `/etc/arca/certs` | Directory to write certificate files |
+| `--sans` | `localhost,127.0.0.1,::1` | Subject Alternative Names (comma-separated DNS names and IP addresses) |
+| `--days` | `365` | Certificate validity period in days |
+
+Generates four files in the output directory:
+
+| File | Description |
+|------|-------------|
+| `arca-ca.crt` | CA certificate |
+| `arca-ca.key` | CA private key |
+| `arca-server.crt` | Server certificate (signed by the CA) |
+| `arca-server.key` | Server private key |
+
+```bash
+# Generate certs for local development
+arca tls generate
+
+# Generate certs with custom SANs and validity
+arca tls generate --output-dir /etc/arca/certs --sans "myhost.example.com,localhost,127.0.0.1,::1" --days 730
+```
+
+After generating, add the TLS section to your config file:
+
+```toml
+[server.tls]
+cert_dir = "/etc/arca/certs"
+cert_file = "arca-server.crt"
+key_file = "arca-server.key"
+```
+
+Distribute `arca-ca.crt` to clients that need to trust the self-signed certificate.
+
+!!! warning
+    Self-signed certificates are suitable for development and internal testing. For production, use certificates issued by a trusted Certificate Authority.
+
 ## `arca recover`
 
 Rebuild the SQLite database from `.meta` sidecar files. Use this for disaster recovery when the database is lost or corrupted. See [Disaster Recovery](../operations/recovery.md) for a detailed guide.

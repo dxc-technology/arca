@@ -70,6 +70,15 @@ uuid = { version = "1", features = ["v4"] }
 rand = "0.8"
 tempfile = "3"
 
+# TLS
+rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "std", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "logging", "tls12"] }
+rustls-pemfile = "2"
+arc-swap = "1"
+hyper-util = { version = "0.1", features = ["tokio", "server-auto", "http1", "http2", "service"] }
+rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
+time = "0.3"
+
 # Internal crates
 arca-core = { path = "crates/arca-core" }
 arca-auth = { path = "crates/arca-auth" }

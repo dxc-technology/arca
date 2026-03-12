@@ -66,6 +66,7 @@ struct HealthResponse {
 struct InfoResponse {
     version: String,
     uptime_seconds: u64,
+    tls_enabled: bool,
 }
 
 #[derive(Serialize)]
@@ -99,6 +100,7 @@ pub async fn info(State(state): State<AppState>) -> impl IntoResponse {
     Json(InfoResponse {
         version: state.version.clone(),
         uptime_seconds: state.started_at.elapsed().as_secs(),
+        tls_enabled: state.tls_enabled,
     })
 }
 

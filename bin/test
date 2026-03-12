@@ -12,6 +12,7 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 COMPOSE="docker compose -f docker/docker-compose.yml"
+COMPOSE_TLS="docker compose -f docker/docker-compose.yml -f docker/docker-compose.tls.yml"
 
 run_unit() {
     echo "==> Running unit tests..."
@@ -21,6 +22,31 @@ run_unit() {
 run_integration() {
     echo "==> Running integration tests..."
     $COMPOSE run --rm test "$@"
+}
+
+run_tls() {
+    echo "==> Running TLS integration tests..."
+    # Step 1: Build images
+    $COMPOSE_TLS --profile tls build
+    # Step 2: Generate TLS certs (one-shot, separate profile)
+    $COMPOSE_TLS --profile tls-init run --rm tls-init
+    # Step 3: Start server with TLS config
+    $COMPOSE_TLS --profile tls up -d
+    # Step 4: Wait for server to be ready
+    echo "Waiting for Arca TLS server..."
+    for i in $(seq 1 30); do
+        if $COMPOSE_TLS --profile tls exec -T arca /usr/local/bin/arca --help >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
+    sleep 2  # brief extra settle time
+    # Step 5: Run TLS-specific tests
+    $COMPOSE_TLS --profile tls run --rm test integration/test_tls.py "$@"
+    local rc=$?
+    # Step 6: Tear down
+    $COMPOSE_TLS --profile tls --profile tls-init down -v
+    return $rc
 }
 
 run_s3_compat() {
@@ -37,6 +63,10 @@ case "${1:-all}" in
         shift
         run_integration "$@"
         ;;
+    tls)
+        shift
+        run_tls "$@"
+        ;;
     s3-compat)
         shift
         run_s3_compat "$@"
@@ -47,7 +77,7 @@ case "${1:-all}" in
         run_integration
         ;;
     *)
-        echo "Usage: bin/test [unit|integration|s3-compat|all] [extra args...]" >&2
+        echo "Usage: bin/test [unit|integration|tls|s3-compat|all] [extra args...]" >&2
         exit 1
         ;;
 esac

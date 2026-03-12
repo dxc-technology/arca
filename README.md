@@ -29,6 +29,7 @@ The MVP is complete. All 12 implementation phases (0–11) have been delivered. 
 - **Integrity checking** — `arca fsck` detects orphaned blobs, missing files, sidecar mismatches, and stale temp files
 - **Modular storage** — metadata backend behind traits (SQLite now, Postgres later)
 - **Admin API** — JSON endpoints for health, stats, and credential management under `/admin/*`
+- **Native TLS** — HTTPS without a reverse proxy, with auto-detection, SIGHUP reload, and optional health port
 - **Web console** — browser-based UI for managing buckets, objects, and credentials
 - **[S3 compatibility tested](https://dxc-technology.github.io/arca/s3-compatibility/)** — 270/829 Ceph s3-tests passing, 0 unexpected failures
 
@@ -105,7 +106,7 @@ arca-server → arca-proto, arca-storage, arca-auth → arca-core
 | `arca-auth` | AWS SigV4 verification. Zero I/O, independently testable against AWS test vectors. |
 | `arca-proto` | S3 HTTP protocol adapter (Axum 0.8 + Tower). Handlers, XML ser/de, middleware. |
 | `arca-storage` | Storage implementations: filesystem blobs (UUID + sidecar), SQLite metadata (WAL mode). |
-| `arca-server` | Binary. TOML config, CLI (`serve`, `recover`, `fsck`, `credential`), dependency wiring. |
+| `arca-server` | Binary. TOML config, CLI (`serve`, `recover`, `fsck`, `credential`, `tls`), dependency wiring. |
 
 ### Key Design Decisions
 
@@ -123,6 +124,8 @@ arca credential add                 # create new credential
 arca credential add --admin         # create admin credential
 arca credential list                # list all credentials
 arca credential remove <key_id>     # remove a credential
+arca tls generate                   # generate self-signed CA + server cert
+arca tls generate --sans "host,ip"  # custom SANs
 arca recover                        # rebuild DB from sidecar files
 arca recover --dry-run              # preview recovery without writing
 arca fsck                           # check filesystem/DB consistency
@@ -141,6 +144,7 @@ bin/arca logs -f         # follow server logs
 bin/test                 # run all tests (unit + integration)
 bin/test unit            # unit tests only
 bin/test integration     # integration tests only
+bin/test tls             # TLS integration tests
 bin/s3-tests             # run Ceph s3-tests compatibility suite
 bin/docs-serve           # serve documentation locally (http://localhost:8000)
 ```
@@ -149,11 +153,12 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 
 | Suite | Tests | Details |
 |-------|------:|---------|
-| Unit tests (Rust) | 172 | arca-auth: 25, arca-storage: 56, arca-core: 17, arca-proto: 19, arca-server: 55 |
+| Unit tests (Rust) | 191 | arca-auth: 25, arca-storage: 56, arca-core: 17, arca-proto: 38, arca-server: 55 |
 | Integration — boto3 | 238 | buckets, objects, list, multipart, copy, folders, auth, admin, conditional ops |
+| Integration — boto3 (TLS) | 7 | HTTPS health/info/put/get/multipart, minio client, wrong CA rejection |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 829 | 270 pass, 468 fail, 91 skip — 0 unexpected failures |
-| **Total** | **1,338** | |
+| **Total** | **1,364** | |
 
 ## License
 
