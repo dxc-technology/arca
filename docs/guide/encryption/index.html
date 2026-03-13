@@ -1483,8 +1483,9 @@
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">master_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;K+GgqdCNLvpsInhk8NWVJtXbfXt78A1zUc7QO343SJA=&quot;</span>
 </code></pre></div>
 <h3 id="3-start-the-server">3. Start the server<a class="headerlink" href="#3-start-the-server" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>-c<span class="w"> </span>path/to/your-config.toml
 </code></pre></div>
+<p>The <code>-c</code> (<code>--config</code>) flag mounts the specified file as the server config inside the container. Without it, the server uses the default <code>config/default.toml</code>.</p>
 <p>Check the logs to confirm encryption is active:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>INFO arca: Server-side encryption enabled (AES-256-GCM) key_id=&quot;6602a944&quot;
 </code></pre></div>

@@ -9,6 +9,7 @@ set -euo pipefail
 #   bin/arca start -d --build     Start in background, rebuild image first
 #   bin/arca start -d --dev       Start development image (has shell)
 #   bin/arca start -d --tls       Start with TLS (requires certs in ./certs/)
+#   bin/arca start -d -c <path>   Start with a custom config file
 #   bin/arca stop                 Stop the server
 #   bin/arca status               Show container status
 #   bin/arca logs                 Show logs

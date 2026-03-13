@@ -140,7 +140,7 @@ Convenience scripts in `bin/` wrap docker compose commands:
 | Script | Description |
 |--------|-------------|
 | `bin/build` | Build the Docker image |
-| `bin/arca` | Manage the Arca server (`start`, `stop`, `status`, `logs`). Use `--tls` for HTTPS. |
+| `bin/arca` | Manage the Arca server (`start`, `stop`, `status`, `logs`). Use `--tls` for HTTPS, `-c <path>` for a custom config. |
 | `bin/console` | Manage the web console (`start`, `stop`, `status`, `logs`). Use `--tls` with HTTPS. |
 | `bin/test` | Run unit + integration tests (`unit`, `integration`, or both) |
 | `bin/screenshots` | Take automated console screenshots for documentation |

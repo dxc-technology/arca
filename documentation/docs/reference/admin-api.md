@@ -51,7 +51,7 @@ GET /admin/info
 
 ```json
 {
-    "version": "1.1.0",
+    "version": "1.2.0",
     "uptime_seconds": 3600,
     "tls_enabled": true,
     "encryption_enabled": true

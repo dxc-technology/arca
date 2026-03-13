@@ -26,8 +26,10 @@ master_key = "K+GgqdCNLvpsInhk8NWVJtXbfXt78A1zUc7QO343SJA="
 ### 3. Start the server
 
 ```bash
-bin/arca start -d --build
+bin/arca start -d --build -c path/to/your-config.toml
 ```
+
+The `-c` (`--config`) flag mounts the specified file as the server config inside the container. Without it, the server uses the default `config/default.toml`.
 
 Check the logs to confirm encryption is active:
 
