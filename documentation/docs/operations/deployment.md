@@ -50,7 +50,7 @@ services:
       - /srv/arca/data:/data
       - ./config/production.toml:/etc/arca/config.toml:ro
     environment:
-      - RUST_LOG=info
+      - ARCA_LOG=info
     restart: unless-stopped
 ```
 

@@ -15,13 +15,13 @@ JSON format outputs one JSON object per line, suitable for ingestion by log aggr
 
 ### Log Level
 
-Control verbosity with the `RUST_LOG` environment variable:
+Control verbosity with the `ARCA_LOG` environment variable:
 
 ```bash
-RUST_LOG=info     # Default — requests, startup, errors
-RUST_LOG=debug    # Detailed internal operations
-RUST_LOG=warn     # Warnings and errors only
-RUST_LOG=trace    # Maximum verbosity (very noisy)
+ARCA_LOG=info     # Default — requests, startup, errors
+ARCA_LOG=debug    # Detailed internal operations
+ARCA_LOG=warn     # Warnings and errors only
+ARCA_LOG=trace    # Maximum verbosity (very noisy)
 ```
 
 In Docker Compose:
@@ -30,19 +30,19 @@ In Docker Compose:
 services:
   arca:
     environment:
-      - RUST_LOG=info
+      - ARCA_LOG=info
 ```
 
 ### Per-Module Filtering
 
-`RUST_LOG` supports per-module filtering:
+`ARCA_LOG` supports per-module filtering:
 
 ```bash
 # Debug logging for auth, info for everything else
-RUST_LOG=info,arca_auth=debug
+ARCA_LOG=info,arca_auth=debug
 
 # Trace storage operations
-RUST_LOG=info,arca_storage=trace
+ARCA_LOG=info,arca_storage=trace
 ```
 
 ## Health Checks

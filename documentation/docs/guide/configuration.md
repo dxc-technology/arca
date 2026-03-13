@@ -130,7 +130,7 @@ On first startup, if no credentials exist, Arca auto-generates a root access key
 
 | Variable | Description |
 |----------|-------------|
-| `RUST_LOG` | Logging level filter (default: `info`). Example: `RUST_LOG=debug` |
+| `ARCA_LOG` | Logging level filter (default: `info`). Example: `ARCA_LOG=debug`. Supports per-module filtering (e.g. `ARCA_LOG=info,arca_auth=debug`). |
 | `ARCA_ROOT_ACCESS_KEY` | Override root credential access key (used when no active credentials exist). For testing/CI. |
 | `ARCA_ROOT_SECRET_KEY` | Override root credential secret key (used with `ARCA_ROOT_ACCESS_KEY`). Both must be set. |
 

@@ -253,8 +253,10 @@ async fn main() -> Result<()> {
 
 /// Initializes the tracing subscriber with the requested log format.
 fn init_tracing(format: &LogFormat) {
-    let filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = std::env::var("ARCA_LOG")
+        .ok()
+        .and_then(|v| EnvFilter::try_new(v).ok())
+        .unwrap_or_else(|| EnvFilter::new("info"));
     match format {
         LogFormat::Text => {
             tracing_subscriber::fmt()

@@ -10,7 +10,7 @@ services:
     volumes:
       - arca-data:/data
     environment:
-      - RUST_LOG=info
+      - ARCA_LOG=info
       - ARCA_ROOT_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE
       - ARCA_ROOT_SECRET_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 
