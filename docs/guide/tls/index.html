@@ -663,6 +663,18 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#console-https" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Console HTTPS
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Console HTTPS">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#console-tls-indicator" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -670,6 +682,11 @@
       
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1201,6 +1218,18 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#console-https" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Console HTTPS
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Console HTTPS">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#console-tls-indicator" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1208,6 +1237,11 @@
       
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1231,10 +1265,36 @@
 <h1 id="tls">TLS<a class="headerlink" href="#tls" title="Permanent link">&para;</a></h1>
 <p>Arca supports native TLS termination, serving HTTPS directly without a reverse proxy. TLS is configured via the <code>[server.tls]</code> section in the config file.</p>
 <h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
-<p>Generate a self-signed CA and server certificate:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>arca<span class="w"> </span>arca<span class="w"> </span>tls<span class="w"> </span>generate<span class="w"> </span>--output-dir<span class="w"> </span>/etc/arca/certs<span class="w"> </span>--sans<span class="w"> </span><span class="s2">&quot;arca,localhost,127.0.0.1,::1&quot;</span>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Real certificates</label><label for="__tabbed_1_2">Self-signed certificates</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<p>Place your certificate and key PEM files in the <code>certs/</code> directory at the repository root:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>certs/
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  fullchain.pem    # certificate chain (server + intermediates)
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  privkey.pem      # private key
 </code></pre></div>
-<p>This creates four files:</p>
+<p>Start Arca with TLS:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--tls
+</code></pre></div>
+<p>Verify:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>curl<span class="w"> </span>https://your-domain:9000/admin/health
+</code></pre></div>
+<p>To start the web console alongside TLS:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--tls
+</code></pre></div>
+<p>With <code>--tls</code>, the console does not preset an endpoint URL — enter the HTTPS URL (e.g. <code>https://your-domain:9000</code>) at the login screen.</p>
+</div>
+<div class="tabbed-block">
+<p>Generate a self-signed CA and server certificate:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Build the image first if needed</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>bin/build
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># Generate certs into ./certs/</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>certs
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>docker/docker-compose.yml<span class="w"> </span>-f<span class="w"> </span>docker/docker-compose.tls.yml<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">    </span>--profile<span class="w"> </span>tls-init<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>tls-init
+</code></pre></div>
+<p>This creates four files in <code>certs/</code>:</p>
 <table>
 <thead>
 <tr>
@@ -1261,33 +1321,37 @@
 </tr>
 </tbody>
 </table>
-<p>Add the TLS section to your config:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">[server.tls]</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">cert_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs&quot;</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;arca-server.crt&quot;</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">key_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;arca-server.key&quot;</span>
+<p>Start Arca with TLS:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--tls
 </code></pre></div>
-<p>Restart Arca. The server now listens on HTTPS:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>curl<span class="w"> </span>--cacert<span class="w"> </span>arca-ca.crt<span class="w"> </span>https://localhost:9000/admin/health
+<p>Verify (passing the CA cert for trust):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>curl<span class="w"> </span>--cacert<span class="w"> </span>certs/arca-ca.crt<span class="w"> </span>https://localhost:9000/admin/health
 </code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Self-signed certificates are suitable for development and internal testing. For production, use certificates issued by a trusted Certificate Authority.</p>
+</div>
+</div>
+</div>
+</div>
 <h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
 <p>Three configuration scenarios are supported:</p>
 <h3 id="1-directory-only-auto-detect">1. Directory Only (Auto-Detect)<a class="headerlink" href="#1-directory-only-auto-detect" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">[server.tls]</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">cert_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">[server.tls]</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">cert_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs&quot;</span>
 </code></pre></div>
 <p>Arca scans the directory for PEM files (<code>.pem</code>, <code>.crt</code>, <code>.key</code>, <code>.cert</code>) and classifies them by reading PEM headers. Requires exactly one key file and at least one certificate file. Fails with a clear error if ambiguous.</p>
 <h3 id="2-directory-relative-filenames">2. Directory + Relative Filenames<a class="headerlink" href="#2-directory-relative-filenames" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">[server.tls]</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">cert_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs&quot;</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;server.crt&quot;</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">key_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;server.key&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">[server.tls]</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">cert_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs&quot;</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;server.crt&quot;</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">key_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;server.key&quot;</span>
 </code></pre></div>
 <p>Filenames are resolved relative to <code>cert_dir</code>. This is the recommended approach for most deployments.</p>
 <h3 id="3-absolute-paths">3. Absolute Paths<a class="headerlink" href="#3-absolute-paths" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">[server.tls]</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/ssl/certs/arca.pem&quot;</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">key_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/ssl/private/arca.key&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">[server.tls]</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/ssl/certs/arca.pem&quot;</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">key_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/ssl/private/arca.key&quot;</span>
 </code></pre></div>
 <p>Use this when the certificate and key are in different directories.</p>
 <h3 id="all-options">All Options<a class="headerlink" href="#all-options" title="Permanent link">&para;</a></h3>
@@ -1325,9 +1389,9 @@
 <p><strong>Validation rules</strong>: You must provide at least <code>cert_dir</code> alone (auto-detect), or both <code>cert_file</code> and <code>key_file</code>. Providing only one of <code>cert_file</code>/<code>key_file</code> without the other is an error.</p>
 <h2 id="production-setup">Production Setup<a class="headerlink" href="#production-setup" title="Permanent link">&para;</a></h2>
 <p>For production, use certificates issued by a trusted CA (e.g. Let's Encrypt, your organization's internal CA):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">[server.tls]</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/ssl/certs/arca.pem&quot;</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">key_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/ssl/private/arca.key&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="k">[server.tls]</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/ssl/certs/arca.pem&quot;</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">key_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/ssl/private/arca.key&quot;</span>
 </code></pre></div>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
@@ -1335,41 +1399,50 @@
 </div>
 <h2 id="certificate-rotation">Certificate Rotation<a class="headerlink" href="#certificate-rotation" title="Permanent link">&para;</a></h2>
 <p>Arca supports zero-downtime certificate rotation via SIGHUP. When the server receives a SIGHUP signal, it re-reads the certificate and key files from disk and applies them to new connections. Existing connections are not affected.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Replace certificate files on disk, then:</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nb">kill</span><span class="w"> </span>-HUP<span class="w"> </span><span class="k">$(</span>pgrep<span class="w"> </span>arca<span class="k">)</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># When running in Docker (no shell in the container):</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>docker<span class="w"> </span><span class="nb">kill</span><span class="w"> </span>--signal<span class="o">=</span>HUP<span class="w"> </span>arca
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="c1"># or with Docker Compose:</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">kill</span><span class="w"> </span>--signal<span class="o">=</span>HUP<span class="w"> </span>arca
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Replace certificate files on disk, then:</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="nb">kill</span><span class="w"> </span>-HUP<span class="w"> </span><span class="k">$(</span>pgrep<span class="w"> </span>arca<span class="k">)</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="c1"># When running in Docker (no shell in the container):</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>docker<span class="w"> </span><span class="nb">kill</span><span class="w"> </span>--signal<span class="o">=</span>HUP<span class="w"> </span>arca
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="c1"># or with Docker Compose:</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">kill</span><span class="w"> </span>--signal<span class="o">=</span>HUP<span class="w"> </span>arca
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>INFO TLS certificates reloaded
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>INFO TLS certificates reloaded
 </code></pre></div>
 <p>If the new files are invalid, the reload fails gracefully and the server continues using the previous certificates:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>ERROR TLS reload failed (keeping old config): ...
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>ERROR TLS reload failed (keeping old config): ...
 </code></pre></div>
 <h2 id="mtls-mutual-tls">mTLS (Mutual TLS)<a class="headerlink" href="#mtls-mutual-tls" title="Permanent link">&para;</a></h2>
 <p>For client certificate verification, add a <code>ca_file</code> pointing to the CA that signed your client certificates:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="k">[server.tls]</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">cert_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs&quot;</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;server.crt&quot;</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">key_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;server.key&quot;</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="n">ca_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;client-ca.crt&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="k">[server.tls]</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="n">cert_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs&quot;</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;server.crt&quot;</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="n">key_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;server.key&quot;</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="n">ca_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;client-ca.crt&quot;</span>
 </code></pre></div>
 <p>When <code>ca_file</code> is set, the server requires clients to present a valid certificate signed by the specified CA.</p>
 <h2 id="arca-tls-generate"><code>arca tls generate</code><a class="headerlink" href="#arca-tls-generate" title="Permanent link">&para;</a></h2>
 <p>Generate a self-signed CA and server certificate for development and testing. See the <a href="../cli/#arca-tls-generate">CLI Reference</a> for full usage.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>arca<span class="w"> </span>tls<span class="w"> </span>generate<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">    </span>--output-dir<span class="w"> </span>/etc/arca/certs<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">    </span>--sans<span class="w"> </span><span class="s2">&quot;myhost.example.com,localhost,127.0.0.1,::1&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">    </span>--days<span class="w"> </span><span class="m">365</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>arca<span class="w"> </span>tls<span class="w"> </span>generate<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">    </span>--output-dir<span class="w"> </span>/etc/arca/certs<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">    </span>--sans<span class="w"> </span><span class="s2">&quot;myhost.example.com,localhost,127.0.0.1,::1&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">    </span>--days<span class="w"> </span><span class="m">365</span>
 </code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
 <p>Self-signed certificates are suitable for development and internal testing. For production, use certificates issued by a trusted Certificate Authority.</p>
 </div>
-<h2 id="console-tls-indicator">Console TLS Indicator<a class="headerlink" href="#console-tls-indicator" title="Permanent link">&para;</a></h2>
-<p>When TLS is enabled, the <a href="../console/">web console</a> dashboard shows a green lock icon with "TLS" in the Transport section. This information comes from the <code>/admin/info</code> endpoint's <code>tls_enabled</code> field.</p>
+<h2 id="console-https">Console HTTPS<a class="headerlink" href="#console-https" title="Permanent link">&para;</a></h2>
+<p>When using <code>--tls</code>, the web console also serves over HTTPS. The console entrypoint auto-detects certificate and key PEM files in the mounted <code>certs/</code> directory (skipping CA files) and switches nginx to TLS mode.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--tls
+</code></pre></div>
+<p>The console is available on <strong>port 9443</strong> (HTTPS). At the login screen, enter the Arca HTTPS endpoint (e.g. <code>https://your-domain:9000</code>) and your credentials.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>With <code>--tls</code> the console does not preset an endpoint URL, since the HTTPS domain depends on your certificate setup.</p>
+</div>
+<h3 id="console-tls-indicator">Console TLS Indicator<a class="headerlink" href="#console-tls-indicator" title="Permanent link">&para;</a></h3>
+<p>When TLS is enabled, the console dashboard shows a green lock icon with "TLS" in the Transport section. This information comes from the <code>/admin/info</code> endpoint's <code>tls_enabled</code> field.</p>
 
 
 

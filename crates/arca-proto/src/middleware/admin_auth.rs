@@ -89,13 +89,20 @@ pub async fn admin_auth_middleware(
 
     // 6. Collect headers as (name, value) pairs.
     //    Non-ASCII bytes decoded as UTF-8 (see auth.rs for rationale).
-    let headers: Vec<(String, String)> = request
+    let mut headers: Vec<(String, String)> = request
         .headers()
         .iter()
         .map(|(name, value)| {
             (name.as_str().to_string(), crate::header_value_to_string(value))
         })
         .collect();
+
+    // HTTP/2: synthesize host from :authority pseudo-header (see auth.rs).
+    if !headers.iter().any(|(n, _)| n == "host") {
+        if let Some(authority) = request.uri().authority() {
+            headers.push(("host".to_string(), authority.as_str().to_string()));
+        }
+    }
 
     // 7. Extract URI path and query string from the ORIGINAL URI
     let original_uri = request

@@ -8,6 +8,7 @@ set -euo pipefail
 #   bin/arca start -d             Start in background
 #   bin/arca start -d --build     Start in background, rebuild image first
 #   bin/arca start -d --dev       Start development image (has shell)
+#   bin/arca start -d --tls       Start with TLS (requires certs in ./certs/)
 #   bin/arca stop                 Stop the server
 #   bin/arca status               Show container status
 #   bin/arca logs                 Show logs
@@ -21,15 +22,16 @@ usage() {
     echo "Usage: bin/arca <command> [options]"
     echo ""
     echo "Commands:"
-    echo "  start [-d] [--build] [--dev]   Start the Arca server"
-    echo "  stop                           Stop the Arca server"
-    echo "  status                         Show container status"
-    echo "  logs [-f]                      Show server logs"
+    echo "  start [-d] [--build] [--dev] [--tls]   Start the Arca server"
+    echo "  stop                                    Stop the Arca server"
+    echo "  status                                  Show container status"
+    echo "  logs [-f]                               Show server logs"
     echo ""
     echo "Options:"
     echo "  -d         Run in background (detached)"
     echo "  --build    Rebuild the Docker image before starting"
     echo "  --dev      Use development image (debian-slim, has shell)"
+    echo "  --tls      Enable HTTPS (certificates must be in ./certs/)"
     echo "  -f         Follow log output"
     exit 0
 }
@@ -44,6 +46,7 @@ cmd_start() {
             -d)       detach=true; shift ;;
             --build)  build=true; shift ;;
             --dev)    export BUILD_TARGET=development; shift ;;
+            --tls)    COMPOSE="$COMPOSE -f docker/docker-compose.tls.yml"; shift ;;
             *)        echo "Unknown option: $1" >&2; usage ;;
         esac
     done

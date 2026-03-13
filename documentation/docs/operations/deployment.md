@@ -83,21 +83,15 @@ Arca supports native HTTPS without a reverse proxy. See the [TLS guide](../guide
 
 ### Quick Setup
 
+Place your certificate and key PEM files in the `certs/` directory, then:
+
 ```bash
-# Generate self-signed certificates
-docker compose exec arca arca tls generate --output-dir /etc/arca/certs --sans "arca,localhost,127.0.0.1,::1"
+bin/arca start -d --build --tls
 ```
 
-Add to your config:
+The `--tls` flag adds the TLS compose overlay which bind-mounts `certs/` into the container and enables auto-detection of PEM files. This works with any certificate provider (Let's Encrypt, internal CA, etc.) — just drop the PEM files in the directory.
 
-```toml
-[server.tls]
-cert_dir = "/etc/arca/certs"
-cert_file = "arca-server.crt"
-key_file = "arca-server.key"
-```
-
-For production, use CA-issued certificates. Certificate rotation is supported via `kill -HUP` without downtime.
+Certificate rotation is supported via `docker compose kill --signal=HUP arca` without downtime.
 
 ## Reverse Proxy
 

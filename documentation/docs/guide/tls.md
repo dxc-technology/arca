@@ -4,35 +4,73 @@ Arca supports native TLS termination, serving HTTPS directly without a reverse p
 
 ## Quick Start
 
-Generate a self-signed CA and server certificate:
+=== "Real certificates"
 
-```bash
-docker compose exec arca arca tls generate --output-dir /etc/arca/certs --sans "arca,localhost,127.0.0.1,::1"
-```
+    Place your certificate and key PEM files in the `certs/` directory at the repository root:
 
-This creates four files:
+    ```
+    certs/
+      fullchain.pem    # certificate chain (server + intermediates)
+      privkey.pem      # private key
+    ```
 
-| File | Description |
-|------|-------------|
-| `arca-ca.crt` | CA certificate (distribute to clients) |
-| `arca-ca.key` | CA private key (keep secure) |
-| `arca-server.crt` | Server certificate (signed by CA) |
-| `arca-server.key` | Server private key |
+    Start Arca with TLS:
 
-Add the TLS section to your config:
+    ```bash
+    bin/arca start -d --build --tls
+    ```
 
-```toml
-[server.tls]
-cert_dir = "/etc/arca/certs"
-cert_file = "arca-server.crt"
-key_file = "arca-server.key"
-```
+    Verify:
 
-Restart Arca. The server now listens on HTTPS:
+    ```bash
+    curl https://your-domain:9000/admin/health
+    ```
 
-```bash
-curl --cacert arca-ca.crt https://localhost:9000/admin/health
-```
+    To start the web console alongside TLS:
+
+    ```bash
+    bin/console start -d --build --tls
+    ```
+
+    With `--tls`, the console does not preset an endpoint URL — enter the HTTPS URL (e.g. `https://your-domain:9000`) at the login screen.
+
+=== "Self-signed certificates"
+
+    Generate a self-signed CA and server certificate:
+
+    ```bash
+    # Build the image first if needed
+    bin/build
+
+    # Generate certs into ./certs/
+    mkdir -p certs
+    docker compose -f docker/docker-compose.yml -f docker/docker-compose.tls.yml \
+        --profile tls-init run --rm tls-init
+    ```
+
+    This creates four files in `certs/`:
+
+    | File | Description |
+    |------|-------------|
+    | `arca-ca.crt` | CA certificate (distribute to clients) |
+    | `arca-ca.key` | CA private key (keep secure) |
+    | `arca-server.crt` | Server certificate (signed by CA) |
+    | `arca-server.key` | Server private key |
+
+    Start Arca with TLS:
+
+    ```bash
+    bin/arca start -d --tls
+    ```
+
+    Verify (passing the CA cert for trust):
+
+    ```bash
+    curl --cacert certs/arca-ca.crt https://localhost:9000/admin/health
+    ```
+
+    !!! warning
+        Self-signed certificates are suitable for development and internal testing. For production, use certificates issued by a trusted Certificate Authority.
 
 ## Configuration
 
@@ -144,6 +182,19 @@ arca tls generate \
 !!! warning
     Self-signed certificates are suitable for development and internal testing. For production, use certificates issued by a trusted Certificate Authority.
 
-## Console TLS Indicator
+## Console HTTPS
 
-When TLS is enabled, the [web console](console.md) dashboard shows a green lock icon with "TLS" in the Transport section. This information comes from the `/admin/info` endpoint's `tls_enabled` field.
+When using `--tls`, the web console also serves over HTTPS. The console entrypoint auto-detects certificate and key PEM files in the mounted `certs/` directory (skipping CA files) and switches nginx to TLS mode.
+
+```bash
+bin/console start -d --build --tls
+```
+
+The console is available on **port 9443** (HTTPS). At the login screen, enter the Arca HTTPS endpoint (e.g. `https://your-domain:9000`) and your credentials.
+
+!!! note
+    With `--tls` the console does not preset an endpoint URL, since the HTTPS domain depends on your certificate setup.
+
+### Console TLS Indicator
+
+When TLS is enabled, the console dashboard shows a green lock icon with "TLS" in the Transport section. This information comes from the `/admin/info` endpoint's `tls_enabled` field.

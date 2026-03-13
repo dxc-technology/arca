@@ -29,7 +29,7 @@ The MVP is complete. All 12 implementation phases (0–11) have been delivered. 
 - **Integrity checking** — `arca fsck` detects orphaned blobs, missing files, sidecar mismatches, and stale temp files
 - **Modular storage** — metadata backend behind traits (SQLite now, Postgres later)
 - **Admin API** — JSON endpoints for health, stats, and credential management under `/admin/*`
-- **Native TLS** — HTTPS without a reverse proxy, with auto-detection, SIGHUP reload, and optional health port
+- **Native TLS** — HTTPS without a reverse proxy (`bin/arca start --tls`), with auto-detection and SIGHUP cert reload
 - **Web console** — browser-based UI for managing buckets, objects, and credentials
 - **[S3 compatibility tested](https://dxc-technology.github.io/arca/s3-compatibility/)** — 270/829 Ceph s3-tests passing, 0 unexpected failures
 
@@ -61,6 +61,9 @@ The MVP is complete. All 12 implementation phases (0–11) have been delivered. 
 ```bash
 # Start the server
 bin/arca start -d --build
+
+# Or with HTTPS (place cert + key PEM files in ./certs/ first):
+bin/arca start -d --build --tls
 
 # Credentials are printed on first startup — check the logs
 bin/arca logs | grep "Access Key"
@@ -139,6 +142,7 @@ All development happens inside Docker containers — no local toolchain required
 ```bash
 bin/build                # build Docker image
 bin/arca start -d --build --dev  # start in development mode (debian-slim, has shell)
+bin/arca start -d --build --tls  # start with HTTPS (certs in ./certs/)
 bin/arca stop            # stop server
 bin/arca logs -f         # follow server logs
 bin/test                 # run all tests (unit + integration)

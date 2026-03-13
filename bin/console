@@ -7,6 +7,7 @@ set -euo pipefail
 #   bin/console start                Start in foreground
 #   bin/console start -d             Start in background
 #   bin/console start -d --build     Start in background, rebuild image first
+#   bin/console start --tls          Start with TLS overlay (no preset endpoint)
 #   bin/console stop                 Stop the console
 #   bin/console status               Show container status
 #   bin/console logs                 Show logs
@@ -20,14 +21,15 @@ usage() {
     echo "Usage: bin/console <command> [options]"
     echo ""
     echo "Commands:"
-    echo "  start [-d] [--build]   Start the web console"
-    echo "  stop                   Stop the web console"
-    echo "  status                 Show container status"
-    echo "  logs [-f]              Show console logs"
+    echo "  start [-d] [--build] [--tls]   Start the web console"
+    echo "  stop                            Stop the web console"
+    echo "  status                          Show container status"
+    echo "  logs [-f]                       Show console logs"
     echo ""
     echo "Options:"
     echo "  -d         Run in background (detached)"
     echo "  --build    Rebuild the Docker image before starting"
+    echo "  --tls      TLS mode (clears preset endpoint, shows URL field at login)"
     echo "  -f         Follow log output"
     exit 0
 }
@@ -41,6 +43,7 @@ cmd_start() {
         case "$1" in
             -d)       detach=true; shift ;;
             --build)  build=true; shift ;;
+            --tls)    COMPOSE="docker compose -f docker/docker-compose.yml -f docker/docker-compose.tls.yml --profile console"; shift ;;
             *)        echo "Unknown option: $1" >&2; usage ;;
         esac
     done

@@ -12,7 +12,7 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 COMPOSE="docker compose -f docker/docker-compose.yml"
-COMPOSE_TLS="docker compose -f docker/docker-compose.yml -f docker/docker-compose.tls.yml"
+COMPOSE_TLS="docker compose -f docker/docker-compose.yml -f docker/docker-compose.tls.yml -f docker/docker-compose.tls-test.yml"
 
 run_unit() {
     echo "==> Running unit tests..."
@@ -26,26 +26,41 @@ run_integration() {
 
 run_tls() {
     echo "==> Running TLS integration tests..."
+    local generated_certs=()
+
+    cleanup_tls() {
+        echo "Cleaning up TLS test..."
+        $COMPOSE_TLS --profile tls-test down -v 2>/dev/null || true
+        # Remove only the certs we generated
+        for f in "${generated_certs[@]}"; do
+            rm -f "$f"
+        done
+    }
+    trap cleanup_tls EXIT
+
     # Step 1: Build images
-    $COMPOSE_TLS --profile tls build
-    # Step 2: Generate TLS certs (one-shot, separate profile)
+    $COMPOSE_TLS build arca
+    # Step 2: Generate self-signed certs into ./certs/
+    mkdir -p certs
     $COMPOSE_TLS --profile tls-init run --rm tls-init
+    generated_certs=(certs/arca-ca.crt certs/arca-ca.key certs/arca-server.crt certs/arca-server.key)
     # Step 3: Start server with TLS config
-    $COMPOSE_TLS --profile tls up -d
+    $COMPOSE_TLS up -d arca
     # Step 4: Wait for server to be ready
     echo "Waiting for Arca TLS server..."
     for i in $(seq 1 30); do
-        if $COMPOSE_TLS --profile tls exec -T arca /usr/local/bin/arca --help >/dev/null 2>&1; then
+        if $COMPOSE_TLS exec -T arca /usr/local/bin/arca --help >/dev/null 2>&1; then
             break
         fi
         sleep 1
     done
     sleep 2  # brief extra settle time
     # Step 5: Run TLS-specific tests
-    $COMPOSE_TLS --profile tls run --rm test integration/test_tls.py "$@"
+    $COMPOSE_TLS --profile tls-test run --rm test integration/test_tls.py "$@"
     local rc=$?
-    # Step 6: Tear down
-    $COMPOSE_TLS --profile tls --profile tls-init down -v
+
+    trap - EXIT
+    cleanup_tls
     return $rc
 }
 

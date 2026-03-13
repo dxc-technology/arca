@@ -14,3 +14,6 @@ __pycache__/
 
 # Playwright MCP
 .playwright-mcp/
+
+# TLS certificates
+certs/

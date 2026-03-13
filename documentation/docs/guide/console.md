@@ -13,16 +13,26 @@ The console is intentionally not embedded in the Arca binary. This keeps the ser
 
 ## Starting the Console
 
-```bash
-bin/console start -d --build
-```
+=== "HTTP"
+
+    ```bash
+    bin/console start -d --build
+    ```
+
+    This starts the console on [http://localhost:9080](http://localhost:9080).
+
+=== "HTTPS"
+
+    ```bash
+    bin/console start -d --build --tls
+    ```
+
+    This starts the console on port **9443** with TLS, using certificates from the `certs/` directory. Enter the Arca HTTPS endpoint at the login screen.
 
 !!! tip
     Drop the `-d` flag to run in the foreground and see container logs in real time. Press ++ctrl+c++ to stop.
 
-This starts the console on [http://localhost:9080](http://localhost:9080).
-
-The `ARCA_ENDPOINT` environment variable controls which Arca server the console connects to. In the default Docker Compose setup, it's set to `http://localhost:9000` so the browser (running on the host) can reach Arca directly.
+The `ARCA_ENDPOINT` environment variable controls which Arca server the console connects to. In the default Docker Compose setup, it's set to `http://localhost:9000` so the browser (running on the host) can reach Arca directly. With `--tls`, the endpoint is not preset — enter it at the login screen.
 
 ## Login
 

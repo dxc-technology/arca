@@ -1,30 +1,42 @@
+# TLS overlay — adds HTTPS support to Arca and the console.
+#
+# Used by:
+#   bin/arca start --tls       (real certs in ./certs/, auto-detect config)
+#   bin/console start --tls    (console serves HTTPS on port 9443)
+#   bin/test tls               (self-signed certs, explicit filenames via tls-test overlay)
+
 services:
   tls-init:
     image: arca
     volumes:
-      - tls-certs:/etc/arca/certs
+      - ../certs:/etc/arca/certs
     entrypoint: ["/usr/local/bin/arca", "tls", "generate", "--output-dir", "/etc/arca/certs", "--sans", "arca,localhost,127.0.0.1,::1"]
     profiles:
       - tls-init
 
   arca:
     volumes:
-      - tls-certs:/etc/arca/certs:ro
+      - ../certs:/etc/arca/certs:ro
       - arca-data:/data
-      - ../config/tls-test.toml:/etc/arca/config.toml:ro
+      - ../config/tls.toml:/etc/arca/config.toml:ro
     ports:
       - "9000:9000"
-    profiles:
-      - tls
 
   test:
     environment:
       - ARCA_ENDPOINT=https://arca:9000
       - AWS_CA_BUNDLE=/etc/arca/certs/arca-ca.crt
     volumes:
-      - tls-certs:/etc/arca/certs:ro
+      - ../certs:/etc/arca/certs:ro
     profiles:
-      - tls
+      - tls-test
 
-volumes:
-  tls-certs:
+  console:
+    environment:
+      - ARCA_ENDPOINT=
+    volumes:
+      - ../certs:/etc/nginx/certs:ro
+    ports:
+      - "9443:3000"
+    profiles:
+      - console

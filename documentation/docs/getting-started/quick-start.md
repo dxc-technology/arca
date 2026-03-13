@@ -4,9 +4,21 @@ Get Arca running and perform your first S3 operations.
 
 ## Start the Server
 
-```bash
-bin/arca start -d --build
-```
+=== "HTTP"
+
+    ```bash
+    bin/arca start -d --build
+    ```
+
+=== "HTTPS"
+
+    Place your TLS certificate and key PEM files in `certs/` at the repository root, then:
+
+    ```bash
+    bin/arca start -d --build --tls
+    ```
+
+    See the [TLS guide](../guide/tls.md) for details on certificate setup including self-signed certificates for development.
 
 !!! tip
     Drop the `-d` flag to run in the foreground and see logs in real time. Press ++ctrl+c++ to stop the server.
@@ -98,14 +110,26 @@ Configure your S3 client:
 
 Arca includes a browser-based web console for managing buckets, objects, and credentials:
 
-```bash
-bin/console start -d --build
-```
+=== "HTTP"
+
+    ```bash
+    bin/console start -d --build
+    ```
+
+    Open [http://localhost:9080](http://localhost:9080), enter the Arca endpoint (`http://localhost:9000`) and your credentials.
+
+=== "HTTPS"
+
+    ```bash
+    bin/console start -d --build --tls
+    ```
+
+    Open `https://your-domain:9443`, then enter the Arca HTTPS endpoint (e.g. `https://your-domain:9000`) and your credentials.
 
 !!! tip
     As with `bin/arca`, drop the `-d` flag to see console container logs in real time.
 
-Open [http://localhost:9080](http://localhost:9080), enter the Arca endpoint (`http://localhost:9000`) and your credentials to get started. Admin credentials unlock additional features like credential management and server stats.
+Admin credentials unlock additional features like credential management and server stats.
 
 See the [Web Console guide](../guide/console.md) for details.
 
@@ -116,8 +140,8 @@ Convenience scripts in `bin/` wrap docker compose commands:
 | Script | Description |
 |--------|-------------|
 | `bin/build` | Build the Docker image |
-| `bin/arca` | Manage the Arca server (`start`, `stop`, `status`, `logs`) |
-| `bin/console` | Manage the web console (`start`, `stop`, `status`, `logs`) |
+| `bin/arca` | Manage the Arca server (`start`, `stop`, `status`, `logs`). Use `--tls` for HTTPS. |
+| `bin/console` | Manage the web console (`start`, `stop`, `status`, `logs`). Use `--tls` with HTTPS. |
 | `bin/test` | Run unit + integration tests (`unit`, `integration`, or both) |
 | `bin/screenshots` | Take automated console screenshots for documentation |
 | `bin/s3-tests` | Run Ceph s3-tests compatibility suite |

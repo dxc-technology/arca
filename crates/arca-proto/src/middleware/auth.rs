@@ -103,13 +103,23 @@ pub async fn auth_middleware(
     //    botocore sends UTF-8 bytes on the wire and signs using the unicode
     //    string (then encodes to UTF-8 for SHA256). So we decode as UTF-8
     //    first to produce the same string botocore used for signing.
-    let headers: Vec<(String, String)> = request
+    let mut headers: Vec<(String, String)> = request
         .headers()
         .iter()
         .map(|(name, value)| {
             (name.as_str().to_string(), crate::header_value_to_string(value))
         })
         .collect();
+
+    // HTTP/2: browsers send :authority pseudo-header instead of Host.
+    // hyper puts :authority into request.uri().authority() but does NOT
+    // synthesize a host header. SigV4 clients sign with host, so we must
+    // reconstruct it for signature verification.
+    if !headers.iter().any(|(n, _)| n == "host") {
+        if let Some(authority) = request.uri().authority() {
+            headers.push(("host".to_string(), authority.as_str().to_string()));
+        }
+    }
 
     // 7. Extract URI path and query string from the ORIGINAL URI
     //    (before NormalizePathLayer strips trailing slashes).
