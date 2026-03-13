@@ -99,6 +99,32 @@ pub trait MetadataStore: Send + Sync {
         upload_id: &str,
     ) -> Result<Vec<PartRecord>, crate::error::ArcaError>;
 
+    // -- Bucket config operations --
+
+    /// Gets a bucket configuration value.
+    async fn get_bucket_config(
+        &self,
+        bucket: &str,
+        config_key: &str,
+    ) -> Result<Option<String>, crate::error::ArcaError>;
+
+    /// Sets a bucket configuration value.
+    async fn set_bucket_config(
+        &self,
+        bucket: &str,
+        config_key: &str,
+        config_value: &str,
+    ) -> Result<(), crate::error::ArcaError>;
+
+    /// Deletes a bucket configuration value.
+    async fn delete_bucket_config(
+        &self,
+        bucket: &str,
+        config_key: &str,
+    ) -> Result<bool, crate::error::ArcaError>;
+
+    // -- Multipart upload operations --
+
     /// Lists in-progress multipart uploads for a bucket.
     ///
     /// - `prefix`: only return uploads whose key starts with this prefix.

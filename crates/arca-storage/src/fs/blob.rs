@@ -45,7 +45,7 @@ impl FsBlobStore {
     }
 
     /// Computes the full path for a blob ID using the configured prefix depth.
-    fn blob_path(&self, blob_id: &BlobId) -> PathBuf {
+    pub fn blob_path(&self, blob_id: &BlobId) -> PathBuf {
         let id = &blob_id.0;
         // Strip hyphens for prefix extraction (UUID has hyphens at fixed positions).
         let hex_chars: String = id.chars().filter(|c| *c != '-').collect();
@@ -60,7 +60,7 @@ impl FsBlobStore {
     }
 
     /// Returns the sidecar metadata path for a blob.
-    fn sidecar_path(&self, blob_id: &BlobId) -> PathBuf {
+    pub fn sidecar_path(&self, blob_id: &BlobId) -> PathBuf {
         let mut p = self.blob_path(blob_id);
         let mut name = p.file_name().unwrap().to_os_string();
         name.push(".meta");
@@ -129,7 +129,7 @@ impl BlobStore for FsBlobStore {
 
         let etag = hex::encode(hasher.finalize());
 
-        Ok(BlobPutResult { size, etag })
+        Ok(BlobPutResult { size, etag, encryption: None })
     }
 
     async fn get(
@@ -325,6 +325,7 @@ mod tests {
             content_type: Some("text/plain".to_string()),
             last_modified: "2024-01-01T00:00:00Z".to_string(),
             metadata: std::collections::HashMap::new(),
+            encryption: None,
         };
         store.write_sidecar(&blob_id, &meta).await.unwrap();
 
@@ -351,6 +352,7 @@ mod tests {
             content_type: None,
             last_modified: "t".to_string(),
             metadata: std::collections::HashMap::new(),
+            encryption: None,
         };
         store.write_sidecar(&blob_id, &meta).await.unwrap();
 

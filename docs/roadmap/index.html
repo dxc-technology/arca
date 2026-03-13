@@ -511,6 +511,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../guide/encryption/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encryption
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../guide/console/" class="md-nav__link">
         
   
@@ -1849,7 +1877,7 @@ continuing from the MVP phases (0–11).</p>
 <div style="padding:12px 0">
   <div style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid rgba(128,128,128,.3)">
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em">12</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">13</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">13</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">14</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">15</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">16</div>
@@ -1878,6 +1906,7 @@ continuing from the MVP phases (0–11).</p>
     17 --&gt; 20["20 Object Lock\nWORM"]
     19 --&gt; 24["24 Notifications\n+ Events"]
     17 --&gt; 25["25 Replication"]
+    13 --&gt; 22["22 Performance\n+ Hardening"]
     23["23 PostgreSQL\nBackend"] --&gt; 25
     25 --&gt; 26["26 Multi-Node\n+ Erasure Coding"]
 
@@ -1898,8 +1927,7 @@ continuing from the MVP phases (0–11).</p>
     style 26 fill:#1565c0,color:#fff
 
     18["18 Monitoring\n+ Audit"]
-    21["21 S3 API\nCompleteness"]
-    22["22 Performance\n+ Hardening"]</code></pre>
+    21["21 S3 API\nCompleteness"]</code></pre>
 <p><span style="font-size:.8em">
 <strong>Legend</strong>: <span style="color:#c62828">P0 Critical</span> · <span style="color:#e65100">P1 High</span> · <span style="color:#2e7d32">P2 Medium</span> · <span style="color:#1565c0">P3 Low</span> — Arrows indicate dependencies
 </span></p>
@@ -1927,7 +1955,7 @@ continuing from the MVP phases (0–11).</p>
 <td><a href="#phase-13-server-side-encryption-sse-s3-p0">Server-Side Encryption: SSE-S3</a></td>
 <td style="text-align: center;">P0</td>
 <td style="text-align: center;">—</td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><code>v1.1.0</code></td>
 </tr>
 <tr>
 <td style="text-align: center;">14</td>
@@ -1989,7 +2017,7 @@ continuing from the MVP phases (0–11).</p>
 <td style="text-align: center;">22</td>
 <td><a href="#phase-22-performance-and-hardening-p2">Performance and Hardening</a></td>
 <td style="text-align: center;">P2</td>
-<td style="text-align: center;">—</td>
+<td style="text-align: center;">13</td>
 <td style="text-align: center;"></td>
 </tr>
 <tr>
@@ -2045,15 +2073,19 @@ transport without requiring a reverse proxy.</p>
 <p>Transparent at-rest encryption using AES-256-GCM with per-object data encryption keys (DEKs).
 Local master key from config provides a bootstrap mode before Vault integration.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Encryption pipeline in <code>FsBlobStore</code>: wrap write stream with AES-256-GCM, random DEK per object</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Master key encrypts DEKs — loaded from <code>[encryption]</code> config section (local secret, base64-encoded)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> New <code>bucket_config</code> table in SQLite (foundation for versioning, lifecycle, policies in later phases)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>PutBucketEncryption</code> / <code>GetBucketEncryption</code> / <code>DeleteBucketEncryption</code> handlers</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> New fields on <code>ObjectRecord</code>: <code>encryption_algorithm</code>, <code>encryption_key_id</code>. DB migration v7</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Sidecar <code>.meta</code> extended with encrypted DEK blob. <code>arca recover</code> handles encrypted objects</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> S3 response header: <code>x-amz-server-side-encryption: AES256</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> (Console) Encryption status on object detail panel, bucket encryption settings page</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Resolves: TD-006</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Encryption pipeline in <code>EncryptingBlobStore</code>: chunk-based AES-256-GCM streaming, random DEK per object, envelope encryption with master KEK</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Master key encrypts DEKs — loaded from <code>[encryption]</code> config section (local secret, base64-encoded)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> New <code>bucket_config</code> table in SQLite (foundation for versioning, lifecycle, policies in later phases)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>PutBucketEncryption</code> / <code>GetBucketEncryption</code> / <code>DeleteBucketEncryption</code> handlers</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> New fields on <code>ObjectRecord</code>: <code>encryption_algorithm</code>, <code>encryption_key_id</code>. DB migration v7</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Sidecar <code>.meta</code> extended with encrypted DEK blob. <code>arca recover</code> and <code>arca fsck</code> handle encrypted objects</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> S3 response header: <code>x-amz-server-side-encryption: AES256</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>arca encryption generate-key</code> CLI command for master key generation</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Mixed-mode: encrypted and unencrypted blobs coexist transparently</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Byte range reads on encrypted objects (chunk-level seek and decrypt)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Docker encryption test infrastructure: compose overlay, <code>bin/test encryption</code> mode, 16 integration tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> (Console) Encryption indicator in dashboard and object detail panel</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Resolves: TD-006</li>
 </ul>
 <hr />
 <h3 id="phase-14-sse-kms-with-hashicorp-vaultopenbao-p0">Phase 14 — SSE-KMS with HashiCorp Vault/OpenBAO [P0]<a class="headerlink" href="#phase-14-sse-kms-with-hashicorp-vaultopenbao-p0" title="Permanent link">&para;</a></h3>
@@ -2165,7 +2197,9 @@ no intermediate KES layer.</p>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Graceful rolling upgrades: drain connections, health endpoint reports "draining", configurable drain timeout</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Performance benchmarking suite: automated benchmarks (concurrent uploads, large files, metadata ops/sec)</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Security hardening: request validation, header size limits</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>arca encrypt-existing</code> / <code>arca decrypt-existing</code> CLI tools for background encryption/decryption of existing objects in-place</li>
 </ul>
+<p><strong>Depends on</strong>: Phase 13 (encryption pipeline)</p>
 <hr />
 <h3 id="phase-23-postgresql-backend-p2">Phase 23 — PostgreSQL Backend [P2]<a class="headerlink" href="#phase-23-postgresql-backend-p2" title="Permanent link">&para;</a></h3>
 <p>Alternative metadata backend for deployments requiring a shared database.</p>
@@ -2476,7 +2510,7 @@ with unique IDs (<code>TD-XXX</code>) referenced in source code comments.</p>
 <li><strong>Versioning</strong> (TD-003): Faked for mc compatibility — no real version tracking</li>
 <li><strong>Region support</strong> (TD-004): Hardcoded <code>us-east-1</code> — no per-bucket regions</li>
 <li>~~<strong>Request ID consistency</strong> (TD-005)~~: <strong>Resolved</strong> — error XML and response header now match</li>
-<li><strong>Encryption</strong> (TD-006): Always returns "not configured" — no SSE support</li>
+<li>~~<strong>Encryption</strong> (TD-006)~~: <strong>Resolved</strong> — SSE-S3 with AES-256-GCM implemented in Phase 13</li>
 <li><strong>Unimplemented ops</strong> (TD-007): ~35 bucket operations return 501</li>
 <li><strong>Multipart Content-Type</strong> (TD-008): Captured at init time — verify against AWS semantics</li>
 </ul>

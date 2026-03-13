@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://dxc-technology.github.io/arca/guide/console/">
+        <link rel="canonical" href="https://dxc-technology.github.io/arca/guide/encryption/">
       
       
-        <link rel="prev" href="../encryption/">
+        <link rel="prev" href="../tls/">
       
       
-        <link rel="next" href="../cli/">
+        <link rel="next" href="../console/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Web Console - Arca</title>
+        <title>Encryption - Arca</title>
       
     
     
@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#web-console" class="md-skip">
+        <a href="#encryption" class="md-skip">
           Skip to content
         </a>
       
@@ -113,7 +113,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Web Console
+              Encryption
             
           </span>
         </div>
@@ -512,34 +512,6 @@
                 
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../encryption/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Encryption
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
     
   
   
@@ -559,7 +531,7 @@
   <span class="md-ellipsis">
     
   
-    Web Console
+    Encryption
   
 
     
@@ -577,7 +549,7 @@
   <span class="md-ellipsis">
     
   
-    Web Console
+    Encryption
   
 
     
@@ -603,77 +575,22 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
+  <a href="#quick-start" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Overview
+        Quick Start
       
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#starting-the-console" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Starting the Console
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#login" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Login
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#dashboard" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Dashboard
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#bucket-management" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Bucket Management
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#object-browser" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Object Browser
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Object Browser">
+    <nav class="md-nav" aria-label="Quick Start">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#object-detail" class="md-nav__link">
+  <a href="#1-generate-a-master-key" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Object Detail
+        1. Generate a master key
       
     </span>
   </a>
@@ -681,10 +598,32 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#treemap-visualization" class="md-nav__link">
+  <a href="#2-configure-encryption" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Treemap Visualization
+        2. Configure encryption
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-start-the-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Start the server
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Verify
       
     </span>
   </a>
@@ -697,22 +636,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#credential-management" class="md-nav__link">
+  <a href="#how-it-works" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Credential Management
+        How It Works
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Credential Management">
+    <nav class="md-nav" aria-label="How It Works">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#creating-credentials" class="md-nav__link">
+  <a href="#envelope-encryption" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Creating Credentials
+        Envelope Encryption
       
     </span>
   </a>
@@ -720,10 +659,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#deleting-credentials" class="md-nav__link">
+  <a href="#chunk-based-streaming" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Deleting Credentials
+        Chunk-Based Streaming
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#etag-preservation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ETag Preservation
       
     </span>
   </a>
@@ -736,44 +686,55 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#custom-deployment" class="md-nav__link">
+  <a href="#configuration-reference" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Custom Deployment
+        Configuration Reference
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Custom Deployment">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#per-bucket-encryption" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-Bucket Encryption
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mixed-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mixed Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Commands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CLI Commands">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#environment-variables" class="md-nav__link">
+  <a href="#generate-a-master-key" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Environment Variables
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#separate-network" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Separate Network
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#reverse-proxy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Reverse Proxy
+        Generate a master key
       
     </span>
   </a>
@@ -782,6 +743,67 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recovery-and-integrity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recovery and Integrity
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Recovery and Integrity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#arca-recover" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca recover
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#arca-fsck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca fsck
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security Notes
+      
+    </span>
+  </a>
   
 </li>
       
@@ -789,6 +811,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../console/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Console
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1169,77 +1219,22 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#overview" class="md-nav__link">
+  <a href="#quick-start" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Overview
+        Quick Start
       
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#starting-the-console" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Starting the Console
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#login" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Login
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#dashboard" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Dashboard
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#bucket-management" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Bucket Management
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#object-browser" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Object Browser
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Object Browser">
+    <nav class="md-nav" aria-label="Quick Start">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#object-detail" class="md-nav__link">
+  <a href="#1-generate-a-master-key" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Object Detail
+        1. Generate a master key
       
     </span>
   </a>
@@ -1247,10 +1242,32 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#treemap-visualization" class="md-nav__link">
+  <a href="#2-configure-encryption" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Treemap Visualization
+        2. Configure encryption
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-start-the-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Start the server
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Verify
       
     </span>
   </a>
@@ -1263,22 +1280,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#credential-management" class="md-nav__link">
+  <a href="#how-it-works" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Credential Management
+        How It Works
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Credential Management">
+    <nav class="md-nav" aria-label="How It Works">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#creating-credentials" class="md-nav__link">
+  <a href="#envelope-encryption" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Creating Credentials
+        Envelope Encryption
       
     </span>
   </a>
@@ -1286,10 +1303,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#deleting-credentials" class="md-nav__link">
+  <a href="#chunk-based-streaming" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Deleting Credentials
+        Chunk-Based Streaming
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#etag-preservation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ETag Preservation
       
     </span>
   </a>
@@ -1302,44 +1330,55 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#custom-deployment" class="md-nav__link">
+  <a href="#configuration-reference" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Custom Deployment
+        Configuration Reference
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Custom Deployment">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#per-bucket-encryption" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-Bucket Encryption
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mixed-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mixed Mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Commands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="CLI Commands">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#environment-variables" class="md-nav__link">
+  <a href="#generate-a-master-key" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Environment Variables
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#separate-network" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Separate Network
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#reverse-proxy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Reverse Proxy
+        Generate a master key
       
     </span>
   </a>
@@ -1348,6 +1387,67 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recovery-and-integrity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recovery and Integrity
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Recovery and Integrity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#arca-recover" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca recover
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#arca-fsck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca fsck
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security Notes
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1368,148 +1468,141 @@
 
 
 
-<h1 id="web-console">Web Console<a class="headerlink" href="#web-console" title="Permanent link">&para;</a></h1>
-<p>Arca includes a browser-based web console for managing buckets, objects, and credentials. The console is a <strong>separate application</strong> that communicates with Arca exclusively via the S3 API and Admin API — it's just another API client.</p>
-<h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
-<ul>
-<li><strong>Technology</strong>: single-file Alpine.js + Tailwind CSS application, served by nginx:alpine</li>
-<li><strong>Docker image</strong>: <code>arca-console</code>, ~40 MB</li>
-<li><strong>Port</strong>: 3000 (mapped to 9080 on the host by default)</li>
-<li><strong>Theme</strong>: "The Vault" — dark glassmorphism design</li>
-</ul>
-<p>The console is intentionally not embedded in the Arca binary. This keeps the server binary small (~8.6 MB), allows independent release cycles, and supports split deployment (Arca on a hardened VM, console on a separate host).</p>
-<h2 id="starting-the-console">Starting the Console<a class="headerlink" href="#starting-the-console" title="Permanent link">&para;</a></h2>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">HTTP</label><label for="__tabbed_1_2">HTTPS</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
+<h1 id="encryption">Encryption<a class="headerlink" href="#encryption" title="Permanent link">&para;</a></h1>
+<p>Arca supports server-side encryption at rest (SSE-S3) using AES-256-GCM. When enabled, objects are transparently encrypted before writing to disk and decrypted on read. Encryption uses an envelope scheme: each object gets a random data encryption key (DEK) that is wrapped by a master key (KEK) from the server configuration.</p>
+<h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
+<h3 id="1-generate-a-master-key">1. Generate a master key<a class="headerlink" href="#1-generate-a-master-key" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w">    </span><span class="c1"># ensure the image is built</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>docker/docker-compose.yml<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>arca<span class="w"> </span>arca<span class="w"> </span>encryption<span class="w"> </span>generate-key
 </code></pre></div>
-<p>This starts the console on <a href="http://localhost:9080">http://localhost:9080</a>.</p>
-</div>
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--tls
+<p>This outputs a base64-encoded 256-bit key. Save it securely.</p>
+<h3 id="2-configure-encryption">2. Configure encryption<a class="headerlink" href="#2-configure-encryption" title="Permanent link">&para;</a></h3>
+<p>Add the <code>[encryption]</code> section to your <code>config.toml</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">[encryption]</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">master_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;K+GgqdCNLvpsInhk8NWVJtXbfXt78A1zUc7QO343SJA=&quot;</span>
 </code></pre></div>
-<p>This starts the console on port <strong>9443</strong> with TLS, using certificates from the <code>certs/</code> directory. Enter the Arca HTTPS endpoint at the login screen.</p>
-</div>
-</div>
-</div>
-<div class="admonition tip">
-<p class="admonition-title">Tip</p>
-<p>Drop the <code>-d</code> flag to run in the foreground and see container logs in real time. Press <span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-c">C</kbd></span> to stop.</p>
-</div>
-<p>The <code>ARCA_ENDPOINT</code> environment variable controls which Arca server the console connects to. In the default Docker Compose setup, it's set to <code>http://localhost:9000</code> so the browser (running on the host) can reach Arca directly. With <code>--tls</code>, the endpoint is not preset — enter it at the login screen.</p>
-<h2 id="login">Login<a class="headerlink" href="#login" title="Permanent link">&para;</a></h2>
-<p><img alt="Console login screen" src="../../assets/screenshots/console-login.png" /></p>
-<p>Enter the Arca endpoint URL and your credentials:</p>
+<h3 id="3-start-the-server">3. Start the server<a class="headerlink" href="#3-start-the-server" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
+</code></pre></div>
+<p>Check the logs to confirm encryption is active:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>INFO arca: Server-side encryption enabled (AES-256-GCM) key_id=&quot;6602a944&quot;
+</code></pre></div>
+<h3 id="4-verify">4. Verify<a class="headerlink" href="#4-verify" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>aws<span class="w"> </span>s3<span class="w"> </span>cp<span class="w"> </span>myfile.txt<span class="w"> </span>s3://my-bucket/<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="c1"># Check the response header</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>aws<span class="w"> </span>s3api<span class="w"> </span>head-object<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--key<span class="w"> </span>myfile.txt<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
+</code></pre></div>
+<p>The <code>ServerSideEncryption</code> field in the response will show <code>AES256</code>.</p>
+<h2 id="how-it-works">How It Works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h2>
+<h3 id="envelope-encryption">Envelope Encryption<a class="headerlink" href="#envelope-encryption" title="Permanent link">&para;</a></h3>
+<p>Each object is encrypted with a unique, randomly generated 256-bit DEK (data encryption key). The DEK is then wrapped (encrypted) using the master key (KEK) from the config file and stored alongside the object in the sidecar <code>.meta</code> file. The master key never touches the object data directly.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>Master Key (KEK)              Per-Object DEK
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  from config.toml              random 32 bytes
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  |                              |
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  | [AES-256-GCM wrap]         [AES-256-GCM encrypt]
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  +-------&gt; Wrapped DEK         Object Data (chunked)
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>            (in .meta)
+</code></pre></div>
+<h3 id="chunk-based-streaming">Chunk-Based Streaming<a class="headerlink" href="#chunk-based-streaming" title="Permanent link">&para;</a></h3>
+<p>Objects are encrypted in fixed-size 64 KiB chunks. Each chunk is independently encrypted and authenticated with its own GCM tag. This enables:</p>
 <ul>
-<li><strong>Endpoint</strong>: the URL of your Arca server (e.g., <code>http://localhost:9000</code>)</li>
-<li><strong>Access Key</strong>: your S3 access key ID</li>
-<li><strong>Secret Key</strong>: your S3 secret access key</li>
+<li><strong>Streaming</strong>: no need to buffer the entire object in memory</li>
+<li><strong>Byte range reads</strong>: only the chunks overlapping the requested range are decrypted</li>
+<li><strong>Integrity</strong>: corruption in one chunk is detected without reading the entire file</li>
 </ul>
-<div class="admonition tip">
-<p class="admonition-title">Tip</p>
-<p>When <code>ARCA_ENDPOINT</code> is set in the Docker environment, the endpoint field is pre-filled and hidden. You only need to enter your credentials.</p>
-</div>
-<p>The console determines your role (admin or user) after connecting. Admin credentials unlock the Dashboard and Credentials sections.</p>
-<h2 id="dashboard">Dashboard<a class="headerlink" href="#dashboard" title="Permanent link">&para;</a></h2>
-<p><img alt="Console dashboard" src="../../assets/screenshots/console-dashboard.png" /></p>
-<p>The dashboard is available to <strong>admin credentials only</strong>. It shows:</p>
-<ul>
-<li><strong>Server info</strong>: version, uptime</li>
-<li><strong>Storage stats</strong>: bucket count, object count, total storage size</li>
-<li><strong>Storage distribution</strong>: SVG donut chart showing size per bucket</li>
-<li><strong>Health indicator</strong>: real-time server health status with auto-refresh</li>
-</ul>
-<h2 id="bucket-management">Bucket Management<a class="headerlink" href="#bucket-management" title="Permanent link">&para;</a></h2>
-<p><img alt="Bucket list" src="../../assets/screenshots/console-buckets.png" /></p>
-<p>The Buckets view shows all buckets as cards with object count and total size. From here you can:</p>
-<ul>
-<li><strong>Create</strong> a new bucket (click the "+" button)</li>
-<li><strong>Delete</strong> an empty bucket</li>
-<li><strong>Browse</strong> a bucket by clicking its card</li>
-</ul>
-<h2 id="object-browser">Object Browser<a class="headerlink" href="#object-browser" title="Permanent link">&para;</a></h2>
-<p><img alt="Bucket browser" src="../../assets/screenshots/console-bucket-browser.png" /></p>
-<p>Inside a bucket, the object browser provides:</p>
-<ul>
-<li><strong>Breadcrumb navigation</strong> — click any path segment to navigate up</li>
-<li><strong>Folder browsing</strong> — click folders to navigate into them</li>
-<li><strong>Create folder</strong> — creates an S3 directory marker (zero-byte object with trailing <code>/</code>)</li>
-<li><strong>Upload</strong> — drag-and-drop or click to upload files</li>
-<li><strong>Download</strong> — download individual objects</li>
-<li><strong>Delete</strong> — delete objects or folders (with their contents)</li>
-</ul>
-<h3 id="object-detail">Object Detail<a class="headerlink" href="#object-detail" title="Permanent link">&para;</a></h3>
-<p><img alt="Object detail panel" src="../../assets/screenshots/console-object-detail.png" /></p>
-<p>Click any object to open the detail panel, which shows:</p>
-<ul>
-<li>Key, size, content type</li>
-<li>ETag and last modified timestamp</li>
-<li>Download and delete actions</li>
-</ul>
-<h3 id="treemap-visualization">Treemap Visualization<a class="headerlink" href="#treemap-visualization" title="Permanent link">&para;</a></h3>
-<p><img alt="Treemap view" src="../../assets/screenshots/console-treemap.png" /></p>
-<p>Toggle the treemap view to see a visual representation of object sizes within a bucket. Larger objects appear as larger rectangles, making it easy to spot storage-heavy files.</p>
-<h2 id="credential-management">Credential Management<a class="headerlink" href="#credential-management" title="Permanent link">&para;</a></h2>
-<p><img alt="Credential list" src="../../assets/screenshots/console-credentials.png" /></p>
-<p>The Credentials view is available to <strong>admin credentials only</strong>. It displays all credentials as cards showing:</p>
-<ul>
-<li>Access key ID</li>
-<li>Description and role (Admin/User)</li>
-<li>Creation date and status</li>
-</ul>
-<h3 id="creating-credentials">Creating Credentials<a class="headerlink" href="#creating-credentials" title="Permanent link">&para;</a></h3>
-<p><img alt="Credential created" src="../../assets/screenshots/console-credential-created.png" /></p>
-<p>Click "Create" to add a new credential:</p>
-<ol>
-<li>Enter a description (e.g., "CI/CD Pipeline")</li>
-<li>Optionally check "Admin" for admin privileges</li>
-<li>Click Create</li>
-</ol>
-<p>The secret key is displayed <strong>only once</strong> in a reveal panel. Copy and store it securely before closing.</p>
-<h3 id="deleting-credentials">Deleting Credentials<a class="headerlink" href="#deleting-credentials" title="Permanent link">&para;</a></h3>
-<p>Delete a credential by clicking its delete button. A confirmation dialog appears. Arca prevents deleting the last admin credential or the last active credential to avoid lockout.</p>
-<h2 id="custom-deployment">Custom Deployment<a class="headerlink" href="#custom-deployment" title="Permanent link">&para;</a></h2>
-<h3 id="environment-variables">Environment Variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h3>
+<h3 id="etag-preservation">ETag Preservation<a class="headerlink" href="#etag-preservation" title="Permanent link">&para;</a></h3>
+<p>The ETag (MD5) is computed on the <strong>plaintext</strong> data, not the ciphertext. This ensures S3 clients that compare ETags continue to work correctly.</p>
+<h2 id="configuration-reference">Configuration Reference<a class="headerlink" href="#configuration-reference" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">[encryption]</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w">                 </span><span class="c1"># Enable server-side encryption (default: false)</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">master_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;base64...&quot;</span><span class="w">       </span><span class="c1"># 256-bit master key (required when enabled)</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># previous_master_key = &quot;...&quot;  # Previous key for rotation (optional)</span>
+</code></pre></div>
 <table>
 <thead>
 <tr>
-<th>Variable</th>
-<th>Default</th>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
 <th>Description</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>ARCA_ENDPOINT</code></td>
-<td><em>(none)</em></td>
-<td>Arca server URL. When set, pre-fills and hides the endpoint field on the login screen.</td>
+<td><code>enabled</code></td>
+<td>bool</td>
+<td>No</td>
+<td>Enable encryption for new objects. Default <code>false</code>.</td>
+</tr>
+<tr>
+<td><code>master_key</code></td>
+<td>string</td>
+<td>When enabled</td>
+<td>Base64-encoded 256-bit key. Generate with <code>arca encryption generate-key</code>.</td>
+</tr>
+<tr>
+<td><code>previous_master_key</code></td>
+<td>string</td>
+<td>No</td>
+<td>Previous master key, used for reading objects encrypted with an older key during key rotation.</td>
 </tr>
 </tbody>
 </table>
-<h3 id="separate-network">Separate Network<a class="headerlink" href="#separate-network" title="Permanent link">&para;</a></h3>
-<p>The console can run on a different host or network from Arca. The browser (not the console container) makes API requests to Arca, so the <strong>browser</strong> must be able to reach the Arca endpoint URL.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">services</span><span class="p">:</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">console</span><span class="p">:</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">arca-console</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;9080:3000&quot;</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ARCA_ENDPOINT=https://s3.example.com</span>
+<h2 id="per-bucket-encryption">Per-Bucket Encryption<a class="headerlink" href="#per-bucket-encryption" title="Permanent link">&para;</a></h2>
+<p>In addition to the global <code>[encryption]</code> config, encryption can be configured per-bucket using standard S3 APIs:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Set bucket encryption</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>aws<span class="w"> </span>s3api<span class="w"> </span>put-bucket-encryption<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span>--server-side-encryption-configuration<span class="w"> </span><span class="s1">&#39;{&quot;Rules&quot;:[{&quot;ApplyServerSideEncryptionByDefault&quot;:{&quot;SSEAlgorithm&quot;:&quot;AES256&quot;}}]}&#39;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">  </span>--endpoint-url<span class="w"> </span>http://localhost:9000
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="c1"># Check bucket encryption</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>aws<span class="w"> </span>s3api<span class="w"> </span>get-bucket-encryption<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="c1"># Remove per-bucket config (falls back to global default)</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>aws<span class="w"> </span>s3api<span class="w"> </span>delete-bucket-encryption<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
 </code></pre></div>
-<h3 id="reverse-proxy">Reverse Proxy<a class="headerlink" href="#reverse-proxy" title="Permanent link">&para;</a></h3>
-<p>When placing the console behind a reverse proxy:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">server</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="kn">listen</span><span class="w"> </span><span class="mi">443</span><span class="w"> </span><span class="s">ssl</span><span class="p">;</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="kn">server_name</span><span class="w"> </span><span class="s">console.example.com</span><span class="p">;</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="kn">location</span><span class="w"> </span><span class="s">/</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">        </span><span class="kn">proxy_pass</span><span class="w"> </span><span class="s">http://console:3000</span><span class="p">;</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">        </span><span class="kn">proxy_set_header</span><span class="w"> </span><span class="s">Host</span><span class="w"> </span><span class="nv">$host</span><span class="p">;</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="p">}</span>
+<h2 id="mixed-mode">Mixed Mode<a class="headerlink" href="#mixed-mode" title="Permanent link">&para;</a></h2>
+<p>Encrypted and unencrypted objects coexist transparently:</p>
+<ul>
+<li><strong>Enabling encryption</strong>: add <code>[encryption]</code> to config and restart. New objects are encrypted; existing objects remain unencrypted but readable.</li>
+<li><strong>Disabling encryption</strong>: set <code>enabled = false</code>. New objects are stored unencrypted. Existing encrypted objects remain readable as long as <code>master_key</code> is in the config.</li>
+<li><strong>Detection</strong>: the sidecar <code>.meta</code> file records whether an object is encrypted. No magic bytes or guessing required.</li>
+</ul>
+<h2 id="cli-commands">CLI Commands<a class="headerlink" href="#cli-commands" title="Permanent link">&para;</a></h2>
+<h3 id="generate-a-master-key">Generate a master key<a class="headerlink" href="#generate-a-master-key" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>arca<span class="w"> </span>encryption<span class="w"> </span>generate-key
 </code></pre></div>
-<p>Since the console is a static single-page application, no special proxy configuration is needed — all API calls go directly from the browser to the Arca endpoint.</p>
+<p>Outputs a random 256-bit key encoded as base64. Suitable for the <code>master_key</code> config field.</p>
+<h2 id="recovery-and-integrity">Recovery and Integrity<a class="headerlink" href="#recovery-and-integrity" title="Permanent link">&para;</a></h2>
+<h3 id="arca-recover"><code>arca recover</code><a class="headerlink" href="#arca-recover" title="Permanent link">&para;</a></h3>
+<p>The recovery tool reads sidecar <code>.meta</code> files to rebuild the database. Encrypted objects are imported with their encryption metadata intact. Checksum verification is skipped for encrypted blobs (the on-disk ciphertext MD5 differs from the plaintext ETag stored in the sidecar).</p>
+<h3 id="arca-fsck"><code>arca fsck</code><a class="headerlink" href="#arca-fsck" title="Permanent link">&para;</a></h3>
+<p>The filesystem check tool skips checksum verification for encrypted objects when using <code>--verify-checksums</code>, since the on-disk data is ciphertext.</p>
+<h2 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h2>
+<p>Run the encryption integration tests:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>bin/test<span class="w"> </span>encryption
+</code></pre></div>
+<p>This starts an Arca server with encryption enabled and runs 16 tests covering:</p>
+<ul>
+<li>Put/get roundtrip with plaintext verification</li>
+<li>ETag correctness (plaintext MD5)</li>
+<li>SSE response headers on put/get/head/copy</li>
+<li>Empty and large object encryption</li>
+<li>Byte range reads (including cross-chunk boundary)</li>
+<li>Multipart upload with encrypted final blob</li>
+<li>PutBucketEncryption / GetBucketEncryption / DeleteBucketEncryption</li>
+<li>Object overwrite and deletion</li>
+</ul>
+<h2 id="security-notes">Security Notes<a class="headerlink" href="#security-notes" title="Permanent link">&para;</a></h2>
+<ul>
+<li>The master key is stored in the config file. Protect this file with filesystem permissions (e.g., <code>chmod 600</code>).</li>
+<li>For production deployments requiring external key management, see Phase 14 (SSE-KMS with HashiCorp Vault/OpenBAO) in the <a href="../../roadmap/">roadmap</a>.</li>
+<li>AES-256-GCM provides both confidentiality and integrity. Each encrypted chunk includes a 16-byte authentication tag that detects tampering.</li>
+<li>Nonces are constructed from a random 4-byte prefix (unique per object) and an 8-byte chunk counter, ensuring no nonce reuse.</li>
+</ul>
 
 
 

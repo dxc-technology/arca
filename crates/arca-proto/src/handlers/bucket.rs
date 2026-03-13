@@ -85,21 +85,53 @@ pub async fn get_bucket(
         }
     }
 
-    // TECHDEBT(TD-006): GetBucketEncryption always returns "not configured" error.
+    // GetBucketEncryption
     if params.iter().any(|(k, _)| k == "encryption") {
-        // Check bucket exists first.
         match state.metadata.head_bucket(&bucket).await {
-            Ok(Some(_)) => {
-                return s3_error_response(S3Error::new(
-                    S3ErrorCode::ServerSideEncryptionConfigurationNotFoundError,
-                    &resource,
-                ));
-            }
+            Ok(Some(_)) => {}
             Ok(None) => {
                 return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource));
             }
             Err(e) => return internal_error_response(e, &resource),
         }
+        // Check per-bucket config, then fall back to global default.
+        let algo = match state.metadata.get_bucket_config(&bucket, "encryption_algorithm").await {
+            Ok(Some(v)) => Some(v),
+            Ok(None) => {
+                if state.encryption_enabled {
+                    Some("AES256".to_string())
+                } else {
+                    None
+                }
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        };
+        return match algo {
+            Some(algorithm) => {
+                let xml = format!(
+                    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+                    <ServerSideEncryptionConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">\
+                      <Rule>\
+                        <ApplyServerSideEncryptionByDefault>\
+                          <SSEAlgorithm>{algorithm}</SSEAlgorithm>\
+                        </ApplyServerSideEncryptionByDefault>\
+                        <BucketKeyEnabled>false</BucketKeyEnabled>\
+                      </Rule>\
+                    </ServerSideEncryptionConfiguration>"
+                );
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header("Content-Type", "application/xml")
+                    .body(Body::from(xml))
+                    .expect("build get_bucket_encryption response")
+            }
+            None => {
+                s3_error_response(S3Error::new(
+                    S3ErrorCode::ServerSideEncryptionConfigurationNotFoundError,
+                    &resource,
+                ))
+            }
+        };
     }
 
     // TECHDEBT(TD-007): Unimplemented GET bucket operations return 501.
@@ -788,6 +820,88 @@ async fn list_multipart_uploads(
         .expect("build list_multipart_uploads response")
 }
 
+/// Handles PutBucketEncryption requests.
+async fn put_bucket_encryption(
+    state: AppState,
+    bucket: &str,
+    resource: &str,
+    request: axum::extract::Request,
+) -> Response {
+    // Check bucket exists.
+    match state.metadata.head_bucket(bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, resource));
+        }
+        Err(e) => return internal_error_response(e, resource),
+    }
+
+    // Read and parse XML body.
+    let body_bytes = match axum::body::to_bytes(request.into_body(), 65_536).await {
+        Ok(b) => b,
+        Err(_) => {
+            return s3_error_response(S3Error::with_message(
+                S3ErrorCode::InvalidArgument,
+                "Request body too large or invalid",
+                resource,
+            ));
+        }
+    };
+    let body_str = match std::str::from_utf8(&body_bytes) {
+        Ok(s) => s,
+        Err(_) => {
+            return s3_error_response(S3Error::with_message(
+                S3ErrorCode::InvalidArgument,
+                "Request body is not valid UTF-8",
+                resource,
+            ));
+        }
+    };
+
+    // Parse <SSEAlgorithm> from the XML body.
+    // We accept only AES256 (the only algorithm Arca supports).
+    let algorithm = parse_sse_algorithm(body_str);
+    let algorithm = match algorithm {
+        Some(algo) if algo == "AES256" => algo,
+        Some(algo) => {
+            return s3_error_response(S3Error::with_message(
+                S3ErrorCode::InvalidArgument,
+                &format!("Unsupported SSE algorithm: {algo}"),
+                resource,
+            ));
+        }
+        None => {
+            return s3_error_response(S3Error::with_message(
+                S3ErrorCode::MalformedXML,
+                "Missing SSEAlgorithm element",
+                resource,
+            ));
+        }
+    };
+
+    match state
+        .metadata
+        .set_bucket_config(bucket, "encryption_algorithm", &algorithm)
+        .await
+    {
+        Ok(()) => Response::builder()
+            .status(StatusCode::OK)
+            .body(Body::empty())
+            .expect("build put_bucket_encryption response"),
+        Err(e) => internal_error_response(e, resource),
+    }
+}
+
+/// Parses the SSEAlgorithm value from a PutBucketEncryption XML body.
+fn parse_sse_algorithm(xml: &str) -> Option<String> {
+    // Simple extraction — look for <SSEAlgorithm>...</SSEAlgorithm>.
+    let start_tag = "<SSEAlgorithm>";
+    let end_tag = "</SSEAlgorithm>";
+    let start = xml.find(start_tag)? + start_tag.len();
+    let end = xml[start..].find(end_tag)? + start;
+    Some(xml[start..end].trim().to_string())
+}
+
 /// Converts an `ObjectRecord` to a `ListEntry` for XML output.
 fn record_to_list_entry(record: &ObjectRecord, fetch_owner: bool) -> ListEntry {
     ListEntry {
@@ -834,11 +948,16 @@ pub async fn create_bucket(
     let resource = format!("/{bucket}");
     let query = request.uri().query().unwrap_or("");
 
+    // PutBucketEncryption
+    if query.starts_with("encryption") || query.starts_with("encryption=") || query.starts_with("encryption&") {
+        return put_bucket_encryption(state, &bucket, &resource, request).await;
+    }
+
     // TECHDEBT(TD-007): Unimplemented bucket-level PUT operations return 501.
     let unimplemented_ops = [
         "versioning", "acl", "lifecycle", "cors", "logging",
         "notification", "policy", "replication", "tagging",
-        "encryption", "object-lock", "website", "accelerate",
+        "object-lock", "website", "accelerate",
         "requestPayment", "inventory", "analytics", "metrics",
         "ownershipControls", "publicAccessBlock", "intelligenttiering",
     ];
@@ -873,12 +992,34 @@ pub async fn create_bucket(
     }
 }
 
-/// DELETE /{bucket} — DeleteBucket
+/// DELETE /{bucket} — DeleteBucket or DeleteBucketEncryption.
 pub async fn delete_bucket(
     State(state): State<AppState>,
     Path(bucket): Path<String>,
+    request: axum::extract::Request,
 ) -> Response {
     let resource = format!("/{bucket}");
+    let query = request.uri().query().unwrap_or("");
+
+    // DeleteBucketEncryption
+    if query.starts_with("encryption") || query.starts_with("encryption=") || query.starts_with("encryption&") {
+        match state.metadata.head_bucket(&bucket).await {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource));
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
+        match state.metadata.delete_bucket_config(&bucket, "encryption_algorithm").await {
+            Ok(_) => {
+                return Response::builder()
+                    .status(StatusCode::NO_CONTENT)
+                    .body(Body::empty())
+                    .expect("build delete_bucket_encryption response");
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
+    }
 
     // Check bucket exists.
     match state.metadata.head_bucket(&bucket).await {

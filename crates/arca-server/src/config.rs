@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 pub struct Config {
     pub server: ServerConfig,
     pub storage: StorageConfig,
+    pub encryption: Option<EncryptionConfig>,
 }
 
 /// Server configuration.
@@ -149,6 +150,51 @@ impl StorageConfig {
     }
 }
 
+/// Server-side encryption configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct EncryptionConfig {
+    /// Whether encryption is enabled by default for new objects.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Base64-encoded 256-bit (32-byte) master key (KEK).
+    pub master_key: Option<String>,
+    /// Base64-encoded previous master key for key rotation reads.
+    pub previous_master_key: Option<String>,
+}
+
+impl EncryptionConfig {
+    /// Validates the encryption configuration.
+    pub fn validate(&self) -> Result<()> {
+        if self.enabled {
+            let key = self.master_key.as_ref()
+                .context("[encryption] master_key is required when enabled = true")?;
+            validate_master_key(key, "master_key")?;
+        }
+        if let Some(ref key) = self.master_key {
+            validate_master_key(key, "master_key")?;
+        }
+        if let Some(ref key) = self.previous_master_key {
+            validate_master_key(key, "previous_master_key")?;
+        }
+        Ok(())
+    }
+}
+
+/// Validates that a base64-encoded key decodes to exactly 32 bytes.
+fn validate_master_key(key: &str, field_name: &str) -> Result<()> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(key)
+        .with_context(|| format!("[encryption] {field_name} is not valid base64"))?;
+    if bytes.len() != 32 {
+        bail!(
+            "[encryption] {field_name} must decode to exactly 32 bytes, got {}",
+            bytes.len()
+        );
+    }
+    Ok(())
+}
+
 /// Loads configuration from a TOML file.
 pub fn load_config(path: &Path) -> Result<Config> {
     let content =
@@ -157,6 +203,9 @@ pub fn load_config(path: &Path) -> Result<Config> {
         toml::from_str(&content).with_context(|| format!("parsing config: {}", path.display()))?;
     if let Some(tls) = &config.server.tls {
         tls.validate()?;
+    }
+    if let Some(enc) = &config.encryption {
+        enc.validate()?;
     }
     Ok(config)
 }
@@ -315,6 +364,82 @@ data_dir = "/data"
             ca_file: None,
         };
         assert!(tls.validate().is_err());
+    }
+
+    #[test]
+    fn parse_config_with_encryption() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+
+[encryption]
+enabled = true
+master_key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let enc = config.encryption.unwrap();
+        assert!(enc.enabled);
+        assert!(enc.master_key.is_some());
+    }
+
+    #[test]
+    fn parse_config_without_encryption() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.encryption.is_none());
+    }
+
+    #[test]
+    fn encryption_enabled_requires_master_key() {
+        let enc = EncryptionConfig {
+            enabled: true,
+            master_key: None,
+            previous_master_key: None,
+        };
+        assert!(enc.validate().is_err());
+    }
+
+    #[test]
+    fn encryption_master_key_must_be_valid_base64() {
+        let enc = EncryptionConfig {
+            enabled: true,
+            master_key: Some("not-valid-base64!!!".to_string()),
+            previous_master_key: None,
+        };
+        assert!(enc.validate().is_err());
+    }
+
+    #[test]
+    fn encryption_master_key_must_be_32_bytes() {
+        // 16 bytes, not 32
+        let enc = EncryptionConfig {
+            enabled: true,
+            master_key: Some("AAAAAAAAAAAAAAAAAAAAAA==".to_string()),
+            previous_master_key: None,
+        };
+        assert!(enc.validate().is_err());
+    }
+
+    #[test]
+    fn encryption_valid_config() {
+        // 32 bytes in base64 = 44 chars (with padding)
+        let enc = EncryptionConfig {
+            enabled: true,
+            master_key: Some("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string()),
+            previous_master_key: None,
+        };
+        assert!(enc.validate().is_ok());
     }
 
     #[test]

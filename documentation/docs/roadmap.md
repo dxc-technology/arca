@@ -29,7 +29,7 @@ continuing from the MVP phases (0–11).
 <div style="padding:12px 0">
   <div style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid rgba(128,128,128,.3)">
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em">12</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">13</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">13</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">14</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">15</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">16</div>
@@ -60,6 +60,7 @@ graph LR
     17 --> 20["20 Object Lock\nWORM"]
     19 --> 24["24 Notifications\n+ Events"]
     17 --> 25["25 Replication"]
+    13 --> 22["22 Performance\n+ Hardening"]
     23["23 PostgreSQL\nBackend"] --> 25
     25 --> 26["26 Multi-Node\n+ Erasure Coding"]
 
@@ -81,7 +82,6 @@ graph LR
 
     18["18 Monitoring\n+ Audit"]
     21["21 S3 API\nCompleteness"]
-    22["22 Performance\n+ Hardening"]
 ```
 
 <span style="font-size:.8em">
@@ -93,7 +93,7 @@ graph LR
 | Phase | Name | Priority | Dependencies | Version |
 |:-----:|------|:--------:|:------------:|:-------:|
 | 12 | [TLS/SSL and Transport Security](#phase-12-tlsssl-and-transport-security-p0) | P0 | — | `v1.1.0` |
-| 13 | [Server-Side Encryption: SSE-S3](#phase-13-server-side-encryption-sse-s3-p0) | P0 | — | |
+| 13 | [Server-Side Encryption: SSE-S3](#phase-13-server-side-encryption-sse-s3-p0) | P0 | — | `v1.1.0` |
 | 14 | [SSE-KMS with HashiCorp Vault/OpenBAO](#phase-14-sse-kms-with-hashicorp-vaultopenbao-p0) | P0 | 13 | |
 | 15 | [Presigned URLs, Query-String Auth, and SSE-C](#phase-15-presigned-urls-query-string-auth-and-sse-c-p1) | P1 | 12, 13 | |
 | 16 | [Access Control and Bucket Policies](#phase-16-access-control-and-bucket-policies-p1) | P1 | 13 | |
@@ -102,7 +102,7 @@ graph LR
 | 19 | [Object Tagging and Lifecycle Rules](#phase-19-object-tagging-and-lifecycle-rules-p2) | P2 | 13 | |
 | 20 | [Object Lock (WORM Compliance)](#phase-20-object-lock-worm-compliance-p2) | P2 | 17 | |
 | 21 | [S3 API Completeness](#phase-21-s3-api-completeness-p2) | P2 | — | |
-| 22 | [Performance and Hardening](#phase-22-performance-and-hardening-p2) | P2 | — | |
+| 22 | [Performance and Hardening](#phase-22-performance-and-hardening-p2) | P2 | 13 | |
 | 23 | [PostgreSQL Backend](#phase-23-postgresql-backend-p2) | P2 | — | |
 | 24 | [Notifications and Event System](#phase-24-notifications-and-event-system-p3) | P3 | 19 | |
 | 25 | [Replication](#phase-25-replication-p3) | P3 | 17, 23 | |
@@ -135,15 +135,19 @@ transport without requiring a reverse proxy.
 Transparent at-rest encryption using AES-256-GCM with per-object data encryption keys (DEKs).
 Local master key from config provides a bootstrap mode before Vault integration.
 
-- [ ] Encryption pipeline in `FsBlobStore`: wrap write stream with AES-256-GCM, random DEK per object
-- [ ] Master key encrypts DEKs — loaded from `[encryption]` config section (local secret, base64-encoded)
-- [ ] New `bucket_config` table in SQLite (foundation for versioning, lifecycle, policies in later phases)
-- [ ] `PutBucketEncryption` / `GetBucketEncryption` / `DeleteBucketEncryption` handlers
-- [ ] New fields on `ObjectRecord`: `encryption_algorithm`, `encryption_key_id`. DB migration v7
-- [ ] Sidecar `.meta` extended with encrypted DEK blob. `arca recover` handles encrypted objects
-- [ ] S3 response header: `x-amz-server-side-encryption: AES256`
-- [ ] (Console) Encryption status on object detail panel, bucket encryption settings page
-- [ ] Resolves: TD-006
+- [x] Encryption pipeline in `EncryptingBlobStore`: chunk-based AES-256-GCM streaming, random DEK per object, envelope encryption with master KEK
+- [x] Master key encrypts DEKs — loaded from `[encryption]` config section (local secret, base64-encoded)
+- [x] New `bucket_config` table in SQLite (foundation for versioning, lifecycle, policies in later phases)
+- [x] `PutBucketEncryption` / `GetBucketEncryption` / `DeleteBucketEncryption` handlers
+- [x] New fields on `ObjectRecord`: `encryption_algorithm`, `encryption_key_id`. DB migration v7
+- [x] Sidecar `.meta` extended with encrypted DEK blob. `arca recover` and `arca fsck` handle encrypted objects
+- [x] S3 response header: `x-amz-server-side-encryption: AES256`
+- [x] `arca encryption generate-key` CLI command for master key generation
+- [x] Mixed-mode: encrypted and unencrypted blobs coexist transparently
+- [x] Byte range reads on encrypted objects (chunk-level seek and decrypt)
+- [x] Docker encryption test infrastructure: compose overlay, `bin/test encryption` mode, 16 integration tests
+- [x] (Console) Encryption indicator in dashboard and object detail panel
+- [x] Resolves: TD-006
 
 ---
 
@@ -279,6 +283,9 @@ Production-grade limits, caching, and graceful operations.
 - [ ] Graceful rolling upgrades: drain connections, health endpoint reports "draining", configurable drain timeout
 - [ ] Performance benchmarking suite: automated benchmarks (concurrent uploads, large files, metadata ops/sec)
 - [ ] Security hardening: request validation, header size limits
+- [ ] `arca encrypt-existing` / `arca decrypt-existing` CLI tools for background encryption/decryption of existing objects in-place
+
+**Depends on**: Phase 13 (encryption pipeline)
 
 ---
 
@@ -589,6 +596,6 @@ Remaining items:
 - **Versioning** (TD-003): Faked for mc compatibility — no real version tracking
 - **Region support** (TD-004): Hardcoded `us-east-1` — no per-bucket regions
 - ~~**Request ID consistency** (TD-005)~~: **Resolved** — error XML and response header now match
-- **Encryption** (TD-006): Always returns "not configured" — no SSE support
+- ~~**Encryption** (TD-006)~~: **Resolved** — SSE-S3 with AES-256-GCM implemented in Phase 13
 - **Unimplemented ops** (TD-007): ~35 bucket operations return 501
 - **Multipart Content-Type** (TD-008): Captured at init time — verify against AWS semantics

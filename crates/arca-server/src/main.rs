@@ -20,7 +20,7 @@ use tracing_subscriber::EnvFilter;
 use arca_core::store::CredentialStore;
 use arca_proto::AppState;
 use arca_proto::middleware::normalize::NormalizeService;
-use cli::{Cli, Command, CredentialAction, LogFormat, TlsAction};
+use cli::{Cli, Command, CredentialAction, EncryptionAction, LogFormat, TlsAction};
 
 /// The normalized app type used by both HTTP and HTTPS code paths.
 pub type NormalizedApp = NormalizeService<Router>;
@@ -44,22 +44,48 @@ async fn main() -> Result<()> {
             );
             credential::ensure_root_credential(store.as_ref()).await?;
 
-            let blob_store = arca_storage::FsBlobStore::new(
+            let fs_blob_store = arca_storage::FsBlobStore::new(
                 config.storage.blobs_dir(),
                 config.storage.blob_prefix_depth,
             )
             .await?;
 
+            // Conditionally wrap with EncryptingBlobStore when encryption is enabled.
+            let encryption_enabled = config
+                .encryption
+                .as_ref()
+                .map(|e| e.enabled)
+                .unwrap_or(false);
+
+            let blob: Arc<dyn arca_core::store::BlobStore> = if encryption_enabled {
+                let enc_config = config.encryption.as_ref().unwrap();
+                let master_key = arca_storage::encryption::keys::MasterKey::from_base64(
+                    enc_config.master_key.as_ref().unwrap(),
+                )
+                .map_err(|e| anyhow::anyhow!("invalid master key: {e}"))?;
+                tracing::info!(
+                    key_id = master_key.key_id(),
+                    "Server-side encryption enabled (AES-256-GCM)"
+                );
+                Arc::new(arca_storage::EncryptingBlobStore::new(
+                    fs_blob_store,
+                    Arc::new(master_key),
+                ))
+            } else {
+                Arc::new(fs_blob_store)
+            };
+
             let tls_enabled = config.server.tls.is_some();
 
             let state = AppState {
                 metadata: store.clone() as Arc<dyn arca_core::store::MetadataStore>,
-                blob: Arc::new(blob_store),
+                blob,
                 credentials: store as Arc<dyn CredentialStore>,
                 domain: config.server.domain.clone(),
                 started_at: std::time::Instant::now(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
                 tls_enabled,
+                encryption_enabled,
             };
 
             let addr = format!("{}:{}", config.server.bind, config.server.port);
@@ -205,6 +231,18 @@ async fn main() -> Result<()> {
                     days,
                 } => {
                     tls_generate::generate(&output_dir, &sans, days)?;
+                }
+            }
+        }
+
+        Command::Encryption { action } => {
+            match action {
+                EncryptionAction::GenerateKey => {
+                    use base64::Engine;
+                    let key = arca_storage::encryption::keys::generate_dek()
+                        .map_err(|e| anyhow::anyhow!("key generation failed: {e}"))?;
+                    let encoded = base64::engine::general_purpose::STANDARD.encode(key);
+                    println!("{encoded}");
                 }
             }
         }

@@ -14,4 +14,6 @@ pub struct AppState {
     pub started_at: std::time::Instant,
     pub version: String,
     pub tls_enabled: bool,
+    /// Whether server-side encryption is enabled by default for new objects.
+    pub encryption_enabled: bool,
 }

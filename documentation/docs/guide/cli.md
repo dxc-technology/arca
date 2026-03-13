@@ -118,6 +118,26 @@ Distribute `arca-ca.crt` to clients that need to trust the self-signed certifica
 !!! warning
     Self-signed certificates are suitable for development and internal testing. For production, use certificates issued by a trusted Certificate Authority.
 
+## `arca encryption generate-key`
+
+Generate a random 256-bit master key for server-side encryption.
+
+```bash
+arca encryption generate-key
+```
+
+Outputs a base64-encoded 32-byte key to stdout. Use this value for the `master_key` field in the `[encryption]` config section.
+
+```bash
+# Generate a key and add it to config
+KEY=$(arca encryption generate-key)
+echo "[encryption]"
+echo "enabled = true"
+echo "master_key = \"$KEY\""
+```
+
+See the [Encryption guide](encryption.md) for setup instructions.
+
 ## `arca recover`
 
 Rebuild the SQLite database from `.meta` sidecar files. Use this for disaster recovery when the database is lost or corrupted. See [Disaster Recovery](../operations/recovery.md) for a detailed guide.
@@ -140,7 +160,7 @@ The recover command:
 4. Deletes the old database and creates a fresh one
 5. Recreates all buckets and objects from sidecar data
 
-Multipart objects (ETag contains `-`) skip checksum verification since the composite ETag is not a simple MD5 of the assembled blob. Orphaned sidecars (no blob file), malformed JSON, and checksum mismatches are skipped with warnings.
+Multipart objects (ETag contains `-`) skip checksum verification since the composite ETag is not a simple MD5 of the assembled blob. Encrypted objects also skip checksum verification since the on-disk ciphertext MD5 differs from the plaintext ETag. Orphaned sidecars (no blob file), malformed JSON, and checksum mismatches are skipped with warnings.
 
 ```bash
 # Preview what would be recovered

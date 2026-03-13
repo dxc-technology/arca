@@ -37,6 +37,16 @@ The default config file is `config/default.toml` in the repository. At runtime, 
 
 When `[server.tls]` is present, the server listens on HTTPS. See the [TLS guide](tls.md) for details on the three configuration scenarios (auto-detect, relative paths, absolute paths).
 
+### Encryption
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `encryption.enabled` | `false` | Enable server-side encryption (AES-256-GCM) for new objects. |
+| `encryption.master_key` | *(none)* | Base64-encoded 256-bit master key. Required when enabled. Generate with `arca encryption generate-key`. |
+| `encryption.previous_master_key` | *(none)* | Previous master key for key rotation. Used to read objects encrypted with the old key. |
+
+When `[encryption]` is present and `enabled = true`, all new objects are encrypted at rest. Existing unencrypted objects remain readable. See the [Encryption guide](encryption.md) for details.
+
 ### Example
 
 ```toml
@@ -53,6 +63,10 @@ port = 9000
 [storage]
 data_dir = "/data"
 # blob_prefix_depth = 2  # optional, default is 2
+
+# [encryption]               # optional, enables SSE-S3
+# enabled = true
+# master_key = "base64..."   # generate with: arca encryption generate-key
 ```
 
 ### Blob Storage

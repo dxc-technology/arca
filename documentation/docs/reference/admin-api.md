@@ -51,9 +51,10 @@ GET /admin/info
 
 ```json
 {
-    "version": "0.1.0",
+    "version": "1.1.0",
     "uptime_seconds": 3600,
-    "tls_enabled": true
+    "tls_enabled": true,
+    "encryption_enabled": true
 }
 ```
 
@@ -62,6 +63,7 @@ GET /admin/info
 | `version` | string | Arca server version |
 | `uptime_seconds` | integer | Seconds since server start |
 | `tls_enabled` | boolean | Whether TLS is enabled on the main listener |
+| `encryption_enabled` | boolean | Whether server-side encryption (SSE-S3) is enabled globally |
 
 ---
 

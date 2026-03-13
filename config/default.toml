@@ -10,3 +10,8 @@ port = 9000
 
 [storage]
 data_dir = "/data"
+
+# [encryption]
+# enabled = true
+# master_key = ""                      # base64-encoded 256-bit key (generate with: arca encryption generate-key)
+# previous_master_key = ""             # previous key for rotation (optional)

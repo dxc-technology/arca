@@ -64,6 +64,12 @@ pub enum Command {
         #[command(subcommand)]
         action: TlsAction,
     },
+
+    /// Manage server-side encryption
+    Encryption {
+        #[command(subcommand)]
+        action: EncryptionAction,
+    },
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -88,6 +94,12 @@ pub enum TlsAction {
         #[arg(long, default_value = "365")]
         days: u32,
     },
+}
+
+#[derive(Subcommand)]
+pub enum EncryptionAction {
+    /// Generate a random 256-bit master key (base64-encoded)
+    GenerateKey,
 }
 
 #[derive(Subcommand)]

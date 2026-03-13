@@ -139,7 +139,7 @@ impl MetadataStore for SqliteStore {
                 // Check for existing object to return for cleanup.
                 let old = {
                     let mut stmt = tx.prepare(
-                        "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata
+                        "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id
                          FROM objects WHERE bucket = ?1 AND key = ?2",
                     )?;
                     let result = stmt.query_row(
@@ -162,8 +162,8 @@ impl MetadataStore for SqliteStore {
                     params![record.bucket, record.key],
                 )?;
                 tx.execute(
-                    "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                     params![
                         record.bucket,
                         record.key,
@@ -173,6 +173,8 @@ impl MetadataStore for SqliteStore {
                         record.content_type,
                         record.last_modified.to_rfc3339(),
                         metadata_json,
+                        record.encryption_algorithm,
+                        record.encryption_key_id,
                     ],
                 )?;
 
@@ -193,7 +195,7 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata
+                    "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id
                      FROM objects WHERE bucket = ?1 AND key = ?2",
                 )?;
                 let result = stmt.query_row(
@@ -224,7 +226,7 @@ impl MetadataStore for SqliteStore {
             .call(move |conn| {
                 // Build dynamic SQL.
                 let mut sql = String::from(
-                    "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata
+                    "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id
                      FROM objects WHERE bucket = ?1",
                 );
                 let mut param_idx = 2u32;
@@ -288,7 +290,7 @@ impl MetadataStore for SqliteStore {
 
                 let old = {
                     let mut stmt = tx.prepare(
-                        "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata
+                        "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id
                          FROM objects WHERE bucket = ?1 AND key = ?2",
                     )?;
                     let result = stmt.query_row(
@@ -314,6 +316,73 @@ impl MetadataStore for SqliteStore {
             })
             .await
             .map_err(|e: TrError| ArcaError::Internal(format!("delete_object: {e}")))
+    }
+
+    // -- Bucket config operations --
+
+    async fn get_bucket_config(
+        &self,
+        bucket: &str,
+        config_key: &str,
+    ) -> Result<Option<String>, ArcaError> {
+        let bucket = bucket.to_string();
+        let config_key = config_key.to_string();
+        self.conn
+            .call(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT config_value FROM bucket_config WHERE bucket = ?1 AND config_key = ?2",
+                )?;
+                let result = stmt.query_row(params![bucket, config_key], |row| row.get(0));
+                match result {
+                    Ok(val) => Ok(Some(val)),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(e.into()),
+                }
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("get_bucket_config: {e}")))
+    }
+
+    async fn set_bucket_config(
+        &self,
+        bucket: &str,
+        config_key: &str,
+        config_value: &str,
+    ) -> Result<(), ArcaError> {
+        let bucket = bucket.to_string();
+        let config_key = config_key.to_string();
+        let config_value = config_value.to_string();
+        self.conn
+            .call(move |conn| {
+                conn.execute(
+                    "INSERT INTO bucket_config (bucket, config_key, config_value, updated_at)
+                     VALUES (?1, ?2, ?3, ?4)
+                     ON CONFLICT(bucket, config_key) DO UPDATE SET config_value = ?3, updated_at = ?4",
+                    params![bucket, config_key, config_value, chrono::Utc::now().to_rfc3339()],
+                )?;
+                Ok(())
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("set_bucket_config: {e}")))
+    }
+
+    async fn delete_bucket_config(
+        &self,
+        bucket: &str,
+        config_key: &str,
+    ) -> Result<bool, ArcaError> {
+        let bucket = bucket.to_string();
+        let config_key = config_key.to_string();
+        self.conn
+            .call(move |conn| {
+                let affected = conn.execute(
+                    "DELETE FROM bucket_config WHERE bucket = ?1 AND config_key = ?2",
+                    params![bucket, config_key],
+                )?;
+                Ok(affected > 0)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("delete_bucket_config: {e}")))
     }
 
     // -- Multipart upload operations --
@@ -675,6 +744,9 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
     let metadata: HashMap<String, String> =
         serde_json::from_str(&metadata_json).unwrap_or_default();
 
+    let encryption_algorithm: Option<String> = row.get(8)?;
+    let encryption_key_id: Option<String> = row.get(9)?;
+
     Ok(ObjectRecord {
         bucket: row.get(0)?,
         key: row.get(1)?,
@@ -684,6 +756,8 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
         content_type: row.get(5)?,
         last_modified,
         metadata,
+        encryption_algorithm,
+        encryption_key_id,
     })
 }
 
@@ -705,6 +779,8 @@ mod tests {
             content_type: Some("text/plain".to_string()),
             last_modified: chrono::Utc::now(),
             metadata: HashMap::new(),
+            encryption_algorithm: None,
+            encryption_key_id: None,
         }
     }
 

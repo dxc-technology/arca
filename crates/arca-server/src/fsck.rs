@@ -290,6 +290,11 @@ async fn check_checksums(
             continue;
         }
 
+        // Skip encrypted objects (on-disk ciphertext MD5 ≠ plaintext ETag).
+        if obj.encryption_algorithm.is_some() {
+            continue;
+        }
+
         // Skip if blob doesn't exist on disk (already reported as missing).
         if !disk_blobs.contains(&obj.blob_id) {
             continue;
@@ -415,6 +420,7 @@ mod tests {
                 data_dir: dir.to_str().unwrap().to_string(),
                 blob_prefix_depth: 2,
             },
+            encryption: None,
         }
     }
 
@@ -477,6 +483,7 @@ mod tests {
             content_type: Some("text/plain".into()),
             last_modified: "2024-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
+            encryption: None,
         };
         write_sidecar(&blobs_dir, blob_id, &meta).await;
 
@@ -491,6 +498,8 @@ mod tests {
                 .unwrap()
                 .with_timezone(&chrono::Utc),
             metadata: HashMap::new(),
+            encryption_algorithm: None,
+            encryption_key_id: None,
         };
         store.put_object(&record).await.unwrap();
     }
@@ -557,6 +566,8 @@ mod tests {
             content_type: None,
             last_modified: chrono::Utc::now(),
             metadata: HashMap::new(),
+            encryption_algorithm: None,
+            encryption_key_id: None,
         };
         store.put_object(&record).await.unwrap();
         drop(store);
@@ -589,6 +600,7 @@ mod tests {
             content_type: None,
             last_modified: "2024-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
+            encryption: None,
         };
         write_sidecar(&blobs_dir, id, &bad_meta).await;
         drop(store);
@@ -667,6 +679,7 @@ mod tests {
             content_type: None,
             last_modified: "2024-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
+            encryption: None,
         };
         write_sidecar(&blobs_dir, id, &meta).await;
 
@@ -682,6 +695,8 @@ mod tests {
                 .unwrap()
                 .with_timezone(&chrono::Utc),
             metadata: HashMap::new(),
+            encryption_algorithm: None,
+            encryption_key_id: None,
         };
         store.put_object(&record).await.unwrap();
         drop(store);

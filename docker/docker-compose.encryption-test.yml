@@ -1,0 +1,13 @@
+# Encryption test overlay — starts Arca with SSE-S3 encryption enabled.
+# Used by: bin/test encryption
+
+services:
+  arca:
+    volumes:
+      - ../config/encryption-test.toml:/etc/arca/config.toml:ro
+
+  test:
+    environment:
+      - ARCA_ENCRYPTION_ENABLED=1
+    profiles:
+      - encryption-test

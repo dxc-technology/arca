@@ -29,6 +29,7 @@ The MVP is complete. All 12 implementation phases (0–11) have been delivered. 
 - **Integrity checking** — `arca fsck` detects orphaned blobs, missing files, sidecar mismatches, and stale temp files
 - **Modular storage** — metadata backend behind traits (SQLite now, Postgres later)
 - **Admin API** — JSON endpoints for health, stats, and credential management under `/admin/*`
+- **Server-side encryption** — AES-256-GCM at-rest encryption (SSE-S3) with envelope encryption, per-object DEKs, and streaming chunk-based encrypt/decrypt
 - **Native TLS** — HTTPS without a reverse proxy (`bin/arca start --tls`), with auto-detection and SIGHUP cert reload
 - **Web console** — browser-based UI for managing buckets, objects, and credentials
 - **[S3 compatibility tested](https://dxc-technology.github.io/arca/s3-compatibility/)** — 270/829 Ceph s3-tests passing, 0 unexpected failures
@@ -37,7 +38,7 @@ The MVP is complete. All 12 implementation phases (0–11) have been delivered. 
 
 | Category  | Operations                                                            |
 |-----------|-----------------------------------------------------------------------|
-| Bucket    | CreateBucket, DeleteBucket, HeadBucket, ListBuckets                   |
+| Bucket    | CreateBucket, DeleteBucket, HeadBucket, ListBuckets, PutBucketEncryption, GetBucketEncryption, DeleteBucketEncryption |
 | Object    | PutObject, GetObject, DeleteObject, HeadObject, CopyObject            |
 | Listing   | ListObjectsV1, ListObjectsV2, DeleteObjects (batch)                   |
 | Multipart | CreateMultipartUpload, UploadPart, UploadPartCopy, CompleteMultipartUpload, AbortMultipartUpload, ListMultipartUploads |
@@ -55,6 +56,7 @@ The MVP is complete. All 12 implementation phases (0–11) have been delivered. 
 - CompleteMultipartUpload with conditional headers and part deduplication
 - Encoding-type=url for ListObjects responses
 - Unicode metadata support
+- Server-side encryption (SSE-S3): AES-256-GCM with per-object DEKs and master key envelope encryption
 
 ## Quick Start
 
@@ -157,12 +159,13 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 
 | Suite | Tests | Details |
 |-------|------:|---------|
-| Unit tests (Rust) | 191 | arca-auth: 25, arca-storage: 56, arca-core: 17, arca-proto: 38, arca-server: 55 |
+| Unit tests (Rust) | 239 | arca-auth: 25, arca-core: 56, arca-proto: 17, arca-server: 42, arca-storage: 99 |
 | Integration — boto3 | 238 | buckets, objects, list, multipart, copy, folders, auth, admin, conditional ops |
+| Integration — Encryption | 16 | encrypted put/get, ETag, range reads, multipart, copy, bucket config |
 | Integration — TLS | 7 | HTTPS health/info/put/get/multipart, minio client, wrong CA rejection |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 829 | 270 pass, 468 fail, 91 skip — 0 unexpected failures |
-| **Total** | **1,364** | |
+| **Total** | **1,428** | |
 
 ## License
 

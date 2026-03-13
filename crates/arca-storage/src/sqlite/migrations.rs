@@ -82,6 +82,19 @@ const MIGRATIONS: &[Migration] = &[
         sql: "ALTER TABLE objects ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}';
               ALTER TABLE multipart_uploads ADD COLUMN metadata TEXT NOT NULL DEFAULT '{}'",
     },
+    Migration {
+        version: 7,
+        description: "Add encryption columns to objects and create bucket_config table",
+        sql: "ALTER TABLE objects ADD COLUMN encryption_algorithm TEXT;
+              ALTER TABLE objects ADD COLUMN encryption_key_id TEXT;
+              CREATE TABLE bucket_config (
+                  bucket       TEXT NOT NULL,
+                  config_key   TEXT NOT NULL,
+                  config_value TEXT NOT NULL,
+                  updated_at   TEXT NOT NULL,
+                  PRIMARY KEY (bucket, config_key)
+              )",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -155,7 +168,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 6);
+        assert_eq!(version, 7);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -197,12 +210,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 6);
+        assert_eq!(version, 7);
 
-        // Six migration records
+        // Seven migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 6);
+        assert_eq!(count, 7);
     }
 }

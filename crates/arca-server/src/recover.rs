@@ -106,6 +106,8 @@ pub async fn run_recover(config: &Config, dry_run: bool, skip_verify: bool) -> R
             content_type: entry.meta.content_type.clone(),
             last_modified,
             metadata: entry.meta.metadata.clone(),
+            encryption_algorithm: entry.meta.encryption.as_ref().map(|e| e.algorithm.clone()),
+            encryption_key_id: entry.meta.encryption.as_ref().map(|e| e.key_id.clone()),
         };
         store.put_object(&record).await?;
         object_count += 1;
@@ -196,7 +198,14 @@ async fn process_sidecar(meta_path: &Path, skip_verify: bool) -> Result<Recovere
     // Verify checksum unless skipped.
     if !skip_verify {
         let is_multipart = meta.etag.contains('-');
-        if !is_multipart {
+        let is_encrypted = meta.encryption.is_some();
+        if is_encrypted {
+            // Encrypted blobs have ciphertext on disk — plaintext MD5 can't be
+            // verified without the master key. Skip with a note.
+            eprintln!(
+                "NOTE: skipping checksum for encrypted blob {blob_id} (use --skip-verify or provide master key)"
+            );
+        } else if !is_multipart {
             verify_blob_checksum(&blob_path, &meta.etag)
                 .await
                 .with_context(|| format!("blob {blob_id}"))?;
@@ -281,6 +290,7 @@ mod tests {
                 data_dir: dir.to_str().unwrap().to_string(),
                 blob_prefix_depth: 2,
             },
+            encryption: None,
         }
     }
 
@@ -340,6 +350,7 @@ mod tests {
                 content_type: Some("text/plain".into()),
                 last_modified: "2024-01-01T00:00:00Z".into(),
                 metadata: HashMap::new(),
+                encryption: None,
             },
         )
         .await;
@@ -356,6 +367,7 @@ mod tests {
                 content_type: None,
                 last_modified: "2024-01-02T00:00:00Z".into(),
                 metadata: HashMap::new(),
+                encryption: None,
             },
         )
         .await;
@@ -372,6 +384,7 @@ mod tests {
                 content_type: None,
                 last_modified: "2024-01-03T00:00:00Z".into(),
                 metadata: HashMap::new(),
+                encryption: None,
             },
         )
         .await;
@@ -420,6 +433,7 @@ mod tests {
                 content_type: None,
                 last_modified: "2024-01-01T00:00:00Z".into(),
                 metadata: HashMap::new(),
+                encryption: None,
             },
         )
         .await;
@@ -451,6 +465,7 @@ mod tests {
             content_type: None,
             last_modified: "2024-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
+            encryption: None,
         };
         let json = serde_json::to_string(&meta).unwrap();
         fs::write(dir.join(format!("{id}.meta")), json).await.unwrap();
@@ -530,6 +545,7 @@ mod tests {
                 content_type: None,
                 last_modified: "2024-01-01T00:00:00Z".into(),
                 metadata: HashMap::new(),
+                encryption: None,
             },
         )
         .await;
@@ -568,6 +584,7 @@ mod tests {
                 content_type: None,
                 last_modified: "2024-01-01T00:00:00Z".into(),
                 metadata: HashMap::new(),
+                encryption: None,
             },
         )
         .await;
@@ -605,6 +622,7 @@ mod tests {
                 content_type: Some("application/octet-stream".into()),
                 last_modified: "2024-06-15T12:00:00Z".into(),
                 metadata: HashMap::new(),
+                encryption: None,
             },
         )
         .await;

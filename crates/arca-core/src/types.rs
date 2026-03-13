@@ -50,6 +50,12 @@ pub struct ObjectRecord {
     /// `content-language`, `expires`).
     #[serde(default)]
     pub metadata: HashMap<String, String>,
+    /// Encryption algorithm (e.g. "AES256") if the object is encrypted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encryption_algorithm: Option<String>,
+    /// Key ID of the master key used to encrypt this object.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encryption_key_id: Option<String>,
 }
 
 /// Projection of an object for list responses (lighter than ObjectRecord).

@@ -112,6 +112,7 @@ pub fn build_router(state: AppState) -> Router {
             ETAG,
             CONTENT_LENGTH,
             HeaderName::from_static("x-amz-request-id"),
+            HeaderName::from_static("x-amz-server-side-encryption"),
         ]);
 
     // --- Merge everything ---

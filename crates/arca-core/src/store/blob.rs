@@ -12,6 +12,21 @@ use crate::types::BlobId;
 /// A streaming byte source for reading or writing blobs.
 pub type ByteStream = Pin<Box<dyn Stream<Item = Result<Bytes, io::Error>> + Send>>;
 
+/// Encryption metadata for a blob (stored in sidecar + returned from put).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlobEncryptionInfo {
+    /// Algorithm identifier (e.g. "AES256").
+    pub algorithm: String,
+    /// Base64-encoded encrypted DEK (data encryption key).
+    pub encrypted_dek: String,
+    /// Base64-encoded nonce used to wrap the DEK.
+    pub dek_nonce: String,
+    /// Base64-encoded 4-byte random nonce prefix for chunk encryption.
+    pub nonce_prefix: String,
+    /// Key ID: first 8 hex chars of SHA-256(master_key), identifies which KEK was used.
+    pub key_id: String,
+}
+
 /// Result of a successful blob put operation.
 #[derive(Debug, Clone)]
 pub struct BlobPutResult {
@@ -19,6 +34,8 @@ pub struct BlobPutResult {
     pub size: u64,
     /// Hex-encoded MD5 hash of the blob content (used as S3 ETag).
     pub etag: String,
+    /// Encryption metadata, if the blob was encrypted.
+    pub encryption: Option<BlobEncryptionInfo>,
 }
 
 /// A byte range for partial reads.
@@ -51,6 +68,9 @@ pub struct SidecarMeta {
     /// Defaults to empty for backward compatibility with older sidecar files.
     #[serde(default)]
     pub metadata: std::collections::HashMap<String, String>,
+    /// Encryption metadata. Absent/null = unencrypted (backward compatible).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encryption: Option<BlobEncryptionInfo>,
 }
 
 /// Trait for blob (binary data) storage operations.

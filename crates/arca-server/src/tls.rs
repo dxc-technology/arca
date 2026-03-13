@@ -488,8 +488,6 @@ mod tests {
             cert_file: Some(dir.path().join("server.crt").to_string_lossy().into_owned()),
             key_file: Some(dir.path().join("server.key").to_string_lossy().into_owned()),
             ca_file: None,
-            health_port: None,
-            redirect_http: true,
         };
 
         let reloader = TlsReloader::new(initial, tls_config);

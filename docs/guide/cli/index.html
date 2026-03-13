@@ -515,6 +515,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../encryption/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encryption
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../console/" class="md-nav__link">
         
   
@@ -668,6 +696,17 @@
     <span class="md-ellipsis">
       
         arca tls generate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arca-encryption-generate-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca encryption generate-key
       
     </span>
   </a>
@@ -1152,6 +1191,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#arca-encryption-generate-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca encryption generate-key
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#arca-recover" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1370,9 +1420,21 @@
 <p class="admonition-title">Warning</p>
 <p>Self-signed certificates are suitable for development and internal testing. For production, use certificates issued by a trusted Certificate Authority.</p>
 </div>
+<h2 id="arca-encryption-generate-key"><code>arca encryption generate-key</code><a class="headerlink" href="#arca-encryption-generate-key" title="Permanent link">&para;</a></h2>
+<p>Generate a random 256-bit master key for server-side encryption.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>arca<span class="w"> </span>encryption<span class="w"> </span>generate-key
+</code></pre></div>
+<p>Outputs a base64-encoded 32-byte key to stdout. Use this value for the <code>master_key</code> field in the <code>[encryption]</code> config section.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Generate a key and add it to config</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nv">KEY</span><span class="o">=</span><span class="k">$(</span>arca<span class="w"> </span>encryption<span class="w"> </span>generate-key<span class="k">)</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;[encryption]&quot;</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;enabled = true&quot;</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;master_key = \&quot;</span><span class="nv">$KEY</span><span class="s2">\&quot;&quot;</span>
+</code></pre></div>
+<p>See the <a href="../encryption/">Encryption guide</a> for setup instructions.</p>
 <h2 id="arca-recover"><code>arca recover</code><a class="headerlink" href="#arca-recover" title="Permanent link">&para;</a></h2>
 <p>Rebuild the SQLite database from <code>.meta</code> sidecar files. Use this for disaster recovery when the database is lost or corrupted. See <a href="../../operations/recovery/">Disaster Recovery</a> for a detailed guide.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>arca<span class="w"> </span>recover<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--dry-run<span class="o">]</span><span class="w"> </span><span class="o">[</span>--skip-verify<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>arca<span class="w"> </span>recover<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--dry-run<span class="o">]</span><span class="w"> </span><span class="o">[</span>--skip-verify<span class="o">]</span>
 </code></pre></div>
 <table>
 <thead>
@@ -1404,19 +1466,19 @@
 <li>Deletes the old database and creates a fresh one</li>
 <li>Recreates all buckets and objects from sidecar data</li>
 </ol>
-<p>Multipart objects (ETag contains <code>-</code>) skip checksum verification since the composite ETag is not a simple MD5 of the assembled blob. Orphaned sidecars (no blob file), malformed JSON, and checksum mismatches are skipped with warnings.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Preview what would be recovered</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>arca<span class="w"> </span>recover<span class="w"> </span>--dry-run
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c1"># Full recovery (with checksum verification)</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>arca<span class="w"> </span>recover
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="c1"># Fast recovery (skip checksum verification)</span>
-<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>arca<span class="w"> </span>recover<span class="w"> </span>--skip-verify
+<p>Multipart objects (ETag contains <code>-</code>) skip checksum verification since the composite ETag is not a simple MD5 of the assembled blob. Encrypted objects also skip checksum verification since the on-disk ciphertext MD5 differs from the plaintext ETag. Orphaned sidecars (no blob file), malformed JSON, and checksum mismatches are skipped with warnings.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># Preview what would be recovered</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>arca<span class="w"> </span>recover<span class="w"> </span>--dry-run
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="c1"># Full recovery (with checksum verification)</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>arca<span class="w"> </span>recover
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="c1"># Fast recovery (skip checksum verification)</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>arca<span class="w"> </span>recover<span class="w"> </span>--skip-verify
 </code></pre></div>
 <h2 id="arca-fsck"><code>arca fsck</code><a class="headerlink" href="#arca-fsck" title="Permanent link">&para;</a></h2>
 <p>Check database and filesystem consistency. See <a href="../../operations/recovery/">Disaster Recovery</a> for a detailed guide.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>arca<span class="w"> </span>fsck<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--verify-checksums<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>arca<span class="w"> </span>fsck<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--verify-checksums<span class="o">]</span>
 </code></pre></div>
 <table>
 <thead>
@@ -1490,11 +1552,11 @@
 </tr>
 </tbody>
 </table>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># Quick consistency check</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>arca<span class="w"> </span>fsck
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="c1"># Full check including blob checksums (slow for large datasets)</span>
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>arca<span class="w"> </span>fsck<span class="w"> </span>--verify-checksums
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># Quick consistency check</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>arca<span class="w"> </span>fsck
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="c1"># Full check including blob checksums (slow for large datasets)</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>arca<span class="w"> </span>fsck<span class="w"> </span>--verify-checksums
 </code></pre></div>
 
 

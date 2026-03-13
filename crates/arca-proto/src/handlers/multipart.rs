@@ -117,6 +117,24 @@ pub async fn upload_part(
         Err(e) => return internal_error_response(e, &resource),
     };
 
+    // Write sidecar for the part blob so that EncryptingBlobStore.get()
+    // can detect and decrypt it during CompleteMultipartUpload assembly.
+    if put_result.encryption.is_some() {
+        let sidecar = SidecarMeta {
+            bucket: bucket.clone(),
+            key: format!("{key}#{upload_id}#{part_number}"),
+            size: put_result.size,
+            etag: put_result.etag.clone(),
+            content_type: None,
+            last_modified: chrono::Utc::now().to_rfc3339(),
+            metadata: std::collections::HashMap::new(),
+            encryption: put_result.encryption.clone(),
+        };
+        if let Err(e) = state.blob.write_sidecar(&blob_id, &sidecar).await {
+            tracing::warn!(error = %e, "Failed to write part sidecar");
+        }
+    }
+
     // Insert part record (returns old for cleanup).
     let part = PartRecord {
         upload_id: upload_id.clone(),
@@ -325,6 +343,7 @@ pub async fn complete_multipart_upload(
         content_type: upload.content_type.clone(),
         last_modified: now.to_rfc3339(),
         metadata: upload.metadata.clone(),
+        encryption: put_result.encryption.clone(),
     };
     if let Err(e) = state.blob.write_sidecar(&final_blob_id, &sidecar).await {
         return internal_error_response(e, &resource);
@@ -340,6 +359,8 @@ pub async fn complete_multipart_upload(
         content_type: upload.content_type,
         last_modified: now,
         metadata: upload.metadata,
+        encryption_algorithm: put_result.encryption.as_ref().map(|e| e.algorithm.clone()),
+        encryption_key_id: put_result.encryption.as_ref().map(|e| e.key_id.clone()),
     };
     let old = match state.metadata.put_object(&record).await {
         Ok(old) => old,

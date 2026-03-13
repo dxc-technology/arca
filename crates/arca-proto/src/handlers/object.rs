@@ -339,6 +339,7 @@ pub async fn put_object(
         content_type: content_type.clone(),
         last_modified: now.to_rfc3339(),
         metadata: metadata.clone(),
+        encryption: put_result.encryption.clone(),
     };
     if let Err(e) = state.blob.write_sidecar(&blob_id, &sidecar).await {
         return internal_error_response(e, &resource);
@@ -354,6 +355,8 @@ pub async fn put_object(
         content_type,
         last_modified: now,
         metadata,
+        encryption_algorithm: put_result.encryption.as_ref().map(|e| e.algorithm.clone()),
+        encryption_key_id: put_result.encryption.as_ref().map(|e| e.key_id.clone()),
     };
     let old = match state.metadata.put_object(&record).await {
         Ok(old) => old,
@@ -368,9 +371,13 @@ pub async fn put_object(
     }
 
     let etag = format!("\"{}\"", put_result.etag);
-    Response::builder()
+    let mut builder = Response::builder()
         .status(StatusCode::OK)
-        .header("ETag", &etag)
+        .header("ETag", &etag);
+    if record.encryption_algorithm.is_some() {
+        builder = builder.header("x-amz-server-side-encryption", "AES256");
+    }
+    builder
         .body(Body::empty())
         .expect("build put_object response")
 }
@@ -506,6 +513,7 @@ async fn copy_object(
         content_type: content_type.clone(),
         last_modified: now.to_rfc3339(),
         metadata: metadata.clone(),
+        encryption: put_result.encryption.clone(),
     };
     if let Err(e) = state.blob.write_sidecar(&new_blob_id, &sidecar).await {
         return internal_error_response(e, &resource);
@@ -521,6 +529,8 @@ async fn copy_object(
         content_type,
         last_modified: now,
         metadata,
+        encryption_algorithm: put_result.encryption.as_ref().map(|e| e.algorithm.clone()),
+        encryption_key_id: put_result.encryption.as_ref().map(|e| e.key_id.clone()),
     };
     let old = match state.metadata.put_object(&record).await {
         Ok(old) => old,
@@ -536,9 +546,13 @@ async fn copy_object(
 
     // CopyObject returns XML body (not just headers like PutObject).
     let xml = xml_types::copy_object_result(&put_result.etag, &now);
-    Response::builder()
+    let mut builder = Response::builder()
         .status(StatusCode::OK)
-        .header("Content-Type", "application/xml")
+        .header("Content-Type", "application/xml");
+    if record.encryption_algorithm.is_some() {
+        builder = builder.header("x-amz-server-side-encryption", "AES256");
+    }
+    builder
         .body(Body::from(xml))
         .expect("build copy_object response")
 }
@@ -640,6 +654,24 @@ async fn upload_part_copy(
         Ok(r) => r,
         Err(e) => return internal_error_response(e, &resource),
     };
+
+    // Write sidecar for the part blob so that EncryptingBlobStore.get()
+    // can detect and decrypt it during CompleteMultipartUpload assembly.
+    if put_result.encryption.is_some() {
+        let sidecar = SidecarMeta {
+            bucket: bucket.clone(),
+            key: format!("{key}#{upload_id}#{part_number}"),
+            size: put_result.size,
+            etag: put_result.etag.clone(),
+            content_type: None,
+            last_modified: chrono::Utc::now().to_rfc3339(),
+            metadata: std::collections::HashMap::new(),
+            encryption: put_result.encryption.clone(),
+        };
+        if let Err(e) = state.blob.write_sidecar(&blob_id, &sidecar).await {
+            tracing::warn!(error = %e, "Failed to write part sidecar");
+        }
+    }
 
     // Insert part record (returns old for cleanup).
     let part = arca_core::types::PartRecord {
@@ -859,6 +891,10 @@ pub async fn get_object(
         builder = builder.header("Expires", v);
     }
 
+    if record.encryption_algorithm.is_some() {
+        builder = builder.header("x-amz-server-side-encryption", "AES256");
+    }
+
     // Return stored metadata as response headers.
     // Values may contain unicode chars; encode as Latin-1 for HTTP headers
     // (clients like boto3 decode header bytes as Latin-1 per HTTP spec).
@@ -922,6 +958,10 @@ pub async fn head_object(
         .header("Content-Length", record.size)
         .header("Content-Type", &content_type)
         .header("Accept-Ranges", "bytes");
+
+    if record.encryption_algorithm.is_some() {
+        builder = builder.header("x-amz-server-side-encryption", "AES256");
+    }
 
     // Return stored metadata as response headers.
     // Values may contain unicode chars; encode as Latin-1 for HTTP headers

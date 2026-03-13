@@ -13,6 +13,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 COMPOSE="docker compose -f docker/docker-compose.yml"
 COMPOSE_TLS="docker compose -f docker/docker-compose.yml -f docker/docker-compose.tls.yml -f docker/docker-compose.tls-test.yml"
+COMPOSE_ENC="docker compose -f docker/docker-compose.yml -f docker/docker-compose.encryption-test.yml"
 
 run_unit() {
     echo "==> Running unit tests..."
@@ -64,6 +65,37 @@ run_tls() {
     return $rc
 }
 
+run_encryption() {
+    echo "==> Running encryption integration tests..."
+
+    cleanup_enc() {
+        echo "Cleaning up encryption test..."
+        $COMPOSE_ENC --profile encryption-test down -v 2>/dev/null || true
+    }
+    trap cleanup_enc EXIT
+
+    # Step 1: Build images
+    $COMPOSE_ENC build arca
+    # Step 2: Start server with encryption config
+    $COMPOSE_ENC up -d arca
+    # Step 3: Wait for server to be ready
+    echo "Waiting for Arca encryption server..."
+    for i in $(seq 1 30); do
+        if $COMPOSE_ENC exec -T arca /usr/local/bin/arca --help >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
+    sleep 2  # brief extra settle time
+    # Step 4: Run encryption-specific tests
+    $COMPOSE_ENC --profile encryption-test run --rm test integration/test_encryption.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_enc
+    return $rc
+}
+
 run_s3_compat() {
     echo "==> Running s3-tests compatibility suite..."
     exec "$(git rev-parse --show-toplevel)/bin/s3-tests" "$@"
@@ -82,6 +114,10 @@ case "${1:-all}" in
         shift
         run_tls "$@"
         ;;
+    encryption)
+        shift
+        run_encryption "$@"
+        ;;
     s3-compat)
         shift
         run_s3_compat "$@"
@@ -92,7 +128,7 @@ case "${1:-all}" in
         run_integration
         ;;
     *)
-        echo "Usage: bin/test [unit|integration|tls|s3-compat|all] [extra args...]" >&2
+        echo "Usage: bin/test [unit|integration|tls|encryption|s3-compat|all] [extra args...]" >&2
         exit 1
         ;;
 esac
