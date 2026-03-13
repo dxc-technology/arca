@@ -22,18 +22,24 @@ usage() {
     echo "Usage: bin/arca <command> [options]"
     echo ""
     echo "Commands:"
-    echo "  start [-d] [--build] [--dev] [--tls]   Start the Arca server"
+    echo "  start [-d] [--build] [--dev] [--tls] [--config <path>]"
+    echo "                                          Start the Arca server"
     echo "  stop                                    Stop the Arca server"
     echo "  status                                  Show container status"
     echo "  logs [-f]                               Show server logs"
     echo ""
     echo "Options:"
-    echo "  -d         Run in background (detached)"
-    echo "  --build    Rebuild the Docker image before starting"
-    echo "  --dev      Use development image (debian-slim, has shell)"
-    echo "  --tls      Enable HTTPS (certificates must be in ./certs/)"
-    echo "  -f         Follow log output"
+    echo "  -d              Run in background (detached)"
+    echo "  --build         Rebuild the Docker image before starting"
+    echo "  --dev           Use development image (debian-slim, has shell)"
+    echo "  --tls           Enable HTTPS (certificates must be in ./certs/)"
+    echo "  --config <path> Use a custom config file (mounted into the container)"
+    echo "  -f              Follow log output"
     exit 0
+}
+
+cleanup_config_override() {
+    [[ -n "${CONFIG_OVERRIDE:-}" ]] && rm -f "$CONFIG_OVERRIDE"
 }
 
 cmd_start() {
@@ -47,6 +53,28 @@ cmd_start() {
             --build)  build=true; shift ;;
             --dev)    export BUILD_TARGET=development; shift ;;
             --tls)    COMPOSE="$COMPOSE -f docker/docker-compose.tls.yml"; shift ;;
+            -c|--config)
+                if [[ -z "${2:-}" ]]; then
+                    echo "Error: --config requires a file path" >&2
+                    exit 1
+                fi
+                if [[ ! -f "$2" ]]; then
+                    echo "Error: config file not found: $2" >&2
+                    exit 1
+                fi
+                CONFIG_OVERRIDE=$(mktemp /tmp/arca-config-XXXXXX.yml)
+                trap cleanup_config_override EXIT
+                local abs_path
+                abs_path=$(cd "$(dirname "$2")" && echo "$(pwd)/$(basename "$2")")
+                cat > "$CONFIG_OVERRIDE" <<YAML
+services:
+  arca:
+    volumes:
+      - ${abs_path}:/etc/arca/config.toml:ro
+YAML
+                COMPOSE="$COMPOSE -f $CONFIG_OVERRIDE"
+                shift 2
+                ;;
             *)        echo "Unknown option: $1" >&2; usage ;;
         esac
     done
