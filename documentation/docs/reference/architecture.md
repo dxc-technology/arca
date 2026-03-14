@@ -131,7 +131,7 @@ Key characteristics:
 #### Database Schema
 
 <figure>
-  <img src="../../assets/db-schema.png" alt="Arca database schema diagram" style="width:100%;max-width:1400px">
+  <img src="../../assets/db-schema.svg" alt="Arca database schema diagram" style="width:100%;max-width:1400px">
   <figcaption style="font-size:0.85em;color:#64748b;margin-top:4px">
     Entity-relationship diagram — <a href="../../assets/db-schema.drawio">draw.io source</a>
   </figcaption>
