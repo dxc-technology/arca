@@ -128,6 +128,15 @@ Key characteristics:
 - **Version-tracked migrations** — a `_migrations` table tracks applied schema changes; new migrations run automatically at startup
 - **Single database file** — stored at `{data_dir}/arca.db`
 
+#### Database Schema
+
+<figure>
+  <img src="../../assets/db-schema.png" alt="Arca database schema diagram" style="width:100%;max-width:1400px">
+  <figcaption style="font-size:0.85em;color:#64748b;margin-top:4px">
+    Entity-relationship diagram — <a href="../../assets/db-schema.drawio">draw.io source</a>
+  </figcaption>
+</figure>
+
 ### Filesystem (Blob Storage)
 
 Object data is stored as UUID-named files under a dedicated `blobs/` subdirectory, keeping the top-level data directory clean:

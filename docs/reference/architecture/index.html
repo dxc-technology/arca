@@ -810,6 +810,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="SQLite (Metadata + Credentials)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#database-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database Schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -1349,6 +1366,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="SQLite (Metadata + Credentials)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#database-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database Schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -1697,6 +1731,14 @@
 <li><strong>Version-tracked migrations</strong> — a <code>_migrations</code> table tracks applied schema changes; new migrations run automatically at startup</li>
 <li><strong>Single database file</strong> — stored at <code>{data_dir}/arca.db</code></li>
 </ul>
+<h4 id="database-schema">Database Schema<a class="headerlink" href="#database-schema" title="Permanent link">&para;</a></h4>
+<figure>
+  <img src="../../assets/db-schema.png" alt="Arca database schema diagram" style="width:100%;max-width:1400px">
+  <figcaption style="font-size:0.85em;color:#64748b;margin-top:4px">
+    Entity-relationship diagram — <a href="../../assets/db-schema.drawio">draw.io source</a>
+  </figcaption>
+</figure>
+
 <h3 id="filesystem-blob-storage">Filesystem (Blob Storage)<a class="headerlink" href="#filesystem-blob-storage" title="Permanent link">&para;</a></h3>
 <p>Object data is stored as UUID-named files under a dedicated <code>blobs/</code> subdirectory, keeping the top-level data directory clean:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>/data/
