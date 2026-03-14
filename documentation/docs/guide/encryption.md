@@ -1,6 +1,6 @@
 # Encryption
 
-Arca supports server-side encryption at rest (SSE-S3) using AES-256-GCM. When enabled, objects are transparently encrypted before writing to disk and decrypted on read. Encryption uses an envelope scheme: each object gets a random data encryption key (DEK) that is wrapped by a master key (KEK) from the server configuration.
+Arca supports server-side encryption at rest (SSE-S3) using AES-256-GCM. When enabled, objects are transparently encrypted before writing to disk and decrypted on read. Encryption uses an envelope scheme: each object gets a random data encryption key (DEK) that is wrapped by the master key, or key encryption key (KEK), from the server configuration.
 
 ## Quick Start
 
@@ -52,15 +52,12 @@ The `ServerSideEncryption` field in the response will show `AES256`.
 
 ### Envelope Encryption
 
-Each object is encrypted with a unique, randomly generated 256-bit DEK (data encryption key). The DEK is then wrapped (encrypted) using the master key (KEK) from the config file and stored alongside the object in the sidecar `.meta` file. The master key never touches the object data directly.
+Each object is encrypted with a unique, randomly generated 256-bit DEK (data encryption key). The DEK is then wrapped (encrypted) using the master key encryption key (KEK) from the config file and stored alongside the object in the sidecar `.meta` file. The master key never touches the object data directly.
 
-```
-Master Key (KEK)              Per-Object DEK
-  from config.toml              random 32 bytes
-  |                              |
-  | [AES-256-GCM wrap]         [AES-256-GCM encrypt]
-  +-------> Wrapped DEK         Object Data (chunked)
-            (in .meta)
+```mermaid
+flowchart LR
+    KEK["Master Key (KEK)<br/>from config.toml"] -- "AES-256-GCM wrap" --> WDEK["Wrapped DEK<br/>(stored in .meta)"]
+    DEK["Per-Object DEK<br/>random 32 bytes"] -- "AES-256-GCM encrypt" --> DATA["Encrypted Object Data<br/>(64 KiB chunks)"]
 ```
 
 ### Chunk-Based Streaming

@@ -1469,7 +1469,7 @@
 
 
 <h1 id="encryption">Encryption<a class="headerlink" href="#encryption" title="Permanent link">&para;</a></h1>
-<p>Arca supports server-side encryption at rest (SSE-S3) using AES-256-GCM. When enabled, objects are transparently encrypted before writing to disk and decrypted on read. Encryption uses an envelope scheme: each object gets a random data encryption key (DEK) that is wrapped by a master key (KEK) from the server configuration.</p>
+<p>Arca supports server-side encryption at rest (SSE-S3) using AES-256-GCM. When enabled, objects are transparently encrypted before writing to disk and decrypted on read. Encryption uses an envelope scheme: each object gets a random data encryption key (DEK) that is wrapped by the master key, or key encryption key (KEK), from the server configuration.</p>
 <h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
 <h3 id="1-generate-a-master-key">1. Generate a master key<a class="headerlink" href="#1-generate-a-master-key" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w">    </span><span class="c1"># ensure the image is built</span>
@@ -1498,14 +1498,10 @@
 <p>The <code>ServerSideEncryption</code> field in the response will show <code>AES256</code>.</p>
 <h2 id="how-it-works">How It Works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h2>
 <h3 id="envelope-encryption">Envelope Encryption<a class="headerlink" href="#envelope-encryption" title="Permanent link">&para;</a></h3>
-<p>Each object is encrypted with a unique, randomly generated 256-bit DEK (data encryption key). The DEK is then wrapped (encrypted) using the master key (KEK) from the config file and stored alongside the object in the sidecar <code>.meta</code> file. The master key never touches the object data directly.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>Master Key (KEK)              Per-Object DEK
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  from config.toml              random 32 bytes
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  |                              |
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  | [AES-256-GCM wrap]         [AES-256-GCM encrypt]
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  +-------&gt; Wrapped DEK         Object Data (chunked)
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>            (in .meta)
-</code></pre></div>
+<p>Each object is encrypted with a unique, randomly generated 256-bit DEK (data encryption key). The DEK is then wrapped (encrypted) using the master key encryption key (KEK) from the config file and stored alongside the object in the sidecar <code>.meta</code> file. The master key never touches the object data directly.</p>
+<pre class="mermaid"><code>flowchart LR
+    KEK["Master Key (KEK)&lt;br/&gt;from config.toml"] -- "AES-256-GCM wrap" --&gt; WDEK["Wrapped DEK&lt;br/&gt;(stored in .meta)"]
+    DEK["Per-Object DEK&lt;br/&gt;random 32 bytes"] -- "AES-256-GCM encrypt" --&gt; DATA["Encrypted Object Data&lt;br/&gt;(64 KiB chunks)"]</code></pre>
 <h3 id="chunk-based-streaming">Chunk-Based Streaming<a class="headerlink" href="#chunk-based-streaming" title="Permanent link">&para;</a></h3>
 <p>Objects are encrypted in fixed-size 64 KiB chunks. Each chunk is independently encrypted and authenticated with its own GCM tag. This enables:</p>
 <ul>
@@ -1516,10 +1512,10 @@
 <h3 id="etag-preservation">ETag Preservation<a class="headerlink" href="#etag-preservation" title="Permanent link">&para;</a></h3>
 <p>The ETag (MD5) is computed on the <strong>plaintext</strong> data, not the ciphertext. This ensures S3 clients that compare ETags continue to work correctly.</p>
 <h2 id="configuration-reference">Configuration Reference<a class="headerlink" href="#configuration-reference" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">[encryption]</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w">                 </span><span class="c1"># Enable server-side encryption (default: false)</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">master_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;base64...&quot;</span><span class="w">       </span><span class="c1"># 256-bit master key (required when enabled)</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># previous_master_key = &quot;...&quot;  # Previous key for rotation (optional)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">[encryption]</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w">                 </span><span class="c1"># Enable server-side encryption (default: false)</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">master_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;base64...&quot;</span><span class="w">       </span><span class="c1"># 256-bit master key (required when enabled)</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># previous_master_key = &quot;...&quot;  # Previous key for rotation (optional)</span>
 </code></pre></div>
 <table>
 <thead>
@@ -1553,17 +1549,17 @@
 </table>
 <h2 id="per-bucket-encryption">Per-Bucket Encryption<a class="headerlink" href="#per-bucket-encryption" title="Permanent link">&para;</a></h2>
 <p>In addition to the global <code>[encryption]</code> config, encryption can be configured per-bucket using standard S3 APIs:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Set bucket encryption</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>aws<span class="w"> </span>s3api<span class="w"> </span>put-bucket-encryption<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span>--server-side-encryption-configuration<span class="w"> </span><span class="s1">&#39;{&quot;Rules&quot;:[{&quot;ApplyServerSideEncryptionByDefault&quot;:{&quot;SSEAlgorithm&quot;:&quot;AES256&quot;}}]}&#39;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">  </span>--endpoint-url<span class="w"> </span>http://localhost:9000
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="c1"># Check bucket encryption</span>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>aws<span class="w"> </span>s3api<span class="w"> </span>get-bucket-encryption<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
-<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>
-<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="c1"># Remove per-bucket config (falls back to global default)</span>
-<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>aws<span class="w"> </span>s3api<span class="w"> </span>delete-bucket-encryption<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Set bucket encryption</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>aws<span class="w"> </span>s3api<span class="w"> </span>put-bucket-encryption<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span>--server-side-encryption-configuration<span class="w"> </span><span class="s1">&#39;{&quot;Rules&quot;:[{&quot;ApplyServerSideEncryptionByDefault&quot;:{&quot;SSEAlgorithm&quot;:&quot;AES256&quot;}}]}&#39;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span>--endpoint-url<span class="w"> </span>http://localhost:9000
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="c1"># Check bucket encryption</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>aws<span class="w"> </span>s3api<span class="w"> </span>get-bucket-encryption<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="c1"># Remove per-bucket config (falls back to global default)</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>aws<span class="w"> </span>s3api<span class="w"> </span>delete-bucket-encryption<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
 </code></pre></div>
 <h2 id="mixed-mode">Mixed Mode<a class="headerlink" href="#mixed-mode" title="Permanent link">&para;</a></h2>
 <p>Encrypted and unencrypted objects coexist transparently:</p>
@@ -1574,7 +1570,7 @@
 </ul>
 <h2 id="cli-commands">CLI Commands<a class="headerlink" href="#cli-commands" title="Permanent link">&para;</a></h2>
 <h3 id="generate-a-master-key">Generate a master key<a class="headerlink" href="#generate-a-master-key" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>arca<span class="w"> </span>encryption<span class="w"> </span>generate-key
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>arca<span class="w"> </span>encryption<span class="w"> </span>generate-key
 </code></pre></div>
 <p>Outputs a random 256-bit key encoded as base64. Suitable for the <code>master_key</code> config field.</p>
 <h2 id="recovery-and-integrity">Recovery and Integrity<a class="headerlink" href="#recovery-and-integrity" title="Permanent link">&para;</a></h2>
@@ -1584,7 +1580,7 @@
 <p>The filesystem check tool skips checksum verification for encrypted objects when using <code>--verify-checksums</code>, since the on-disk data is ciphertext.</p>
 <h2 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h2>
 <p>Run the encryption integration tests:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>bin/test<span class="w"> </span>encryption
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>bin/test<span class="w"> </span>encryption
 </code></pre></div>
 <p>This starts an Arca server with encryption enabled and runs 16 tests covering:</p>
 <ul>
