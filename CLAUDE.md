@@ -90,6 +90,26 @@ When fixing a tech debt item, remove the `TECHDEBT` markers from code, mark it r
 
 `README.md` contains a "Test Coverage" table with counts for unit tests, integration tests (boto3 + MinIO), and Ceph s3-tests. **Update this table whenever test counts change** — after adding/removing tests, running Ceph s3-tests with new results, or any change that affects the numbers.
 
+## Session Startup
+
+When starting a new session, always read these files first to rebuild context:
+
+- `CLAUDE.md` (this file)
+- `documentation/docs/roadmap.md` — current phase status, post-MVP progress, dependency graph
+- `TECH_DEBT.md` — active workarounds and their IDs
+
+## Versioning
+
+This project uses **semantic versioning** (MAJOR.MINOR.PATCH). When asked to bump the version:
+
+1. Diff the current `main` branch against the latest release tag to understand what changed.
+2. Determine the correct semver component to bump:
+   - **PATCH** — bug fixes, internal refactors, doc-only changes, no API/behavior changes.
+   - **MINOR** — new features, new S3 operations, new CLI commands, backward-compatible additions.
+   - **MAJOR** — breaking changes to config format, storage layout, API contracts, or anything requiring user migration steps.
+3. Propose the new version number with a brief motivation (what changed and why it maps to that semver level).
+4. Wait for Pietro's approval or counter-proposal before applying the version bump.
+
 ## Not in MVP
 
 Object versioning, ACLs/bucket policies, server-side encryption, object tagging, lifecycle rules, CORS, object lock, presigned URLs, metrics, replication, multi-node.
