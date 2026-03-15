@@ -43,7 +43,7 @@ services:
       context: ../console
       dockerfile: Dockerfile
     ports:
-      - "9080:3000"
+      - "9080:80"
     environment:
       - ARCA_ENDPOINT=http://localhost:9000
     depends_on:
@@ -95,12 +95,12 @@ services:
       context: screenshots
       dockerfile: Dockerfile
     # Share network with screenshots-console so Playwright browser can reach
-    # the console at localhost:3000 — required for crypto.subtle (Web Crypto API
+    # the console at localhost — required for crypto.subtle (Web Crypto API
     # only works in secure contexts: HTTPS or localhost).
     network_mode: "service:screenshots-console"
     environment:
       - ARCA_ENDPOINT=http://arca:9000
-      - CONSOLE_URL=http://localhost:3000
+      - CONSOLE_URL=http://localhost
       - AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
       - AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
     volumes:

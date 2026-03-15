@@ -37,6 +37,6 @@ services:
     volumes:
       - ../certs:/etc/nginx/certs:ro
     ports:
-      - "9443:3000"
+      - "9443:443"
     profiles:
       - console
