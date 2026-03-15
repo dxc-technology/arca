@@ -321,9 +321,10 @@ pub async fn put_object(
     let body = request.into_body();
     let stream = super::body::body_to_byte_stream(body, &headers);
 
-    // Write blob.
+    // Write blob (route through encrypting or plain store based on bucket config).
     let blob_id = BlobId::new();
-    let put_result = match state.blob.put(&blob_id, stream).await {
+    let write_blob = state.blob_for_write(&bucket).await;
+    let put_result = match write_blob.put(&blob_id, stream).await {
         Ok(r) => r,
         Err(e) => return internal_error_response(e, &resource),
     };
@@ -497,7 +498,8 @@ async fn copy_object(
     };
 
     let new_blob_id = BlobId::new();
-    let put_result = match state.blob.put(&new_blob_id, get_result.stream).await {
+    let write_blob = state.blob_for_write(&dest_bucket).await;
+    let put_result = match write_blob.put(&new_blob_id, get_result.stream).await {
         Ok(r) => r,
         Err(e) => return internal_error_response(e, &resource),
     };
@@ -650,7 +652,8 @@ async fn upload_part_copy(
     };
 
     let blob_id = BlobId::new();
-    let put_result = match state.blob.put(&blob_id, get_result.stream).await {
+    let write_blob = state.blob_for_write(&bucket).await;
+    let put_result = match write_blob.put(&blob_id, get_result.stream).await {
         Ok(r) => r,
         Err(e) => return internal_error_response(e, &resource),
     };

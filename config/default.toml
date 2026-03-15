@@ -12,6 +12,8 @@ port = 9000
 data_dir = "/data"
 
 # [encryption]
-# enabled = true
+# enabled = true                       # encrypt all buckets by default (default: false)
 # master_key = ""                      # base64-encoded 256-bit key (generate with: arca encryption generate-key)
+#                                      # required when [encryption] section is present
+#                                      # when enabled = false, per-bucket encryption is still available
 # previous_master_key = ""             # previous key for rotation (optional)

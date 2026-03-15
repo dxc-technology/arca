@@ -110,9 +110,10 @@ pub async fn upload_part(
     let body = request.into_body();
     let stream = super::body::body_to_byte_stream(body, &headers);
 
-    // Write part blob.
+    // Write part blob (route through encrypting or plain store based on bucket config).
     let blob_id = BlobId::new();
-    let put_result = match state.blob.put(&blob_id, stream).await {
+    let write_blob = state.blob_for_write(&bucket).await;
+    let put_result = match write_blob.put(&blob_id, stream).await {
         Ok(r) => r,
         Err(e) => return internal_error_response(e, &resource),
     };
@@ -309,7 +310,8 @@ pub async fn complete_multipart_upload(
         ));
     }
 
-    let put_result = match state.blob.put(&final_blob_id, combined_stream).await {
+    let write_blob = state.blob_for_write(&bucket).await;
+    let put_result = match write_blob.put(&final_blob_id, combined_stream).await {
         Ok(r) => r,
         Err(e) => return internal_error_response(e, &resource),
     };

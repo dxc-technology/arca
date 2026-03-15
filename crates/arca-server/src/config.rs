@@ -164,15 +164,14 @@ pub struct EncryptionConfig {
 
 impl EncryptionConfig {
     /// Validates the encryption configuration.
+    ///
+    /// `master_key` is required whenever the `[encryption]` section is present
+    /// (regardless of `enabled`), because per-bucket encryption needs the key
+    /// even when the global default is off.
     pub fn validate(&self) -> Result<()> {
-        if self.enabled {
-            let key = self.master_key.as_ref()
-                .context("[encryption] master_key is required when enabled = true")?;
-            validate_master_key(key, "master_key")?;
-        }
-        if let Some(ref key) = self.master_key {
-            validate_master_key(key, "master_key")?;
-        }
+        let key = self.master_key.as_ref()
+            .context("[encryption] master_key is required when the [encryption] section is present")?;
+        validate_master_key(key, "master_key")?;
         if let Some(ref key) = self.previous_master_key {
             validate_master_key(key, "previous_master_key")?;
         }
@@ -401,9 +400,17 @@ data_dir = "/data"
     }
 
     #[test]
-    fn encryption_enabled_requires_master_key() {
+    fn encryption_section_requires_master_key() {
+        // master_key is required whenever [encryption] section is present
         let enc = EncryptionConfig {
             enabled: true,
+            master_key: None,
+            previous_master_key: None,
+        };
+        assert!(enc.validate().is_err());
+
+        let enc = EncryptionConfig {
+            enabled: false,
             master_key: None,
             previous_master_key: None,
         };

@@ -827,6 +827,15 @@ async fn put_bucket_encryption(
     resource: &str,
     request: axum::extract::Request,
 ) -> Response {
+    // Reject if no encryption key is configured on the server.
+    if state.plain_blob.is_none() {
+        return s3_error_response(S3Error::with_message(
+            S3ErrorCode::InvalidArgument,
+            "Server-side encryption is not available: no master key configured in [encryption] section",
+            resource,
+        ));
+    }
+
     // Check bucket exists.
     match state.metadata.head_bucket(bucket).await {
         Ok(Some(_)) => {}

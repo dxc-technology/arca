@@ -50,36 +50,57 @@ async fn main() -> Result<()> {
             )
             .await?;
 
-            // Conditionally wrap with EncryptingBlobStore when encryption is enabled.
+            // Set up encryption stores.
+            // When a master key is configured (regardless of `enabled`), we create
+            // both an EncryptingBlobStore (for encrypted reads/writes) and keep the
+            // plain FsBlobStore (for non-encrypted writes). This enables per-bucket
+            // encryption even when the global default is off.
             let encryption_enabled = config
                 .encryption
                 .as_ref()
                 .map(|e| e.enabled)
                 .unwrap_or(false);
 
-            let blob: Arc<dyn arca_core::store::BlobStore> = if encryption_enabled {
-                let enc_config = config.encryption.as_ref().unwrap();
-                let master_key = arca_storage::encryption::keys::MasterKey::from_base64(
-                    enc_config.master_key.as_ref().unwrap(),
-                )
-                .map_err(|e| anyhow::anyhow!("invalid master key: {e}"))?;
-                tracing::info!(
-                    key_id = master_key.key_id(),
-                    "Server-side encryption enabled (AES-256-GCM)"
-                );
-                Arc::new(arca_storage::EncryptingBlobStore::new(
-                    fs_blob_store,
-                    Arc::new(master_key),
-                ))
-            } else {
-                Arc::new(fs_blob_store)
-            };
+            let has_master_key = config
+                .encryption
+                .as_ref()
+                .and_then(|e| e.master_key.as_ref())
+                .is_some();
+
+            let (blob, plain_blob): (Arc<dyn arca_core::store::BlobStore>, Option<Arc<dyn arca_core::store::BlobStore>>) =
+                if has_master_key {
+                    let enc_config = config.encryption.as_ref().unwrap();
+                    let master_key = arca_storage::encryption::keys::MasterKey::from_base64(
+                        enc_config.master_key.as_ref().unwrap(),
+                    )
+                    .map_err(|e| anyhow::anyhow!("invalid master key: {e}"))?;
+                    if encryption_enabled {
+                        tracing::info!(
+                            key_id = master_key.key_id(),
+                            "Server-side encryption enabled (AES-256-GCM)"
+                        );
+                    } else {
+                        tracing::info!(
+                            key_id = master_key.key_id(),
+                            "Encryption key configured (per-bucket encryption available)"
+                        );
+                    }
+                    let plain = Arc::new(fs_blob_store.clone());
+                    let encrypting = Arc::new(arca_storage::EncryptingBlobStore::new(
+                        fs_blob_store,
+                        Arc::new(master_key),
+                    ));
+                    (encrypting, Some(plain))
+                } else {
+                    (Arc::new(fs_blob_store), None)
+                };
 
             let tls_enabled = config.server.tls.is_some();
 
             let state = AppState {
                 metadata: store.clone() as Arc<dyn arca_core::store::MetadataStore>,
                 blob,
+                plain_blob,
                 credentials: store as Arc<dyn CredentialStore>,
                 domain: config.server.domain.clone(),
                 started_at: std::time::Instant::now(),

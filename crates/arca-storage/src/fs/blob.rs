@@ -23,6 +23,7 @@ use arca_core::types::BlobId;
 ///   `base_dir/55/0e/550e8400-e29b-41d4-a716-446655440000`
 ///
 /// Sidecar metadata is stored alongside at `{blob_path}.meta`.
+#[derive(Clone)]
 pub struct FsBlobStore {
     base_dir: PathBuf,
     prefix_depth: u8,

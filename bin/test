@@ -14,6 +14,7 @@ cd "$(git rev-parse --show-toplevel)"
 COMPOSE="docker compose -f docker/docker-compose.yml"
 COMPOSE_TLS="docker compose -f docker/docker-compose.yml -f docker/docker-compose.tls.yml -f docker/docker-compose.tls-test.yml"
 COMPOSE_ENC="docker compose -f docker/docker-compose.yml -f docker/docker-compose.encryption-test.yml"
+COMPOSE_PBE="docker compose -f docker/docker-compose.yml -f docker/docker-compose.per-bucket-encryption-test.yml"
 
 run_unit() {
     echo "==> Running unit tests..."
@@ -96,6 +97,37 @@ run_encryption() {
     return $rc
 }
 
+run_per_bucket_encryption() {
+    echo "==> Running per-bucket encryption integration tests..."
+
+    cleanup_pbe() {
+        echo "Cleaning up per-bucket encryption test..."
+        $COMPOSE_PBE --profile per-bucket-encryption-test down -v 2>/dev/null || true
+    }
+    trap cleanup_pbe EXIT
+
+    # Step 1: Build images
+    $COMPOSE_PBE build arca
+    # Step 2: Start server with per-bucket encryption config (key present, enabled=false)
+    $COMPOSE_PBE up -d arca
+    # Step 3: Wait for server to be ready
+    echo "Waiting for Arca server..."
+    for i in $(seq 1 30); do
+        if $COMPOSE_PBE exec -T arca /usr/local/bin/arca --help >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
+    sleep 2  # brief extra settle time
+    # Step 4: Run per-bucket encryption tests
+    $COMPOSE_PBE --profile per-bucket-encryption-test run --rm test integration/test_per_bucket_encryption.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_pbe
+    return $rc
+}
+
 run_s3_compat() {
     echo "==> Running s3-tests compatibility suite..."
     exec "$(git rev-parse --show-toplevel)/bin/s3-tests" "$@"
@@ -118,6 +150,10 @@ case "${1:-all}" in
         shift
         run_encryption "$@"
         ;;
+    per-bucket-encryption)
+        shift
+        run_per_bucket_encryption "$@"
+        ;;
     s3-compat)
         shift
         run_s3_compat "$@"
@@ -128,7 +164,7 @@ case "${1:-all}" in
         run_integration
         ;;
     *)
-        echo "Usage: bin/test [unit|integration|tls|encryption|s3-compat|all] [extra args...]" >&2
+        echo "Usage: bin/test [unit|integration|tls|encryption|per-bucket-encryption|s3-compat|all] [extra args...]" >&2
         exit 1
         ;;
 esac
