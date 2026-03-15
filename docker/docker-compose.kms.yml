@@ -1,0 +1,81 @@
+# OpenBAO (Vault-compatible) KMS overlay for Phase 14 development and testing.
+# Usage:
+#   bin/arca start -d --build --dev --tls --kms --config config/tls-encryption-kms.toml
+#   bin/test kms
+
+services:
+  openbao:
+    image: quay.io/openbao/openbao:latest
+    environment:
+      - BAO_DEV_ROOT_TOKEN_ID=dev-root-token
+      - BAO_DEV_LISTEN_ADDRESS=0.0.0.0:8200
+      - BAO_ADDR=http://127.0.0.1:8200
+    command: server -dev -dev-listen-address=0.0.0.0:8200
+    ports:
+      - "8200:8200"
+    healthcheck:
+      test: ["CMD", "bao", "status"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  openbao-init:
+    image: quay.io/openbao/openbao:latest
+    depends_on:
+      openbao:
+        condition: service_healthy
+    environment:
+      - BAO_ADDR=http://openbao:8200
+      - BAO_TOKEN=dev-root-token
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        set -e
+        echo "==> Enabling KV v2 secrets engine (default 'secret/' mount)..."
+        # KV v2 is enabled by default in dev mode on 'secret/', but ensure it exists.
+        bao secrets enable -path=secret -version=2 kv 2>/dev/null || true
+
+        echo "==> Generating random 256-bit master key..."
+        MASTER_KEY=$$(head -c 32 /dev/urandom | base64)
+
+        echo "==> Writing master key to secret/arca/master-key..."
+        bao kv put -mount=secret arca/master-key key="$$MASTER_KEY"
+
+        echo "==> Creating AppRole auth..."
+        bao auth enable approle 2>/dev/null || true
+
+        echo "==> Creating arca-kms policy..."
+        bao policy write arca-kms - <<'POLICY'
+        path "secret/data/arca/*" { capabilities = ["read"] }
+        POLICY
+
+        echo "==> Creating arca AppRole..."
+        bao write auth/approle/role/arca \
+          token_policies=arca-kms \
+          token_ttl=1h \
+          token_max_ttl=4h
+
+        echo "==> Fetching role_id and secret_id..."
+        ROLE_ID=$$(bao read -field=role_id auth/approle/role/arca/role-id)
+        SECRET_ID=$$(bao write -f -field=secret_id auth/approle/role/arca/secret-id)
+
+        echo ""
+        echo "============================================"
+        echo "  OpenBAO KV v2 KMS ready"
+        echo "============================================"
+        echo "  Endpoint:    http://openbao:8200"
+        echo "  Root token:  dev-root-token"
+        echo "  Secret path: secret/arca/master-key"
+        echo "  Secret field: key"
+        echo "  Master key:  $$MASTER_KEY"
+        echo "  AppRole role_id:   $$ROLE_ID"
+        echo "  AppRole secret_id: $$SECRET_ID"
+        echo "============================================"
+    profiles:
+      - kms-init
+
+  arca:
+    depends_on:
+      openbao:
+        condition: service_healthy

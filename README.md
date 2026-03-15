@@ -29,7 +29,7 @@ The MVP is complete. All 12 implementation phases (0–11) have been delivered. 
 - **Integrity checking** — `arca fsck` detects orphaned blobs, missing files, sidecar mismatches, and stale temp files
 - **Modular storage** — metadata backend behind traits (SQLite now, Postgres later)
 - **Admin API** — JSON endpoints for health, stats, and credential management under `/admin/*`
-- **Server-side encryption** — AES-256-GCM at-rest encryption (SSE-S3) with envelope encryption, per-object DEKs, and streaming chunk-based encrypt/decrypt
+- **Server-side encryption** — AES-256-GCM at-rest encryption (SSE-S3) with envelope encryption, per-object DEKs, and streaming chunk-based encrypt/decrypt. Master key from config file or Vault/OpenBAO KMS
 - **Native TLS** — HTTPS without a reverse proxy (`bin/arca start --tls`), with auto-detection and SIGHUP cert reload
 - **Web console** — browser-based UI for managing buckets, objects, and credentials
 - **[S3 compatibility tested](https://dxc-technology.github.io/arca/s3-compatibility/)** — 270/829 Ceph s3-tests passing, 0 unexpected failures
@@ -159,14 +159,15 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 
 | Suite | Tests | Details |
 |-------|------:|---------|
-| Unit tests (Rust) | 239 | arca-auth: 25, arca-core: 56, arca-proto: 17, arca-server: 42, arca-storage: 99 |
+| Unit tests (Rust) | 255 | arca-auth: 25, arca-core: 56, arca-proto: 17, arca-server: 58, arca-storage: 99 |
 | Integration — boto3 | 238 | buckets, objects, list, multipart, copy, folders, auth, admin, conditional ops |
 | Integration — Encryption | 16 | encrypted put/get, ETag, range reads, multipart, copy, bucket config |
 | Integration — Per-bucket Encryption | 8 | per-bucket enable/disable, plain vs encrypted, ETag, head, revert |
+| Integration — KMS | 10 | Vault/OpenBAO key fetch, encrypted put/get, headers, ETag, multipart, copy, range, admin info |
 | Integration — TLS | 7 | HTTPS health/info/put/get/multipart, minio client, wrong CA rejection |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 829 | 270 pass, 468 fail, 91 skip — 0 unexpected failures |
-| **Total** | **1,436** | |
+| **Total** | **1,462** | |
 
 ## License
 

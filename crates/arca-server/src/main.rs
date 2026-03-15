@@ -7,6 +7,7 @@ mod fsck;
 mod recover;
 mod tls;
 mod tls_generate;
+mod vault;
 
 use std::sync::Arc;
 
@@ -51,7 +52,7 @@ async fn main() -> Result<()> {
             .await?;
 
             // Set up encryption stores.
-            // When a master key is configured (regardless of `enabled`), we create
+            // When a master key is available (from config or KMS), we create
             // both an EncryptingBlobStore (for encrypted reads/writes) and keep the
             // plain FsBlobStore (for non-encrypted writes). This enables per-bucket
             // encryption even when the global default is off.
@@ -61,27 +62,36 @@ async fn main() -> Result<()> {
                 .map(|e| e.enabled)
                 .unwrap_or(false);
 
-            let has_master_key = config
-                .encryption
-                .as_ref()
-                .and_then(|e| e.master_key.as_ref())
-                .is_some();
-
-            let (blob, plain_blob): (Arc<dyn arca_core::store::BlobStore>, Option<Arc<dyn arca_core::store::BlobStore>>) =
-                if has_master_key {
-                    let enc_config = config.encryption.as_ref().unwrap();
-                    let master_key = arca_storage::encryption::keys::MasterKey::from_base64(
-                        enc_config.master_key.as_ref().unwrap(),
+            // Resolve the master key: either from KMS (Vault/OpenBAO) or from config.
+            let (master_key, kms_provider, kms_endpoint) = match &config.encryption {
+                Some(enc) if enc.kms.is_some() => {
+                    let kms = enc.kms.as_ref().unwrap();
+                    let endpoint = kms.endpoint.clone();
+                    let mk = vault::fetch_master_key(kms).await?;
+                    (Some(mk), Some("vault".to_string()), Some(endpoint))
+                }
+                Some(enc) if enc.master_key.is_some() => {
+                    let mk = arca_storage::encryption::keys::MasterKey::from_base64(
+                        enc.master_key.as_ref().unwrap(),
                     )
                     .map_err(|e| anyhow::anyhow!("invalid master key: {e}"))?;
+                    (Some(mk), Some("local".to_string()), None)
+                }
+                _ => (None, None, None),
+            };
+
+            let (blob, plain_blob): (Arc<dyn arca_core::store::BlobStore>, Option<Arc<dyn arca_core::store::BlobStore>>) =
+                if let Some(master_key) = master_key {
                     if encryption_enabled {
                         tracing::info!(
                             key_id = master_key.key_id(),
+                            provider = kms_provider.as_deref().unwrap_or("unknown"),
                             "Server-side encryption enabled (AES-256-GCM)"
                         );
                     } else {
                         tracing::info!(
                             key_id = master_key.key_id(),
+                            provider = kms_provider.as_deref().unwrap_or("unknown"),
                             "Encryption key configured (per-bucket encryption available)"
                         );
                     }
@@ -107,6 +117,8 @@ async fn main() -> Result<()> {
                 version: env!("CARGO_PKG_VERSION").to_string(),
                 tls_enabled,
                 encryption_enabled,
+                kms_provider,
+                kms_endpoint,
             };
 
             let addr = format!("{}:{}", config.server.bind, config.server.port);

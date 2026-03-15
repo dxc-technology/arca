@@ -72,19 +72,98 @@ Objects are encrypted in fixed-size 64 KiB chunks. Each chunk is independently e
 
 The ETag (MD5) is computed on the **plaintext** data, not the ciphertext. This ensures S3 clients that compare ETags continue to work correctly.
 
+## KMS Integration (Vault/OpenBAO)
+
+Instead of storing the master key in the config file, Arca can fetch it from HashiCorp Vault or OpenBAO at startup. The key is cached in memory — Vault is only needed at startup, not during object operations.
+
+### Setup
+
+1. Store a base64-encoded 256-bit key in Vault KV v2:
+
+```bash
+# Generate a key
+KEY=$(head -c 32 /dev/urandom | base64)
+
+# Write to Vault
+vault kv put -mount=secret arca/master-key key="$KEY"
+```
+
+2. Configure Arca to use Vault:
+
+```toml
+[encryption]
+enabled = true
+
+[encryption.kms]
+endpoint = "http://vault:8200"
+auth_method = "token"          # or "approle"
+token = "s.my-vault-token"
+# secret_path = "secret/arca/master-key"  # default
+# secret_field = "key"                     # default
+```
+
+For AppRole authentication:
+
+```toml
+[encryption.kms]
+endpoint = "http://vault:8200"
+auth_method = "approle"
+role_id = "abc-123"
+secret_id = "def-456"
+```
+
+3. Start the server — the logs will confirm KMS key loading:
+
+```
+INFO arca: Server-side encryption enabled (AES-256-GCM) key_id="a1b2c3d4" provider="vault"
+```
+
+### Docker (Development)
+
+Use the `--kms` flag to start with a pre-configured OpenBAO instance:
+
+```bash
+bin/arca start -d --build --dev --kms --config config/kms-test.toml
+```
+
+This starts an OpenBAO dev server, generates a random master key, stores it in KV v2, and configures Arca to fetch it.
+
+### KMS Configuration Reference
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `endpoint` | string | Yes | Vault/OpenBAO endpoint URL (e.g. `http://vault:8200`). |
+| `auth_method` | string | Yes | `"token"` or `"approle"`. |
+| `token` | string | When `token` | Vault token for authentication. |
+| `role_id` | string | When `approle` | AppRole role ID. |
+| `secret_id` | string | When `approle` | AppRole secret ID. |
+| `secret_path` | string | No | KV v2 secret path. Default: `secret/arca/master-key`. Auto-normalized (no need to include `/data/`). |
+| `secret_field` | string | No | Field name containing the base64 key. Default: `key`. |
+| `tls_skip_verify` | bool | No | Skip TLS certificate verification. Default: `false`. Development only. |
+| `ca_file` | string | No | CA certificate file for Vault TLS verification. |
+
+!!! note
+    `master_key` and `[encryption.kms]` are mutually exclusive — use one or the other.
+
 ## Configuration Reference
 
 ```toml
 [encryption]
 enabled = true                 # Enable server-side encryption (default: false)
-master_key = "base64..."       # 256-bit master key (required when enabled)
+master_key = "base64..."       # 256-bit master key (required when enabled, unless using KMS)
 # previous_master_key = "..."  # Previous key for rotation (optional)
+
+# Alternative: fetch master key from Vault/OpenBAO at startup
+# [encryption.kms]
+# endpoint = "http://vault:8200"
+# auth_method = "token"
+# token = "s.my-vault-token"
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `enabled` | bool | No | Enable encryption for new objects. Default `false`. |
-| `master_key` | string | When enabled | Base64-encoded 256-bit key. Generate with `arca encryption generate-key`. |
+| `master_key` | string | When no KMS | Base64-encoded 256-bit key. Generate with `arca encryption generate-key`. Mutually exclusive with `[encryption.kms]`. |
 | `previous_master_key` | string | No | Previous master key, used for reading objects encrypted with an older key during key rotation. |
 
 ## Per-Bucket Encryption
@@ -138,10 +217,12 @@ The filesystem check tool skips checksum verification for encrypted objects when
 Run the encryption integration tests:
 
 ```bash
-bin/test encryption
+bin/test encryption             # local key encryption (16 tests)
+bin/test per-bucket-encryption  # per-bucket encryption (8 tests)
+bin/test kms                    # Vault/OpenBAO KMS (10 tests)
 ```
 
-This starts an Arca server with encryption enabled and runs 16 tests covering:
+The local encryption tests cover:
 
 - Put/get roundtrip with plaintext verification
 - ETag correctness (plaintext MD5)
@@ -152,9 +233,12 @@ This starts an Arca server with encryption enabled and runs 16 tests covering:
 - PutBucketEncryption / GetBucketEncryption / DeleteBucketEncryption
 - Object overwrite and deletion
 
+The KMS tests verify the same encryption behavior with a master key fetched from OpenBAO, plus admin API KMS provider reporting.
+
 ## Security Notes
 
-- The master key is stored in the config file. Protect this file with filesystem permissions (e.g., `chmod 600`).
-- For production deployments requiring external key management, see Phase 14 (SSE-KMS with HashiCorp Vault/OpenBAO) in the [roadmap](../roadmap.md).
+- When using a local master key, the key is stored in the config file. Protect this file with filesystem permissions (e.g., `chmod 600`).
+- For production deployments, use [KMS integration](#kms-integration-vaultopenbao) to store the master key in HashiCorp Vault or OpenBAO.
 - AES-256-GCM provides both confidentiality and integrity. Each encrypted chunk includes a 16-byte authentication tag that detects tampering.
 - Nonces are constructed from a random 4-byte prefix (unique per object) and an 8-byte chunk counter, ensuring no nonce reuse.
+- Vault/OpenBAO is only contacted at startup — stopping Vault after Arca starts does not affect object operations.

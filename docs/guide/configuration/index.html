@@ -586,6 +586,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#kms-vaultopenbao" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KMS (Vault/OpenBAO)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#example" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1191,6 +1202,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#kms-vaultopenbao" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KMS (Vault/OpenBAO)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#example" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1387,7 +1409,7 @@
 <tr>
 <td><code>encryption.master_key</code></td>
 <td><em>(none)</em></td>
-<td>Base64-encoded 256-bit master key. Required when enabled. Generate with <code>arca encryption generate-key</code>.</td>
+<td>Base64-encoded 256-bit master key. Generate with <code>arca encryption generate-key</code>. Mutually exclusive with <code>[encryption.kms]</code>.</td>
 </tr>
 <tr>
 <td><code>encryption.previous_master_key</code></td>
@@ -1397,6 +1419,64 @@
 </tbody>
 </table>
 <p>When <code>[encryption]</code> is present and <code>enabled = true</code>, all new objects are encrypted at rest. Existing unencrypted objects remain readable. See the <a href="../encryption/">Encryption guide</a> for details.</p>
+<h3 id="kms-vaultopenbao">KMS (Vault/OpenBAO)<a class="headerlink" href="#kms-vaultopenbao" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>encryption.kms.endpoint</code></td>
+<td><em>(required)</em></td>
+<td>Vault/OpenBAO endpoint URL.</td>
+</tr>
+<tr>
+<td><code>encryption.kms.auth_method</code></td>
+<td><em>(required)</em></td>
+<td><code>"token"</code> or <code>"approle"</code>.</td>
+</tr>
+<tr>
+<td><code>encryption.kms.token</code></td>
+<td><em>(none)</em></td>
+<td>Vault token (required for <code>token</code> auth).</td>
+</tr>
+<tr>
+<td><code>encryption.kms.role_id</code></td>
+<td><em>(none)</em></td>
+<td>AppRole role ID (required for <code>approle</code> auth).</td>
+</tr>
+<tr>
+<td><code>encryption.kms.secret_id</code></td>
+<td><em>(none)</em></td>
+<td>AppRole secret ID (required for <code>approle</code> auth).</td>
+</tr>
+<tr>
+<td><code>encryption.kms.secret_path</code></td>
+<td><code>secret/arca/master-key</code></td>
+<td>KV v2 secret path. Auto-normalized.</td>
+</tr>
+<tr>
+<td><code>encryption.kms.secret_field</code></td>
+<td><code>key</code></td>
+<td>Field containing the base64 key.</td>
+</tr>
+<tr>
+<td><code>encryption.kms.tls_skip_verify</code></td>
+<td><code>false</code></td>
+<td>Skip TLS verification (dev only).</td>
+</tr>
+<tr>
+<td><code>encryption.kms.ca_file</code></td>
+<td><em>(none)</em></td>
+<td>CA certificate for Vault TLS.</td>
+</tr>
+</tbody>
+</table>
+<p>When <code>[encryption.kms]</code> is present, the master key is fetched from Vault/OpenBAO at startup. See the <a href="../encryption/#kms-integration-vaultopenbao">Encryption guide</a> for details.</p>
 <h3 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">[server]</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">bind</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;0.0.0.0&quot;</span>
@@ -1415,6 +1495,12 @@
 <a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="c1"># [encryption]               # optional, enables SSE-S3</span>
 <a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="c1"># enabled = true</span>
 <a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="c1"># master_key = &quot;base64...&quot;   # generate with: arca encryption generate-key</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="c1"># Alternative: fetch master key from Vault/OpenBAO</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="c1"># [encryption.kms]</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="c1"># endpoint = &quot;http://vault:8200&quot;</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="c1"># auth_method = &quot;token&quot;</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="c1"># token = &quot;s.my-vault-token&quot;</span>
 </code></pre></div>
 <h3 id="blob-storage">Blob Storage<a class="headerlink" href="#blob-storage" title="Permanent link">&para;</a></h3>
 <p>Object data is stored as blob files under <code>{data_dir}/blobs/</code>, sharded into a hierarchy of 2-character prefix directories derived from the blob UUID. The <code>blob_prefix_depth</code> setting controls how many levels of prefix directories are used.</p>

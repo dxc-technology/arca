@@ -42,10 +42,26 @@ When `[server.tls]` is present, the server listens on HTTPS. See the [TLS guide]
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `encryption.enabled` | `false` | Enable server-side encryption (AES-256-GCM) for new objects. |
-| `encryption.master_key` | *(none)* | Base64-encoded 256-bit master key. Required when enabled. Generate with `arca encryption generate-key`. |
+| `encryption.master_key` | *(none)* | Base64-encoded 256-bit master key. Generate with `arca encryption generate-key`. Mutually exclusive with `[encryption.kms]`. |
 | `encryption.previous_master_key` | *(none)* | Previous master key for key rotation. Used to read objects encrypted with the old key. |
 
 When `[encryption]` is present and `enabled = true`, all new objects are encrypted at rest. Existing unencrypted objects remain readable. See the [Encryption guide](encryption.md) for details.
+
+### KMS (Vault/OpenBAO)
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `encryption.kms.endpoint` | *(required)* | Vault/OpenBAO endpoint URL. |
+| `encryption.kms.auth_method` | *(required)* | `"token"` or `"approle"`. |
+| `encryption.kms.token` | *(none)* | Vault token (required for `token` auth). |
+| `encryption.kms.role_id` | *(none)* | AppRole role ID (required for `approle` auth). |
+| `encryption.kms.secret_id` | *(none)* | AppRole secret ID (required for `approle` auth). |
+| `encryption.kms.secret_path` | `secret/arca/master-key` | KV v2 secret path. Auto-normalized. |
+| `encryption.kms.secret_field` | `key` | Field containing the base64 key. |
+| `encryption.kms.tls_skip_verify` | `false` | Skip TLS verification (dev only). |
+| `encryption.kms.ca_file` | *(none)* | CA certificate for Vault TLS. |
+
+When `[encryption.kms]` is present, the master key is fetched from Vault/OpenBAO at startup. See the [Encryption guide](encryption.md#kms-integration-vaultopenbao) for details.
 
 ### Example
 
@@ -67,6 +83,12 @@ data_dir = "/data"
 # [encryption]               # optional, enables SSE-S3
 # enabled = true
 # master_key = "base64..."   # generate with: arca encryption generate-key
+
+# Alternative: fetch master key from Vault/OpenBAO
+# [encryption.kms]
+# endpoint = "http://vault:8200"
+# auth_method = "token"
+# token = "s.my-vault-token"
 ```
 
 ### Blob Storage

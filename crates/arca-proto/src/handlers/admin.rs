@@ -68,6 +68,10 @@ struct InfoResponse {
     uptime_seconds: u64,
     tls_enabled: bool,
     encryption_enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kms_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kms_endpoint: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -103,6 +107,8 @@ pub async fn info(State(state): State<AppState>) -> impl IntoResponse {
         uptime_seconds: state.started_at.elapsed().as_secs(),
         tls_enabled: state.tls_enabled,
         encryption_enabled: state.encryption_enabled,
+        kms_provider: state.kms_provider.clone(),
+        kms_endpoint: state.kms_endpoint.clone(),
     })
 }
 

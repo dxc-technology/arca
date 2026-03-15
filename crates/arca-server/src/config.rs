@@ -160,18 +160,99 @@ pub struct EncryptionConfig {
     pub master_key: Option<String>,
     /// Base64-encoded previous master key for key rotation reads.
     pub previous_master_key: Option<String>,
+    /// KMS configuration for fetching the master key from Vault/OpenBAO.
+    pub kms: Option<KmsConfig>,
+}
+
+/// Authentication method for Vault/OpenBAO KMS.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum KmsAuthMethod {
+    Token,
+    Approle,
+}
+
+fn default_secret_path() -> String {
+    "secret/arca/master-key".to_string()
+}
+
+fn default_secret_field() -> String {
+    "key".to_string()
+}
+
+/// KMS configuration for fetching the master key from HashiCorp Vault or OpenBAO.
+#[derive(Debug, Clone, Deserialize)]
+pub struct KmsConfig {
+    /// Vault/OpenBAO endpoint URL (e.g. "http://vault:8200").
+    pub endpoint: String,
+    /// KV v2 secret path (default: "secret/arca/master-key").
+    /// Auto-normalized: "/data/" segment is inserted after the mount point if missing.
+    #[serde(default = "default_secret_path")]
+    pub secret_path: String,
+    /// Field name within the secret that holds the base64-encoded key (default: "key").
+    #[serde(default = "default_secret_field")]
+    pub secret_field: String,
+    /// Authentication method: "token" or "approle".
+    pub auth_method: KmsAuthMethod,
+    /// Vault token (required when auth_method = "token").
+    pub token: Option<String>,
+    /// AppRole role_id (required when auth_method = "approle").
+    pub role_id: Option<String>,
+    /// AppRole secret_id (required when auth_method = "approle").
+    pub secret_id: Option<String>,
+    /// Skip TLS certificate verification (development only).
+    #[serde(default)]
+    pub tls_skip_verify: bool,
+    /// CA certificate file for Vault TLS verification.
+    pub ca_file: Option<String>,
+}
+
+impl KmsConfig {
+    pub fn validate(&self) -> Result<()> {
+        if self.endpoint.is_empty() {
+            bail!("[encryption.kms] endpoint is required");
+        }
+        match self.auth_method {
+            KmsAuthMethod::Token => {
+                if self.token.as_ref().map_or(true, |t| t.is_empty()) {
+                    bail!("[encryption.kms] token is required when auth_method = \"token\"");
+                }
+            }
+            KmsAuthMethod::Approle => {
+                if self.role_id.as_ref().map_or(true, |r| r.is_empty()) {
+                    bail!("[encryption.kms] role_id is required when auth_method = \"approle\"");
+                }
+                if self.secret_id.as_ref().map_or(true, |s| s.is_empty()) {
+                    bail!("[encryption.kms] secret_id is required when auth_method = \"approle\"");
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 impl EncryptionConfig {
     /// Validates the encryption configuration.
     ///
-    /// `master_key` is required whenever the `[encryption]` section is present
-    /// (regardless of `enabled`), because per-bucket encryption needs the key
-    /// even when the global default is off.
+    /// Either `master_key` or `kms` is required whenever the `[encryption]`
+    /// section is present (regardless of `enabled`), because per-bucket
+    /// encryption needs the key even when the global default is off.
+    /// They are mutually exclusive.
     pub fn validate(&self) -> Result<()> {
-        let key = self.master_key.as_ref()
-            .context("[encryption] master_key is required when the [encryption] section is present")?;
-        validate_master_key(key, "master_key")?;
+        match (&self.master_key, &self.kms) {
+            (Some(_), Some(_)) => {
+                bail!("[encryption] master_key and kms are mutually exclusive — use one or the other");
+            }
+            (Some(key), None) => {
+                validate_master_key(key, "master_key")?;
+            }
+            (None, Some(kms)) => {
+                kms.validate()?;
+            }
+            (None, None) => {
+                bail!("[encryption] either master_key or [encryption.kms] is required when the [encryption] section is present");
+            }
+        }
         if let Some(ref key) = self.previous_master_key {
             validate_master_key(key, "previous_master_key")?;
         }
@@ -400,12 +481,13 @@ data_dir = "/data"
     }
 
     #[test]
-    fn encryption_section_requires_master_key() {
-        // master_key is required whenever [encryption] section is present
+    fn encryption_section_requires_master_key_or_kms() {
+        // Neither master_key nor kms → error
         let enc = EncryptionConfig {
             enabled: true,
             master_key: None,
             previous_master_key: None,
+            kms: None,
         };
         assert!(enc.validate().is_err());
 
@@ -413,6 +495,7 @@ data_dir = "/data"
             enabled: false,
             master_key: None,
             previous_master_key: None,
+            kms: None,
         };
         assert!(enc.validate().is_err());
     }
@@ -423,6 +506,7 @@ data_dir = "/data"
             enabled: true,
             master_key: Some("not-valid-base64!!!".to_string()),
             previous_master_key: None,
+            kms: None,
         };
         assert!(enc.validate().is_err());
     }
@@ -434,6 +518,7 @@ data_dir = "/data"
             enabled: true,
             master_key: Some("AAAAAAAAAAAAAAAAAAAAAA==".to_string()),
             previous_master_key: None,
+            kms: None,
         };
         assert!(enc.validate().is_err());
     }
@@ -445,8 +530,224 @@ data_dir = "/data"
             enabled: true,
             master_key: Some("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string()),
             previous_master_key: None,
+            kms: None,
         };
         assert!(enc.validate().is_ok());
+    }
+
+    #[test]
+    fn encryption_master_key_and_kms_mutually_exclusive() {
+        let enc = EncryptionConfig {
+            enabled: true,
+            master_key: Some("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".to_string()),
+            previous_master_key: None,
+            kms: Some(KmsConfig {
+                endpoint: "http://vault:8200".to_string(),
+                secret_path: default_secret_path(),
+                secret_field: default_secret_field(),
+                auth_method: KmsAuthMethod::Token,
+                token: Some("dev-root-token".to_string()),
+                role_id: None,
+                secret_id: None,
+                tls_skip_verify: false,
+                ca_file: None,
+            }),
+        };
+        let err = enc.validate().unwrap_err().to_string();
+        assert!(err.contains("mutually exclusive"), "got: {err}");
+    }
+
+    #[test]
+    fn encryption_kms_token_auth_valid() {
+        let enc = EncryptionConfig {
+            enabled: true,
+            master_key: None,
+            previous_master_key: None,
+            kms: Some(KmsConfig {
+                endpoint: "http://vault:8200".to_string(),
+                secret_path: default_secret_path(),
+                secret_field: default_secret_field(),
+                auth_method: KmsAuthMethod::Token,
+                token: Some("dev-root-token".to_string()),
+                role_id: None,
+                secret_id: None,
+                tls_skip_verify: false,
+                ca_file: None,
+            }),
+        };
+        assert!(enc.validate().is_ok());
+    }
+
+    #[test]
+    fn encryption_kms_approle_auth_valid() {
+        let enc = EncryptionConfig {
+            enabled: true,
+            master_key: None,
+            previous_master_key: None,
+            kms: Some(KmsConfig {
+                endpoint: "http://vault:8200".to_string(),
+                secret_path: default_secret_path(),
+                secret_field: default_secret_field(),
+                auth_method: KmsAuthMethod::Approle,
+                token: None,
+                role_id: Some("my-role-id".to_string()),
+                secret_id: Some("my-secret-id".to_string()),
+                tls_skip_verify: false,
+                ca_file: None,
+            }),
+        };
+        assert!(enc.validate().is_ok());
+    }
+
+    #[test]
+    fn encryption_kms_token_auth_missing_token() {
+        let enc = EncryptionConfig {
+            enabled: true,
+            master_key: None,
+            previous_master_key: None,
+            kms: Some(KmsConfig {
+                endpoint: "http://vault:8200".to_string(),
+                secret_path: default_secret_path(),
+                secret_field: default_secret_field(),
+                auth_method: KmsAuthMethod::Token,
+                token: None,
+                role_id: None,
+                secret_id: None,
+                tls_skip_verify: false,
+                ca_file: None,
+            }),
+        };
+        let err = enc.validate().unwrap_err().to_string();
+        assert!(err.contains("token is required"), "got: {err}");
+    }
+
+    #[test]
+    fn encryption_kms_approle_missing_credentials() {
+        // Missing role_id
+        let enc = EncryptionConfig {
+            enabled: true,
+            master_key: None,
+            previous_master_key: None,
+            kms: Some(KmsConfig {
+                endpoint: "http://vault:8200".to_string(),
+                secret_path: default_secret_path(),
+                secret_field: default_secret_field(),
+                auth_method: KmsAuthMethod::Approle,
+                token: None,
+                role_id: None,
+                secret_id: Some("secret".to_string()),
+                tls_skip_verify: false,
+                ca_file: None,
+            }),
+        };
+        let err = enc.validate().unwrap_err().to_string();
+        assert!(err.contains("role_id is required"), "got: {err}");
+
+        // Missing secret_id
+        let enc = EncryptionConfig {
+            enabled: true,
+            master_key: None,
+            previous_master_key: None,
+            kms: Some(KmsConfig {
+                endpoint: "http://vault:8200".to_string(),
+                secret_path: default_secret_path(),
+                secret_field: default_secret_field(),
+                auth_method: KmsAuthMethod::Approle,
+                token: None,
+                role_id: Some("role".to_string()),
+                secret_id: None,
+                tls_skip_verify: false,
+                ca_file: None,
+            }),
+        };
+        let err = enc.validate().unwrap_err().to_string();
+        assert!(err.contains("secret_id is required"), "got: {err}");
+    }
+
+    #[test]
+    fn encryption_kms_empty_endpoint() {
+        let enc = EncryptionConfig {
+            enabled: true,
+            master_key: None,
+            previous_master_key: None,
+            kms: Some(KmsConfig {
+                endpoint: "".to_string(),
+                secret_path: default_secret_path(),
+                secret_field: default_secret_field(),
+                auth_method: KmsAuthMethod::Token,
+                token: Some("tok".to_string()),
+                role_id: None,
+                secret_id: None,
+                tls_skip_verify: false,
+                ca_file: None,
+            }),
+        };
+        let err = enc.validate().unwrap_err().to_string();
+        assert!(err.contains("endpoint is required"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_config_with_kms_token() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+
+[encryption]
+enabled = true
+
+[encryption.kms]
+endpoint = "http://vault:8200"
+auth_method = "token"
+token = "dev-root-token"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let enc = config.encryption.unwrap();
+        assert!(enc.enabled);
+        assert!(enc.master_key.is_none());
+        let kms = enc.kms.unwrap();
+        assert_eq!(kms.endpoint, "http://vault:8200");
+        assert_eq!(kms.secret_path, "secret/arca/master-key");
+        assert_eq!(kms.secret_field, "key");
+        assert!(matches!(kms.auth_method, KmsAuthMethod::Token));
+        assert_eq!(kms.token.as_deref(), Some("dev-root-token"));
+    }
+
+    #[test]
+    fn parse_config_with_kms_approle() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+
+[encryption]
+enabled = true
+
+[encryption.kms]
+endpoint = "https://vault.prod:8200"
+secret_path = "kv/myapp/encryption-key"
+secret_field = "master_key"
+auth_method = "approle"
+role_id = "abc-123"
+secret_id = "def-456"
+ca_file = "/etc/ssl/vault-ca.pem"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let enc = config.encryption.unwrap();
+        let kms = enc.kms.unwrap();
+        assert_eq!(kms.endpoint, "https://vault.prod:8200");
+        assert_eq!(kms.secret_path, "kv/myapp/encryption-key");
+        assert_eq!(kms.secret_field, "master_key");
+        assert!(matches!(kms.auth_method, KmsAuthMethod::Approle));
+        assert_eq!(kms.role_id.as_deref(), Some("abc-123"));
+        assert_eq!(kms.secret_id.as_deref(), Some("def-456"));
+        assert_eq!(kms.ca_file.as_deref(), Some("/etc/ssl/vault-ca.pem"));
     }
 
     #[test]

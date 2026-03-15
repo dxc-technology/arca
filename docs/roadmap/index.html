@@ -1878,7 +1878,7 @@ continuing from the MVP phases (0–11).</p>
   <div style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid rgba(128,128,128,.3)">
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em">12</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">13</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">14</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">14</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">15</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">16</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">17</div>
@@ -1965,8 +1965,8 @@ continuing from the MVP phases (0–11).</p>
 <td><a href="#phase-14-sse-kms-with-hashicorp-vaultopenbao-p0">SSE-KMS with HashiCorp Vault/OpenBAO</a></td>
 <td style="text-align: center;">P0</td>
 <td style="text-align: center;">13</td>
-<td style="text-align: center;"></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><code>v0.4.0</code></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">15</td>
@@ -2105,18 +2105,21 @@ Local master key from config provides a bootstrap mode before Vault integration.
 </ul>
 <hr />
 <h3 id="phase-14-sse-kms-with-hashicorp-vaultopenbao-p0">Phase 14 — SSE-KMS with HashiCorp Vault/OpenBAO [P0]<a class="headerlink" href="#phase-14-sse-kms-with-hashicorp-vaultopenbao-p0" title="Permanent link">&para;</a></h3>
-<p>Envelope encryption with external key management. Vault/OpenBAO Transit engine wraps and
-unwraps DEKs — Arca never sees or stores the master key material. Direct integration,
-no intermediate KES layer.</p>
+<p>Master key fetched from HashiCorp Vault or OpenBAO (100% API-compatible) KV v2 secrets
+engine at startup, cached in memory. Vault is only needed at startup — not a runtime
+dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming) unchanged.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> New <code>arca-kms</code> crate with <code>trait KeyManager</code> (<code>wrap_key</code> / <code>unwrap_key</code> / <code>generate_dek</code>)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>LocalKeyManager</code>: wraps DEKs with the config-file master key (Phase 13 logic extracted here)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>VaultKeyManager</code>: HTTP client for Vault Transit engine (<code>encrypt</code> / <code>decrypt</code> endpoints)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Vault auth methods: token and AppRole. Compatible with OpenBAO (same API)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Config: <code>[encryption.kms]</code> with <code>type</code> (<code>local</code> | <code>vault</code>), <code>endpoint</code>, <code>auth</code>, <code>transit_mount</code>, <code>default_key</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> S3 headers: <code>x-amz-server-side-encryption: aws:kms</code>, <code>x-amz-server-side-encryption-aws-kms-key-id</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Key rotation: Vault versioned keys, key version stored in sidecar metadata</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> (Console) KMS key selection in bucket encryption settings, Vault connection status in dashboard</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>reqwest</code> dependency (rustls-tls backend) for Vault HTTP client at startup</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Config: <code>[encryption.kms]</code> with <code>endpoint</code>, <code>auth_method</code> (<code>token</code> | <code>approle</code>), <code>secret_path</code>, <code>secret_field</code>, <code>ca_file</code>, <code>tls_skip_verify</code>. Mutually exclusive with <code>master_key</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Vault KV v2 client (<code>vault.rs</code>): <code>fetch_master_key</code>, AppRole login, auto-normalization of <code>/data/</code> path segment</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Vault auth methods: token and AppRole. 100% compatible with both HashiCorp Vault and OpenBAO</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Clear error messages on connection failure, auth failure, missing secret, invalid key</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> AppState extended with <code>kms_provider</code> ("local" | "vault") and <code>kms_endpoint</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>/admin/info</code> response includes <code>kms_provider</code> and <code>kms_endpoint</code> fields</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> (Console) Dashboard shows "SSE-S3 (Vault)" vs "SSE-S3 (Local)" based on KMS provider</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Docker: OpenBAO KV v2 overlay (<code>docker-compose.kms.yml</code>) with AppRole and random key generation</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Test infrastructure: <code>bin/test kms</code> mode, 10 integration tests (put/get, headers, ETag, multipart, copy, range, admin info, per-bucket encryption)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> 16 new unit tests (8 config validation + 8 Vault path/response parsing)</li>
 </ul>
 <p><strong>Depends on</strong>: Phase 13 (encryption pipeline and bucket encryption config)</p>
 <hr />

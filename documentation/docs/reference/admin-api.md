@@ -51,10 +51,12 @@ GET /admin/info
 
 ```json
 {
-    "version": "0.3.0",
+    "version": "0.4.0",
     "uptime_seconds": 3600,
     "tls_enabled": true,
-    "encryption_enabled": true
+    "encryption_enabled": true,
+    "kms_provider": "vault",
+    "kms_endpoint": "http://vault:8200"
 }
 ```
 
@@ -64,6 +66,8 @@ GET /admin/info
 | `uptime_seconds` | integer | Seconds since server start |
 | `tls_enabled` | boolean | Whether TLS is enabled on the main listener |
 | `encryption_enabled` | boolean | Whether server-side encryption (SSE-S3) is enabled globally |
+| `kms_provider` | string? | Key source: `"local"` (config file) or `"vault"` (Vault/OpenBAO). Omitted when no encryption. |
+| `kms_endpoint` | string? | Vault/OpenBAO endpoint URL. Only present when `kms_provider` is `"vault"`. |
 
 ---
 

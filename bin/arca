@@ -9,6 +9,7 @@ set -euo pipefail
 #   bin/arca start -d --build     Start in background, rebuild image first
 #   bin/arca start -d --dev       Start development image (has shell)
 #   bin/arca start -d --tls       Start with TLS (requires certs in ./certs/)
+#   bin/arca start -d --kms       Start with OpenBAO KMS (KV v2 secrets engine)
 #   bin/arca start -d -c <path>   Start with a custom config file
 #   bin/arca stop                 Stop the server
 #   bin/arca status               Show container status
@@ -23,7 +24,7 @@ usage() {
     echo "Usage: bin/arca <command> [options]"
     echo ""
     echo "Commands:"
-    echo "  start [-d] [--build] [--dev] [--tls] [--config <path>]"
+    echo "  start [-d] [--build] [--dev] [--tls] [--kms] [--config <path>]"
     echo "                                          Start the Arca server"
     echo "  stop                                    Stop the Arca server"
     echo "  status                                  Show container status"
@@ -34,6 +35,7 @@ usage() {
     echo "  --build         Rebuild the Docker image before starting"
     echo "  --dev           Use development image (debian-slim, has shell)"
     echo "  --tls           Enable HTTPS (certificates must be in ./certs/)"
+    echo "  --kms           Start OpenBAO KMS (KV v2 on port 8200)"
     echo "  --config <path> Use a custom config file (mounted into the container)"
     echo "  -f              Follow log output"
     exit 0
@@ -46,6 +48,7 @@ cleanup_config_override() {
 cmd_start() {
     local detach=false
     local build=false
+    local kms=false
     local args=()
 
     while [[ $# -gt 0 ]]; do
@@ -54,6 +57,7 @@ cmd_start() {
             --build)  build=true; shift ;;
             --dev)    export BUILD_TARGET=development; shift ;;
             --tls)    COMPOSE="$COMPOSE -f docker/docker-compose.tls.yml"; shift ;;
+            --kms)    COMPOSE="$COMPOSE -f docker/docker-compose.kms.yml"; kms=true; shift ;;
             -c|--config)
                 if [[ -z "${2:-}" ]]; then
                     echo "Error: --config requires a file path" >&2
@@ -83,6 +87,13 @@ YAML
     if $build; then
         echo "Building ${BUILD_TARGET:-production} image..."
         $COMPOSE build arca
+    fi
+
+    if $kms; then
+        echo "Starting OpenBAO KMS..."
+        $COMPOSE up -d openbao
+        echo "Initializing KV v2 secrets..."
+        $COMPOSE --profile kms-init run --rm openbao-init
     fi
 
     if $detach; then

@@ -15,6 +15,7 @@ COMPOSE="docker compose -f docker/docker-compose.yml"
 COMPOSE_TLS="docker compose -f docker/docker-compose.yml -f docker/docker-compose.tls.yml -f docker/docker-compose.tls-test.yml"
 COMPOSE_ENC="docker compose -f docker/docker-compose.yml -f docker/docker-compose.encryption-test.yml"
 COMPOSE_PBE="docker compose -f docker/docker-compose.yml -f docker/docker-compose.per-bucket-encryption-test.yml"
+COMPOSE_KMS="docker compose -f docker/docker-compose.yml -f docker/docker-compose.kms.yml -f docker/docker-compose.kms-test.yml"
 
 run_unit() {
     echo "==> Running unit tests..."
@@ -128,6 +129,48 @@ run_per_bucket_encryption() {
     return $rc
 }
 
+run_kms() {
+    echo "==> Running KMS integration tests..."
+
+    cleanup_kms() {
+        echo "Cleaning up KMS test..."
+        $COMPOSE_KMS --profile kms-init --profile kms-test down -v 2>/dev/null || true
+    }
+    trap cleanup_kms EXIT
+
+    # Step 1: Build images
+    $COMPOSE_KMS build arca
+    # Step 2: Start OpenBAO and wait for healthy
+    $COMPOSE_KMS up -d openbao
+    echo "Waiting for OpenBAO..."
+    for i in $(seq 1 30); do
+        if docker compose -f docker/docker-compose.yml -f docker/docker-compose.kms.yml exec -T openbao bao status >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
+    # Step 3: Initialize KV v2 secrets (write master key, AppRole, etc.)
+    $COMPOSE_KMS --profile kms-init run --rm openbao-init
+    # Step 4: Start Arca with KMS config
+    $COMPOSE_KMS up -d arca
+    # Step 5: Wait for server to be ready
+    echo "Waiting for Arca KMS server..."
+    for i in $(seq 1 30); do
+        if $COMPOSE_KMS exec -T arca /usr/local/bin/arca --help >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
+    sleep 2  # brief extra settle time
+    # Step 6: Run KMS-specific tests
+    $COMPOSE_KMS --profile kms-test run --rm test integration/test_kms.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_kms
+    return $rc
+}
+
 run_s3_compat() {
     echo "==> Running s3-tests compatibility suite..."
     exec "$(git rev-parse --show-toplevel)/bin/s3-tests" "$@"
@@ -154,6 +197,10 @@ case "${1:-all}" in
         shift
         run_per_bucket_encryption "$@"
         ;;
+    kms)
+        shift
+        run_kms "$@"
+        ;;
     s3-compat)
         shift
         run_s3_compat "$@"
@@ -164,7 +211,7 @@ case "${1:-all}" in
         run_integration
         ;;
     *)
-        echo "Usage: bin/test [unit|integration|tls|encryption|per-bucket-encryption|s3-compat|all] [extra args...]" >&2
+        echo "Usage: bin/test [unit|integration|tls|encryption|per-bucket-encryption|kms|s3-compat|all] [extra args...]" >&2
         exit 1
         ;;
 esac

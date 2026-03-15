@@ -14,6 +14,19 @@ data_dir = "/data"
 # [encryption]
 # enabled = true                       # encrypt all buckets by default (default: false)
 # master_key = ""                      # base64-encoded 256-bit key (generate with: arca encryption generate-key)
-#                                      # required when [encryption] section is present
+#                                      # required when [encryption] section is present (unless using KMS)
 #                                      # when enabled = false, per-bucket encryption is still available
 # previous_master_key = ""             # previous key for rotation (optional)
+#
+# # KMS — fetch master key from HashiCorp Vault or OpenBAO at startup.
+# # Mutually exclusive with master_key (use one or the other).
+# [encryption.kms]
+# endpoint = "http://vault:8200"       # Vault/OpenBAO endpoint URL
+# auth_method = "token"                # "token" or "approle"
+# token = "s.my-vault-token"           # required when auth_method = "token"
+# # role_id = ""                       # required when auth_method = "approle"
+# # secret_id = ""                     # required when auth_method = "approle"
+# # secret_path = "secret/arca/master-key"  # KV v2 path (default)
+# # secret_field = "key"               # field containing base64-encoded key (default)
+# # tls_skip_verify = false            # skip TLS cert verification (dev only)
+# # ca_file = "/etc/ssl/vault-ca.pem"  # CA cert for Vault TLS

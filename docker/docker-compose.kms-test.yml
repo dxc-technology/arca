@@ -1,0 +1,13 @@
+# KMS integration test overlay — starts Arca with Vault/OpenBAO KMS encryption.
+# Used by: bin/test kms
+
+services:
+  arca:
+    volumes:
+      - ../config/kms-test.toml:/etc/arca/config.toml:ro
+
+  test:
+    environment:
+      - ARCA_KMS_ENABLED=1
+    profiles:
+      - kms-test

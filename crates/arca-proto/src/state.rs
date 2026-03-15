@@ -22,6 +22,10 @@ pub struct AppState {
     pub tls_enabled: bool,
     /// Whether server-side encryption is enabled by default for new objects.
     pub encryption_enabled: bool,
+    /// KMS provider: "local" (config file), "vault" (Vault/OpenBAO), or None.
+    pub kms_provider: Option<String>,
+    /// KMS endpoint URL (only when kms_provider = "vault").
+    pub kms_endpoint: Option<String>,
 }
 
 impl AppState {

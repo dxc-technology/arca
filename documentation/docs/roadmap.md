@@ -30,7 +30,7 @@ continuing from the MVP phases (0–11).
   <div style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid rgba(128,128,128,.3)">
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em">12</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">13</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">14</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">14</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">15</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">16</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">17</div>
@@ -94,7 +94,7 @@ graph LR
 |:-----:|------|:--------:|:------------:|:-------:|:------:|
 | 12 | [TLS/SSL and Transport Security](#phase-12-tlsssl-and-transport-security-p0) | P0 | — | `v0.2.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 13 | [Server-Side Encryption: SSE-S3](#phase-13-server-side-encryption-sse-s3-p0) | P0 | — | `v0.3.0` | <span style="color:#4caf50">&#x2714;</span> |
-| 14 | [SSE-KMS with HashiCorp Vault/OpenBAO](#phase-14-sse-kms-with-hashicorp-vaultopenbao-p0) | P0 | 13 | | |
+| 14 | [SSE-KMS with HashiCorp Vault/OpenBAO](#phase-14-sse-kms-with-hashicorp-vaultopenbao-p0) | P0 | 13 | `v0.4.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 15 | [Presigned URLs, Query-String Auth, and SSE-C](#phase-15-presigned-urls-query-string-auth-and-sse-c-p1) | P1 | 12, 13 | | |
 | 16 | [Access Control and Bucket Policies](#phase-16-access-control-and-bucket-policies-p1) | P1 | 13 | | |
 | 17 | [Object Versioning](#phase-17-object-versioning-p1) | P1 | 16 | | |
@@ -153,18 +153,21 @@ Local master key from config provides a bootstrap mode before Vault integration.
 
 ### Phase 14 — SSE-KMS with HashiCorp Vault/OpenBAO [P0]
 
-Envelope encryption with external key management. Vault/OpenBAO Transit engine wraps and
-unwraps DEKs — Arca never sees or stores the master key material. Direct integration,
-no intermediate KES layer.
+Master key fetched from HashiCorp Vault or OpenBAO (100% API-compatible) KV v2 secrets
+engine at startup, cached in memory. Vault is only needed at startup — not a runtime
+dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming) unchanged.
 
-- [ ] New `arca-kms` crate with `trait KeyManager` (`wrap_key` / `unwrap_key` / `generate_dek`)
-- [ ] `LocalKeyManager`: wraps DEKs with the config-file master key (Phase 13 logic extracted here)
-- [ ] `VaultKeyManager`: HTTP client for Vault Transit engine (`encrypt` / `decrypt` endpoints)
-- [ ] Vault auth methods: token and AppRole. Compatible with OpenBAO (same API)
-- [ ] Config: `[encryption.kms]` with `type` (`local` | `vault`), `endpoint`, `auth`, `transit_mount`, `default_key`
-- [ ] S3 headers: `x-amz-server-side-encryption: aws:kms`, `x-amz-server-side-encryption-aws-kms-key-id`
-- [ ] Key rotation: Vault versioned keys, key version stored in sidecar metadata
-- [ ] (Console) KMS key selection in bucket encryption settings, Vault connection status in dashboard
+- [x] `reqwest` dependency (rustls-tls backend) for Vault HTTP client at startup
+- [x] Config: `[encryption.kms]` with `endpoint`, `auth_method` (`token` | `approle`), `secret_path`, `secret_field`, `ca_file`, `tls_skip_verify`. Mutually exclusive with `master_key`
+- [x] Vault KV v2 client (`vault.rs`): `fetch_master_key`, AppRole login, auto-normalization of `/data/` path segment
+- [x] Vault auth methods: token and AppRole. 100% compatible with both HashiCorp Vault and OpenBAO
+- [x] Clear error messages on connection failure, auth failure, missing secret, invalid key
+- [x] AppState extended with `kms_provider` ("local" | "vault") and `kms_endpoint`
+- [x] `/admin/info` response includes `kms_provider` and `kms_endpoint` fields
+- [x] (Console) Dashboard shows "SSE-S3 (Vault)" vs "SSE-S3 (Local)" based on KMS provider
+- [x] Docker: OpenBAO KV v2 overlay (`docker-compose.kms.yml`) with AppRole and random key generation
+- [x] Test infrastructure: `bin/test kms` mode, 10 integration tests (put/get, headers, ETag, multipart, copy, range, admin info, per-bucket encryption)
+- [x] 16 new unit tests (8 config validation + 8 Vault path/response parsing)
 
 **Depends on**: Phase 13 (encryption pipeline and bucket encryption config)
 

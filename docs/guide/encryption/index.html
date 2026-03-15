@@ -686,6 +686,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#kms-integration-vaultopenbao" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KMS Integration (Vault/OpenBAO)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="KMS Integration (Vault/OpenBAO)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docker-development" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docker (Development)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kms-configuration-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KMS Configuration Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#configuration-reference" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1330,6 +1380,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#kms-integration-vaultopenbao" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KMS Integration (Vault/OpenBAO)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="KMS Integration (Vault/OpenBAO)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docker-development" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docker (Development)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kms-configuration-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KMS Configuration Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#configuration-reference" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1511,11 +1611,130 @@
 </ul>
 <h3 id="etag-preservation">ETag Preservation<a class="headerlink" href="#etag-preservation" title="Permanent link">&para;</a></h3>
 <p>The ETag (MD5) is computed on the <strong>plaintext</strong> data, not the ciphertext. This ensures S3 clients that compare ETags continue to work correctly.</p>
+<h2 id="kms-integration-vaultopenbao">KMS Integration (Vault/OpenBAO)<a class="headerlink" href="#kms-integration-vaultopenbao" title="Permanent link">&para;</a></h2>
+<p>Instead of storing the master key in the config file, Arca can fetch it from HashiCorp Vault or OpenBAO at startup. The key is cached in memory — Vault is only needed at startup, not during object operations.</p>
+<h3 id="setup">Setup<a class="headerlink" href="#setup" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Store a base64-encoded 256-bit key in Vault KV v2:</li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Generate a key</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nv">KEY</span><span class="o">=</span><span class="k">$(</span>head<span class="w"> </span>-c<span class="w"> </span><span class="m">32</span><span class="w"> </span>/dev/urandom<span class="w"> </span><span class="p">|</span><span class="w"> </span>base64<span class="k">)</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># Write to Vault</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>vault<span class="w"> </span>kv<span class="w"> </span>put<span class="w"> </span>-mount<span class="o">=</span>secret<span class="w"> </span>arca/master-key<span class="w"> </span><span class="nv">key</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$KEY</span><span class="s2">&quot;</span>
+</code></pre></div>
+<ol>
+<li>Configure Arca to use Vault:</li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">[encryption]</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="k">[encryption.kms]</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">endpoint</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;http://vault:8200&quot;</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="n">auth_method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;token&quot;</span><span class="w">          </span><span class="c1"># or &quot;approle&quot;</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="n">token</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;s.my-vault-token&quot;</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="c1"># secret_path = &quot;secret/arca/master-key&quot;  # default</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="c1"># secret_field = &quot;key&quot;                     # default</span>
+</code></pre></div>
+<p>For AppRole authentication:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">[encryption.kms]</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">endpoint</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;http://vault:8200&quot;</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">auth_method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;approle&quot;</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">role_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;abc-123&quot;</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">secret_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;def-456&quot;</span>
+</code></pre></div>
+<ol>
+<li>Start the server — the logs will confirm KMS key loading:</li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>INFO arca: Server-side encryption enabled (AES-256-GCM) key_id=&quot;a1b2c3d4&quot; provider=&quot;vault&quot;
+</code></pre></div>
+<h3 id="docker-development">Docker (Development)<a class="headerlink" href="#docker-development" title="Permanent link">&para;</a></h3>
+<p>Use the <code>--kms</code> flag to start with a pre-configured OpenBAO instance:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--dev<span class="w"> </span>--kms<span class="w"> </span>--config<span class="w"> </span>config/kms-test.toml
+</code></pre></div>
+<p>This starts an OpenBAO dev server, generates a random master key, stores it in KV v2, and configures Arca to fetch it.</p>
+<h3 id="kms-configuration-reference">KMS Configuration Reference<a class="headerlink" href="#kms-configuration-reference" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>endpoint</code></td>
+<td>string</td>
+<td>Yes</td>
+<td>Vault/OpenBAO endpoint URL (e.g. <code>http://vault:8200</code>).</td>
+</tr>
+<tr>
+<td><code>auth_method</code></td>
+<td>string</td>
+<td>Yes</td>
+<td><code>"token"</code> or <code>"approle"</code>.</td>
+</tr>
+<tr>
+<td><code>token</code></td>
+<td>string</td>
+<td>When <code>token</code></td>
+<td>Vault token for authentication.</td>
+</tr>
+<tr>
+<td><code>role_id</code></td>
+<td>string</td>
+<td>When <code>approle</code></td>
+<td>AppRole role ID.</td>
+</tr>
+<tr>
+<td><code>secret_id</code></td>
+<td>string</td>
+<td>When <code>approle</code></td>
+<td>AppRole secret ID.</td>
+</tr>
+<tr>
+<td><code>secret_path</code></td>
+<td>string</td>
+<td>No</td>
+<td>KV v2 secret path. Default: <code>secret/arca/master-key</code>. Auto-normalized (no need to include <code>/data/</code>).</td>
+</tr>
+<tr>
+<td><code>secret_field</code></td>
+<td>string</td>
+<td>No</td>
+<td>Field name containing the base64 key. Default: <code>key</code>.</td>
+</tr>
+<tr>
+<td><code>tls_skip_verify</code></td>
+<td>bool</td>
+<td>No</td>
+<td>Skip TLS certificate verification. Default: <code>false</code>. Development only.</td>
+</tr>
+<tr>
+<td><code>ca_file</code></td>
+<td>string</td>
+<td>No</td>
+<td>CA certificate file for Vault TLS verification.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code>master_key</code> and <code>[encryption.kms]</code> are mutually exclusive — use one or the other.</p>
+</div>
 <h2 id="configuration-reference">Configuration Reference<a class="headerlink" href="#configuration-reference" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">[encryption]</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w">                 </span><span class="c1"># Enable server-side encryption (default: false)</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">master_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;base64...&quot;</span><span class="w">       </span><span class="c1"># 256-bit master key (required when enabled)</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># previous_master_key = &quot;...&quot;  # Previous key for rotation (optional)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="k">[encryption]</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="w">                 </span><span class="c1"># Enable server-side encryption (default: false)</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">master_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;base64...&quot;</span><span class="w">       </span><span class="c1"># 256-bit master key (required when enabled, unless using KMS)</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c1"># previous_master_key = &quot;...&quot;  # Previous key for rotation (optional)</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="c1"># Alternative: fetch master key from Vault/OpenBAO at startup</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="c1"># [encryption.kms]</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="c1"># endpoint = &quot;http://vault:8200&quot;</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="c1"># auth_method = &quot;token&quot;</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="c1"># token = &quot;s.my-vault-token&quot;</span>
 </code></pre></div>
 <table>
 <thead>
@@ -1536,8 +1755,8 @@
 <tr>
 <td><code>master_key</code></td>
 <td>string</td>
-<td>When enabled</td>
-<td>Base64-encoded 256-bit key. Generate with <code>arca encryption generate-key</code>.</td>
+<td>When no KMS</td>
+<td>Base64-encoded 256-bit key. Generate with <code>arca encryption generate-key</code>. Mutually exclusive with <code>[encryption.kms]</code>.</td>
 </tr>
 <tr>
 <td><code>previous_master_key</code></td>
@@ -1549,17 +1768,17 @@
 </table>
 <h2 id="per-bucket-encryption">Per-Bucket Encryption<a class="headerlink" href="#per-bucket-encryption" title="Permanent link">&para;</a></h2>
 <p>In addition to the global <code>[encryption]</code> config, encryption can be configured per-bucket using standard S3 APIs:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Set bucket encryption</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>aws<span class="w"> </span>s3api<span class="w"> </span>put-bucket-encryption<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span>--server-side-encryption-configuration<span class="w"> </span><span class="s1">&#39;{&quot;Rules&quot;:[{&quot;ApplyServerSideEncryptionByDefault&quot;:{&quot;SSEAlgorithm&quot;:&quot;AES256&quot;}}]}&#39;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span>--endpoint-url<span class="w"> </span>http://localhost:9000
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="c1"># Check bucket encryption</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>aws<span class="w"> </span>s3api<span class="w"> </span>get-bucket-encryption<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>
-<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="c1"># Remove per-bucket config (falls back to global default)</span>
-<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>aws<span class="w"> </span>s3api<span class="w"> </span>delete-bucket-encryption<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Set bucket encryption</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>aws<span class="w"> </span>s3api<span class="w"> </span>put-bucket-encryption<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span>--server-side-encryption-configuration<span class="w"> </span><span class="s1">&#39;{&quot;Rules&quot;:[{&quot;ApplyServerSideEncryptionByDefault&quot;:{&quot;SSEAlgorithm&quot;:&quot;AES256&quot;}}]}&#39;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">  </span>--endpoint-url<span class="w"> </span>http://localhost:9000
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="c1"># Check bucket encryption</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>aws<span class="w"> </span>s3api<span class="w"> </span>get-bucket-encryption<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="c1"># Remove per-bucket config (falls back to global default)</span>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>aws<span class="w"> </span>s3api<span class="w"> </span>delete-bucket-encryption<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
 </code></pre></div>
 <h2 id="mixed-mode">Mixed Mode<a class="headerlink" href="#mixed-mode" title="Permanent link">&para;</a></h2>
 <p>Encrypted and unencrypted objects coexist transparently:</p>
@@ -1570,7 +1789,7 @@
 </ul>
 <h2 id="cli-commands">CLI Commands<a class="headerlink" href="#cli-commands" title="Permanent link">&para;</a></h2>
 <h3 id="generate-a-master-key">Generate a master key<a class="headerlink" href="#generate-a-master-key" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>arca<span class="w"> </span>encryption<span class="w"> </span>generate-key
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>arca<span class="w"> </span>encryption<span class="w"> </span>generate-key
 </code></pre></div>
 <p>Outputs a random 256-bit key encoded as base64. Suitable for the <code>master_key</code> config field.</p>
 <h2 id="recovery-and-integrity">Recovery and Integrity<a class="headerlink" href="#recovery-and-integrity" title="Permanent link">&para;</a></h2>
@@ -1580,9 +1799,11 @@
 <p>The filesystem check tool skips checksum verification for encrypted objects when using <code>--verify-checksums</code>, since the on-disk data is ciphertext.</p>
 <h2 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h2>
 <p>Run the encryption integration tests:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>bin/test<span class="w"> </span>encryption
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>bin/test<span class="w"> </span>encryption<span class="w">             </span><span class="c1"># local key encryption (16 tests)</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>bin/test<span class="w"> </span>per-bucket-encryption<span class="w">  </span><span class="c1"># per-bucket encryption (8 tests)</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>bin/test<span class="w"> </span>kms<span class="w">                    </span><span class="c1"># Vault/OpenBAO KMS (10 tests)</span>
 </code></pre></div>
-<p>This starts an Arca server with encryption enabled and runs 16 tests covering:</p>
+<p>The local encryption tests cover:</p>
 <ul>
 <li>Put/get roundtrip with plaintext verification</li>
 <li>ETag correctness (plaintext MD5)</li>
@@ -1593,12 +1814,14 @@
 <li>PutBucketEncryption / GetBucketEncryption / DeleteBucketEncryption</li>
 <li>Object overwrite and deletion</li>
 </ul>
+<p>The KMS tests verify the same encryption behavior with a master key fetched from OpenBAO, plus admin API KMS provider reporting.</p>
 <h2 id="security-notes">Security Notes<a class="headerlink" href="#security-notes" title="Permanent link">&para;</a></h2>
 <ul>
-<li>The master key is stored in the config file. Protect this file with filesystem permissions (e.g., <code>chmod 600</code>).</li>
-<li>For production deployments requiring external key management, see Phase 14 (SSE-KMS with HashiCorp Vault/OpenBAO) in the <a href="../../roadmap/">roadmap</a>.</li>
+<li>When using a local master key, the key is stored in the config file. Protect this file with filesystem permissions (e.g., <code>chmod 600</code>).</li>
+<li>For production deployments, use <a href="#kms-integration-vaultopenbao">KMS integration</a> to store the master key in HashiCorp Vault or OpenBAO.</li>
 <li>AES-256-GCM provides both confidentiality and integrity. Each encrypted chunk includes a 16-byte authentication tag that detects tampering.</li>
 <li>Nonces are constructed from a random 4-byte prefix (unique per object) and an 8-byte chunk counter, ensuring no nonce reuse.</li>
+<li>Vault/OpenBAO is only contacted at startup — stopping Vault after Arca starts does not affect object operations.</li>
 </ul>
 
 
