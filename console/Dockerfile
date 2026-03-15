@@ -10,7 +10,8 @@ COPY nginx-tls.conf /etc/nginx/nginx-tls.conf
 # Copy web console files
 COPY index.html /usr/share/nginx/html/
 COPY logo.svg /usr/share/nginx/html/
-COPY favicon.ico /usr/share/nginx/html/
+COPY favicon.png /usr/share/nginx/html/
+COPY favicon-16.png /usr/share/nginx/html/
 COPY apple-touch-icon.png /usr/share/nginx/html/
 COPY apple-touch-icon-precomposed.png /usr/share/nginx/html/
 
