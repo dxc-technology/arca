@@ -12,17 +12,19 @@ The full architecture plan lives in `.claude/plans/arca-s3-mvp-architecture.md`.
 
 All development happens inside Docker containers — never install libraries on the host.
 
-Convenience scripts live in `bin/`. They fully abstract Docker Compose, so the user never needs to interact with compose directly.
+Convenience scripts live in `bin/`. They fully abstract Docker Compose, so the user never needs to interact with compose directly. All build operations go through `bin/build`.
 
 **Plugin system**: Features (TLS, encryption, KMS) are composable via `--flags`. Each feature has a config fragment in `config/fragments/` and an optional compose overlay in `docker/`. The shared library `bin/lib/compose.sh` handles config generation (TOML concatenation) and compose command building. Adding a new feature = 1 fragment + a few lines in the library.
 
 ```bash
-# Build and run
+# Build
 bin/build                        # build Docker image
 bin/build --dev                  # build development image (has shell)
 bin/build --console              # build console image
 bin/build --binary               # extract Linux binary to build/arca-<arch>
 bin/build --binary --arch amd64  # cross-compile for x86_64
+
+# Run
 bin/arca start -d                # start server in background
 bin/arca start -d --build --dev  # rebuild dev image and start
 bin/arca start -d --tls          # start with TLS (certs in ./certs/)
@@ -58,6 +60,22 @@ bin/docs-serve           # serve locally with live reload (http://localhost:8000
 bin/docs-publish         # build + commit + push docs to update GitHub Pages
 ```
 
+### Build constraints
+
+- **Rust 1.85** in Docker builder (Alpine). `getrandom 0.4` requires edition 2024 which needs >= 1.85.
+- `ring` crate needs `perl` in Alpine (`apk add --no-cache musl-dev perl`).
+- `time` crate pinned to 0.3.41 (0.3.47+ requires Rust 1.88).
+- `Cargo.lock*` glob in Dockerfile allows building with or without committed lockfile.
+- `bin/build` only rebuilds the `arca` service image, NOT `unit-test` or `test`. After code changes, run `docker compose -f docker/docker-compose.yml build unit-test test` or test images will be stale.
+
+## Documentation
+
+The documentation site uses MkDocs with Material theme, built inside a Docker container.
+
+**Dual-directory structure**: source files live in `documentation/docs/`, built output goes to `docs/` (served by GitHub Pages). Always update BOTH directories, then commit changes in both `documentation/` and `docs/`.
+
+After every phase completion or significant feature change, update documentation BEFORE committing code: roadmap checkboxes, configuration page, and installation/Quick Start as needed. Rebuild with `bin/docs-build`.
+
 ## Architecture
 
 Five-crate Cargo workspace with strict dependency graph (no cycles):
@@ -88,11 +106,26 @@ Dependency direction: `arca-server` -> `arca-proto`, `arca-storage`, `arca-auth`
 
 **Configuration migration without data migration** — Arca must allow any configuration change (storage backend, encryption, node topology, etc.) without requiring data migration to a new instance. Changes are applied via offline CLI tools (`arca migrate-*`) or live reconfiguration that operate in-place on the existing data directory. This is a hard architectural constraint: unlike MinIO, which forces a fresh instance when changing topology, Arca must always provide a migration path that preserves existing data in place.
 
+**TLS** — `tokio-rustls` + `hyper_util` (not `axum-server`), `ring` crypto backend (not `aws-lc-rs`). Single port for everything including health checks. ArcSwap for cert hot-reload on SIGHUP.
+
+**Encryption (SSE-S3)** — AES-256-GCM via `ring` crate, `EncryptingBlobStore` wraps `FsBlobStore`. Chunk-based streaming (64 KiB). Envelope encryption: random DEK per object, wrapped by master KEK. ETag computed on plaintext. Mixed-mode coexistence. `bucket_config` table for per-bucket settings.
+
+**KMS (SSE-KMS)** — Fetch master key from Vault/OpenBAO KV v2 at startup, cache in memory. `[encryption.kms]` config section, mutually exclusive with `master_key`. `reqwest` with `rustls-tls` backend.
+
 ## Web Console & Admin API
 
 **Separated console** — The web console is a separate application in `console/`, not embedded in the Arca binary. Reasons: keeps the binary small (minimal scratch image), allows independent release cycles, supports split deployment (Arca on hardened VM, console on k8s), minimizes attack surface on the storage engine. The console is just another API client.
 
 **Admin API on same port** — Admin endpoints live under `/admin/*` on port 9000, coexisting with the S3 API via path-prefix routing. Auth uses SigV4 (same as S3). Response format is JSON (not S3 XML).
+
+## Known Gotchas
+
+- **Axum `Router::layer()` runs AFTER routing** — middleware applied this way only executes for matched routes. To modify the request URI before routing (e.g. trailing-slash normalization), wrap the Router externally with a tower Layer/Service.
+- **mc sends `?uploads=`** (with `=`), not `?uploads` — query param matching in handlers must account for both forms.
+- **HTTP/2 SigV4 host header** — In HTTP/2, browsers send `:authority` pseudo-header instead of `Host`. hyper does NOT synthesize a `host` header. Auth middlewares must synthesize `host` from URI authority when missing.
+- **Multipart + encryption** — Parts MUST have sidecars written after `put()` when encryption is enabled, so `get()` during `CompleteMultipartUpload` assembly can detect and decrypt them.
+- **Console Alpine.js scopes** — Each view is a separate `x-data` scope, they do NOT share state. Store needed data locally in each view's `load()` method.
+- **TLS auto-detect limitation** — Fails when multiple key files exist in the cert directory. Tests use `tls-explicit` fragment with explicit filenames to avoid ambiguity.
 
 ## Technical Debt
 
@@ -115,12 +148,20 @@ When fixing a tech debt item, remove the `TECHDEBT` markers from code, mark it r
 When starting a new session, always read these files first to rebuild context:
 
 - `CLAUDE.md` (this file)
-- `documentation/docs/roadmap.md` — current phase status, post-MVP progress, dependency graph
+- `documentation/docs/roadmap.md` — current phase status, post-MVP progress, what's done and what's next
 - `TECH_DEBT.md` — active workarounds and their IDs
 
 ## Versioning
 
-This project uses **semantic versioning** (MAJOR.MINOR.PATCH). When asked to bump the version:
+This project uses **semantic versioning** (MAJOR.MINOR.PATCH).
+
+**Version locations** (all must be in sync):
+
+- `Cargo.toml` root `[workspace.package]` — single source of truth, inherited by all 5 crates via `version.workspace = true`
+- `console/index.html` line 10 (`window.ARCA_CONSOLE_VERSION`) — must be bumped manually (standalone HTML, no build tooling)
+- `documentation/docs/roadmap.md` Phase Summary table — historical per-phase version tags, update when completing a phase
+
+When asked to bump the version:
 
 1. Diff the current `main` branch against the latest release tag to understand what changed.
 2. Determine the correct semver component to bump:
@@ -129,7 +170,3 @@ This project uses **semantic versioning** (MAJOR.MINOR.PATCH). When asked to bum
    - **MAJOR** — breaking changes to config format, storage layout, API contracts, or anything requiring user migration steps.
 3. Propose the new version number with a brief motivation (what changed and why it maps to that semver level).
 4. Wait for Pietro's approval or counter-proposal before applying the version bump.
-
-## Not in MVP
-
-Object versioning, ACLs/bucket policies, server-side encryption, object tagging, lifecycle rules, CORS, object lock, presigned URLs, metrics, replication, multi-node.
