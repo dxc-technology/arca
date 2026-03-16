@@ -5,8 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Arca Console</title>
 
-  <!-- Console version -->
-  <script>window.ARCA_CONSOLE_VERSION = "0.3.0";</script>
+  <!-- Console version and documentation URL -->
+  <script>
+    window.ARCA_CONSOLE_VERSION = "0.3.0";
+    window.ARCA_DOCS_URL = "https://dxc-technology.github.io/arca/";
+  </script>
 
   <!-- Env var injection (replaced by docker-entrypoint.sh) -->
   <script>
@@ -258,6 +261,15 @@
             Credentials
           </a>
         </nav>
+
+        <!-- Documentation link -->
+        <div class="px-3 mb-2">
+          <a :href="window.ARCA_DOCS_URL" target="_blank" rel="noopener"
+            class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-accent hover:bg-white/[0.03] transition border border-transparent">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg>
+            Documentation
+          </a>
+        </div>
 
         <!-- Session info + Logout -->
         <div class="px-3 pb-4 space-y-2">
