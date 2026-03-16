@@ -66,6 +66,21 @@ Arca auto-generates a root credential on first startup and prints it to the logs
     mc ls arca
     ```
 
+## Standalone Binary
+
+Extract the statically-linked Linux binary for deployment on servers (without Docker):
+
+```bash
+# Build for host architecture
+bin/build --binary
+
+# Cross-compile for a specific architecture
+bin/build --binary --arch amd64
+bin/build --binary --arch arm64
+```
+
+The binary is written to `build/arca-<arch>` (e.g., `build/arca-arm64`). These are Linux ELF binaries, they cannot run on macOS directly.
+
 ## Docker Images
 
 | Build Target | Base | Size | Use Case |
