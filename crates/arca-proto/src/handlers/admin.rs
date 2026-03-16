@@ -8,6 +8,9 @@ use axum::Json;
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
 
+use std::collections::HashSet;
+use std::ffi::CString;
+
 use crate::state::AppState;
 
 // -- Error type --
@@ -112,6 +115,57 @@ pub async fn info(State(state): State<AppState>) -> impl IntoResponse {
     })
 }
 
+/// Filesystem stats via statvfs(2). Returns (device_id, total, available).
+fn disk_stats(path: &std::path::Path) -> Option<(u64, u64, u64)> {
+    let c_path = CString::new(path.to_str()?).ok()?;
+    unsafe {
+        let mut stat: libc::statvfs = std::mem::zeroed();
+        if libc::statvfs(c_path.as_ptr(), &mut stat) == 0 {
+            let total = stat.f_blocks as u64 * stat.f_frsize as u64;
+            let available = stat.f_bavail as u64 * stat.f_frsize as u64;
+            Some((stat.f_fsid as u64, total, available))
+        } else {
+            None
+        }
+    }
+}
+
+/// Aggregate filesystem stats across multiple data directories,
+/// deduplicating by device ID (dirs on the same filesystem count once).
+fn aggregate_disk_stats(dirs: &[std::path::PathBuf]) -> (Option<u64>, Option<u64>) {
+    let mut seen_devices = HashSet::new();
+    let mut total: u64 = 0;
+    let mut available: u64 = 0;
+    let mut any = false;
+
+    for dir in dirs {
+        if let Some((dev, t, a)) = disk_stats(dir) {
+            if seen_devices.insert(dev) {
+                total += t;
+                available += a;
+                any = true;
+            }
+        }
+    }
+
+    if any {
+        (Some(total), Some(available))
+    } else {
+        (None, None)
+    }
+}
+
+#[derive(Serialize)]
+struct StatsResponse {
+    bucket_count: u64,
+    object_count: u64,
+    total_size_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    disk_total_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    disk_available_bytes: Option<u64>,
+}
+
 /// GET /admin/stats — aggregate storage statistics.
 pub async fn stats(State(state): State<AppState>) -> Result<impl IntoResponse, AdminError> {
     let stats = state
@@ -119,7 +173,16 @@ pub async fn stats(State(state): State<AppState>) -> Result<impl IntoResponse, A
         .get_stats()
         .await
         .map_err(|e| AdminError::internal(e.to_string()))?;
-    Ok(Json(stats))
+
+    let (disk_total, disk_available) = aggregate_disk_stats(&state.data_dirs);
+
+    Ok(Json(StatsResponse {
+        bucket_count: stats.bucket_count,
+        object_count: stats.object_count,
+        total_size_bytes: stats.total_size_bytes,
+        disk_total_bytes: disk_total,
+        disk_available_bytes: disk_available,
+    }))
 }
 
 /// GET /admin/credentials — list all credentials (secrets redacted).

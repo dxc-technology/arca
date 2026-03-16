@@ -119,6 +119,7 @@ async fn main() -> Result<()> {
                 encryption_enabled,
                 kms_provider,
                 kms_endpoint,
+                data_dirs: vec![std::path::PathBuf::from(&config.storage.data_dir)],
             };
 
             let addr = format!("{}:{}", config.server.bind, config.server.port);

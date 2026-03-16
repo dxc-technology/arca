@@ -1,5 +1,6 @@
 //! Shared application state for the Axum router.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use arca_core::store::{BlobStore, CredentialStore, MetadataStore};
@@ -26,6 +27,8 @@ pub struct AppState {
     pub kms_provider: Option<String>,
     /// KMS endpoint URL (only when kms_provider = "vault").
     pub kms_endpoint: Option<String>,
+    /// Data directories (for filesystem stats). Multiple entries for multi-volume setups.
+    pub data_dirs: Vec<PathBuf>,
 }
 
 impl AppState {

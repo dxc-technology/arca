@@ -25,6 +25,7 @@ httpdate = { workspace = true }
 hex = { workspace = true }
 md-5 = { workspace = true }
 uuid = { workspace = true }
+libc = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

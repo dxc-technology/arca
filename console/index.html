@@ -381,6 +381,18 @@
                 <div class="text-3xl font-semibold">
                   <span class="bg-gradient-to-r from-vault-accent to-vault-indigo bg-clip-text text-transparent" x-text="formatBytes(stats.total_size_bytes || 0)"></span>
                 </div>
+                <template x-if="stats.disk_total_bytes">
+                  <div class="mt-3">
+                    <div class="flex justify-between text-xs text-vault-muted mb-1.5">
+                      <span x-text="formatBytes(stats.disk_total_bytes - stats.disk_available_bytes) + ' used'"></span>
+                      <span x-text="formatBytes(stats.disk_available_bytes) + ' free of ' + formatBytes(stats.disk_total_bytes)"></span>
+                    </div>
+                    <div class="w-full h-1.5 rounded-full bg-vault-border/50 overflow-hidden">
+                      <div class="h-full rounded-full bg-gradient-to-r from-vault-accent to-vault-indigo transition-all duration-500"
+                        :style="'width:' + Math.min(100, ((stats.disk_total_bytes - stats.disk_available_bytes) / stats.disk_total_bytes * 100)).toFixed(1) + '%'"></div>
+                    </div>
+                  </div>
+                </template>
               </div>
 
 
