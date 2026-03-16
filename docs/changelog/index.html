@@ -983,7 +983,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#060-2026-03-16" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [0.6.0] — 2026-03-16
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[0.6.0] — 2026-03-16">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1257,7 +1268,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#060-2026-03-16" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [0.6.0] — 2026-03-16
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[0.6.0] — 2026-03-16">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1510,12 +1532,13 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.5.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="060-2026-03-16">[0.6.0] — 2026-03-16<a class="headerlink" href="#060-2026-03-16" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Phase 15: Presigned URLs, Query-String Auth, and SSE-C</strong></li>
 <li><strong>Query-string SigV4 authentication</strong>: presigned URLs with <code>X-Amz-Algorithm</code>, <code>X-Amz-Credential</code>, <code>X-Amz-Date</code>, <code>X-Amz-Expires</code>, <code>X-Amz-SignedHeaders</code>, <code>X-Amz-Signature</code> query parameters</li>
 <li><strong>Presigned URL generation</strong>: <code>generate_presigned_url()</code> in <code>arca-auth</code> for server-side URL creation</li>
-<li><strong>Admin presign endpoint</strong> (<code>POST /admin/presign</code>): generate presigned GET/PUT URLs with configurable expiry</li>
+<li><strong>Admin presign endpoint</strong> (<code>POST /admin/presign</code>): generate presigned GET/PUT URLs with configurable expiry, optional endpoint override for correct public URL, percent-encoded paths</li>
 <li><strong>SSE-C</strong> (Server-Side Encryption with Customer-provided keys): AES-256-GCM encryption where the customer provides the key on each request. Supported for PutObject, GetObject, HeadObject, and CopyObject (including cross-mode: SSE-C to plain, plain to SSE-C, SSE-C to SSE-C with different keys)</li>
 <li><strong>Console: Share button</strong> on objects with presigned URL generation, expiry selector (1h/6h/1d/7d), and copy-to-clipboard</li>
 <li>SSE-C CORS headers for cross-origin browser access</li>
