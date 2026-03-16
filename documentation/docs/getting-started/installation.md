@@ -86,7 +86,7 @@ The binary is written to `build/arca-<arch>` (e.g., `build/arca-arm64`). These a
 | Build Target | Base | Use Case |
 |-------------|------|----------|
 | `production` (default) | `scratch` | Production deployments — minimal attack surface |
-| `development` | `debian:bookworm-slim` | Debugging — includes shell, coreutils |
+| `development` | `debian:stable-slim` | Debugging — includes shell, coreutils |
 
 Switch between them using `BUILD_TARGET`:
 

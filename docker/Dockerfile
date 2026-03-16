@@ -51,7 +51,7 @@ ENTRYPOINT ["/usr/local/bin/arca"]
 CMD ["serve"]
 
 # Stage 4: Development runtime (with shell for debugging)
-FROM debian:bookworm-slim AS development
+FROM debian:stable-slim AS development
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
