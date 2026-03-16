@@ -8,6 +8,9 @@ members = [
     "crates/arca-server",
 ]
 
+[workspace.package]
+version = "0.4.1"
+
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1", features = ["full"] }
