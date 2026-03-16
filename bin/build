@@ -1,27 +1,94 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build the Arca Docker image.
+# Build the Arca Docker image or extract the server binary.
 #
 # Usage:
-#   bin/build          Build production image (FROM scratch, minimal)
-#   bin/build --dev    Build development image (FROM debian:slim, has shell)
+#   bin/build                       Build production image
+#   bin/build --dev                 Build development image (has shell)
+#   bin/build --binary              Extract Linux binary to build/
+#   bin/build --binary --arch amd64 Cross-compile Linux binary for x86_64
 
 cd "$(git rev-parse --show-toplevel)"
 
-for arg in "$@"; do
-    case "$arg" in
-        --dev)      export BUILD_TARGET=development ;;
-        -h|--help)  echo "Usage: bin/build [--dev]"
-                    echo ""
-                    echo "Options:"
-                    echo "  --dev  Build development image (debian-slim, has shell)"
-                    exit 0 ;;
-        *)          echo "Error: unknown option '$arg'" >&2
-                    echo "Run 'bin/build --help' for usage." >&2
-                    exit 1 ;;
+BINARY=false
+ARCH=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dev)
+            export BUILD_TARGET=development
+            shift
+            ;;
+        --binary)
+            BINARY=true
+            shift
+            ;;
+        --arch)
+            if [[ -z "${2:-}" ]]; then
+                echo "Error: --arch requires a value (amd64 or arm64)" >&2
+                exit 1
+            fi
+            ARCH="$2"
+            shift 2
+            ;;
+        -h|--help)
+            echo "Usage: bin/build [--dev] [--binary [--arch ARCH]]"
+            echo ""
+            echo "Options:"
+            echo "  --dev          Build development image (debian-slim, has shell)"
+            echo "  --binary       Extract Linux server binary to build/ (for deployment)"
+            echo "  --arch ARCH    Target architecture: amd64 or arm64 (default: host arch)"
+            exit 0
+            ;;
+        *)
+            echo "Error: unknown option '$1'" >&2
+            echo "Run 'bin/build --help' for usage." >&2
+            exit 1
+            ;;
     esac
 done
 
-echo "Building ${BUILD_TARGET:-production} image..."
-docker compose -f docker/docker-compose.yml build arca
+if [[ -n "$ARCH" && "$BINARY" == false ]]; then
+    echo "Error: --arch requires --binary" >&2
+    exit 1
+fi
+
+if $BINARY && [[ "${BUILD_TARGET:-}" == "development" ]]; then
+    echo "Error: --binary and --dev are mutually exclusive" >&2
+    exit 1
+fi
+
+if $BINARY; then
+    # Determine target platform
+    if [[ -z "$ARCH" ]]; then
+        ARCH=$(uname -m)
+        case "$ARCH" in
+            x86_64)        ARCH=amd64 ;;
+            aarch64|arm64) ARCH=arm64 ;;
+        esac
+    fi
+
+    PLATFORM="linux/$ARCH"
+    IMAGE_TAG="arca-binary-$$"
+
+    echo "==> Building binary for $PLATFORM..."
+    docker buildx build \
+        --platform "$PLATFORM" \
+        --target production \
+        --load \
+        -t "$IMAGE_TAG" \
+        -f docker/Dockerfile .
+
+    mkdir -p build
+    CONTAINER=$(docker create --platform "$PLATFORM" "$IMAGE_TAG")
+    docker cp "$CONTAINER:/usr/local/bin/arca" "build/arca-${ARCH}"
+    docker rm "$CONTAINER" >/dev/null
+    docker rmi "$IMAGE_TAG" >/dev/null
+
+    echo "==> Binary extracted to build/arca-${ARCH}"
+    file "build/arca-${ARCH}"
+else
+    echo "==> Building ${BUILD_TARGET:-production} image..."
+    docker compose -f docker/docker-compose.yml build arca
+fi
