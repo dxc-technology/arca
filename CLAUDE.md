@@ -151,22 +151,13 @@ When starting a new session, always read these files first to rebuild context:
 - `documentation/docs/roadmap.md` — current phase status, post-MVP progress, what's done and what's next
 - `TECH_DEBT.md` — active workarounds and their IDs
 
-## Versioning
+## Versioning and Releases
 
-This project uses **semantic versioning** (MAJOR.MINOR.PATCH).
+This project uses **semantic versioning** (MAJOR.MINOR.PATCH). The full release procedure is in `RELEASING.md`. Read that file when asked to "make a new release" or bump the version.
 
 **Version locations** (all must be in sync):
 
 - `Cargo.toml` root `[workspace.package]` — single source of truth, inherited by all 5 crates via `version.workspace = true`
 - `console/index.html` line 10 (`window.ARCA_CONSOLE_VERSION`) — must be bumped manually (standalone HTML, no build tooling)
 - `documentation/docs/roadmap.md` Phase Summary table — historical per-phase version tags, update when completing a phase
-
-When asked to bump the version:
-
-1. Diff the current `main` branch against the latest release tag to understand what changed.
-2. Determine the correct semver component to bump:
-   - **PATCH** — bug fixes, internal refactors, doc-only changes, no API/behavior changes.
-   - **MINOR** — new features, new S3 operations, new CLI commands, backward-compatible additions.
-   - **MAJOR** — breaking changes to config format, storage layout, API contracts, or anything requiring user migration steps.
-3. Propose the new version number with a brief motivation (what changed and why it maps to that semver level).
-4. Wait for Pietro's approval or counter-proposal before applying the version bump.
+- `CHANGELOG.md` — [Keep a Changelog](https://keepachangelog.com) format. The docs site symlinks to this file (`documentation/docs/changelog.md` → `../../CHANGELOG.md`).
