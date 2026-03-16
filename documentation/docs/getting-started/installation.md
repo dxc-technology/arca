@@ -30,6 +30,20 @@ Or start the development image directly:
 bin/arca start -d --build --dev
 ```
 
+### Console Image
+
+Build the web console image separately:
+
+```bash
+bin/build --console
+```
+
+Or build and start it directly:
+
+```bash
+bin/console start -d --build
+```
+
 ## Verify
 
 Start the server:

@@ -20,6 +20,7 @@ Convenience scripts live in `bin/`. They fully abstract Docker Compose, so the u
 # Build and run
 bin/build                        # build Docker image
 bin/build --dev                  # build development image (has shell)
+bin/build --console              # build console image
 bin/build --binary               # extract Linux binary to build/arca-<arch>
 bin/build --binary --arch amd64  # cross-compile for x86_64
 bin/arca start -d                # start server in background

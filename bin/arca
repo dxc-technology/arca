@@ -129,8 +129,11 @@ cmd_start() {
     COMPOSE="$(compose_cmd)"
 
     if $build; then
-        echo "Building ${BUILD_TARGET:-production} image..."
-        $COMPOSE build arca
+        local build_args=()
+        if [[ "${BUILD_TARGET:-}" == "development" ]]; then
+            build_args+=(--dev)
+        fi
+        bin/build "${build_args[@]}"
     fi
 
     if $_HAS_KMS; then

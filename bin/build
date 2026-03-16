@@ -1,23 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build the Arca Docker image or extract the server binary.
+# Build Arca Docker images or extract the server binary.
 #
 # Usage:
 #   bin/build                       Build production image
 #   bin/build --dev                 Build development image (has shell)
+#   bin/build --console             Build console image
 #   bin/build --binary              Extract Linux binary to build/
 #   bin/build --binary --arch amd64 Cross-compile Linux binary for x86_64
 
 cd "$(git rev-parse --show-toplevel)"
 
 BINARY=false
+CONSOLE=false
 ARCH=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dev)
             export BUILD_TARGET=development
+            shift
+            ;;
+        --console)
+            CONSOLE=true
             shift
             ;;
         --binary)
@@ -33,10 +39,11 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         -h|--help)
-            echo "Usage: bin/build [--dev] [--binary [--arch ARCH]]"
+            echo "Usage: bin/build [--dev] [--console] [--binary [--arch ARCH]]"
             echo ""
             echo "Options:"
             echo "  --dev          Build development image (debian-slim, has shell)"
+            echo "  --console      Build the web console image"
             echo "  --binary       Extract Linux server binary to build/ (for deployment)"
             echo "  --arch ARCH    Target architecture: amd64 or arm64 (default: host arch)"
             exit 0
@@ -56,6 +63,16 @@ fi
 
 if $BINARY && [[ "${BUILD_TARGET:-}" == "development" ]]; then
     echo "Error: --binary and --dev are mutually exclusive" >&2
+    exit 1
+fi
+
+if $BINARY && $CONSOLE; then
+    echo "Error: --binary and --console are mutually exclusive" >&2
+    exit 1
+fi
+
+if $CONSOLE && [[ "${BUILD_TARGET:-}" == "development" ]]; then
+    echo "Error: --console and --dev are mutually exclusive" >&2
     exit 1
 fi
 
@@ -88,6 +105,9 @@ if $BINARY; then
 
     echo "==> Binary extracted to build/arca-${ARCH}"
     file "build/arca-${ARCH}"
+elif $CONSOLE; then
+    echo "==> Building console image..."
+    docker compose -f docker/docker-compose.yml --profile console build console
 else
     echo "==> Building ${BUILD_TARGET:-production} image..."
     docker compose -f docker/docker-compose.yml build arca
