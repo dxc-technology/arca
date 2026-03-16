@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
 use crate::error::AuthError;
-use crate::parse::ParsedAuthorization;
+use crate::parse::{ParsedAuthorization, ParsedQueryAuth};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -74,6 +74,159 @@ pub fn verify_request(input: &VerifyInput) -> Result<(), AuthError> {
     } else {
         Err(AuthError::SignatureDoesNotMatch)
     }
+}
+
+/// Input required to verify an AWS SigV4 presigned URL request.
+pub struct PresignedVerifyInput<'a> {
+    /// HTTP method (GET, PUT, POST, DELETE, HEAD).
+    pub method: &'a str,
+    /// URI path (e.g. "/bucket/key"). Must be the raw path before any rewriting.
+    pub uri_path: &'a str,
+    /// Full query string without leading '?' (includes auth params).
+    pub query_string: &'a str,
+    /// All request headers as (name, value) pairs.
+    pub headers: &'a [(String, String)],
+    /// Parsed query auth parameters.
+    pub auth: &'a ParsedQueryAuth,
+    /// The secret access key for this credential.
+    pub secret_access_key: &'a str,
+}
+
+/// Verifies an AWS SigV4 presigned URL signature.
+///
+/// This does NOT validate expiration (arca-auth is zero-I/O, has no clock).
+/// The caller must validate expiration separately.
+pub fn verify_presigned_request(input: &PresignedVerifyInput) -> Result<(), AuthError> {
+    // 1. Build canonical request (presigned: payload hash is always UNSIGNED-PAYLOAD,
+    //    query string excludes X-Amz-Signature)
+    let cq = canonical_query_string_presigned(input.query_string);
+    let cu = canonical_uri(input.uri_path);
+    let ch = canonical_headers(input.headers, &input.auth.signed_headers);
+    let sh = signed_headers_str(&input.auth.signed_headers);
+    let payload_hash = "UNSIGNED-PAYLOAD";
+
+    let canonical = format!("{}\n{cu}\n{cq}\n{ch}\n{sh}\n{payload_hash}", input.method);
+
+    // 2. Hash the canonical request
+    let canonical_hash = hex_sha256(canonical.as_bytes());
+
+    // 3. Build the credential scope
+    let scope = format!(
+        "{}/{}/{}/aws4_request",
+        input.auth.date, input.auth.region, input.auth.service
+    );
+
+    // 4. Build string to sign
+    let sts = string_to_sign(&input.auth.request_datetime, &scope, &canonical_hash);
+
+    // 5. Derive signing key
+    let key = signing_key(
+        input.secret_access_key,
+        &input.auth.date,
+        &input.auth.region,
+        &input.auth.service,
+    );
+
+    // 6. Compute signature
+    let computed = compute_signature(&key, &sts);
+
+    // 7. Constant-time comparison
+    let computed_bytes = computed.as_bytes();
+    let provided_bytes = input.auth.signature.as_bytes();
+    if computed_bytes.ct_eq(provided_bytes).into() {
+        Ok(())
+    } else {
+        Err(AuthError::SignatureDoesNotMatch)
+    }
+}
+
+/// Build a canonical query string for presigned URLs.
+///
+/// Same as `canonical_query_string()` but excludes `X-Amz-Signature` from the
+/// output. All other auth params (Algorithm, Credential, Date, Expires,
+/// SignedHeaders) are INCLUDED.
+fn canonical_query_string_presigned(query: &str) -> String {
+    if query.is_empty() {
+        return String::new();
+    }
+
+    let mut pairs: Vec<(String, String)> = form_urlencoded::parse(query.as_bytes())
+        .filter(|(k, _)| k != "X-Amz-Signature")
+        .map(|(k, v)| (uri_encode(&k, true), uri_encode(&v, true)))
+        .collect();
+
+    pairs.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+
+    pairs
+        .into_iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join("&")
+}
+
+/// Generates a presigned URL query string.
+///
+/// Returns a complete query string (without leading '?') containing all auth
+/// parameters plus the signature. This is a pure computation with no I/O.
+pub fn generate_presigned_url(
+    method: &str,
+    host: &str,
+    uri_path: &str,
+    extra_query_params: &[(String, String)],
+    access_key_id: &str,
+    secret_access_key: &str,
+    region: &str,
+    expires: u64,
+    datetime: &str,
+) -> String {
+    // Extract date (YYYYMMDD) from datetime (YYYYMMDDTHHMMSSZ)
+    let date = &datetime[..8];
+    let credential = format!("{access_key_id}/{date}/{region}/s3/aws4_request");
+    let signed_headers = "host";
+
+    // Build the query string with auth params (no signature yet)
+    let mut params: Vec<(String, String)> = vec![
+        ("X-Amz-Algorithm".to_string(), "AWS4-HMAC-SHA256".to_string()),
+        ("X-Amz-Credential".to_string(), credential.clone()),
+        ("X-Amz-Date".to_string(), datetime.to_string()),
+        ("X-Amz-Expires".to_string(), expires.to_string()),
+        ("X-Amz-SignedHeaders".to_string(), signed_headers.to_string()),
+    ];
+    params.extend_from_slice(extra_query_params);
+
+    // Build canonical query string (sorted, URI-encoded, no signature)
+    let mut encoded_params: Vec<(String, String)> = params
+        .iter()
+        .map(|(k, v)| (uri_encode(k, true), uri_encode(v, true)))
+        .collect();
+    encoded_params.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+    let canonical_qs = encoded_params
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join("&");
+
+    // Build canonical request
+    let cu = canonical_uri(uri_path);
+    let headers = vec![("host".to_string(), host.to_string())];
+    let signed_header_names = vec!["host".to_string()];
+    let ch = canonical_headers(&headers, &signed_header_names);
+    let sh = signed_headers_str(&signed_header_names);
+    let canonical = format!("{method}\n{cu}\n{canonical_qs}\n{ch}\n{sh}\nUNSIGNED-PAYLOAD");
+
+    // Hash canonical request
+    let canonical_hash = hex_sha256(canonical.as_bytes());
+
+    // Build string to sign
+    let scope = format!("{date}/{region}/s3/aws4_request");
+    let sts = string_to_sign(datetime, &scope, &canonical_hash);
+
+    // Derive signing key and compute signature
+    let key = signing_key(secret_access_key, date, region, "s3");
+    let signature = compute_signature(&key, &sts);
+
+    // Return the full query string with signature
+    format!("{canonical_qs}&X-Amz-Signature={signature}")
 }
 
 /// URI-encode a path for canonical request (S3 exception: don't double-encode).
@@ -493,5 +646,115 @@ mod tests {
             hex_sha256(b""),
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         );
+    }
+
+    // --- Presigned URL tests ---
+
+    #[test]
+    fn canonical_query_string_presigned_excludes_signature() {
+        let qs = "X-Amz-Algorithm=AWS4-HMAC-SHA256\
+            &X-Amz-Credential=AKID%2F20130524%2Fus-east-1%2Fs3%2Faws4_request\
+            &X-Amz-Date=20130524T000000Z\
+            &X-Amz-Expires=86400\
+            &X-Amz-Signature=deadbeef\
+            &X-Amz-SignedHeaders=host";
+        let result = canonical_query_string_presigned(qs);
+        assert!(!result.contains("X-Amz-Signature"));
+        assert!(result.contains("X-Amz-Algorithm"));
+        assert!(result.contains("X-Amz-Credential"));
+        assert!(result.contains("X-Amz-Date"));
+        assert!(result.contains("X-Amz-Expires"));
+        assert!(result.contains("X-Amz-SignedHeaders"));
+    }
+
+    #[test]
+    fn generate_and_verify_presigned_url_roundtrip() {
+        let access_key_id = "AKIAIOSFODNN7EXAMPLE";
+        let secret = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
+        let host = "examplebucket.s3.amazonaws.com";
+        let path = "/test.txt";
+        let datetime = "20130524T000000Z";
+        let region = "us-east-1";
+        let expires = 86400u64;
+
+        let qs = generate_presigned_url(
+            "GET", host, path, &[], access_key_id, secret, region, expires, datetime,
+        );
+
+        // Now verify the generated URL
+        let parsed = crate::parse::parse_query_string_auth(&qs).unwrap();
+        assert_eq!(parsed.access_key_id, access_key_id);
+        assert_eq!(parsed.expires, expires);
+
+        let headers = vec![("host".to_string(), host.to_string())];
+        let input = PresignedVerifyInput {
+            method: "GET",
+            uri_path: path,
+            query_string: &qs,
+            headers: &headers,
+            auth: &parsed,
+            secret_access_key: secret,
+        };
+        assert!(verify_presigned_request(&input).is_ok());
+    }
+
+    #[test]
+    fn presigned_url_wrong_secret_fails() {
+        let qs = generate_presigned_url(
+            "GET",
+            "bucket.s3.example.com",
+            "/key.txt",
+            &[],
+            "AKID",
+            "correctsecret",
+            "us-east-1",
+            3600,
+            "20260101T000000Z",
+        );
+
+        let parsed = crate::parse::parse_query_string_auth(&qs).unwrap();
+        let headers = vec![("host".to_string(), "bucket.s3.example.com".to_string())];
+        let input = PresignedVerifyInput {
+            method: "GET",
+            uri_path: "/key.txt",
+            query_string: &qs,
+            headers: &headers,
+            auth: &parsed,
+            secret_access_key: "wrongsecret",
+        };
+        assert!(matches!(
+            verify_presigned_request(&input),
+            Err(AuthError::SignatureDoesNotMatch)
+        ));
+    }
+
+    #[test]
+    fn presigned_url_with_extra_query_params() {
+        let access_key_id = "AKID";
+        let secret = "secret";
+        let host = "bucket.s3.example.com";
+        let path = "/key.txt";
+        let datetime = "20260101T000000Z";
+        let region = "us-east-1";
+        let extras = vec![
+            ("response-content-type".to_string(), "application/octet-stream".to_string()),
+        ];
+
+        let qs = generate_presigned_url(
+            "GET", host, path, &extras, access_key_id, secret, region, 3600, datetime,
+        );
+
+        let parsed = crate::parse::parse_query_string_auth(&qs).unwrap();
+        let headers = vec![("host".to_string(), host.to_string())];
+        let input = PresignedVerifyInput {
+            method: "GET",
+            uri_path: path,
+            query_string: &qs,
+            headers: &headers,
+            auth: &parsed,
+            secret_access_key: secret,
+        };
+        assert!(verify_presigned_request(&input).is_ok());
+        assert!(qs.contains("response-content-type"));
     }
 }

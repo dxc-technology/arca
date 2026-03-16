@@ -174,6 +174,20 @@ run_kms() {
     return $rc
 }
 
+run_presigned() {
+    echo "==> Running presigned URL integration tests..."
+    local COMPOSE
+    COMPOSE="$(compose_cmd)"
+    $COMPOSE run --rm test integration/test_presigned.py "$@"
+}
+
+run_ssec() {
+    echo "==> Running SSE-C integration tests..."
+    local COMPOSE
+    COMPOSE="$(compose_cmd)"
+    $COMPOSE run --rm test integration/test_ssec.py "$@"
+}
+
 run_s3_compat() {
     echo "==> Running s3-tests compatibility suite..."
     exec "$(git rev-parse --show-toplevel)/bin/s3-tests" "$@"
@@ -204,6 +218,14 @@ case "${1:-all}" in
         shift
         run_kms "$@"
         ;;
+    presigned)
+        shift
+        run_presigned "$@"
+        ;;
+    ssec)
+        shift
+        run_ssec "$@"
+        ;;
     s3-compat)
         shift
         run_s3_compat "$@"
@@ -224,6 +246,8 @@ case "${1:-all}" in
         echo "  encryption           Run encryption integration tests"
         echo "  per-bucket-encryption  Run per-bucket encryption tests"
         echo "  kms                  Run KMS integration tests (with OpenBAO)"
+        echo "  presigned            Run presigned URL integration tests"
+        echo "  ssec                 Run SSE-C integration tests"
         echo "  s3-compat            Run Ceph s3-tests compatibility suite"
         echo ""
         echo "Extra args are passed to the test runner (cargo test or pytest)."

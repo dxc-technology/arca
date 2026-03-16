@@ -734,6 +734,9 @@
                     <span class="text-xs text-vault-muted font-mono" x-text="formatBytes(obj.size)"></span>
                     <span class="text-xs text-vault-muted" x-text="new Date(obj.lastModified).toLocaleDateString()"></span>
                     <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                      <button @click.stop="openShareModal(obj.key)" class="p-1 rounded hover:bg-vault-accent/10 text-vault-muted hover:text-vault-accent transition" title="Share">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z"/></svg>
+                      </button>
                       <button @click.stop="downloadObject(obj.key)" class="p-1 rounded hover:bg-vault-accent/10 text-vault-muted hover:text-vault-accent transition" title="Download">
                         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
                       </button>
@@ -799,6 +802,7 @@
                       </div>
                     </template>
                     <div class="flex gap-2 pt-2">
+                      <button @click="openShareModal(selectedObject.key)" class="flex-1 py-2 rounded-lg bg-vault-indigo/10 text-vault-indigo text-sm font-medium hover:bg-vault-indigo/20 transition">Share</button>
                       <button @click="downloadObject(selectedObject.key)" class="flex-1 py-2 rounded-lg bg-vault-accent/10 text-vault-accent text-sm font-medium hover:bg-vault-accent/20 transition">Download</button>
                       <button @click="confirmDeleteObject(selectedObject.key)" class="flex-1 py-2 rounded-lg bg-red-500/10 text-red-400 text-sm font-medium hover:bg-red-500/20 transition">Delete</button>
                     </div>
@@ -878,6 +882,56 @@
                   </div>
                   <p x-show="createFolderError" x-text="createFolderError" class="text-red-400 text-xs mt-2"></p>
                 </form>
+              </div>
+            </div>
+
+            <!-- Share (presigned URL) modal -->
+            <div x-show="showShareModal" x-transition.opacity class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="showShareModal = false">
+              <div class="glass rounded-xl p-6 w-full max-w-md mx-4" @click.stop>
+                <h3 class="text-lg font-semibold mb-1">Share Object</h3>
+                <p class="text-sm text-vault-muted mb-4 font-mono break-all" x-text="shareKey"></p>
+
+                <!-- Expiry selector -->
+                <div x-show="!shareUrl" class="mb-4">
+                  <label class="text-xs text-vault-muted mb-2 block">Link expires in</label>
+                  <div class="flex gap-2">
+                    <template x-for="opt in shareExpiryOptions" :key="opt.value">
+                      <button @click="shareExpiry = opt.value"
+                        :class="shareExpiry === opt.value ? 'bg-vault-accent/20 text-vault-accent border-vault-accent/40' : 'text-vault-muted border-vault-border/50 hover:border-vault-accent/30'"
+                        class="flex-1 py-2 rounded-lg border text-sm font-medium transition"
+                        x-text="opt.label"></button>
+                    </template>
+                  </div>
+                </div>
+
+                <!-- Generate button -->
+                <div x-show="!shareUrl" class="flex gap-3 justify-end">
+                  <button @click="showShareModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                  <button @click="generateShareUrl()" :disabled="shareGenerating"
+                    class="px-4 py-2 rounded-lg bg-vault-accent text-vault-bg text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+                    x-text="shareGenerating ? 'Generating...' : 'Generate Link'"></button>
+                </div>
+
+                <!-- Result -->
+                <div x-show="shareUrl">
+                  <label class="text-xs text-vault-muted mb-1.5 block">Presigned URL</label>
+                  <div class="flex gap-2 mb-2">
+                    <input type="text" :value="shareUrl" readonly
+                      class="flex-1 px-3 py-2 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm font-mono focus:outline-none select-all truncate">
+                    <button @click="copyShareUrl()"
+                      :class="shareCopied ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-vault-accent/10 text-vault-accent border-vault-accent/20 hover:bg-vault-accent/20'"
+                      class="px-3 py-2 rounded-lg border text-sm font-medium transition whitespace-nowrap"
+                      x-text="shareCopied ? 'Copied!' : 'Copy'"></button>
+                  </div>
+                  <p class="text-[10px] text-vault-muted" x-show="shareExpiresAt">
+                    Expires: <span x-text="shareExpiresAt"></span>
+                  </p>
+                  <div class="flex gap-3 justify-end mt-4">
+                    <button @click="showShareModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Close</button>
+                  </div>
+                </div>
+
+                <p x-show="shareError" x-text="shareError" class="text-red-400 text-xs mt-2"></p>
               </div>
             </div>
           </div>
@@ -1798,6 +1852,20 @@
         showDeleteBatchModal: false,
         deleteBatchFileCount: 0,
         deleteBatchDirCount: 0,
+        showShareModal: false,
+        shareKey: '',
+        shareExpiry: 3600,
+        shareExpiryOptions: [
+          { label: '1 hour', value: 3600 },
+          { label: '6 hours', value: 21600 },
+          { label: '1 day', value: 86400 },
+          { label: '7 days', value: 604800 },
+        ],
+        shareUrl: '',
+        shareExpiresAt: '',
+        shareError: '',
+        shareGenerating: false,
+        shareCopied: false,
         ringColors,
 
         get prefixParts() {
@@ -2189,6 +2257,58 @@
             rects += `<g class="treemap-rect" style="cursor:pointer"><rect x="${r.x}" y="${r.y}" width="${r.w}" height="${r.h}" fill="${color}" rx="3" opacity="0.7"/>${label}</g>`;
           }
           return `<svg viewBox="0 0 800 400" class="w-full" style="height:350px">${rects}</svg>`;
+        },
+
+        openShareModal(key) {
+          this.shareKey = key;
+          this.shareUrl = '';
+          this.shareExpiresAt = '';
+          this.shareError = '';
+          this.shareGenerating = false;
+          this.shareCopied = false;
+          this.shareExpiry = 3600;
+          this.showShareModal = true;
+        },
+
+        async generateShareUrl() {
+          this.shareGenerating = true;
+          this.shareError = '';
+          try {
+            const resp = await api.adminPost('/presign', {
+              bucket: this.bucketName,
+              key: this.shareKey,
+              expires: this.shareExpiry,
+              endpoint: sessionStorage.getItem('arca_endpoint') || undefined,
+            });
+            if (!resp.ok) {
+              const text = await resp.text();
+              throw new Error(text || `HTTP ${resp.status}`);
+            }
+            const body = await resp.json();
+            this.shareUrl = body.url;
+            this.shareExpiresAt = body.expires_at ? new Date(body.expires_at).toLocaleString() : '';
+          } catch (e) {
+            this.shareError = 'Failed to generate link: ' + e.message;
+          }
+          this.shareGenerating = false;
+        },
+
+        async copyShareUrl() {
+          try {
+            await navigator.clipboard.writeText(this.shareUrl);
+            this.shareCopied = true;
+            setTimeout(() => this.shareCopied = false, 2000);
+          } catch {
+            // Fallback for non-HTTPS contexts
+            const el = document.createElement('textarea');
+            el.value = this.shareUrl;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+            this.shareCopied = true;
+            setTimeout(() => this.shareCopied = false, 2000);
+          }
         },
 
         formatBytes,

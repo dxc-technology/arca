@@ -31,7 +31,7 @@ continuing from the MVP phases (0–11).
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em">12</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">13</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">14</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">15</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">15</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">16</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">17</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">18</div>
@@ -67,7 +67,7 @@ graph LR
     style 12 fill:#c62828,color:#fff
     style 13 fill:#c62828,color:#fff
     style 14 fill:#c62828,color:#fff
-    style 15 fill:#e65100,color:#fff
+    style 15 fill:#c62828,color:#fff
     style 16 fill:#e65100,color:#fff
     style 17 fill:#e65100,color:#fff
     style 18 fill:#e65100,color:#fff
@@ -95,7 +95,7 @@ graph LR
 | 12 | [TLS/SSL and Transport Security](#phase-12-tlsssl-and-transport-security-p0) | P0 | — | `v0.2.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 13 | [Server-Side Encryption: SSE-S3](#phase-13-server-side-encryption-sse-s3-p0) | P0 | — | `v0.3.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 14 | [SSE-KMS with HashiCorp Vault/OpenBAO](#phase-14-sse-kms-with-hashicorp-vaultopenbao-p0) | P0 | 13 | `v0.5.0` | <span style="color:#4caf50">&#x2714;</span> |
-| 15 | [Presigned URLs, Query-String Auth, and SSE-C](#phase-15-presigned-urls-query-string-auth-and-sse-c-p1) | P1 | 12, 13 | | |
+| 15 | [Presigned URLs, Query-String Auth, and SSE-C](#phase-15-presigned-urls-query-string-auth-and-sse-c-p1) | P1 | 12, 13 | `v0.6.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 16 | [Access Control and Bucket Policies](#phase-16-access-control-and-bucket-policies-p1) | P1 | 13 | | |
 | 17 | [Object Versioning](#phase-17-object-versioning-p1) | P1 | 16 | | |
 | 18 | [Monitoring, Metrics, and Audit](#phase-18-monitoring-metrics-and-audit-p1) | P1 | — | | |
@@ -177,12 +177,16 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 
 Enable URL-based authentication for direct browser downloads and customer-provided encryption keys.
 
-- [ ] Query-string SigV4 in `arca-auth`: parse `X-Amz-Algorithm`, `X-Amz-Credential`, `X-Amz-Date`, `X-Amz-Expires`, `X-Amz-SignedHeaders`, `X-Amz-Signature` from query params
-- [ ] Auth middleware fallback: no `Authorization` header → check query-string params
-- [ ] URL expiration validation (reject expired presigned URLs)
-- [ ] SSE-C: customer-provided keys via `x-amz-server-side-encryption-customer-algorithm`, `x-amz-server-side-encryption-customer-key`, `x-amz-server-side-encryption-customer-key-MD5` headers. Key used for encrypt/decrypt, never stored
-- [ ] Optional admin endpoint: `POST /admin/presign` for server-side URL generation
-- [ ] (Console) "Share" button on objects: generate presigned URL with configurable expiry, copy-to-clipboard
+- [x] Query-string SigV4 in `arca-auth`: parse `X-Amz-Algorithm`, `X-Amz-Credential`, `X-Amz-Date`, `X-Amz-Expires`, `X-Amz-SignedHeaders`, `X-Amz-Signature` from query params
+- [x] Auth middleware fallback: no `Authorization` header → check query-string params
+- [x] URL expiration validation (reject expired presigned URLs)
+- [x] Presigned URL generation in `arca-auth`: `generate_presigned_url()` pure function for server-side URL creation
+- [x] SSE-C: customer-provided keys via `x-amz-server-side-encryption-customer-algorithm`, `x-amz-server-side-encryption-customer-key`, `x-amz-server-side-encryption-customer-key-MD5` headers. Key used for encrypt/decrypt, never stored
+- [x] SSE-C support for PutObject, GetObject, HeadObject, CopyObject (including cross-mode: SSE-C↔plain, SSE-C↔SSE-C)
+- [x] SSE-C multipart uploads properly rejected with clear error (TECHDEBT TD-010)
+- [x] Admin endpoint: `POST /admin/presign` for server-side URL generation
+- [x] (Console) "Share" button on objects: generate presigned URL with configurable expiry (1h/6h/1d/7d), copy-to-clipboard
+- [x] Integration tests: 15 presigned URL tests (GET/PUT/HEAD/DELETE, security, admin presign) + 17 SSE-C tests (put/get, errors, head, copy, range, delete, validation, multipart rejection)
 
 **Depends on**: Phase 12 (TLS recommended for production presigned URLs), Phase 13 (encryption pipeline for SSE-C)
 
@@ -606,3 +610,4 @@ Remaining items:
 - ~~**Encryption** (TD-006)~~: **Resolved** — SSE-S3 with AES-256-GCM implemented in Phase 13
 - **Unimplemented ops** (TD-007): ~35 bucket operations return 501
 - **Multipart Content-Type** (TD-008): Captured at init time — verify against AWS semantics
+- **SSE-C multipart** (TD-010): SSE-C headers rejected on multipart uploads — needs per-part encryption tracking

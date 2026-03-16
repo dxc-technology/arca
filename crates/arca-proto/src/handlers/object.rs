@@ -8,10 +8,14 @@ use http::StatusCode;
 
 use std::collections::HashMap;
 
+use base64::Engine;
+
 use arca_core::s3::xml_types;
-use arca_core::store::{ByteRange, SidecarMeta};
+use arca_core::store::{BlobEncryptionInfo, ByteRange, SidecarMeta};
 use arca_core::types::{BlobId, ObjectRecord};
 use arca_core::{S3Error, S3ErrorCode};
+
+use super::ssec::{extract_ssec_copy_source_key, extract_ssec_key};
 
 /// S3 system metadata headers that are stored and returned alongside user
 /// metadata (`x-amz-meta-*`). These are stored in the metadata HashMap
@@ -68,6 +72,30 @@ pub(super) fn extract_metadata(headers: &http::HeaderMap) -> HashMap<String, Str
 
 use crate::state::AppState;
 use crate::xml::error_response::{internal_error_response, s3_error_response};
+
+/// Decodes a base64-encoded 4-byte nonce prefix stored in `encryption_key_id` for SSE-C objects.
+fn decode_ssec_nonce_prefix(encoded: Option<&str>) -> Option<[u8; 4]> {
+    let b64 = &base64::engine::general_purpose::STANDARD;
+    let bytes = b64.decode(encoded?).ok()?;
+    if bytes.len() != 4 {
+        return None;
+    }
+    let mut nonce = [0u8; 4];
+    nonce.copy_from_slice(&bytes);
+    Some(nonce)
+}
+
+/// Builds SSE-C `BlobEncryptionInfo` from a nonce prefix.
+fn ssec_encryption_info(nonce_prefix: &[u8; 4]) -> BlobEncryptionInfo {
+    let b64 = &base64::engine::general_purpose::STANDARD;
+    BlobEncryptionInfo {
+        algorithm: "SSE-C".into(),
+        encrypted_dek: String::new(),
+        dek_nonce: String::new(),
+        nonce_prefix: b64.encode(nonce_prefix),
+        key_id: String::new(),
+    }
+}
 
 /// Builds a 412 PreconditionFailed S3 XML error response.
 fn precondition_failed_response(resource: &str) -> Response {
@@ -321,12 +349,39 @@ pub async fn put_object(
     let body = request.into_body();
     let stream = super::body::body_to_byte_stream(body, &headers);
 
-    // Write blob (route through encrypting or plain store based on bucket config).
+    // Check for SSE-C headers.
+    let ssec_key = match extract_ssec_key(&headers, &resource) {
+        Ok(k) => k,
+        Err(e) => return s3_error_response(e),
+    };
+
+    // Write blob: SSE-C uses customer key, otherwise route through encrypting/plain store.
     let blob_id = BlobId::new();
-    let write_blob = state.blob_for_write(&bucket).await;
-    let put_result = match write_blob.put(&blob_id, stream).await {
-        Ok(r) => r,
-        Err(e) => return internal_error_response(e, &resource),
+    let (put_result, encryption_info) = if let Some(ref ssec) = ssec_key {
+        let ssec_blob = match &state.ssec_blob {
+            Some(b) => b,
+            None => {
+                return s3_error_response(S3Error::with_message(
+                    S3ErrorCode::InvalidArgument,
+                    "SSE-C is not available",
+                    &resource,
+                ));
+            }
+        };
+        let (result, nonce_prefix) =
+            match ssec_blob.put_with_key(&blob_id, stream, &ssec.key).await {
+                Ok(r) => r,
+                Err(e) => return internal_error_response(e, &resource),
+            };
+        (result, Some(ssec_encryption_info(&nonce_prefix)))
+    } else {
+        let write_blob = state.blob_for_write(&bucket).await;
+        let result = match write_blob.put(&blob_id, stream).await {
+            Ok(r) => r,
+            Err(e) => return internal_error_response(e, &resource),
+        };
+        let enc = result.encryption.clone();
+        (result, enc)
     };
 
     let now = chrono::Utc::now();
@@ -340,13 +395,14 @@ pub async fn put_object(
         content_type: content_type.clone(),
         last_modified: now.to_rfc3339(),
         metadata: metadata.clone(),
-        encryption: put_result.encryption.clone(),
+        encryption: encryption_info.clone(),
     };
     if let Err(e) = state.blob.write_sidecar(&blob_id, &sidecar).await {
         return internal_error_response(e, &resource);
     }
 
     // Insert into metadata (returns old record for cleanup).
+    // For SSE-C, store the nonce_prefix in encryption_key_id (no master key ID).
     let record = ObjectRecord {
         bucket,
         key,
@@ -356,8 +412,14 @@ pub async fn put_object(
         content_type,
         last_modified: now,
         metadata,
-        encryption_algorithm: put_result.encryption.as_ref().map(|e| e.algorithm.clone()),
-        encryption_key_id: put_result.encryption.as_ref().map(|e| e.key_id.clone()),
+        encryption_algorithm: encryption_info.as_ref().map(|e| e.algorithm.clone()),
+        encryption_key_id: encryption_info.as_ref().map(|e| {
+            if e.algorithm == "SSE-C" {
+                e.nonce_prefix.clone()
+            } else {
+                e.key_id.clone()
+            }
+        }),
     };
     let old = match state.metadata.put_object(&record).await {
         Ok(old) => old,
@@ -375,7 +437,11 @@ pub async fn put_object(
     let mut builder = Response::builder()
         .status(StatusCode::OK)
         .header("ETag", &etag);
-    if record.encryption_algorithm.is_some() {
+    if let Some(ref ssec) = ssec_key {
+        builder = builder
+            .header("x-amz-server-side-encryption-customer-algorithm", "AES256")
+            .header("x-amz-server-side-encryption-customer-key-md5", &ssec.key_md5);
+    } else if record.encryption_algorithm.is_some() {
         builder = builder.header("x-amz-server-side-encryption", "AES256");
     }
     builder
@@ -491,17 +557,99 @@ async fn copy_object(
         (src_record.content_type.clone(), src_record.metadata.clone())
     };
 
+    // Extract SSE-C keys for source (copy-source headers) and destination (standard headers).
+    let src_ssec = match extract_ssec_copy_source_key(request.headers(), &resource) {
+        Ok(k) => k,
+        Err(e) => return s3_error_response(e),
+    };
+    let dest_ssec = match extract_ssec_key(request.headers(), &resource) {
+        Ok(k) => k,
+        Err(e) => return s3_error_response(e),
+    };
+
+    // Validate: source SSE-C key required if source object is SSE-C encrypted.
+    let src_is_ssec = src_record.encryption_algorithm.as_deref() == Some("SSE-C");
+    if src_is_ssec && src_ssec.is_none() {
+        return s3_error_response(S3Error::with_message(
+            S3ErrorCode::InvalidRequest,
+            "The source object was stored using SSE-C. You must provide the source encryption key.",
+            &resource,
+        ));
+    }
+
     // Stream source blob through get → put to create a new copy.
-    let get_result = match state.blob.get(&src_record.blob_id, None).await {
-        Ok(r) => r,
-        Err(e) => return internal_error_response(e, &resource),
+    let get_result = if src_is_ssec {
+        let ssec = src_ssec.as_ref().unwrap();
+        let ssec_blob = match &state.ssec_blob {
+            Some(b) => b,
+            None => {
+                return s3_error_response(S3Error::with_message(
+                    S3ErrorCode::InvalidArgument,
+                    "SSE-C is not available",
+                    &resource,
+                ));
+            }
+        };
+        let nonce_prefix =
+            match decode_ssec_nonce_prefix(src_record.encryption_key_id.as_deref()) {
+                Some(n) => n,
+                None => {
+                    return internal_error_response(
+                        arca_core::error::ArcaError::Internal(
+                            "invalid SSE-C nonce prefix on source".into(),
+                        ),
+                        &resource,
+                    );
+                }
+            };
+        match ssec_blob
+            .get_with_key(
+                &src_record.blob_id,
+                None,
+                &ssec.key,
+                &nonce_prefix,
+                src_record.size,
+            )
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return internal_error_response(e, &resource),
+        }
+    } else {
+        match state.blob.get(&src_record.blob_id, None).await {
+            Ok(r) => r,
+            Err(e) => return internal_error_response(e, &resource),
+        }
     };
 
     let new_blob_id = BlobId::new();
-    let write_blob = state.blob_for_write(&dest_bucket).await;
-    let put_result = match write_blob.put(&new_blob_id, get_result.stream).await {
-        Ok(r) => r,
-        Err(e) => return internal_error_response(e, &resource),
+    let (put_result, encryption_info) = if let Some(ref ssec) = dest_ssec {
+        let ssec_blob = match &state.ssec_blob {
+            Some(b) => b,
+            None => {
+                return s3_error_response(S3Error::with_message(
+                    S3ErrorCode::InvalidArgument,
+                    "SSE-C is not available",
+                    &resource,
+                ));
+            }
+        };
+        let (result, nonce_prefix) = match ssec_blob
+            .put_with_key(&new_blob_id, get_result.stream, &ssec.key)
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return internal_error_response(e, &resource),
+        };
+        (result, Some(ssec_encryption_info(&nonce_prefix)))
+    } else {
+        let write_blob = state.blob_for_write(&dest_bucket).await;
+        let result = match write_blob.put(&new_blob_id, get_result.stream).await {
+            Ok(r) => r,
+            Err(e) => return internal_error_response(e, &resource),
+        };
+        let enc = result.encryption.clone();
+        (result, enc)
     };
 
     let now = chrono::Utc::now();
@@ -515,7 +663,7 @@ async fn copy_object(
         content_type: content_type.clone(),
         last_modified: now.to_rfc3339(),
         metadata: metadata.clone(),
-        encryption: put_result.encryption.clone(),
+        encryption: encryption_info.clone(),
     };
     if let Err(e) = state.blob.write_sidecar(&new_blob_id, &sidecar).await {
         return internal_error_response(e, &resource);
@@ -531,8 +679,14 @@ async fn copy_object(
         content_type,
         last_modified: now,
         metadata,
-        encryption_algorithm: put_result.encryption.as_ref().map(|e| e.algorithm.clone()),
-        encryption_key_id: put_result.encryption.as_ref().map(|e| e.key_id.clone()),
+        encryption_algorithm: encryption_info.as_ref().map(|e| e.algorithm.clone()),
+        encryption_key_id: encryption_info.as_ref().map(|e| {
+            if e.algorithm == "SSE-C" {
+                e.nonce_prefix.clone()
+            } else {
+                e.key_id.clone()
+            }
+        }),
     };
     let old = match state.metadata.put_object(&record).await {
         Ok(old) => old,
@@ -551,7 +705,11 @@ async fn copy_object(
     let mut builder = Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/xml");
-    if record.encryption_algorithm.is_some() {
+    if let Some(ref ssec) = dest_ssec {
+        builder = builder
+            .header("x-amz-server-side-encryption-customer-algorithm", "AES256")
+            .header("x-amz-server-side-encryption-customer-key-md5", &ssec.key_md5);
+    } else if record.encryption_algorithm.is_some() {
         builder = builder.header("x-amz-server-side-encryption", "AES256");
     }
     builder
@@ -571,6 +729,21 @@ async fn upload_part_copy(
     request: axum::extract::Request,
 ) -> Response {
     let resource = format!("/{bucket}/{key}");
+
+    // TECHDEBT(TD-010): SSE-C is not yet supported for multipart uploads.
+    if request
+        .headers()
+        .contains_key("x-amz-server-side-encryption-customer-algorithm")
+        || request
+            .headers()
+            .contains_key("x-amz-copy-source-server-side-encryption-customer-algorithm")
+    {
+        return s3_error_response(S3Error::with_message(
+            S3ErrorCode::InvalidArgument,
+            "SSE-C is not supported for multipart uploads",
+            &resource,
+        ));
+    }
 
     // Parse x-amz-copy-source header.
     let copy_source = request
@@ -810,6 +983,20 @@ pub async fn get_object(
         return resp;
     }
 
+    // Check for SSE-C object.
+    let ssec_key = match extract_ssec_key(request.headers(), &resource) {
+        Ok(k) => k,
+        Err(e) => return s3_error_response(e),
+    };
+    let is_ssec = record.encryption_algorithm.as_deref() == Some("SSE-C");
+    if is_ssec && ssec_key.is_none() {
+        return s3_error_response(S3Error::with_message(
+            S3ErrorCode::InvalidRequest,
+            "The object was stored using SSE-C. You must provide the customer encryption key.",
+            &resource,
+        ));
+    }
+
     let range = parse_range_header(request.headers(), record.size);
 
     let byte_range = match range {
@@ -830,9 +1017,39 @@ pub async fn get_object(
         None => (StatusCode::OK, record.size, None),
     };
 
-    let get_result = match state.blob.get(&record.blob_id, byte_range).await {
-        Ok(r) => r,
-        Err(e) => return internal_error_response(e, &resource),
+    let get_result = if is_ssec {
+        let ssec = ssec_key.as_ref().unwrap();
+        let ssec_blob = match &state.ssec_blob {
+            Some(b) => b,
+            None => {
+                return s3_error_response(S3Error::with_message(
+                    S3ErrorCode::InvalidArgument,
+                    "SSE-C is not available",
+                    &resource,
+                ));
+            }
+        };
+        let nonce_prefix = match decode_ssec_nonce_prefix(record.encryption_key_id.as_deref()) {
+            Some(n) => n,
+            None => {
+                return internal_error_response(
+                    arca_core::error::ArcaError::Internal("invalid SSE-C nonce prefix".into()),
+                    &resource,
+                );
+            }
+        };
+        match ssec_blob
+            .get_with_key(&record.blob_id, byte_range, &ssec.key, &nonce_prefix, record.size)
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => return internal_error_response(e, &resource),
+        }
+    } else {
+        match state.blob.get(&record.blob_id, byte_range).await {
+            Ok(r) => r,
+            Err(e) => return internal_error_response(e, &resource),
+        }
     };
 
     let etag = format!("\"{}\"", record.etag);
@@ -894,7 +1111,12 @@ pub async fn get_object(
         builder = builder.header("Expires", v);
     }
 
-    if record.encryption_algorithm.is_some() {
+    if is_ssec {
+        let ssec = ssec_key.as_ref().unwrap();
+        builder = builder
+            .header("x-amz-server-side-encryption-customer-algorithm", "AES256")
+            .header("x-amz-server-side-encryption-customer-key-md5", &ssec.key_md5);
+    } else if record.encryption_algorithm.is_some() {
         builder = builder.header("x-amz-server-side-encryption", "AES256");
     }
 
@@ -948,6 +1170,20 @@ pub async fn head_object(
         return resp;
     }
 
+    // Check for SSE-C object.
+    let ssec_key = match extract_ssec_key(request.headers(), &resource) {
+        Ok(k) => k,
+        Err(e) => return s3_error_response(e),
+    };
+    let is_ssec = record.encryption_algorithm.as_deref() == Some("SSE-C");
+    if is_ssec && ssec_key.is_none() {
+        return s3_error_response(S3Error::with_message(
+            S3ErrorCode::InvalidRequest,
+            "The object was stored using SSE-C. You must provide the customer encryption key.",
+            &resource,
+        ));
+    }
+
     let etag = format!("\"{}\"", record.etag);
     let last_modified = record.last_modified.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
     let content_type = record
@@ -962,7 +1198,12 @@ pub async fn head_object(
         .header("Content-Type", &content_type)
         .header("Accept-Ranges", "bytes");
 
-    if record.encryption_algorithm.is_some() {
+    if is_ssec {
+        let ssec = ssec_key.as_ref().unwrap();
+        builder = builder
+            .header("x-amz-server-side-encryption-customer-algorithm", "AES256")
+            .header("x-amz-server-side-encryption-customer-key-md5", &ssec.key_md5);
+    } else if record.encryption_algorithm.is_some() {
         builder = builder.header("x-amz-server-side-encryption", "AES256");
     }
 

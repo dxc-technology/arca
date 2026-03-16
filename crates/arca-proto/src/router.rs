@@ -78,6 +78,7 @@ pub fn build_router(state: AppState) -> Router {
             delete(admin::delete_credential),
         )
         .route("/archive", post(archive::archive))
+        .route("/presign", post(admin::presign))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::admin_auth::admin_auth_middleware,
@@ -108,6 +109,12 @@ pub fn build_router(state: AppState) -> Router {
             HeaderName::from_static("x-amz-date"),
             HeaderName::from_static("x-amz-copy-source"),
             HeaderName::from_static("x-amz-metadata-directive"),
+            HeaderName::from_static("x-amz-server-side-encryption-customer-algorithm"),
+            HeaderName::from_static("x-amz-server-side-encryption-customer-key"),
+            HeaderName::from_static("x-amz-server-side-encryption-customer-key-md5"),
+            HeaderName::from_static("x-amz-copy-source-server-side-encryption-customer-algorithm"),
+            HeaderName::from_static("x-amz-copy-source-server-side-encryption-customer-key"),
+            HeaderName::from_static("x-amz-copy-source-server-side-encryption-customer-key-md5"),
         ]))
         .expose_headers([
             ETAG,
@@ -115,6 +122,8 @@ pub fn build_router(state: AppState) -> Router {
             HeaderName::from_static("content-disposition"),
             HeaderName::from_static("x-amz-request-id"),
             HeaderName::from_static("x-amz-server-side-encryption"),
+            HeaderName::from_static("x-amz-server-side-encryption-customer-algorithm"),
+            HeaderName::from_static("x-amz-server-side-encryption-customer-key-md5"),
         ]);
 
     // --- Merge everything ---

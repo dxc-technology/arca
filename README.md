@@ -159,15 +159,17 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 
 | Suite | Tests | Details |
 |-------|------:|---------|
-| Unit tests (Rust) | 263 | arca-auth: 25, arca-core: 56, arca-proto: 25, arca-server: 58, arca-storage: 99 |
+| Unit tests (Rust) | 281 | arca-auth: 37, arca-core: 56, arca-proto: 25, arca-server: 58, arca-storage: 105 |
 | Integration — boto3 | 238 | buckets, objects, list, multipart, copy, folders, auth, admin, conditional ops |
+| Integration — Presigned URLs | 17 | presigned GET/PUT/HEAD/DELETE, security, admin presign, special chars, endpoint override |
+| Integration — SSE-C | 17 | put/get roundtrip, error handling, head, copy, range, delete, validation, multipart rejection |
 | Integration — Encryption | 16 | encrypted put/get, ETag, range reads, multipart, copy, bucket config |
 | Integration — Per-bucket Encryption | 8 | per-bucket enable/disable, plain vs encrypted, ETag, head, revert |
 | Integration — KMS | 10 | Vault/OpenBAO key fetch, encrypted put/get, headers, ETag, multipart, copy, range, admin info |
 | Integration — TLS | 7 | HTTPS health/info/put/get/multipart, minio client, wrong CA rejection |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 829 | 270 pass, 468 fail, 91 skip — 0 unexpected failures |
-| **Total** | **1,470** | |
+| **Total** | **1,522** | |
 
 ## License
 

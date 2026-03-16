@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use arca_core::store::{BlobStore, CredentialStore, MetadataStore};
+use arca_core::store::{BlobStore, CredentialStore, MetadataStore, SsecBlobOps};
 
 /// Application state shared across all handlers.
 #[derive(Clone)]
@@ -16,6 +16,8 @@ pub struct AppState {
     /// Plain (non-encrypting) blob store. Present when a master key is configured,
     /// used for writes to buckets without encryption.
     pub plain_blob: Option<Arc<dyn BlobStore>>,
+    /// SSE-C blob store. Always present (wraps FsBlobStore).
+    pub ssec_blob: Option<Arc<dyn SsecBlobOps>>,
     pub credentials: Arc<dyn CredentialStore>,
     pub domain: Option<String>,
     pub started_at: std::time::Instant,

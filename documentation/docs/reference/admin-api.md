@@ -167,3 +167,49 @@ DELETE /admin/credentials/{access_key_id}
 **Response** `404`: Credential not found.
 
 **Response** `409`: Cannot delete the last active credential or last admin credential (prevents lockout).
+
+---
+
+### Generate Presigned URL
+
+```
+POST /admin/presign
+```
+
+**Auth**: SigV4
+
+Generate a presigned URL for downloading or uploading an object without requiring credentials.
+
+**Request body**:
+
+```json
+{
+    "bucket": "my-bucket",
+    "key": "path/to/file.txt",
+    "method": "GET",
+    "expires": 3600
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `bucket` | string | Yes | Bucket name |
+| `key` | string | Yes | Object key |
+| `method` | string | No | HTTP method: `"GET"` (default) or `"PUT"` |
+| `expires` | integer | No | Expiry in seconds (default: 3600, max: 604800 = 7 days) |
+
+**Response** `200`:
+
+```json
+{
+    "url": "http://localhost:9000/my-bucket/path/to/file.txt?X-Amz-Algorithm=AWS4-HMAC-SHA256&...",
+    "expires_at": "2026-03-17T12:00:00Z"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `url` | string | Presigned URL with embedded SigV4 query parameters |
+| `expires_at` | string | ISO 8601 expiration timestamp |
+
+The generated URL can be used with `curl`, browsers, or any HTTP client without AWS credentials.

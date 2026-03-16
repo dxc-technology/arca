@@ -1908,7 +1908,7 @@ continuing from the MVP phases (0–11).</p>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em">12</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">13</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">14</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">15</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">15</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">16</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">17</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">18</div>
@@ -1942,7 +1942,7 @@ continuing from the MVP phases (0–11).</p>
     style 12 fill:#c62828,color:#fff
     style 13 fill:#c62828,color:#fff
     style 14 fill:#c62828,color:#fff
-    style 15 fill:#e65100,color:#fff
+    style 15 fill:#c62828,color:#fff
     style 16 fill:#e65100,color:#fff
     style 17 fill:#e65100,color:#fff
     style 18 fill:#e65100,color:#fff
@@ -2002,8 +2002,8 @@ continuing from the MVP phases (0–11).</p>
 <td><a href="#phase-15-presigned-urls-query-string-auth-and-sse-c-p1">Presigned URLs, Query-String Auth, and SSE-C</a></td>
 <td style="text-align: center;">P1</td>
 <td style="text-align: center;">12, 13</td>
-<td style="text-align: center;"></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><code>v0.6.0</code></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">16</td>
@@ -2155,12 +2155,16 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 <h3 id="phase-15-presigned-urls-query-string-auth-and-sse-c-p1">Phase 15 — Presigned URLs, Query-String Auth, and SSE-C [P1]<a class="headerlink" href="#phase-15-presigned-urls-query-string-auth-and-sse-c-p1" title="Permanent link">&para;</a></h3>
 <p>Enable URL-based authentication for direct browser downloads and customer-provided encryption keys.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Query-string SigV4 in <code>arca-auth</code>: parse <code>X-Amz-Algorithm</code>, <code>X-Amz-Credential</code>, <code>X-Amz-Date</code>, <code>X-Amz-Expires</code>, <code>X-Amz-SignedHeaders</code>, <code>X-Amz-Signature</code> from query params</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Auth middleware fallback: no <code>Authorization</code> header → check query-string params</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> URL expiration validation (reject expired presigned URLs)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> SSE-C: customer-provided keys via <code>x-amz-server-side-encryption-customer-algorithm</code>, <code>x-amz-server-side-encryption-customer-key</code>, <code>x-amz-server-side-encryption-customer-key-MD5</code> headers. Key used for encrypt/decrypt, never stored</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Optional admin endpoint: <code>POST /admin/presign</code> for server-side URL generation</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> (Console) "Share" button on objects: generate presigned URL with configurable expiry, copy-to-clipboard</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Query-string SigV4 in <code>arca-auth</code>: parse <code>X-Amz-Algorithm</code>, <code>X-Amz-Credential</code>, <code>X-Amz-Date</code>, <code>X-Amz-Expires</code>, <code>X-Amz-SignedHeaders</code>, <code>X-Amz-Signature</code> from query params</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Auth middleware fallback: no <code>Authorization</code> header → check query-string params</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> URL expiration validation (reject expired presigned URLs)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Presigned URL generation in <code>arca-auth</code>: <code>generate_presigned_url()</code> pure function for server-side URL creation</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> SSE-C: customer-provided keys via <code>x-amz-server-side-encryption-customer-algorithm</code>, <code>x-amz-server-side-encryption-customer-key</code>, <code>x-amz-server-side-encryption-customer-key-MD5</code> headers. Key used for encrypt/decrypt, never stored</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> SSE-C support for PutObject, GetObject, HeadObject, CopyObject (including cross-mode: SSE-C↔plain, SSE-C↔SSE-C)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> SSE-C multipart uploads properly rejected with clear error (TECHDEBT TD-010)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Admin endpoint: <code>POST /admin/presign</code> for server-side URL generation</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> (Console) "Share" button on objects: generate presigned URL with configurable expiry (1h/6h/1d/7d), copy-to-clipboard</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Integration tests: 15 presigned URL tests (GET/PUT/HEAD/DELETE, security, admin presign) + 17 SSE-C tests (put/get, errors, head, copy, range, delete, validation, multipart rejection)</li>
 </ul>
 <p><strong>Depends on</strong>: Phase 12 (TLS recommended for production presigned URLs), Phase 13 (encryption pipeline for SSE-C)</p>
 <hr />
@@ -2565,6 +2569,7 @@ with unique IDs (<code>TD-XXX</code>) referenced in source code comments.</p>
 <li>~~<strong>Encryption</strong> (TD-006)~~: <strong>Resolved</strong> — SSE-S3 with AES-256-GCM implemented in Phase 13</li>
 <li><strong>Unimplemented ops</strong> (TD-007): ~35 bucket operations return 501</li>
 <li><strong>Multipart Content-Type</strong> (TD-008): Captured at init time — verify against AWS semantics</li>
+<li><strong>SSE-C multipart</strong> (TD-010): SSE-C headers rejected on multipart uploads — needs per-part encryption tracking</li>
 </ul>
 
 

@@ -80,6 +80,10 @@ async fn main() -> Result<()> {
                 _ => (None, None, None),
             };
 
+            // SSE-C blob store (always available).
+            let ssec_blob: Arc<dyn arca_core::store::SsecBlobOps> =
+                Arc::new(arca_storage::SsecBlobStore::new(fs_blob_store.clone()));
+
             let (blob, plain_blob): (Arc<dyn arca_core::store::BlobStore>, Option<Arc<dyn arca_core::store::BlobStore>>) =
                 if let Some(master_key) = master_key {
                     if encryption_enabled {
@@ -111,6 +115,7 @@ async fn main() -> Result<()> {
                 metadata: store.clone() as Arc<dyn arca_core::store::MetadataStore>,
                 blob,
                 plain_blob,
+                ssec_blob: Some(ssec_blob),
                 credentials: store as Arc<dyn CredentialStore>,
                 domain: config.server.domain.clone(),
                 started_at: std::time::Instant::now(),

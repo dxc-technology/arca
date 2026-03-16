@@ -847,6 +847,78 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#sse-c-customer-provided-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SSE-C (Customer-Provided Keys)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SSE-C (Customer-Provided Keys)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-it-works_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How It Works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sse-c-headers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SSE-C Headers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#supported-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported Operations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#important-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Important Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#security-notes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1568,6 +1640,78 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#sse-c-customer-provided-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SSE-C (Customer-Provided Keys)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SSE-C (Customer-Provided Keys)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-it-works_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How It Works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sse-c-headers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SSE-C Headers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#supported-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported Operations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#important-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Important Notes
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#security-notes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1829,6 +1973,7 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>bin/test<span class="w"> </span>encryption<span class="w">             </span><span class="c1"># local key encryption (16 tests)</span>
 <a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>bin/test<span class="w"> </span>per-bucket-encryption<span class="w">  </span><span class="c1"># per-bucket encryption (8 tests)</span>
 <a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>bin/test<span class="w"> </span>kms<span class="w">                    </span><span class="c1"># Vault/OpenBAO KMS (10 tests)</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>bin/test<span class="w"> </span>ssec<span class="w">                   </span><span class="c1"># SSE-C customer-provided keys (17 tests)</span>
 </code></pre></div>
 <p>The local encryption tests cover:</p>
 <ul>
@@ -1842,6 +1987,104 @@
 <li>Object overwrite and deletion</li>
 </ul>
 <p>The KMS tests verify the same encryption behavior with a master key fetched from OpenBAO, plus admin API KMS provider reporting.</p>
+<h2 id="sse-c-customer-provided-keys">SSE-C (Customer-Provided Keys)<a class="headerlink" href="#sse-c-customer-provided-keys" title="Permanent link">&para;</a></h2>
+<p>SSE-C lets the client provide the encryption key on each request. The server never stores the key, only the encrypted data and a nonce prefix. This is useful when you want to manage your own keys and ensure the server cannot read your data at rest.</p>
+<h3 id="how-it-works_1">How It Works<a class="headerlink" href="#how-it-works_1" title="Permanent link">&para;</a></h3>
+<ol>
+<li>The client provides a 32-byte AES-256 key in request headers</li>
+<li>Arca encrypts the object using AES-256-GCM with the customer key as the DEK directly (no envelope wrapping)</li>
+<li>The key is used for that request only, never stored on disk or in the database</li>
+<li>To read the object back, the client must provide the same key</li>
+</ol>
+<h3 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># Generate a 32-byte key (base64 encoded)</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="nv">KEY</span><span class="o">=</span><span class="k">$(</span>openssl<span class="w"> </span>rand<span class="w"> </span><span class="m">32</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>base64<span class="k">)</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="nv">KEY_MD5</span><span class="o">=</span><span class="k">$(</span><span class="nb">echo</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$KEY</span><span class="s2">&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>base64<span class="w"> </span>-d<span class="w"> </span><span class="p">|</span><span class="w"> </span>openssl<span class="w"> </span>dgst<span class="w"> </span>-md5<span class="w"> </span>-binary<span class="w"> </span><span class="p">|</span><span class="w"> </span>base64<span class="k">)</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="c1"># Upload with SSE-C</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>aws<span class="w"> </span>s3api<span class="w"> </span>put-object<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="w">  </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="w">  </span>--key<span class="w"> </span>secret.txt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="w">  </span>--body<span class="w"> </span>myfile.txt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="w">  </span>--sse-customer-algorithm<span class="w"> </span>AES256<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="w">  </span>--sse-customer-key<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$KEY</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="w">  </span>--endpoint-url<span class="w"> </span>http://localhost:9000
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>
+<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a><span class="c1"># Download with SSE-C</span>
+<a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a>aws<span class="w"> </span>s3api<span class="w"> </span>get-object<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a><span class="w">  </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a><span class="w">  </span>--key<span class="w"> </span>secret.txt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a><span class="w">  </span>--sse-customer-algorithm<span class="w"> </span>AES256<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-19" name="__codelineno-14-19" href="#__codelineno-14-19"></a><span class="w">  </span>--sse-customer-key<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$KEY</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-20" name="__codelineno-14-20" href="#__codelineno-14-20"></a><span class="w">  </span>--endpoint-url<span class="w"> </span>http://localhost:9000<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-21" name="__codelineno-14-21" href="#__codelineno-14-21"></a><span class="w">  </span>output.txt
+</code></pre></div>
+<h3 id="sse-c-headers">SSE-C Headers<a class="headerlink" href="#sse-c-headers" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Header</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>x-amz-server-side-encryption-customer-algorithm</code></td>
+<td>Must be <code>AES256</code></td>
+</tr>
+<tr>
+<td><code>x-amz-server-side-encryption-customer-key</code></td>
+<td>Base64-encoded 32-byte key</td>
+</tr>
+<tr>
+<td><code>x-amz-server-side-encryption-customer-key-MD5</code></td>
+<td>Base64-encoded MD5 of the raw key (auto-computed by boto3/aws-cli)</td>
+</tr>
+</tbody>
+</table>
+<p>For CopyObject with an SSE-C source, use <code>x-amz-copy-source-server-side-encryption-customer-*</code> headers for the source key.</p>
+<h3 id="supported-operations">Supported Operations<a class="headerlink" href="#supported-operations" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th style="text-align: center;">SSE-C Support</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PutObject</td>
+<td style="text-align: center;">Yes</td>
+</tr>
+<tr>
+<td>GetObject</td>
+<td style="text-align: center;">Yes</td>
+</tr>
+<tr>
+<td>HeadObject</td>
+<td style="text-align: center;">Yes</td>
+</tr>
+<tr>
+<td>CopyObject</td>
+<td style="text-align: center;">Yes (source and/or destination)</td>
+</tr>
+<tr>
+<td>DeleteObject</td>
+<td style="text-align: center;">No key needed</td>
+</tr>
+<tr>
+<td>Multipart Upload</td>
+<td style="text-align: center;">Not yet supported (returns <code>InvalidArgument</code>)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="important-notes">Important Notes<a class="headerlink" href="#important-notes" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Lost key = lost data</strong>: if you lose the encryption key, the data cannot be recovered. Arca never stores the key.</li>
+<li><strong>No key rotation</strong>: to rotate keys, copy the object to a new key with a different SSE-C key.</li>
+<li><strong>SSE-C + SSE-S3 coexist</strong>: SSE-C and SSE-S3 encrypted objects can live in the same bucket.</li>
+<li><strong>Presigned URLs</strong>: SSE-C is not supported with presigned URLs.</li>
+</ul>
 <h2 id="security-notes">Security Notes<a class="headerlink" href="#security-notes" title="Permanent link">&para;</a></h2>
 <ul>
 <li>When using a local master key, the key is stored in the config file. Protect this file with filesystem permissions (e.g., <code>chmod 600</code>).</li>

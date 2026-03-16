@@ -11,6 +11,10 @@ pub enum AuthError {
     SignatureDoesNotMatch,
     /// Date/time format is invalid.
     InvalidDateTime(String),
+    /// Presigned URL has expired.
+    ExpiredUrl,
+    /// Query-string auth parameters are missing or malformed.
+    MalformedQueryAuth(String),
 }
 
 impl fmt::Display for AuthError {
@@ -19,6 +23,8 @@ impl fmt::Display for AuthError {
             AuthError::MalformedHeader(msg) => write!(f, "malformed authorization header: {msg}"),
             AuthError::SignatureDoesNotMatch => write!(f, "signature does not match"),
             AuthError::InvalidDateTime(msg) => write!(f, "invalid date/time: {msg}"),
+            AuthError::ExpiredUrl => write!(f, "presigned URL has expired"),
+            AuthError::MalformedQueryAuth(msg) => write!(f, "malformed query auth: {msg}"),
         }
     }
 }

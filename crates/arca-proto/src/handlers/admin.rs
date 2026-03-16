@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::ffi::CString;
 
+use crate::middleware::admin_auth::AuthenticatedCredential;
 use crate::state::AppState;
 
 // -- Error type --
@@ -298,4 +299,156 @@ pub async fn delete_credential(
         .map_err(|e| AdminError::internal(e.to_string()))?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+// -- Presigned URL generation --
+
+/// Maximum presigned URL expiry: 7 days (604800 seconds), per AWS spec.
+const MAX_PRESIGN_EXPIRES: u64 = 604_800;
+
+#[derive(Deserialize)]
+pub struct PresignRequest {
+    bucket: String,
+    key: String,
+    #[serde(default = "default_method")]
+    method: String,
+    #[serde(default = "default_expires")]
+    expires: u64,
+    /// Optional base URL override (e.g. "https://arca.example.com:9443").
+    /// When provided, the presigned URL uses this host/scheme instead of the
+    /// request's Host header. Useful when the client connects through a
+    /// different endpoint than the public-facing URL.
+    endpoint: Option<String>,
+}
+
+fn default_method() -> String {
+    "GET".to_string()
+}
+
+fn default_expires() -> u64 {
+    3600
+}
+
+#[derive(Serialize)]
+struct PresignResponse {
+    url: String,
+    expires_at: String,
+}
+
+/// Percent-encode a single URI path segment (RFC 3986).
+fn percent_encode_segment(segment: &str) -> String {
+    let mut result = String::with_capacity(segment.len() * 2);
+    for byte in segment.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                result.push(byte as char);
+            }
+            _ => {
+                result.push_str(&format!("%{byte:02X}"));
+            }
+        }
+    }
+    result
+}
+
+/// POST /admin/presign — generate a presigned URL for an object.
+pub async fn presign(
+    State(state): State<AppState>,
+    request: axum::extract::Request,
+) -> Result<impl IntoResponse, AdminError> {
+    // Extract the authenticated credential from extensions.
+    let auth_cred = request
+        .extensions()
+        .get::<AuthenticatedCredential>()
+        .ok_or_else(|| AdminError::internal("missing authenticated credential"))?
+        .clone();
+
+    // Extract the Host header (fallback for URL construction).
+    let request_host = request
+        .headers()
+        .get(http::header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "localhost:9000".to_string());
+
+    // Parse the body.
+    let body_bytes = axum::body::to_bytes(request.into_body(), 65_536)
+        .await
+        .map_err(|e| AdminError::bad_request(e.to_string()))?;
+    let body: PresignRequest =
+        serde_json::from_slice(&body_bytes).map_err(|e| AdminError::bad_request(e.to_string()))?;
+
+    // Validate method.
+    let method = body.method.to_uppercase();
+    if !["GET", "PUT", "HEAD", "DELETE"].contains(&method.as_str()) {
+        return Err(AdminError::bad_request(format!(
+            "Invalid method: {method}. Must be GET, PUT, HEAD, or DELETE."
+        )));
+    }
+
+    // Validate expires.
+    if body.expires == 0 || body.expires > MAX_PRESIGN_EXPIRES {
+        return Err(AdminError::bad_request(format!(
+            "expires must be between 1 and {MAX_PRESIGN_EXPIRES}"
+        )));
+    }
+
+    // Resolve scheme and host from the optional endpoint override or fall back
+    // to the request's Host header and TLS state.
+    let (scheme, host) = if let Some(ref ep) = body.endpoint {
+        let ep = ep.trim_end_matches('/');
+        if let Some(rest) = ep.strip_prefix("https://") {
+            ("https".to_string(), rest.to_string())
+        } else if let Some(rest) = ep.strip_prefix("http://") {
+            ("http".to_string(), rest.to_string())
+        } else {
+            // No scheme, assume same as TLS state.
+            let s = if state.tls_enabled { "https" } else { "http" };
+            (s.to_string(), ep.to_string())
+        }
+    } else {
+        let s = if state.tls_enabled { "https" } else { "http" };
+        (s.to_string(), request_host)
+    };
+
+    // Build the URL path with percent-encoded segments.
+    let encoded_key = body
+        .key
+        .split('/')
+        .map(|seg| percent_encode_segment(seg))
+        .collect::<Vec<_>>()
+        .join("/");
+    let uri_path = format!("/{}/{}", body.bucket, encoded_key);
+
+    // Generate the presigned URL.
+    let now = chrono::Utc::now();
+    let datetime = now.format("%Y%m%dT%H%M%SZ").to_string();
+    let expires_at = now + chrono::Duration::seconds(body.expires as i64);
+
+    // Look up the full credential (we need the secret key).
+    let credential = state
+        .credentials
+        .get_credential(&auth_cred.0.access_key_id)
+        .await
+        .map_err(|e| AdminError::internal(e.to_string()))?
+        .ok_or_else(|| AdminError::internal("credential not found"))?;
+
+    let query_string = arca_auth::generate_presigned_url(
+        &method,
+        &host,
+        &uri_path,
+        &[],
+        &credential.access_key_id,
+        &credential.secret_access_key,
+        "us-east-1",
+        body.expires,
+        &datetime,
+    );
+
+    let url = format!("{scheme}://{host}{uri_path}?{query_string}");
+
+    Ok(Json(PresignResponse {
+        url,
+        expires_at: expires_at.to_rfc3339(),
+    }))
 }

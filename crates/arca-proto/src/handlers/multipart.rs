@@ -16,6 +16,9 @@ use super::object::extract_metadata;
 use crate::state::AppState;
 use crate::xml::error_response::{internal_error_response, s3_error_response};
 
+/// SSE-C header name used to detect SSE-C requests on multipart operations.
+const SSEC_ALGO_HEADER: &str = "x-amz-server-side-encryption-customer-algorithm";
+
 /// Minimum part size (5 MB) — all parts except the last must be at least this size.
 const MIN_PART_SIZE: u64 = 5_242_880;
 
@@ -30,6 +33,15 @@ pub async fn create_multipart_upload(
     request: axum::extract::Request,
 ) -> Response {
     let resource = format!("/{bucket}/{key}");
+
+    // TECHDEBT(TD-010): SSE-C is not yet supported for multipart uploads.
+    if request.headers().contains_key(SSEC_ALGO_HEADER) {
+        return s3_error_response(S3Error::with_message(
+            S3ErrorCode::InvalidArgument,
+            "SSE-C is not supported for multipart uploads",
+            &resource,
+        ));
+    }
 
     // Check bucket exists.
     match state.metadata.head_bucket(&bucket).await {
@@ -83,6 +95,15 @@ pub async fn upload_part(
     request: axum::extract::Request,
 ) -> Response {
     let resource = format!("/{bucket}/{key}");
+
+    // TECHDEBT(TD-010): SSE-C is not yet supported for multipart uploads.
+    if request.headers().contains_key(SSEC_ALGO_HEADER) {
+        return s3_error_response(S3Error::with_message(
+            S3ErrorCode::InvalidArgument,
+            "SSE-C is not supported for multipart uploads",
+            &resource,
+        ));
+    }
 
     // Validate part number range.
     if part_number < 1 || part_number > MAX_PART_NUMBER {

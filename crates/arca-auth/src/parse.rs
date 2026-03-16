@@ -1,4 +1,4 @@
-//! AWS SigV4 Authorization header parser.
+//! AWS SigV4 Authorization header and query-string auth parser.
 
 use crate::error::AuthError;
 
@@ -92,6 +92,124 @@ pub fn parse_authorization(header: &str) -> Result<ParsedAuthorization, AuthErro
     })
 }
 
+/// Parsed fields from query-string auth parameters (presigned URL).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedQueryAuth {
+    pub access_key_id: String,
+    /// Date component from credential scope (YYYYMMDD).
+    pub date: String,
+    pub region: String,
+    pub service: String,
+    /// Signed header names, lowercase and sorted.
+    pub signed_headers: Vec<String>,
+    /// The hex-encoded signature.
+    pub signature: String,
+    /// X-Amz-Expires value in seconds.
+    pub expires: u64,
+    /// X-Amz-Date value (ISO 8601: 20130524T000000Z).
+    pub request_datetime: String,
+}
+
+/// Parses query-string authentication parameters from a URL query string.
+///
+/// Expected query params:
+/// - `X-Amz-Algorithm=AWS4-HMAC-SHA256`
+/// - `X-Amz-Credential=KEY/DATE/REGION/SERVICE/aws4_request`
+/// - `X-Amz-Date=20130524T000000Z`
+/// - `X-Amz-Expires=3600`
+/// - `X-Amz-SignedHeaders=host`
+/// - `X-Amz-Signature=HEX`
+pub fn parse_query_string_auth(query: &str) -> Result<ParsedQueryAuth, AuthError> {
+    let mut algorithm = None;
+    let mut credential = None;
+    let mut date = None;
+    let mut expires = None;
+    let mut signed_headers = None;
+    let mut signature = None;
+
+    for (key, value) in form_urlencoded::parse(query.as_bytes()) {
+        match key.as_ref() {
+            "X-Amz-Algorithm" => algorithm = Some(value.to_string()),
+            "X-Amz-Credential" => credential = Some(value.to_string()),
+            "X-Amz-Date" => date = Some(value.to_string()),
+            "X-Amz-Expires" => expires = Some(value.to_string()),
+            "X-Amz-SignedHeaders" => signed_headers = Some(value.to_string()),
+            "X-Amz-Signature" => signature = Some(value.to_string()),
+            _ => {}
+        }
+    }
+
+    // Validate algorithm
+    let algo = algorithm
+        .ok_or_else(|| AuthError::MalformedQueryAuth("missing X-Amz-Algorithm".into()))?;
+    if algo != "AWS4-HMAC-SHA256" {
+        return Err(AuthError::MalformedQueryAuth(format!(
+            "unsupported algorithm: {algo}"
+        )));
+    }
+
+    // Parse credential scope
+    let credential = credential
+        .ok_or_else(|| AuthError::MalformedQueryAuth("missing X-Amz-Credential".into()))?;
+    let cred_parts: Vec<&str> = credential.split('/').collect();
+    if cred_parts.len() != 5 {
+        return Err(AuthError::MalformedQueryAuth(format!(
+            "credential scope must have 5 parts, got {}",
+            cred_parts.len()
+        )));
+    }
+    if cred_parts[4] != "aws4_request" {
+        return Err(AuthError::MalformedQueryAuth(
+            "credential scope must end with aws4_request".into(),
+        ));
+    }
+
+    // Parse date
+    let request_datetime = date
+        .ok_or_else(|| AuthError::MalformedQueryAuth("missing X-Amz-Date".into()))?;
+    if request_datetime.is_empty() {
+        return Err(AuthError::MalformedQueryAuth("empty X-Amz-Date".into()));
+    }
+
+    // Parse expires
+    let expires_str = expires
+        .ok_or_else(|| AuthError::MalformedQueryAuth("missing X-Amz-Expires".into()))?;
+    let expires_val: u64 = expires_str.parse().map_err(|_| {
+        AuthError::MalformedQueryAuth(format!("invalid X-Amz-Expires: {expires_str}"))
+    })?;
+
+    // Parse signed headers
+    let signed_headers_str = signed_headers
+        .ok_or_else(|| AuthError::MalformedQueryAuth("missing X-Amz-SignedHeaders".into()))?;
+    let signed_headers: Vec<String> = signed_headers_str
+        .split(';')
+        .map(|s| s.trim().to_lowercase())
+        .collect();
+    if signed_headers.is_empty() {
+        return Err(AuthError::MalformedQueryAuth(
+            "empty X-Amz-SignedHeaders".into(),
+        ));
+    }
+
+    // Parse signature
+    let signature = signature
+        .ok_or_else(|| AuthError::MalformedQueryAuth("missing X-Amz-Signature".into()))?;
+    if signature.is_empty() {
+        return Err(AuthError::MalformedQueryAuth("empty X-Amz-Signature".into()));
+    }
+
+    Ok(ParsedQueryAuth {
+        access_key_id: cred_parts[0].to_string(),
+        date: cred_parts[1].to_string(),
+        region: cred_parts[2].to_string(),
+        service: cred_parts[3].to_string(),
+        signed_headers,
+        signature,
+        expires: expires_val,
+        request_datetime,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,5 +289,112 @@ mod tests {
         assert_eq!(parsed.access_key_id, "KEY");
         assert_eq!(parsed.signed_headers, vec!["host", "x-amz-date"]);
         assert_eq!(parsed.signature, "abc123");
+    }
+
+    // --- Query-string auth tests ---
+
+    #[test]
+    fn parse_query_auth_valid() {
+        let query = "X-Amz-Algorithm=AWS4-HMAC-SHA256\
+            &X-Amz-Credential=AKIAIOSFODNN7EXAMPLE%2F20130524%2Fus-east-1%2Fs3%2Faws4_request\
+            &X-Amz-Date=20130524T000000Z\
+            &X-Amz-Expires=86400\
+            &X-Amz-SignedHeaders=host\
+            &X-Amz-Signature=aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404";
+        let parsed = parse_query_string_auth(query).unwrap();
+        assert_eq!(parsed.access_key_id, "AKIAIOSFODNN7EXAMPLE");
+        assert_eq!(parsed.date, "20130524");
+        assert_eq!(parsed.region, "us-east-1");
+        assert_eq!(parsed.service, "s3");
+        assert_eq!(parsed.signed_headers, vec!["host"]);
+        assert_eq!(parsed.expires, 86400);
+        assert_eq!(parsed.request_datetime, "20130524T000000Z");
+        assert_eq!(
+            parsed.signature,
+            "aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404"
+        );
+    }
+
+    #[test]
+    fn parse_query_auth_missing_algorithm() {
+        let query = "X-Amz-Credential=KEY%2F20130524%2Fus-east-1%2Fs3%2Faws4_request\
+            &X-Amz-Date=20130524T000000Z\
+            &X-Amz-Expires=3600\
+            &X-Amz-SignedHeaders=host\
+            &X-Amz-Signature=abc123";
+        let err = parse_query_string_auth(query).unwrap_err();
+        assert!(matches!(err, AuthError::MalformedQueryAuth(_)));
+    }
+
+    #[test]
+    fn parse_query_auth_wrong_algorithm() {
+        let query = "X-Amz-Algorithm=AWS4-HMAC-SHA512\
+            &X-Amz-Credential=KEY%2F20130524%2Fus-east-1%2Fs3%2Faws4_request\
+            &X-Amz-Date=20130524T000000Z\
+            &X-Amz-Expires=3600\
+            &X-Amz-SignedHeaders=host\
+            &X-Amz-Signature=abc123";
+        let err = parse_query_string_auth(query).unwrap_err();
+        assert!(matches!(err, AuthError::MalformedQueryAuth(_)));
+    }
+
+    #[test]
+    fn parse_query_auth_missing_signature() {
+        let query = "X-Amz-Algorithm=AWS4-HMAC-SHA256\
+            &X-Amz-Credential=KEY%2F20130524%2Fus-east-1%2Fs3%2Faws4_request\
+            &X-Amz-Date=20130524T000000Z\
+            &X-Amz-Expires=3600\
+            &X-Amz-SignedHeaders=host";
+        let err = parse_query_string_auth(query).unwrap_err();
+        assert!(matches!(err, AuthError::MalformedQueryAuth(_)));
+    }
+
+    #[test]
+    fn parse_query_auth_bad_credential_scope() {
+        let query = "X-Amz-Algorithm=AWS4-HMAC-SHA256\
+            &X-Amz-Credential=KEY%2F20130524%2Fus-east-1%2Fs3\
+            &X-Amz-Date=20130524T000000Z\
+            &X-Amz-Expires=3600\
+            &X-Amz-SignedHeaders=host\
+            &X-Amz-Signature=abc123";
+        let err = parse_query_string_auth(query).unwrap_err();
+        assert!(matches!(err, AuthError::MalformedQueryAuth(_)));
+    }
+
+    #[test]
+    fn parse_query_auth_invalid_expires() {
+        let query = "X-Amz-Algorithm=AWS4-HMAC-SHA256\
+            &X-Amz-Credential=KEY%2F20130524%2Fus-east-1%2Fs3%2Faws4_request\
+            &X-Amz-Date=20130524T000000Z\
+            &X-Amz-Expires=notanumber\
+            &X-Amz-SignedHeaders=host\
+            &X-Amz-Signature=abc123";
+        let err = parse_query_string_auth(query).unwrap_err();
+        assert!(matches!(err, AuthError::MalformedQueryAuth(_)));
+    }
+
+    #[test]
+    fn parse_query_auth_missing_date() {
+        let query = "X-Amz-Algorithm=AWS4-HMAC-SHA256\
+            &X-Amz-Credential=KEY%2F20130524%2Fus-east-1%2Fs3%2Faws4_request\
+            &X-Amz-Expires=3600\
+            &X-Amz-SignedHeaders=host\
+            &X-Amz-Signature=abc123";
+        let err = parse_query_string_auth(query).unwrap_err();
+        assert!(matches!(err, AuthError::MalformedQueryAuth(_)));
+    }
+
+    #[test]
+    fn parse_query_auth_credential_decoded() {
+        // form_urlencoded::parse auto-decodes %2F in credential
+        let query = "X-Amz-Algorithm=AWS4-HMAC-SHA256\
+            &X-Amz-Credential=AKID%2F20130524%2Fus-east-1%2Fs3%2Faws4_request\
+            &X-Amz-Date=20130524T000000Z\
+            &X-Amz-Expires=3600\
+            &X-Amz-SignedHeaders=host\
+            &X-Amz-Signature=abc123";
+        let parsed = parse_query_string_auth(query).unwrap();
+        assert_eq!(parsed.access_key_id, "AKID");
+        assert_eq!(parsed.date, "20130524");
     }
 }

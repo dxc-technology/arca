@@ -220,6 +220,7 @@ Run the encryption integration tests:
 bin/test encryption             # local key encryption (16 tests)
 bin/test per-bucket-encryption  # per-bucket encryption (8 tests)
 bin/test kms                    # Vault/OpenBAO KMS (10 tests)
+bin/test ssec                   # SSE-C customer-provided keys (17 tests)
 ```
 
 The local encryption tests cover:
@@ -234,6 +235,71 @@ The local encryption tests cover:
 - Object overwrite and deletion
 
 The KMS tests verify the same encryption behavior with a master key fetched from OpenBAO, plus admin API KMS provider reporting.
+
+## SSE-C (Customer-Provided Keys)
+
+SSE-C lets the client provide the encryption key on each request. The server never stores the key, only the encrypted data and a nonce prefix. This is useful when you want to manage your own keys and ensure the server cannot read your data at rest.
+
+### How It Works
+
+1. The client provides a 32-byte AES-256 key in request headers
+2. Arca encrypts the object using AES-256-GCM with the customer key as the DEK directly (no envelope wrapping)
+3. The key is used for that request only, never stored on disk or in the database
+4. To read the object back, the client must provide the same key
+
+### Usage
+
+```bash
+# Generate a 32-byte key (base64 encoded)
+KEY=$(openssl rand 32 | base64)
+KEY_MD5=$(echo -n "$KEY" | base64 -d | openssl dgst -md5 -binary | base64)
+
+# Upload with SSE-C
+aws s3api put-object \
+  --bucket my-bucket \
+  --key secret.txt \
+  --body myfile.txt \
+  --sse-customer-algorithm AES256 \
+  --sse-customer-key "$KEY" \
+  --endpoint-url http://localhost:9000
+
+# Download with SSE-C
+aws s3api get-object \
+  --bucket my-bucket \
+  --key secret.txt \
+  --sse-customer-algorithm AES256 \
+  --sse-customer-key "$KEY" \
+  --endpoint-url http://localhost:9000 \
+  output.txt
+```
+
+### SSE-C Headers
+
+| Header | Description |
+|--------|-------------|
+| `x-amz-server-side-encryption-customer-algorithm` | Must be `AES256` |
+| `x-amz-server-side-encryption-customer-key` | Base64-encoded 32-byte key |
+| `x-amz-server-side-encryption-customer-key-MD5` | Base64-encoded MD5 of the raw key (auto-computed by boto3/aws-cli) |
+
+For CopyObject with an SSE-C source, use `x-amz-copy-source-server-side-encryption-customer-*` headers for the source key.
+
+### Supported Operations
+
+| Operation | SSE-C Support |
+|-----------|:------------:|
+| PutObject | Yes |
+| GetObject | Yes |
+| HeadObject | Yes |
+| CopyObject | Yes (source and/or destination) |
+| DeleteObject | No key needed |
+| Multipart Upload | Not yet supported (returns `InvalidArgument`) |
+
+### Important Notes
+
+- **Lost key = lost data**: if you lose the encryption key, the data cannot be recovered. Arca never stores the key.
+- **No key rotation**: to rotate keys, copy the object to a new key with a different SSE-C key.
+- **SSE-C + SSE-S3 coexist**: SSE-C and SSE-S3 encrypted objects can live in the same bucket.
+- **Presigned URLs**: SSE-C is not supported with presigned URLs.
 
 ## Security Notes
 
