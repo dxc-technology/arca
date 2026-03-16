@@ -641,6 +641,33 @@
                   Upload Files
                   <input type="file" multiple class="hidden" @change="uploadFiles($event.target.files)">
                 </label>
+                <label class="px-3.5 py-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 text-sm font-medium hover:bg-vault-accent/20 transition cursor-pointer">
+                  Upload Folder
+                  <input type="file" webkitdirectory class="hidden" @change="uploadFiles($event.target.files)">
+                </label>
+              </div>
+            </div>
+
+            <!-- Selection action bar -->
+            <div x-show="selectedKeys.size > 0" x-transition
+              class="glass rounded-xl px-4 py-2.5 mb-3 flex items-center justify-between">
+              <span class="text-sm text-vault-muted">
+                <span class="text-vault-accent font-semibold" x-text="selectedKeys.size"></span> selected
+              </span>
+              <div class="flex items-center gap-2">
+                <button @click="downloadSelected()" :disabled="archiving"
+                  class="px-3 py-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 text-sm font-medium hover:bg-vault-accent/20 transition disabled:opacity-50 flex items-center gap-1.5">
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                  <span x-text="archiving ? 'Archiving...' : 'Download .tar.gz'"></span>
+                </button>
+                <button @click="confirmDeleteSelected()" :disabled="deleting"
+                  class="px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 text-sm font-medium hover:bg-red-500/20 transition disabled:opacity-50 flex items-center gap-1.5">
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+                  Delete
+                </button>
+                <button @click="selectedKeys = new Set()" class="p-1.5 rounded-lg text-vault-muted hover:text-vault-text transition" title="Clear selection">
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
               </div>
             </div>
 
@@ -648,7 +675,7 @@
             <div x-show="!showTreemap"
               @dragover.prevent="dragActive = true"
               @dragleave.prevent="dragActive = false"
-              @drop.prevent="dragActive = false; uploadFiles($event.dataTransfer.files)"
+              @drop.prevent="dragActive = false; handleDrop($event)"
               :class="dragActive ? 'drop-active' : ''"
               class="border-2 border-dashed border-vault-border/50 rounded-xl mb-4 transition"
               :style="dragActive ? '' : 'border-color: transparent'">
@@ -664,13 +691,28 @@
                 </div>
               </div>
 
+              <!-- Object list header (select all) -->
+              <div x-show="!loading && (directories.length > 0 || objects.length > 0)"
+                class="flex items-center gap-3 px-5 py-2 border-b border-vault-border/30">
+                <input type="checkbox" @click.stop
+                  :checked="allSelected" @change="toggleSelectAll()"
+                  class="w-3.5 h-3.5 rounded border-vault-border bg-vault-bg text-vault-accent focus:ring-vault-accent/30 focus:ring-offset-0 cursor-pointer">
+                <span class="text-[10px] uppercase tracking-wider text-vault-muted/60">Select all</span>
+              </div>
+
               <!-- Object list -->
               <div x-show="!loading">
                 <!-- Directories -->
                 <template x-for="dir in directories" :key="dir">
-                  <div @click="navigatePrefix(dir)" class="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] cursor-pointer transition border-b border-vault-border/20 group">
-                    <svg class="w-5 h-5 text-vault-accent/70" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
-                    <span class="text-sm flex-1" x-text="dirName(dir)"></span>
+                  <div class="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] cursor-pointer transition border-b border-vault-border/20 group"
+                    :class="selectedKeys.has('dir:' + dir) ? 'bg-vault-accent/5' : ''">
+                    <input type="checkbox" @click.stop
+                      :checked="selectedKeys.has('dir:' + dir)" @change="toggleSelect('dir:' + dir)"
+                      class="w-3.5 h-3.5 rounded border-vault-border bg-vault-bg text-vault-accent focus:ring-vault-accent/30 focus:ring-offset-0 cursor-pointer">
+                    <div @click="navigatePrefix(dir)" class="flex items-center gap-3 flex-1 min-w-0">
+                      <svg class="w-5 h-5 text-vault-accent/70 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+                      <span class="text-sm flex-1" x-text="dirName(dir)"></span>
+                    </div>
                     <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
                       <button @click.stop="confirmDeleteDir(dir)" class="p-1 rounded hover:bg-red-500/10 text-vault-muted hover:text-red-400 transition" title="Delete folder">
                         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
@@ -681,8 +723,13 @@
 
                 <!-- Files -->
                 <template x-for="obj in objects" :key="obj.key">
-                  <div @click="selectObject(obj)" class="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] cursor-pointer transition border-b border-vault-border/20 group">
-                    <svg class="w-5 h-5 text-vault-muted" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+                  <div class="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] cursor-pointer transition border-b border-vault-border/20 group"
+                    :class="selectedKeys.has(obj.key) ? 'bg-vault-accent/5' : ''"
+                    @click="selectObject(obj)">
+                    <input type="checkbox" @click.stop
+                      :checked="selectedKeys.has(obj.key)" @change="toggleSelect(obj.key)"
+                      class="w-3.5 h-3.5 rounded border-vault-border bg-vault-bg text-vault-accent focus:ring-vault-accent/30 focus:ring-offset-0 cursor-pointer">
+                    <svg class="w-5 h-5 text-vault-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
                     <span class="text-sm flex-1 truncate" x-text="fileName(obj.key)"></span>
                     <span class="text-xs text-vault-muted font-mono" x-text="formatBytes(obj.size)"></span>
                     <span class="text-xs text-vault-muted" x-text="new Date(obj.lastModified).toLocaleDateString()"></span>
@@ -702,7 +749,7 @@
               <div x-show="!loading && directories.length === 0 && objects.length === 0" class="py-16 text-center">
                 <svg class="w-12 h-12 mx-auto text-vault-border mb-4" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/></svg>
                 <p class="text-vault-muted text-sm mb-1">This location is empty</p>
-                <p class="text-vault-muted/60 text-xs">Drag and drop files here or click Upload</p>
+                <p class="text-vault-muted/60 text-xs">Drag and drop files or folders here, or click Upload</p>
               </div>
 
               <div x-show="loading" class="flex justify-center py-16">
@@ -782,6 +829,36 @@
                 <div class="flex gap-3 justify-end">
                   <button @click="showDeleteObjModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
                   <button @click="deleteObject()" :disabled="deleting" class="px-4 py-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 text-sm font-medium hover:bg-red-500/30 transition disabled:opacity-50" x-text="deleting ? 'Deleting...' : 'Delete'"></button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Batch delete confirm modal -->
+            <div x-show="showDeleteBatchModal" x-transition.opacity class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="showDeleteBatchModal = false">
+              <div class="glass rounded-xl p-6 w-full max-w-sm mx-4" @click.stop>
+                <h3 class="text-lg font-semibold mb-2">Delete Selected Items</h3>
+                <p class="text-sm text-vault-muted mb-3">Are you sure you want to delete
+                  <span class="text-vault-text font-medium" x-text="deleteBatchFileCount + deleteBatchDirCount"></span> selected item<span x-show="deleteBatchFileCount + deleteBatchDirCount > 1">s</span>?
+                </p>
+                <template x-if="deleteBatchFileCount + deleteBatchDirCount > 1">
+                  <div class="mb-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                    <p class="text-xs text-amber-400 flex items-start gap-1.5">
+                      <svg class="w-4 h-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+                      <span>You are about to delete <strong x-text="deleteBatchFileCount + deleteBatchDirCount"></strong> items. This action cannot be undone.</span>
+                    </p>
+                  </div>
+                </template>
+                <template x-if="deleteBatchDirCount > 0">
+                  <div class="mb-3 p-2.5 rounded-lg bg-red-500/10 border border-red-500/20">
+                    <p class="text-xs text-red-400 flex items-start gap-1.5">
+                      <svg class="w-4 h-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+                      <span><strong x-text="deleteBatchDirCount"></strong> folder<span x-show="deleteBatchDirCount > 1">s</span> selected: all contents will be deleted recursively.</span>
+                    </p>
+                  </div>
+                </template>
+                <div class="flex gap-3 justify-end">
+                  <button @click="showDeleteBatchModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                  <button @click="showDeleteBatchModal = false; deleteSelected()" class="px-4 py-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 text-sm font-medium hover:bg-red-500/30 transition">Delete</button>
                 </div>
               </div>
             </div>
@@ -1124,6 +1201,14 @@
           return await this.request('DELETE', '/admin' + path);
         },
 
+        async adminArchive(bucket, keys) {
+          return await this.request('POST', '/admin/archive', {
+            body: JSON.stringify({ bucket, keys }),
+            contentType: 'application/json',
+            rawResponse: true,
+          });
+        },
+
         // S3 API helpers (XML)
         async s3ListBuckets() {
           const resp = await this.request('GET', '/');
@@ -1139,6 +1224,24 @@
           if (!resp.ok) throw new Error('Failed to list objects');
           const xml = await resp.text();
           return this.parseListObjects(xml);
+        },
+
+        // List ALL objects under a prefix recursively (no delimiter).
+        // Returns an array of {key, size, lastModified, etag} objects.
+        async s3ListAllObjects(bucket, prefix = '') {
+          const all = [];
+          let token = '';
+          do {
+            const params = { 'list-type': '2', prefix };
+            if (token) params['continuation-token'] = token;
+            const resp = await this.request('GET', '/' + encodeURIComponent(bucket), { queryParams: params });
+            if (!resp.ok) throw new Error('Failed to list objects');
+            const xml = await resp.text();
+            const result = this.parseListObjects(xml);
+            for (const obj of result.objects) all.push(obj);
+            token = result.isTruncated ? result.nextToken : '';
+          } while (token);
+          return all;
         },
 
         async s3CreateBucket(name) {
@@ -1690,6 +1793,11 @@
         showCreateFolderModal: false,
         newFolderName: '',
         createFolderError: '',
+        selectedKeys: new Set(),
+        archiving: false,
+        showDeleteBatchModal: false,
+        deleteBatchFileCount: 0,
+        deleteBatchDirCount: 0,
         ringColors,
 
         get prefixParts() {
@@ -1721,12 +1829,41 @@
           this.loading = false;
         },
 
+        get allSelected() {
+          if (this.objects.length === 0 && this.directories.length === 0) return false;
+          for (const obj of this.objects) {
+            if (!this.selectedKeys.has(obj.key)) return false;
+          }
+          for (const dir of this.directories) {
+            if (!this.selectedKeys.has('dir:' + dir)) return false;
+          }
+          return true;
+        },
+
+        toggleSelect(key) {
+          const next = new Set(this.selectedKeys);
+          if (next.has(key)) next.delete(key); else next.add(key);
+          this.selectedKeys = next;
+        },
+
+        toggleSelectAll() {
+          if (this.allSelected) {
+            this.selectedKeys = new Set();
+          } else {
+            const next = new Set();
+            for (const obj of this.objects) next.add(obj.key);
+            for (const dir of this.directories) next.add('dir:' + dir);
+            this.selectedKeys = next;
+          }
+        },
+
         navigatePrefix(newPrefix) {
           this.prefix = newPrefix;
           let hash = '#/buckets/' + encodeURIComponent(this.bucketName);
           if (newPrefix) hash += '?prefix=' + encodeURIComponent(newPrefix);
           window.location.hash = hash;
           this.selectedObject = null;
+          this.selectedKeys = new Set();
           this.$nextTick(() => this.load());
         },
 
@@ -1854,9 +1991,12 @@
           const prefix = this.prefix;
 
           for (const file of files) {
-            const key = prefix + file.name;
+            // webkitRelativePath is set when uploading a folder (e.g. "mydir/sub/file.txt").
+            // For regular file uploads it's empty, so we fall back to file.name.
+            const relativePath = file.webkitRelativePath || file.name;
+            const key = prefix + relativePath;
             this.uploading = true;
-            this.uploadFileName = file.name;
+            this.uploadFileName = relativePath;
             this.uploadProgress = 0;
 
             try {
@@ -1869,6 +2009,7 @@
               }
             } catch (e) {
               console.error('Upload failed:', e);
+              this.$dispatch('show-toast', { message: 'Upload failed: ' + e.message, type: 'error' });
             }
           }
 
@@ -1894,6 +2035,140 @@
           }
 
           await api.s3CompleteMultipartUpload(bucket, key, uploadId, parts);
+        },
+
+        // Drag-and-drop handler that supports both files and directories.
+        async handleDrop(event) {
+          const items = event.dataTransfer.items;
+          if (!items) {
+            // Fallback: no DataTransferItem API, use plain files.
+            this.uploadFiles(event.dataTransfer.files);
+            return;
+          }
+          const files = [];
+          const promises = [];
+          for (const item of items) {
+            const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+            if (entry) {
+              promises.push(this._traverseEntry(entry, '', files));
+            }
+          }
+          await Promise.all(promises);
+          if (files.length > 0) {
+            await this.uploadFiles(files);
+          }
+        },
+
+        // Recursively traverse a FileSystemEntry tree, collecting File objects
+        // with their webkitRelativePath set manually via a wrapper.
+        async _traverseEntry(entry, basePath, files) {
+          if (entry.isFile) {
+            const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+            // Create a wrapper that exposes webkitRelativePath.
+            const relativePath = basePath ? basePath + '/' + file.name : file.name;
+            Object.defineProperty(file, 'webkitRelativePath', { value: relativePath, writable: false });
+            files.push(file);
+          } else if (entry.isDirectory) {
+            const dirPath = basePath ? basePath + '/' + entry.name : entry.name;
+            const reader = entry.createReader();
+            const entries = await new Promise((resolve, reject) => {
+              const all = [];
+              const readBatch = () => {
+                reader.readEntries(batch => {
+                  if (batch.length === 0) { resolve(all); return; }
+                  all.push(...batch);
+                  readBatch();
+                }, reject);
+              };
+              readBatch();
+            });
+            for (const child of entries) {
+              await this._traverseEntry(child, dirPath, files);
+            }
+          }
+        },
+
+        confirmDeleteSelected() {
+          if (this.selectedKeys.size === 0) return;
+          let dirs = 0, files = 0;
+          for (const key of this.selectedKeys) {
+            if (key.startsWith('dir:')) dirs++;
+            else files++;
+          }
+          this.deleteBatchDirCount = dirs;
+          this.deleteBatchFileCount = files;
+          this.showDeleteBatchModal = true;
+        },
+
+        async deleteSelected() {
+          if (this.selectedKeys.size === 0) return;
+          const bucket = this.bucketName;
+          this.deleting = true;
+          try {
+            // Collect all object keys to delete.
+            const allKeys = [];
+            for (const key of this.selectedKeys) {
+              if (key.startsWith('dir:')) {
+                // List ALL objects under this prefix (recursive, no delimiter).
+                const objects = await api.s3ListAllObjects(bucket, key.slice(4));
+                for (const obj of objects) allKeys.push(obj.key);
+              } else {
+                allKeys.push(key);
+              }
+            }
+            // Delete in batches of 1000 (S3 limit).
+            for (let i = 0; i < allKeys.length; i += 1000) {
+              const batch = allKeys.slice(i, i + 1000);
+              await api.s3DeleteObjects(bucket, batch);
+            }
+            this.selectedKeys = new Set();
+            this.selectedObject = null;
+            await this.load();
+          } catch (e) {
+            this.$dispatch('show-toast', { message: 'Delete failed: ' + e.message, type: 'error' });
+          }
+          this.deleting = false;
+        },
+
+        async downloadSelected() {
+          if (this.selectedKeys.size === 0) return;
+          this.archiving = true;
+          try {
+            // Collect all object keys (for directories, list recursively).
+            const bucket = this.bucketName;
+            const allKeys = [];
+            for (const key of this.selectedKeys) {
+              if (key.startsWith('dir:')) {
+                const objects = await api.s3ListAllObjects(bucket, key.slice(4));
+                for (const obj of objects) {
+                  // Skip directory markers (zero-byte objects with key ending in '/').
+                  if (!obj.key.endsWith('/')) allKeys.push(obj.key);
+                }
+              } else {
+                allKeys.push(key);
+              }
+            }
+            if (allKeys.length === 0) {
+              this.$dispatch('show-toast', { message: 'No objects to download', type: 'error' });
+              this.archiving = false;
+              return;
+            }
+            const resp = await api.adminArchive(bucket, allKeys);
+            if (!resp.ok) {
+              const text = await resp.text();
+              throw new Error(text);
+            }
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = bucket + '.tar.gz';
+            a.click();
+            URL.revokeObjectURL(url);
+          } catch (e) {
+            this.$dispatch('show-toast', { message: 'Download failed: ' + e.message, type: 'error' });
+          }
+          this.archiving = false;
         },
 
         // Treemap (squarified layout)

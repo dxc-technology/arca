@@ -348,9 +348,13 @@ Distributed storage for horizontal scalability and data durability beyond single
 
 Independent of server phases — can ship at any time.
 
+- [x] Multipart upload with progress bar (P2)
+- [x] Drag-and-drop upload (P2)
+- [x] Directory upload with structure preservation (P2)
+- [x] Multi-select with batch operations (P2)
+- [x] Batch delete with recursive directory support (P2)
+- [x] Batch download as streaming tar.gz archive (P2) — requires `POST /admin/archive` endpoint
 - [ ] Object preview: images, text, JSON, PDF (P2)
-- [ ] Multipart upload with progress bar (P2)
-- [ ] Drag-and-drop upload (P2)
 - [ ] Search and filter within buckets (P2)
 - [ ] Dark/light theme toggle (P3)
 - [ ] Responsive mobile layout (P3)

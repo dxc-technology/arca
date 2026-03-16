@@ -49,6 +49,9 @@ futures-core = "0.3"
 tokio-stream = "0.1"
 tokio-util = { version = "0.7", features = ["io"] }
 
+# Compression
+async-compression = { version = "0.4", features = ["tokio", "gzip"] }
+
 # Hashing
 hmac = "0.12"
 md-5 = "0.10"

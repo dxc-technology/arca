@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use axum::routing::{delete, get};
+use axum::routing::{delete, get, post};
 use axum::Router;
 use http::header::{AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE, ETAG};
 use http::{HeaderName, Method};
@@ -10,7 +10,7 @@ use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, OnRequest, OnResponse, TraceLayer};
 use tracing::Level;
 
-use crate::handlers::{admin, bucket, object};
+use crate::handlers::{admin, archive, bucket, object};
 use crate::middleware;
 use crate::state::AppState;
 
@@ -77,6 +77,7 @@ pub fn build_router(state: AppState) -> Router {
             "/credentials/{access_key_id}",
             delete(admin::delete_credential),
         )
+        .route("/archive", post(archive::archive))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::admin_auth::admin_auth_middleware,
@@ -111,6 +112,7 @@ pub fn build_router(state: AppState) -> Router {
         .expose_headers([
             ETAG,
             CONTENT_LENGTH,
+            HeaderName::from_static("content-disposition"),
             HeaderName::from_static("x-amz-request-id"),
             HeaderName::from_static("x-amz-server-side-encryption"),
         ]);

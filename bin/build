@@ -72,8 +72,9 @@ if $BINARY && $CONSOLE; then
 fi
 
 if $CONSOLE && [[ "${BUILD_TARGET:-}" == "development" ]]; then
-    echo "Error: --console and --dev are mutually exclusive" >&2
-    exit 1
+    # --console ignores BUILD_TARGET from .arca-env; only reject explicit --dev flag.
+    # This allows `bin/console start --build` while Arca runs in dev mode.
+    unset BUILD_TARGET
 fi
 
 if $BINARY; then

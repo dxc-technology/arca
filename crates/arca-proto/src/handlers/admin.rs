@@ -23,7 +23,7 @@ pub struct AdminError {
 }
 
 impl AdminError {
-    fn internal(msg: impl Into<String>) -> Self {
+    pub fn internal(msg: impl Into<String>) -> Self {
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             error: "InternalError",
@@ -31,10 +31,18 @@ impl AdminError {
         }
     }
 
-    fn not_found(msg: impl Into<String>) -> Self {
+    pub fn not_found(msg: impl Into<String>) -> Self {
         Self {
             status: StatusCode::NOT_FOUND,
             error: "NotFound",
+            message: msg.into(),
+        }
+    }
+
+    pub fn bad_request(msg: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::BAD_REQUEST,
+            error: "BadRequest",
             message: msg.into(),
         }
     }
