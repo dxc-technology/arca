@@ -147,6 +147,10 @@ cmd_start() {
     local args=()
     if $detach; then
         args+=("-d")
+    else
+        # When running in foreground, ensure all services (e.g. OpenBAO)
+        # are stopped when the user presses CTRL+C
+        trap "$COMPOSE down; clean_env" EXIT
     fi
 
     $COMPOSE up "${args[@]+"${args[@]}"}" arca
