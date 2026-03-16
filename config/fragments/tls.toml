@@ -1,0 +1,2 @@
+[server.tls]
+cert_dir = "/etc/arca/certs"

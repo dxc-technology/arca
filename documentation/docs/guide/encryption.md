@@ -123,7 +123,7 @@ INFO arca: Server-side encryption enabled (AES-256-GCM) key_id="a1b2c3d4" provid
 Use the `--kms` flag to start with a pre-configured OpenBAO instance:
 
 ```bash
-bin/arca start -d --build --dev --kms --config config/kms-test.toml
+bin/arca start -d --build --dev --kms
 ```
 
 This starts an OpenBAO dev server, generates a random master key, stores it in KV v2, and configures Arca to fetch it.

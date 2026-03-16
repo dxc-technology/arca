@@ -17,3 +17,7 @@ __pycache__/
 
 # TLS certificates
 certs/
+
+# Generated config and state (bin/lib/compose.sh plugin system)
+config/.generated.toml
+.arca-env

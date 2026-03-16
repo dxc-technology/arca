@@ -1,11 +1,4 @@
-[server]
-bind = "0.0.0.0"
-port = 9000
-
 [server.tls]
 cert_dir = "/etc/arca/certs"
 cert_file = "arca-server.crt"
 key_file = "arca-server.key"
-
-[storage]
-data_dir = "/data"

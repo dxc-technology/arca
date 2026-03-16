@@ -1,7 +1,0 @@
-# TLS test overlay — overrides auto-detect config with explicit filenames.
-# Used only by bin/test tls to avoid ambiguity when real certs coexist.
-
-services:
-  arca:
-    volumes:
-      - ../config/tls-test.toml:/etc/arca/config.toml:ro

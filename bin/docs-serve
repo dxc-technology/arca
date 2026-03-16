@@ -4,4 +4,10 @@ set -euo pipefail
 # Serve documentation locally with live reload (http://localhost:8000).
 
 cd "$(git rev-parse --show-toplevel)"
-docker compose -f docker/docker-compose.docs.yml up docs-serve "$@"
+
+if [[ $# -gt 0 ]]; then
+    echo "Usage: bin/docs-serve" >&2
+    exit 1
+fi
+
+docker compose -f docker/docker-compose.docs.yml up docs-serve

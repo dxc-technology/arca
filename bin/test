@@ -8,33 +8,43 @@ set -euo pipefail
 #   bin/test unit         Run unit tests only
 #   bin/test integration  Run integration tests only (server must be running)
 #   bin/test unit -p arca-core   Pass extra args to cargo test
+#   bin/test tls          Run TLS integration tests
+#   bin/test encryption   Run encryption integration tests
+#   bin/test per-bucket-encryption  Run per-bucket encryption tests
+#   bin/test kms          Run KMS integration tests
+#   bin/test s3-compat    Run Ceph s3-tests compatibility suite
 
 cd "$(git rev-parse --show-toplevel)"
-
-COMPOSE="docker compose -f docker/docker-compose.yml"
-COMPOSE_TLS="docker compose -f docker/docker-compose.yml -f docker/docker-compose.tls.yml -f docker/docker-compose.tls-test.yml"
-COMPOSE_ENC="docker compose -f docker/docker-compose.yml -f docker/docker-compose.encryption-test.yml"
-COMPOSE_PBE="docker compose -f docker/docker-compose.yml -f docker/docker-compose.per-bucket-encryption-test.yml"
-COMPOSE_KMS="docker compose -f docker/docker-compose.yml -f docker/docker-compose.kms.yml -f docker/docker-compose.kms-test.yml"
+source bin/lib/compose.sh
 
 run_unit() {
     echo "==> Running unit tests..."
+    local COMPOSE
+    COMPOSE="$(compose_cmd)"
     $COMPOSE run --rm unit-test "$@"
 }
 
 run_integration() {
     echo "==> Running integration tests..."
+    local COMPOSE
+    COMPOSE="$(compose_cmd)"
     $COMPOSE run --rm test "$@"
 }
 
 run_tls() {
     echo "==> Running TLS integration tests..."
+
+    # tls-explicit includes explicit cert filenames AND triggers the TLS compose overlay
+    enable_tls_explicit
+    build_config
+
+    local COMPOSE
+    COMPOSE="$(compose_cmd)"
     local generated_certs=()
 
     cleanup_tls() {
         echo "Cleaning up TLS test..."
-        $COMPOSE_TLS --profile tls-test down -v 2>/dev/null || true
-        # Remove only the certs we generated
+        $COMPOSE --profile tls-test down -v 2>/dev/null || true
         for f in "${generated_certs[@]}"; do
             rm -f "$f"
         done
@@ -42,24 +52,20 @@ run_tls() {
     trap cleanup_tls EXIT
 
     # Step 1: Build images
-    $COMPOSE_TLS build arca
+    $COMPOSE build arca
     # Step 2: Generate self-signed certs into ./certs/
     mkdir -p certs
-    $COMPOSE_TLS --profile tls-init run --rm tls-init
+    $COMPOSE --profile tls-init run --rm tls-init
     generated_certs=(certs/arca-ca.crt certs/arca-ca.key certs/arca-server.crt certs/arca-server.key)
     # Step 3: Start server with TLS config
-    $COMPOSE_TLS up -d arca
+    $COMPOSE up -d arca
     # Step 4: Wait for server to be ready
-    echo "Waiting for Arca TLS server..."
-    for i in $(seq 1 30); do
-        if $COMPOSE_TLS exec -T arca /usr/local/bin/arca --help >/dev/null 2>&1; then
-            break
-        fi
-        sleep 1
-    done
-    sleep 2  # brief extra settle time
+    wait_for_arca "$COMPOSE"
     # Step 5: Run TLS-specific tests
-    $COMPOSE_TLS --profile tls-test run --rm test integration/test_tls.py "$@"
+    $COMPOSE --profile tls-test run --rm \
+        -e ARCA_ENDPOINT=https://arca:9000 \
+        -e AWS_CA_BUNDLE=/etc/arca/certs/arca-ca.crt \
+        test integration/test_tls.py "$@"
     local rc=$?
 
     trap - EXIT
@@ -70,27 +76,28 @@ run_tls() {
 run_encryption() {
     echo "==> Running encryption integration tests..."
 
+    enable_encryption
+    build_config
+
+    local COMPOSE
+    COMPOSE="$(compose_cmd)"
+
     cleanup_enc() {
         echo "Cleaning up encryption test..."
-        $COMPOSE_ENC --profile encryption-test down -v 2>/dev/null || true
+        $COMPOSE down -v 2>/dev/null || true
     }
     trap cleanup_enc EXIT
 
     # Step 1: Build images
-    $COMPOSE_ENC build arca
+    $COMPOSE build arca
     # Step 2: Start server with encryption config
-    $COMPOSE_ENC up -d arca
+    $COMPOSE up -d arca
     # Step 3: Wait for server to be ready
-    echo "Waiting for Arca encryption server..."
-    for i in $(seq 1 30); do
-        if $COMPOSE_ENC exec -T arca /usr/local/bin/arca --help >/dev/null 2>&1; then
-            break
-        fi
-        sleep 1
-    done
-    sleep 2  # brief extra settle time
+    wait_for_arca "$COMPOSE"
     # Step 4: Run encryption-specific tests
-    $COMPOSE_ENC --profile encryption-test run --rm test integration/test_encryption.py "$@"
+    $COMPOSE run --rm \
+        -e ARCA_ENCRYPTION_ENABLED=1 \
+        test integration/test_encryption.py "$@"
     local rc=$?
 
     trap - EXIT
@@ -101,27 +108,28 @@ run_encryption() {
 run_per_bucket_encryption() {
     echo "==> Running per-bucket encryption integration tests..."
 
+    enable_encryption_per_bucket
+    build_config
+
+    local COMPOSE
+    COMPOSE="$(compose_cmd)"
+
     cleanup_pbe() {
         echo "Cleaning up per-bucket encryption test..."
-        $COMPOSE_PBE --profile per-bucket-encryption-test down -v 2>/dev/null || true
+        $COMPOSE down -v 2>/dev/null || true
     }
     trap cleanup_pbe EXIT
 
     # Step 1: Build images
-    $COMPOSE_PBE build arca
+    $COMPOSE build arca
     # Step 2: Start server with per-bucket encryption config (key present, enabled=false)
-    $COMPOSE_PBE up -d arca
+    $COMPOSE up -d arca
     # Step 3: Wait for server to be ready
-    echo "Waiting for Arca server..."
-    for i in $(seq 1 30); do
-        if $COMPOSE_PBE exec -T arca /usr/local/bin/arca --help >/dev/null 2>&1; then
-            break
-        fi
-        sleep 1
-    done
-    sleep 2  # brief extra settle time
+    wait_for_arca "$COMPOSE"
     # Step 4: Run per-bucket encryption tests
-    $COMPOSE_PBE --profile per-bucket-encryption-test run --rm test integration/test_per_bucket_encryption.py "$@"
+    $COMPOSE run --rm \
+        -e ARCA_PER_BUCKET_ENCRYPTION=1 \
+        test integration/test_per_bucket_encryption.py "$@"
     local rc=$?
 
     trap - EXIT
@@ -132,38 +140,33 @@ run_per_bucket_encryption() {
 run_kms() {
     echo "==> Running KMS integration tests..."
 
+    enable_kms
+    build_config
+
+    local COMPOSE
+    COMPOSE="$(compose_cmd)"
+
     cleanup_kms() {
         echo "Cleaning up KMS test..."
-        $COMPOSE_KMS --profile kms-init --profile kms-test down -v 2>/dev/null || true
+        $COMPOSE --profile kms-init down -v 2>/dev/null || true
     }
     trap cleanup_kms EXIT
 
     # Step 1: Build images
-    $COMPOSE_KMS build arca
+    $COMPOSE build arca
     # Step 2: Start OpenBAO and wait for healthy
-    $COMPOSE_KMS up -d openbao
-    echo "Waiting for OpenBAO..."
-    for i in $(seq 1 30); do
-        if docker compose -f docker/docker-compose.yml -f docker/docker-compose.kms.yml exec -T openbao bao status >/dev/null 2>&1; then
-            break
-        fi
-        sleep 1
-    done
+    $COMPOSE up -d openbao
+    wait_for_openbao "$COMPOSE"
     # Step 3: Initialize KV v2 secrets (write master key, AppRole, etc.)
-    $COMPOSE_KMS --profile kms-init run --rm openbao-init
+    $COMPOSE --profile kms-init run --rm openbao-init
     # Step 4: Start Arca with KMS config
-    $COMPOSE_KMS up -d arca
+    $COMPOSE up -d arca
     # Step 5: Wait for server to be ready
-    echo "Waiting for Arca KMS server..."
-    for i in $(seq 1 30); do
-        if $COMPOSE_KMS exec -T arca /usr/local/bin/arca --help >/dev/null 2>&1; then
-            break
-        fi
-        sleep 1
-    done
-    sleep 2  # brief extra settle time
+    wait_for_arca "$COMPOSE"
     # Step 6: Run KMS-specific tests
-    $COMPOSE_KMS --profile kms-test run --rm test integration/test_kms.py "$@"
+    $COMPOSE run --rm \
+        -e ARCA_KMS_ENABLED=1 \
+        test integration/test_kms.py "$@"
     local rc=$?
 
     trap - EXIT
@@ -210,8 +213,26 @@ case "${1:-all}" in
         echo ""
         run_integration
         ;;
+    -h|--help)
+        echo "Usage: bin/test <mode> [extra args...]"
+        echo ""
+        echo "Modes:"
+        echo "  all                  Run unit + integration tests (default)"
+        echo "  unit                 Run unit tests only"
+        echo "  integration          Run integration tests only (server must be running)"
+        echo "  tls                  Run TLS integration tests (self-contained)"
+        echo "  encryption           Run encryption integration tests"
+        echo "  per-bucket-encryption  Run per-bucket encryption tests"
+        echo "  kms                  Run KMS integration tests (with OpenBAO)"
+        echo "  s3-compat            Run Ceph s3-tests compatibility suite"
+        echo ""
+        echo "Extra args are passed to the test runner (cargo test or pytest)."
+        echo "Example: bin/test unit -p arca-core"
+        exit 0
+        ;;
     *)
-        echo "Usage: bin/test [unit|integration|tls|encryption|per-bucket-encryption|kms|s3-compat|all] [extra args...]" >&2
+        echo "Error: unknown test mode '$1'" >&2
+        echo "Run 'bin/test --help' for available modes." >&2
         exit 1
         ;;
 esac

@@ -12,22 +12,39 @@ The full architecture plan lives in `.claude/plans/arca-s3-mvp-architecture.md`.
 
 All development happens inside Docker containers — never install libraries on the host.
 
-Convenience scripts live in `bin/`. They wrap docker compose commands and always work from the repo root.
+Convenience scripts live in `bin/`. They fully abstract Docker Compose, so the user never needs to interact with compose directly.
+
+**Plugin system**: Features (TLS, encryption, KMS) are composable via `--flags`. Each feature has a config fragment in `config/fragments/` and an optional compose overlay in `docker/`. The shared library `bin/lib/compose.sh` handles config generation (TOML concatenation) and compose command building. Adding a new feature = 1 fragment + a few lines in the library.
 
 ```bash
 # Build and run
-bin/build                # build Docker image
-bin/arca start -d        # start server in background
-bin/arca start -d --build  # start server, rebuild image first
-bin/arca stop            # stop server
-bin/arca status          # show container status
-bin/arca logs -f         # follow server logs
+bin/build                        # build Docker image
+bin/build --dev                  # build development image (has shell)
+bin/arca start -d                # start server in background
+bin/arca start -d --build --dev  # rebuild dev image and start
+bin/arca start -d --tls          # start with TLS (certs in ./certs/)
+bin/arca start -d --encryption   # start with encryption (SSE-S3)
+bin/arca start -d --kms          # start with OpenBAO KMS
+bin/arca start -d --tls --kms    # combine features freely
+bin/arca start -d --config <path>  # custom config (escape hatch)
+bin/arca stop                    # stop server + all associated services
+bin/arca status                  # show container status
+bin/arca logs -f                 # follow server logs
+
+# Console (inherits features from running Arca via .arca-env)
+bin/console start -d             # start console
+bin/console start -d --build     # rebuild and start
+bin/console stop                 # stop console
 
 # Tests
 bin/test                 # run unit + integration tests
 bin/test unit            # unit tests only
 bin/test integration     # integration tests only (server must be running)
 bin/test unit -p arca-core   # pass extra args to cargo test
+bin/test tls             # TLS integration tests (self-contained)
+bin/test encryption      # encryption integration tests
+bin/test per-bucket-encryption   # per-bucket encryption tests
+bin/test kms             # KMS integration tests (with OpenBAO)
 
 # Manual S3 CLI verification against running Arca
 aws s3 ls --endpoint-url http://localhost:9000

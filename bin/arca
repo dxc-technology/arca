@@ -4,61 +4,81 @@ set -euo pipefail
 # Manage the Arca server container.
 #
 # Usage:
-#   bin/arca start                Start in foreground
-#   bin/arca start -d             Start in background
-#   bin/arca start -d --build     Start in background, rebuild image first
-#   bin/arca start -d --dev       Start development image (has shell)
-#   bin/arca start -d --tls       Start with TLS (requires certs in ./certs/)
-#   bin/arca start -d --kms       Start with OpenBAO KMS (KV v2 secrets engine)
-#   bin/arca start -d -c <path>   Start with a custom config file
-#   bin/arca stop                 Stop the server
-#   bin/arca status               Show container status
-#   bin/arca logs                 Show logs
-#   bin/arca logs -f              Follow logs
+#   bin/arca start                    Start in foreground
+#   bin/arca start -d                 Start in background
+#   bin/arca start -d --build         Start in background, rebuild image first
+#   bin/arca start -d --dev           Start development image (has shell)
+#   bin/arca start -d --tls           Start with TLS (requires certs in ./certs/)
+#   bin/arca start -d --encryption    Start with global encryption (local key)
+#   bin/arca start -d --encryption --per-bucket  Encryption available per-bucket only
+#   bin/arca start -d --kms           Start with global encryption (KMS)
+#   bin/arca start -d --kms --per-bucket  KMS encryption available per-bucket only
+#   bin/arca start -d --config <path> Start with a custom config file
+#   bin/arca stop                     Stop the server (and all associated services)
+#   bin/arca status                   Show container status
+#   bin/arca logs                     Show logs
+#   bin/arca logs -f                  Follow logs
 
 cd "$(git rev-parse --show-toplevel)"
-
-COMPOSE="docker compose -f docker/docker-compose.yml"
+source bin/lib/compose.sh
 
 usage() {
     echo "Usage: bin/arca <command> [options]"
     echo ""
     echo "Commands:"
-    echo "  start [-d] [--build] [--dev] [--tls] [--kms] [--config <path>]"
-    echo "                                          Start the Arca server"
-    echo "  stop                                    Stop the Arca server"
-    echo "  status                                  Show container status"
-    echo "  logs [-f]                               Show server logs"
+    echo "  start   Start the Arca server"
+    echo "  stop    Stop the Arca server (and all associated services)"
+    echo "  status  Show container status"
+    echo "  logs    Show server logs"
+    echo ""
+    echo "Run 'bin/arca <command> --help' for command-specific options."
+    exit "${1:-0}"
+}
+
+usage_start() {
+    echo "Usage: bin/arca start [-d] [--build] [--dev] [--tls] [--encryption|--kms] [--per-bucket] [--config <path>]"
     echo ""
     echo "Options:"
     echo "  -d              Run in background (detached)"
     echo "  --build         Rebuild the Docker image before starting"
     echo "  --dev           Use development image (debian-slim, has shell)"
     echo "  --tls           Enable HTTPS (certificates must be in ./certs/)"
-    echo "  --kms           Start OpenBAO KMS (KV v2 on port 8200)"
-    echo "  --config <path> Use a custom config file (mounted into the container)"
-    echo "  -f              Follow log output"
-    exit 0
+    echo "  --encryption    Enable server-side encryption with local key"
+    echo "  --kms           Enable server-side encryption with OpenBAO KMS"
+    echo "  --per-bucket    Disable global encryption, enable per-bucket only"
+    echo "                  (requires --encryption or --kms)"
+    echo "  --config <path> Use a custom config file (overrides fragments)"
+    exit "${1:-0}"
 }
 
-cleanup_config_override() {
-    [[ -n "${CONFIG_OVERRIDE:-}" ]] && rm -f "$CONFIG_OVERRIDE"
+usage_logs() {
+    echo "Usage: bin/arca logs [-f]"
+    echo ""
+    echo "Options:"
+    echo "  -f  Follow log output"
+    exit "${1:-0}"
 }
 
 cmd_start() {
     local detach=false
     local build=false
-    local kms=false
-    local args=()
+    local custom_config=""
+    local want_tls=false
+    local want_encryption=false
+    local want_kms=false
+    local want_per_bucket=false
 
+    # Parse all flags first (order-independent)
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            -d)       detach=true; shift ;;
-            --build)  build=true; shift ;;
-            --dev)    export BUILD_TARGET=development; shift ;;
-            --tls)    COMPOSE="$COMPOSE -f docker/docker-compose.tls.yml"; shift ;;
-            --kms)    COMPOSE="$COMPOSE -f docker/docker-compose.kms.yml"; kms=true; shift ;;
-            -c|--config)
+            -d)           detach=true; shift ;;
+            --build)      build=true; shift ;;
+            --dev)        export BUILD_TARGET=development; shift ;;
+            --tls)        want_tls=true; shift ;;
+            --encryption) want_encryption=true; shift ;;
+            --kms)        want_kms=true; shift ;;
+            --per-bucket) want_per_bucket=true; shift ;;
+            --config|-c)
                 if [[ -z "${2:-}" ]]; then
                     echo "Error: --config requires a file path" >&2
                     exit 1
@@ -67,35 +87,61 @@ cmd_start() {
                     echo "Error: config file not found: $2" >&2
                     exit 1
                 fi
-                CONFIG_OVERRIDE=$(mktemp /tmp/arca-config-XXXXXX.yml)
-                trap cleanup_config_override EXIT
-                local abs_path
-                abs_path=$(cd "$(dirname "$2")" && echo "$(pwd)/$(basename "$2")")
-                cat > "$CONFIG_OVERRIDE" <<YAML
-services:
-  arca:
-    volumes:
-      - ${abs_path}:/etc/arca/config.toml:ro
-YAML
-                COMPOSE="$COMPOSE -f $CONFIG_OVERRIDE"
+                custom_config="$2"
                 shift 2
                 ;;
-            *)        echo "Unknown option: $1" >&2; usage ;;
+            -h|--help) usage_start 0 ;;
+            *)  echo "Error: unknown option '$1' for 'start'" >&2; usage_start 1 ;;
         esac
     done
+
+    # Validate and resolve features
+    if $want_encryption && $want_kms; then
+        echo "Error: --encryption and --kms are mutually exclusive" >&2
+        exit 1
+    fi
+    if $want_per_bucket && ! $want_encryption && ! $want_kms; then
+        echo "Error: --per-bucket requires --encryption or --kms" >&2
+        exit 1
+    fi
+
+    if $want_tls; then enable_tls; fi
+    if $want_encryption; then
+        if $want_per_bucket; then enable_encryption_per_bucket
+        else enable_encryption; fi
+    fi
+    if $want_kms; then
+        if $want_per_bucket; then enable_kms_per_bucket
+        else enable_kms; fi
+    fi
+
+    # Handle custom config: copy to .generated.toml, skip fragment concatenation
+    if [[ -n "$custom_config" ]]; then
+        cp "$custom_config" "$GENERATED_CONFIG"
+        _FEATURES+=(custom)
+    else
+        build_config
+    fi
+
+    save_env
+
+    local COMPOSE
+    COMPOSE="$(compose_cmd)"
 
     if $build; then
         echo "Building ${BUILD_TARGET:-production} image..."
         $COMPOSE build arca
     fi
 
-    if $kms; then
+    if $_HAS_KMS; then
         echo "Starting OpenBAO KMS..."
         $COMPOSE up -d openbao
+        wait_for_openbao "$COMPOSE"
         echo "Initializing KV v2 secrets..."
         $COMPOSE --profile kms-init run --rm openbao-init
     fi
 
+    local args=()
     if $detach; then
         args+=("-d")
     fi
@@ -104,24 +150,36 @@ YAML
 }
 
 cmd_stop() {
-    $COMPOSE down "$@"
+    load_env
+    local COMPOSE
+    COMPOSE="$(compose_cmd)"
+    $COMPOSE down
+    clean_env
 }
 
 cmd_status() {
+    load_env
+    local COMPOSE
+    COMPOSE="$(compose_cmd)"
     $COMPOSE ps arca
 }
 
 cmd_logs() {
     local follow=false
-    local args=()
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -f)  follow=true; shift ;;
-            *)   echo "Unknown option: $1" >&2; usage ;;
+            -h|--help) usage_logs 0 ;;
+            *)   echo "Error: unknown option '$1' for 'logs'" >&2; usage_logs 1 ;;
         esac
     done
 
+    load_env
+    local COMPOSE
+    COMPOSE="$(compose_cmd)"
+
+    local args=()
     if $follow; then
         args+=("-f")
     fi
@@ -129,16 +187,16 @@ cmd_logs() {
     $COMPOSE logs "${args[@]+"${args[@]}"}" arca
 }
 
-[[ $# -lt 1 ]] && usage
+[[ $# -lt 1 ]] && usage 0
 
 command="$1"
 shift
 
 case "$command" in
-    start)   cmd_start "$@" ;;
-    stop)    cmd_stop "$@" ;;
-    status)  cmd_status "$@" ;;
-    logs)    cmd_logs "$@" ;;
-    -h|--help) usage ;;
-    *)       echo "Unknown command: $command" >&2; usage ;;
+    start)     cmd_start "$@" ;;
+    stop)      cmd_stop ;;
+    status)    cmd_status ;;
+    logs)      cmd_logs "$@" ;;
+    -h|--help) usage 0 ;;
+    *)         echo "Error: unknown command '$command'" >&2; usage 1 ;;
 esac

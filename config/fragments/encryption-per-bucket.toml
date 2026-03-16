@@ -1,0 +1,5 @@
+[encryption]
+enabled = false
+# Test master key (32 bytes, base64-encoded) -- DO NOT use in production.
+# Key is present for per-bucket encryption via PutBucketEncryption API.
+master_key = "K+GgqdCNLvpsInhk8NWVJtXbfXt78A1zUc7QO343SJA="

@@ -1,0 +1,7 @@
+# Config overlay -- mounts the auto-generated config into the Arca container.
+# Used automatically by bin/lib/compose.sh when features are enabled.
+
+services:
+  arca:
+    volumes:
+      - ../config/.generated.toml:/etc/arca/config.toml:ro

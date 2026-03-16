@@ -1,12 +1,5 @@
-[server]
-bind = "0.0.0.0"
-port = 9000
-
-[storage]
-data_dir = "/data"
-
 [encryption]
-enabled = true
+enabled = false
 
 [encryption.kms]
 endpoint = "http://openbao:8200"

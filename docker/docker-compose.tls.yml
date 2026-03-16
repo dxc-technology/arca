@@ -1,9 +1,7 @@
-# TLS overlay — adds HTTPS support to Arca and the console.
+# TLS overlay -- adds HTTPS infrastructure to Arca and the console.
 #
-# Used by:
-#   bin/arca start --tls       (real certs in ./certs/, auto-detect config)
-#   bin/console start --tls    (console serves HTTPS on port 9443)
-#   bin/test tls               (self-signed certs, explicit filenames via tls-test overlay)
+# Provides: tls-init service, certificate mounts, console HTTPS port.
+# Config is handled separately by docker-compose.config.yml.
 
 services:
   tls-init:
@@ -18,14 +16,10 @@ services:
     volumes:
       - ../certs:/etc/arca/certs:ro
       - arca-data:/data
-      - ../config/tls.toml:/etc/arca/config.toml:ro
     ports:
       - "9000:9000"
 
   test:
-    environment:
-      - ARCA_ENDPOINT=https://arca:9000
-      - AWS_CA_BUNDLE=/etc/arca/certs/arca-ca.crt
     volumes:
       - ../certs:/etc/arca/certs:ro
     profiles:

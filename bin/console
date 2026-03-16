@@ -3,56 +3,77 @@ set -euo pipefail
 
 # Manage the Arca web console container.
 #
+# The console inherits feature state (TLS, KMS, etc.) from the running Arca
+# server via .arca-env. Start Arca first, then start the console.
+#
 # Usage:
 #   bin/console start                Start in foreground
 #   bin/console start -d             Start in background
 #   bin/console start -d --build     Start in background, rebuild image first
-#   bin/console start --tls          Start with TLS overlay (no preset endpoint)
 #   bin/console stop                 Stop the console
 #   bin/console status               Show container status
 #   bin/console logs                 Show logs
 #   bin/console logs -f              Follow logs
 
 cd "$(git rev-parse --show-toplevel)"
-
-COMPOSE="docker compose -f docker/docker-compose.yml --profile console"
+source bin/lib/compose.sh
 
 usage() {
     echo "Usage: bin/console <command> [options]"
     echo ""
     echo "Commands:"
-    echo "  start [-d] [--build] [--tls]   Start the web console"
-    echo "  stop                            Stop the web console"
-    echo "  status                          Show container status"
-    echo "  logs [-f]                       Show console logs"
+    echo "  start   Start the web console"
+    echo "  stop    Stop the web console"
+    echo "  status  Show container status"
+    echo "  logs    Show console logs"
+    echo ""
+    echo "Console inherits TLS/KMS settings from the running Arca server."
+    echo "Start Arca first with the desired features."
+    echo ""
+    echo "Run 'bin/console <command> --help' for command-specific options."
+    exit "${1:-0}"
+}
+
+usage_start() {
+    echo "Usage: bin/console start [-d] [--build]"
     echo ""
     echo "Options:"
-    echo "  -d         Run in background (detached)"
-    echo "  --build    Rebuild the Docker image before starting"
-    echo "  --tls      TLS mode (clears preset endpoint, shows URL field at login)"
-    echo "  -f         Follow log output"
-    exit 0
+    echo "  -d       Run in background (detached)"
+    echo "  --build  Rebuild the Docker image before starting"
+    exit "${1:-0}"
+}
+
+usage_logs() {
+    echo "Usage: bin/console logs [-f]"
+    echo ""
+    echo "Options:"
+    echo "  -f  Follow log output"
+    exit "${1:-0}"
 }
 
 cmd_start() {
     local detach=false
     local build=false
-    local args=()
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -d)       detach=true; shift ;;
             --build)  build=true; shift ;;
-            --tls)    COMPOSE="docker compose -f docker/docker-compose.yml -f docker/docker-compose.tls.yml --profile console"; shift ;;
-            *)        echo "Unknown option: $1" >&2; usage ;;
+            -h|--help) usage_start 0 ;;
+            *)        echo "Error: unknown option '$1' for 'start'" >&2; usage_start 1 ;;
         esac
     done
+
+    load_env
+    local COMPOSE
+    COMPOSE="$(compose_cmd) --profile console"
 
     if $build; then
         echo "Building console image..."
         $COMPOSE build console
     fi
 
+    local args=()
     if $detach; then
         args+=("-d")
     fi
@@ -61,24 +82,35 @@ cmd_start() {
 }
 
 cmd_stop() {
-    $COMPOSE down "$@"
+    load_env
+    local COMPOSE
+    COMPOSE="$(compose_cmd) --profile console"
+    $COMPOSE stop console
 }
 
 cmd_status() {
+    load_env
+    local COMPOSE
+    COMPOSE="$(compose_cmd) --profile console"
     $COMPOSE ps console
 }
 
 cmd_logs() {
     local follow=false
-    local args=()
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -f)  follow=true; shift ;;
-            *)   echo "Unknown option: $1" >&2; usage ;;
+            -h|--help) usage_logs 0 ;;
+            *)   echo "Error: unknown option '$1' for 'logs'" >&2; usage_logs 1 ;;
         esac
     done
 
+    load_env
+    local COMPOSE
+    COMPOSE="$(compose_cmd) --profile console"
+
+    local args=()
     if $follow; then
         args+=("-f")
     fi
@@ -86,16 +118,16 @@ cmd_logs() {
     $COMPOSE logs "${args[@]+"${args[@]}"}" console
 }
 
-[[ $# -lt 1 ]] && usage
+[[ $# -lt 1 ]] && usage 0
 
 command="$1"
 shift
 
 case "$command" in
-    start)   cmd_start "$@" ;;
-    stop)    cmd_stop "$@" ;;
-    status)  cmd_status "$@" ;;
-    logs)    cmd_logs "$@" ;;
-    -h|--help) usage ;;
-    *)       echo "Unknown command: $command" >&2; usage ;;
+    start)     cmd_start "$@" ;;
+    stop)      cmd_stop ;;
+    status)    cmd_status ;;
+    logs)      cmd_logs "$@" ;;
+    -h|--help) usage 0 ;;
+    *)         echo "Error: unknown command '$command'" >&2; usage 1 ;;
 esac

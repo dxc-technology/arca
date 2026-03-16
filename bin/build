@@ -9,14 +9,14 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-args=()
 for arg in "$@"; do
-    if [[ "$arg" == "--dev" ]]; then
-        export BUILD_TARGET=development
-    else
-        args+=("$arg")
-    fi
+    case "$arg" in
+        --dev)  export BUILD_TARGET=development ;;
+        *)      echo "Unknown option: $arg" >&2
+                echo "Usage: bin/build [--dev]" >&2
+                exit 1 ;;
+    esac
 done
 
 echo "Building ${BUILD_TARGET:-production} image..."
-docker compose -f docker/docker-compose.yml build arca "${args[@]+"${args[@]}"}"
+docker compose -f docker/docker-compose.yml build arca

@@ -1,6 +1,6 @@
-# OpenBAO (Vault-compatible) KMS overlay for Phase 14 development and testing.
+# OpenBAO (Vault-compatible) KMS overlay for development and testing.
 # Usage:
-#   bin/arca start -d --build --dev --tls --kms --config config/tls-encryption-kms.toml
+#   bin/arca start -d --build --dev --tls --kms
 #   bin/test kms
 
 services:
