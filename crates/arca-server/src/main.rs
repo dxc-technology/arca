@@ -67,7 +67,7 @@ async fn main() -> Result<()> {
                 Some(enc) if enc.kms.is_some() => {
                     let kms = enc.kms.as_ref().unwrap();
                     let endpoint = kms.endpoint.clone();
-                    let mk = vault::fetch_master_key(kms).await?;
+                    let mk = vault::ensure_master_key(kms).await?;
                     (Some(mk), Some("vault".to_string()), Some(endpoint))
                 }
                 Some(enc) if enc.master_key.is_some() => {

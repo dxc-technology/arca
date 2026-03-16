@@ -1,12 +1,23 @@
-//! Vault/OpenBAO KV v2 client for fetching the master encryption key at startup.
+//! Vault/OpenBAO KV v2 client for master encryption key management.
+//!
+//! At startup Arca tries to read the master key from Vault. If the secret does
+//! not exist yet, Arca generates a random 256-bit key and writes it. This
+//! mirrors how MinIO and MongoDB handle KMS integration: the application owns
+//! its key lifecycle rather than requiring an external provisioning step.
 
 use anyhow::{bail, Context, Result};
 
 use crate::config::{KmsAuthMethod, KmsConfig};
 use arca_storage::encryption::keys::MasterKey;
 
-/// Fetches the master encryption key from Vault/OpenBAO KV v2.
-pub async fn fetch_master_key(kms: &KmsConfig) -> Result<MasterKey> {
+/// Ensures the master encryption key exists in Vault/OpenBAO KV v2.
+///
+/// 1. Authenticates (token or AppRole).
+/// 2. Tries to read the secret.
+/// 3. If found, returns the existing key.
+/// 4. If not found (HTTP 404), generates a random 256-bit key, writes it to
+///    Vault, and returns it.
+pub async fn ensure_master_key(kms: &KmsConfig) -> Result<MasterKey> {
     let client = build_http_client(kms)?;
 
     let token = match &kms.auth_method {
@@ -33,17 +44,65 @@ pub async fn fetch_master_key(kms: &KmsConfig) -> Result<MasterKey> {
             "KMS authentication failed (HTTP {status}) — check your token or AppRole credentials"
         );
     }
+
     if status == reqwest::StatusCode::NOT_FOUND {
-        bail!(
-            "KMS secret not found at path '{}' — verify the secret exists in Vault/OpenBAO",
-            kms.secret_path
+        tracing::info!(
+            path = %kms.secret_path,
+            "KMS secret not found, generating new master key"
         );
+        return generate_and_write_key(&client, &token, &url, kms).await;
     }
+
     if !status.is_success() {
         let body = resp.text().await.unwrap_or_default();
         bail!("KMS returned HTTP {status}: {body}");
     }
 
+    parse_key_response(resp, kms).await
+}
+
+/// Generates a random 256-bit master key and writes it to Vault KV v2.
+async fn generate_and_write_key(
+    client: &reqwest::Client,
+    token: &str,
+    url: &str,
+    kms: &KmsConfig,
+) -> Result<MasterKey> {
+    use base64::Engine;
+
+    let key_bytes = arca_storage::encryption::keys::generate_dek()
+        .map_err(|e| anyhow::anyhow!("failed to generate master key: {e}"))?;
+    let key_b64 = base64::engine::general_purpose::STANDARD.encode(key_bytes);
+
+    // Vault KV v2 write: POST /v1/{mount}/data/{path}
+    let body = serde_json::json!({
+        "data": {
+            &kms.secret_field: key_b64
+        }
+    });
+
+    let resp = client
+        .post(url)
+        .header("X-Vault-Token", token)
+        .json(&body)
+        .send()
+        .await
+        .context("failed to write master key to KMS")?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        bail!("KMS write failed (HTTP {status}): {body}");
+    }
+
+    tracing::info!(path = %kms.secret_path, "New master key written to KMS");
+
+    MasterKey::from_bytes(&key_bytes)
+        .map_err(|e| anyhow::anyhow!("generated key is invalid: {e}"))
+}
+
+/// Parses a Vault KV v2 response to extract the master key.
+async fn parse_key_response(resp: reqwest::Response, kms: &KmsConfig) -> Result<MasterKey> {
     let body: serde_json::Value = resp
         .json()
         .await

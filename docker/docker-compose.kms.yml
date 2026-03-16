@@ -36,18 +36,12 @@ services:
         # KV v2 is enabled by default in dev mode on 'secret/', but ensure it exists.
         bao secrets enable -path=secret -version=2 kv 2>/dev/null || true
 
-        echo "==> Generating random 256-bit master key..."
-        MASTER_KEY=$$(head -c 32 /dev/urandom | base64)
-
-        echo "==> Writing master key to secret/arca/master-key..."
-        bao kv put -mount=secret arca/master-key key="$$MASTER_KEY"
-
         echo "==> Creating AppRole auth..."
         bao auth enable approle 2>/dev/null || true
 
         echo "==> Creating arca-kms policy..."
         bao policy write arca-kms - <<'POLICY'
-        path "secret/data/arca/*" { capabilities = ["read"] }
+        path "secret/data/arca/*" { capabilities = ["create", "read", "update"] }
         POLICY
 
         echo "==> Creating arca AppRole..."
@@ -62,16 +56,16 @@ services:
 
         echo ""
         echo "============================================"
-        echo "  OpenBAO KV v2 KMS ready"
+        echo "  OpenBAO KMS initialized"
         echo "============================================"
         echo "  Endpoint:    http://openbao:8200"
         echo "  Root token:  dev-root-token"
         echo "  Secret path: secret/arca/master-key"
-        echo "  Secret field: key"
-        echo "  Master key:  $$MASTER_KEY"
         echo "  AppRole role_id:   $$ROLE_ID"
         echo "  AppRole secret_id: $$SECRET_ID"
         echo "============================================"
+        echo ""
+        echo "  Master key will be created by Arca at startup."
     profiles:
       - kms-init
 
