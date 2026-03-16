@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-03-16
+
 ### Added
 
 - **Streaming archive endpoint** (`POST /admin/archive`): download multiple objects as a tar.gz archive streamed on-the-fly, with no temporary files on the server
@@ -14,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Console: multi-select** with checkboxes, select-all, and floating action bar
 - **Console: batch delete** with recursive directory support and confirmation dialog (warnings for multiple items and recursive directory wipes)
 - **Console: batch download** as streaming tar.gz archive
+- `CHANGELOG.md` with full release history
+- `RELEASING.md` with release procedure checklist
 
 ## [0.4.1] — 2026-03-16
 
@@ -89,7 +93,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/dxc-technology/arca/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/dxc-technology/arca/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/dxc-technology/arca/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/dxc-technology/arca/compare/v0.2.0...v0.3.0
