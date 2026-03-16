@@ -19,8 +19,18 @@ while [[ $# -gt 0 ]]; do
             BUILD=true
             shift
             ;;
+        -h|--help)
+            echo "Usage: bin/screenshots [--build]"
+            echo ""
+            echo "Options:"
+            echo "  --build  Rebuild all images (arca, console, screenshots) first"
+            echo ""
+            echo "Outputs PNG files to documentation/docs/assets/screenshots/."
+            exit 0
+            ;;
         *)
-            echo "Usage: bin/screenshots [--build]" >&2
+            echo "Error: unknown option '$1'" >&2
+            echo "Run 'bin/screenshots --help' for usage." >&2
             exit 1
             ;;
     esac

@@ -11,10 +11,15 @@ cd "$(git rev-parse --show-toplevel)"
 
 for arg in "$@"; do
     case "$arg" in
-        --dev)  export BUILD_TARGET=development ;;
-        *)      echo "Unknown option: $arg" >&2
-                echo "Usage: bin/build [--dev]" >&2
-                exit 1 ;;
+        --dev)      export BUILD_TARGET=development ;;
+        -h|--help)  echo "Usage: bin/build [--dev]"
+                    echo ""
+                    echo "Options:"
+                    echo "  --dev  Build development image (debian-slim, has shell)"
+                    exit 0 ;;
+        *)          echo "Error: unknown option '$arg'" >&2
+                    echo "Run 'bin/build --help' for usage." >&2
+                    exit 1 ;;
     esac
 done
 

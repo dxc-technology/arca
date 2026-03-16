@@ -25,7 +25,6 @@ RUN cargo build --release --workspace 2>/dev/null || true
 
 # Copy real source code
 COPY crates/ crates/
-COPY config/ config/
 
 # Touch source files to invalidate the cached build for our crates only
 RUN touch crates/*/src/*.rs

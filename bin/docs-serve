@@ -5,8 +5,14 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-if [[ $# -gt 0 ]]; then
-    echo "Usage: bin/docs-serve" >&2
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    echo "Usage: bin/docs-serve"
+    echo ""
+    echo "Serve documentation locally with live reload (http://localhost:8000)."
+    exit 0
+elif [[ $# -gt 0 ]]; then
+    echo "Error: unknown option '$1'" >&2
+    echo "Run 'bin/docs-serve --help' for usage." >&2
     exit 1
 fi
 

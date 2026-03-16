@@ -20,6 +20,16 @@ while [[ $# -gt 0 ]]; do
             BUILD=true
             shift
             ;;
+        -h|--help)
+            echo "Usage: bin/perf-test [--build] [<args>]"
+            echo ""
+            echo "Options:"
+            echo "  --build        Rebuild the perf-test image first"
+            echo "  --threads N    Override thread count (passed to perf tool)"
+            echo ""
+            echo "Extra arguments are passed to the performance test tool."
+            exit 0
+            ;;
         *)
             EXTRA_ARGS+=("$1")
             shift

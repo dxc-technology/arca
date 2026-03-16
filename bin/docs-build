@@ -4,4 +4,16 @@ set -euo pipefail
 # Build the documentation site (output to docs/).
 
 cd "$(git rev-parse --show-toplevel)"
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    echo "Usage: bin/docs-build"
+    echo ""
+    echo "Build the mkdocs documentation site (output to docs/)."
+    exit 0
+elif [[ $# -gt 0 ]]; then
+    echo "Error: unknown option '$1'" >&2
+    echo "Run 'bin/docs-build --help' for usage." >&2
+    exit 1
+fi
+
 docker compose -f docker/docker-compose.docs.yml run --rm docs-build

@@ -27,6 +27,15 @@ while [[ $# -gt 0 ]]; do
             PASSLIST_MODE=true
             shift
             ;;
+        -h|--help)
+            echo "Usage: bin/s3-tests [--build] [--passlist] [-- <pytest args>]"
+            echo ""
+            echo "Options:"
+            echo "  --build     Rebuild the s3-tests image first"
+            echo "  --passlist  Run only tests listed in s3-tests/passlist.txt"
+            echo "  -- <args>   Pass extra arguments to pytest"
+            exit 0
+            ;;
         --)
             shift
             EXTRA_ARGS+=("$@")
