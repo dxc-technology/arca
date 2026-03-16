@@ -14,7 +14,7 @@ cd arca
 bin/build
 ```
 
-This builds the production Docker image — a minimal scratch-based container (~8.6 MB) containing only the statically-linked `arca` binary and the default configuration file.
+This builds the production Docker image — a minimal scratch-based container containing only the statically-linked `arca` binary and the default configuration file.
 
 ### Development Image
 
@@ -83,10 +83,10 @@ The binary is written to `build/arca-<arch>` (e.g., `build/arca-arm64`). These a
 
 ## Docker Images
 
-| Build Target | Base | Size | Use Case |
-|-------------|------|------|----------|
-| `production` (default) | `scratch` | ~8.6 MB | Production deployments — minimal attack surface |
-| `development` | `debian:bookworm-slim` | ~80 MB | Debugging — includes shell, coreutils |
+| Build Target | Base | Use Case |
+|-------------|------|----------|
+| `production` (default) | `scratch` | Production deployments — minimal attack surface |
+| `development` | `debian:bookworm-slim` | Debugging — includes shell, coreutils |
 
 Switch between them using `BUILD_TARGET`:
 

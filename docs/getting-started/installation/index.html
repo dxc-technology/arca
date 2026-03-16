@@ -1202,7 +1202,7 @@
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">cd</span><span class="w"> </span>arca
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>bin/build
 </code></pre></div>
-<p>This builds the production Docker image — a minimal scratch-based container (~8.6 MB) containing only the statically-linked <code>arca</code> binary and the default configuration file.</p>
+<p>This builds the production Docker image — a minimal scratch-based container containing only the statically-linked <code>arca</code> binary and the default configuration file.</p>
 <h3 id="development-image">Development Image<a class="headerlink" href="#development-image" title="Permanent link">&para;</a></h3>
 <p>For debugging, build the development image which includes a shell (debian-slim based):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>bin/build<span class="w"> </span>--dev
@@ -1255,7 +1255,6 @@
 <tr>
 <th>Build Target</th>
 <th>Base</th>
-<th>Size</th>
 <th>Use Case</th>
 </tr>
 </thead>
@@ -1263,13 +1262,11 @@
 <tr>
 <td><code>production</code> (default)</td>
 <td><code>scratch</code></td>
-<td>~8.6 MB</td>
 <td>Production deployments — minimal attack surface</td>
 </tr>
 <tr>
 <td><code>development</code></td>
 <td><code>debian:bookworm-slim</code></td>
-<td>~80 MB</td>
 <td>Debugging — includes shell, coreutils</td>
 </tr>
 </tbody>
