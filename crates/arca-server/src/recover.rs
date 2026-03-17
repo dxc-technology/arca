@@ -526,6 +526,7 @@ mod tests {
             created_at: chrono::Utc::now(),
             active: true,
             admin: true,
+            user_id: "root".into(),
         };
         store.put_credential(&cred).await.unwrap();
         drop(store);

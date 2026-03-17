@@ -5,8 +5,11 @@
 //! for concurrent read performance.
 
 mod credential;
+mod grant;
 mod metadata;
 mod migrations;
+mod team;
+pub(crate) mod user;
 
 use std::path::Path;
 

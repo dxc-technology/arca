@@ -147,5 +147,41 @@ pub struct Credential {
     pub description: String,
     pub created_at: DateTime<Utc>,
     pub active: bool,
+    /// Deprecated: use policy-based access control instead.
+    /// Kept for schema compatibility during migration.
     pub admin: bool,
+    /// The user that owns this credential.
+    pub user_id: String,
+}
+
+/// A named user identity that owns credentials.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct User {
+    pub user_id: String,
+    pub username: String,
+    pub description: String,
+    /// Root users have implicit full access to everything.
+    pub is_root: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+/// A team (group) of users that can share grants.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Team {
+    pub team_id: String,
+    pub name: String,
+    pub description: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// A named, reusable IAM-compatible policy document.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Grant {
+    pub grant_id: String,
+    pub name: String,
+    pub description: String,
+    /// The JSON policy document (stored as parsed PolicyDocument).
+    pub document: crate::policy::PolicyDocument,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }

@@ -95,6 +95,87 @@ const MIGRATIONS: &[Migration] = &[
                   PRIMARY KEY (bucket, config_key)
               )",
     },
+    Migration {
+        version: 8,
+        description: "Add RBAC: users, teams, grants, ownership",
+        sql: "
+            CREATE TABLE users (
+                user_id     TEXT PRIMARY KEY NOT NULL,
+                username    TEXT NOT NULL UNIQUE,
+                description TEXT NOT NULL DEFAULT '',
+                is_root     INTEGER NOT NULL DEFAULT 0,
+                created_at  TEXT NOT NULL
+            );
+
+            CREATE TABLE teams (
+                team_id     TEXT PRIMARY KEY NOT NULL,
+                name        TEXT NOT NULL UNIQUE,
+                description TEXT NOT NULL DEFAULT '',
+                created_at  TEXT NOT NULL
+            );
+
+            CREATE TABLE team_members (
+                team_id TEXT NOT NULL REFERENCES teams(team_id),
+                user_id TEXT NOT NULL REFERENCES users(user_id),
+                PRIMARY KEY (team_id, user_id)
+            );
+
+            CREATE TABLE grants (
+                grant_id    TEXT PRIMARY KEY NOT NULL,
+                name        TEXT NOT NULL UNIQUE,
+                description TEXT NOT NULL DEFAULT '',
+                document    TEXT NOT NULL,
+                created_at  TEXT NOT NULL,
+                updated_at  TEXT NOT NULL
+            );
+
+            CREATE TABLE user_grants (
+                user_id  TEXT NOT NULL REFERENCES users(user_id),
+                grant_id TEXT NOT NULL REFERENCES grants(grant_id),
+                PRIMARY KEY (user_id, grant_id)
+            );
+
+            CREATE TABLE team_grants (
+                team_id  TEXT NOT NULL REFERENCES teams(team_id),
+                grant_id TEXT NOT NULL REFERENCES grants(grant_id),
+                PRIMARY KEY (team_id, grant_id)
+            );
+
+            -- Root user (deterministic ID)
+            INSERT INTO users (user_id, username, description, is_root, created_at)
+            VALUES ('root', 'root', 'System root user', 1, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'));
+
+            -- Built-in grants
+            INSERT INTO grants (grant_id, name, description, document, created_at, updated_at)
+            VALUES ('grant-administrator-access', 'AdministratorAccess',
+                'Full access to all operations',
+                '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"*\"],\"Resource\":[\"*\"]}]}',
+                strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'));
+
+            INSERT INTO grants (grant_id, name, description, document, created_at, updated_at)
+            VALUES ('grant-s3-full-access', 'S3FullAccess',
+                'Full access to S3 operations',
+                '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:*\"],\"Resource\":[\"*\"]}]}',
+                strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'));
+
+            INSERT INTO grants (grant_id, name, description, document, created_at, updated_at)
+            VALUES ('grant-s3-read-only', 'S3ReadOnlyAccess',
+                'Read-only access to S3 operations',
+                '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:ListBucket\",\"s3:ListAllMyBuckets\",\"s3:GetBucketLocation\",\"s3:GetBucketEncryption\"],\"Resource\":[\"*\"]}]}',
+                strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'));
+
+            -- Attach AdministratorAccess to root user
+            INSERT INTO user_grants (user_id, grant_id)
+            VALUES ('root', 'grant-administrator-access');
+
+            -- Ownership tracking
+            ALTER TABLE buckets ADD COLUMN owner TEXT NOT NULL DEFAULT 'root';
+            ALTER TABLE objects ADD COLUMN owner TEXT NOT NULL DEFAULT 'root';
+
+            -- Link credentials to users (existing creds become root's)
+            ALTER TABLE credentials ADD COLUMN user_id TEXT NOT NULL DEFAULT 'root';
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -168,7 +249,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -210,12 +291,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
 
-        // Seven migration records
+        // Eight migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 7);
+        assert_eq!(count, 8);
     }
 }

@@ -224,7 +224,8 @@ pub async fn create_credential(
     State(state): State<AppState>,
     Json(body): Json<CreateCredentialRequest>,
 ) -> Result<impl IntoResponse, AdminError> {
-    let cred = arca_core::credential::generate_credential(&body.description, body.admin);
+    // TODO(phase16): use calling user's user_id instead of "root"
+    let cred = arca_core::credential::generate_credential(&body.description, body.admin, "root");
 
     state
         .credentials

@@ -15,8 +15,8 @@ impl CredentialStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 conn.execute(
-                    "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, admin)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, admin, user_id)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                     params![
                         cred.access_key_id,
                         cred.secret_access_key,
@@ -24,6 +24,7 @@ impl CredentialStore for SqliteStore {
                         cred.created_at.to_rfc3339(),
                         cred.active as i32,
                         cred.admin as i32,
+                        cred.user_id,
                     ],
                 )?;
                 Ok(())
@@ -40,7 +41,7 @@ impl CredentialStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT access_key_id, secret_access_key, description, created_at, active, admin
+                    "SELECT access_key_id, secret_access_key, description, created_at, active, admin, user_id
                      FROM credentials WHERE access_key_id = ?1",
                 )?;
                 let result = stmt.query_row(params![key], |row| {
@@ -60,7 +61,7 @@ impl CredentialStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT access_key_id, secret_access_key, description, created_at, active, admin
+                    "SELECT access_key_id, secret_access_key, description, created_at, active, admin, user_id
                      FROM credentials ORDER BY created_at",
                 )?;
                 let rows = stmt.query_map([], |row| Ok(row_to_credential(row)))?;
@@ -105,7 +106,7 @@ impl CredentialStore for SqliteStore {
 
 /// Converts a SQLite row to a `Credential`.
 ///
-/// Expects columns: access_key_id, secret_access_key, description, created_at, active, admin.
+/// Expects columns: access_key_id, secret_access_key, description, created_at, active, admin, user_id.
 fn row_to_credential(row: &rusqlite::Row) -> Result<Credential, rusqlite::Error> {
     let created_at_str: String = row.get(3)?;
     let active_int: i32 = row.get(4)?;
@@ -128,6 +129,7 @@ fn row_to_credential(row: &rusqlite::Row) -> Result<Credential, rusqlite::Error>
         created_at,
         active: active_int != 0,
         admin: admin_int != 0,
+        user_id: row.get(6)?,
     })
 }
 
@@ -150,6 +152,7 @@ mod tests {
             created_at: Utc::now(),
             active: true,
             admin: true,
+            user_id: "root".to_string(),
         };
 
         store.put_credential(&cred).await.unwrap();
@@ -193,6 +196,7 @@ mod tests {
                 created_at: Utc::now(),
                 active: true,
                 admin: false,
+                user_id: "root".to_string(),
             };
             store.put_credential(&cred).await.unwrap();
         }
@@ -211,6 +215,7 @@ mod tests {
             created_at: Utc::now(),
             active: true,
             admin: false,
+            user_id: "root".to_string(),
         };
         store.put_credential(&cred).await.unwrap();
 
@@ -238,6 +243,7 @@ mod tests {
             created_at: Utc::now(),
             active: true,
             admin: false,
+            user_id: "root".to_string(),
         };
         store.put_credential(&cred).await.unwrap();
 
@@ -256,6 +262,7 @@ mod tests {
             created_at: Utc::now(),
             active: true,
             admin: false,
+            user_id: "root".to_string(),
         };
         let inactive = Credential {
             access_key_id: "INACTIVE".to_string(),
@@ -264,6 +271,7 @@ mod tests {
             created_at: Utc::now(),
             active: false,
             admin: false,
+            user_id: "root".to_string(),
         };
 
         store.put_credential(&active).await.unwrap();
@@ -284,6 +292,7 @@ mod tests {
             created_at: Utc::now(),
             active: true,
             admin: true,
+            user_id: "root".to_string(),
         };
         let user_cred = Credential {
             access_key_id: "USER1".to_string(),
@@ -292,6 +301,7 @@ mod tests {
             created_at: Utc::now(),
             active: true,
             admin: false,
+            user_id: "root".to_string(),
         };
 
         store.put_credential(&admin_cred).await.unwrap();
@@ -315,6 +325,7 @@ mod tests {
             created_at: Utc::now(),
             active: true,
             admin: true,
+            user_id: "root".to_string(),
         };
         let user_cred = Credential {
             access_key_id: "USER2".to_string(),
@@ -323,6 +334,7 @@ mod tests {
             created_at: Utc::now(),
             active: true,
             admin: false,
+            user_id: "root".to_string(),
         };
 
         store.put_credential(&admin_cred).await.unwrap();

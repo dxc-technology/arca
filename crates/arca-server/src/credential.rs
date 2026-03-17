@@ -31,11 +31,12 @@ pub async fn ensure_root_credential(
                 created_at: chrono::Utc::now(),
                 active: true,
                 admin: true,
+                user_id: "root".to_string(),
             }
         }
         _ => {
             tracing::info!("No credentials found, generating root credential");
-            let cred = generate_credential("auto-generated root credential", true);
+            let cred = generate_credential("auto-generated root credential", true, "root");
 
             println!();
             println!("========================================");

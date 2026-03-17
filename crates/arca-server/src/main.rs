@@ -195,7 +195,8 @@ async fn main() -> Result<()> {
 
             match action {
                 CredentialAction::Add { description, admin } => {
-                    let cred = credential::generate_credential(&description, admin);
+                    // TODO(phase16): accept --user flag instead of defaulting to "root"
+                    let cred = credential::generate_credential(&description, admin, "root");
                     store.put_credential(&cred).await?;
 
                     println!("Credential created:");
