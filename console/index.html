@@ -1150,36 +1150,92 @@
 
             <!-- Grants tab -->
             <div x-show="activeTab === 'grants'">
-              <div class="flex items-center justify-between mb-4">
-                <span class="text-sm text-vault-muted" x-text="grants.length + ' grant' + (grants.length !== 1 ? 's' : '')"></span>
-                <button @click="openAttachGrant()" class="px-3 py-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 text-sm font-medium hover:bg-vault-accent/20 transition">+ Attach Grant</button>
-              </div>
-              <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <template x-for="g in grants" :key="g.grant_id">
-                  <div class="glass rounded-xl p-4">
-                    <div class="flex items-center justify-between mb-2">
-                      <a :href="'#/grants/' + g.grant_id" class="font-medium text-sm text-vault-text hover:text-vault-accent transition" x-text="g.name"></a>
-                      <button @click="confirmDetachGrant(g)" class="p-1 rounded hover:bg-red-500/10 text-vault-muted hover:text-red-400 transition" title="Detach"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
-                    </div>
-                    <p class="text-xs text-vault-muted" x-text="g.description || 'No description'"></p>
+              <div class="flex gap-3 items-stretch" style="min-height:280px">
+                <!-- Assigned (left) -->
+                <div class="flex-1 flex flex-col">
+                  <div class="text-xs text-vault-muted mb-2 font-medium uppercase tracking-wide">Attached Grants</div>
+                  <div class="glass rounded-xl p-2 flex-1 overflow-y-auto" @dragover.prevent @drop="grantsDrop('right', $event)">
+                    <template x-for="g in grantsAssigned" :key="g.grant_id">
+                      <div @click="grantsToggle('right', g.grant_id, $event)"
+                           @dblclick="grantsDblClick('right', g.grant_id)"
+                           draggable="true" @dragstart="grantsDragStart('right', g.grant_id, $event)"
+                           :class="grantsSelRight.includes(g.grant_id) ? 'bg-vault-accent/20 border-vault-accent/50' : 'hover:bg-white/5 border-transparent'"
+                           class="px-3 py-2 text-sm rounded-lg cursor-pointer border transition select-none flex items-center justify-between">
+                        <span x-text="g.name"></span>
+                      </div>
+                    </template>
+                    <div x-show="grantsAssigned.length === 0" class="text-vault-muted/50 text-xs text-center py-6">No grants attached</div>
                   </div>
-                </template>
+                </div>
+                <!-- Arrows -->
+                <div class="flex flex-col items-center justify-center gap-1.5 px-1">
+                  <button @click="grantsMoveRight()" :disabled="grantsSelLeft.length === 0 || grantsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Add selected"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg></button>
+                  <button @click="grantsMoveAllRight()" :disabled="grantsAvailable.length === 0 || grantsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Add all"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m18.75 4.5-7.5 7.5 7.5 7.5m-6-15-7.5 7.5 7.5 7.5"/></svg></button>
+                  <button @click="grantsMoveLeft()" :disabled="grantsSelRight.length === 0 || grantsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Remove selected"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"/></svg></button>
+                  <button @click="grantsMoveAllLeft()" :disabled="grantsAssigned.length === 0 || grantsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Remove all"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m5.25 4.5 7.5 7.5-7.5 7.5m6-15 7.5 7.5-7.5 7.5"/></svg></button>
+                </div>
+                <!-- Available (right) -->
+                <div class="flex-1 flex flex-col">
+                  <div class="text-xs text-vault-muted mb-2 font-medium uppercase tracking-wide">Available Grants</div>
+                  <div class="glass rounded-xl p-2 flex-1 overflow-y-auto" @dragover.prevent @drop="grantsDrop('left', $event)">
+                    <template x-for="g in grantsAvailable" :key="g.grant_id">
+                      <div @click="grantsToggle('left', g.grant_id, $event)"
+                           @dblclick="grantsDblClick('left', g.grant_id)"
+                           draggable="true" @dragstart="grantsDragStart('left', g.grant_id, $event)"
+                           :class="grantsSelLeft.includes(g.grant_id) ? 'bg-vault-accent/20 border-vault-accent/50' : 'hover:bg-white/5 border-transparent'"
+                           class="px-3 py-2 text-sm rounded-lg cursor-pointer border transition select-none flex items-center justify-between">
+                        <span x-text="g.name"></span>
+                      </div>
+                    </template>
+                    <div x-show="grantsAvailable.length === 0" class="text-vault-muted/50 text-xs text-center py-6">No grants available</div>
+                  </div>
+                </div>
               </div>
-              <div x-show="grants.length === 0" class="text-vault-muted text-sm text-center py-8">No grants directly attached.</div>
             </div>
 
             <!-- Teams tab -->
             <div x-show="activeTab === 'teams'">
-              <span class="text-sm text-vault-muted mb-4 block" x-text="teams.length + ' team' + (teams.length !== 1 ? 's' : '')"></span>
-              <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <template x-for="t in teams" :key="t.team_id">
-                  <a :href="'#/teams/' + t.team_id" class="glass glass-hover rounded-xl p-4 block no-underline text-inherit">
-                    <span class="font-medium text-sm text-vault-text" x-text="t.name"></span>
-                    <p class="text-xs text-vault-muted mt-1" x-text="t.description || 'No description'"></p>
-                  </a>
-                </template>
+              <div class="flex gap-3 items-stretch" style="min-height:280px">
+                <!-- Assigned (left) -->
+                <div class="flex-1 flex flex-col">
+                  <div class="text-xs text-vault-muted mb-2 font-medium uppercase tracking-wide">Member Of</div>
+                  <div class="glass rounded-xl p-2 flex-1 overflow-y-auto" @dragover.prevent @drop="teamsDrop('right', $event)">
+                    <template x-for="t in teamsAssigned" :key="t.team_id">
+                      <div @click="teamsToggle('right', t.team_id, $event)"
+                           @dblclick="teamsDblClick('right', t.team_id)"
+                           draggable="true" @dragstart="teamsDragStart('right', t.team_id, $event)"
+                           :class="teamsSelRight.includes(t.team_id) ? 'bg-vault-accent/20 border-vault-accent/50' : 'hover:bg-white/5 border-transparent'"
+                           class="px-3 py-2 text-sm rounded-lg cursor-pointer border transition select-none flex items-center justify-between">
+                        <span x-text="t.name"></span>
+                      </div>
+                    </template>
+                    <div x-show="teamsAssigned.length === 0" class="text-vault-muted/50 text-xs text-center py-6">Not in any team</div>
+                  </div>
+                </div>
+                <!-- Arrows -->
+                <div class="flex flex-col items-center justify-center gap-1.5 px-1">
+                  <button @click="teamsMoveRight()" :disabled="teamsSelLeft.length === 0 || teamsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Add selected"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg></button>
+                  <button @click="teamsMoveAllRight()" :disabled="teamsAvailable.length === 0 || teamsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Add all"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m18.75 4.5-7.5 7.5 7.5 7.5m-6-15-7.5 7.5 7.5 7.5"/></svg></button>
+                  <button @click="teamsMoveLeft()" :disabled="teamsSelRight.length === 0 || teamsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Remove selected"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"/></svg></button>
+                  <button @click="teamsMoveAllLeft()" :disabled="teamsAssigned.length === 0 || teamsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Remove all"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m5.25 4.5 7.5 7.5-7.5 7.5m6-15 7.5 7.5-7.5 7.5"/></svg></button>
+                </div>
+                <!-- Available (right) -->
+                <div class="flex-1 flex flex-col">
+                  <div class="text-xs text-vault-muted mb-2 font-medium uppercase tracking-wide">Available Teams</div>
+                  <div class="glass rounded-xl p-2 flex-1 overflow-y-auto" @dragover.prevent @drop="teamsDrop('left', $event)">
+                    <template x-for="t in teamsAvailable" :key="t.team_id">
+                      <div @click="teamsToggle('left', t.team_id, $event)"
+                           @dblclick="teamsDblClick('left', t.team_id)"
+                           draggable="true" @dragstart="teamsDragStart('left', t.team_id, $event)"
+                           :class="teamsSelLeft.includes(t.team_id) ? 'bg-vault-accent/20 border-vault-accent/50' : 'hover:bg-white/5 border-transparent'"
+                           class="px-3 py-2 text-sm rounded-lg cursor-pointer border transition select-none flex items-center justify-between">
+                        <span x-text="t.name"></span>
+                      </div>
+                    </template>
+                    <div x-show="teamsAvailable.length === 0" class="text-vault-muted/50 text-xs text-center py-6">No teams available</div>
+                  </div>
+                </div>
               </div>
-              <div x-show="teams.length === 0" class="text-vault-muted text-sm text-center py-8">Not a member of any team.</div>
             </div>
 
             <!-- Effective grants tab -->
@@ -1263,36 +1319,6 @@
             </div>
           </div>
 
-          <!-- Attach grant modal -->
-          <div x-show="showAttachGrantModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" x-cloak>
-            <div class="glass rounded-2xl p-6 w-full max-w-md mx-4" @click.outside="showAttachGrantModal = false">
-              <h3 class="text-lg font-semibold text-vault-text mb-4">Attach Grant</h3>
-              <select x-model="selectedGrantId" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent mb-4">
-                <option value="">Select a grant...</option>
-                <template x-for="g in availableGrants" :key="g.grant_id">
-                  <option :value="g.grant_id" x-text="g.name"></option>
-                </template>
-              </select>
-              <p x-show="attachGrantError" class="text-red-400 text-sm mb-4" x-text="attachGrantError"></p>
-              <div class="flex justify-end gap-3">
-                <button @click="showAttachGrantModal = false" class="px-4 py-2 text-sm text-vault-muted hover:text-vault-text">Cancel</button>
-                <button @click="attachGrant()" :disabled="!selectedGrantId" class="bg-vault-accent text-vault-bg font-medium rounded-lg px-4 py-2 text-sm hover:bg-vault-accent/90 disabled:opacity-50">Attach</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Detach grant modal -->
-          <div x-show="showDetachGrantModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" x-cloak>
-            <div class="glass rounded-2xl p-6 w-full max-w-md mx-4" @click.outside="showDetachGrantModal = false">
-              <h3 class="text-lg font-semibold text-vault-text mb-2">Detach Grant</h3>
-              <p class="text-vault-muted text-sm mb-4">Remove grant <strong class="text-vault-text" x-text="detachGrantName"></strong> from this user?</p>
-              <p x-show="detachGrantError" class="text-red-400 text-sm mb-4" x-text="detachGrantError"></p>
-              <div class="flex justify-end gap-3">
-                <button @click="showDetachGrantModal = false" class="px-4 py-2 text-sm text-vault-muted hover:text-vault-text">Cancel</button>
-                <button @click="performDetachGrant()" class="bg-red-500 text-white font-medium rounded-lg px-4 py-2 text-sm hover:bg-red-600">Detach</button>
-              </div>
-            </div>
-          </div>
         </div>
 
         <!-- ==================== TEAMS LIST ==================== -->
@@ -1376,103 +1402,91 @@
 
             <!-- Members tab -->
             <div x-show="activeTab === 'members'">
-              <div class="flex items-center justify-between mb-4">
-                <span class="text-sm text-vault-muted" x-text="members.length + ' member' + (members.length !== 1 ? 's' : '')"></span>
-                <button @click="openAddMember()" class="px-3 py-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 text-sm font-medium hover:bg-vault-accent/20 transition">+ Add Member</button>
-              </div>
-              <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <template x-for="m in members" :key="m.user_id">
-                  <div class="glass rounded-xl p-4">
-                    <div class="flex items-center justify-between">
-                      <a :href="'#/users/' + m.user_id" class="font-medium text-sm text-vault-text hover:text-vault-accent transition" x-text="m.username"></a>
-                      <button @click="confirmRemoveMember(m)" class="p-1 rounded hover:bg-red-500/10 text-vault-muted hover:text-red-400 transition" title="Remove"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
-                    </div>
-                    <p class="text-xs text-vault-muted mt-1" x-text="m.description || 'No description'"></p>
+              <div class="flex gap-3 items-stretch" style="min-height:280px">
+                <!-- Assigned (left) -->
+                <div class="flex-1 flex flex-col">
+                  <div class="text-xs text-vault-muted mb-2 font-medium uppercase tracking-wide">Team Members</div>
+                  <div class="glass rounded-xl p-2 flex-1 overflow-y-auto" @dragover.prevent @drop="membersDrop('right', $event)">
+                    <template x-for="m in membersAssigned" :key="m.user_id">
+                      <div @click="membersToggle('right', m.user_id, $event)"
+                           @dblclick="membersDblClick('right', m.user_id)"
+                           draggable="true" @dragstart="membersDragStart('right', m.user_id, $event)"
+                           :class="membersSelRight.includes(m.user_id) ? 'bg-vault-accent/20 border-vault-accent/50' : 'hover:bg-white/5 border-transparent'"
+                           class="px-3 py-2 text-sm rounded-lg cursor-pointer border transition select-none flex items-center justify-between">
+                        <span x-text="m.username"></span>
+                      </div>
+                    </template>
+                    <div x-show="membersAssigned.length === 0" class="text-vault-muted/50 text-xs text-center py-6">No members yet</div>
                   </div>
-                </template>
+                </div>
+                <!-- Arrows -->
+                <div class="flex flex-col items-center justify-center gap-1.5 px-1">
+                  <button @click="membersMoveRight()" :disabled="membersSelLeft.length === 0 || membersMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Add selected"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg></button>
+                  <button @click="membersMoveAllRight()" :disabled="membersAvailable.length === 0 || membersMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Add all"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m18.75 4.5-7.5 7.5 7.5 7.5m-6-15-7.5 7.5 7.5 7.5"/></svg></button>
+                  <button @click="membersMoveLeft()" :disabled="membersSelRight.length === 0 || membersMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Remove selected"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"/></svg></button>
+                  <button @click="membersMoveAllLeft()" :disabled="membersAssigned.length === 0 || membersMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Remove all"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m5.25 4.5 7.5 7.5-7.5 7.5m6-15 7.5 7.5-7.5 7.5"/></svg></button>
+                </div>
+                <!-- Available (right) -->
+                <div class="flex-1 flex flex-col">
+                  <div class="text-xs text-vault-muted mb-2 font-medium uppercase tracking-wide">Available Users</div>
+                  <div class="glass rounded-xl p-2 flex-1 overflow-y-auto" @dragover.prevent @drop="membersDrop('left', $event)">
+                    <template x-for="m in membersAvailable" :key="m.user_id">
+                      <div @click="membersToggle('left', m.user_id, $event)"
+                           @dblclick="membersDblClick('left', m.user_id)"
+                           draggable="true" @dragstart="membersDragStart('left', m.user_id, $event)"
+                           :class="membersSelLeft.includes(m.user_id) ? 'bg-vault-accent/20 border-vault-accent/50' : 'hover:bg-white/5 border-transparent'"
+                           class="px-3 py-2 text-sm rounded-lg cursor-pointer border transition select-none flex items-center justify-between">
+                        <span x-text="m.username"></span>
+                      </div>
+                    </template>
+                    <div x-show="membersAvailable.length === 0" class="text-vault-muted/50 text-xs text-center py-6">No users available</div>
+                  </div>
+                </div>
               </div>
-              <div x-show="members.length === 0" class="text-vault-muted text-sm text-center py-8">No members yet.</div>
             </div>
 
             <!-- Grants tab -->
             <div x-show="activeTab === 'grants'">
-              <div class="flex items-center justify-between mb-4">
-                <span class="text-sm text-vault-muted" x-text="grants.length + ' grant' + (grants.length !== 1 ? 's' : '')"></span>
-                <button @click="openAttachGrant()" class="px-3 py-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 text-sm font-medium hover:bg-vault-accent/20 transition">+ Attach Grant</button>
-              </div>
-              <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <template x-for="g in grants" :key="g.grant_id">
-                  <div class="glass rounded-xl p-4">
-                    <div class="flex items-center justify-between mb-2">
-                      <a :href="'#/grants/' + g.grant_id" class="font-medium text-sm text-vault-text hover:text-vault-accent transition" x-text="g.name"></a>
-                      <button @click="confirmDetachGrant(g)" class="p-1 rounded hover:bg-red-500/10 text-vault-muted hover:text-red-400 transition" title="Detach"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
-                    </div>
-                    <p class="text-xs text-vault-muted" x-text="g.description || 'No description'"></p>
+              <div class="flex gap-3 items-stretch" style="min-height:280px">
+                <!-- Assigned (left) -->
+                <div class="flex-1 flex flex-col">
+                  <div class="text-xs text-vault-muted mb-2 font-medium uppercase tracking-wide">Attached Grants</div>
+                  <div class="glass rounded-xl p-2 flex-1 overflow-y-auto" @dragover.prevent @drop="grantsDrop('right', $event)">
+                    <template x-for="g in grantsAssigned" :key="g.grant_id">
+                      <div @click="grantsToggle('right', g.grant_id, $event)"
+                           @dblclick="grantsDblClick('right', g.grant_id)"
+                           draggable="true" @dragstart="grantsDragStart('right', g.grant_id, $event)"
+                           :class="grantsSelRight.includes(g.grant_id) ? 'bg-vault-accent/20 border-vault-accent/50' : 'hover:bg-white/5 border-transparent'"
+                           class="px-3 py-2 text-sm rounded-lg cursor-pointer border transition select-none flex items-center justify-between">
+                        <span x-text="g.name"></span>
+                      </div>
+                    </template>
+                    <div x-show="grantsAssigned.length === 0" class="text-vault-muted/50 text-xs text-center py-6">No grants attached</div>
                   </div>
-                </template>
-              </div>
-              <div x-show="grants.length === 0" class="text-vault-muted text-sm text-center py-8">No grants attached.</div>
-            </div>
-          </div>
-
-          <!-- Add member modal -->
-          <div x-show="showAddMemberModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" x-cloak>
-            <div class="glass rounded-2xl p-6 w-full max-w-md mx-4" @click.outside="showAddMemberModal = false">
-              <h3 class="text-lg font-semibold text-vault-text mb-4">Add Member</h3>
-              <select x-model="selectedUserId" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent mb-4">
-                <option value="">Select a user...</option>
-                <template x-for="u in availableUsers" :key="u.user_id">
-                  <option :value="u.user_id" x-text="u.username"></option>
-                </template>
-              </select>
-              <p x-show="addMemberError" class="text-red-400 text-sm mb-4" x-text="addMemberError"></p>
-              <div class="flex justify-end gap-3">
-                <button @click="showAddMemberModal = false" class="px-4 py-2 text-sm text-vault-muted hover:text-vault-text">Cancel</button>
-                <button @click="addMember()" :disabled="!selectedUserId" class="bg-vault-accent text-vault-bg font-medium rounded-lg px-4 py-2 text-sm hover:bg-vault-accent/90 disabled:opacity-50">Add</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Remove member modal -->
-          <div x-show="showRemoveMemberModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" x-cloak>
-            <div class="glass rounded-2xl p-6 w-full max-w-md mx-4" @click.outside="showRemoveMemberModal = false">
-              <h3 class="text-lg font-semibold text-vault-text mb-2">Remove Member</h3>
-              <p class="text-vault-muted text-sm mb-4">Remove <strong class="text-vault-text" x-text="removeMemberUser?.username"></strong> from this team?</p>
-              <p x-show="removeMemberError" class="text-red-400 text-sm mb-4" x-text="removeMemberError"></p>
-              <div class="flex justify-end gap-3">
-                <button @click="showRemoveMemberModal = false" class="px-4 py-2 text-sm text-vault-muted hover:text-vault-text">Cancel</button>
-                <button @click="performRemoveMember()" class="bg-red-500 text-white font-medium rounded-lg px-4 py-2 text-sm hover:bg-red-600">Remove</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Attach grant modal -->
-          <div x-show="showAttachGrantModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" x-cloak>
-            <div class="glass rounded-2xl p-6 w-full max-w-md mx-4" @click.outside="showAttachGrantModal = false">
-              <h3 class="text-lg font-semibold text-vault-text mb-4">Attach Grant</h3>
-              <select x-model="selectedGrantId" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent mb-4">
-                <option value="">Select a grant...</option>
-                <template x-for="g in availableGrants" :key="g.grant_id">
-                  <option :value="g.grant_id" x-text="g.name"></option>
-                </template>
-              </select>
-              <p x-show="attachGrantError" class="text-red-400 text-sm mb-4" x-text="attachGrantError"></p>
-              <div class="flex justify-end gap-3">
-                <button @click="showAttachGrantModal = false" class="px-4 py-2 text-sm text-vault-muted hover:text-vault-text">Cancel</button>
-                <button @click="attachGrant()" :disabled="!selectedGrantId" class="bg-vault-accent text-vault-bg font-medium rounded-lg px-4 py-2 text-sm hover:bg-vault-accent/90 disabled:opacity-50">Attach</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Detach grant modal -->
-          <div x-show="showDetachGrantModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" x-cloak>
-            <div class="glass rounded-2xl p-6 w-full max-w-md mx-4" @click.outside="showDetachGrantModal = false">
-              <h3 class="text-lg font-semibold text-vault-text mb-2">Detach Grant</h3>
-              <p class="text-vault-muted text-sm mb-4">Remove grant <strong class="text-vault-text" x-text="detachGrantName"></strong> from this team?</p>
-              <p x-show="detachGrantError" class="text-red-400 text-sm mb-4" x-text="detachGrantError"></p>
-              <div class="flex justify-end gap-3">
-                <button @click="showDetachGrantModal = false" class="px-4 py-2 text-sm text-vault-muted hover:text-vault-text">Cancel</button>
-                <button @click="performDetachGrant()" class="bg-red-500 text-white font-medium rounded-lg px-4 py-2 text-sm hover:bg-red-600">Detach</button>
+                </div>
+                <!-- Arrows -->
+                <div class="flex flex-col items-center justify-center gap-1.5 px-1">
+                  <button @click="grantsMoveRight()" :disabled="grantsSelLeft.length === 0 || grantsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Add selected"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg></button>
+                  <button @click="grantsMoveAllRight()" :disabled="grantsAvailable.length === 0 || grantsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Add all"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m18.75 4.5-7.5 7.5 7.5 7.5m-6-15-7.5 7.5 7.5 7.5"/></svg></button>
+                  <button @click="grantsMoveLeft()" :disabled="grantsSelRight.length === 0 || grantsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Remove selected"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"/></svg></button>
+                  <button @click="grantsMoveAllLeft()" :disabled="grantsAssigned.length === 0 || grantsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Remove all"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m5.25 4.5 7.5 7.5-7.5 7.5m6-15 7.5 7.5-7.5 7.5"/></svg></button>
+                </div>
+                <!-- Available (right) -->
+                <div class="flex-1 flex flex-col">
+                  <div class="text-xs text-vault-muted mb-2 font-medium uppercase tracking-wide">Available Grants</div>
+                  <div class="glass rounded-xl p-2 flex-1 overflow-y-auto" @dragover.prevent @drop="grantsDrop('left', $event)">
+                    <template x-for="g in grantsAvailable" :key="g.grant_id">
+                      <div @click="grantsToggle('left', g.grant_id, $event)"
+                           @dblclick="grantsDblClick('left', g.grant_id)"
+                           draggable="true" @dragstart="grantsDragStart('left', g.grant_id, $event)"
+                           :class="grantsSelLeft.includes(g.grant_id) ? 'bg-vault-accent/20 border-vault-accent/50' : 'hover:bg-white/5 border-transparent'"
+                           class="px-3 py-2 text-sm rounded-lg cursor-pointer border transition select-none flex items-center justify-between">
+                        <span x-text="g.name"></span>
+                      </div>
+                    </template>
+                    <div x-show="grantsAvailable.length === 0" class="text-vault-muted/50 text-xs text-center py-6">No grants available</div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

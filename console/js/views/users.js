@@ -83,8 +83,6 @@ export function userDetailView() {
     userId: '',
     user: null,
     credentials: [],
-    grants: [],
-    teams: [],
     effectiveGrants: [],
     loading: true,
     activeTab: 'credentials',
@@ -103,17 +101,25 @@ export function userDetailView() {
     deleteCredId: '',
     deleteCredError: '',
 
-    // Grant attachment
-    showAttachGrantModal: false,
-    allGrants: [],
-    selectedGrantId: '',
-    attachGrantError: '',
+    // Teams shuttle
+    teamsAll: [],
+    teamsAssignedIds: [],
+    teamsSelLeft: [],
+    teamsSelRight: [],
+    teamsLastLeft: null,
+    teamsLastRight: null,
+    teamsDragData: null,
+    teamsMoving: false,
 
-    // Grant detachment
-    showDetachGrantModal: false,
-    detachGrantId: '',
-    detachGrantName: '',
-    detachGrantError: '',
+    // Grants shuttle
+    grantsAll: [],
+    grantsAssignedIds: [],
+    grantsSelLeft: [],
+    grantsSelRight: [],
+    grantsLastLeft: null,
+    grantsLastRight: null,
+    grantsDragData: null,
+    grantsMoving: false,
 
     async load() {
       const hash = window.location.hash || '';
@@ -122,18 +128,26 @@ export function userDetailView() {
       if (!this.userId) { this.loading = false; return; }
       this.loading = true;
       try {
-        const [user, credentials, grants, teams, effective] = await Promise.allSettled([
+        const [user, credentials, grants, teams, effective, allTeams, allGrants] = await Promise.allSettled([
           api.adminGet('/users/' + this.userId),
           api.adminGet('/users/' + this.userId + '/credentials'),
           api.adminGet('/users/' + this.userId + '/grants'),
           api.adminGet('/users/' + this.userId + '/teams'),
           api.adminGet('/users/' + this.userId + '/effective-grants'),
+          api.adminGet('/teams'),
+          api.adminGet('/grants'),
         ]);
         this.user = user.status === 'fulfilled' ? user.value : null;
         this.credentials = credentials.status === 'fulfilled' ? credentials.value : [];
-        this.grants = grants.status === 'fulfilled' ? grants.value : [];
-        this.teams = teams.status === 'fulfilled' ? teams.value : [];
         this.effectiveGrants = effective.status === 'fulfilled' ? effective.value : [];
+        // Teams shuttle
+        this.teamsAll = allTeams.status === 'fulfilled' ? allTeams.value : [];
+        const teamsList = teams.status === 'fulfilled' ? teams.value : [];
+        this.teamsAssignedIds = teamsList.map(t => t.team_id);
+        // Grants shuttle
+        this.grantsAll = allGrants.status === 'fulfilled' ? allGrants.value : [];
+        const grantsList = grants.status === 'fulfilled' ? grants.value : [];
+        this.grantsAssignedIds = grantsList.map(g => g.grant_id);
       } catch {
         this.user = null;
       }
@@ -198,71 +212,224 @@ export function userDetailView() {
       }
     },
 
-    // -- Grants --
+    // -- Teams shuttle --
 
-    async openAttachGrant() {
-      this.attachGrantError = '';
-      this.selectedGrantId = '';
-      try {
-        this.allGrants = await api.adminGet('/grants');
-      } catch {
-        this.allGrants = [];
-      }
-      this.showAttachGrantModal = true;
+    get teamsAvailable() {
+      const ids = new Set(this.teamsAssignedIds);
+      return this.teamsAll.filter(t => !ids.has(t.team_id));
     },
 
-    get availableGrants() {
-      const attached = new Set(this.grants.map(g => g.grant_id));
-      return this.allGrants.filter(g => !attached.has(g.grant_id));
+    get teamsAssigned() {
+      const ids = new Set(this.teamsAssignedIds);
+      return this.teamsAll.filter(t => ids.has(t.team_id));
     },
 
-    async attachGrant() {
-      this.attachGrantError = '';
-      if (!this.selectedGrantId) return;
-      try {
-        const resp = await api.adminPut('/users/' + this.userId + '/grants/' + this.selectedGrantId);
-        if (!resp.ok) {
-          const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+    teamsToggle(side, id, event) {
+      const sel = side === 'left' ? this.teamsSelLeft : this.teamsSelRight;
+      const items = side === 'left' ? this.teamsAvailable : this.teamsAssigned;
+      const lastKey = side === 'left' ? 'teamsLastLeft' : 'teamsLastRight';
+      const ids = items.map(i => i.team_id);
+
+      if (event.shiftKey && this[lastKey] !== null) {
+        const start = ids.indexOf(this[lastKey]);
+        const end = ids.indexOf(id);
+        if (start >= 0 && end >= 0) {
+          const range = ids.slice(Math.min(start, end), Math.max(start, end) + 1);
+          const merged = [...new Set([...sel, ...range])];
+          sel.length = 0; sel.push(...merged);
         }
-        this.showAttachGrantModal = false;
-        await this.reloadGrants();
-      } catch (e) {
-        this.attachGrantError = e.message;
+      } else if (event.ctrlKey || event.metaKey) {
+        const idx = sel.indexOf(id);
+        if (idx >= 0) sel.splice(idx, 1);
+        else sel.push(id);
+      } else {
+        sel.length = 0; sel.push(id);
+      }
+      this[lastKey] = id;
+    },
+
+    async teamsMoveRight() {
+      this.teamsMoving = true;
+      for (const tid of this.teamsSelLeft) {
+        try {
+          await api.adminPut('/teams/' + tid + '/members/' + this.userId);
+          this.teamsAssignedIds.push(tid);
+        } catch {}
+      }
+      this.teamsSelLeft = [];
+      this.teamsMoving = false;
+    },
+
+    async teamsMoveLeft() {
+      this.teamsMoving = true;
+      for (const tid of this.teamsSelRight) {
+        try {
+          await api.adminDelete('/teams/' + tid + '/members/' + this.userId);
+          this.teamsAssignedIds = this.teamsAssignedIds.filter(id => id !== tid);
+        } catch {}
+      }
+      this.teamsSelRight = [];
+      this.teamsMoving = false;
+    },
+
+    async teamsMoveAllRight() {
+      this.teamsMoving = true;
+      for (const t of this.teamsAvailable) {
+        try {
+          await api.adminPut('/teams/' + t.team_id + '/members/' + this.userId);
+          this.teamsAssignedIds.push(t.team_id);
+        } catch {}
+      }
+      this.teamsSelLeft = [];
+      this.teamsMoving = false;
+    },
+
+    async teamsMoveAllLeft() {
+      this.teamsMoving = true;
+      for (const t of this.teamsAssigned) {
+        try {
+          await api.adminDelete('/teams/' + t.team_id + '/members/' + this.userId);
+        } catch {}
+      }
+      this.teamsAssignedIds = [];
+      this.teamsSelRight = [];
+      this.teamsMoving = false;
+    },
+
+    teamsDblClick(side, id) {
+      if (side === 'left') {
+        this.teamsSelLeft = [id];
+        this.teamsMoveRight();
+      } else {
+        this.teamsSelRight = [id];
+        this.teamsMoveLeft();
       }
     },
 
-    confirmDetachGrant(grant) {
-      this.detachGrantId = grant.grant_id;
-      this.detachGrantName = grant.name;
-      this.detachGrantError = '';
-      this.showDetachGrantModal = true;
+    teamsDragStart(side, id, event) {
+      this.teamsDragData = { side, id };
+      event.dataTransfer.effectAllowed = 'move';
     },
 
-    async performDetachGrant() {
-      this.detachGrantError = '';
-      try {
-        const resp = await api.adminDelete('/users/' + this.userId + '/grants/' + this.detachGrantId);
-        if (!resp.ok) {
-          const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+    teamsDrop(targetSide, event) {
+      event.preventDefault();
+      if (!this.teamsDragData) return;
+      const { side, id } = this.teamsDragData;
+      if (side !== targetSide) {
+        if (side === 'left') { this.teamsSelLeft = [id]; this.teamsMoveRight(); }
+        else { this.teamsSelRight = [id]; this.teamsMoveLeft(); }
+      }
+      this.teamsDragData = null;
+    },
+
+    // -- Grants shuttle --
+
+    get grantsAvailable() {
+      const ids = new Set(this.grantsAssignedIds);
+      return this.grantsAll.filter(g => !ids.has(g.grant_id));
+    },
+
+    get grantsAssigned() {
+      const ids = new Set(this.grantsAssignedIds);
+      return this.grantsAll.filter(g => ids.has(g.grant_id));
+    },
+
+    grantsToggle(side, id, event) {
+      const sel = side === 'left' ? this.grantsSelLeft : this.grantsSelRight;
+      const items = side === 'left' ? this.grantsAvailable : this.grantsAssigned;
+      const lastKey = side === 'left' ? 'grantsLastLeft' : 'grantsLastRight';
+      const ids = items.map(i => i.grant_id);
+
+      if (event.shiftKey && this[lastKey] !== null) {
+        const start = ids.indexOf(this[lastKey]);
+        const end = ids.indexOf(id);
+        if (start >= 0 && end >= 0) {
+          const range = ids.slice(Math.min(start, end), Math.max(start, end) + 1);
+          const merged = [...new Set([...sel, ...range])];
+          sel.length = 0; sel.push(...merged);
         }
-        this.showDetachGrantModal = false;
-        await this.reloadGrants();
-      } catch (e) {
-        this.detachGrantError = e.message;
+      } else if (event.ctrlKey || event.metaKey) {
+        const idx = sel.indexOf(id);
+        if (idx >= 0) sel.splice(idx, 1);
+        else sel.push(id);
+      } else {
+        sel.length = 0; sel.push(id);
+      }
+      this[lastKey] = id;
+    },
+
+    async grantsMoveRight() {
+      this.grantsMoving = true;
+      for (const gid of this.grantsSelLeft) {
+        try {
+          await api.adminPut('/users/' + this.userId + '/grants/' + gid);
+          this.grantsAssignedIds.push(gid);
+        } catch {}
+      }
+      this.grantsSelLeft = [];
+      this.grantsMoving = false;
+    },
+
+    async grantsMoveLeft() {
+      this.grantsMoving = true;
+      for (const gid of this.grantsSelRight) {
+        try {
+          await api.adminDelete('/users/' + this.userId + '/grants/' + gid);
+          this.grantsAssignedIds = this.grantsAssignedIds.filter(id => id !== gid);
+        } catch {}
+      }
+      this.grantsSelRight = [];
+      this.grantsMoving = false;
+    },
+
+    async grantsMoveAllRight() {
+      this.grantsMoving = true;
+      for (const g of this.grantsAvailable) {
+        try {
+          await api.adminPut('/users/' + this.userId + '/grants/' + g.grant_id);
+          this.grantsAssignedIds.push(g.grant_id);
+        } catch {}
+      }
+      this.grantsSelLeft = [];
+      this.grantsMoving = false;
+    },
+
+    async grantsMoveAllLeft() {
+      this.grantsMoving = true;
+      for (const g of this.grantsAssigned) {
+        try {
+          await api.adminDelete('/users/' + this.userId + '/grants/' + g.grant_id);
+        } catch {}
+      }
+      this.grantsAssignedIds = [];
+      this.grantsSelRight = [];
+      this.grantsMoving = false;
+    },
+
+    grantsDblClick(side, id) {
+      if (side === 'left') {
+        this.grantsSelLeft = [id];
+        this.grantsMoveRight();
+      } else {
+        this.grantsSelRight = [id];
+        this.grantsMoveLeft();
       }
     },
 
-    async reloadGrants() {
-      try {
-        const [grants, effective] = await Promise.all([
-          api.adminGet('/users/' + this.userId + '/grants'),
-          api.adminGet('/users/' + this.userId + '/effective-grants'),
-        ]);
-        this.grants = grants;
-        this.effectiveGrants = effective;
-      } catch {}
+    grantsDragStart(side, id, event) {
+      this.grantsDragData = { side, id };
+      event.dataTransfer.effectAllowed = 'move';
+    },
+
+    grantsDrop(targetSide, event) {
+      event.preventDefault();
+      if (!this.grantsDragData) return;
+      const { side, id } = this.grantsDragData;
+      if (side !== targetSide) {
+        if (side === 'left') { this.grantsSelLeft = [id]; this.grantsMoveRight(); }
+        else { this.grantsSelRight = [id]; this.grantsMoveLeft(); }
+      }
+      this.grantsDragData = null;
     },
 
     // -- Helpers --
