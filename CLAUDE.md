@@ -76,6 +76,18 @@ The documentation site uses MkDocs with Material theme, built inside a Docker co
 
 After every phase completion or significant feature change, update documentation BEFORE committing code: roadmap checkboxes, configuration page, and installation/Quick Start as needed. Rebuild with `bin/docs-build`.
 
+### Console documentation and screenshots
+
+The console user manual lives at `documentation/docs/guide/console.md`. Screenshots are automated via Playwright in Docker. When the console gains new features, update both the screenshots and the documentation:
+
+1. **Update `docker/screenshots/take_screenshots.py`** — add new screenshot captures (seed data in Phase A, capture in Phase B). Each screenshot is a numbered step. The script runs inside a container that shares network with a dedicated `screenshots-console` service (required for Web Crypto API / localhost).
+2. **Update `documentation/docs/guide/console.md`** — add/update sections and screenshot references.
+3. **Run `bin/screenshots --build`** — rebuilds all images (arca, console, screenshots), starts Arca with encryption enabled (for encryption indicators in screenshots), seeds sample data, and captures all screenshots to `documentation/docs/assets/screenshots/`.
+4. **Run `bin/docs-build`** — rebuilds the MkDocs site so `docs/` has the new screenshots and HTML.
+5. Commit changes in `bin/`, `docker/screenshots/`, `documentation/`, and `docs/`.
+
+`bin/screenshots` uses the `compose.sh` library and enables encryption by default. Pass `--no-encryption` to capture without encryption indicators.
+
 ## Architecture
 
 Five-crate Cargo workspace with strict dependency graph (no cycles):
