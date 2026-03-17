@@ -105,6 +105,10 @@ pub fn build_router(state: AppState) -> Router {
             "/users/{user_id}/effective-grants",
             get(admin_users::effective_user_grants),
         )
+        .route(
+            "/users/{user_id}/teams",
+            get(admin_users::list_user_teams),
+        )
         // Team management
         .route("/teams", get(admin_teams::list_teams).post(admin_teams::create_team))
         .route(
@@ -112,6 +116,10 @@ pub fn build_router(state: AppState) -> Router {
             get(admin_teams::get_team)
                 .put(admin_teams::update_team)
                 .delete(admin_teams::delete_team),
+        )
+        .route(
+            "/teams/{team_id}/members",
+            get(admin_teams::list_members),
         )
         .route(
             "/teams/{team_id}/members/{user_id}",

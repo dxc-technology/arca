@@ -54,15 +54,19 @@ pub async fn list_teams(
         .await
         .map_err(|e| AdminError::internal(e.to_string()))?;
 
-    let response: Vec<TeamResponse> = teams
-        .into_iter()
-        .map(|t| TeamResponse {
-            team_id: t.team_id,
-            name: t.name,
-            description: t.description,
-            created_at: t.created_at.to_rfc3339(),
-        })
-        .collect();
+    let mut response = Vec::new();
+    for t in teams {
+        let members = state.teams.list_members(&t.team_id).await.unwrap_or_default();
+        let grants = state.grants.list_team_grants(&t.team_id).await.unwrap_or_default();
+        response.push(serde_json::json!({
+            "team_id": t.team_id,
+            "name": t.name,
+            "description": t.description,
+            "created_at": t.created_at.to_rfc3339(),
+            "member_count": members.len(),
+            "grant_count": grants.len(),
+        }));
+    }
 
     Ok(Json(response))
 }
@@ -180,6 +184,39 @@ pub async fn delete_team(
     } else {
         Err(AdminError::not_found(format!("Team {team_id} not found")))
     }
+}
+
+/// GET /admin/teams/{team_id}/members — list team members.
+pub async fn list_members(
+    State(state): State<AppState>,
+    Path(team_id): Path<String>,
+) -> Result<impl IntoResponse, AdminError> {
+    state
+        .teams
+        .get_team(&team_id)
+        .await
+        .map_err(|e| AdminError::internal(e.to_string()))?
+        .ok_or_else(|| AdminError::not_found(format!("Team {team_id} not found")))?;
+
+    let members = state
+        .teams
+        .list_members(&team_id)
+        .await
+        .map_err(|e| AdminError::internal(e.to_string()))?;
+
+    let response: Vec<serde_json::Value> = members
+        .into_iter()
+        .map(|u| {
+            serde_json::json!({
+                "user_id": u.user_id,
+                "username": u.username,
+                "description": u.description,
+                "is_root": u.is_root,
+            })
+        })
+        .collect();
+
+    Ok(Json(response))
 }
 
 /// PUT /admin/teams/{team_id}/members/{user_id} — add member.

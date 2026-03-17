@@ -58,16 +58,23 @@ pub async fn list_users(
         .await
         .map_err(|e| AdminError::internal(e.to_string()))?;
 
-    let response: Vec<UserResponse> = users
-        .into_iter()
-        .map(|u| UserResponse {
-            user_id: u.user_id,
-            username: u.username,
-            description: u.description,
-            is_root: u.is_root,
-            created_at: u.created_at.to_rfc3339(),
-        })
-        .collect();
+    let all_creds = state.credentials.list_credentials().await.unwrap_or_default();
+    let mut response = Vec::new();
+    for u in users {
+        let cred_count = all_creds.iter().filter(|c| c.user_id == u.user_id).count();
+        let team_count = state.teams.list_user_teams(&u.user_id).await.unwrap_or_default().len();
+        let grant_count = state.grants.list_user_grants(&u.user_id).await.unwrap_or_default().len();
+        response.push(serde_json::json!({
+            "user_id": u.user_id,
+            "username": u.username,
+            "description": u.description,
+            "is_root": u.is_root,
+            "created_at": u.created_at.to_rfc3339(),
+            "credential_count": cred_count,
+            "team_count": team_count,
+            "grant_count": grant_count,
+        }));
+    }
 
     Ok(Json(response))
 }
@@ -279,17 +286,38 @@ pub async fn create_user_credential(
         .map_err(|e| AdminError::internal(e.to_string()))?
         .ok_or_else(|| AdminError::not_found(format!("User {user_id} not found")))?;
 
-    let cred = arca_core::credential::generate_credential(
+    // Generate credential, using user-provided keys when available.
+    let mut cred = arca_core::credential::generate_credential(
         &body.description,
         false, // admin flag is deprecated, new creds always false
         &user_id,
     );
 
+    // Override with user-provided keys if present
+    if let Some(ref ak) = body.access_key_id {
+        let ak = ak.trim().to_string();
+        if !ak.is_empty() {
+            cred.access_key_id = ak;
+        }
+    }
+    if let Some(ref sk) = body.secret_access_key {
+        let sk = sk.trim().to_string();
+        if !sk.is_empty() {
+            cred.secret_access_key = sk;
+        }
+    }
+
     state
         .credentials
         .put_credential(&cred)
         .await
-        .map_err(|e| AdminError::internal(e.to_string()))?;
+        .map_err(|e| {
+            if e.to_string().contains("UNIQUE") {
+                AdminError::conflict("Access key ID already exists")
+            } else {
+                AdminError::internal(e.to_string())
+            }
+        })?;
 
     Ok((
         StatusCode::CREATED,
@@ -308,6 +336,12 @@ pub async fn create_user_credential(
 pub struct CreateCredentialBody {
     #[serde(default)]
     description: String,
+    /// Optional custom access key. Auto-generated if empty/missing.
+    #[serde(default)]
+    access_key_id: Option<String>,
+    /// Optional custom secret key. Auto-generated if empty/missing.
+    #[serde(default)]
+    secret_access_key: Option<String>,
 }
 
 /// GET /admin/users/{user_id}/grants — list direct grants.
@@ -335,6 +369,38 @@ pub async fn list_user_grants(
                 "grant_id": g.grant_id,
                 "name": g.name,
                 "description": g.description,
+            })
+        })
+        .collect();
+
+    Ok(Json(response))
+}
+
+/// GET /admin/users/{user_id}/teams — list teams the user belongs to.
+pub async fn list_user_teams(
+    State(state): State<AppState>,
+    Path(user_id): Path<String>,
+) -> Result<impl IntoResponse, AdminError> {
+    state
+        .users
+        .get_user(&user_id)
+        .await
+        .map_err(|e| AdminError::internal(e.to_string()))?
+        .ok_or_else(|| AdminError::not_found(format!("User {user_id} not found")))?;
+
+    let teams = state
+        .teams
+        .list_user_teams(&user_id)
+        .await
+        .map_err(|e| AdminError::internal(e.to_string()))?;
+
+    let response: Vec<serde_json::Value> = teams
+        .into_iter()
+        .map(|t| {
+            serde_json::json!({
+                "team_id": t.team_id,
+                "name": t.name,
+                "description": t.description,
             })
         })
         .collect();
