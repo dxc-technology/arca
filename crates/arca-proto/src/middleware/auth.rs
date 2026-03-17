@@ -8,8 +8,10 @@ use arca_auth::{
     parse_authorization, parse_query_string_auth, verify_presigned_request, verify_request,
     PresignedVerifyInput, VerifyInput,
 };
+use arca_core::types::Credential;
 use arca_core::{S3Error, S3ErrorCode};
 
+use super::identity::AuthenticatedIdentity;
 use crate::state::AppState;
 use crate::xml::error_response::s3_error_response;
 
@@ -19,9 +21,11 @@ const MAX_PRESIGN_EXPIRES: u64 = 604_800;
 /// Axum middleware that verifies AWS SigV4 signatures on every request.
 ///
 /// Supports both Authorization header auth and query-string presigned URL auth.
+/// After successful auth, resolves the user identity and preloads effective
+/// policies, storing `AuthenticatedIdentity` in request extensions.
 pub async fn auth_middleware(
     State(state): State<AppState>,
-    request: axum::extract::Request,
+    mut request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
     // Extract URI path and query string from the ORIGINAL URI
@@ -74,7 +78,7 @@ pub async fn auth_middleware(
         .unwrap_or("UNSIGNED-PAYLOAD")
         .to_string();
 
-    if let Some(auth_header) = auth_header {
+    let credential = if let Some(auth_header) = auth_header {
         // --- Standard Authorization header auth ---
         let parsed_auth = match parse_authorization(&auth_header) {
             Ok(a) => a,
@@ -86,7 +90,7 @@ pub async fn auth_middleware(
             }
         };
 
-        let credential = match state
+        let cred = match state
             .credentials
             .get_credential(&parsed_auth.access_key_id)
             .await
@@ -123,7 +127,7 @@ pub async fn auth_middleware(
             headers: &headers,
             payload_hash: &payload_hash,
             auth: &parsed_auth,
-            secret_access_key: &credential.secret_access_key,
+            secret_access_key: &cred.secret_access_key,
             request_datetime: &request_datetime,
         };
 
@@ -134,11 +138,9 @@ pub async fn auth_middleware(
             ));
         }
 
-        return next.run(request).await;
-    }
-
-    // Check for query-string presigned URL auth (X-Amz-Algorithm in query).
-    if query_string.contains("X-Amz-Algorithm") {
+        cred
+    } else if query_string.contains("X-Amz-Algorithm") {
+        // --- Query-string presigned URL auth ---
         let parsed = match parse_query_string_auth(&query_string) {
             Ok(a) => a,
             Err(_) => {
@@ -173,7 +175,7 @@ pub async fn auth_middleware(
         }
 
         // Look up credential.
-        let credential = match state
+        let cred = match state
             .credentials
             .get_credential(&parsed.access_key_id)
             .await
@@ -200,7 +202,7 @@ pub async fn auth_middleware(
             query_string: &query_string,
             headers: &headers,
             auth: &parsed,
-            secret_access_key: &credential.secret_access_key,
+            secret_access_key: &cred.secret_access_key,
         };
 
         if verify_presigned_request(&input).is_err() {
@@ -210,11 +212,69 @@ pub async fn auth_middleware(
             ));
         }
 
-        return next.run(request).await;
-    }
+        cred
+    } else {
+        // No auth at all.
+        return s3_error_response(S3Error::new(S3ErrorCode::AccessDenied, &uri_path));
+    };
 
-    // No auth at all.
-    s3_error_response(S3Error::new(S3ErrorCode::AccessDenied, &uri_path))
+    // Resolve identity: credential -> user -> effective policies.
+    match resolve_identity(&state, credential).await {
+        Ok(identity) => {
+            request.extensions_mut().insert(identity);
+            next.run(request).await
+        }
+        Err(_) => {
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(axum::body::Body::empty())
+                .expect("build error response")
+        }
+    }
+}
+
+/// Resolves a credential to a full identity with user and effective policies.
+async fn resolve_identity(
+    state: &AppState,
+    credential: Credential,
+) -> Result<AuthenticatedIdentity, ()> {
+    let user = state
+        .users
+        .get_user(&credential.user_id)
+        .await
+        .map_err(|e| tracing::error!("Failed to get user: {e}"))?
+        .unwrap_or_else(|| {
+            // Fallback for credentials without a valid user (should not happen
+            // after migration, but be defensive).
+            tracing::warn!(
+                user_id = &credential.user_id,
+                "Credential's user not found, using synthetic root"
+            );
+            arca_core::types::User {
+                user_id: credential.user_id.clone(),
+                username: credential.user_id.clone(),
+                description: String::new(),
+                is_root: true,
+                created_at: chrono::Utc::now(),
+            }
+        });
+
+    let effective_policies = if user.is_root {
+        // Root users bypass policy evaluation, no need to load policies.
+        Vec::new()
+    } else {
+        state
+            .grants
+            .get_effective_policies(&user.user_id)
+            .await
+            .map_err(|e| tracing::error!("Failed to load effective policies: {e}"))?
+    };
+
+    Ok(AuthenticatedIdentity {
+        credential,
+        user,
+        effective_policies,
+    })
 }
 
 /// Parses an X-Amz-Date string (YYYYMMDDTHHMMSSZ) into a chrono DateTime.

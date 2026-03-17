@@ -12,16 +12,18 @@ use arca_auth::{
     parse_authorization, parse_query_string_auth, verify_presigned_request, verify_request,
     PresignedVerifyInput, VerifyInput,
 };
-use arca_core::types::Credential;
+use arca_core::policy::{self, Evaluation};
 
+use super::identity::AuthenticatedIdentity;
 use crate::state::AppState;
 
 /// Maximum presigned URL expiry: 7 days (604800 seconds), per AWS spec.
 const MAX_PRESIGN_EXPIRES: u64 = 604_800;
 
-/// Wrapper for the authenticated credential, stored in request extensions.
+/// Legacy wrapper kept for backward compatibility in handler signatures.
+/// New code should use `AuthenticatedIdentity` from request extensions.
 #[derive(Debug, Clone)]
-pub struct AuthenticatedCredential(pub Credential);
+pub struct AuthenticatedCredential(pub arca_core::types::Credential);
 
 /// Axum middleware that verifies AWS SigV4 signatures, returning JSON errors.
 pub async fn admin_auth_middleware(
@@ -206,20 +208,102 @@ pub async fn admin_auth_middleware(
         return json_error(StatusCode::FORBIDDEN, "AccessDenied", "Access Denied");
     };
 
-    // Require admin privilege for admin API endpoints.
-    if !credential.admin {
-        return json_error(
-            StatusCode::FORBIDDEN,
-            "AccessDenied",
-            "Admin privileges required",
-        );
+    // Resolve identity: credential -> user -> effective policies.
+    let user = match state.users.get_user(&credential.user_id).await {
+        Ok(Some(u)) => u,
+        Ok(None) | Err(_) => {
+            // Fallback: treat as root for backward compat (pre-migration credentials).
+            arca_core::types::User {
+                user_id: credential.user_id.clone(),
+                username: credential.user_id.clone(),
+                description: String::new(),
+                is_root: true,
+                created_at: chrono::Utc::now(),
+            }
+        }
+    };
+
+    let is_root = user.is_root;
+
+    // Load effective policies for non-root users.
+    let effective_policies = if is_root {
+        Vec::new()
+    } else {
+        match state.grants.get_effective_policies(&user.user_id).await {
+            Ok(p) => p,
+            Err(_) => {
+                return json_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "InternalError",
+                    "Failed to load user policies",
+                );
+            }
+        }
+    };
+
+    // Check admin access.
+    // Root users with admin credentials pass. Non-root users need arca:* grants.
+    // Backward compat: root user credentials with admin=false are still denied,
+    // preserving the pre-RBAC behavior until user management is fully in place.
+    if is_root {
+        if !credential.admin {
+            return json_error(
+                StatusCode::FORBIDDEN,
+                "AccessDenied",
+                "Admin privileges required",
+            );
+        }
+    } else {
+        let admin_action = determine_admin_action(&uri_path);
+        let result = policy::evaluate_grants(&effective_policies, admin_action, "*");
+        if !matches!(result, Evaluation::Allow) {
+            return json_error(
+                StatusCode::FORBIDDEN,
+                "AccessDenied",
+                "Admin privileges required",
+            );
+        }
     }
 
-    // Signature valid + admin — store credential and proceed.
+    let identity = AuthenticatedIdentity {
+        credential: credential.clone(),
+        user,
+        effective_policies,
+    };
+
+    // Store both for backward compat (existing handlers read AuthenticatedCredential).
     request
         .extensions_mut()
         .insert(AuthenticatedCredential(credential));
+    request.extensions_mut().insert(identity);
     next.run(request).await
+}
+
+/// Maps an admin API path to the required arca:* action.
+fn determine_admin_action(path: &str) -> &'static str {
+    use arca_core::policy::actions::*;
+
+    // Strip the /admin/ prefix for matching.
+    let sub = path.strip_prefix("/admin/").unwrap_or(path);
+
+    if sub.starts_with("users") {
+        ARCA_MANAGE_USERS
+    } else if sub.starts_with("teams") {
+        ARCA_MANAGE_TEAMS
+    } else if sub.starts_with("grants") {
+        ARCA_MANAGE_GRANTS
+    } else if sub.starts_with("credentials") {
+        ARCA_MANAGE_CREDENTIALS
+    } else if sub == "info" || sub == "stats" || sub == "me" {
+        ARCA_VIEW_SERVER_INFO
+    } else if sub.starts_with("presign") {
+        ARCA_CREATE_PRESIGNED_URL
+    } else if sub.starts_with("archive") {
+        ARCA_CREATE_ARCHIVE
+    } else {
+        // Unknown admin path, require full admin access.
+        "arca:*"
+    }
 }
 
 /// Builds a JSON error response.

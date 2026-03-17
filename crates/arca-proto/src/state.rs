@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use arca_core::store::{BlobStore, CredentialStore, MetadataStore, SsecBlobOps};
+use arca_core::store::{BlobStore, CredentialStore, GrantStore, MetadataStore, SsecBlobOps, TeamStore, UserStore};
 
 /// Application state shared across all handlers.
 #[derive(Clone)]
@@ -19,6 +19,9 @@ pub struct AppState {
     /// SSE-C blob store. Always present (wraps FsBlobStore).
     pub ssec_blob: Option<Arc<dyn SsecBlobOps>>,
     pub credentials: Arc<dyn CredentialStore>,
+    pub users: Arc<dyn UserStore>,
+    pub teams: Arc<dyn TeamStore>,
+    pub grants: Arc<dyn GrantStore>,
     pub domain: Option<String>,
     pub started_at: std::time::Instant,
     pub version: String,
