@@ -795,12 +795,12 @@
                       <div class="text-xs text-vault-muted mb-1">Last Modified</div>
                       <div class="text-sm" x-text="new Date(selectedObject.lastModified).toLocaleString()"></div>
                     </div>
-                    <template x-if="encryptionEnabled">
+                    <template x-if="selectedObject.encrypted">
                       <div>
                         <div class="text-xs text-vault-muted mb-1">Encryption</div>
                         <div class="flex items-center gap-1.5">
                           <svg class="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z"/></svg>
-                          <span class="text-sm text-green-400 font-medium" x-text="kmsProvider === 'vault' ? 'SSE-S3 (Vault)' : 'SSE-S3 (AES-256)'"></span>
+                          <span class="text-sm text-green-400 font-medium">Encrypted</span>
                         </div>
                       </div>
                     </template>
@@ -1317,6 +1317,10 @@
 
         async s3GetObject(bucket, key) {
           return await this.request('GET', '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key), { rawResponse: true });
+        },
+
+        async s3HeadObject(bucket, key) {
+          return await this.request('HEAD', '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key));
         },
 
         async s3DeleteObject(bucket, key) {
@@ -1963,8 +1967,14 @@
           return parts[parts.length - 1];
         },
 
-        selectObject(obj) {
-          this.selectedObject = obj;
+        async selectObject(obj) {
+          this.selectedObject = { ...obj, encrypted: false };
+          try {
+            const resp = await api.s3HeadObject(this.bucketName, obj.key);
+            if (resp.headers.get('x-amz-server-side-encryption')) {
+              this.selectedObject = { ...this.selectedObject, encrypted: true };
+            }
+          } catch {}
         },
 
         async downloadObject(key) {
