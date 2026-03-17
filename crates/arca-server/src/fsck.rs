@@ -500,6 +500,7 @@ mod tests {
             metadata: HashMap::new(),
             encryption_algorithm: None,
             encryption_key_id: None,
+            owner: "root".to_string(),
         };
         store.put_object(&record).await.unwrap();
     }
@@ -568,6 +569,7 @@ mod tests {
             metadata: HashMap::new(),
             encryption_algorithm: None,
             encryption_key_id: None,
+            owner: "root".to_string(),
         };
         store.put_object(&record).await.unwrap();
         drop(store);
@@ -697,6 +699,7 @@ mod tests {
             metadata: HashMap::new(),
             encryption_algorithm: None,
             encryption_key_id: None,
+            owner: "root".to_string(),
         };
         store.put_object(&record).await.unwrap();
         drop(store);

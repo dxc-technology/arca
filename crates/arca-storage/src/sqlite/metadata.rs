@@ -42,7 +42,7 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT name, created_at FROM buckets ORDER BY name",
+                    "SELECT name, created_at, owner FROM buckets ORDER BY name",
                 )?;
                 let rows = stmt.query_map([], |row| Ok(row_to_bucket_info(row)))?;
                 let mut buckets = Vec::new();
@@ -85,7 +85,7 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT name, created_at FROM buckets WHERE name = ?1",
+                    "SELECT name, created_at, owner FROM buckets WHERE name = ?1",
                 )?;
                 let result = stmt.query_row(params![name], |row| Ok(row_to_bucket_info(row)));
                 match result {
@@ -139,7 +139,7 @@ impl MetadataStore for SqliteStore {
                 // Check for existing object to return for cleanup.
                 let old = {
                     let mut stmt = tx.prepare(
-                        "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id
+                        "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner
                          FROM objects WHERE bucket = ?1 AND key = ?2",
                     )?;
                     let result = stmt.query_row(
@@ -162,8 +162,8 @@ impl MetadataStore for SqliteStore {
                     params![record.bucket, record.key],
                 )?;
                 tx.execute(
-                    "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                    "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                     params![
                         record.bucket,
                         record.key,
@@ -175,6 +175,7 @@ impl MetadataStore for SqliteStore {
                         metadata_json,
                         record.encryption_algorithm,
                         record.encryption_key_id,
+                        record.owner,
                     ],
                 )?;
 
@@ -195,7 +196,7 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id
+                    "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner
                      FROM objects WHERE bucket = ?1 AND key = ?2",
                 )?;
                 let result = stmt.query_row(
@@ -226,7 +227,7 @@ impl MetadataStore for SqliteStore {
             .call(move |conn| {
                 // Build dynamic SQL.
                 let mut sql = String::from(
-                    "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id
+                    "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner
                      FROM objects WHERE bucket = ?1",
                 );
                 let mut param_idx = 2u32;
@@ -290,7 +291,7 @@ impl MetadataStore for SqliteStore {
 
                 let old = {
                     let mut stmt = tx.prepare(
-                        "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id
+                        "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner
                          FROM objects WHERE bucket = ?1 AND key = ?2",
                     )?;
                     let result = stmt.query_row(
@@ -662,7 +663,7 @@ fn escape_like(s: &str) -> String {
 
 /// Converts a SQLite row to a `BucketInfo`.
 ///
-/// Expects columns: name, created_at.
+/// Expects columns: name, created_at, owner.
 fn row_to_bucket_info(row: &rusqlite::Row) -> Result<BucketInfo, rusqlite::Error> {
     let created_at_str: String = row.get(1)?;
     let created_at = DateTime::parse_from_rfc3339(&created_at_str)
@@ -678,6 +679,7 @@ fn row_to_bucket_info(row: &rusqlite::Row) -> Result<BucketInfo, rusqlite::Error
     Ok(BucketInfo {
         name: row.get(0)?,
         created_at,
+        owner: row.get(2)?,
     })
 }
 
@@ -747,6 +749,8 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
     let encryption_algorithm: Option<String> = row.get(8)?;
     let encryption_key_id: Option<String> = row.get(9)?;
 
+    let owner: String = row.get(10).unwrap_or_else(|_| "root".to_string());
+
     Ok(ObjectRecord {
         bucket: row.get(0)?,
         key: row.get(1)?,
@@ -758,6 +762,7 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
         metadata,
         encryption_algorithm,
         encryption_key_id,
+        owner,
     })
 }
 
@@ -781,6 +786,7 @@ mod tests {
             metadata: HashMap::new(),
             encryption_algorithm: None,
             encryption_key_id: None,
+            owner: "root".to_string(),
         }
     }
 

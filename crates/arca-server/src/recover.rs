@@ -108,6 +108,7 @@ pub async fn run_recover(config: &Config, dry_run: bool, skip_verify: bool) -> R
             metadata: entry.meta.metadata.clone(),
             encryption_algorithm: entry.meta.encryption.as_ref().map(|e| e.algorithm.clone()),
             encryption_key_id: entry.meta.encryption.as_ref().map(|e| e.key_id.clone()),
+            owner: "root".to_string(),
         };
         store.put_object(&record).await?;
         object_count += 1;

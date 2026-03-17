@@ -384,6 +384,7 @@ pub async fn complete_multipart_upload(
         metadata: upload.metadata,
         encryption_algorithm: put_result.encryption.as_ref().map(|e| e.algorithm.clone()),
         encryption_key_id: put_result.encryption.as_ref().map(|e| e.key_id.clone()),
+        owner: "root".to_string(),
     };
     let old = match state.metadata.put_object(&record).await {
         Ok(old) => old,

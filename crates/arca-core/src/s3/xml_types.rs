@@ -147,7 +147,7 @@ pub fn parse_delete_objects(xml: &str) -> Result<DeleteObjectsBody, quick_xml::D
 ///   </Buckets>
 /// </ListAllMyBucketsResult>
 /// ```
-pub fn list_all_my_buckets_result(buckets: &[BucketInfo]) -> String {
+pub fn list_all_my_buckets_result(buckets: &[BucketInfo], owner: &str) -> String {
     let mut writer = Writer::new(Vec::new());
 
     writer
@@ -161,13 +161,12 @@ pub fn list_all_my_buckets_result(buckets: &[BucketInfo]) -> String {
         .write_event(Event::Start(root))
         .expect("write root start");
 
-    // TECHDEBT(TD-001): Owner ID/DisplayName hardcoded to "arca"
     // <Owner>
     writer
         .write_event(Event::Start(BytesStart::new("Owner")))
         .expect("write Owner start");
-    write_xml_element(&mut writer, "ID", "arca");
-    write_xml_element(&mut writer, "DisplayName", "arca");
+    write_xml_element(&mut writer, "ID", owner);
+    write_xml_element(&mut writer, "DisplayName", owner);
     writer
         .write_event(Event::End(BytesEnd::new("Owner")))
         .expect("write Owner end");
@@ -640,7 +639,6 @@ fn write_list_entry(writer: &mut Writer<Vec<u8>>, entry: &ListEntry) {
 
     write_xml_element(writer, "Size", &entry.size.to_string());
 
-    // TECHDEBT(TD-001): Owner hardcoded to "arca" — emitted when fetch-owner=true
     if let (Some(ref id), Some(ref name)) = (&entry.owner_id, &entry.owner_display_name) {
         writer
             .write_event(Event::Start(BytesStart::new("Owner")))
@@ -670,6 +668,7 @@ pub fn list_multipart_uploads_result(
     uploads: &[MultipartUploadRecord],
     next_key_marker: Option<&str>,
     next_upload_id_marker: Option<&str>,
+    owner: &str,
 ) -> String {
     let mut writer = Writer::new(Vec::new());
 
@@ -719,12 +718,11 @@ pub fn list_multipart_uploads_result(
         write_xml_element(&mut writer, "Key", &upload.key);
         write_xml_element(&mut writer, "UploadId", &upload.upload_id);
 
-        // TECHDEBT(TD-001): Owner/Initiator hardcoded to "arca"
         writer
             .write_event(Event::Start(BytesStart::new("Initiator")))
             .expect("write Initiator start");
-        write_xml_element(&mut writer, "ID", "arca");
-        write_xml_element(&mut writer, "DisplayName", "arca");
+        write_xml_element(&mut writer, "ID", owner);
+        write_xml_element(&mut writer, "DisplayName", owner);
         writer
             .write_event(Event::End(BytesEnd::new("Initiator")))
             .expect("write Initiator end");
@@ -732,8 +730,8 @@ pub fn list_multipart_uploads_result(
         writer
             .write_event(Event::Start(BytesStart::new("Owner")))
             .expect("write Owner start");
-        write_xml_element(&mut writer, "ID", "arca");
-        write_xml_element(&mut writer, "DisplayName", "arca");
+        write_xml_element(&mut writer, "ID", owner);
+        write_xml_element(&mut writer, "DisplayName", owner);
         writer
             .write_event(Event::End(BytesEnd::new("Owner")))
             .expect("write Owner end");
@@ -765,14 +763,14 @@ mod tests {
 
     #[test]
     fn empty_bucket_list() {
-        let xml = list_all_my_buckets_result(&[]);
+        let xml = list_all_my_buckets_result(&[], "root");
 
         assert!(xml.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
         assert!(xml.contains("<ListAllMyBucketsResult"));
         assert!(xml.contains("xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\""));
         assert!(xml.contains("<Owner>"));
-        assert!(xml.contains("<ID>arca</ID>"));
-        assert!(xml.contains("<DisplayName>arca</DisplayName>"));
+        assert!(xml.contains("<ID>root</ID>"));
+        assert!(xml.contains("<DisplayName>root</DisplayName>"));
         assert!(xml.contains("<Buckets/>") || xml.contains("<Buckets></Buckets>"));
     }
 
@@ -781,8 +779,9 @@ mod tests {
         let buckets = vec![BucketInfo {
             name: "my-bucket".to_string(),
             created_at: chrono::Utc.with_ymd_and_hms(2024, 1, 15, 10, 30, 0).unwrap(),
+            owner: "root".to_string(),
         }];
-        let xml = list_all_my_buckets_result(&buckets);
+        let xml = list_all_my_buckets_result(&buckets, "root");
 
         assert!(xml.contains("<Name>my-bucket</Name>"));
         assert!(xml.contains("<CreationDate>2024-01-15T10:30:00.000Z</CreationDate>"));
@@ -794,13 +793,15 @@ mod tests {
             BucketInfo {
                 name: "alpha".to_string(),
                 created_at: chrono::Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
+                owner: "root".to_string(),
             },
             BucketInfo {
                 name: "beta".to_string(),
                 created_at: chrono::Utc.with_ymd_and_hms(2024, 6, 15, 12, 0, 0).unwrap(),
+                owner: "root".to_string(),
             },
         ];
-        let xml = list_all_my_buckets_result(&buckets);
+        let xml = list_all_my_buckets_result(&buckets, "root");
 
         assert!(xml.contains("<Name>alpha</Name>"));
         assert!(xml.contains("<Name>beta</Name>"));

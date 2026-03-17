@@ -33,6 +33,9 @@ impl std::fmt::Display for BlobId {
 pub struct BucketInfo {
     pub name: String,
     pub created_at: DateTime<Utc>,
+    /// Username of the bucket creator.
+    #[serde(default)]
+    pub owner: String,
 }
 
 /// Metadata about a stored object.
@@ -56,6 +59,9 @@ pub struct ObjectRecord {
     /// Key ID of the master key used to encrypt this object.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub encryption_key_id: Option<String>,
+    /// Username of the object creator.
+    #[serde(default)]
+    pub owner: String,
 }
 
 /// Projection of an object for list responses (lighter than ObjectRecord).

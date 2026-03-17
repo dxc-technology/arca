@@ -30,11 +30,20 @@ fn s3_url_encode(s: &str) -> String {
 }
 
 /// GET / — ListBuckets
-pub async fn list_buckets(State(state): State<AppState>) -> Response {
+pub async fn list_buckets(
+    State(state): State<AppState>,
+    request: axum::extract::Request,
+) -> Response {
     let resource = "/";
+    let owner = request
+        .extensions()
+        .get::<crate::middleware::identity::AuthenticatedIdentity>()
+        .map(|id| id.username().to_string())
+        .unwrap_or_else(|| "root".to_string());
+
     match state.metadata.list_buckets().await {
         Ok(buckets) => {
-            let xml = xml_types::list_all_my_buckets_result(&buckets);
+            let xml = xml_types::list_all_my_buckets_result(&buckets, &owner);
             Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/xml")
@@ -812,6 +821,7 @@ async fn list_multipart_uploads(
         uploads,
         next_key_marker,
         next_upload_id_marker,
+        "root", // TODO(phase16): pass real owner from identity
     );
     Response::builder()
         .status(StatusCode::OK)
@@ -913,15 +923,15 @@ fn parse_sse_algorithm(xml: &str) -> Option<String> {
 
 /// Converts an `ObjectRecord` to a `ListEntry` for XML output.
 fn record_to_list_entry(record: &ObjectRecord, fetch_owner: bool) -> ListEntry {
+    let owner = if record.owner.is_empty() { "root" } else { &record.owner };
     ListEntry {
         key: record.key.clone(),
         last_modified: record.last_modified,
         etag: record.etag.clone(),
         size: record.size,
         storage_class: "STANDARD".to_string(), // TECHDEBT(TD-002): hardcoded storage class
-        // TECHDEBT(TD-001): Owner hardcoded to "arca" — needs account/user model
-        owner_id: if fetch_owner { Some("arca".to_string()) } else { None },
-        owner_display_name: if fetch_owner { Some("arca".to_string()) } else { None },
+        owner_id: if fetch_owner { Some(owner.to_string()) } else { None },
+        owner_display_name: if fetch_owner { Some(owner.to_string()) } else { None },
     }
 }
 

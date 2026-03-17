@@ -420,6 +420,7 @@ pub async fn put_object(
                 e.key_id.clone()
             }
         }),
+        owner: "root".to_string(),
     };
     let old = match state.metadata.put_object(&record).await {
         Ok(old) => old,
@@ -687,6 +688,7 @@ async fn copy_object(
                 e.key_id.clone()
             }
         }),
+        owner: "root".to_string(),
     };
     let old = match state.metadata.put_object(&record).await {
         Ok(old) => old,
