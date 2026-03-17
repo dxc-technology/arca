@@ -150,7 +150,7 @@ cmd_start() {
     else
         # When running in foreground, ensure all services (e.g. OpenBAO)
         # are stopped when the user presses CTRL+C
-        trap "$COMPOSE down; clean_env" EXIT
+        trap "$COMPOSE --profile console down; clean_env" EXIT
     fi
 
     $COMPOSE up "${args[@]+"${args[@]}"}" arca
@@ -160,7 +160,10 @@ cmd_stop() {
     load_env
     local COMPOSE
     COMPOSE="$(compose_cmd)"
-    $COMPOSE down
+    # Include console profile so its container is removed along with the
+    # network.  Without this, switching features (e.g. --encryption to --kms)
+    # leaves a stale console container attached to the deleted network.
+    $COMPOSE --profile console down
     clean_env
 }
 
