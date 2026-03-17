@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use axum::Router;
 use http::header::{AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE, ETAG};
 use http::{HeaderName, Method};
@@ -10,7 +10,7 @@ use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, OnRequest, OnResponse, TraceLayer};
 use tracing::Level;
 
-use crate::handlers::{admin, archive, bucket, object};
+use crate::handlers::{admin, admin_grants, admin_teams, admin_users, archive, bucket, object};
 use crate::middleware;
 use crate::state::AppState;
 
@@ -69,6 +69,8 @@ pub fn build_router(state: AppState) -> Router {
     let admin_auth = Router::new()
         .route("/info", get(admin::info))
         .route("/stats", get(admin::stats))
+        .route("/me", get(admin_users::me))
+        // Legacy credential endpoints (operate on calling user's credentials)
         .route(
             "/credentials",
             get(admin::list_credentials).post(admin::create_credential),
@@ -79,6 +81,58 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/archive", post(archive::archive))
         .route("/presign", post(admin::presign))
+        // User management
+        .route("/users", get(admin_users::list_users).post(admin_users::create_user))
+        .route(
+            "/users/{user_id}",
+            get(admin_users::get_user)
+                .put(admin_users::update_user)
+                .delete(admin_users::delete_user),
+        )
+        .route(
+            "/users/{user_id}/credentials",
+            get(admin_users::list_user_credentials).post(admin_users::create_user_credential),
+        )
+        .route(
+            "/users/{user_id}/grants",
+            get(admin_users::list_user_grants),
+        )
+        .route(
+            "/users/{user_id}/grants/{grant_id}",
+            put(admin_users::attach_user_grant).delete(admin_users::detach_user_grant),
+        )
+        .route(
+            "/users/{user_id}/effective-grants",
+            get(admin_users::effective_user_grants),
+        )
+        // Team management
+        .route("/teams", get(admin_teams::list_teams).post(admin_teams::create_team))
+        .route(
+            "/teams/{team_id}",
+            get(admin_teams::get_team)
+                .put(admin_teams::update_team)
+                .delete(admin_teams::delete_team),
+        )
+        .route(
+            "/teams/{team_id}/members/{user_id}",
+            put(admin_teams::add_member).delete(admin_teams::remove_member),
+        )
+        .route(
+            "/teams/{team_id}/grants",
+            get(admin_teams::list_team_grants),
+        )
+        .route(
+            "/teams/{team_id}/grants/{grant_id}",
+            put(admin_teams::attach_team_grant).delete(admin_teams::detach_team_grant),
+        )
+        // Grant management
+        .route("/grants", get(admin_grants::list_grants).post(admin_grants::create_grant))
+        .route(
+            "/grants/{grant_id}",
+            get(admin_grants::get_grant)
+                .put(admin_grants::update_grant)
+                .delete(admin_grants::delete_grant),
+        )
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::admin_auth::admin_auth_middleware,

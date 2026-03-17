@@ -1,6 +1,9 @@
 //! S3 request handlers.
 
 pub mod admin;
+pub mod admin_grants;
+pub mod admin_teams;
+pub mod admin_users;
 pub mod archive;
 pub mod body;
 pub mod bucket;

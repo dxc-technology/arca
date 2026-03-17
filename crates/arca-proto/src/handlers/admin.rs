@@ -48,7 +48,7 @@ impl AdminError {
         }
     }
 
-    fn conflict(msg: impl Into<String>) -> Self {
+    pub fn conflict(msg: impl Into<String>) -> Self {
         Self {
             status: StatusCode::CONFLICT,
             error: "Conflict",
