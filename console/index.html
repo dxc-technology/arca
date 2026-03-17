@@ -1453,6 +1453,14 @@
     }
 
     // ==================== MAIN APP ====================
+    // Derive a default Arca endpoint from the console URL (same host, port 9000)
+    function guessArcaEndpoint() {
+      const loc = window.location;
+      const proto = loc.protocol;  // "http:" or "https:"
+      const host = loc.hostname;
+      return `${proto}//${host}:9000`;
+    }
+
     function app() {
       // Pre-compute injected endpoint before Alpine wraps the data
       const cfg = window.__ARCA_CONFIG__;
@@ -1470,7 +1478,7 @@
         toastTimeout: null,
 
         // Login
-        loginForm: { endpoint: hasEndpoint ? cfg.endpoint : '', accessKey: '', secretKey: '' },
+        loginForm: { endpoint: hasEndpoint ? cfg.endpoint : guessArcaEndpoint(), accessKey: '', secretKey: '' },
         loginLoading: false,
         loginError: '',
         showEndpointField: !hasEndpoint,
