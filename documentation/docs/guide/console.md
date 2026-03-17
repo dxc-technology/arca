@@ -58,17 +58,19 @@ The dashboard is available to **admin credentials only**. It shows:
 - **Server info**: version, uptime
 - **Storage stats**: bucket count, object count, total storage size
 - **Storage distribution**: SVG donut chart showing size per bucket
+- **Encryption status**: whether server-side encryption is active (SSE-S3 with local key or Vault/OpenBAO KMS)
 - **Health indicator**: real-time server health status with auto-refresh
 
 ## Bucket Management
 
 ![Bucket list](../assets/screenshots/console-buckets.png)
 
-The Buckets view shows all buckets as cards with object count and total size. From here you can:
+The Buckets view shows all buckets as cards with creation date. Encrypted buckets display a green shield badge. From here you can:
 
 - **Create** a new bucket (click the "+" button)
 - **Delete** an empty bucket
 - **Browse** a bucket by clicking its card
+- **Open settings** via the gear icon on each card
 
 ## Object Browser
 
@@ -76,11 +78,13 @@ The Buckets view shows all buckets as cards with object count and total size. Fr
 
 Inside a bucket, the object browser provides:
 
-- **Breadcrumb navigation** — click any path segment to navigate up
+- **Breadcrumb navigation** — click any path segment to navigate up. When encryption is active, a green shield icon appears next to the bucket name.
 - **Folder browsing** — click folders to navigate into them
 - **Create folder** — creates an S3 directory marker (zero-byte object with trailing `/`)
-- **Upload** — drag-and-drop or click to upload files
+- **Upload Files** — click to select files, or drag-and-drop onto the browser
+- **Upload Folder** — upload an entire directory tree preserving its structure
 - **Download** — download individual objects
+- **Share** — generate a presigned URL for any object (see [Sharing Objects](#sharing-objects) below)
 - **Delete** — delete objects or folders (with their contents)
 
 ### Object Detail
@@ -91,13 +95,56 @@ Click any object to open the detail panel, which shows:
 
 - Key, size, content type
 - ETag and last modified timestamp
-- Download and delete actions
+- Encryption status (when encryption is active)
+- **Share**, **Download**, and **Delete** actions
+
+### Sharing Objects
+
+![Share modal](../assets/screenshots/console-share-modal.png)
+
+Click the **Share** button on any object (either inline or in the detail panel) to generate a presigned URL. The share modal lets you:
+
+1. Choose an expiry duration: **1 hour**, **6 hours**, **1 day**, or **7 days**
+2. Click **Generate Link** to create the presigned URL
+3. **Copy** the URL to share with anyone, no credentials required
+
+The generated URL provides time-limited, read-only access to the object. It expires automatically after the chosen duration.
+
+!!! note
+    Presigned URLs are generated via the Admin API (`/admin/presign`). This feature requires admin credentials.
+
+### Batch Operations
+
+![Batch selection](../assets/screenshots/console-batch-selection.png)
+
+Select multiple objects and folders using the checkboxes next to each item. When items are selected, an action bar appears with:
+
+- **Download .tar.gz** — streams a compressed archive of all selected objects
+- **Delete** — batch-delete all selected items (with confirmation dialog)
+- **Clear selection** — deselect all items
+
+For folder selections, deletion is recursive: all objects under the selected folders are removed.
 
 ### Treemap Visualization
 
 ![Treemap view](../assets/screenshots/console-treemap.png)
 
 Toggle the treemap view to see a visual representation of object sizes within a bucket. Larger objects appear as larger rectangles, making it easy to spot storage-heavy files.
+
+## Bucket Settings
+
+![Bucket settings](../assets/screenshots/console-bucket-settings.png)
+
+Click the gear icon in the bucket browser header (or on a bucket card) to open the settings view. It contains:
+
+### Encryption
+
+- When **server-level encryption is enabled**, the card shows a read-only status indicator (e.g., "SSE-S3 (AES-256) Active" or "SSE-S3 (Vault) Active").
+- When **server-level encryption is disabled** (per-bucket mode), you can toggle encryption on or off for individual buckets. New objects written after enabling encryption are encrypted; existing objects remain unchanged.
+
+### Danger Zone
+
+- **Delete this bucket** — permanently removes the bucket. Requires typing the bucket name to confirm. The bucket must be empty.
 
 ## Credential Management
 

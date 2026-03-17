@@ -4,14 +4,20 @@ set -euo pipefail
 # Take automated screenshots of the Arca web console for documentation.
 # Outputs PNG files to documentation/docs/assets/screenshots/.
 #
+# Uses the compose.sh library for consistent Docker Compose management.
+# By default, starts Arca with encryption enabled so screenshots show
+# encryption indicators (shield icons, badges, etc.).
+#
 # Usage:
 #   bin/screenshots              Run screenshots (images must be built)
 #   bin/screenshots --build      Rebuild all images first
+#   bin/screenshots --no-encryption  Run without encryption features
 
 cd "$(git rev-parse --show-toplevel)"
+source bin/lib/compose.sh
 
-COMPOSE="docker compose -f docker/docker-compose.yml"
 BUILD=false
+ENCRYPTION=true
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -19,11 +25,16 @@ while [[ $# -gt 0 ]]; do
             BUILD=true
             shift
             ;;
+        --no-encryption)
+            ENCRYPTION=false
+            shift
+            ;;
         -h|--help)
-            echo "Usage: bin/screenshots [--build]"
+            echo "Usage: bin/screenshots [--build] [--no-encryption]"
             echo ""
             echo "Options:"
-            echo "  --build  Rebuild all images (arca, console, screenshots) first"
+            echo "  --build           Rebuild all images (arca, console, screenshots) first"
+            echo "  --no-encryption   Do not enable encryption (default: encryption ON)"
             echo ""
             echo "Outputs PNG files to documentation/docs/assets/screenshots/."
             exit 0
@@ -36,16 +47,25 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Enable encryption by default for richer screenshots
+if $ENCRYPTION; then
+    enable_encryption
+fi
+build_config
+
+COMPOSE="$(compose_cmd) --profile screenshots"
+
 cleanup() {
     echo "==> Tearing down screenshot services..."
-    $COMPOSE --profile screenshots down --remove-orphans 2>/dev/null || true
+    $COMPOSE down --remove-orphans 2>/dev/null || true
+    clean_env
 }
 trap cleanup EXIT
 
 if $BUILD; then
     echo "==> Building images..."
-    $COMPOSE build arca
-    $COMPOSE --profile screenshots build screenshots-console screenshots
+    bin/build
+    $COMPOSE build screenshots-console screenshots
 fi
 
 echo "==> Starting Arca server..."
@@ -60,10 +80,10 @@ for i in $(seq 1 30); do
 done
 
 echo "==> Starting console for screenshots..."
-$COMPOSE --profile screenshots up -d screenshots-console
+$COMPOSE up -d screenshots-console
 
 echo "==> Running screenshot tool..."
-$COMPOSE --profile screenshots run --rm screenshots
+$COMPOSE run --rm screenshots
 
 echo "==> Screenshots complete."
 ls -la documentation/docs/assets/screenshots/*.png 2>/dev/null || echo "Warning: no PNG files found"

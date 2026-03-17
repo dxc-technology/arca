@@ -681,10 +681,71 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#sharing-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sharing Objects
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#batch-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Batch Operations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#treemap-visualization" class="md-nav__link">
     <span class="md-ellipsis">
       
         Treemap Visualization
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bucket-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bucket Settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bucket Settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#encryption" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Encryption
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#danger-zone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Danger Zone
       
     </span>
   </a>
@@ -1274,10 +1335,71 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#sharing-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sharing Objects
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#batch-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Batch Operations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#treemap-visualization" class="md-nav__link">
     <span class="md-ellipsis">
       
         Treemap Visualization
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bucket-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bucket Settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bucket Settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#encryption" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Encryption
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#danger-zone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Danger Zone
       
     </span>
   </a>
@@ -1445,25 +1567,29 @@
 <li><strong>Server info</strong>: version, uptime</li>
 <li><strong>Storage stats</strong>: bucket count, object count, total storage size</li>
 <li><strong>Storage distribution</strong>: SVG donut chart showing size per bucket</li>
+<li><strong>Encryption status</strong>: whether server-side encryption is active (SSE-S3 with local key or Vault/OpenBAO KMS)</li>
 <li><strong>Health indicator</strong>: real-time server health status with auto-refresh</li>
 </ul>
 <h2 id="bucket-management">Bucket Management<a class="headerlink" href="#bucket-management" title="Permanent link">&para;</a></h2>
 <p><img alt="Bucket list" src="../../assets/screenshots/console-buckets.png" /></p>
-<p>The Buckets view shows all buckets as cards with object count and total size. From here you can:</p>
+<p>The Buckets view shows all buckets as cards with creation date. Encrypted buckets display a green shield badge. From here you can:</p>
 <ul>
 <li><strong>Create</strong> a new bucket (click the "+" button)</li>
 <li><strong>Delete</strong> an empty bucket</li>
 <li><strong>Browse</strong> a bucket by clicking its card</li>
+<li><strong>Open settings</strong> via the gear icon on each card</li>
 </ul>
 <h2 id="object-browser">Object Browser<a class="headerlink" href="#object-browser" title="Permanent link">&para;</a></h2>
 <p><img alt="Bucket browser" src="../../assets/screenshots/console-bucket-browser.png" /></p>
 <p>Inside a bucket, the object browser provides:</p>
 <ul>
-<li><strong>Breadcrumb navigation</strong> — click any path segment to navigate up</li>
+<li><strong>Breadcrumb navigation</strong> — click any path segment to navigate up. When encryption is active, a green shield icon appears next to the bucket name.</li>
 <li><strong>Folder browsing</strong> — click folders to navigate into them</li>
 <li><strong>Create folder</strong> — creates an S3 directory marker (zero-byte object with trailing <code>/</code>)</li>
-<li><strong>Upload</strong> — drag-and-drop or click to upload files</li>
+<li><strong>Upload Files</strong> — click to select files, or drag-and-drop onto the browser</li>
+<li><strong>Upload Folder</strong> — upload an entire directory tree preserving its structure</li>
 <li><strong>Download</strong> — download individual objects</li>
+<li><strong>Share</strong> — generate a presigned URL for any object (see <a href="#sharing-objects">Sharing Objects</a> below)</li>
 <li><strong>Delete</strong> — delete objects or folders (with their contents)</li>
 </ul>
 <h3 id="object-detail">Object Detail<a class="headerlink" href="#object-detail" title="Permanent link">&para;</a></h3>
@@ -1472,11 +1598,46 @@
 <ul>
 <li>Key, size, content type</li>
 <li>ETag and last modified timestamp</li>
-<li>Download and delete actions</li>
+<li>Encryption status (when encryption is active)</li>
+<li><strong>Share</strong>, <strong>Download</strong>, and <strong>Delete</strong> actions</li>
 </ul>
+<h3 id="sharing-objects">Sharing Objects<a class="headerlink" href="#sharing-objects" title="Permanent link">&para;</a></h3>
+<p><img alt="Share modal" src="../../assets/screenshots/console-share-modal.png" /></p>
+<p>Click the <strong>Share</strong> button on any object (either inline or in the detail panel) to generate a presigned URL. The share modal lets you:</p>
+<ol>
+<li>Choose an expiry duration: <strong>1 hour</strong>, <strong>6 hours</strong>, <strong>1 day</strong>, or <strong>7 days</strong></li>
+<li>Click <strong>Generate Link</strong> to create the presigned URL</li>
+<li><strong>Copy</strong> the URL to share with anyone, no credentials required</li>
+</ol>
+<p>The generated URL provides time-limited, read-only access to the object. It expires automatically after the chosen duration.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Presigned URLs are generated via the Admin API (<code>/admin/presign</code>). This feature requires admin credentials.</p>
+</div>
+<h3 id="batch-operations">Batch Operations<a class="headerlink" href="#batch-operations" title="Permanent link">&para;</a></h3>
+<p><img alt="Batch selection" src="../../assets/screenshots/console-batch-selection.png" /></p>
+<p>Select multiple objects and folders using the checkboxes next to each item. When items are selected, an action bar appears with:</p>
+<ul>
+<li><strong>Download .tar.gz</strong> — streams a compressed archive of all selected objects</li>
+<li><strong>Delete</strong> — batch-delete all selected items (with confirmation dialog)</li>
+<li><strong>Clear selection</strong> — deselect all items</li>
+</ul>
+<p>For folder selections, deletion is recursive: all objects under the selected folders are removed.</p>
 <h3 id="treemap-visualization">Treemap Visualization<a class="headerlink" href="#treemap-visualization" title="Permanent link">&para;</a></h3>
 <p><img alt="Treemap view" src="../../assets/screenshots/console-treemap.png" /></p>
 <p>Toggle the treemap view to see a visual representation of object sizes within a bucket. Larger objects appear as larger rectangles, making it easy to spot storage-heavy files.</p>
+<h2 id="bucket-settings">Bucket Settings<a class="headerlink" href="#bucket-settings" title="Permanent link">&para;</a></h2>
+<p><img alt="Bucket settings" src="../../assets/screenshots/console-bucket-settings.png" /></p>
+<p>Click the gear icon in the bucket browser header (or on a bucket card) to open the settings view. It contains:</p>
+<h3 id="encryption">Encryption<a class="headerlink" href="#encryption" title="Permanent link">&para;</a></h3>
+<ul>
+<li>When <strong>server-level encryption is enabled</strong>, the card shows a read-only status indicator (e.g., "SSE-S3 (AES-256) Active" or "SSE-S3 (Vault) Active").</li>
+<li>When <strong>server-level encryption is disabled</strong> (per-bucket mode), you can toggle encryption on or off for individual buckets. New objects written after enabling encryption are encrypted; existing objects remain unchanged.</li>
+</ul>
+<h3 id="danger-zone">Danger Zone<a class="headerlink" href="#danger-zone" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Delete this bucket</strong> — permanently removes the bucket. Requires typing the bucket name to confirm. The bucket must be empty.</li>
+</ul>
 <h2 id="credential-management">Credential Management<a class="headerlink" href="#credential-management" title="Permanent link">&para;</a></h2>
 <p><img alt="Credential list" src="../../assets/screenshots/console-credentials.png" /></p>
 <p>The Credentials view is available to <strong>admin credentials only</strong>. It displays all credentials as cards showing:</p>

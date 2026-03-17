@@ -154,6 +154,7 @@ def take_screenshots():
     """Capture screenshots of the web console using Playwright."""
     print("\n=== Phase B: Taking screenshots ===")
 
+    total = 11
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     with sync_playwright() as p:
@@ -165,7 +166,7 @@ def take_screenshots():
         page.add_style_tag(content=DISABLE_ANIMATIONS_CSS)
 
         # ----- 1. Login screen -----
-        print("  1/8 console-login.png")
+        print(f"  1/{total} console-login.png")
         page.goto(CONSOLE_URL)
         page.wait_for_load_state("networkidle")
         # Fill endpoint field (visible because ARCA_ENDPOINT is not set on screenshots-console)
@@ -173,7 +174,7 @@ def take_screenshots():
         screenshot(page, "console-login.png")
 
         # ----- 2. Dashboard (login + navigate) -----
-        print("  2/8 console-dashboard.png")
+        print(f"  2/{total} console-dashboard.png")
         page.fill('input[placeholder="AKIAIOSFODNN7EXAMPLE"]', ACCESS_KEY)
         page.fill('input[placeholder="wJalrXUtnFEMI/..."]', SECRET_KEY)
         page.click('button:has-text("Sign In")')
@@ -182,65 +183,100 @@ def take_screenshots():
         page.wait_for_timeout(2000)
         screenshot(page, "console-dashboard.png")
 
-        # ----- 3. Buckets view -----
-        print("  3/8 console-buckets.png")
-        # Navigate via hash (most reliable — avoids Alpine.js click timing issues)
+        # ----- 3. Buckets view (shows encryption badges when encryption is enabled) -----
+        print(f"  3/{total} console-buckets.png")
         page.goto(f"{CONSOLE_URL}#/buckets")
         page.wait_for_load_state("networkidle")
-        # Wait for bucket cards to appear — they contain bucket names set via x-text
         page.wait_for_selector('.glass.rounded-xl.cursor-pointer', timeout=10000)
         page.wait_for_timeout(1000)
         screenshot(page, "console-buckets.png")
 
-        # ----- 4. Bucket browser — documents -----
-        print("  4/8 console-bucket-browser.png")
+        # ----- 4. Bucket browser — documents (shows encryption shield in breadcrumb) -----
+        print(f"  4/{total} console-bucket-browser.png")
         page.goto(f"{CONSOLE_URL}#/buckets/documents")
         page.wait_for_load_state("networkidle")
-        # Wait for file/folder rows to render (hover:bg-white rows are file/dir items)
         page.wait_for_selector('[class*="cursor-pointer"][class*="border-b"]', timeout=10000)
         page.wait_for_timeout(1000)
         screenshot(page, "console-bucket-browser.png")
 
-        # ----- 5. Object detail — readme.txt -----
-        print("  5/8 console-object-detail.png")
-        # Click the readme.txt file row
+        # ----- 5. Object detail — readme.txt (shows Share button, encryption status) -----
+        print(f"  5/{total} console-object-detail.png")
         page.locator('[class*="cursor-pointer"][class*="border-b"]:has-text("readme.txt")').click()
-        # Wait for detail panel to appear
         page.wait_for_selector('text=Object Detail', timeout=10000)
         page.wait_for_timeout(500)
         screenshot(page, "console-object-detail.png")
 
-        # ----- 6. Treemap — media bucket -----
-        print("  6/8 console-treemap.png")
-        # Navigate to media bucket — reload page to clear the detail panel from step 5
+        # ----- 6. Share modal — presigned URL generation -----
+        print(f"  6/{total} console-share-modal.png")
+        # Click Share button in the object detail panel
+        page.click('button:has-text("Share")')
+        page.wait_for_selector('h3:has-text("Share Object")', timeout=10000)
+        page.wait_for_timeout(500)
+        # Click "Generate Link" to produce a presigned URL
+        page.click('button:has-text("Generate Link")')
+        page.wait_for_selector('text=Presigned URL', timeout=10000)
+        page.wait_for_timeout(500)
+        screenshot(page, "console-share-modal.png")
+        # Close the share modal
+        page.click('.fixed button:has-text("Close")')
+        page.wait_for_timeout(300)
+
+        # ----- 7. Batch selection bar — select multiple objects -----
+        print(f"  7/{total} console-batch-selection.png")
+        # Full page reload to reset Alpine.js state (close detail panel, modals, etc.)
+        page.goto(f"{CONSOLE_URL}#/buckets/documents")
+        page.wait_for_load_state("networkidle")
+        page.add_style_tag(content=DISABLE_ANIMATIONS_CSS)
+        page.reload(wait_until="networkidle")
+        page.wait_for_selector('[class*="cursor-pointer"][class*="border-b"]', timeout=10000)
+        page.wait_for_timeout(500)
+        # Select items using checkboxes
+        checkboxes = page.locator('input[type="checkbox"]')
+        count = checkboxes.count()
+        # Select up to 3 items (skip the "select all" if present)
+        selected = 0
+        for i in range(count):
+            if selected >= 3:
+                break
+            cb = checkboxes.nth(i)
+            if cb.is_visible():
+                cb.check()
+                selected += 1
+        page.wait_for_timeout(500)
+        screenshot(page, "console-batch-selection.png")
+
+        # ----- 8. Bucket settings — encryption toggle -----
+        print(f"  8/{total} console-bucket-settings.png")
+        page.goto(f"{CONSOLE_URL}#/buckets/documents/settings")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_selector('h2:has-text("Bucket Settings")', timeout=10000)
+        page.wait_for_timeout(1000)
+        screenshot(page, "console-bucket-settings.png")
+
+        # ----- 9. Treemap — media bucket -----
+        print(f"  9/{total} console-treemap.png")
         page.goto(f"{CONSOLE_URL}#/buckets/media")
         page.reload(wait_until="networkidle")
         page.wait_for_selector('[class*="cursor-pointer"][class*="border-b"]', timeout=10000)
         page.wait_for_timeout(500)
-        # Click the treemap toggle button (has title="Treemap view")
         page.click('[title="Treemap view"]')
         page.wait_for_timeout(1000)
         screenshot(page, "console-treemap.png")
 
-        # ----- 7. Credentials view -----
-        print("  7/8 console-credentials.png")
+        # ----- 10. Credentials view -----
+        print(f"  10/{total} console-credentials.png")
         page.goto(f"{CONSOLE_URL}#/credentials")
         page.wait_for_load_state("networkidle")
-        # Wait for credential cards
         page.wait_for_selector('.glass.rounded-xl:has-text("Active")', timeout=10000)
         page.wait_for_timeout(1000)
         screenshot(page, "console-credentials.png")
 
-        # ----- 8. Create credential -----
-        print("  8/8 console-credential-created.png")
-        # Click "+ Create Credential" button
+        # ----- 11. Create credential -----
+        print(f"  11/{total} console-credential-created.png")
         page.click('button:has-text("Create Credential")')
         page.wait_for_timeout(500)
-        # Fill description in the modal
         page.fill('input[placeholder="My application"]', "CI/CD Pipeline")
-        # Click Create button inside the modal form
         page.locator('.fixed button:has-text("Create")').click()
-        # Wait for the "Credential Created" success view with the secret key
         page.wait_for_selector('text=Credential Created', timeout=10000)
         page.wait_for_timeout(500)
         screenshot(page, "console-credential-created.png")
