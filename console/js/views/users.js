@@ -230,7 +230,20 @@ export function userDetailView() {
           const body = await resp.json();
           throw new Error(body.error || body.message || `Error ${resp.status}`);
         }
-        // Reload credentials list
+        const creds = await api.adminGet('/users/' + this.userId + '/credentials');
+        this.credentials = creds;
+      } catch (e) {
+        alert(e.message);
+      }
+    },
+
+    async updateCredDescription(credId, description) {
+      try {
+        const resp = await api.adminPut('/credentials/' + credId, { description });
+        if (!resp.ok) {
+          const body = await resp.json();
+          throw new Error(body.error || body.message || `Error ${resp.status}`);
+        }
         const creds = await api.adminGet('/users/' + this.userId + '/credentials');
         this.credentials = creds;
       } catch (e) {

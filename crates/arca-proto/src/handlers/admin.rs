@@ -299,13 +299,17 @@ pub async fn update_credential(
                 ));
             }
         }
-
-        state
-            .credentials
-            .set_credential_active(&access_key_id, active)
-            .await
-            .map_err(|e| AdminError::internal(e.to_string()))?;
     }
+
+    state
+        .credentials
+        .update_credential(
+            &access_key_id,
+            body.active,
+            body.description.as_deref(),
+        )
+        .await
+        .map_err(|e| AdminError::internal(e.to_string()))?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -314,6 +318,8 @@ pub async fn update_credential(
 pub struct UpdateCredentialRequest {
     #[serde(default)]
     pub active: Option<bool>,
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 /// DELETE /admin/credentials/{access_key_id} — delete a credential.

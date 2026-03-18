@@ -23,11 +23,12 @@ pub trait CredentialStore: Send + Sync {
         access_key_id: &str,
     ) -> Result<bool, crate::error::ArcaError>;
 
-    /// Sets the active flag on a credential. Returns false if not found.
-    async fn set_credential_active(
+    /// Updates a credential's mutable fields. Returns false if not found.
+    async fn update_credential(
         &self,
         access_key_id: &str,
-        active: bool,
+        active: Option<bool>,
+        description: Option<&str>,
     ) -> Result<bool, crate::error::ArcaError>;
 
     /// Counts the number of active credentials.

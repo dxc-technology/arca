@@ -89,22 +89,47 @@ impl CredentialStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("delete_credential: {e}")))
     }
 
-    async fn set_credential_active(
+    async fn update_credential(
         &self,
         access_key_id: &str,
-        active: bool,
+        active: Option<bool>,
+        description: Option<&str>,
     ) -> Result<bool, ArcaError> {
         let key = access_key_id.to_string();
+        let active = active;
+        let description = description.map(|s| s.to_string());
         self.conn
             .call(move |conn| {
-                let affected = conn.execute(
-                    "UPDATE credentials SET active = ?1 WHERE access_key_id = ?2",
-                    params![active as i32, key],
-                )?;
+                let mut sets = Vec::new();
+                let mut values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+                if let Some(a) = active {
+                    sets.push("active = ?");
+                    values.push(Box::new(a as i32));
+                }
+                if let Some(ref d) = description {
+                    sets.push("description = ?");
+                    values.push(Box::new(d.clone()));
+                }
+                if sets.is_empty() {
+                    // Nothing to update, just check existence.
+                    let exists: bool = conn.query_row(
+                        "SELECT 1 FROM credentials WHERE access_key_id = ?1",
+                        params![key],
+                        |_| Ok(true),
+                    ).unwrap_or(false);
+                    return Ok(exists);
+                }
+                let sql = format!(
+                    "UPDATE credentials SET {} WHERE access_key_id = ?",
+                    sets.join(", ")
+                );
+                values.push(Box::new(key));
+                let params: Vec<&dyn rusqlite::types::ToSql> = values.iter().map(|v| v.as_ref()).collect();
+                let affected = conn.execute(&sql, params.as_slice())?;
                 Ok(affected > 0)
             })
             .await
-            .map_err(|e: TrError| ArcaError::Internal(format!("set_credential_active: {e}")))
+            .map_err(|e: TrError| ArcaError::Internal(format!("update_credential: {e}")))
     }
 
     async fn count_active_credentials(&self) -> Result<u64, ArcaError> {
@@ -333,7 +358,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_credential_active() {
+    async fn update_credential_active() {
         let store = test_store().await;
         let cred = Credential {
             access_key_id: "TOGGLE".to_string(),
@@ -347,22 +372,64 @@ mod tests {
         store.put_credential(&cred).await.unwrap();
 
         // Deactivate
-        let ok = store.set_credential_active("TOGGLE", false).await.unwrap();
+        let ok = store.update_credential("TOGGLE", Some(false), None).await.unwrap();
         assert!(ok);
         let fetched = store.get_credential("TOGGLE").await.unwrap().unwrap();
         assert!(!fetched.active);
 
         // Reactivate
-        let ok = store.set_credential_active("TOGGLE", true).await.unwrap();
+        let ok = store.update_credential("TOGGLE", Some(true), None).await.unwrap();
         assert!(ok);
         let fetched = store.get_credential("TOGGLE").await.unwrap().unwrap();
         assert!(fetched.active);
     }
 
     #[tokio::test]
-    async fn set_credential_active_nonexistent_returns_false() {
+    async fn update_credential_description() {
         let store = test_store().await;
-        let ok = store.set_credential_active("NOPE", false).await.unwrap();
+        let cred = Credential {
+            access_key_id: "DESC".to_string(),
+            secret_access_key: "SECRET".to_string(),
+            description: "original".to_string(),
+            created_at: Utc::now(),
+            active: true,
+            admin: false,
+            user_id: "root".to_string(),
+        };
+        store.put_credential(&cred).await.unwrap();
+
+        let ok = store.update_credential("DESC", None, Some("updated")).await.unwrap();
+        assert!(ok);
+        let fetched = store.get_credential("DESC").await.unwrap().unwrap();
+        assert_eq!(fetched.description, "updated");
+        assert!(fetched.active); // unchanged
+    }
+
+    #[tokio::test]
+    async fn update_credential_both_fields() {
+        let store = test_store().await;
+        let cred = Credential {
+            access_key_id: "BOTH".to_string(),
+            secret_access_key: "SECRET".to_string(),
+            description: "old".to_string(),
+            created_at: Utc::now(),
+            active: true,
+            admin: false,
+            user_id: "root".to_string(),
+        };
+        store.put_credential(&cred).await.unwrap();
+
+        let ok = store.update_credential("BOTH", Some(false), Some("new desc")).await.unwrap();
+        assert!(ok);
+        let fetched = store.get_credential("BOTH").await.unwrap().unwrap();
+        assert!(!fetched.active);
+        assert_eq!(fetched.description, "new desc");
+    }
+
+    #[tokio::test]
+    async fn update_credential_nonexistent_returns_false() {
+        let store = test_store().await;
+        let ok = store.update_credential("NOPE", Some(false), None).await.unwrap();
         assert!(!ok);
     }
 
