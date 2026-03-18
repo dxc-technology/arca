@@ -62,15 +62,42 @@ impl TeamStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("list_teams: {e}")))
     }
 
-    async fn update_team(&self, team_id: &str, description: &str) -> Result<bool, ArcaError> {
+    async fn update_team(
+        &self,
+        team_id: &str,
+        name: Option<&str>,
+        description: Option<&str>,
+    ) -> Result<bool, ArcaError> {
         let id = team_id.to_string();
-        let desc = description.to_string();
+        let name = name.map(|s| s.to_string());
+        let description = description.map(|s| s.to_string());
         self.conn
             .call(move |conn| {
-                let affected = conn.execute(
-                    "UPDATE teams SET description = ?1 WHERE team_id = ?2",
-                    params![desc, id],
-                )?;
+                let mut sets = Vec::new();
+                let mut values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+                if let Some(ref n) = name {
+                    sets.push("name = ?");
+                    values.push(Box::new(n.clone()));
+                }
+                if let Some(ref d) = description {
+                    sets.push("description = ?");
+                    values.push(Box::new(d.clone()));
+                }
+                if sets.is_empty() {
+                    let exists: bool = conn.query_row(
+                        "SELECT 1 FROM teams WHERE team_id = ?1",
+                        params![id],
+                        |_| Ok(true),
+                    ).unwrap_or(false);
+                    return Ok(exists);
+                }
+                let sql = format!(
+                    "UPDATE teams SET {} WHERE team_id = ?",
+                    sets.join(", ")
+                );
+                values.push(Box::new(id));
+                let params: Vec<&dyn rusqlite::types::ToSql> = values.iter().map(|v| v.as_ref()).collect();
+                let affected = conn.execute(&sql, params.as_slice())?;
                 Ok(affected > 0)
             })
             .await
@@ -258,9 +285,19 @@ mod tests {
     async fn update_team_description() {
         let store = test_store().await;
         store.put_team(&make_team("t4", "QA")).await.unwrap();
-        assert!(store.update_team("t4", "Quality Assurance").await.unwrap());
+        assert!(store.update_team("t4", None, Some("Quality Assurance")).await.unwrap());
         let fetched = store.get_team("t4").await.unwrap().unwrap();
         assert_eq!(fetched.description, "Quality Assurance");
+        assert_eq!(fetched.name, "QA"); // unchanged
+    }
+
+    #[tokio::test]
+    async fn update_team_name() {
+        let store = test_store().await;
+        store.put_team(&make_team("t4b", "OldName")).await.unwrap();
+        assert!(store.update_team("t4b", Some("NewName"), None).await.unwrap());
+        let fetched = store.get_team("t4b").await.unwrap().unwrap();
+        assert_eq!(fetched.name, "NewName");
     }
 
     #[tokio::test]

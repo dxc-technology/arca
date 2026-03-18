@@ -39,6 +39,8 @@ pub struct CreateTeamRequest {
 #[derive(Deserialize)]
 pub struct UpdateTeamRequest {
     #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
     pub description: Option<String>,
 }
 
@@ -157,13 +159,21 @@ pub async fn update_team(
         .map_err(|e| AdminError::internal(e.to_string()))?
         .ok_or_else(|| AdminError::not_found(format!("Team {team_id} not found")))?;
 
-    if let Some(desc) = body.description {
-        state
-            .teams
-            .update_team(&team_id, &desc)
-            .await
-            .map_err(|e| AdminError::internal(e.to_string()))?;
-    }
+    state
+        .teams
+        .update_team(
+            &team_id,
+            body.name.as_deref(),
+            body.description.as_deref(),
+        )
+        .await
+        .map_err(|e| {
+            if e.to_string().contains("UNIQUE") {
+                AdminError::conflict("Team name already exists")
+            } else {
+                AdminError::internal(e.to_string())
+            }
+        })?;
 
     Ok(StatusCode::NO_CONTENT)
 }

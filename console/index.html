@@ -1105,11 +1105,12 @@
         <!-- ==================== USER DETAIL ==================== -->
         <div x-show="view === 'user-detail'" x-data="userDetailView" x-effect="if(view === 'user-detail') load()" class="p-6 max-w-6xl">
           <!-- Header -->
-          <div class="flex items-center gap-3 mb-6">
+          <div class="flex items-center gap-3 mb-2">
             <a href="#/users" class="p-1.5 rounded-lg hover:bg-white/5 text-vault-muted hover:text-vault-text transition">
               <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>
             </a>
-            <h2 class="text-xl font-semibold tracking-tight" x-text="user?.username || 'User'"></h2>
+            <input x-show="!user?.is_root" type="text" :value="editUsername" @change="editUsername = $event.target.value; saveField({ username: editUsername })" class="text-xl font-semibold tracking-tight text-vault-text bg-transparent border-b border-transparent hover:border-vault-border focus:border-vault-accent focus:outline-none py-0.5 transition flex-1" placeholder="Username">
+            <h2 x-show="user?.is_root" class="text-xl font-semibold tracking-tight" x-text="user?.username || 'User'"></h2>
             <span x-show="user?.is_root" class="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400">root</span>
           </div>
           <!-- Loading -->
@@ -1118,16 +1119,8 @@
           </div>
           <div x-show="!loading && user">
             <!-- Description -->
-            <div class="glass rounded-xl p-5 mb-6" x-show="!user?.is_root">
-              <div>
-                <label class="text-sm text-vault-muted block mb-1">Description</label>
-                <input x-model="editDescription" type="text" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent" placeholder="Optional description">
-              </div>
-              <div class="flex items-center gap-3 mt-4">
-                <button @click="save()" :disabled="saving" class="bg-vault-accent text-vault-bg font-medium rounded-lg px-4 py-2 text-sm hover:bg-vault-accent/90 disabled:opacity-50" x-text="saving ? 'Saving...' : 'Save Changes'"></button>
-                <span x-show="saveSuccess" class="text-green-400 text-sm">Saved!</span>
-                <p x-show="saveError" class="text-red-400 text-sm" x-text="saveError"></p>
-              </div>
+            <div x-show="!user?.is_root" class="mb-4 ml-10">
+              <input type="text" :value="editDescription" @change="editDescription = $event.target.value; saveField({ description: editDescription })" class="w-full text-sm text-vault-muted bg-transparent border-b border-transparent hover:border-vault-border focus:border-vault-accent focus:outline-none py-0.5 transition" placeholder="(no description)">
             </div>
             <p x-show="user?.is_root && user?.description" class="text-vault-muted text-sm mb-4" x-text="user?.description"></p>
             <!-- Tab bar -->
@@ -1393,11 +1386,11 @@
         <!-- ==================== TEAM DETAIL ==================== -->
         <div x-show="view === 'team-detail'" x-data="teamDetailView" x-effect="if(view === 'team-detail') load()" class="p-6 max-w-6xl">
           <!-- Header -->
-          <div class="flex items-center gap-3 mb-6">
+          <div class="flex items-center gap-3 mb-2">
             <a href="#/teams" class="p-1.5 rounded-lg hover:bg-white/5 text-vault-muted hover:text-vault-text transition">
               <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>
             </a>
-            <h2 class="text-xl font-semibold tracking-tight" x-text="team?.name || 'Team'"></h2>
+            <input type="text" :value="editName" @change="editName = $event.target.value; saveField({ name: editName })" class="text-xl font-semibold tracking-tight text-vault-text bg-transparent border-b border-transparent hover:border-vault-border focus:border-vault-accent focus:outline-none py-0.5 transition flex-1" placeholder="Team name">
           </div>
           <!-- Loading -->
           <div x-show="loading" class="flex justify-center py-12">
@@ -1405,16 +1398,8 @@
           </div>
           <div x-show="!loading && team">
             <!-- Description -->
-            <div class="glass rounded-xl p-5 mb-6">
-              <div>
-                <label class="text-sm text-vault-muted block mb-1">Description</label>
-                <input x-model="editDescription" type="text" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent" placeholder="Optional description">
-              </div>
-              <div class="flex items-center gap-3 mt-4">
-                <button @click="save()" :disabled="saving" class="bg-vault-accent text-vault-bg font-medium rounded-lg px-4 py-2 text-sm hover:bg-vault-accent/90 disabled:opacity-50" x-text="saving ? 'Saving...' : 'Save Changes'"></button>
-                <span x-show="saveSuccess" class="text-green-400 text-sm">Saved!</span>
-                <p x-show="saveError" class="text-red-400 text-sm" x-text="saveError"></p>
-              </div>
+            <div class="mb-4 ml-10">
+              <input type="text" :value="editDescription" @change="editDescription = $event.target.value; saveField({ description: editDescription })" class="w-full text-sm text-vault-muted bg-transparent border-b border-transparent hover:border-vault-border focus:border-vault-accent focus:outline-none py-0.5 transition" placeholder="(no description)">
             </div>
             <!-- Tab bar -->
             <div class="flex gap-1 border-b border-vault-border/30 mb-6">
@@ -1586,11 +1571,12 @@
         <!-- ==================== GRANT DETAIL ==================== -->
         <div x-show="view === 'grant-detail'" x-data="grantDetailView" x-effect="if(view === 'grant-detail') load()" class="p-6 max-w-4xl">
           <!-- Header -->
-          <div class="flex items-center gap-3 mb-6">
+          <div class="flex items-center gap-3 mb-2">
             <a href="#/grants" class="p-1.5 rounded-lg hover:bg-white/5 text-vault-muted hover:text-vault-text transition">
               <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>
             </a>
-            <h2 class="text-xl font-semibold tracking-tight" x-text="grant?.name || 'Grant'"></h2>
+            <input x-show="!isBuiltIn()" type="text" :value="editName" @change="editName = $event.target.value; saveField({ name: editName })" class="text-xl font-semibold tracking-tight text-vault-text bg-transparent border-b border-transparent hover:border-vault-border focus:border-vault-accent focus:outline-none py-0.5 transition flex-1" placeholder="Grant name">
+            <h2 x-show="isBuiltIn()" class="text-xl font-semibold tracking-tight" x-text="grant?.name || 'Grant'"></h2>
             <span x-show="isBuiltIn()" class="text-xs px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-400">built-in</span>
           </div>
           <!-- Loading -->
@@ -1598,17 +1584,11 @@
             <svg class="animate-spin h-6 w-6 text-vault-accent" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
           </div>
           <div x-show="!loading && grant" class="space-y-6">
-            <!-- Name & Description -->
-            <div class="glass rounded-xl p-5 space-y-4">
-              <div>
-                <label class="text-sm text-vault-muted block mb-1">Name</label>
-                <input x-model="editName" type="text" :disabled="isBuiltIn()" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent disabled:opacity-50">
-              </div>
-              <div>
-                <label class="text-sm text-vault-muted block mb-1">Description</label>
-                <input x-model="editDescription" type="text" :disabled="isBuiltIn()" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent disabled:opacity-50">
-              </div>
+            <!-- Description -->
+            <div class="ml-10" x-show="!isBuiltIn()">
+              <input type="text" :value="editDescription" @change="editDescription = $event.target.value; saveField({ description: editDescription })" class="w-full text-sm text-vault-muted bg-transparent border-b border-transparent hover:border-vault-border focus:border-vault-accent focus:outline-none py-0.5 transition" placeholder="(no description)">
             </div>
+            <p x-show="isBuiltIn() && grant?.description" class="text-vault-muted text-sm ml-10" x-text="grant?.description"></p>
 
             <!-- Policy Editor -->
             <div class="glass rounded-xl p-5">
@@ -1666,7 +1646,7 @@
             <!-- Actions -->
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-3">
-                <button x-show="!isBuiltIn()" @click="save()" :disabled="saving" class="bg-vault-accent text-vault-bg font-medium rounded-lg px-4 py-2 text-sm hover:bg-vault-accent/90 disabled:opacity-50" x-text="saving ? 'Saving...' : 'Save Changes'"></button>
+                <button x-show="!isBuiltIn()" @click="save()" :disabled="saving" class="bg-vault-accent text-vault-bg font-medium rounded-lg px-4 py-2 text-sm hover:bg-vault-accent/90 disabled:opacity-50" x-text="saving ? 'Saving...' : 'Save Policy'"></button>
                 <span x-show="saveSuccess" class="text-green-400 text-sm">Saved!</span>
                 <p x-show="saveError" class="text-red-400 text-sm" x-text="saveError"></p>
               </div>

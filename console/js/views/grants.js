@@ -147,12 +147,12 @@ export function grantDetailView() {
     attachedUsers: [],
     attachedTeams: [],
     loading: true,
-    saving: false,
-    saveError: '',
-    saveSuccess: false,
     editName: '',
     editDescription: '',
     editDocument: '',
+    saving: false,
+    saveError: '',
+    saveSuccess: false,
 
     // Delete
     showDeleteModal: false,
@@ -254,6 +254,24 @@ export function grantDetailView() {
         }));
       } catch {
         return [];
+      }
+    },
+
+    async saveField(data) {
+      try {
+        const resp = await api.adminPut('/grants/' + this.grantId, data);
+        if (!resp.ok) {
+          const body = await resp.json();
+          throw new Error(body.error || body.message || `Error ${resp.status}`);
+        }
+        const grant = await api.adminGet('/grants/' + this.grantId);
+        this.grant = grant;
+        this.editName = grant.name || '';
+        this.editDescription = grant.description || '';
+      } catch (e) {
+        alert(e.message);
+        this.editName = this.grant?.name || '';
+        this.editDescription = this.grant?.description || '';
       }
     },
 

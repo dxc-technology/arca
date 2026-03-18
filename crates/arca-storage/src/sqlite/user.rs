@@ -87,15 +87,42 @@ impl UserStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("list_users: {e}")))
     }
 
-    async fn update_user(&self, user_id: &str, description: &str) -> Result<bool, ArcaError> {
+    async fn update_user(
+        &self,
+        user_id: &str,
+        username: Option<&str>,
+        description: Option<&str>,
+    ) -> Result<bool, ArcaError> {
         let id = user_id.to_string();
-        let desc = description.to_string();
+        let username = username.map(|s| s.to_string());
+        let description = description.map(|s| s.to_string());
         self.conn
             .call(move |conn| {
-                let affected = conn.execute(
-                    "UPDATE users SET description = ?1 WHERE user_id = ?2",
-                    params![desc, id],
-                )?;
+                let mut sets = Vec::new();
+                let mut values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+                if let Some(ref u) = username {
+                    sets.push("username = ?");
+                    values.push(Box::new(u.clone()));
+                }
+                if let Some(ref d) = description {
+                    sets.push("description = ?");
+                    values.push(Box::new(d.clone()));
+                }
+                if sets.is_empty() {
+                    let exists: bool = conn.query_row(
+                        "SELECT 1 FROM users WHERE user_id = ?1",
+                        params![id],
+                        |_| Ok(true),
+                    ).unwrap_or(false);
+                    return Ok(exists);
+                }
+                let sql = format!(
+                    "UPDATE users SET {} WHERE user_id = ?",
+                    sets.join(", ")
+                );
+                values.push(Box::new(id));
+                let params: Vec<&dyn rusqlite::types::ToSql> = values.iter().map(|v| v.as_ref()).collect();
+                let affected = conn.execute(&sql, params.as_slice())?;
                 Ok(affected > 0)
             })
             .await
@@ -218,15 +245,31 @@ mod tests {
     async fn update_user_description() {
         let store = test_store().await;
         store.put_user(&make_user("u4", "dave")).await.unwrap();
-        assert!(store.update_user("u4", "new desc").await.unwrap());
+        assert!(store.update_user("u4", None, Some("new desc")).await.unwrap());
         let fetched = store.get_user("u4").await.unwrap().unwrap();
         assert_eq!(fetched.description, "new desc");
+        assert_eq!(fetched.username, "dave"); // unchanged
+    }
+
+    #[tokio::test]
+    async fn update_user_username() {
+        let store = test_store().await;
+        store.put_user(&make_user("u4b", "dave2")).await.unwrap();
+        assert!(store.update_user("u4b", Some("dave_renamed"), None).await.unwrap());
+        let fetched = store.get_user("u4b").await.unwrap().unwrap();
+        assert_eq!(fetched.username, "dave_renamed");
+        // Also findable by new username
+        let by_name = store.get_user_by_username("dave_renamed").await.unwrap();
+        assert!(by_name.is_some());
+        // Old username no longer resolves
+        let old = store.get_user_by_username("dave2").await.unwrap();
+        assert!(old.is_none());
     }
 
     #[tokio::test]
     async fn update_nonexistent_returns_false() {
         let store = test_store().await;
-        assert!(!store.update_user("nope", "x").await.unwrap());
+        assert!(!store.update_user("nope", None, Some("x")).await.unwrap());
     }
 
     #[tokio::test]

@@ -86,10 +86,8 @@ export function teamDetailView() {
     activeTab: 'members',
 
     // Edit fields
+    editName: '',
     editDescription: '',
-    saving: false,
-    saveError: '',
-    saveSuccess: false,
 
     // Members shuttle
     membersAll: [],
@@ -126,6 +124,7 @@ export function teamDetailView() {
           api.adminGet('/grants'),
         ]);
         this.team = team.status === 'fulfilled' ? team.value : null;
+        this.editName = this.team?.name || '';
         this.editDescription = this.team?.description || '';
         // Members shuttle
         this.membersAll = allUsers.status === 'fulfilled' ? allUsers.value : [];
@@ -141,30 +140,24 @@ export function teamDetailView() {
       this.loading = false;
     },
 
-    // -- Save description --
+    // -- Inline save --
 
-    async save() {
-      this.saving = true;
-      this.saveError = '';
-      this.saveSuccess = false;
+    async saveField(data) {
       try {
-        const resp = await api.adminPut('/teams/' + this.teamId, {
-          description: this.editDescription,
-        });
+        const resp = await api.adminPut('/teams/' + this.teamId, data);
         if (!resp.ok) {
           const body = await resp.json();
           throw new Error(body.error || body.message || `Error ${resp.status}`);
         }
-        this.saveSuccess = true;
-        setTimeout(() => { this.saveSuccess = false; }, 2000);
-        // Reload to get canonical state
         const team = await api.adminGet('/teams/' + this.teamId);
         this.team = team;
+        this.editName = team.name || '';
         this.editDescription = team.description || '';
       } catch (e) {
-        this.saveError = e.message;
+        alert(e.message);
+        this.editName = this.team?.name || '';
+        this.editDescription = this.team?.description || '';
       }
-      this.saving = false;
     },
 
     // -- Members shuttle --

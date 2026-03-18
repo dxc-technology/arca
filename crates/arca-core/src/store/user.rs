@@ -18,8 +18,13 @@ pub trait UserStore: Send + Sync {
     /// Lists all users.
     async fn list_users(&self) -> Result<Vec<User>, ArcaError>;
 
-    /// Updates a user's description. Returns false if not found.
-    async fn update_user(&self, user_id: &str, description: &str) -> Result<bool, ArcaError>;
+    /// Updates a user's mutable fields. Returns false if not found.
+    async fn update_user(
+        &self,
+        user_id: &str,
+        username: Option<&str>,
+        description: Option<&str>,
+    ) -> Result<bool, ArcaError>;
 
     /// Deletes a user. Returns false if not found.
     async fn delete_user(&self, user_id: &str) -> Result<bool, ArcaError>;

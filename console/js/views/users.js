@@ -88,10 +88,8 @@ export function userDetailView() {
     activeTab: 'credentials',
 
     // Edit fields
+    editUsername: '',
     editDescription: '',
-    saving: false,
-    saveError: '',
-    saveSuccess: false,
 
     // Credential creation
     showCreateCredModal: false,
@@ -144,6 +142,7 @@ export function userDetailView() {
           api.adminGet('/grants'),
         ]);
         this.user = user.status === 'fulfilled' ? user.value : null;
+        this.editUsername = this.user?.username || '';
         this.editDescription = this.user?.description || '';
         this.credentials = credentials.status === 'fulfilled' ? credentials.value : [];
         this.effectiveGrants = effective.status === 'fulfilled' ? effective.value : [];
@@ -161,30 +160,25 @@ export function userDetailView() {
       this.loading = false;
     },
 
-    // -- Save description --
+    // -- Inline save --
 
-    async save() {
-      this.saving = true;
-      this.saveError = '';
-      this.saveSuccess = false;
+    async saveField(data) {
       try {
-        const resp = await api.adminPut('/users/' + this.userId, {
-          description: this.editDescription,
-        });
+        const resp = await api.adminPut('/users/' + this.userId, data);
         if (!resp.ok) {
           const body = await resp.json();
           throw new Error(body.error || body.message || `Error ${resp.status}`);
         }
-        this.saveSuccess = true;
-        setTimeout(() => { this.saveSuccess = false; }, 2000);
-        // Reload to get canonical state
         const user = await api.adminGet('/users/' + this.userId);
         this.user = user;
+        this.editUsername = user.username || '';
         this.editDescription = user.description || '';
       } catch (e) {
-        this.saveError = e.message;
+        alert(e.message);
+        // Revert to server state
+        this.editUsername = this.user?.username || '';
+        this.editDescription = this.user?.description || '';
       }
-      this.saving = false;
     },
 
     // -- Credentials --

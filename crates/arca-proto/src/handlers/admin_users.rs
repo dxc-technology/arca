@@ -43,6 +43,8 @@ pub struct CreateUserRequest {
 #[derive(Deserialize)]
 pub struct UpdateUserRequest {
     #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
     pub description: Option<String>,
 }
 
@@ -188,13 +190,21 @@ pub async fn update_user(
         return Err(AdminError::conflict("Cannot modify the root user"));
     }
 
-    if let Some(desc) = body.description {
-        state
-            .users
-            .update_user(&user_id, &desc)
-            .await
-            .map_err(|e| AdminError::internal(e.to_string()))?;
-    }
+    state
+        .users
+        .update_user(
+            &user_id,
+            body.username.as_deref(),
+            body.description.as_deref(),
+        )
+        .await
+        .map_err(|e| {
+            if e.to_string().contains("UNIQUE") {
+                AdminError::conflict("Username already exists")
+            } else {
+                AdminError::internal(e.to_string())
+            }
+        })?;
 
     Ok(StatusCode::NO_CONTENT)
 }

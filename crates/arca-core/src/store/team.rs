@@ -15,8 +15,13 @@ pub trait TeamStore: Send + Sync {
     /// Lists all teams.
     async fn list_teams(&self) -> Result<Vec<Team>, ArcaError>;
 
-    /// Updates a team's description. Returns false if not found.
-    async fn update_team(&self, team_id: &str, description: &str) -> Result<bool, ArcaError>;
+    /// Updates a team's mutable fields. Returns false if not found.
+    async fn update_team(
+        &self,
+        team_id: &str,
+        name: Option<&str>,
+        description: Option<&str>,
+    ) -> Result<bool, ArcaError>;
 
     /// Deletes a team and its memberships/grant attachments. Returns false if not found.
     async fn delete_team(&self, team_id: &str) -> Result<bool, ArcaError>;
