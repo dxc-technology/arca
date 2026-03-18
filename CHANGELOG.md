@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-03-18
+
 ### Added
 
 - **Phase 16: Access Control and Bucket Policies**
@@ -28,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Admin API**: `PUT /admin/teams/{id}` now accepts optional `name` field for renaming
 - **Documentation**: Access Control guide page with diagrams explaining the identity model, auth flow, and effective grants
 - **Documentation**: database ER diagram (Mermaid) in architecture page showing all 12 tables and relationships
+- **Documentation**: full Admin API reference (37 endpoints), updated CLI reference, console manual with 19 screenshots
+- **Ceph s3-tests**: machine-readable `summary.json` output after test runs
 - **SQLite migration v8**: users, teams, grants, team_members, user_grants, team_grants tables; owner fields on buckets/objects; user_id on credentials
 - 41 RBAC integration tests (user/team/grant CRUD, attachments, effective grants, E2E access control)
 - 90 new unit tests (47 policy evaluator, 37 RBAC store implementations, 6 credential/user/team update)
@@ -133,7 +137,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/dxc-technology/arca/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/dxc-technology/arca/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/dxc-technology/arca/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/dxc-technology/arca/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/dxc-technology/arca/compare/v0.3.0...v0.4.0
