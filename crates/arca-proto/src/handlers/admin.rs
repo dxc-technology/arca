@@ -261,6 +261,61 @@ pub async fn create_credential(
     Ok((StatusCode::CREATED, Json(response)))
 }
 
+/// PUT /admin/credentials/{access_key_id} — update a credential.
+pub async fn update_credential(
+    State(state): State<AppState>,
+    Path(access_key_id): Path<String>,
+    Json(body): Json<UpdateCredentialRequest>,
+) -> Result<impl IntoResponse, AdminError> {
+    let cred = state
+        .credentials
+        .get_credential(&access_key_id)
+        .await
+        .map_err(|e| AdminError::internal(e.to_string()))?
+        .ok_or_else(|| AdminError::not_found(format!("Credential {access_key_id} not found")))?;
+
+    if let Some(active) = body.active {
+        // Prevent deactivating the last active credential or last active admin credential.
+        if !active && cred.active {
+            let all_creds = state
+                .credentials
+                .list_credentials()
+                .await
+                .map_err(|e| AdminError::internal(e.to_string()))?;
+
+            if cred.admin {
+                let active_admin_count = all_creds.iter().filter(|c| c.active && c.admin).count();
+                if active_admin_count <= 1 {
+                    return Err(AdminError::conflict(
+                        "Cannot deactivate the last active admin credential",
+                    ));
+                }
+            }
+
+            let active_count = all_creds.iter().filter(|c| c.active).count();
+            if active_count <= 1 {
+                return Err(AdminError::conflict(
+                    "Cannot deactivate the last active credential",
+                ));
+            }
+        }
+
+        state
+            .credentials
+            .set_credential_active(&access_key_id, active)
+            .await
+            .map_err(|e| AdminError::internal(e.to_string()))?;
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+pub struct UpdateCredentialRequest {
+    #[serde(default)]
+    pub active: Option<bool>,
+}
+
 /// DELETE /admin/credentials/{access_key_id} — delete a credential.
 pub async fn delete_credential(
     State(state): State<AppState>,

@@ -77,7 +77,7 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route(
             "/credentials/{access_key_id}",
-            delete(admin::delete_credential),
+            put(admin::update_credential).delete(admin::delete_credential),
         )
         .route("/archive", post(archive::archive))
         .route("/presign", post(admin::presign))

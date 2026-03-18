@@ -23,6 +23,13 @@ pub trait CredentialStore: Send + Sync {
         access_key_id: &str,
     ) -> Result<bool, crate::error::ArcaError>;
 
+    /// Sets the active flag on a credential. Returns false if not found.
+    async fn set_credential_active(
+        &self,
+        access_key_id: &str,
+        active: bool,
+    ) -> Result<bool, crate::error::ArcaError>;
+
     /// Counts the number of active credentials.
     async fn count_active_credentials(&self) -> Result<u64, crate::error::ArcaError>;
 }

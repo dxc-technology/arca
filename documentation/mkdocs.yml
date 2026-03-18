@@ -43,6 +43,7 @@ nav:
     - Quick Start: getting-started/quick-start.md
   - User Guide:
     - Configuration: guide/configuration.md
+    - Access Control: guide/access-control.md
     - TLS: guide/tls.md
     - Encryption: guide/encryption.md
     - Web Console: guide/console.md

@@ -223,6 +223,21 @@ export function userDetailView() {
       this.newCredSecretKey = '';
     },
 
+    async toggleCredActive(credId, active) {
+      try {
+        const resp = await api.adminPut('/credentials/' + credId, { active });
+        if (!resp.ok) {
+          const body = await resp.json();
+          throw new Error(body.error || body.message || `Error ${resp.status}`);
+        }
+        // Reload credentials list
+        const creds = await api.adminGet('/users/' + this.userId + '/credentials');
+        this.credentials = creds;
+      } catch (e) {
+        alert(e.message);
+      }
+    },
+
     confirmDeleteCred(credId) {
       this.deleteCredId = credId;
       this.deleteCredError = '';

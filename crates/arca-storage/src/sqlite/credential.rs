@@ -89,6 +89,24 @@ impl CredentialStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("delete_credential: {e}")))
     }
 
+    async fn set_credential_active(
+        &self,
+        access_key_id: &str,
+        active: bool,
+    ) -> Result<bool, ArcaError> {
+        let key = access_key_id.to_string();
+        self.conn
+            .call(move |conn| {
+                let affected = conn.execute(
+                    "UPDATE credentials SET active = ?1 WHERE access_key_id = ?2",
+                    params![active as i32, key],
+                )?;
+                Ok(affected > 0)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("set_credential_active: {e}")))
+    }
+
     async fn count_active_credentials(&self) -> Result<u64, ArcaError> {
         self.conn
             .call(move |conn| {
@@ -312,6 +330,40 @@ mod tests {
 
         let user = store.get_credential("USER1").await.unwrap().unwrap();
         assert!(!user.admin);
+    }
+
+    #[tokio::test]
+    async fn set_credential_active() {
+        let store = test_store().await;
+        let cred = Credential {
+            access_key_id: "TOGGLE".to_string(),
+            secret_access_key: "SECRET".to_string(),
+            description: String::new(),
+            created_at: Utc::now(),
+            active: true,
+            admin: false,
+            user_id: "root".to_string(),
+        };
+        store.put_credential(&cred).await.unwrap();
+
+        // Deactivate
+        let ok = store.set_credential_active("TOGGLE", false).await.unwrap();
+        assert!(ok);
+        let fetched = store.get_credential("TOGGLE").await.unwrap().unwrap();
+        assert!(!fetched.active);
+
+        // Reactivate
+        let ok = store.set_credential_active("TOGGLE", true).await.unwrap();
+        assert!(ok);
+        let fetched = store.get_credential("TOGGLE").await.unwrap().unwrap();
+        assert!(fetched.active);
+    }
+
+    #[tokio::test]
+    async fn set_credential_active_nonexistent_returns_false() {
+        let store = test_store().await;
+        let ok = store.set_credential_active("NOPE", false).await.unwrap();
+        assert!(!ok);
     }
 
     #[tokio::test]
