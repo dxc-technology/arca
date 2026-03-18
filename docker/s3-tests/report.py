@@ -538,6 +538,49 @@ def generate_badge_svg(tests: list, output_path: str):
     Path(output_path).write_text(svg, encoding="utf-8")
 
 
+def generate_summary_json(tests: list, output_path: str):
+    """Write a machine-readable JSON summary of test results."""
+    import json
+
+    total = len(tests)
+    passed = sum(1 for t in tests if t["status"] == "passed")
+    failed = sum(1 for t in tests if t["status"] == "failed")
+    errors = sum(1 for t in tests if t["status"] == "error")
+    skipped = sum(1 for t in tests if t["status"] == "skipped")
+    unexpected = sum(1 for t in tests
+                     if t["status"] in ("failed", "error") and not t["expected_fail"])
+    pass_pct = round(passed / total * 100, 1) if total > 0 else 0
+
+    # Category breakdown
+    cats = defaultdict(lambda: {"passed": 0, "failed": 0, "error": 0, "skipped": 0, "total": 0})
+    for t in tests:
+        cats[t["category"]][t["status"]] += 1
+        cats[t["category"]]["total"] += 1
+
+    summary = {
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "total": total,
+        "passed": passed,
+        "failed": failed + errors,
+        "skipped": skipped,
+        "unexpected_failures": unexpected,
+        "pass_pct": pass_pct,
+        "categories": {
+            cat: {
+                "total": c["total"],
+                "passed": c["passed"],
+                "failed": c["failed"] + c["error"],
+                "skipped": c["skipped"],
+            }
+            for cat, c in sorted(cats.items())
+        },
+    }
+
+    Path(output_path).write_text(
+        json.dumps(summary, indent=2) + "\n", encoding="utf-8"
+    )
+
+
 def generate_passlist(tests: list, output_path: str):
     """Write a passlist of all passing test names."""
     passing = sorted(t["name"] for t in tests if t["status"] == "passed")
@@ -580,6 +623,11 @@ def main():
     badge_path = str(Path(report_html).parent / "s3-compatibility-badge.svg")
     generate_badge_svg(tests, badge_path)
     print(f"SVG badge written to: {badge_path}")
+
+    # Generate JSON summary alongside the HTML report
+    summary_path = str(Path(report_html).parent / "summary.json")
+    generate_summary_json(tests, summary_path)
+    print(f"JSON summary written to: {summary_path}")
 
     if passlist_path:
         generate_passlist(tests, passlist_path)

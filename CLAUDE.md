@@ -155,6 +155,8 @@ When fixing a tech debt item, remove the `TECHDEBT` markers from code, mark it r
 
 `README.md` contains a "Test Coverage" table with counts for unit tests, integration tests (boto3 + MinIO), and Ceph s3-tests. **Update this table whenever test counts change** — after adding/removing tests, running Ceph s3-tests with new results, or any change that affects the numbers.
 
+After running `bin/s3-tests`, the report script generates `s3-tests/summary.json` with machine-readable results (total, passed, failed, skipped, pass_pct, unexpected_failures, per-category breakdown). **Always read `s3-tests/summary.json` after Ceph tests finish and update the Ceph row in the README test coverage table with the actual numbers.** The SVG badge at `s3-compatibility-badge.svg` is auto-updated by the report script.
+
 ## Session Startup
 
 When starting a new session, always read these files first to rebuild context:

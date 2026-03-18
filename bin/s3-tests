@@ -110,6 +110,10 @@ if [[ -f "s3-tests/results.xml" ]]; then
         cp s3-tests/s3-compatibility-badge.svg s3-compatibility-badge.svg
         echo "==> Badge updated: s3-compatibility-badge.svg"
     fi
+    if [[ -f "s3-tests/summary.json" ]]; then
+        echo "==> Summary: s3-tests/summary.json"
+        cat s3-tests/summary.json
+    fi
 fi
 
 exit $EXIT_CODE

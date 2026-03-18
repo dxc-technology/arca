@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://dxc-technology.github.io/arca/s3-compatibility/"><img src="s3-compatibility-badge.svg" alt="S3 Compatibility"></a>
+  <img src="s3-compatibility-badge.svg" alt="S3 Compatibility">
 </p>
 
 ---
@@ -32,7 +32,7 @@ The MVP is complete. All 12 implementation phases (0–11) have been delivered. 
 - **Server-side encryption** — AES-256-GCM at-rest encryption (SSE-S3) with envelope encryption, per-object DEKs, and streaming chunk-based encrypt/decrypt. Master key from config file or Vault/OpenBAO KMS
 - **Native TLS** — HTTPS without a reverse proxy (`bin/arca start --tls`), with auto-detection and SIGHUP cert reload
 - **Web console** — browser-based UI for managing buckets, objects, and credentials
-- **[S3 compatibility tested](https://dxc-technology.github.io/arca/s3-compatibility/)** — 270/829 Ceph s3-tests passing, 0 unexpected failures
+- **S3 compatibility tested** — 270/829 Ceph s3-tests passing, 0 unexpected failures
 
 ## S3 API Surface
 
@@ -160,7 +160,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Suite | Tests | Details |
 |-------|------:|---------|
 | Unit tests (Rust) | 371 | arca-auth: 37, arca-core: 103, arca-proto: 25, arca-server: 58, arca-storage: 148 |
-| Integration — boto3 | 238 | buckets, objects, list, multipart, copy, folders, auth, admin, conditional ops |
+| Integration — boto3 | 146 | buckets, objects, list, multipart, copy, folders, auth, admin, credentials, conditional ops |
 | Integration — RBAC | 41 | user/team/grant CRUD, attachments, effective grants, E2E access control |
 | Integration — Presigned URLs | 17 | presigned GET/PUT/HEAD/DELETE, security, admin presign, special chars, endpoint override |
 | Integration — SSE-C | 17 | put/get roundtrip, error handling, head, copy, range, delete, validation, multipart rejection |
@@ -169,9 +169,9 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — KMS | 10 | Vault/OpenBAO key fetch, encrypted put/get, headers, ETag, multipart, copy, range, admin info |
 | Integration — TLS | 7 | HTTPS health/info/put/get/multipart, minio client, wrong CA rejection |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
-| **Arca tests** | **824** | **All tests written for this project** |
-| [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 829 | 270 pass, 468 fail, 91 skip — 0 unexpected failures |
-| **Total** | **1,653** | |
+| **Arca tests** | **732** | **All tests written for this project** |
+| Ceph s3-tests | 829 | 270 pass, 468 fail, 91 skip — 0 unexpected failures |
+| **Total** | **1,561** | |
 
 ## License
 
