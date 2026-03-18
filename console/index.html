@@ -1118,7 +1118,18 @@
           </div>
           <div x-show="!loading && user">
             <!-- Description -->
-            <p x-show="user?.description" class="text-vault-muted text-sm mb-4" x-text="user?.description"></p>
+            <div class="glass rounded-xl p-5 mb-6" x-show="!user?.is_root">
+              <div>
+                <label class="text-sm text-vault-muted block mb-1">Description</label>
+                <input x-model="editDescription" type="text" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent" placeholder="Optional description">
+              </div>
+              <div class="flex items-center gap-3 mt-4">
+                <button @click="save()" :disabled="saving" class="bg-vault-accent text-vault-bg font-medium rounded-lg px-4 py-2 text-sm hover:bg-vault-accent/90 disabled:opacity-50" x-text="saving ? 'Saving...' : 'Save Changes'"></button>
+                <span x-show="saveSuccess" class="text-green-400 text-sm">Saved!</span>
+                <p x-show="saveError" class="text-red-400 text-sm" x-text="saveError"></p>
+              </div>
+            </div>
+            <p x-show="user?.is_root && user?.description" class="text-vault-muted text-sm mb-4" x-text="user?.description"></p>
             <!-- Tab bar -->
             <div class="flex gap-1 border-b border-vault-border/30 mb-6">
               <button @click="activeTab = 'credentials'" :class="activeTab === 'credentials' ? 'text-vault-accent border-vault-accent' : 'text-vault-muted border-transparent hover:text-vault-text'" class="px-4 py-2 text-sm font-medium border-b-2 transition">Credentials</button>
@@ -1393,7 +1404,18 @@
             <svg class="animate-spin h-6 w-6 text-vault-accent" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
           </div>
           <div x-show="!loading && team">
-            <p x-show="team?.description" class="text-vault-muted text-sm mb-4" x-text="team?.description"></p>
+            <!-- Description -->
+            <div class="glass rounded-xl p-5 mb-6">
+              <div>
+                <label class="text-sm text-vault-muted block mb-1">Description</label>
+                <input x-model="editDescription" type="text" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent" placeholder="Optional description">
+              </div>
+              <div class="flex items-center gap-3 mt-4">
+                <button @click="save()" :disabled="saving" class="bg-vault-accent text-vault-bg font-medium rounded-lg px-4 py-2 text-sm hover:bg-vault-accent/90 disabled:opacity-50" x-text="saving ? 'Saving...' : 'Save Changes'"></button>
+                <span x-show="saveSuccess" class="text-green-400 text-sm">Saved!</span>
+                <p x-show="saveError" class="text-red-400 text-sm" x-text="saveError"></p>
+              </div>
+            </div>
             <!-- Tab bar -->
             <div class="flex gap-1 border-b border-vault-border/30 mb-6">
               <button @click="activeTab = 'members'" :class="activeTab === 'members' ? 'text-vault-accent border-vault-accent' : 'text-vault-muted border-transparent hover:text-vault-text'" class="px-4 py-2 text-sm font-medium border-b-2 transition">Members</button>

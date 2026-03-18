@@ -128,7 +128,7 @@ bin/test integration
 bin/s3-tests
 ```
 
-The [Ceph s3-tests](https://github.com/ceph/s3-tests) suite runs 829 industry-standard S3 compatibility tests. Results are saved to `s3-tests/results.xml` and an HTML report is generated at `s3-tests/report.html`. See the [S3 Compatibility Report](../../s3-compatibility/) for the current status.
+The [Ceph s3-tests](https://github.com/ceph/s3-tests) suite runs 829 industry-standard S3 compatibility tests. Results are saved to `s3-tests/results.xml` and an HTML report is generated at `s3-tests/report.html`.
 
 ## Next Steps
 

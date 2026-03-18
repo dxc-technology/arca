@@ -111,6 +111,9 @@ All storage operations are defined as async traits in `arca-core`:
 - **`BlobStore`** — binary data operations (write, read, delete blobs)
 - **`MetadataStore`** — structured data operations (buckets, objects, multipart uploads)
 - **`CredentialStore`** — credential management (CRUD for access keys)
+- **`UserStore`** — user management (CRUD for users)
+- **`TeamStore`** — team and membership management
+- **`GrantStore`** — grant (policy) management, attachment to users/teams, effective policy resolution
 
 The use-case layer depends only on these traits, never on concrete implementations. This enables:
 
@@ -130,12 +133,121 @@ Key characteristics:
 
 #### Database Schema
 
-<figure>
-  <img src="../../assets/db-schema.svg" alt="Arca database schema diagram" style="width:100%;max-width:1400px">
-  <figcaption style="font-size:0.85em;color:#64748b;margin-top:4px">
-    Entity-relationship diagram — <a href="../../assets/db-schema.drawio">draw.io source</a>
-  </figcaption>
-</figure>
+The schema is managed through version-tracked migrations (currently at version 8). The entity-relationship diagram below shows all tables and their relationships:
+
+```mermaid
+erDiagram
+    users {
+        TEXT user_id PK
+        TEXT username UK "unique"
+        TEXT description
+        INTEGER is_root "0 or 1"
+        TEXT created_at
+    }
+
+    credentials {
+        TEXT access_key_id PK
+        TEXT secret_access_key
+        TEXT description
+        TEXT created_at
+        INTEGER active "0 or 1"
+        INTEGER admin "0 or 1"
+        TEXT user_id FK
+    }
+
+    teams {
+        TEXT team_id PK
+        TEXT name UK "unique"
+        TEXT description
+        TEXT created_at
+    }
+
+    team_members {
+        TEXT team_id PK,FK
+        TEXT user_id PK,FK
+    }
+
+    grants {
+        TEXT grant_id PK
+        TEXT name UK "unique"
+        TEXT description
+        TEXT document "JSON policy"
+        TEXT created_at
+        TEXT updated_at
+    }
+
+    user_grants {
+        TEXT user_id PK,FK
+        TEXT grant_id PK,FK
+    }
+
+    team_grants {
+        TEXT team_id PK,FK
+        TEXT grant_id PK,FK
+    }
+
+    buckets {
+        TEXT name PK
+        TEXT created_at
+        TEXT owner FK "default: root"
+    }
+
+    objects {
+        TEXT bucket PK,FK
+        TEXT key PK
+        TEXT blob_id
+        INTEGER size
+        TEXT etag
+        TEXT content_type
+        TEXT last_modified
+        TEXT metadata "JSON"
+        TEXT encryption_algorithm "nullable"
+        TEXT encryption_key_id "nullable"
+        TEXT owner FK "default: root"
+    }
+
+    multipart_uploads {
+        TEXT upload_id PK
+        TEXT bucket
+        TEXT key
+        TEXT content_type
+        TEXT initiated_at
+        TEXT metadata "JSON"
+    }
+
+    parts {
+        TEXT upload_id PK,FK
+        INTEGER part_number PK
+        TEXT blob_id
+        INTEGER size
+        TEXT etag
+    }
+
+    bucket_config {
+        TEXT bucket PK
+        TEXT config_key PK
+        TEXT config_value
+        TEXT updated_at
+    }
+
+    users ||--o{ credentials : "has"
+    users ||--o{ team_members : "belongs to"
+    teams ||--o{ team_members : "contains"
+    users ||--o{ user_grants : "has"
+    grants ||--o{ user_grants : "attached to"
+    teams ||--o{ team_grants : "has"
+    grants ||--o{ team_grants : "attached to"
+    buckets ||--o{ objects : "contains"
+    multipart_uploads ||--o{ parts : "has"
+```
+
+**Authentication model**: users don't log in directly. Each user has one or more **credentials** (access key + secret key pairs), and authentication happens via AWS SigV4 signature verification against a credential. The credential's `user_id` links back to the owning user, and from there the RBAC system resolves effective permissions through direct grants and team grants.
+
+**RBAC model**: permissions are defined in **grants**, which contain an IAM-style JSON policy document. Grants can be attached directly to users (via `user_grants`) or to teams (via `team_grants`). A user's effective permissions are the union of their direct grants plus all grants from teams they belong to. Three built-in grants are seeded at database creation: `AdministratorAccess`, `S3FullAccess`, and `S3ReadOnlyAccess`.
+
+**Ownership**: both `buckets` and `objects` track an `owner` field that records which user created the resource.
+
+**Encryption**: the `objects` table has optional `encryption_algorithm` and `encryption_key_id` columns for SSE-S3 and SSE-KMS. The `bucket_config` table stores per-bucket settings such as default encryption configuration.
 
 ### Filesystem (Blob Storage)
 
@@ -197,19 +309,15 @@ Every blob is accompanied by a JSON sidecar file containing all metadata needed 
 
 ### Data Integrity
 
-Arca uses two complementary checksums to cover both blob data and metadata:
+Blob content integrity is verified via MD5 checksums:
 
 | What | Hash | Stored in | Why this hash |
 |------|------|-----------|---------------|
 | Blob content | MD5 | `objects.etag` + `.meta` sidecar | Required by the S3 protocol — the ETag for non-multipart objects is defined by AWS as the MD5 hex digest |
-| `.meta` sidecar | SHA-256 | `objects.sidecar_sha256` | Internal integrity field — free to use a modern, collision-resistant hash |
 
-This gives `arca fsck` full coverage:
+This gives `arca fsck` coverage for blob corruption: recompute MD5 of the blob file and compare with the ETag in the database.
 
-- **Blob corrupted?** — recompute MD5 of the blob file, compare with the ETag in the database
-- **Sidecar corrupted or tampered?** — recompute SHA-256 of the `.meta` file, compare with `sidecar_sha256` in the database
-
-Note that these checks require the database to be intact. During `arca recover` (database is lost), the sidecars are trusted by necessity since there is nothing to compare against.
+Note that this check requires the database to be intact. During `arca recover` (database is lost), the sidecars are trusted by necessity since there is nothing to compare against.
 
 ## Key Design Decisions
 
@@ -298,8 +406,8 @@ All subcommands accept `--config-path` (default: `/etc/arca/config.toml`) to loc
 | CLI | clap (derive) | Standard Rust CLI framework, type-safe argument parsing |
 | Logging | tracing + tracing-subscriber | Structured, async-aware, supports JSON output for production |
 
-## What's NOT in MVP
+## What's NOT Yet Implemented
 
-Object versioning, ACLs / bucket policies, server-side encryption, object tagging, lifecycle rules, object lock, presigned URLs, metrics endpoint, replication, multi-node / distributed mode.
+Object versioning, object tagging, lifecycle rules, object lock, metrics endpoint, replication, multi-node / distributed mode.
 
-These are excluded by design to keep the MVP focused and shippable. The trait-based architecture ensures they can be added incrementally without architectural changes.
+These are deferred by design. The trait-based architecture ensures they can be added incrementally without architectural changes. See the [roadmap](../roadmap.md) for the full post-MVP plan.

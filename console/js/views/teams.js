@@ -85,6 +85,12 @@ export function teamDetailView() {
     loading: true,
     activeTab: 'members',
 
+    // Edit fields
+    editDescription: '',
+    saving: false,
+    saveError: '',
+    saveSuccess: false,
+
     // Members shuttle
     membersAll: [],
     membersAssignedIds: [],
@@ -120,6 +126,7 @@ export function teamDetailView() {
           api.adminGet('/grants'),
         ]);
         this.team = team.status === 'fulfilled' ? team.value : null;
+        this.editDescription = this.team?.description || '';
         // Members shuttle
         this.membersAll = allUsers.status === 'fulfilled' ? allUsers.value : [];
         const membersList = members.status === 'fulfilled' ? members.value : [];
@@ -132,6 +139,32 @@ export function teamDetailView() {
         this.team = null;
       }
       this.loading = false;
+    },
+
+    // -- Save description --
+
+    async save() {
+      this.saving = true;
+      this.saveError = '';
+      this.saveSuccess = false;
+      try {
+        const resp = await api.adminPut('/teams/' + this.teamId, {
+          description: this.editDescription,
+        });
+        if (!resp.ok) {
+          const body = await resp.json();
+          throw new Error(body.error || body.message || `Error ${resp.status}`);
+        }
+        this.saveSuccess = true;
+        setTimeout(() => { this.saveSuccess = false; }, 2000);
+        // Reload to get canonical state
+        const team = await api.adminGet('/teams/' + this.teamId);
+        this.team = team;
+        this.editDescription = team.description || '';
+      } catch (e) {
+        this.saveError = e.message;
+      }
+      this.saving = false;
     },
 
     // -- Members shuttle --

@@ -995,10 +995,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#whats-not-in-mvp" class="md-nav__link">
+  <a href="#whats-not-yet-implemented" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What's NOT in MVP
+        What's NOT Yet Implemented
       
     </span>
   </a>
@@ -1578,10 +1578,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#whats-not-in-mvp" class="md-nav__link">
+  <a href="#whats-not-yet-implemented" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What's NOT in MVP
+        What's NOT Yet Implemented
       
     </span>
   </a>
@@ -1743,6 +1743,9 @@
 <li><strong><code>BlobStore</code></strong> — binary data operations (write, read, delete blobs)</li>
 <li><strong><code>MetadataStore</code></strong> — structured data operations (buckets, objects, multipart uploads)</li>
 <li><strong><code>CredentialStore</code></strong> — credential management (CRUD for access keys)</li>
+<li><strong><code>UserStore</code></strong> — user management (CRUD for users)</li>
+<li><strong><code>TeamStore</code></strong> — team and membership management</li>
+<li><strong><code>GrantStore</code></strong> — grant (policy) management, attachment to users/teams, effective policy resolution</li>
 </ul>
 <p>The use-case layer depends only on these traits, never on concrete implementations. This enables:</p>
 <ul>
@@ -1759,13 +1762,114 @@
 <li><strong>Single database file</strong> — stored at <code>{data_dir}/arca.db</code></li>
 </ul>
 <h4 id="database-schema">Database Schema<a class="headerlink" href="#database-schema" title="Permanent link">&para;</a></h4>
-<figure>
-  <img src="../../assets/db-schema.svg" alt="Arca database schema diagram" style="width:100%;max-width:1400px">
-  <figcaption style="font-size:0.85em;color:#64748b;margin-top:4px">
-    Entity-relationship diagram — <a href="../../assets/db-schema.drawio">draw.io source</a>
-  </figcaption>
-</figure>
+<p>The schema is managed through version-tracked migrations (currently at version 8). The entity-relationship diagram below shows all tables and their relationships:</p>
+<pre class="mermaid"><code>erDiagram
+    users {
+        TEXT user_id PK
+        TEXT username UK "unique"
+        TEXT description
+        INTEGER is_root "0 or 1"
+        TEXT created_at
+    }
 
+    credentials {
+        TEXT access_key_id PK
+        TEXT secret_access_key
+        TEXT description
+        TEXT created_at
+        INTEGER active "0 or 1"
+        INTEGER admin "0 or 1"
+        TEXT user_id FK
+    }
+
+    teams {
+        TEXT team_id PK
+        TEXT name UK "unique"
+        TEXT description
+        TEXT created_at
+    }
+
+    team_members {
+        TEXT team_id PK,FK
+        TEXT user_id PK,FK
+    }
+
+    grants {
+        TEXT grant_id PK
+        TEXT name UK "unique"
+        TEXT description
+        TEXT document "JSON policy"
+        TEXT created_at
+        TEXT updated_at
+    }
+
+    user_grants {
+        TEXT user_id PK,FK
+        TEXT grant_id PK,FK
+    }
+
+    team_grants {
+        TEXT team_id PK,FK
+        TEXT grant_id PK,FK
+    }
+
+    buckets {
+        TEXT name PK
+        TEXT created_at
+        TEXT owner FK "default: root"
+    }
+
+    objects {
+        TEXT bucket PK,FK
+        TEXT key PK
+        TEXT blob_id
+        INTEGER size
+        TEXT etag
+        TEXT content_type
+        TEXT last_modified
+        TEXT metadata "JSON"
+        TEXT encryption_algorithm "nullable"
+        TEXT encryption_key_id "nullable"
+        TEXT owner FK "default: root"
+    }
+
+    multipart_uploads {
+        TEXT upload_id PK
+        TEXT bucket
+        TEXT key
+        TEXT content_type
+        TEXT initiated_at
+        TEXT metadata "JSON"
+    }
+
+    parts {
+        TEXT upload_id PK,FK
+        INTEGER part_number PK
+        TEXT blob_id
+        INTEGER size
+        TEXT etag
+    }
+
+    bucket_config {
+        TEXT bucket PK
+        TEXT config_key PK
+        TEXT config_value
+        TEXT updated_at
+    }
+
+    users ||--o{ credentials : "has"
+    users ||--o{ team_members : "belongs to"
+    teams ||--o{ team_members : "contains"
+    users ||--o{ user_grants : "has"
+    grants ||--o{ user_grants : "attached to"
+    teams ||--o{ team_grants : "has"
+    grants ||--o{ team_grants : "attached to"
+    buckets ||--o{ objects : "contains"
+    multipart_uploads ||--o{ parts : "has"</code></pre>
+<p><strong>Authentication model</strong>: users don't log in directly. Each user has one or more <strong>credentials</strong> (access key + secret key pairs), and authentication happens via AWS SigV4 signature verification against a credential. The credential's <code>user_id</code> links back to the owning user, and from there the RBAC system resolves effective permissions through direct grants and team grants.</p>
+<p><strong>RBAC model</strong>: permissions are defined in <strong>grants</strong>, which contain an IAM-style JSON policy document. Grants can be attached directly to users (via <code>user_grants</code>) or to teams (via <code>team_grants</code>). A user's effective permissions are the union of their direct grants plus all grants from teams they belong to. Three built-in grants are seeded at database creation: <code>AdministratorAccess</code>, <code>S3FullAccess</code>, and <code>S3ReadOnlyAccess</code>.</p>
+<p><strong>Ownership</strong>: both <code>buckets</code> and <code>objects</code> track an <code>owner</code> field that records which user created the resource.</p>
+<p><strong>Encryption</strong>: the <code>objects</code> table has optional <code>encryption_algorithm</code> and <code>encryption_key_id</code> columns for SSE-S3 and SSE-KMS. The <code>bucket_config</code> table stores per-bucket settings such as default encryption configuration.</p>
 <h3 id="filesystem-blob-storage">Filesystem (Blob Storage)<a class="headerlink" href="#filesystem-blob-storage" title="Permanent link">&para;</a></h3>
 <p>Object data is stored as UUID-named files under a dedicated <code>blobs/</code> subdirectory, keeping the top-level data directory clean:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>/data/
@@ -1810,7 +1914,7 @@
 <a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="p">}</span>
 </code></pre></div>
 <h3 id="data-integrity">Data Integrity<a class="headerlink" href="#data-integrity" title="Permanent link">&para;</a></h3>
-<p>Arca uses two complementary checksums to cover both blob data and metadata:</p>
+<p>Blob content integrity is verified via MD5 checksums:</p>
 <table>
 <thead>
 <tr>
@@ -1827,20 +1931,10 @@
 <td><code>objects.etag</code> + <code>.meta</code> sidecar</td>
 <td>Required by the S3 protocol — the ETag for non-multipart objects is defined by AWS as the MD5 hex digest</td>
 </tr>
-<tr>
-<td><code>.meta</code> sidecar</td>
-<td>SHA-256</td>
-<td><code>objects.sidecar_sha256</code></td>
-<td>Internal integrity field — free to use a modern, collision-resistant hash</td>
-</tr>
 </tbody>
 </table>
-<p>This gives <code>arca fsck</code> full coverage:</p>
-<ul>
-<li><strong>Blob corrupted?</strong> — recompute MD5 of the blob file, compare with the ETag in the database</li>
-<li><strong>Sidecar corrupted or tampered?</strong> — recompute SHA-256 of the <code>.meta</code> file, compare with <code>sidecar_sha256</code> in the database</li>
-</ul>
-<p>Note that these checks require the database to be intact. During <code>arca recover</code> (database is lost), the sidecars are trusted by necessity since there is nothing to compare against.</p>
+<p>This gives <code>arca fsck</code> coverage for blob corruption: recompute MD5 of the blob file and compare with the ETag in the database.</p>
+<p>Note that this check requires the database to be intact. During <code>arca recover</code> (database is lost), the sidecars are trusted by necessity since there is nothing to compare against.</p>
 <h2 id="key-design-decisions">Key Design Decisions<a class="headerlink" href="#key-design-decisions" title="Permanent link">&para;</a></h2>
 <h3 id="configuration-migration-without-data-migration">Configuration Migration Without Data Migration<a class="headerlink" href="#configuration-migration-without-data-migration" title="Permanent link">&para;</a></h3>
 <p>A core architectural principle: <strong>any configuration change must be possible without migrating data to a new instance</strong>. This includes switching storage backends (SQLite to PostgreSQL), enabling encryption on existing data, changing node topology, and any other setting change.</p>
@@ -1993,9 +2087,9 @@
 </tr>
 </tbody>
 </table>
-<h2 id="whats-not-in-mvp">What's NOT in MVP<a class="headerlink" href="#whats-not-in-mvp" title="Permanent link">&para;</a></h2>
-<p>Object versioning, ACLs / bucket policies, server-side encryption, object tagging, lifecycle rules, object lock, presigned URLs, metrics endpoint, replication, multi-node / distributed mode.</p>
-<p>These are excluded by design to keep the MVP focused and shippable. The trait-based architecture ensures they can be added incrementally without architectural changes.</p>
+<h2 id="whats-not-yet-implemented">What's NOT Yet Implemented<a class="headerlink" href="#whats-not-yet-implemented" title="Permanent link">&para;</a></h2>
+<p>Object versioning, object tagging, lifecycle rules, object lock, metrics endpoint, replication, multi-node / distributed mode.</p>
+<p>These are deferred by design. The trait-based architecture ensures they can be added incrementally without architectural changes. See the <a href="../../roadmap/">roadmap</a> for the full post-MVP plan.</p>
 
 
 

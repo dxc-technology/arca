@@ -4,8 +4,6 @@
 
 The Arca MVP is complete. All 12 phases (0–11) have been implemented, tested, and verified. The server implements 15 S3 operations with 100% pass rate on implemented features against the Ceph s3-tests compatibility suite (270/829 passing — all 468 failures are in unimplemented feature categories).
 
-See [S3 Compatibility Report](../s3-compatibility/) for the full breakdown.
-
 ---
 
 ## Full Product Roadmap
