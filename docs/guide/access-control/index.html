@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://dxc-technology.github.io/arca/getting-started/quick-start/">
+        <link rel="canonical" href="https://dxc-technology.github.io/arca/guide/access-control/">
       
       
-        <link rel="prev" href="../installation/">
+        <link rel="prev" href="../configuration/">
       
       
-        <link rel="next" href="../../guide/configuration/">
+        <link rel="next" href="../tls/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Quick Start - Arca</title>
+        <title>Access Control - Arca</title>
       
     
     
@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#quick-start" class="md-skip">
+        <a href="#access-control" class="md-skip">
           Skip to content
         </a>
       
@@ -113,7 +113,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Quick Start
+              Access Control
             
           </span>
         </div>
@@ -287,8 +287,6 @@
       
   
   
-    
-  
   
   
     
@@ -301,11 +299,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
         
           
           <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
@@ -326,7 +324,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -344,7 +342,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../installation/" class="md-nav__link">
+      <a href="../../getting-started/installation/" class="md-nav__link">
         
   
   
@@ -352,6 +350,123 @@
     
   
     Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
   
 
     
@@ -388,7 +503,7 @@
   <span class="md-ellipsis">
     
   
-    Quick Start
+    Access Control
   
 
     
@@ -406,7 +521,7 @@
   <span class="md-ellipsis">
     
   
-    Quick Start
+    Access Control
   
 
     
@@ -432,10 +547,71 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#start-the-server" class="md-nav__link">
+  <a href="#identity-model" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Start the Server
+        Identity Model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Identity Model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#users" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Users
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Credentials
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#teams" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Teams
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#grants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Grants
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authentication-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication Flow
       
     </span>
   </a>
@@ -443,10 +619,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#your-first-bucket" class="md-nav__link">
+  <a href="#effective-grants" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Your First Bucket
+        Effective Grants
       
     </span>
   </a>
@@ -454,10 +630,60 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#upload-and-download-objects" class="md-nav__link">
+  <a href="#managing-access-control" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Upload and Download Objects
+        Managing Access Control
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Managing Access Control">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#admin-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin API
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#web-console" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Web Console
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Setup
       
     </span>
   </a>
@@ -465,32 +691,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#start-the-web-console" class="md-nav__link">
+  <a href="#ownership" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Start the Web Console
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#development-scripts" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Development Scripts
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#next-steps" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Next Steps
+        Ownership
       
     </span>
   </a>
@@ -506,65 +710,6 @@
 
               
             
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    
-    
-    
-    
-      
-        
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
-        
-          
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    User Guide
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_3">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    User Guide
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
               
                 
   
@@ -572,63 +717,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../guide/configuration/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Configuration
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../guide/access-control/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Access Control
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../guide/tls/" class="md-nav__link">
+      <a href="../tls/" class="md-nav__link">
         
   
   
@@ -656,7 +745,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../guide/encryption/" class="md-nav__link">
+      <a href="../encryption/" class="md-nav__link">
         
   
   
@@ -684,7 +773,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../guide/console/" class="md-nav__link">
+      <a href="../console/" class="md-nav__link">
         
   
   
@@ -712,7 +801,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../guide/cli/" class="md-nav__link">
+      <a href="../cli/" class="md-nav__link">
         
   
   
@@ -1107,10 +1196,71 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#start-the-server" class="md-nav__link">
+  <a href="#identity-model" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Start the Server
+        Identity Model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Identity Model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#users" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Users
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Credentials
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#teams" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Teams
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#grants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Grants
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authentication-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication Flow
       
     </span>
   </a>
@@ -1118,10 +1268,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#your-first-bucket" class="md-nav__link">
+  <a href="#effective-grants" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Your First Bucket
+        Effective Grants
       
     </span>
   </a>
@@ -1129,10 +1279,60 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#upload-and-download-objects" class="md-nav__link">
+  <a href="#managing-access-control" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Upload and Download Objects
+        Managing Access Control
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Managing Access Control">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#admin-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin API
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#web-console" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Web Console
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Setup
       
     </span>
   </a>
@@ -1140,32 +1340,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#start-the-web-console" class="md-nav__link">
+  <a href="#ownership" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Start the Web Console
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#development-scripts" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Development Scripts
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#next-steps" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Next Steps
+        Ownership
       
     </span>
   </a>
@@ -1189,182 +1367,220 @@
 
 
 
-<h1 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h1>
-<p>Get Arca running and perform your first S3 operations.</p>
-<h2 id="start-the-server">Start the Server<a class="headerlink" href="#start-the-server" title="Permanent link">&para;</a></h2>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">HTTP</label><label for="__tabbed_1_2">HTTPS</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
+<h1 id="access-control">Access Control<a class="headerlink" href="#access-control" title="Permanent link">&para;</a></h1>
+<p>Arca implements a role-based access control (RBAC) system inspired by AWS IAM. This page explains the identity model, how authentication works, and how permissions are granted to users.</p>
+<h2 id="identity-model">Identity Model<a class="headerlink" href="#identity-model" title="Permanent link">&para;</a></h2>
+<p>The access control system is built around four entities: <strong>users</strong>, <strong>credentials</strong>, <strong>teams</strong>, and <strong>grants</strong>.</p>
+<pre class="mermaid"><code>graph TD
+    CRED1["Credential&lt;br/&gt;&lt;small&gt;access key + secret key&lt;/small&gt;"]
+    CRED2["Credential&lt;br/&gt;&lt;small&gt;access key + secret key&lt;/small&gt;"]
+    USER["User&lt;br/&gt;&lt;small&gt;alice&lt;/small&gt;"]
+    TEAM1["Team&lt;br/&gt;&lt;small&gt;backend-devs&lt;/small&gt;"]
+    TEAM2["Team&lt;br/&gt;&lt;small&gt;ops&lt;/small&gt;"]
+    GRANT1["Grant&lt;br/&gt;&lt;small&gt;S3FullAccess&lt;/small&gt;"]
+    GRANT2["Grant&lt;br/&gt;&lt;small&gt;S3ReadOnlyAccess&lt;/small&gt;"]
+    GRANT3["Grant&lt;br/&gt;&lt;small&gt;AdministratorAccess&lt;/small&gt;"]
+
+    CRED1 --&gt;|"authenticates as"| USER
+    CRED2 --&gt;|"authenticates as"| USER
+    USER --&gt;|"direct grant"| GRANT1
+    USER --&gt;|"member of"| TEAM1
+    USER --&gt;|"member of"| TEAM2
+    TEAM1 --&gt;|"team grant"| GRANT2
+    TEAM2 --&gt;|"team grant"| GRANT3
+
+    style USER fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style CRED1 fill:#4527a0,stroke:#7e57c2,stroke-width:2px,color:#fff
+    style CRED2 fill:#4527a0,stroke:#7e57c2,stroke-width:2px,color:#fff
+    style TEAM1 fill:#00695c,stroke:#26a69a,stroke-width:2px,color:#fff
+    style TEAM2 fill:#00695c,stroke:#26a69a,stroke-width:2px,color:#fff
+    style GRANT1 fill:#bf360c,stroke:#ff7043,stroke-width:2px,color:#fff
+    style GRANT2 fill:#bf360c,stroke:#ff7043,stroke-width:2px,color:#fff
+    style GRANT3 fill:#bf360c,stroke:#ff7043,stroke-width:2px,color:#fff</code></pre>
+<h3 id="users">Users<a class="headerlink" href="#users" title="Permanent link">&para;</a></h3>
+<p>A <strong>user</strong> represents an identity in the system. Users have a unique <code>username</code> and an optional description. Users don't have passwords: authentication is handled through credentials.</p>
+<p>A special <strong>root</strong> user is created automatically at database initialization. The root user has <code>AdministratorAccess</code> and cannot be modified or deleted.</p>
+<h3 id="credentials">Credentials<a class="headerlink" href="#credentials" title="Permanent link">&para;</a></h3>
+<p>A <strong>credential</strong> is an access key / secret key pair used to authenticate S3 and Admin API requests via AWS SigV4 signatures. Each credential belongs to exactly one user, but a user can have multiple credentials.</p>
+<p>This design is intentional: a single user might need separate credentials for different contexts (CLI usage, an application, a CI/CD pipeline) without creating separate user identities for each.</p>
+<p>Each credential also has:</p>
+<ul>
+<li><strong><code>active</code></strong> flag: disabled credentials are rejected at authentication time without deleting them.</li>
+<li><strong><code>admin</code></strong> flag: only admin credentials can access the <code>/admin/*</code> API endpoints and the web console.</li>
+</ul>
+<h3 id="teams">Teams<a class="headerlink" href="#teams" title="Permanent link">&para;</a></h3>
+<p>A <strong>team</strong> is a named group of users. Teams have no permissions of their own, they serve as a way to assign the same set of grants to multiple users at once. A user can belong to any number of teams.</p>
+<h3 id="grants">Grants<a class="headerlink" href="#grants" title="Permanent link">&para;</a></h3>
+<p>A <strong>grant</strong> is a named policy that defines what actions are allowed (or denied). Each grant contains a JSON <strong>policy document</strong> following the AWS IAM policy syntax:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">&quot;Version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2012-10-17&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">&quot;Statement&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="p">{</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">      </span><span class="nt">&quot;Effect&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Allow&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">      </span><span class="nt">&quot;Action&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;s3:GetObject&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;s3:ListBucket&quot;</span><span class="p">],</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">      </span><span class="nt">&quot;Resource&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;*&quot;</span><span class="p">]</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">  </span><span class="p">]</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="p">}</span>
 </code></pre></div>
-</div>
-<div class="tabbed-block">
-<p>Place your TLS certificate and key PEM files in <code>certs/</code> at the repository root, then:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--tls
-</code></pre></div>
-<p>See the <a href="../../guide/tls/">TLS guide</a> for details on certificate setup including self-signed certificates for development.</p>
-</div>
-</div>
-</div>
-<div class="admonition tip">
-<p class="admonition-title">Tip</p>
-<p>Drop the <code>-d</code> flag to run in the foreground and see logs in real time. Press <span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-c">C</kbd></span> to stop the server.</p>
-</div>
-<p>On first startup, Arca auto-generates a root credential and prints it to the logs:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>bin/arca<span class="w"> </span>logs<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">&quot;Access Key&quot;</span>
-</code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>========================================
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  Root credential created automatically
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>========================================
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  Access Key: GHUZM9QTHSJKE3N6P50O
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  Secret Key: aNdrqpNvsbI9BeU/O+3AA508Xtey4Sp3EILSXRQy
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>========================================
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  WARNING: This will only be shown once.
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>  Store these credentials securely.
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>========================================
-</code></pre></div>
-<p>Configure your S3 client:</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="2:2"><input checked="checked" id="__tabbed_2_1" name="__tabbed_2" type="radio" /><input id="__tabbed_2_2" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="__tabbed_2_1">aws-cli</label><label for="__tabbed_2_2">MinIO Client (mc)</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AWS_ACCESS_KEY_ID</span><span class="o">=</span>&lt;your-access-key&gt;
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AWS_SECRET_ACCESS_KEY</span><span class="o">=</span>&lt;your-secret-key&gt;
-</code></pre></div>
-</div>
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>mc<span class="w"> </span><span class="nb">alias</span><span class="w"> </span><span class="nb">set</span><span class="w"> </span>arca<span class="w"> </span>http://localhost:9000<span class="w"> </span>&lt;your-access-key&gt;<span class="w"> </span>&lt;your-secret-key&gt;
-</code></pre></div>
-</div>
-</div>
-</div>
-<h2 id="your-first-bucket">Your First Bucket<a class="headerlink" href="#your-first-bucket" title="Permanent link">&para;</a></h2>
-<div class="tabbed-set tabbed-alternate" data-tabs="3:2"><input checked="checked" id="__tabbed_3_1" name="__tabbed_3" type="radio" /><input id="__tabbed_3_2" name="__tabbed_3" type="radio" /><div class="tabbed-labels"><label for="__tabbed_3_1">aws-cli</label><label for="__tabbed_3_2">MinIO Client (mc)</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Create a bucket</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>aws<span class="w"> </span>s3<span class="w"> </span>mb<span class="w"> </span>s3://my-bucket<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># List buckets</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>aws<span class="w"> </span>s3<span class="w"> </span>ls<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
-</code></pre></div>
-</div>
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Create a bucket</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>mc<span class="w"> </span>mb<span class="w"> </span>arca/my-bucket
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># List buckets</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>mc<span class="w"> </span>ls<span class="w"> </span>arca
-</code></pre></div>
-</div>
-</div>
-</div>
-<h2 id="upload-and-download-objects">Upload and Download Objects<a class="headerlink" href="#upload-and-download-objects" title="Permanent link">&para;</a></h2>
-<div class="tabbed-set tabbed-alternate" data-tabs="4:2"><input checked="checked" id="__tabbed_4_1" name="__tabbed_4" type="radio" /><input id="__tabbed_4_2" name="__tabbed_4" type="radio" /><div class="tabbed-labels"><label for="__tabbed_4_1">aws-cli</label><label for="__tabbed_4_2">MinIO Client (mc)</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Upload a file</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>aws<span class="w"> </span>s3<span class="w"> </span>cp<span class="w"> </span>myfile.txt<span class="w"> </span>s3://my-bucket/<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># List objects</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>aws<span class="w"> </span>s3<span class="w"> </span>ls<span class="w"> </span>s3://my-bucket<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="c1"># Download a file</span>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>aws<span class="w"> </span>s3<span class="w"> </span>cp<span class="w"> </span>s3://my-bucket/myfile.txt<span class="w"> </span>downloaded.txt<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
-</code></pre></div>
-</div>
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Upload a file</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>mc<span class="w"> </span>cp<span class="w"> </span>myfile.txt<span class="w"> </span>arca/my-bucket/
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># List objects</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>mc<span class="w"> </span>ls<span class="w"> </span>arca/my-bucket
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="c1"># Download a file</span>
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>mc<span class="w"> </span>cp<span class="w"> </span>arca/my-bucket/myfile.txt<span class="w"> </span>downloaded.txt
-</code></pre></div>
-</div>
-</div>
-</div>
-<h2 id="start-the-web-console">Start the Web Console<a class="headerlink" href="#start-the-web-console" title="Permanent link">&para;</a></h2>
-<p>Arca includes a browser-based web console for managing buckets, objects, and credentials:</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="5:2"><input checked="checked" id="__tabbed_5_1" name="__tabbed_5" type="radio" /><input id="__tabbed_5_2" name="__tabbed_5" type="radio" /><div class="tabbed-labels"><label for="__tabbed_5_1">HTTP</label><label for="__tabbed_5_2">HTTPS</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
-</code></pre></div>
-<p>Open <a href="http://localhost:9080">http://localhost:9080</a>, enter the Arca endpoint (<code>http://localhost:9000</code>) and your credentials.</p>
-</div>
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--tls
-</code></pre></div>
-<p>Open <code>https://your-domain:9443</code>, then enter the Arca HTTPS endpoint (e.g. <code>https://your-domain:9000</code>) and your credentials.</p>
-</div>
-</div>
-</div>
-<div class="admonition tip">
-<p class="admonition-title">Tip</p>
-<p>As with <code>bin/arca</code>, drop the <code>-d</code> flag to see console container logs in real time.</p>
-</div>
-<p>Admin credentials unlock additional features like credential management and server stats.</p>
-<p>See the <a href="../../guide/console/">Web Console guide</a> for details.</p>
-<h2 id="development-scripts">Development Scripts<a class="headerlink" href="#development-scripts" title="Permanent link">&para;</a></h2>
-<p>Convenience scripts in <code>bin/</code> wrap docker compose commands:</p>
+<p>Grants can be attached directly to users or to teams. Three built-in grants are created at database initialization:</p>
 <table>
 <thead>
 <tr>
-<th>Script</th>
+<th>Grant</th>
 <th>Description</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>bin/build</code></td>
-<td>Build the Docker image</td>
+<td><strong>AdministratorAccess</strong></td>
+<td>Full access to all operations (S3 + Admin API)</td>
 </tr>
 <tr>
-<td><code>bin/arca</code></td>
-<td>Manage the Arca server (<code>start</code>, <code>stop</code>, <code>status</code>, <code>logs</code>). Use <code>--tls</code> for HTTPS, <code>-c &lt;path&gt;</code> for a custom config.</td>
+<td><strong>S3FullAccess</strong></td>
+<td>Full access to all S3 operations</td>
 </tr>
 <tr>
-<td><code>bin/console</code></td>
-<td>Manage the web console (<code>start</code>, <code>stop</code>, <code>status</code>, <code>logs</code>). Use <code>--tls</code> with HTTPS.</td>
-</tr>
-<tr>
-<td><code>bin/test</code></td>
-<td>Run unit + integration tests (<code>unit</code>, <code>integration</code>, or both)</td>
-</tr>
-<tr>
-<td><code>bin/screenshots</code></td>
-<td>Take automated console screenshots for documentation</td>
-</tr>
-<tr>
-<td><code>bin/s3-tests</code></td>
-<td>Run Ceph s3-tests compatibility suite</td>
-</tr>
-<tr>
-<td><code>bin/perf-test</code></td>
-<td>Run performance tests</td>
-</tr>
-<tr>
-<td><code>bin/docs-build</code></td>
-<td>Build the documentation site</td>
-</tr>
-<tr>
-<td><code>bin/docs-serve</code></td>
-<td>Serve docs locally with live reload</td>
-</tr>
-<tr>
-<td><code>bin/docs-publish</code></td>
-<td>Build, commit, and push docs to update GitHub Pages</td>
+<td><strong>S3ReadOnlyAccess</strong></td>
+<td>Read-only access to S3 (GetObject, ListBucket, ListAllMyBuckets, GetBucketLocation, GetBucketEncryption)</td>
 </tr>
 </tbody>
 </table>
-<h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
+<p>Built-in grants cannot be modified or deleted.</p>
+<h2 id="authentication-flow">Authentication Flow<a class="headerlink" href="#authentication-flow" title="Permanent link">&para;</a></h2>
+<p>Every S3 and Admin API request goes through this authentication flow:</p>
+<pre class="mermaid"><code>flowchart TD
+    REQ(["Incoming request"]) --&gt; SIG["Verify SigV4 signature&lt;br/&gt;&lt;small&gt;extract access_key_id from Authorization header&lt;/small&gt;"]
+    SIG --&gt;|"invalid signature"| DENY1["403 SignatureDoesNotMatch"]
+    SIG --&gt;|"valid"| CRED["Look up credential&lt;br/&gt;&lt;small&gt;by access_key_id&lt;/small&gt;"]
+    CRED --&gt;|"not found"| DENY2["403 InvalidAccessKeyId"]
+    CRED --&gt;|"inactive"| DENY3["403 AccessDenied"]
+    CRED --&gt;|"active"| USER["Resolve user&lt;br/&gt;&lt;small&gt;credential.user_id -&gt; users table&lt;/small&gt;"]
+    USER --&gt; ROOT{"Is root user?"}
+    ROOT --&gt;|"yes"| ALLOW(["Allowed&lt;br/&gt;&lt;small&gt;root bypasses policy checks&lt;/small&gt;"])
+    ROOT --&gt;|"no"| POLICY["Evaluate effective grants&lt;br/&gt;&lt;small&gt;direct + team grants&lt;/small&gt;"]
+    POLICY --&gt;|"allowed"| ALLOW2(["Allowed"])
+    POLICY --&gt;|"denied / no match"| DENY4["403 AccessDenied"]
+
+    style DENY1 fill:#c62828,stroke:#ef5350,color:#fff
+    style DENY2 fill:#c62828,stroke:#ef5350,color:#fff
+    style DENY3 fill:#c62828,stroke:#ef5350,color:#fff
+    style DENY4 fill:#c62828,stroke:#ef5350,color:#fff
+    style ALLOW fill:#2e7d32,stroke:#4caf50,color:#fff
+    style ALLOW2 fill:#2e7d32,stroke:#4caf50,color:#fff</code></pre>
+<p>The SigV4 signature is verified against the credential's secret key. If valid, the credential resolves to a user, and the user's effective permissions determine whether the request is allowed.</p>
+<h2 id="effective-grants">Effective Grants<a class="headerlink" href="#effective-grants" title="Permanent link">&para;</a></h2>
+<p>A user's <strong>effective grants</strong> are the union of:</p>
+<ol>
+<li><strong>Direct grants</strong> attached to the user via <code>user_grants</code></li>
+<li><strong>Team grants</strong> from all teams the user belongs to, via <code>team_members</code> + <code>team_grants</code></li>
+</ol>
+<pre class="mermaid"><code>flowchart LR
+    subgraph DIRECT["Direct grants"]
+        G1["S3FullAccess"]
+    end
+
+    subgraph TEAM_A["Team: backend-devs"]
+        G2["S3ReadOnlyAccess"]
+    end
+
+    subgraph TEAM_B["Team: ops"]
+        G3["AdministratorAccess"]
+    end
+
+    DIRECT --&gt; UNION
+    TEAM_A --&gt; UNION
+    TEAM_B --&gt; UNION
+    UNION["Union of all policies"] --&gt; EVAL["Policy evaluation"]</code></pre>
+<p>Policy evaluation follows the standard IAM logic:</p>
+<ol>
+<li>Collect all <code>Statement</code> entries from all effective grants</li>
+<li>If <strong>any</strong> statement explicitly <strong>denies</strong> the action, the request is denied</li>
+<li>If <strong>any</strong> statement explicitly <strong>allows</strong> the action, the request is allowed</li>
+<li>Otherwise, the request is denied (default deny)</li>
+</ol>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The root user bypasses policy evaluation entirely. All requests from the root user are allowed regardless of grant configuration.</p>
+</div>
+<h2 id="managing-access-control">Managing Access Control<a class="headerlink" href="#managing-access-control" title="Permanent link">&para;</a></h2>
+<p>Access control can be managed through three interfaces:</p>
 <ul>
-<li><a href="../../guide/configuration/">Configuration</a> — customize server settings and manage credentials</li>
-<li><a href="../../reference/s3-api/">S3 API Reference</a> — full details on supported operations</li>
-<li><a href="../../guide/console/">Web Console</a> — browser-based bucket and credential management</li>
+<li><strong>CLI</strong> (<code>arca user</code>, <code>arca credential</code>) for offline administration</li>
+<li><strong>Admin API</strong> (<code>/admin/users</code>, <code>/admin/teams</code>, <code>/admin/grants</code>) for programmatic access</li>
+<li><strong>Web Console</strong> for visual management</li>
 </ul>
+<h3 id="cli">CLI<a class="headerlink" href="#cli" title="Permanent link">&para;</a></h3>
+<p>The CLI operates directly on the database and works even when the server is stopped.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Create a user</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>arca<span class="w"> </span>user<span class="w"> </span>create<span class="w"> </span>alice<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;Backend developer&quot;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Create a credential for the user</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span>--user<span class="w"> </span>alice<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;Alice&#39;s CLI key&quot;</span><span class="w"> </span>--admin
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># List users and credentials</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>arca<span class="w"> </span>user<span class="w"> </span>list
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>arca<span class="w"> </span>credential<span class="w"> </span>list
+</code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>The <code>arca credential add --user</code> flag links the credential to a user. If omitted, it defaults to <code>root</code>.</p>
+</div>
+<h3 id="admin-api">Admin API<a class="headerlink" href="#admin-api" title="Permanent link">&para;</a></h3>
+<p>The Admin API provides full CRUD for users, teams, grants, and their relationships. All endpoints require SigV4 authentication with an admin credential.</p>
+<p><strong>Users</strong>: <code>GET/POST /admin/users</code>, <code>GET/PUT/DELETE /admin/users/{id}</code></p>
+<p><strong>Teams</strong>: <code>GET/POST /admin/teams</code>, <code>GET/PUT/DELETE /admin/teams/{id}</code></p>
+<p><strong>Grants</strong>: <code>GET/POST /admin/grants</code>, <code>GET/PUT/DELETE /admin/grants/{id}</code></p>
+<p><strong>Credentials</strong>: <code>GET/POST /admin/users/{id}/credentials</code></p>
+<p><strong>Memberships</strong>: <code>PUT/DELETE /admin/teams/{team_id}/members/{user_id}</code></p>
+<p><strong>Grant attachments</strong>: <code>PUT/DELETE /admin/users/{user_id}/grants/{grant_id}</code>, <code>PUT/DELETE /admin/teams/{team_id}/grants/{grant_id}</code></p>
+<p><strong>Effective grants</strong>: <code>GET /admin/users/{user_id}/effective-grants</code></p>
+<h3 id="web-console">Web Console<a class="headerlink" href="#web-console" title="Permanent link">&para;</a></h3>
+<p>The web console provides a visual interface for managing users, teams, and grants. Use the sidebar navigation to access each section. The console uses dual-list shuttle components for managing team memberships and grant attachments, allowing drag-and-drop or click-based assignment.</p>
+<h2 id="example-setup">Example Setup<a class="headerlink" href="#example-setup" title="Permanent link">&para;</a></h2>
+<p>Here's a typical setup for a team with different access levels:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># 1. Create users</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>arca<span class="w"> </span>user<span class="w"> </span>create<span class="w"> </span>alice<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;Backend developer&quot;</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>arca<span class="w"> </span>user<span class="w"> </span>create<span class="w"> </span>bob<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;Data analyst&quot;</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="c1"># 2. Create credentials (admin for alice, regular for bob)</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span>--user<span class="w"> </span>alice<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;Alice CLI&quot;</span><span class="w"> </span>--admin
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span>--user<span class="w"> </span>bob<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;Bob CLI&quot;</span>
+</code></pre></div>
+<p>Then, using the Admin API or web console:</p>
+<ol>
+<li>Create a team called <code>data-team</code></li>
+<li>Add both <code>alice</code> and <code>bob</code> to <code>data-team</code></li>
+<li>Attach <code>S3ReadOnlyAccess</code> to <code>data-team</code> (both users can read)</li>
+<li>Attach <code>S3FullAccess</code> directly to <code>alice</code> (alice can also write)</li>
+</ol>
+<p>The result:</p>
+<table>
+<thead>
+<tr>
+<th>User</th>
+<th>Direct Grants</th>
+<th>Team Grants (via data-team)</th>
+<th>Effective Access</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>alice</td>
+<td>S3FullAccess</td>
+<td>S3ReadOnlyAccess</td>
+<td>Full S3 read/write</td>
+</tr>
+<tr>
+<td>bob</td>
+<td>(none)</td>
+<td>S3ReadOnlyAccess</td>
+<td>S3 read only</td>
+</tr>
+</tbody>
+</table>
+<h2 id="ownership">Ownership<a class="headerlink" href="#ownership" title="Permanent link">&para;</a></h2>
+<p>When a user creates a bucket or uploads an object, their <code>user_id</code> is recorded in the <code>owner</code> field. Ownership is informational at this stage, it does not affect access control (grants govern all permission checks).</p>
 
 
 
