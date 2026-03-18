@@ -70,6 +70,16 @@ pub enum Command {
         #[command(subcommand)]
         action: EncryptionAction,
     },
+
+    /// Manage users (offline, direct database access)
+    User {
+        /// Path to the configuration file
+        #[arg(long, default_value = "/etc/arca/config.toml")]
+        config_path: PathBuf,
+
+        #[command(subcommand)]
+        action: UserAction,
+    },
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -103,6 +113,28 @@ pub enum EncryptionAction {
 }
 
 #[derive(Subcommand)]
+pub enum UserAction {
+    /// Create a new user
+    Create {
+        /// Username (must be unique)
+        username: String,
+
+        /// Human-readable description
+        #[arg(long, default_value = "")]
+        description: String,
+    },
+
+    /// List all users
+    List,
+
+    /// Delete a user by user ID
+    Delete {
+        /// The user ID to delete
+        user_id: String,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum CredentialAction {
     /// Create a new credential
     Add {
@@ -113,6 +145,10 @@ pub enum CredentialAction {
         /// Grant admin privileges (access to Admin API)
         #[arg(long)]
         admin: bool,
+
+        /// User ID to associate the credential with (default: root)
+        #[arg(long, default_value = "root")]
+        user: String,
     },
 
     /// List all credentials

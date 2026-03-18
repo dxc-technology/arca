@@ -12,7 +12,7 @@ comments. Run `grep -r 'TECHDEBT' crates/` to find all markers.
 
 | ID | Area | Workaround | Proper Fix | Tests Affected | Files |
 |----|------|-----------|------------|----------------|-------|
-| TD-001 | Owner identity | Owner ID and DisplayName hardcoded to `"arca"` in ListBuckets XML | Introduce account/user model; derive owner ID from credential; store owner on bucket/object creation | `test_bucket_listv2_fetchowner_notempty` (not yet passing) | `xml_types.rs` |
+| TD-001 | Owner identity | RESOLVED ✅ — Owner ID derived from credential's user. Buckets and objects store creator's username. Migration v8 adds `owner` columns and `user_id` on credentials | — | — | — |
 | TD-002 | Storage class | Always `"STANDARD"` — no storage class field in ObjectRecord | Add `storage_class` field to ObjectRecord, DB column, accept `x-amz-storage-class` header | None currently failing | `types.rs`, `bucket.rs`, `xml_types.rs` |
 | TD-003 | Versioning | ListObjectVersions returns `VersionId=null`, `IsLatest=true` for all objects — no actual version tracking | Implement object versioning: version ID generation, version history in DB, delete markers | All `Versioning` category tests | `xml_types.rs`, `bucket.rs` |
 | TD-004 | Region | Bucket region hardcoded to `"us-east-1"` in HeadBucket header and GetBucketLocation (empty LocationConstraint = us-east-1) | Add region to server config; store per-bucket region; return in responses | None currently failing | `bucket.rs`, `xml_types.rs` |

@@ -8,6 +8,7 @@ use arca_auth::{
     parse_authorization, parse_query_string_auth, verify_presigned_request, verify_request,
     PresignedVerifyInput, VerifyInput,
 };
+use arca_core::policy::{self, Evaluation};
 use arca_core::types::Credential;
 use arca_core::{S3Error, S3ErrorCode};
 
@@ -219,18 +220,27 @@ pub async fn auth_middleware(
     };
 
     // Resolve identity: credential -> user -> effective policies.
-    match resolve_identity(&state, credential).await {
-        Ok(identity) => {
-            request.extensions_mut().insert(identity);
-            next.run(request).await
-        }
+    let identity = match resolve_identity(&state, credential).await {
+        Ok(id) => id,
         Err(_) => {
-            Response::builder()
+            return Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body(axum::body::Body::empty())
-                .expect("build error response")
+                .expect("build error response");
+        }
+    };
+
+    // S3 authorization: evaluate policies for non-root users.
+    if !identity.is_root() {
+        let (action, resource) = determine_s3_action_resource(&method, &uri_path, &query_string);
+        let result = policy::evaluate_grants(&identity.effective_policies, action, &resource);
+        if !matches!(result, Evaluation::Allow) {
+            return s3_error_response(S3Error::new(S3ErrorCode::AccessDenied, &uri_path));
         }
     }
+
+    request.extensions_mut().insert(identity);
+    next.run(request).await
 }
 
 /// Resolves a credential to a full identity with user and effective policies.
@@ -275,6 +285,87 @@ async fn resolve_identity(
         user,
         effective_policies,
     })
+}
+
+/// Determines the S3 action and resource ARN from the HTTP method, path, and query.
+///
+/// Returns `(action, resource)` where action is an `s3:*` constant and resource
+/// is an ARN like `arn:aws:s3:::bucket` or `arn:aws:s3:::bucket/key`.
+fn determine_s3_action_resource(method: &str, path: &str, query: &str) -> (&'static str, String) {
+    use arca_core::policy::actions::*;
+
+    // Parse path segments: /{bucket}/{key...}
+    let trimmed = path.strip_prefix('/').unwrap_or(path);
+    let (bucket, key) = match trimmed.split_once('/') {
+        Some((b, k)) => (b, Some(k)),
+        None => (trimmed, None),
+    };
+
+    // Service-level: GET /
+    if bucket.is_empty() {
+        return (S3_LIST_ALL_MY_BUCKETS, "*".to_string());
+    }
+
+    // Object-level operations (bucket + key present)
+    if let Some(key) = key {
+        if !key.is_empty() {
+            let resource = format!("arn:aws:s3:::{bucket}/{key}");
+            let action = match method {
+                "GET" | "HEAD" => S3_GET_OBJECT,
+                "PUT" => S3_PUT_OBJECT,
+                "DELETE" => S3_DELETE_OBJECT,
+                "POST" => {
+                    if query.contains("uploads") {
+                        S3_PUT_OBJECT // CreateMultipartUpload / CompleteMultipartUpload
+                    } else {
+                        S3_PUT_OBJECT
+                    }
+                }
+                _ => S3_GET_OBJECT,
+            };
+            return (action, resource);
+        }
+    }
+
+    // Bucket-level operations
+    let resource = format!("arn:aws:s3:::{bucket}");
+    let action = match method {
+        "PUT" => {
+            if query.contains("encryption") {
+                S3_PUT_BUCKET_ENCRYPTION
+            } else {
+                S3_CREATE_BUCKET
+            }
+        }
+        "GET" | "HEAD" => {
+            if query.contains("encryption") {
+                S3_GET_BUCKET_ENCRYPTION
+            } else if query.contains("location") {
+                S3_GET_BUCKET_LOCATION
+            } else if method == "HEAD" {
+                S3_LIST_BUCKET
+            } else {
+                S3_LIST_BUCKET
+            }
+        }
+        "DELETE" => {
+            if query.contains("encryption") {
+                S3_DELETE_BUCKET_ENCRYPTION
+            } else {
+                S3_DELETE_BUCKET
+            }
+        }
+        "POST" => {
+            if query.contains("delete") {
+                S3_DELETE_OBJECT
+            } else {
+                S3_LIST_BUCKET
+            }
+        }
+        _ => S3_LIST_BUCKET,
+    };
+
+    (action, resource)
 }
 
 /// Parses an X-Amz-Date string (YYYYMMDDTHHMMSSZ) into a chrono DateTime.

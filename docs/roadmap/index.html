@@ -1909,7 +1909,7 @@ continuing from the MVP phases (0–11).</p>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">13</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">14</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">15</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">16</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">16</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">17</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">18</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">19</div>
@@ -2010,8 +2010,8 @@ continuing from the MVP phases (0–11).</p>
 <td><a href="#phase-16-access-control-and-bucket-policies-p1">Access Control and Bucket Policies</a></td>
 <td style="text-align: center;">P1</td>
 <td style="text-align: center;">13</td>
-<td style="text-align: center;"></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><code>v0.7.0</code></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">17</td>
@@ -2169,15 +2169,21 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 <p><strong>Depends on</strong>: Phase 12 (TLS recommended for production presigned URLs), Phase 13 (encryption pipeline for SSE-C)</p>
 <hr />
 <h3 id="phase-16-access-control-and-bucket-policies-p1">Phase 16 — Access Control and Bucket Policies [P1]<a class="headerlink" href="#phase-16-access-control-and-bucket-policies-p1" title="Permanent link">&para;</a></h3>
-<p>Replace the current "all credentials have full access" model with proper ownership, policies, and ACLs.</p>
+<p>Role-based access control with users, teams, and policy-based authorization.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Owner model: replace hardcoded <code>"arca"</code> owner with credential-linked <code>owner_id</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Bucket policies: <code>PutBucketPolicy</code> / <code>GetBucketPolicy</code> / <code>DeleteBucketPolicy</code>. JSON policy documents (IAM policy subset: Effect, Principal, Action, Resource). Policy evaluation in auth middleware</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Canned ACLs: <code>PutBucketAcl</code> / <code>GetBucketAcl</code>, <code>PutObjectAcl</code> / <code>GetObjectAcl</code> (private, public-read, public-read-write, authenticated-read)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Public access block: <code>PutPublicAccessBlock</code> / <code>GetPublicAccessBlock</code> / <code>DeletePublicAccessBlock</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> CORS persistence: <code>PutBucketCors</code> / <code>GetBucketCors</code> / <code>DeleteBucketCors</code> (currently static middleware — make per-bucket, stored in <code>bucket_config</code>)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> (Console) Bucket settings panel: policy editor (JSON), ACL selector, CORS rules editor</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Resolves: TD-001, large portion of TD-007</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> RBAC foundation: User, Team, Grant types with store traits and SQLite implementations</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Policy evaluation engine: AWS IAM-style documents (Effect, Action, Resource), wildcard matching, deny-overrides</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> S3 authorization middleware: every S3 request evaluated against effective policies (root users bypass)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Admin authorization: non-root users need <code>arca:*</code> grants for admin endpoints</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Identity resolution: credential → user → (direct grants + team grants) → effective policies</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Built-in grants: AdministratorAccess, S3FullAccess, S3ReadOnlyAccess</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Owner model: buckets and objects track creator's username. Resolves TD-001</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Admin API: <code>/admin/me</code>, <code>/admin/users</code>, <code>/admin/teams</code>, <code>/admin/grants</code> with CRUD, membership, attachments</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> CLI: <code>arca user create/list/delete</code>, <code>arca credential add --user</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> SQLite migration v8: users, teams, grants tables + junction tables + owner fields</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> (Console) Users, Teams, Grants management views with dual-list shuttle components</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Integration tests: 41 tests covering CRUD, attachments, E2E access control scenarios</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Resolves: TD-001</li>
 </ul>
 <p><strong>Depends on</strong>: Phase 13 (<code>bucket_config</code> table)</p>
 <hr />
@@ -2561,7 +2567,7 @@ tests but need proper implementation for production use. These are tracked in
 with unique IDs (<code>TD-XXX</code>) referenced in source code comments.</p>
 <p>Remaining items:</p>
 <ul>
-<li><strong>Ownership model</strong> (TD-001): Owner ID hardcoded to <code>"arca"</code> — needs account/user model tied to credentials</li>
+<li>~~<strong>Ownership model</strong> (TD-001)~~: <strong>Resolved</strong> — Owner ID derived from credential's user; buckets/objects track creator's username</li>
 <li><strong>Storage classes</strong> (TD-002): Always <code>STANDARD</code> — no storage tiering</li>
 <li><strong>Versioning</strong> (TD-003): Faked for mc compatibility — no real version tracking</li>
 <li><strong>Region support</strong> (TD-004): Hardcoded <code>us-east-1</code> — no per-bucket regions</li>

@@ -32,7 +32,7 @@ continuing from the MVP phases (0–11).
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">13</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">14</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">15</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">16</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">16</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">17</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">18</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">19</div>
@@ -96,7 +96,7 @@ graph LR
 | 13 | [Server-Side Encryption: SSE-S3](#phase-13-server-side-encryption-sse-s3-p0) | P0 | — | `v0.3.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 14 | [SSE-KMS with HashiCorp Vault/OpenBAO](#phase-14-sse-kms-with-hashicorp-vaultopenbao-p0) | P0 | 13 | `v0.5.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 15 | [Presigned URLs, Query-String Auth, and SSE-C](#phase-15-presigned-urls-query-string-auth-and-sse-c-p1) | P1 | 12, 13 | `v0.6.0` | <span style="color:#4caf50">&#x2714;</span> |
-| 16 | [Access Control and Bucket Policies](#phase-16-access-control-and-bucket-policies-p1) | P1 | 13 | | |
+| 16 | [Access Control and Bucket Policies](#phase-16-access-control-and-bucket-policies-p1) | P1 | 13 | `v0.7.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 17 | [Object Versioning](#phase-17-object-versioning-p1) | P1 | 16 | | |
 | 18 | [Monitoring, Metrics, and Audit](#phase-18-monitoring-metrics-and-audit-p1) | P1 | — | | |
 | 19 | [Object Tagging and Lifecycle Rules](#phase-19-object-tagging-and-lifecycle-rules-p2) | P2 | 13 | | |
@@ -194,15 +194,21 @@ Enable URL-based authentication for direct browser downloads and customer-provid
 
 ### Phase 16 — Access Control and Bucket Policies [P1]
 
-Replace the current "all credentials have full access" model with proper ownership, policies, and ACLs.
+Role-based access control with users, teams, and policy-based authorization.
 
-- [ ] Owner model: replace hardcoded `"arca"` owner with credential-linked `owner_id`
-- [ ] Bucket policies: `PutBucketPolicy` / `GetBucketPolicy` / `DeleteBucketPolicy`. JSON policy documents (IAM policy subset: Effect, Principal, Action, Resource). Policy evaluation in auth middleware
-- [ ] Canned ACLs: `PutBucketAcl` / `GetBucketAcl`, `PutObjectAcl` / `GetObjectAcl` (private, public-read, public-read-write, authenticated-read)
-- [ ] Public access block: `PutPublicAccessBlock` / `GetPublicAccessBlock` / `DeletePublicAccessBlock`
-- [ ] CORS persistence: `PutBucketCors` / `GetBucketCors` / `DeleteBucketCors` (currently static middleware — make per-bucket, stored in `bucket_config`)
-- [ ] (Console) Bucket settings panel: policy editor (JSON), ACL selector, CORS rules editor
-- [ ] Resolves: TD-001, large portion of TD-007
+- [x] RBAC foundation: User, Team, Grant types with store traits and SQLite implementations
+- [x] Policy evaluation engine: AWS IAM-style documents (Effect, Action, Resource), wildcard matching, deny-overrides
+- [x] S3 authorization middleware: every S3 request evaluated against effective policies (root users bypass)
+- [x] Admin authorization: non-root users need `arca:*` grants for admin endpoints
+- [x] Identity resolution: credential → user → (direct grants + team grants) → effective policies
+- [x] Built-in grants: AdministratorAccess, S3FullAccess, S3ReadOnlyAccess
+- [x] Owner model: buckets and objects track creator's username. Resolves TD-001
+- [x] Admin API: `/admin/me`, `/admin/users`, `/admin/teams`, `/admin/grants` with CRUD, membership, attachments
+- [x] CLI: `arca user create/list/delete`, `arca credential add --user`
+- [x] SQLite migration v8: users, teams, grants tables + junction tables + owner fields
+- [x] (Console) Users, Teams, Grants management views with dual-list shuttle components
+- [x] Integration tests: 41 tests covering CRUD, attachments, E2E access control scenarios
+- [x] Resolves: TD-001
 
 **Depends on**: Phase 13 (`bucket_config` table)
 
@@ -602,7 +608,7 @@ with unique IDs (`TD-XXX`) referenced in source code comments.
 
 Remaining items:
 
-- **Ownership model** (TD-001): Owner ID hardcoded to `"arca"` — needs account/user model tied to credentials
+- ~~**Ownership model** (TD-001)~~: **Resolved** — Owner ID derived from credential's user; buckets/objects track creator's username
 - **Storage classes** (TD-002): Always `STANDARD` — no storage tiering
 - **Versioning** (TD-003): Faked for mc compatibility — no real version tracking
 - **Region support** (TD-004): Hardcoded `us-east-1` — no per-bucket regions

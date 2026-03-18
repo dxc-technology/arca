@@ -18,10 +18,10 @@ use tokio::net::TcpListener;
 use tower::Layer;
 use tracing_subscriber::EnvFilter;
 
-use arca_core::store::CredentialStore;
+use arca_core::store::{CredentialStore, UserStore};
 use arca_proto::AppState;
 use arca_proto::middleware::normalize::NormalizeService;
-use cli::{Cli, Command, CredentialAction, EncryptionAction, LogFormat, TlsAction};
+use cli::{Cli, Command, CredentialAction, EncryptionAction, LogFormat, TlsAction, UserAction};
 
 /// The normalized app type used by both HTTP and HTTPS code paths.
 pub type NormalizedApp = NormalizeService<Router>;
@@ -197,9 +197,17 @@ async fn main() -> Result<()> {
             let store = arca_storage::SqliteStore::open(&config.storage.db_path()).await?;
 
             match action {
-                CredentialAction::Add { description, admin } => {
-                    // TODO(phase16): accept --user flag instead of defaulting to "root"
-                    let cred = credential::generate_credential(&description, admin, "root");
+                CredentialAction::Add {
+                    description,
+                    admin,
+                    user,
+                } => {
+                    // Verify the user exists.
+                    let user_exists = store.get_user(&user).await?.is_some();
+                    if !user_exists {
+                        anyhow::bail!("User \"{user}\" not found. Create the user first with `arca user create`.");
+                    }
+                    let cred = credential::generate_credential(&description, admin, &user);
                     store.put_credential(&cred).await?;
 
                     println!("Credential created:");
@@ -286,6 +294,80 @@ async fn main() -> Result<()> {
                         .map_err(|e| anyhow::anyhow!("key generation failed: {e}"))?;
                     let encoded = base64::engine::general_purpose::STANDARD.encode(key);
                     println!("{encoded}");
+                }
+            }
+        }
+
+        Command::User {
+            config_path,
+            action,
+        } => {
+            init_tracing(&LogFormat::Text);
+
+            let config = config::load_config(&config_path)?;
+            let store = arca_storage::SqliteStore::open(&config.storage.db_path()).await?;
+
+            match action {
+                UserAction::Create {
+                    username,
+                    description,
+                } => {
+                    // Check for duplicate username.
+                    if store.get_user_by_username(&username).await?.is_some() {
+                        anyhow::bail!("Username \"{username}\" already exists.");
+                    }
+
+                    let user = arca_core::types::User {
+                        user_id: uuid::Uuid::new_v4().to_string(),
+                        username: username.clone(),
+                        description,
+                        is_root: false,
+                        created_at: chrono::Utc::now(),
+                    };
+
+                    store.put_user(&user).await?;
+
+                    println!("User created:");
+                    println!("  User ID:  {}", user.user_id);
+                    println!("  Username: {}", user.username);
+                    if !user.description.is_empty() {
+                        println!("  Description: {}", user.description);
+                    }
+                }
+
+                UserAction::List => {
+                    let users = store.list_users().await?;
+                    if users.is_empty() {
+                        println!("No users found.");
+                    } else {
+                        println!(
+                            "{:<38} {:<20} {:<6} {:<20} {}",
+                            "USER ID", "USERNAME", "ROOT", "CREATED", "DESCRIPTION"
+                        );
+                        println!("{}", "-".repeat(104));
+                        for user in users {
+                            let root = if user.is_root { "yes" } else { "no" };
+                            let created = user.created_at.format("%Y-%m-%d %H:%M:%S");
+                            println!(
+                                "{:<38} {:<20} {:<6} {:<20} {}",
+                                user.user_id, user.username, root, created, user.description
+                            );
+                        }
+                    }
+                }
+
+                UserAction::Delete { user_id } => {
+                    let user = store
+                        .get_user(&user_id)
+                        .await?
+                        .ok_or_else(|| anyhow::anyhow!("User \"{user_id}\" not found."))?;
+
+                    if user.is_root {
+                        anyhow::bail!("Cannot delete the root user.");
+                    }
+
+                    store.delete_user(&user_id).await?;
+                    println!("User {} ({}) deleted.", user_id, user.username);
                 }
             }
         }

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Phase 16: Access Control and Bucket Policies**
+- **RBAC foundation**: users, teams, grants (policy documents) with full CRUD via Admin API
+- **Policy evaluation engine**: AWS IAM-style policy documents with Effect/Action/Resource matching, wildcard support, deny-overrides evaluation
+- **S3 authorization middleware**: non-root users are authorized against effective policies for every S3 operation (action + resource ARN matching)
+- **Admin authorization**: non-root users need `arca:*` grants to access admin endpoints (e.g., `AdministratorAccess` grant)
+- **Identity resolution**: credentials linked to users, users belong to teams, grants attach to users or teams. Effective policies = direct grants + team-inherited grants
+- **Built-in grants**: AdministratorAccess, S3FullAccess, S3ReadOnlyAccess created during migration
+- **Owner model**: buckets and objects track their creator's username (resolves TD-001)
+- **Admin API endpoints**: `/admin/me`, `/admin/users`, `/admin/teams`, `/admin/grants` with full CRUD, membership management, grant attachments, effective grant queries
+- **CLI `arca user` subcommand**: `create`, `list`, `delete` for offline user management
+- **CLI `arca credential add --user`**: associate new credentials with specific users
+- **Web console**: Users, Teams, Grants management views with dual-list shuttle components for membership and grant assignment
+- **SQLite migration v8**: users, teams, grants, team_members, user_grants, team_grants tables; owner fields on buckets/objects; user_id on credentials
+- 41 RBAC integration tests (user/team/grant CRUD, attachments, effective grants, E2E access control)
+- 84 new unit tests (47 policy evaluator, 37 RBAC store implementations)
+
 ## [0.6.0] — 2026-03-16
 
 ### Added

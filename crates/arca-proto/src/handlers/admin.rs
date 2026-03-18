@@ -12,6 +12,7 @@ use std::collections::HashSet;
 use std::ffi::CString;
 
 use crate::middleware::admin_auth::AuthenticatedCredential;
+use crate::middleware::identity::AuthenticatedIdentity;
 use crate::state::AppState;
 
 // -- Error type --
@@ -222,10 +223,25 @@ pub async fn list_credentials(
 /// POST /admin/credentials — create a new credential.
 pub async fn create_credential(
     State(state): State<AppState>,
-    Json(body): Json<CreateCredentialRequest>,
+    request: axum::extract::Request,
 ) -> Result<impl IntoResponse, AdminError> {
-    // TODO(phase16): use calling user's user_id instead of "root"
-    let cred = arca_core::credential::generate_credential(&body.description, body.admin, "root");
+    let identity = request
+        .extensions()
+        .get::<AuthenticatedIdentity>()
+        .ok_or_else(|| AdminError::internal("missing authenticated identity"))?
+        .clone();
+
+    let body_bytes = axum::body::to_bytes(request.into_body(), 65_536)
+        .await
+        .map_err(|e| AdminError::bad_request(e.to_string()))?;
+    let body: CreateCredentialRequest =
+        serde_json::from_slice(&body_bytes).map_err(|e| AdminError::bad_request(e.to_string()))?;
+
+    let cred = arca_core::credential::generate_credential(
+        &body.description,
+        body.admin,
+        &identity.user.user_id,
+    );
 
     state
         .credentials
