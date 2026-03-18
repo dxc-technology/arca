@@ -21,9 +21,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI `arca user` subcommand**: `create`, `list`, `delete` for offline user management
 - **CLI `arca credential add --user`**: associate new credentials with specific users
 - **Web console**: Users, Teams, Grants management views with dual-list shuttle components for membership and grant assignment
+- **Web console**: inline editing of names and descriptions for users, teams, grants, and credentials (save-on-change)
+- **Web console**: credential activate/deactivate toggle on credential cards
+- **Admin API**: `PUT /admin/credentials/{id}` for updating credential active status and description
+- **Admin API**: `PUT /admin/users/{id}` now accepts optional `username` field for renaming
+- **Admin API**: `PUT /admin/teams/{id}` now accepts optional `name` field for renaming
+- **Documentation**: Access Control guide page with diagrams explaining the identity model, auth flow, and effective grants
+- **Documentation**: database ER diagram (Mermaid) in architecture page showing all 12 tables and relationships
 - **SQLite migration v8**: users, teams, grants, team_members, user_grants, team_grants tables; owner fields on buckets/objects; user_id on credentials
 - 41 RBAC integration tests (user/team/grant CRUD, attachments, effective grants, E2E access control)
-- 84 new unit tests (47 policy evaluator, 37 RBAC store implementations)
+- 90 new unit tests (47 policy evaluator, 37 RBAC store implementations, 6 credential/user/team update)
 
 ## [0.6.0] — 2026-03-16
 

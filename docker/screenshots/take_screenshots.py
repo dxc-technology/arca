@@ -76,6 +76,33 @@ def create_s3_client():
     )
 
 
+def signed_admin_request(method, path, body=None):
+    """Make a SigV4-signed Admin API request. Returns the requests.Response."""
+    from botocore.auth import S3SigV4Auth
+    from botocore.credentials import Credentials
+    from botocore.awsrequest import AWSRequest
+
+    creds = Credentials(ACCESS_KEY, SECRET_KEY)
+    url = f"{ARCA_ENDPOINT}{path}"
+    data = json.dumps(body) if body is not None else None
+
+    aws_request = AWSRequest(
+        method=method,
+        url=url,
+        data=data,
+        headers={"Content-Type": "application/json"} if data else {},
+    )
+    S3SigV4Auth(creds, "s3", "us-east-1").add_auth(aws_request)
+
+    resp = requests.request(
+        method=method,
+        url=url,
+        data=data,
+        headers=dict(aws_request.headers),
+    )
+    return resp
+
+
 def seed_data(s3):
     """Seed Arca with sample buckets and objects for screenshots."""
     print("\n=== Phase A: Seeding data ===")
@@ -143,6 +170,74 @@ def create_extra_credential():
         print(f"  Warning: credential creation returned {resp.status_code}: {resp.text}")
 
 
+def seed_rbac_data():
+    """Seed RBAC data (users, teams, grants) via Admin API. Returns IDs for screenshots."""
+    print("\n  Seeding RBAC data...")
+
+    # 1. Create user "alice"
+    resp = signed_admin_request("POST", "/admin/users", {"username": "alice", "description": "Backend developer"})
+    assert resp.status_code == 201, f"Failed to create alice: {resp.status_code} {resp.text}"
+    alice = resp.json()
+    alice_user_id = alice["user_id"]
+    print(f"  Created user alice: {alice_user_id}")
+
+    # 2. Create user "bob"
+    resp = signed_admin_request("POST", "/admin/users", {"username": "bob", "description": "Data analyst"})
+    assert resp.status_code == 201, f"Failed to create bob: {resp.status_code} {resp.text}"
+    bob = resp.json()
+    bob_user_id = bob["user_id"]
+    print(f"  Created user bob: {bob_user_id}")
+
+    # 3. Create a credential for alice
+    resp = signed_admin_request("POST", f"/admin/users/{alice_user_id}/credentials", {"description": "Alice dev key"})
+    assert resp.status_code == 201, f"Failed to create alice credential: {resp.status_code} {resp.text}"
+    alice_cred = resp.json()
+    print(f"  Created credential for alice: {alice_cred['access_key_id']}")
+
+    # 4. Create team "backend-devs"
+    resp = signed_admin_request("POST", "/admin/teams", {"name": "backend-devs", "description": "Backend development team"})
+    assert resp.status_code == 201, f"Failed to create team: {resp.status_code} {resp.text}"
+    team = resp.json()
+    team_id = team["team_id"]
+    print(f"  Created team backend-devs: {team_id}")
+
+    # 5. Add alice and bob as members of backend-devs
+    resp = signed_admin_request("PUT", f"/admin/teams/{team_id}/members/{alice_user_id}")
+    assert resp.status_code == 204, f"Failed to add alice to team: {resp.status_code} {resp.text}"
+    print(f"  Added alice to backend-devs")
+
+    resp = signed_admin_request("PUT", f"/admin/teams/{team_id}/members/{bob_user_id}")
+    assert resp.status_code == 204, f"Failed to add bob to team: {resp.status_code} {resp.text}"
+    print(f"  Added bob to backend-devs")
+
+    # Get built-in grants
+    resp = signed_admin_request("GET", "/admin/grants")
+    assert resp.status_code == 200, f"Failed to list grants: {resp.status_code} {resp.text}"
+    grants = resp.json()
+    s3_full_access = next(g for g in grants if g["name"] == "S3FullAccess")
+    s3_readonly = next(g for g in grants if g["name"] == "S3ReadOnlyAccess")
+
+    # 6. Attach S3FullAccess to alice directly
+    resp = signed_admin_request("PUT", f"/admin/users/{alice_user_id}/grants/{s3_full_access['grant_id']}")
+    assert resp.status_code == 204, f"Failed to attach grant to alice: {resp.status_code} {resp.text}"
+    print(f"  Attached S3FullAccess to alice")
+
+    # 7. Attach S3ReadOnlyAccess to backend-devs team
+    resp = signed_admin_request("PUT", f"/admin/teams/{team_id}/grants/{s3_readonly['grant_id']}")
+    assert resp.status_code == 204, f"Failed to attach grant to team: {resp.status_code} {resp.text}"
+    print(f"  Attached S3ReadOnlyAccess to backend-devs")
+
+    print("  RBAC seeding complete.")
+
+    return {
+        "alice_user_id": alice_user_id,
+        "bob_user_id": bob_user_id,
+        "team_id": team_id,
+        "s3_full_access_grant_id": s3_full_access["grant_id"],
+        "s3_readonly_grant_id": s3_readonly["grant_id"],
+    }
+
+
 def screenshot(page, name):
     """Take a screenshot with a short stabilization delay."""
     page.wait_for_timeout(500)
@@ -150,11 +245,11 @@ def screenshot(page, name):
     print(f"    Saved {name}")
 
 
-def take_screenshots():
+def take_screenshots(rbac_ids):
     """Capture screenshots of the web console using Playwright."""
     print("\n=== Phase B: Taking screenshots ===")
 
-    total = 11
+    total = 19
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     with sync_playwright() as p:
@@ -276,10 +371,72 @@ def take_screenshots():
         page.click('button:has-text("Create Credential")')
         page.wait_for_timeout(500)
         page.fill('input[placeholder="My application"]', "CI/CD Pipeline")
-        page.locator('.fixed button:has-text("Create")').click()
+        page.locator('.fixed form button[type="submit"]').click()
         page.wait_for_selector('text=Credential Created', timeout=10000)
         page.wait_for_timeout(500)
         screenshot(page, "console-credential-created.png")
+
+        # ----- 12. Users list view -----
+        print(f"  12/{total} console-users.png")
+        page.goto(f"{CONSOLE_URL}#/users")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_selector('.glass.glass-hover.rounded-xl', timeout=10000)
+        page.wait_for_timeout(1000)
+        screenshot(page, "console-users.png")
+
+        # ----- 13. User detail — alice, Credentials tab -----
+        print(f"  13/{total} console-user-detail.png")
+        page.goto(f"{CONSOLE_URL}#/users/{rbac_ids['alice_user_id']}")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_selector('button:has-text("Credentials")', timeout=10000)
+        page.wait_for_timeout(1000)
+        # Credentials tab is the default active tab
+        screenshot(page, "console-user-detail.png")
+
+        # ----- 14. User detail — alice, Direct Grants tab -----
+        print(f"  14/{total} console-user-grants.png")
+        page.click('button:has-text("Direct Grants")')
+        page.wait_for_timeout(1000)
+        screenshot(page, "console-user-grants.png")
+
+        # ----- 15. User detail — alice, Effective Grants tab -----
+        print(f"  15/{total} console-user-effective.png")
+        page.click('button:has-text("Effective Grants")')
+        page.wait_for_timeout(1000)
+        screenshot(page, "console-user-effective.png")
+
+        # ----- 16. Teams list view -----
+        print(f"  16/{total} console-teams.png")
+        page.goto(f"{CONSOLE_URL}#/teams")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_selector('h2:has-text("Teams")', timeout=10000)
+        page.wait_for_timeout(1500)
+        screenshot(page, "console-teams.png")
+
+        # ----- 17. Team detail — backend-devs, Members tab -----
+        print(f"  17/{total} console-team-detail.png")
+        page.goto(f"{CONSOLE_URL}#/teams/{rbac_ids['team_id']}")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_selector('button:has-text("Members")', timeout=10000)
+        page.wait_for_timeout(1000)
+        # Members tab is the default active tab
+        screenshot(page, "console-team-detail.png")
+
+        # ----- 18. Grants list view -----
+        print(f"  18/{total} console-grants.png")
+        page.goto(f"{CONSOLE_URL}#/grants")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_selector('h2:has-text("Grants")', timeout=10000)
+        page.wait_for_timeout(1500)
+        screenshot(page, "console-grants.png")
+
+        # ----- 19. Grant detail — S3FullAccess -----
+        print(f"  19/{total} console-grant-detail.png")
+        page.goto(f"{CONSOLE_URL}#/grants/{rbac_ids['s3_full_access_grant_id']}")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_selector('text=Statement Preview', timeout=10000)
+        page.wait_for_timeout(1500)
+        screenshot(page, "console-grant-detail.png")
 
         browser.close()
 
@@ -293,7 +450,8 @@ def main():
     s3 = create_s3_client()
     seed_data(s3)
     create_extra_credential()
-    take_screenshots()
+    rbac_ids = seed_rbac_data()
+    take_screenshots(rbac_ids)
 
     # List output files
     files = sorted(os.listdir(OUTPUT_DIR))

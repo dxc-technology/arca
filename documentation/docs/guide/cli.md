@@ -34,13 +34,14 @@ Manage S3 access credentials stored in the SQLite database. See [Configuration â
 Generate a new access key pair.
 
 ```bash
-arca credential add [--description <TEXT>] [--admin]
+arca credential add [--description <TEXT>] [--admin] [--user <USER_ID>]
 ```
 
-| Option | Description |
-|--------|-------------|
-| `--description` | Human-readable label for the credential |
-| `--admin` | Grant admin privileges (access to [Admin API](../reference/admin-api.md) and console management) |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--description` | | Human-readable label for the credential |
+| `--admin` | | Grant admin privileges (access to [Admin API](../reference/admin-api.md) and console management) |
+| `--user` | `root` | User ID to associate the credential with |
 
 ```bash
 # Create a regular credential
@@ -48,6 +49,9 @@ arca credential add --description "my app"
 
 # Create an admin credential
 arca credential add --description "admin user" --admin
+
+# Create a credential for a specific user
+arca credential add --description "alice key" --user alice-uuid
 ```
 
 The generated access key and secret key are printed to stdout. The secret key is shown only once â€” store it securely.
@@ -72,6 +76,52 @@ arca credential remove <ACCESS_KEY_ID> [--config-path <PATH>]
 
 !!! warning "Lockout Prevention"
     Arca prevents deleting the last admin credential or the last active credential to avoid lockout.
+
+## `arca user`
+
+Manage users stored in the SQLite database. This is an offline command that accesses the database directly (the server does not need to be running).
+
+### `arca user create`
+
+Create a new user.
+
+```bash
+arca user create <USERNAME> [--description <TEXT>] [--config-path <PATH>]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--description` | | Human-readable description for the user |
+| `--config-path` | `/etc/arca/config.toml` | Path to the configuration file |
+
+```bash
+# Create a user
+arca user create alice
+
+# Create a user with a description
+arca user create alice --description "Alice from engineering"
+```
+
+### `arca user list`
+
+List all users.
+
+```bash
+arca user list [--config-path <PATH>]
+```
+
+### `arca user delete`
+
+Delete a user by its user ID.
+
+```bash
+arca user delete <USER_ID> [--config-path <PATH>]
+```
+
+```bash
+# Delete a user by ID
+arca user delete 550e8400-e29b-41d4-a716-446655440000
+```
 
 ## `arca tls generate`
 

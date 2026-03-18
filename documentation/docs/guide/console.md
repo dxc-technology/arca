@@ -1,6 +1,6 @@
 # Web Console
 
-Arca includes a browser-based web console for managing buckets, objects, and credentials. The console is a **separate application** that communicates with Arca exclusively via the S3 API and Admin API — it's just another API client.
+Arca includes a browser-based web console for managing buckets, objects, and access control. The console is a **separate application** that communicates with Arca exclusively via the S3 API and Admin API — it's just another API client.
 
 ## Overview
 
@@ -47,7 +47,7 @@ Enter the Arca endpoint URL and your credentials:
 !!! tip
     When `ARCA_ENDPOINT` is set in the Docker environment, the endpoint field is pre-filled and hidden. You only need to enter your credentials.
 
-The console determines your role (admin or user) after connecting. Admin credentials unlock the Dashboard and Credentials sections.
+The console determines your role after connecting. Admin credentials unlock the sidebar sections for **Dashboard**, **Users**, **Teams**, and **Grants**. Non-admin credentials only see the **Buckets** section.
 
 ## Dashboard
 
@@ -146,31 +146,120 @@ Click the gear icon in the bucket browser header (or on a bucket card) to open t
 
 - **Delete this bucket** — permanently removes the bucket. Requires typing the bucket name to confirm. The bucket must be empty.
 
-## Credential Management
+## User Management
 
-![Credential list](../assets/screenshots/console-credentials.png)
+![Users list](../assets/screenshots/console-users.png)
 
-The Credentials view is available to **admin credentials only**. It displays all credentials as cards showing:
+The Users view is available to **admin credentials only**. It displays all users as cards showing the username, description, credential/team/grant counts, and a "root" badge for the root user.
 
-- Access key ID
-- Description and role (Admin/User)
-- Creation date and status
+- **Create user** — click "+ Create User", enter a username and optional description
+- **Delete user** — click the trash icon on any non-root user card (users with active credentials must have credentials removed first)
+- **Open detail** — click a user card to open the user detail page
 
-### Creating Credentials
+### User Detail
 
-![Credential created](../assets/screenshots/console-credential-created.png)
+![User detail](../assets/screenshots/console-user-detail.png)
 
-Click "Create" to add a new credential:
+The user detail page shows the username as an inline-editable title and the description below it. Both save automatically on change. The root user's name and description are read-only.
 
-1. Enter a description (e.g., "CI/CD Pipeline")
-2. Optionally check "Admin" for admin privileges
-3. Click Create
+Four tabs organize the user's related data:
 
-The secret key is displayed **only once** in a reveal panel. Copy and store it securely before closing.
+#### Credentials Tab
 
-### Deleting Credentials
+The default tab shows all credentials belonging to this user. Each credential card displays:
 
-Delete a credential by clicking its delete button. A confirmation dialog appears. Arca prevents deleting the last admin credential or the last active credential to avoid lockout.
+- **Active/Inactive badge** — click to toggle. Deactivated credentials are rejected at authentication time. Arca prevents deactivating the last active credential or the last active admin credential.
+- **Access Key ID**
+- **Description** — inline-editable, saves on change
+
+Click "+ Create Credential" to add a new credential. You can optionally provide custom access/secret keys or let Arca auto-generate them. The secret key is displayed only once.
+
+#### Direct Grants Tab
+
+![User grants](../assets/screenshots/console-user-grants.png)
+
+A dual-list shuttle component shows grants attached directly to this user (left) and available grants (right). Assign or remove grants by:
+
+- Double-clicking an item to move it
+- Selecting items and clicking the arrow buttons
+- Dragging and dropping between lists
+- Using the double-arrow buttons to move all items
+
+#### Teams Tab
+
+Same shuttle component for managing team membership. Add the user to teams or remove them.
+
+#### Effective Grants Tab
+
+![User effective grants](../assets/screenshots/console-user-effective.png)
+
+A read-only view showing all grants that apply to this user, combining direct grants and grants inherited through team membership. Each grant card shows the grant name and its source (direct or the team name it comes from).
+
+## Team Management
+
+![Teams list](../assets/screenshots/console-teams.png)
+
+The Teams view is available to **admin credentials only**. It displays all teams as cards showing the team name and description.
+
+- **Create team** — click "+ Create Team", enter a name and optional description
+- **Delete team** — click the trash icon on any team card
+- **Open detail** — click a team card to open the team detail page
+
+### Team Detail
+
+![Team detail](../assets/screenshots/console-team-detail.png)
+
+The team detail page shows the team name as an inline-editable title and the description below it. Both save automatically on change.
+
+Two tabs organize the team's related data:
+
+#### Members Tab
+
+A dual-list shuttle component showing current team members (left) and available users (right). Manage membership using the same controls as the grants shuttle (double-click, arrows, drag-and-drop).
+
+#### Grants Tab
+
+A dual-list shuttle for managing grants attached to this team. Any grant attached here is inherited by all team members.
+
+## Grant Management
+
+![Grants list](../assets/screenshots/console-grants.png)
+
+The Grants view is available to **admin credentials only**. It displays all grants as cards showing the grant name, description, and a "built-in" badge for system grants.
+
+Three built-in grants are created automatically and cannot be modified or deleted:
+
+| Grant | Description |
+|-------|-------------|
+| **AdministratorAccess** | Full access to all operations |
+| **S3FullAccess** | Full access to all S3 operations |
+| **S3ReadOnlyAccess** | Read-only S3 access |
+
+- **Create grant** — click "+ Create Grant", enter a name, description, and policy document (JSON). Template buttons provide common starting policies.
+- **Delete grant** — click the trash icon on any non-built-in grant card
+- **Open detail** — click a grant card to open the grant detail page
+
+### Grant Detail
+
+![Grant detail](../assets/screenshots/console-grant-detail.png)
+
+The grant detail page shows the grant name as an inline-editable title and the description below it. Both save automatically on change. Built-in grants display read-only name and description.
+
+The detail page has three sections:
+
+#### Policy Document
+
+A JSON text editor for the IAM-style policy document. Template buttons insert common policies (Full Access, S3 Full, S3 Read-Only), and a Format button validates and pretty-prints the JSON. Click "Save Policy" to persist changes.
+
+Built-in grants show the policy document as read-only.
+
+#### Statement Preview
+
+A visual breakdown of the policy statements, color-coded by effect: green for Allow, red for Deny. Each statement shows its actions and resources.
+
+#### Attached To
+
+Shows which users and teams have this grant attached. Click a user or team name to navigate to their detail page.
 
 ## Custom Deployment
 
