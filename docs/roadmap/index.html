@@ -1937,7 +1937,7 @@ continuing from the MVP phases (0–11).</p>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">14</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">15</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">16</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">17</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">17</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">18</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">19</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">20</div>
@@ -2045,8 +2045,8 @@ continuing from the MVP phases (0–11).</p>
 <td><a href="#phase-17-object-versioning-p1">Object Versioning</a></td>
 <td style="text-align: center;">P1</td>
 <td style="text-align: center;">16</td>
-<td style="text-align: center;"></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><code>v0.8.0</code></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">18</td>
@@ -2217,15 +2217,20 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 <h3 id="phase-17-object-versioning-p1">Phase 17 — Object Versioning [P1]<a class="headerlink" href="#phase-17-object-versioning-p1" title="Permanent link">&para;</a></h3>
 <p>Full object versioning with version IDs, delete markers, and version-specific operations.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Versioning state per bucket: <code>PutBucketVersioning</code> / <code>GetBucketVersioning</code> (Disabled / Enabled / Suspended)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Version IDs (UUID) on <code>put_object</code> when versioning is enabled</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Schema migration: <code>objects</code> table gains <code>version_id</code>, <code>is_latest</code>, <code>is_delete_marker</code> columns</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Delete markers: <code>DeleteObject</code> on versioned bucket inserts a delete marker instead of removing the object</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Version-specific operations: <code>GetObject?versionId=X</code>, <code>HeadObject?versionId=X</code>, <code>DeleteObject?versionId=X</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>ListObjectVersions</code> with real version data (replace TD-003 fake implementation)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>arca recover</code> updated for versioned objects (multiple sidecars per bucket/key pair)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> (Console) Version history panel, restore previous version, delete marker indicator</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Resolves: TD-003</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Versioning state per bucket: <code>PutBucketVersioning</code> / <code>GetBucketVersioning</code> (Disabled / Enabled / Suspended)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Version IDs (UUID) on <code>put_object</code> when versioning is enabled</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Schema migration v9: <code>objects</code> table gains <code>version_id</code>, <code>is_latest</code>, <code>is_delete_marker</code> columns, partial unique index</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Delete markers: <code>DeleteObject</code> on versioned bucket inserts a delete marker instead of removing the object</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Version-specific operations: <code>GetObject?versionId=X</code>, <code>HeadObject?versionId=X</code>, <code>DeleteObject?versionId=X</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>ListObjectVersions</code> with real version data (replace TD-003 fake implementation)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>CopyObject</code> with source <code>?versionId=X</code> support</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Suspended versioning: null-version overwrites, real versions preserved</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>x-amz-version-id</code> and <code>x-amz-delete-marker</code> response headers</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>arca recover</code> updated for versioned objects (sorts by last_modified, recovers latest)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>arca fsck</code> updated to handle delete markers and all object versions</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> (Console) Bucket versioning toggle (Enable/Suspend), version history panel, version-specific download/delete, delete marker indicators</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Integration tests: 18 versioning tests (boto3)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Resolves: TD-003</li>
 </ul>
 <p><strong>Depends on</strong>: Phase 16 (access control interacts with versioning)</p>
 <hr />
@@ -2596,11 +2601,11 @@ with unique IDs (<code>TD-XXX</code>) referenced in source code comments.</p>
 <ul>
 <li>~~<strong>Ownership model</strong> (TD-001)~~: <strong>Resolved</strong> — Owner ID derived from credential's user; buckets/objects track creator's username</li>
 <li><strong>Storage classes</strong> (TD-002): Always <code>STANDARD</code> — no storage tiering</li>
-<li><strong>Versioning</strong> (TD-003): Faked for mc compatibility — no real version tracking</li>
+<li>~~<strong>Versioning</strong> (TD-003)~~: <strong>Resolved</strong> — Full object versioning implemented in Phase 17</li>
 <li><strong>Region support</strong> (TD-004): Hardcoded <code>us-east-1</code> — no per-bucket regions</li>
 <li>~~<strong>Request ID consistency</strong> (TD-005)~~: <strong>Resolved</strong> — error XML and response header now match</li>
 <li>~~<strong>Encryption</strong> (TD-006)~~: <strong>Resolved</strong> — SSE-S3 with AES-256-GCM implemented in Phase 13</li>
-<li><strong>Unimplemented ops</strong> (TD-007): ~35 bucket operations return 501</li>
+<li><strong>Unimplemented ops</strong> (TD-007): ~33 bucket operations return 501</li>
 <li><strong>Multipart Content-Type</strong> (TD-008): Captured at init time — verify against AWS semantics</li>
 <li><strong>SSE-C multipart</strong> (TD-010): SSE-C headers rejected on multipart uploads — needs per-part encryption tracking</li>
 </ul>

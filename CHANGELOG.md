@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-03-20
+
 ### Added
 
 - **Phase 17: Object Versioning**
@@ -167,7 +169,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/dxc-technology/arca/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/dxc-technology/arca/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/dxc-technology/arca/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/dxc-technology/arca/compare/v0.4.1...v0.5.0
