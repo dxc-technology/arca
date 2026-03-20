@@ -139,6 +139,45 @@ def seed_data(s3):
     print("  Data seeding complete.")
 
 
+def seed_versioning_data(s3):
+    """Enable versioning on 'documents' and create version history for screenshots."""
+    print("\n  Seeding versioning data...")
+
+    # Enable versioning on the documents bucket
+    s3.put_bucket_versioning(
+        Bucket="documents",
+        VersioningConfiguration={"Status": "Enabled"},
+    )
+    print("  Enabled versioning on documents")
+
+    # Overwrite readme.txt twice to create version history (3 versions total)
+    s3.put_object(
+        Bucket="documents",
+        Key="readme.txt",
+        Body=b"Welcome to Arca object storage.\nVersion 2 - updated content.",
+        ContentType="text/plain",
+    )
+    s3.put_object(
+        Bucket="documents",
+        Key="readme.txt",
+        Body=b"Welcome to Arca object storage.\nVersion 3 - latest revision.",
+        ContentType="text/plain",
+    )
+    print("  Created 3 versions of readme.txt")
+
+    # Upload a temporary file and delete it to create a delete marker
+    s3.put_object(
+        Bucket="documents",
+        Key="old-notes.txt",
+        Body=b"These are old notes that will be deleted.",
+        ContentType="text/plain",
+    )
+    s3.delete_object(Bucket="documents", Key="old-notes.txt")
+    print("  Created delete marker for old-notes.txt")
+
+    print("  Versioning seeding complete.")
+
+
 def create_extra_credential():
     """Create an extra credential via Admin API with SigV4 signing."""
     print("  Creating extra credential via Admin API...")
@@ -174,40 +213,57 @@ def seed_rbac_data():
     """Seed RBAC data (users, teams, grants) via Admin API. Returns IDs for screenshots."""
     print("\n  Seeding RBAC data...")
 
+    # Helper: create-or-get a user (idempotent across runs)
+    def ensure_user(username, description):
+        resp = signed_admin_request("POST", "/admin/users", {"username": username, "description": description})
+        if resp.status_code == 201:
+            user = resp.json()
+            print(f"  Created user {username}: {user['user_id']}")
+            return user["user_id"]
+        if resp.status_code == 409:
+            # Already exists — look up by listing users
+            all_users = signed_admin_request("GET", "/admin/users").json()
+            uid = next(u["user_id"] for u in all_users if u["username"] == username)
+            print(f"  User {username} already exists: {uid}")
+            return uid
+        raise RuntimeError(f"Failed to create {username}: {resp.status_code} {resp.text}")
+
     # 1. Create user "alice"
-    resp = signed_admin_request("POST", "/admin/users", {"username": "alice", "description": "Backend developer"})
-    assert resp.status_code == 201, f"Failed to create alice: {resp.status_code} {resp.text}"
-    alice = resp.json()
-    alice_user_id = alice["user_id"]
-    print(f"  Created user alice: {alice_user_id}")
+    alice_user_id = ensure_user("alice", "Backend developer")
 
     # 2. Create user "bob"
-    resp = signed_admin_request("POST", "/admin/users", {"username": "bob", "description": "Data analyst"})
-    assert resp.status_code == 201, f"Failed to create bob: {resp.status_code} {resp.text}"
-    bob = resp.json()
-    bob_user_id = bob["user_id"]
-    print(f"  Created user bob: {bob_user_id}")
+    bob_user_id = ensure_user("bob", "Data analyst")
 
-    # 3. Create a credential for alice
-    resp = signed_admin_request("POST", f"/admin/users/{alice_user_id}/credentials", {"description": "Alice dev key"})
-    assert resp.status_code == 201, f"Failed to create alice credential: {resp.status_code} {resp.text}"
-    alice_cred = resp.json()
-    print(f"  Created credential for alice: {alice_cred['access_key_id']}")
+    # 3. Create a credential for alice (skip if she already has one)
+    resp = signed_admin_request("GET", f"/admin/users/{alice_user_id}/credentials")
+    alice_creds = resp.json() if resp.status_code == 200 else []
+    if not alice_creds:
+        resp = signed_admin_request("POST", f"/admin/users/{alice_user_id}/credentials", {"description": "Alice dev key"})
+        assert resp.status_code == 201, f"Failed to create alice credential: {resp.status_code} {resp.text}"
+        print(f"  Created credential for alice: {resp.json()['access_key_id']}")
+    else:
+        print(f"  Alice already has {len(alice_creds)} credential(s)")
 
     # 4. Create team "backend-devs"
     resp = signed_admin_request("POST", "/admin/teams", {"name": "backend-devs", "description": "Backend development team"})
-    assert resp.status_code == 201, f"Failed to create team: {resp.status_code} {resp.text}"
-    team = resp.json()
-    team_id = team["team_id"]
-    print(f"  Created team backend-devs: {team_id}")
+    if resp.status_code == 201:
+        team = resp.json()
+        team_id = team["team_id"]
+        print(f"  Created team backend-devs: {team_id}")
+    elif resp.status_code == 409:
+        all_teams = signed_admin_request("GET", "/admin/teams").json()
+        team_id = next(t["team_id"] for t in all_teams if t["name"] == "backend-devs")
+        print(f"  Team backend-devs already exists: {team_id}")
+    else:
+        raise RuntimeError(f"Failed to create team: {resp.status_code} {resp.text}")
 
-    # 5. Add alice and bob as members of backend-devs
+    # 5. Add alice and bob as members of backend-devs (PUT is idempotent)
     resp = signed_admin_request("PUT", f"/admin/teams/{team_id}/members/{alice_user_id}")
-    assert resp.status_code == 204, f"Failed to add alice to team: {resp.status_code} {resp.text}"
+    assert resp.status_code in (204, 409), f"Failed to add alice to team: {resp.status_code} {resp.text}"
     print(f"  Added alice to backend-devs")
 
     resp = signed_admin_request("PUT", f"/admin/teams/{team_id}/members/{bob_user_id}")
-    assert resp.status_code == 204, f"Failed to add bob to team: {resp.status_code} {resp.text}"
+    assert resp.status_code in (204, 409), f"Failed to add bob to team: {resp.status_code} {resp.text}"
     print(f"  Added bob to backend-devs")
 
     # Get built-in grants
@@ -217,14 +273,14 @@ def seed_rbac_data():
     s3_full_access = next(g for g in grants if g["name"] == "S3FullAccess")
     s3_readonly = next(g for g in grants if g["name"] == "S3ReadOnlyAccess")
 
-    # 6. Attach S3FullAccess to alice directly
+    # 6. Attach S3FullAccess to alice directly (PUT is idempotent)
     resp = signed_admin_request("PUT", f"/admin/users/{alice_user_id}/grants/{s3_full_access['grant_id']}")
-    assert resp.status_code == 204, f"Failed to attach grant to alice: {resp.status_code} {resp.text}"
+    assert resp.status_code in (204, 409), f"Failed to attach grant to alice: {resp.status_code} {resp.text}"
     print(f"  Attached S3FullAccess to alice")
 
-    # 7. Attach S3ReadOnlyAccess to backend-devs team
+    # 7. Attach S3ReadOnlyAccess to backend-devs team (PUT is idempotent)
     resp = signed_admin_request("PUT", f"/admin/teams/{team_id}/grants/{s3_readonly['grant_id']}")
-    assert resp.status_code == 204, f"Failed to attach grant to team: {resp.status_code} {resp.text}"
+    assert resp.status_code in (204, 409), f"Failed to attach grant to team: {resp.status_code} {resp.text}"
     print(f"  Attached S3ReadOnlyAccess to backend-devs")
 
     print("  RBAC seeding complete.")
@@ -249,7 +305,7 @@ def take_screenshots(rbac_ids):
     """Capture screenshots of the web console using Playwright."""
     print("\n=== Phase B: Taking screenshots ===")
 
-    total = 19
+    total = 23
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     with sync_playwright() as p:
@@ -348,8 +404,54 @@ def take_screenshots(rbac_ids):
         page.wait_for_timeout(1000)
         screenshot(page, "console-bucket-settings.png")
 
-        # ----- 9. Treemap — media bucket -----
-        print(f"  9/{total} console-treemap.png")
+        # ----- 9. Versioning — show deleted objects -----
+        print(f"  9/{total} console-show-deleted.png")
+        page.goto(f"{CONSOLE_URL}#/buckets/documents")
+        page.wait_for_load_state("networkidle")
+        page.add_style_tag(content=DISABLE_ANIMATIONS_CSS)
+        page.wait_for_selector('[class*="cursor-pointer"][class*="border-b"]', timeout=10000)
+        page.wait_for_timeout(500)
+        # Toggle "Show deleted" to reveal deleted objects
+        page.click('button[title="Show deleted objects"]')
+        page.wait_for_timeout(1500)
+        screenshot(page, "console-show-deleted.png")
+
+        # ----- 10. Versioning — version history panel -----
+        print(f"  10/{total} console-version-history.png")
+        # Click readme.txt to open object detail
+        page.locator('[class*="cursor-pointer"][class*="border-b"]:has-text("readme.txt")').click()
+        page.wait_for_selector('text=Object Detail', timeout=10000)
+        page.wait_for_timeout(500)
+        # Expand version history
+        page.locator('button:has-text("Versions")').click()
+        page.wait_for_timeout(1500)
+        screenshot(page, "console-version-history.png")
+
+        # ----- 11. Versioning — delete version modal -----
+        print(f"  11/{total} console-delete-version-modal.png")
+        # Click delete button on the oldest (last) version entry
+        delete_btns = page.locator('button[title="Permanently delete this version"]')
+        if delete_btns.count() > 1:
+            delete_btns.last.click()
+        else:
+            delete_btns.first.click()
+        page.wait_for_selector('h3:has-text("Delete Version")', timeout=10000)
+        page.wait_for_timeout(500)
+        screenshot(page, "console-delete-version-modal.png")
+        # Close the modal by clicking the backdrop overlay (top-left corner)
+        page.mouse.click(50, 50)
+        page.wait_for_timeout(300)
+
+        # ----- 12. Versioning — bucket settings with versioning enabled -----
+        print(f"  12/{total} console-versioning-settings.png")
+        page.goto(f"{CONSOLE_URL}#/buckets/documents/settings")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_selector('text=Versioning Active', timeout=10000)
+        page.wait_for_timeout(1000)
+        screenshot(page, "console-versioning-settings.png")
+
+        # ----- 13. Treemap — media bucket -----
+        print(f"  13/{total} console-treemap.png")
         page.goto(f"{CONSOLE_URL}#/buckets/media")
         page.reload(wait_until="networkidle")
         page.wait_for_selector('[class*="cursor-pointer"][class*="border-b"]', timeout=10000)
@@ -358,16 +460,16 @@ def take_screenshots(rbac_ids):
         page.wait_for_timeout(1000)
         screenshot(page, "console-treemap.png")
 
-        # ----- 10. Credentials view -----
-        print(f"  10/{total} console-credentials.png")
+        # ----- 14. Credentials view -----
+        print(f"  14/{total} console-credentials.png")
         page.goto(f"{CONSOLE_URL}#/credentials")
         page.wait_for_load_state("networkidle")
         page.wait_for_selector('.glass.rounded-xl:has-text("Active")', timeout=10000)
         page.wait_for_timeout(1000)
         screenshot(page, "console-credentials.png")
 
-        # ----- 11. Create credential -----
-        print(f"  11/{total} console-credential-created.png")
+        # ----- 15. Create credential -----
+        print(f"  15/{total} console-credential-created.png")
         page.click('button:has-text("Create Credential")')
         page.wait_for_timeout(500)
         page.fill('input[placeholder="My application"]', "CI/CD Pipeline")
@@ -376,16 +478,16 @@ def take_screenshots(rbac_ids):
         page.wait_for_timeout(500)
         screenshot(page, "console-credential-created.png")
 
-        # ----- 12. Users list view -----
-        print(f"  12/{total} console-users.png")
+        # ----- 16. Users list view -----
+        print(f"  16/{total} console-users.png")
         page.goto(f"{CONSOLE_URL}#/users")
         page.wait_for_load_state("networkidle")
         page.wait_for_selector('.glass.glass-hover.rounded-xl', timeout=10000)
         page.wait_for_timeout(1000)
         screenshot(page, "console-users.png")
 
-        # ----- 13. User detail — alice, Credentials tab -----
-        print(f"  13/{total} console-user-detail.png")
+        # ----- 17. User detail — alice, Credentials tab -----
+        print(f"  17/{total} console-user-detail.png")
         page.goto(f"{CONSOLE_URL}#/users/{rbac_ids['alice_user_id']}")
         page.wait_for_load_state("networkidle")
         page.wait_for_selector('button:has-text("Credentials")', timeout=10000)
@@ -393,28 +495,28 @@ def take_screenshots(rbac_ids):
         # Credentials tab is the default active tab
         screenshot(page, "console-user-detail.png")
 
-        # ----- 14. User detail — alice, Direct Grants tab -----
-        print(f"  14/{total} console-user-grants.png")
+        # ----- 18. User detail — alice, Direct Grants tab -----
+        print(f"  18/{total} console-user-grants.png")
         page.click('button:has-text("Direct Grants")')
         page.wait_for_timeout(1000)
         screenshot(page, "console-user-grants.png")
 
-        # ----- 15. User detail — alice, Effective Grants tab -----
-        print(f"  15/{total} console-user-effective.png")
+        # ----- 19. User detail — alice, Effective Grants tab -----
+        print(f"  19/{total} console-user-effective.png")
         page.click('button:has-text("Effective Grants")')
         page.wait_for_timeout(1000)
         screenshot(page, "console-user-effective.png")
 
-        # ----- 16. Teams list view -----
-        print(f"  16/{total} console-teams.png")
+        # ----- 20. Teams list view -----
+        print(f"  20/{total} console-teams.png")
         page.goto(f"{CONSOLE_URL}#/teams")
         page.wait_for_load_state("networkidle")
         page.wait_for_selector('h2:has-text("Teams")', timeout=10000)
         page.wait_for_timeout(1500)
         screenshot(page, "console-teams.png")
 
-        # ----- 17. Team detail — backend-devs, Members tab -----
-        print(f"  17/{total} console-team-detail.png")
+        # ----- 21. Team detail — backend-devs, Members tab -----
+        print(f"  21/{total} console-team-detail.png")
         page.goto(f"{CONSOLE_URL}#/teams/{rbac_ids['team_id']}")
         page.wait_for_load_state("networkidle")
         page.wait_for_selector('button:has-text("Members")', timeout=10000)
@@ -422,16 +524,16 @@ def take_screenshots(rbac_ids):
         # Members tab is the default active tab
         screenshot(page, "console-team-detail.png")
 
-        # ----- 18. Grants list view -----
-        print(f"  18/{total} console-grants.png")
+        # ----- 22. Grants list view -----
+        print(f"  22/{total} console-grants.png")
         page.goto(f"{CONSOLE_URL}#/grants")
         page.wait_for_load_state("networkidle")
         page.wait_for_selector('h2:has-text("Grants")', timeout=10000)
         page.wait_for_timeout(1500)
         screenshot(page, "console-grants.png")
 
-        # ----- 19. Grant detail — S3FullAccess -----
-        print(f"  19/{total} console-grant-detail.png")
+        # ----- 23. Grant detail — S3FullAccess -----
+        print(f"  23/{total} console-grant-detail.png")
         page.goto(f"{CONSOLE_URL}#/grants/{rbac_ids['s3_full_access_grant_id']}")
         page.wait_for_load_state("networkidle")
         page.wait_for_selector('text=Statement Preview', timeout=10000)
@@ -449,6 +551,7 @@ def main():
 
     s3 = create_s3_client()
     seed_data(s3)
+    seed_versioning_data(s3)
     create_extra_credential()
     rbac_ids = seed_rbac_data()
     take_screenshots(rbac_ids)

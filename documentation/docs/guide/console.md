@@ -65,7 +65,7 @@ The dashboard is available to **admin credentials only**. It shows:
 
 ![Bucket list](../assets/screenshots/console-buckets.png)
 
-The Buckets view shows all buckets as cards with creation date. Encrypted buckets display a green shield badge. From here you can:
+The Buckets view shows all buckets as cards with creation date. Encrypted buckets display a green shield badge, and versioned buckets display a blue clock icon (or amber pause icon if versioning is suspended). From here you can:
 
 - **Create** a new bucket (click the "+" button)
 - **Delete** an empty bucket
@@ -142,9 +142,98 @@ Click the gear icon in the bucket browser header (or on a bucket card) to open t
 - When **server-level encryption is enabled**, the card shows a read-only status indicator (e.g., "SSE-S3 (AES-256) Active" or "SSE-S3 (Vault) Active").
 - When **server-level encryption is disabled** (per-bucket mode), you can toggle encryption on or off for individual buckets. New objects written after enabling encryption are encrypted; existing objects remain unchanged.
 
+### Versioning
+
+![Versioning settings](../assets/screenshots/console-versioning-settings.png)
+
+The versioning card lets you control object versioning for the bucket. The toggle cycles through three states:
+
+| State | Description |
+|-------|-------------|
+| **Not versioned** | Default. Objects are overwritten in place, no history is kept. |
+| **Enabled** (green) | All object writes create new versions. Deletes create delete markers instead of removing data. |
+| **Suspended** (amber) | No new versions are created, but existing versions are preserved. New writes use a `null` version ID. |
+
+!!! note
+    Versioning cannot be disabled once it has been enabled, only suspended. This matches the S3 specification.
+
 ### Danger Zone
 
 - **Delete this bucket** — permanently removes the bucket. Requires typing the bucket name to confirm. The bucket must be empty.
+
+## Object Versioning
+
+When versioning is enabled on a bucket, the console provides several features for managing object versions, viewing deleted objects, and restoring data.
+
+### Versioning Indicators
+
+Versioned buckets are marked with visual indicators throughout the console:
+
+- **Bucket list**: a blue clock icon with "Versioned" label (or amber with "Suspended")
+- **Object browser breadcrumb**: a clock icon appears next to the bucket name
+- **Dashboard legend**: versioning status is shown next to each bucket in the storage distribution chart
+
+### Viewing Deleted Objects
+
+![Show deleted objects](../assets/screenshots/console-show-deleted.png)
+
+When browsing a versioned bucket, a **Show deleted** toggle appears in the toolbar. Enabling it reveals:
+
+- **Deleted files** — shown with a strikethrough name, red "Deleted" badge, and the deletion date. Click a deleted file to open its detail panel and view its version history.
+- **Deleted folders** — shown as faded folder icons with a strikethrough name and "Deleted" badge. These are directories where all contained objects have delete markers as their latest version.
+
+### Version History
+
+![Version history panel](../assets/screenshots/console-version-history.png)
+
+When viewing an object in a versioned bucket, the detail panel includes a collapsible **Versions** section. Click it to expand the version list, which shows:
+
+- **Version ID** — truncated to 8 characters, hover for the full ID
+- **Latest** badge (blue) — marks the current version
+- **Delete Marker** badge (red) — marks versions that are deletion records, not actual data
+- **Timestamp** and **size** for each version
+- **Download** button — download a specific version (not available for delete markers)
+- **Delete** button — permanently remove a specific version
+
+### Deleting Versions
+
+![Delete version modal](../assets/screenshots/console-delete-version-modal.png)
+
+Click the delete button on any version to open a confirmation modal. The modal behavior varies based on the version type:
+
+- **Regular version**: the modal title reads "Delete Version" and warns that the action is permanent and cannot be undone.
+- **Delete marker**: the modal title reads "Remove Delete Marker" and explains that removing it will restore the object.
+
+Both modals show the version ID and object key. A "Latest" badge appears if you are about to delete the current version.
+
+!!! tip
+    To **restore a deleted object**, toggle "Show deleted" on, click the deleted file, expand its version history, and remove the delete marker. The most recent non-deleted version becomes the current version.
+
+## Credential Management
+
+![Credentials list](../assets/screenshots/console-credentials.png)
+
+The Credentials view is available to **admin credentials only** (navigate to `#/credentials`). It shows all credentials across all users as cards, each displaying:
+
+- **Active/Inactive** badge — green for active, red for inactive
+- **Admin/User** badge — purple for admin privileges, gray for regular user
+- **Access Key ID** — the full key ID
+- **Description** — what the credential is used for
+- **Creation date**
+
+A warning banner appears when only one active credential remains, to prevent accidental lockout.
+
+### Creating Credentials
+
+![Credential created](../assets/screenshots/console-credential-created.png)
+
+Click "+ Create Credential" to open the creation form:
+
+1. Enter an optional **description** (e.g., "CI/CD Pipeline")
+2. Check **Admin privileges** if the credential needs access to the Admin API and console management
+3. Click **Create**
+
+The secret key is displayed **only once** after creation. Copy it immediately, as it cannot be retrieved later.
 
 ## User Management
 
