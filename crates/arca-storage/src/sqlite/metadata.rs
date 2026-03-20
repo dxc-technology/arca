@@ -4,12 +4,30 @@ use arca_core::error::ArcaError;
 use arca_core::store::MetadataStore;
 use arca_core::types::{
     BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
+    VersioningState,
 };
 use std::collections::HashMap;
 use chrono::DateTime;
-use rusqlite::params;
+use rusqlite::{params, Connection};
 
 use super::{SqliteStore, TrError};
+
+/// Reads the bucket versioning state from `bucket_config`.
+/// Called inside a synchronous `rusqlite::Connection` context.
+fn get_versioning_state(conn: &Connection, bucket: &str) -> VersioningState {
+    match conn.query_row(
+        "SELECT config_value FROM bucket_config WHERE bucket = ?1 AND config_key = 'versioning'",
+        params![bucket],
+        |row| row.get::<_, String>(0),
+    ) {
+        Ok(ref v) if v == "Enabled" => VersioningState::Enabled,
+        Ok(ref v) if v == "Suspended" => VersioningState::Suspended,
+        _ => VersioningState::Unversioned,
+    }
+}
+
+/// Column list for all object SELECT queries (14 columns).
+const OBJECT_COLUMNS: &str = "bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker";
 
 #[async_trait::async_trait]
 impl MetadataStore for SqliteStore {
@@ -19,8 +37,8 @@ impl MetadataStore for SqliteStore {
                 let stats = conn.query_row(
                     "SELECT
                         (SELECT COUNT(*) FROM buckets),
-                        (SELECT COUNT(*) FROM objects),
-                        (SELECT COALESCE(SUM(size), 0) FROM objects)",
+                        (SELECT COUNT(*) FROM objects WHERE is_latest = 1 AND is_delete_marker = 0),
+                        (SELECT COALESCE(SUM(size), 0) FROM objects WHERE is_latest = 1 AND is_delete_marker = 0)",
                     [],
                     |row| {
                         Ok(StorageStats {
@@ -131,55 +149,66 @@ impl MetadataStore for SqliteStore {
         &self,
         record: &ObjectRecord,
     ) -> Result<Option<ObjectRecord>, ArcaError> {
-        let record = record.clone();
+        let mut record = record.clone();
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;
-
-                // Check for existing object to return for cleanup.
-                let old = {
-                    let mut stmt = tx.prepare(
-                        "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner
-                         FROM objects WHERE bucket = ?1 AND key = ?2",
-                    )?;
-                    let result = stmt.query_row(
-                        params![record.bucket, record.key],
-                        |row| Ok(row_to_object_record(row)),
-                    );
-                    match result {
-                        Ok(rec) => Some(rec?),
-                        Err(rusqlite::Error::QueryReturnedNoRows) => None,
-                        Err(e) => return Err(e.into()),
-                    }
-                };
+                let versioning = get_versioning_state(&tx, &record.bucket);
 
                 let metadata_json = serde_json::to_string(&record.metadata)
                     .unwrap_or_else(|_| "{}".to_string());
 
-                // Delete old record if exists, then insert new.
-                tx.execute(
-                    "DELETE FROM objects WHERE bucket = ?1 AND key = ?2",
-                    params![record.bucket, record.key],
-                )?;
-                tx.execute(
-                    "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-                    params![
-                        record.bucket,
-                        record.key,
-                        record.blob_id.0,
-                        record.size as i64,
-                        record.etag,
-                        record.content_type,
-                        record.last_modified.to_rfc3339(),
-                        metadata_json,
-                        record.encryption_algorithm,
-                        record.encryption_key_id,
-                        record.owner,
-                    ],
-                )?;
+                let old = match versioning {
+                    VersioningState::Unversioned => {
+                        // Same as before: find old, DELETE + INSERT.
+                        let old = fetch_latest_object(&tx, &record.bucket, &record.key)?;
+                        tx.execute(
+                            "DELETE FROM objects WHERE bucket = ?1 AND key = ?2",
+                            params![record.bucket, record.key],
+                        )?;
+                        record.version_id = None;
+                        record.is_latest = true;
+                        record.is_delete_marker = false;
+                        insert_object_row(&tx, &record, &metadata_json)?;
+                        tx.commit()?;
+                        old // old blob to clean up
+                    }
+                    VersioningState::Enabled => {
+                        // Mark current latest as not-latest.
+                        tx.execute(
+                            "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2 AND is_latest = 1",
+                            params![record.bucket, record.key],
+                        )?;
+                        // Generate version ID and insert new row.
+                        record.version_id = Some(uuid::Uuid::new_v4().to_string());
+                        record.is_latest = true;
+                        record.is_delete_marker = false;
+                        insert_object_row(&tx, &record, &metadata_json)?;
+                        tx.commit()?;
+                        None // keep old versions, no cleanup
+                    }
+                    VersioningState::Suspended => {
+                        // Delete existing null-version (if any) for cleanup.
+                        let old_null = fetch_null_version(&tx, &record.bucket, &record.key)?;
+                        tx.execute(
+                            "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
+                            params![record.bucket, record.key],
+                        )?;
+                        // Mark any remaining latest as not-latest.
+                        tx.execute(
+                            "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2 AND is_latest = 1",
+                            params![record.bucket, record.key],
+                        )?;
+                        // Insert with NULL version_id.
+                        record.version_id = None;
+                        record.is_latest = true;
+                        record.is_delete_marker = false;
+                        insert_object_row(&tx, &record, &metadata_json)?;
+                        tx.commit()?;
+                        old_null // clean up old null-version blob
+                    }
+                };
 
-                tx.commit()?;
                 Ok(old)
             })
             .await
@@ -195,10 +224,10 @@ impl MetadataStore for SqliteStore {
         let key = key.to_string();
         self.conn
             .call(move |conn| {
-                let mut stmt = conn.prepare(
-                    "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner
-                     FROM objects WHERE bucket = ?1 AND key = ?2",
-                )?;
+                let sql = format!(
+                    "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND is_latest = 1 AND is_delete_marker = 0"
+                );
+                let mut stmt = conn.prepare(&sql)?;
                 let result = stmt.query_row(
                     params![bucket, key],
                     |row| Ok(row_to_object_record(row)),
@@ -225,10 +254,9 @@ impl MetadataStore for SqliteStore {
         let start_after = start_after.map(|s| s.to_string());
         self.conn
             .call(move |conn| {
-                // Build dynamic SQL.
-                let mut sql = String::from(
-                    "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner
-                     FROM objects WHERE bucket = ?1",
+                // Build dynamic SQL — only latest non-delete-marker objects.
+                let mut sql = format!(
+                    "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND is_latest = 1 AND is_delete_marker = 0"
                 );
                 let mut param_idx = 2u32;
 
@@ -288,16 +316,148 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;
+                let versioning = get_versioning_state(&tx, &bucket);
 
-                let old = {
-                    let mut stmt = tx.prepare(
-                        "SELECT bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner
-                         FROM objects WHERE bucket = ?1 AND key = ?2",
-                    )?;
-                    let result = stmt.query_row(
-                        params![bucket, key],
-                        |row| Ok(row_to_object_record(row)),
-                    );
+                let result = match versioning {
+                    VersioningState::Unversioned => {
+                        // Hard-delete as before.
+                        let old = fetch_latest_object(&tx, &bucket, &key)?;
+                        if old.is_some() {
+                            tx.execute(
+                                "DELETE FROM objects WHERE bucket = ?1 AND key = ?2",
+                                params![bucket, key],
+                            )?;
+                        }
+                        tx.commit()?;
+                        old // blob to clean up
+                    }
+                    VersioningState::Enabled => {
+                        // Mark current latest as not-latest.
+                        tx.execute(
+                            "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2 AND is_latest = 1",
+                            params![bucket, key],
+                        )?;
+                        // Insert a delete marker.
+                        let version_id = uuid::Uuid::new_v4().to_string();
+                        let now = chrono::Utc::now();
+                        tx.execute(
+                            "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker)
+                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, 'root', ?4, 1, 1)",
+                            params![bucket, key, now.to_rfc3339(), version_id],
+                        )?;
+                        tx.commit()?;
+                        // Return the delete marker so the handler can set response headers.
+                        Some(ObjectRecord {
+                            bucket,
+                            key,
+                            blob_id: BlobId(String::new()),
+                            size: 0,
+                            etag: String::new(),
+                            content_type: None,
+                            last_modified: now,
+                            metadata: HashMap::new(),
+                            encryption_algorithm: None,
+                            encryption_key_id: None,
+                            owner: "root".to_string(),
+                            version_id: Some(version_id),
+                            is_latest: true,
+                            is_delete_marker: true,
+                        })
+                    }
+                    VersioningState::Suspended => {
+                        // Delete existing null-version for cleanup.
+                        let old_null = fetch_null_version(&tx, &bucket, &key)?;
+                        tx.execute(
+                            "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
+                            params![bucket, key],
+                        )?;
+                        // Mark any remaining latest as not-latest.
+                        tx.execute(
+                            "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2 AND is_latest = 1",
+                            params![bucket, key],
+                        )?;
+                        // Insert delete marker with NULL version_id.
+                        let now = chrono::Utc::now();
+                        tx.execute(
+                            "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker)
+                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, 'root', NULL, 1, 1)",
+                            params![bucket, key, now.to_rfc3339()],
+                        )?;
+                        tx.commit()?;
+                        old_null // clean up old null-version blob (if any)
+                    }
+                };
+
+                Ok(result)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("delete_object: {e}")))
+    }
+
+    // -- Versioned object operations --
+
+    async fn get_object_version(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: &str,
+    ) -> Result<Option<ObjectRecord>, ArcaError> {
+        let bucket = bucket.to_string();
+        let key = key.to_string();
+        let version_id = version_id.to_string();
+        self.conn
+            .call(move |conn| {
+                let sql = if version_id == "null" {
+                    format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL")
+                } else {
+                    format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3")
+                };
+                let mut stmt = conn.prepare(&sql)?;
+                let result = if version_id == "null" {
+                    stmt.query_row(params![bucket, key], |row| Ok(row_to_object_record(row)))
+                } else {
+                    stmt.query_row(params![bucket, key, version_id], |row| {
+                        Ok(row_to_object_record(row))
+                    })
+                };
+                match result {
+                    Ok(rec) => Ok(Some(rec?)),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(e.into()),
+                }
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("get_object_version: {e}")))
+    }
+
+    async fn delete_object_version(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: &str,
+    ) -> Result<Option<ObjectRecord>, ArcaError> {
+        let bucket = bucket.to_string();
+        let key = key.to_string();
+        let version_id = version_id.to_string();
+        self.conn
+            .call(move |conn| {
+                let tx = conn.transaction()?;
+
+                // Fetch the version to delete.
+                let deleted = {
+                    let sql = if version_id == "null" {
+                        format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL")
+                    } else {
+                        format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3")
+                    };
+                    let mut stmt = tx.prepare(&sql)?;
+                    let result = if version_id == "null" {
+                        stmt.query_row(params![bucket, key], |row| Ok(row_to_object_record(row)))
+                    } else {
+                        stmt.query_row(params![bucket, key, version_id], |row| {
+                            Ok(row_to_object_record(row))
+                        })
+                    };
                     match result {
                         Ok(rec) => Some(rec?),
                         Err(rusqlite::Error::QueryReturnedNoRows) => None,
@@ -305,18 +465,105 @@ impl MetadataStore for SqliteStore {
                     }
                 };
 
-                if old.is_some() {
-                    tx.execute(
-                        "DELETE FROM objects WHERE bucket = ?1 AND key = ?2",
-                        params![bucket, key],
-                    )?;
+                if let Some(ref rec) = deleted {
+                    // Hard-delete the specific version.
+                    if version_id == "null" {
+                        tx.execute(
+                            "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
+                            params![bucket, key],
+                        )?;
+                    } else {
+                        tx.execute(
+                            "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
+                            params![bucket, key, version_id],
+                        )?;
+                    }
+
+                    // If deleted version was latest, promote next-newest.
+                    if rec.is_latest {
+                        tx.execute(
+                            "UPDATE objects SET is_latest = 1 WHERE rowid = (
+                                SELECT rowid FROM objects WHERE bucket = ?1 AND key = ?2
+                                ORDER BY last_modified DESC LIMIT 1
+                            )",
+                            params![bucket, key],
+                        )?;
+                    }
                 }
 
                 tx.commit()?;
-                Ok(old)
+                Ok(deleted)
             })
             .await
-            .map_err(|e: TrError| ArcaError::Internal(format!("delete_object: {e}")))
+            .map_err(|e: TrError| ArcaError::Internal(format!("delete_object_version: {e}")))
+    }
+
+    async fn list_object_versions(
+        &self,
+        bucket: &str,
+        prefix: Option<&str>,
+        key_marker: Option<&str>,
+        version_id_marker: Option<&str>,
+        max_keys: u32,
+    ) -> Result<Vec<ObjectRecord>, ArcaError> {
+        let bucket = bucket.to_string();
+        let prefix = prefix.map(|s| s.to_string());
+        let key_marker = key_marker.map(|s| s.to_string());
+        let _version_id_marker = version_id_marker.map(|s| s.to_string());
+        self.conn
+            .call(move |conn| {
+                let mut sql = format!(
+                    "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1"
+                );
+                let mut param_idx = 2u32;
+
+                let prefix_pattern = prefix.as_ref().map(|p| {
+                    let idx = param_idx;
+                    param_idx += 1;
+                    sql.push_str(&format!(" AND key LIKE ?{idx} ESCAPE '\\'"));
+                    format!("{}%", escape_like(p))
+                });
+
+                if let Some(ref km) = key_marker {
+                    if !km.is_empty() {
+                        let idx = param_idx;
+                        #[allow(unused_assignments)]
+                        { param_idx += 1; }
+                        sql.push_str(&format!(" AND key > ?{idx}"));
+                    }
+                }
+
+                sql.push_str(" ORDER BY key ASC, last_modified DESC");
+                sql.push_str(&format!(" LIMIT {max_keys}"));
+
+                let mut stmt = conn.prepare(&sql)?;
+
+                let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+                params_vec.push(Box::new(bucket));
+                if let Some(ref pattern) = prefix_pattern {
+                    params_vec.push(Box::new(pattern.clone()));
+                }
+                if let Some(ref km) = key_marker {
+                    if !km.is_empty() {
+                        params_vec.push(Box::new(km.clone()));
+                    }
+                }
+
+                let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+                    params_vec.iter().map(|p| p.as_ref()).collect();
+
+                let rows = stmt.query_map(params_refs.as_slice(), |row| {
+                    Ok(row_to_object_record(row))
+                })?;
+
+                let mut records = Vec::new();
+                for row in rows {
+                    records.push(row??);
+                }
+                Ok(records)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("list_object_versions: {e}")))
     }
 
     // -- Bucket config operations --
@@ -644,6 +891,74 @@ impl MetadataStore for SqliteStore {
     }
 }
 
+/// Fetches the latest object version (the row with `is_latest=1`) for a given bucket/key.
+/// Used by `put_object` (unversioned) and `delete_object` (unversioned) to find the
+/// record to return for blob cleanup.
+fn fetch_latest_object(
+    conn: &Connection,
+    bucket: &str,
+    key: &str,
+) -> Result<Option<ObjectRecord>, rusqlite::Error> {
+    let sql = format!(
+        "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND is_latest = 1"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let result = stmt.query_row(params![bucket, key], |row| Ok(row_to_object_record(row)));
+    match result {
+        Ok(rec) => Ok(Some(rec?)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Fetches the null-version row (version_id IS NULL) for a given bucket/key.
+/// Used in suspended-mode operations to find the record to clean up.
+fn fetch_null_version(
+    conn: &Connection,
+    bucket: &str,
+    key: &str,
+) -> Result<Option<ObjectRecord>, rusqlite::Error> {
+    let sql = format!(
+        "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let result = stmt.query_row(params![bucket, key], |row| Ok(row_to_object_record(row)));
+    match result {
+        Ok(rec) => Ok(Some(rec?)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Inserts a new object row into the `objects` table.
+fn insert_object_row(
+    conn: &Connection,
+    record: &ObjectRecord,
+    metadata_json: &str,
+) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+        params![
+            record.bucket,
+            record.key,
+            record.blob_id.0,
+            record.size as i64,
+            record.etag,
+            record.content_type,
+            record.last_modified.to_rfc3339(),
+            metadata_json,
+            record.encryption_algorithm,
+            record.encryption_key_id,
+            record.owner,
+            record.version_id,
+            record.is_latest as i32,
+            record.is_delete_marker as i32,
+        ],
+    )?;
+    Ok(())
+}
+
 /// Escapes special characters in a LIKE pattern so they are matched literally.
 ///
 /// SQLite LIKE special characters are `%` and `_`. We use `\` as the escape character.
@@ -729,7 +1044,8 @@ fn row_to_part_record(row: &rusqlite::Row) -> Result<PartRecord, rusqlite::Error
 
 /// Converts a SQLite row to an `ObjectRecord`.
 ///
-/// Expects columns: bucket, key, blob_id, size, etag, content_type, last_modified, metadata.
+/// Expects columns: bucket, key, blob_id, size, etag, content_type, last_modified, metadata,
+/// encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker.
 fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::Error> {
     let last_modified_str: String = row.get(6)?;
     let last_modified = DateTime::parse_from_rfc3339(&last_modified_str)
@@ -751,6 +1067,10 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
 
     let owner: String = row.get(10).unwrap_or_else(|_| "root".to_string());
 
+    let version_id: Option<String> = row.get(11)?;
+    let is_latest: bool = row.get::<_, i32>(12).unwrap_or(1) != 0;
+    let is_delete_marker: bool = row.get::<_, i32>(13).unwrap_or(0) != 0;
+
     Ok(ObjectRecord {
         bucket: row.get(0)?,
         key: row.get(1)?,
@@ -763,6 +1083,9 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
         encryption_algorithm,
         encryption_key_id,
         owner,
+        version_id,
+        is_latest,
+        is_delete_marker,
     })
 }
 
@@ -787,6 +1110,9 @@ mod tests {
             encryption_algorithm: None,
             encryption_key_id: None,
             owner: "root".to_string(),
+            version_id: None,
+            is_latest: true,
+            is_delete_marker: false,
         }
     }
 
@@ -1228,5 +1554,402 @@ mod tests {
         let store = test_store().await;
         let parts = store.delete_multipart_upload("no-such").await.unwrap();
         assert!(parts.is_empty());
+    }
+
+    // -- Versioning tests --
+
+    /// Helper: enable versioning on a bucket.
+    async fn enable_versioning(store: &SqliteStore, bucket: &str) {
+        store
+            .set_bucket_config(bucket, "versioning", "Enabled")
+            .await
+            .unwrap();
+    }
+
+    /// Helper: suspend versioning on a bucket.
+    async fn suspend_versioning(store: &SqliteStore, bucket: &str) {
+        store
+            .set_bucket_config(bucket, "versioning", "Suspended")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn put_object_versioned_generates_version_id() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+
+        let r = make_record("b", "key1");
+        let old = store.put_object(&r).await.unwrap();
+        assert!(old.is_none()); // No blob to clean up
+
+        let got = store.get_object("b", "key1").await.unwrap().unwrap();
+        assert!(got.version_id.is_some());
+        assert!(got.is_latest);
+        assert!(!got.is_delete_marker);
+    }
+
+    #[tokio::test]
+    async fn put_object_versioned_preserves_old_versions() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+
+        let mut r1 = make_record("b", "key1");
+        r1.blob_id = BlobId("blob-1".to_string());
+        r1.size = 100;
+        store.put_object(&r1).await.unwrap();
+
+        let mut r2 = make_record("b", "key1");
+        r2.blob_id = BlobId("blob-2".to_string());
+        r2.size = 200;
+        let old = store.put_object(&r2).await.unwrap();
+        assert!(old.is_none()); // Old version preserved, no cleanup
+
+        // Latest should be r2.
+        let got = store.get_object("b", "key1").await.unwrap().unwrap();
+        assert_eq!(got.blob_id.0, "blob-2");
+        assert_eq!(got.size, 200);
+
+        // list_object_versions should return both.
+        let versions = store
+            .list_object_versions("b", None, None, None, 100)
+            .await
+            .unwrap();
+        assert_eq!(versions.len(), 2);
+        // Newest first.
+        assert_eq!(versions[0].blob_id.0, "blob-2");
+        assert!(versions[0].is_latest);
+        assert_eq!(versions[1].blob_id.0, "blob-1");
+        assert!(!versions[1].is_latest);
+    }
+
+    #[tokio::test]
+    async fn get_object_after_delete_marker_returns_none() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+
+        let r = make_record("b", "key1");
+        store.put_object(&r).await.unwrap();
+
+        // Delete creates a delete marker.
+        let deleted = store.delete_object("b", "key1").await.unwrap();
+        assert!(deleted.is_some());
+        let dm = deleted.unwrap();
+        assert!(dm.is_delete_marker);
+        assert!(dm.version_id.is_some());
+
+        // get_object should return None (latest is a delete marker).
+        let got = store.get_object("b", "key1").await.unwrap();
+        assert!(got.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_object_version_specific() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+
+        let mut r1 = make_record("b", "key1");
+        r1.blob_id = BlobId("blob-1".to_string());
+        r1.size = 100;
+        store.put_object(&r1).await.unwrap();
+
+        let mut r2 = make_record("b", "key1");
+        r2.blob_id = BlobId("blob-2".to_string());
+        r2.size = 200;
+        store.put_object(&r2).await.unwrap();
+
+        // Get the versions to find version IDs.
+        let versions = store
+            .list_object_versions("b", None, None, None, 100)
+            .await
+            .unwrap();
+        let v1_id = versions[1].version_id.as_ref().unwrap();
+        let v2_id = versions[0].version_id.as_ref().unwrap();
+
+        // Fetch specific versions.
+        let got_v1 = store
+            .get_object_version("b", "key1", v1_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(got_v1.blob_id.0, "blob-1");
+
+        let got_v2 = store
+            .get_object_version("b", "key1", v2_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(got_v2.blob_id.0, "blob-2");
+    }
+
+    #[tokio::test]
+    async fn delete_object_version_hard_deletes() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+
+        let mut r1 = make_record("b", "key1");
+        r1.blob_id = BlobId("blob-1".to_string());
+        store.put_object(&r1).await.unwrap();
+
+        let mut r2 = make_record("b", "key1");
+        r2.blob_id = BlobId("blob-2".to_string());
+        store.put_object(&r2).await.unwrap();
+
+        let versions = store
+            .list_object_versions("b", None, None, None, 100)
+            .await
+            .unwrap();
+        let v1_id = versions[1].version_id.as_ref().unwrap().clone();
+
+        // Delete the old version permanently.
+        let deleted = store
+            .delete_object_version("b", "key1", &v1_id)
+            .await
+            .unwrap();
+        assert!(deleted.is_some());
+        assert_eq!(deleted.unwrap().blob_id.0, "blob-1");
+
+        // Only one version should remain.
+        let versions = store
+            .list_object_versions("b", None, None, None, 100)
+            .await
+            .unwrap();
+        assert_eq!(versions.len(), 1);
+        assert_eq!(versions[0].blob_id.0, "blob-2");
+    }
+
+    #[tokio::test]
+    async fn delete_object_version_promotes_next_latest() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+
+        let mut r1 = make_record("b", "key1");
+        r1.blob_id = BlobId("blob-1".to_string());
+        store.put_object(&r1).await.unwrap();
+
+        let mut r2 = make_record("b", "key1");
+        r2.blob_id = BlobId("blob-2".to_string());
+        store.put_object(&r2).await.unwrap();
+
+        let versions = store
+            .list_object_versions("b", None, None, None, 100)
+            .await
+            .unwrap();
+        let v2_id = versions[0].version_id.as_ref().unwrap().clone();
+
+        // Delete the latest version permanently.
+        store
+            .delete_object_version("b", "key1", &v2_id)
+            .await
+            .unwrap();
+
+        // The old version should now be latest.
+        let got = store.get_object("b", "key1").await.unwrap().unwrap();
+        assert_eq!(got.blob_id.0, "blob-1");
+        assert!(got.is_latest);
+    }
+
+    #[tokio::test]
+    async fn delete_delete_marker_undeletes_object() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+
+        let r = make_record("b", "key1");
+        store.put_object(&r).await.unwrap();
+
+        // Create a delete marker.
+        let dm = store.delete_object("b", "key1").await.unwrap().unwrap();
+        let dm_version_id = dm.version_id.unwrap();
+
+        // Object should be invisible.
+        assert!(store.get_object("b", "key1").await.unwrap().is_none());
+
+        // Remove the delete marker.
+        let deleted = store
+            .delete_object_version("b", "key1", &dm_version_id)
+            .await
+            .unwrap();
+        assert!(deleted.is_some());
+        assert!(deleted.unwrap().is_delete_marker);
+
+        // Object should be visible again.
+        let got = store.get_object("b", "key1").await.unwrap();
+        assert!(got.is_some());
+    }
+
+    #[tokio::test]
+    async fn list_objects_only_latest_visible() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+
+        // Create two versions of key1 and one of key2.
+        let mut r1 = make_record("b", "key1");
+        r1.blob_id = BlobId("blob-1a".to_string());
+        store.put_object(&r1).await.unwrap();
+
+        let mut r2 = make_record("b", "key1");
+        r2.blob_id = BlobId("blob-1b".to_string());
+        store.put_object(&r2).await.unwrap();
+
+        let r3 = make_record("b", "key2");
+        store.put_object(&r3).await.unwrap();
+
+        // list_objects should return only 2 objects (latest of each key).
+        let records = store.list_objects("b", None, None, 100).await.unwrap();
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].key, "key1");
+        assert_eq!(records[0].blob_id.0, "blob-1b");
+        assert_eq!(records[1].key, "key2");
+    }
+
+    #[tokio::test]
+    async fn list_object_versions_includes_all() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+
+        let mut r1 = make_record("b", "key1");
+        r1.blob_id = BlobId("blob-1".to_string());
+        store.put_object(&r1).await.unwrap();
+
+        let mut r2 = make_record("b", "key1");
+        r2.blob_id = BlobId("blob-2".to_string());
+        store.put_object(&r2).await.unwrap();
+
+        // Delete to create a delete marker.
+        store.delete_object("b", "key1").await.unwrap();
+
+        let versions = store
+            .list_object_versions("b", None, None, None, 100)
+            .await
+            .unwrap();
+        assert_eq!(versions.len(), 3);
+        // Most recent first: delete marker, blob-2, blob-1.
+        assert!(versions[0].is_delete_marker);
+        assert!(versions[0].is_latest);
+        assert_eq!(versions[1].blob_id.0, "blob-2");
+        assert!(!versions[1].is_latest);
+        assert_eq!(versions[2].blob_id.0, "blob-1");
+        assert!(!versions[2].is_latest);
+    }
+
+    #[tokio::test]
+    async fn bucket_is_empty_with_delete_markers() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+
+        let r = make_record("b", "key1");
+        store.put_object(&r).await.unwrap();
+
+        // Delete the object (creates delete marker).
+        store.delete_object("b", "key1").await.unwrap();
+
+        // Bucket is NOT empty (still has versions + delete marker).
+        assert!(!store.bucket_is_empty("b").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn unversioned_bucket_unchanged_behavior() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+
+        // No versioning enabled — should work exactly as before.
+        let mut r1 = make_record("b", "key1");
+        r1.blob_id = BlobId("blob-1".to_string());
+        r1.size = 100;
+        let old = store.put_object(&r1).await.unwrap();
+        assert!(old.is_none());
+
+        let mut r2 = make_record("b", "key1");
+        r2.blob_id = BlobId("blob-2".to_string());
+        r2.size = 200;
+        let old = store.put_object(&r2).await.unwrap();
+        // Should return old record for cleanup.
+        assert!(old.is_some());
+        assert_eq!(old.unwrap().blob_id.0, "blob-1");
+
+        // Only one version in list_object_versions.
+        let versions = store
+            .list_object_versions("b", None, None, None, 100)
+            .await
+            .unwrap();
+        assert_eq!(versions.len(), 1);
+
+        // get_object returns the latest.
+        let got = store.get_object("b", "key1").await.unwrap().unwrap();
+        assert_eq!(got.blob_id.0, "blob-2");
+        assert!(got.version_id.is_none());
+
+        // delete_object hard-deletes.
+        let old = store.delete_object("b", "key1").await.unwrap();
+        assert!(old.is_some());
+        assert_eq!(old.unwrap().blob_id.0, "blob-2");
+        assert!(store.get_object("b", "key1").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn put_object_suspended_overwrites_null_version() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+
+        // First enable, put an object (gets a real version ID).
+        enable_versioning(&store, "b").await;
+        let mut r1 = make_record("b", "key1");
+        r1.blob_id = BlobId("blob-1".to_string());
+        store.put_object(&r1).await.unwrap();
+
+        // Now suspend versioning.
+        suspend_versioning(&store, "b").await;
+
+        // Put again — should create a null version, keep the real version.
+        let mut r2 = make_record("b", "key1");
+        r2.blob_id = BlobId("blob-2".to_string());
+        let old = store.put_object(&r2).await.unwrap();
+        assert!(old.is_none()); // No previous null version to clean up
+
+        // Put a third time — should overwrite the null version.
+        let mut r3 = make_record("b", "key1");
+        r3.blob_id = BlobId("blob-3".to_string());
+        let old = store.put_object(&r3).await.unwrap();
+        // Should return the old null version for cleanup.
+        assert!(old.is_some());
+        assert_eq!(old.unwrap().blob_id.0, "blob-2");
+
+        // Total versions: real (blob-1) + null (blob-3) = 2
+        let versions = store
+            .list_object_versions("b", None, None, None, 100)
+            .await
+            .unwrap();
+        assert_eq!(versions.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn stats_only_count_visible_objects() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+
+        let mut r1 = make_record("b", "key1");
+        r1.size = 100;
+        store.put_object(&r1).await.unwrap();
+
+        let mut r2 = make_record("b", "key1");
+        r2.size = 200;
+        r2.blob_id = BlobId("blob-2".to_string());
+        store.put_object(&r2).await.unwrap();
+
+        let stats = store.get_stats().await.unwrap();
+        // Only the latest version counts.
+        assert_eq!(stats.object_count, 1);
+        assert_eq!(stats.total_size_bytes, 200);
     }
 }

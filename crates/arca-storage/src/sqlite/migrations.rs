@@ -176,6 +176,49 @@ const MIGRATIONS: &[Migration] = &[
             ALTER TABLE credentials ADD COLUMN user_id TEXT NOT NULL DEFAULT 'root';
         ",
     },
+    Migration {
+        version: 9,
+        description: "Add object versioning support",
+        sql: "
+            -- Recreate objects table with versioning columns.
+            -- SQLite cannot ALTER TABLE to drop a primary key, so we recreate.
+            CREATE TABLE objects_new (
+                bucket               TEXT NOT NULL,
+                key                  TEXT NOT NULL,
+                version_id           TEXT,
+                blob_id              TEXT NOT NULL DEFAULT '',
+                size                 INTEGER NOT NULL DEFAULT 0,
+                etag                 TEXT NOT NULL DEFAULT '',
+                content_type         TEXT,
+                last_modified        TEXT NOT NULL,
+                metadata             TEXT NOT NULL DEFAULT '{}',
+                encryption_algorithm TEXT,
+                encryption_key_id    TEXT,
+                owner                TEXT NOT NULL DEFAULT 'root',
+                is_latest            INTEGER NOT NULL DEFAULT 1,
+                is_delete_marker     INTEGER NOT NULL DEFAULT 0
+            );
+
+            INSERT INTO objects_new (bucket, key, version_id, blob_id, size, etag,
+                content_type, last_modified, metadata, encryption_algorithm,
+                encryption_key_id, owner, is_latest, is_delete_marker)
+            SELECT bucket, key, NULL, blob_id, size, etag, content_type,
+                last_modified, metadata, encryption_algorithm, encryption_key_id,
+                owner, 1, 0
+            FROM objects;
+
+            DROP TABLE objects;
+            ALTER TABLE objects_new RENAME TO objects;
+
+            -- Enforce exactly one is_latest=1 row per (bucket, key).
+            CREATE UNIQUE INDEX idx_objects_latest
+                ON objects(bucket, key) WHERE is_latest = 1;
+
+            -- Fast version listing by key.
+            CREATE INDEX idx_objects_versions
+                ON objects(bucket, key, last_modified DESC);
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -249,7 +292,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 8);
+        assert_eq!(version, 9);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -291,12 +334,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 8);
+        assert_eq!(version, 9);
 
-        // Eight migration records
+        // Nine migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 8);
+        assert_eq!(count, 9);
     }
 }

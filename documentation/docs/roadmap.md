@@ -31,7 +31,7 @@ continuing from the MVP phases (0–11).
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">14</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">15</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">16</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">17</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">17</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">18</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">19</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">20</div>
@@ -95,7 +95,7 @@ graph LR
 | 14 | [SSE-KMS with HashiCorp Vault/OpenBAO](#phase-14-sse-kms-with-hashicorp-vaultopenbao-p0) | P0 | 13 | `v0.5.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 15 | [Presigned URLs, Query-String Auth, and SSE-C](#phase-15-presigned-urls-query-string-auth-and-sse-c-p1) | P1 | 12, 13 | `v0.6.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 16 | [Access Control and Bucket Policies](#phase-16-access-control-and-bucket-policies-p1) | P1 | 13 | `v0.7.0` | <span style="color:#4caf50">&#x2714;</span> |
-| 17 | [Object Versioning](#phase-17-object-versioning-p1) | P1 | 16 | | |
+| 17 | [Object Versioning](#phase-17-object-versioning-p1) | P1 | 16 | `v0.8.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 18 | [Monitoring, Metrics, and Audit](#phase-18-monitoring-metrics-and-audit-p1) | P1 | — | | |
 | 19 | [Object Tagging and Lifecycle Rules](#phase-19-object-tagging-and-lifecycle-rules-p2) | P2 | 13 | | |
 | 20 | [Object Lock (WORM Compliance)](#phase-20-object-lock-worm-compliance-p2) | P2 | 17 | | |
@@ -216,15 +216,20 @@ Role-based access control with users, teams, and policy-based authorization.
 
 Full object versioning with version IDs, delete markers, and version-specific operations.
 
-- [ ] Versioning state per bucket: `PutBucketVersioning` / `GetBucketVersioning` (Disabled / Enabled / Suspended)
-- [ ] Version IDs (UUID) on `put_object` when versioning is enabled
-- [ ] Schema migration: `objects` table gains `version_id`, `is_latest`, `is_delete_marker` columns
-- [ ] Delete markers: `DeleteObject` on versioned bucket inserts a delete marker instead of removing the object
-- [ ] Version-specific operations: `GetObject?versionId=X`, `HeadObject?versionId=X`, `DeleteObject?versionId=X`
-- [ ] `ListObjectVersions` with real version data (replace TD-003 fake implementation)
-- [ ] `arca recover` updated for versioned objects (multiple sidecars per bucket/key pair)
-- [ ] (Console) Version history panel, restore previous version, delete marker indicator
-- [ ] Resolves: TD-003
+- [x] Versioning state per bucket: `PutBucketVersioning` / `GetBucketVersioning` (Disabled / Enabled / Suspended)
+- [x] Version IDs (UUID) on `put_object` when versioning is enabled
+- [x] Schema migration v9: `objects` table gains `version_id`, `is_latest`, `is_delete_marker` columns, partial unique index
+- [x] Delete markers: `DeleteObject` on versioned bucket inserts a delete marker instead of removing the object
+- [x] Version-specific operations: `GetObject?versionId=X`, `HeadObject?versionId=X`, `DeleteObject?versionId=X`
+- [x] `ListObjectVersions` with real version data (replace TD-003 fake implementation)
+- [x] `CopyObject` with source `?versionId=X` support
+- [x] Suspended versioning: null-version overwrites, real versions preserved
+- [x] `x-amz-version-id` and `x-amz-delete-marker` response headers
+- [x] `arca recover` updated for versioned objects (sorts by last_modified, recovers latest)
+- [x] `arca fsck` updated to handle delete markers and all object versions
+- [x] (Console) Bucket versioning toggle (Enable/Suspend), version history panel, version-specific download/delete, delete marker indicators
+- [x] Integration tests: 18 versioning tests (boto3)
+- [x] Resolves: TD-003
 
 **Depends on**: Phase 16 (access control interacts with versioning)
 
@@ -608,10 +613,10 @@ Remaining items:
 
 - ~~**Ownership model** (TD-001)~~: **Resolved** — Owner ID derived from credential's user; buckets/objects track creator's username
 - **Storage classes** (TD-002): Always `STANDARD` — no storage tiering
-- **Versioning** (TD-003): Faked for mc compatibility — no real version tracking
+- ~~**Versioning** (TD-003)~~: **Resolved** — Full object versioning implemented in Phase 17
 - **Region support** (TD-004): Hardcoded `us-east-1` — no per-bucket regions
 - ~~**Request ID consistency** (TD-005)~~: **Resolved** — error XML and response header now match
 - ~~**Encryption** (TD-006)~~: **Resolved** — SSE-S3 with AES-256-GCM implemented in Phase 13
-- **Unimplemented ops** (TD-007): ~35 bucket operations return 501
+- **Unimplemented ops** (TD-007): ~33 bucket operations return 501
 - **Multipart Content-Type** (TD-008): Captured at init time — verify against AWS semantics
 - **SSE-C multipart** (TD-010): SSE-C headers rejected on multipart uploads — needs per-part encryption tracking

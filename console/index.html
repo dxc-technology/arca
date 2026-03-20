@@ -357,7 +357,8 @@
                       <a :href="'#/buckets/' + encodeURIComponent(b.name)" class="flex items-center gap-2 text-xs rounded px-1 -mx-1 py-1 hover:bg-white/[0.03] transition group cursor-pointer no-underline text-inherit">
                         <div class="w-2.5 h-2.5 rounded-sm flex-shrink-0" :style="'background:' + ringColors[i % ringColors.length]"></div>
                         <span class="truncate flex-1 group-hover:text-vault-accent transition" x-text="b.name"></span>
-                        <svg x-show="b.encrypted" class="w-3 h-3 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z"/></svg>
+                        <span x-show="b.encrypted" x-html="icons.encryptionShield" title="Encrypted"></span>
+                        <span x-show="b.versioned" x-html="b.versioned === 'Suspended' ? icons.versioningSuspended : icons.versioningClock" :title="'Versioning: ' + b.versioned"></span>
                         <span class="text-vault-muted font-mono" x-text="formatBytes(b.size)"></span>
                       </a>
                     </template>
@@ -421,8 +422,14 @@
                     <span>Created <span x-text="new Date(b.creationDate).toLocaleDateString()"></span></span>
                     <template x-if="b.encrypted">
                       <span class="flex items-center gap-1 text-green-400" title="SSE-S3 (AES-256)">
-                        <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z"/></svg>
+                        <span x-html="icons.encryptionShield"></span>
                         <span class="text-[10px] font-medium">Encrypted</span>
+                      </span>
+                    </template>
+                    <template x-if="b.versioned">
+                      <span class="flex items-center gap-1" :class="b.versioned === 'Suspended' ? 'text-amber-400' : 'text-blue-400'" :title="'Versioning: ' + b.versioned">
+                        <span x-html="b.versioned === 'Suspended' ? icons.versioningSuspended : icons.versioningClock"></span>
+                        <span class="text-[10px] font-medium" x-text="b.versioned === 'Suspended' ? 'Suspended' : 'Versioned'"></span>
                       </span>
                     </template>
                   </div>
@@ -545,6 +552,56 @@
                 </template>
               </div>
 
+              <!-- Versioning card -->
+              <div class="glass rounded-xl p-5">
+                <div class="flex items-center gap-2 mb-4">
+                  <svg class="w-4 h-4 text-vault-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+                  <span class="text-sm font-semibold uppercase tracking-wider text-vault-muted">Versioning</span>
+                </div>
+
+                <!-- Toggle -->
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-sm font-medium text-vault-text">Object Versioning</div>
+                    <div class="text-xs text-vault-muted mt-0.5"
+                      x-text="versioningStatus === 'Enabled' ? 'All object writes create new versions' : versioningStatus === 'Suspended' ? 'Suspended, new writes use null version ID' : 'Not enabled'"></div>
+                  </div>
+                  <button @click="toggleVersioning()" :disabled="versioningSaving"
+                    :class="versioningStatus === 'Enabled' ? 'bg-vault-accent' : versioningStatus === 'Suspended' ? 'bg-amber-500' : 'bg-vault-border'"
+                    class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50">
+                    <span :class="versioningStatus === 'Enabled' || versioningStatus === 'Suspended' ? 'translate-x-6' : 'translate-x-1'"
+                      class="inline-block h-4 w-4 rounded-full bg-white transition-transform"></span>
+                  </button>
+                </div>
+
+                <!-- Effective status -->
+                <div class="mt-4 pt-4 border-t border-vault-border/30">
+                  <div class="flex items-center gap-2">
+                    <template x-if="versioningStatus === 'Enabled'">
+                      <div class="flex items-center gap-1.5">
+                        <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+                        <span class="text-sm text-green-400 font-medium">Versioning Active</span>
+                      </div>
+                    </template>
+                    <template x-if="versioningStatus === 'Suspended'">
+                      <div class="flex items-center gap-1.5">
+                        <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.25 9v6m-4.5 0V9M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+                        <span class="text-sm text-amber-400 font-medium">Versioning Suspended</span>
+                        <span class="text-xs text-vault-muted ml-1">(existing versions preserved)</span>
+                      </div>
+                    </template>
+                    <template x-if="!versioningStatus">
+                      <div class="flex items-center gap-1.5">
+                        <svg class="w-4 h-4 text-vault-muted" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+                        <span class="text-sm text-vault-muted font-medium">Not versioned</span>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+
+                <p x-show="versioningError" x-text="versioningError" class="text-red-400 text-xs mt-3"></p>
+              </div>
+
               <!-- Danger zone -->
               <div class="glass rounded-xl p-5 border-red-500/30" style="border-color: rgba(239, 68, 68, 0.3);">
                 <div class="flex items-center gap-2 mb-4">
@@ -594,9 +651,8 @@
               <div class="flex items-center gap-2 text-sm">
                 <a href="#/buckets" @click="$store.app && navigate('buckets')" class="text-vault-muted hover:text-vault-accent transition">Buckets</a>
                 <span class="text-vault-border">/</span>
-                <span x-show="bucketEncrypted" x-cloak title="Encrypted bucket">
-                  <svg class="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z"/></svg>
-                </span>
+                <span x-show="bucketEncrypted" x-cloak title="Encrypted bucket" x-html="icons.encryptionShield"></span>
+                <span x-show="bucketVersioned" x-cloak :title="'Versioning: ' + bucketVersioned" x-html="bucketVersioned === 'Suspended' ? icons.versioningSuspended : icons.versioningClock"></span>
                 <button @click="navigatePrefix('')" class="text-vault-accent hover:underline font-medium" x-text="bucketName"></button>
                 <template x-for="(part, i) in prefixParts" :key="i">
                   <span class="flex items-center gap-2">
@@ -788,6 +844,63 @@
                       <button @click="downloadObject(selectedObject.key)" class="flex-1 py-2 rounded-lg bg-vault-accent/10 text-vault-accent text-sm font-medium hover:bg-vault-accent/20 transition">Download</button>
                       <button @click="confirmDeleteObject(selectedObject.key)" class="flex-1 py-2 rounded-lg bg-red-500/10 text-red-400 text-sm font-medium hover:bg-red-500/20 transition">Delete</button>
                     </div>
+
+                    <!-- Version History -->
+                    <div class="pt-2 border-t border-vault-border/30">
+                      <button @click="toggleVersions()" class="flex items-center justify-between w-full py-2 text-sm font-medium text-vault-muted hover:text-vault-text transition">
+                        <span class="flex items-center gap-1.5">
+                          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+                          Versions
+                          <span x-show="versions.length > 0" class="text-[10px] px-1.5 py-0.5 rounded-full bg-vault-accent/20 text-vault-accent font-medium" x-text="versions.length"></span>
+                        </span>
+                        <svg :class="versionsExpanded ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
+                      </button>
+
+                      <div x-show="versionsExpanded" x-transition>
+                        <!-- Loading -->
+                        <div x-show="versionsLoading" class="flex justify-center py-4">
+                          <svg class="animate-spin h-4 w-4 text-vault-accent" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                        </div>
+
+                        <!-- Error -->
+                        <p x-show="versionsError" x-text="versionsError" class="text-red-400 text-xs py-2"></p>
+
+                        <!-- No versions -->
+                        <div x-show="!versionsLoading && !versionsError && versions.length === 0" class="text-vault-muted/60 text-xs text-center py-4">
+                          No version history available
+                        </div>
+
+                        <!-- Version list -->
+                        <div x-show="!versionsLoading && versions.length > 0" class="space-y-1.5 max-h-64 overflow-y-auto">
+                          <template x-for="ver in versions" :key="ver.versionId">
+                            <div class="rounded-lg p-2.5 text-xs"
+                              :class="ver.isDeleteMarker ? 'bg-red-500/5 border border-red-500/20' : (ver.isLatest ? 'bg-vault-accent/5 border border-vault-accent/20' : 'bg-vault-border/20 border border-vault-border/30')">
+                              <div class="flex items-center justify-between mb-1">
+                                <div class="flex items-center gap-1.5">
+                                  <span class="font-mono text-vault-text" :title="ver.versionId" x-text="truncateVersionId(ver.versionId)"></span>
+                                  <span x-show="ver.isLatest" class="text-[9px] px-1 py-0.5 rounded bg-vault-accent/20 text-vault-accent font-medium uppercase">Latest</span>
+                                  <span x-show="ver.isDeleteMarker" class="text-[9px] px-1 py-0.5 rounded bg-red-500/20 text-red-400 font-medium uppercase">Delete Marker</span>
+                                </div>
+                                <div class="flex items-center gap-0.5">
+                                  <button x-show="!ver.isDeleteMarker" @click="downloadVersion(ver.key, ver.versionId)"
+                                    class="p-1 rounded hover:bg-vault-accent/10 text-vault-muted hover:text-vault-accent transition" title="Download this version">
+                                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                                  </button>
+                                  <button @click="confirmDeleteVersion(ver.key, ver.versionId, ver.isDeleteMarker, ver.isLatest)"
+                                    class="p-1 rounded hover:bg-red-500/10 text-vault-muted hover:text-red-400 transition" title="Permanently delete this version">
+                                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+                                  </button>
+                                </div>
+                              </div>
+                              <div class="flex items-center gap-3 text-vault-muted">
+                                <span x-text="new Date(ver.lastModified).toLocaleString()"></span>
+                                <span x-show="!ver.isDeleteMarker" x-text="formatBytes(ver.size)"></span>
+                              </div>
+                            </div>
+                          </template>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </template>
               </div>
@@ -914,6 +1027,30 @@
                 </div>
 
                 <p x-show="shareError" x-text="shareError" class="text-red-400 text-xs mt-2"></p>
+              </div>
+            </div>
+
+            <!-- Delete version confirm modal -->
+            <div x-show="showDeleteVersionModal" x-transition.opacity class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="showDeleteVersionModal = false">
+              <div class="glass rounded-xl p-6 w-full max-w-sm mx-4" @click.stop>
+                <h3 class="text-lg font-semibold mb-2" x-text="deleteVersionIsMarker ? 'Remove Delete Marker' : 'Delete Version'"></h3>
+                <p class="text-sm text-vault-muted mb-1" x-text="deleteVersionIsMarker ? 'This will remove the delete marker, restoring the object.' : 'This will permanently delete this version. This cannot be undone.'"></p>
+                <div class="mb-3 p-2.5 rounded-lg bg-vault-border/20 border border-vault-border/30">
+                  <div class="text-xs text-vault-muted space-y-1">
+                    <div x-show="deleteVersionIsLatest">
+                      <span class="text-[9px] px-1 py-0.5 rounded bg-vault-accent/20 text-vault-accent font-medium uppercase">Latest</span>
+                    </div>
+                    <div>Version: <span class="font-mono text-vault-text" x-text="deleteVersionId"></span></div>
+                    <div>Key: <span class="font-mono text-vault-text" x-text="deleteVersionKey"></span></div>
+                  </div>
+                </div>
+                <p x-show="deleteVersionError" x-text="deleteVersionError" class="text-red-400 text-xs mb-3"></p>
+                <div class="flex gap-3 justify-end">
+                  <button @click="showDeleteVersionModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                  <button @click="performDeleteVersion()" :disabled="deletingVersion"
+                    class="px-4 py-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 text-sm font-medium hover:bg-red-500/30 transition disabled:opacity-50"
+                    x-text="deletingVersion ? 'Deleting...' : (deleteVersionIsMarker ? 'Remove Marker' : 'Delete Version')"></button>
+                </div>
               </div>
             </div>
           </div>

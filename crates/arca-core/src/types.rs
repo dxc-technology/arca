@@ -62,6 +62,31 @@ pub struct ObjectRecord {
     /// Username of the object creator.
     #[serde(default)]
     pub owner: String,
+    /// Version ID. None for unversioned objects, Some(uuid) for versioned,
+    /// Some("null") for suspended-bucket writes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version_id: Option<String>,
+    /// Whether this is the latest version of the object.
+    #[serde(default = "default_true")]
+    pub is_latest: bool,
+    /// Whether this is a delete marker (has no blob).
+    #[serde(default)]
+    pub is_delete_marker: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// Bucket versioning state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VersioningState {
+    /// Versioning has never been enabled (default).
+    Unversioned,
+    /// Versioning is enabled — new PUTs generate version IDs.
+    Enabled,
+    /// Versioning is suspended — new PUTs get version_id=NULL.
+    Suspended,
 }
 
 /// Projection of an object for list responses (lighter than ObjectRecord).

@@ -330,6 +330,35 @@ export function apiClient() {
       return await this.request('DELETE', '/' + encodeURIComponent(bucket), { queryParams: { encryption: '' } });
     },
 
+    async s3GetBucketVersioning(bucket) {
+      return await this.request('GET', '/' + encodeURIComponent(bucket), { queryParams: { versioning: '' } });
+    },
+
+    async s3PutBucketVersioning(bucket, status) {
+      const xml = `<VersioningConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Status>${status}</Status></VersioningConfiguration>`;
+      return await this.request('PUT', '/' + encodeURIComponent(bucket), {
+        body: xml,
+        contentType: 'application/xml',
+        queryParams: { versioning: '' },
+      });
+    },
+
+    async s3ListObjectVersions(bucket, prefix = '') {
+      return await this.request('GET', '/' + encodeURIComponent(bucket), {
+        queryParams: { versions: '', prefix, 'max-keys': '1000' },
+      });
+    },
+
+    async s3GetObjectVersion(bucket, key, versionId) {
+      const path = '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key);
+      return await this.request('GET', path, { rawResponse: true, queryParams: { versionId } });
+    },
+
+    async s3DeleteObjectVersion(bucket, key, versionId) {
+      const path = '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key);
+      return await this.request('DELETE', path, { queryParams: { versionId } });
+    },
+
     // XML parsing
     parseListBuckets(xml) {
       const doc = new DOMParser().parseFromString(xml, 'text/xml');
@@ -361,6 +390,36 @@ export function apiClient() {
       const isTruncated = doc.querySelector('IsTruncated')?.textContent === 'true';
       const nextToken = doc.querySelector('NextContinuationToken')?.textContent || '';
       return { objects, directories, isTruncated, nextToken };
+    },
+
+    parseListVersions(xml) {
+      const doc = new DOMParser().parseFromString(xml, 'text/xml');
+      const entries = [];
+      for (const v of doc.querySelectorAll('Version')) {
+        entries.push({
+          key: v.querySelector('Key')?.textContent || '',
+          versionId: v.querySelector('VersionId')?.textContent || 'null',
+          isLatest: v.querySelector('IsLatest')?.textContent === 'true',
+          isDeleteMarker: false,
+          size: parseInt(v.querySelector('Size')?.textContent || '0', 10),
+          lastModified: v.querySelector('LastModified')?.textContent || '',
+          etag: v.querySelector('ETag')?.textContent || '',
+        });
+      }
+      for (const dm of doc.querySelectorAll('DeleteMarker')) {
+        entries.push({
+          key: dm.querySelector('Key')?.textContent || '',
+          versionId: dm.querySelector('VersionId')?.textContent || 'null',
+          isLatest: dm.querySelector('IsLatest')?.textContent === 'true',
+          isDeleteMarker: true,
+          size: 0,
+          lastModified: dm.querySelector('LastModified')?.textContent || '',
+          etag: '',
+        });
+      }
+      // Sort: newest first.
+      entries.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
+      return entries;
     },
   };
 }

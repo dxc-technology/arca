@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { formatBytes, formatUptime, ringColors } from '../app.js';
+import { formatBytes, formatUptime, ringColors, icons } from '../app.js';
 
 // ==================== DASHBOARD VIEW ====================
 export function dashboardView() {
@@ -10,6 +10,7 @@ export function dashboardView() {
     bucketSizes: [],
     ringSegments: [],
     ringColors,
+    icons,
     refreshInterval: null,
 
     async load() {
@@ -47,13 +48,21 @@ export function dashboardView() {
               for (const obj of result.objects) totalSize += obj.size;
               token = result.isTruncated ? result.nextToken : '';
             } while (token);
-            sizes.push({ name: b.name, size: totalSize, encrypted: false });
-          } catch { sizes.push({ name: b.name, size: 0, encrypted: false }); }
+            sizes.push({ name: b.name, size: totalSize, encrypted: false, versioned: false });
+          } catch { sizes.push({ name: b.name, size: 0, encrypted: false, versioned: false }); }
         }
-        // Load encryption status in parallel
+        // Load encryption and versioning status in parallel
         await Promise.all(sizes.map(async (s) => {
-          const enc = await api.s3GetBucketEncryption(s.name);
+          const [enc, vResp] = await Promise.all([
+            api.s3GetBucketEncryption(s.name),
+            api.s3GetBucketVersioning(s.name).catch(() => null),
+          ]);
           s.encrypted = !!(enc && enc.algorithm);
+          if (vResp && vResp.ok) {
+            const xml = await vResp.text();
+            const m = xml.match(/<Status>(.*?)<\/Status>/);
+            s.versioned = m ? m[1] : false;
+          }
         }));
         this.bucketSizes = sizes;
         this.computeRing(sizes);

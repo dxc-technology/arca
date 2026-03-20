@@ -462,17 +462,19 @@ pub fn complete_multipart_upload_result(bucket: &str, key: &str, etag: &str) -> 
 
 /// Builds the XML response for `ListVersionsResult` (ListObjectVersions).
 ///
-/// TECHDEBT(TD-003): Since Arca doesn't support versioning, each object is
-/// returned as a `<Version>` entry with `<VersionId>null</VersionId>` and
-/// `<IsLatest>true</IsLatest>`.
+/// Accepts `ObjectRecord` entries with real version IDs, is_latest flags,
+/// and delete markers. Entries are separated into `<Version>` and
+/// `<DeleteMarker>` elements.
 pub fn list_versions_result(
     name: &str,
     prefix: Option<&str>,
     key_marker: Option<&str>,
+    version_id_marker: Option<&str>,
     max_keys: u32,
     is_truncated: bool,
-    versions: &[ListEntry],
+    entries: &[crate::types::ObjectRecord],
     next_key_marker: Option<&str>,
+    next_version_id_marker: Option<&str>,
 ) -> String {
     let mut writer = Writer::new(Vec::new());
 
@@ -489,7 +491,7 @@ pub fn list_versions_result(
     write_xml_element(&mut writer, "Name", name);
     write_xml_element(&mut writer, "Prefix", prefix.unwrap_or(""));
     write_xml_element(&mut writer, "KeyMarker", key_marker.unwrap_or(""));
-    write_xml_element(&mut writer, "VersionIdMarker", "");
+    write_xml_element(&mut writer, "VersionIdMarker", version_id_marker.unwrap_or(""));
     write_xml_element(&mut writer, "MaxKeys", &max_keys.to_string());
     write_xml_element(
         &mut writer,
@@ -499,38 +501,115 @@ pub fn list_versions_result(
 
     if let Some(next) = next_key_marker {
         write_xml_element(&mut writer, "NextKeyMarker", next);
-        write_xml_element(&mut writer, "NextVersionIdMarker", "null");
+        write_xml_element(
+            &mut writer,
+            "NextVersionIdMarker",
+            next_version_id_marker.unwrap_or("null"),
+        );
     }
 
-    for entry in versions {
-        writer
-            .write_event(Event::Start(BytesStart::new("Version")))
-            .expect("write Version start");
-
-        write_xml_element(&mut writer, "Key", &entry.key);
-        write_xml_element(&mut writer, "VersionId", "null");
-        write_xml_element(&mut writer, "IsLatest", "true");
-
+    for entry in entries {
+        let version_id = entry.version_id.as_deref().unwrap_or("null");
+        let is_latest = if entry.is_latest { "true" } else { "false" };
         let date = entry
             .last_modified
             .format("%Y-%m-%dT%H:%M:%S%.3fZ")
             .to_string();
-        write_xml_element(&mut writer, "LastModified", &date);
 
-        let quoted_etag = format!("\"{}\"", entry.etag);
-        write_xml_element(&mut writer, "ETag", &quoted_etag);
+        if entry.is_delete_marker {
+            writer
+                .write_event(Event::Start(BytesStart::new("DeleteMarker")))
+                .expect("write DeleteMarker start");
 
-        write_xml_element(&mut writer, "Size", &entry.size.to_string());
-        write_xml_element(&mut writer, "StorageClass", &entry.storage_class);
+            write_xml_element(&mut writer, "Key", &entry.key);
+            write_xml_element(&mut writer, "VersionId", version_id);
+            write_xml_element(&mut writer, "IsLatest", is_latest);
+            write_xml_element(&mut writer, "LastModified", &date);
 
-        writer
-            .write_event(Event::End(BytesEnd::new("Version")))
-            .expect("write Version end");
+            // Owner
+            writer
+                .write_event(Event::Start(BytesStart::new("Owner")))
+                .expect("write Owner start");
+            write_xml_element(&mut writer, "ID", &entry.owner);
+            write_xml_element(&mut writer, "DisplayName", &entry.owner);
+            writer
+                .write_event(Event::End(BytesEnd::new("Owner")))
+                .expect("write Owner end");
+
+            writer
+                .write_event(Event::End(BytesEnd::new("DeleteMarker")))
+                .expect("write DeleteMarker end");
+        } else {
+            writer
+                .write_event(Event::Start(BytesStart::new("Version")))
+                .expect("write Version start");
+
+            write_xml_element(&mut writer, "Key", &entry.key);
+            write_xml_element(&mut writer, "VersionId", version_id);
+            write_xml_element(&mut writer, "IsLatest", is_latest);
+
+            write_xml_element(&mut writer, "LastModified", &date);
+
+            let quoted_etag = format!("\"{}\"", entry.etag);
+            write_xml_element(&mut writer, "ETag", &quoted_etag);
+
+            write_xml_element(&mut writer, "Size", &entry.size.to_string());
+            write_xml_element(&mut writer, "StorageClass", "STANDARD");
+
+            // Owner
+            writer
+                .write_event(Event::Start(BytesStart::new("Owner")))
+                .expect("write Owner start");
+            write_xml_element(&mut writer, "ID", &entry.owner);
+            write_xml_element(&mut writer, "DisplayName", &entry.owner);
+            writer
+                .write_event(Event::End(BytesEnd::new("Owner")))
+                .expect("write Owner end");
+
+            writer
+                .write_event(Event::End(BytesEnd::new("Version")))
+                .expect("write Version end");
+        }
     }
 
     writer
         .write_event(Event::End(BytesEnd::new("ListVersionsResult")))
         .expect("write root end");
+
+    String::from_utf8(writer.into_inner()).expect("valid UTF-8 XML")
+}
+
+/// Builds the XML response for `GetBucketVersioning`.
+///
+/// Returns `<VersioningConfiguration/>` when unversioned, or
+/// `<VersioningConfiguration><Status>Enabled|Suspended</Status></VersioningConfiguration>`.
+pub fn versioning_configuration_result(status: Option<&str>) -> String {
+    let mut writer = Writer::new(Vec::new());
+
+    writer
+        .write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
+        .expect("write XML decl");
+
+    match status {
+        Some(s) => {
+            let mut root = BytesStart::new("VersioningConfiguration");
+            root.push_attribute(("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
+            writer
+                .write_event(Event::Start(root))
+                .expect("write root start");
+            write_xml_element(&mut writer, "Status", s);
+            writer
+                .write_event(Event::End(BytesEnd::new("VersioningConfiguration")))
+                .expect("write root end");
+        }
+        None => {
+            let mut root = BytesStart::new("VersioningConfiguration");
+            root.push_attribute(("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
+            writer
+                .write_event(Event::Empty(root))
+                .expect("write empty root");
+        }
+    }
 
     String::from_utf8(writer.into_inner()).expect("valid UTF-8 XML")
 }

@@ -381,6 +381,7 @@ mod tests {
             last_modified: "2026-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: put_result.encryption.clone(),
+            version_id: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
 
@@ -408,6 +409,7 @@ mod tests {
             last_modified: "2026-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: put_result.encryption.clone(),
+            version_id: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
 
@@ -441,6 +443,7 @@ mod tests {
             last_modified: "2026-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: None,
+            version_id: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
 
@@ -468,6 +471,7 @@ mod tests {
             last_modified: "2026-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: put_result.encryption.clone(),
+            version_id: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
 
@@ -496,6 +500,7 @@ mod tests {
             last_modified: "2026-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: put_result.encryption.clone(),
+            version_id: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
 
@@ -523,6 +528,7 @@ mod tests {
             last_modified: "2026-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: put_result.encryption.clone(),
+            version_id: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
 
@@ -553,6 +559,7 @@ mod tests {
             last_modified: "2026-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: put_result.encryption,
+            version_id: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
 

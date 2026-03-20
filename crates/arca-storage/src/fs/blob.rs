@@ -327,6 +327,7 @@ mod tests {
             last_modified: "2024-01-01T00:00:00Z".to_string(),
             metadata: std::collections::HashMap::new(),
             encryption: None,
+            version_id: None,
         };
         store.write_sidecar(&blob_id, &meta).await.unwrap();
 
@@ -354,6 +355,7 @@ mod tests {
             last_modified: "t".to_string(),
             metadata: std::collections::HashMap::new(),
             encryption: None,
+            version_id: None,
         };
         store.write_sidecar(&blob_id, &meta).await.unwrap();
 

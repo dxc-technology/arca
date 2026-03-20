@@ -78,6 +78,9 @@ pub struct SidecarMeta {
     /// Encryption metadata. Absent/null = unencrypted (backward compatible).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub encryption: Option<BlobEncryptionInfo>,
+    /// Version ID for versioned objects. Absent for unversioned (backward compat).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version_id: Option<String>,
 }
 
 /// Trait for blob (binary data) storage operations.

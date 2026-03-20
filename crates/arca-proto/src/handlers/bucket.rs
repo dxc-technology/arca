@@ -157,13 +157,34 @@ pub async fn get_bucket(
         }
     }
 
+    // GetBucketVersioning
+    if params.iter().any(|(k, _)| k == "versioning") {
+        match state.metadata.head_bucket(&bucket).await {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource));
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
+        let status = match state.metadata.get_bucket_config(&bucket, "versioning").await {
+            Ok(Some(v)) => Some(v),
+            Ok(None) => None,
+            Err(e) => return internal_error_response(e, &resource),
+        };
+        let xml = xml_types::versioning_configuration_result(status.as_deref());
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/xml")
+            .body(Body::from(xml))
+            .expect("build versioning response");
+    }
+
     // ListMultipartUploads: GET /{bucket}?uploads
     if params.iter().any(|(k, _)| k == "uploads") {
         return list_multipart_uploads(state, &bucket, &resource, &params).await;
     }
 
-    // ListObjectVersions: mc sends ?versions= for recursive delete.
-    // Since we don't support versioning, return current objects as Version entries.
+    // ListObjectVersions
     if params.iter().any(|(k, _)| k == "versions") {
         return list_object_versions(state, &bucket, &resource, &params).await;
     }
@@ -657,10 +678,7 @@ async fn list_objects_v1(
 
 /// Handles ListObjectVersions requests.
 ///
-/// TECHDEBT(TD-003): Since Arca doesn't support versioning, each object is
-/// returned as a single `<Version>` entry with `VersionId=null` and
-/// `IsLatest=true`. This is enough for mc's `rm --recursive` workflow which
-/// lists versions before batch-deleting.
+/// Returns all object versions and delete markers with real version IDs.
 async fn list_object_versions(
     state: AppState,
     bucket: &str,
@@ -684,8 +702,9 @@ async fn list_object_versions(
     }
 
     let prefix = get_param("prefix");
-    let delimiter = get_param("delimiter");
+    let _delimiter = get_param("delimiter"); // Acknowledged but not grouped for versions.
     let key_marker = get_param("key-marker");
+    let version_id_marker = get_param("version-id-marker");
 
     let max_keys: u32 = match get_param("max-keys") {
         Some(s) => match s.parse() {
@@ -706,7 +725,7 @@ async fn list_object_versions(
     let fetch_limit = max_keys + 1;
     let records = match state
         .metadata
-        .list_objects(bucket, prefix, key_marker, fetch_limit)
+        .list_object_versions(bucket, prefix, key_marker, version_id_marker, fetch_limit)
         .await
     {
         Ok(r) => r,
@@ -714,18 +733,20 @@ async fn list_object_versions(
     };
 
     let is_truncated = records.len() as u32 > max_keys;
-    let records = if is_truncated {
+    let entries = if is_truncated {
         &records[..max_keys as usize]
     } else {
         &records[..]
     };
 
-    // Build version entries (no delimiter grouping for versions API).
-    let _ = delimiter; // Acknowledged but not used for version listing.
-    let versions: Vec<ListEntry> = records.iter().map(|r| record_to_list_entry(r, false)).collect();
-
     let next_key_marker = if is_truncated {
-        records.last().map(|r| r.key.as_str())
+        entries.last().map(|r| r.key.as_str())
+    } else {
+        None
+    };
+
+    let next_version_id_marker = if is_truncated {
+        entries.last().and_then(|r| r.version_id.as_deref())
     } else {
         None
     };
@@ -734,10 +755,12 @@ async fn list_object_versions(
         bucket,
         prefix,
         key_marker,
+        version_id_marker,
         max_keys,
         is_truncated,
-        &versions,
+        entries,
         next_key_marker,
+        next_version_id_marker,
     );
     Response::builder()
         .status(StatusCode::OK)
@@ -911,6 +934,80 @@ async fn put_bucket_encryption(
     }
 }
 
+/// Handles `PUT /{bucket}?versioning`.
+///
+/// Parses the `<VersioningConfiguration><Status>...</Status></VersioningConfiguration>`
+/// XML body and stores the versioning state in bucket_config.
+async fn put_bucket_versioning(
+    state: AppState,
+    bucket: &str,
+    resource: &str,
+    request: axum::extract::Request,
+) -> Response {
+    // Check bucket exists.
+    match state.metadata.head_bucket(bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, resource));
+        }
+        Err(e) => return internal_error_response(e, resource),
+    }
+
+    // Read and parse XML body.
+    let body_bytes = match axum::body::to_bytes(request.into_body(), 65_536).await {
+        Ok(b) => b,
+        Err(_) => {
+            return s3_error_response(S3Error::with_message(
+                S3ErrorCode::InvalidArgument,
+                "Request body too large or invalid",
+                resource,
+            ));
+        }
+    };
+    let body_str = match std::str::from_utf8(&body_bytes) {
+        Ok(s) => s,
+        Err(_) => {
+            return s3_error_response(S3Error::with_message(
+                S3ErrorCode::InvalidArgument,
+                "Request body is not valid UTF-8",
+                resource,
+            ));
+        }
+    };
+
+    // Parse <Status> from the XML body.
+    let status = parse_versioning_status(body_str);
+    match status.as_deref() {
+        Some("Enabled") | Some("Suspended") => {
+            match state
+                .metadata
+                .set_bucket_config(bucket, "versioning", status.as_deref().unwrap())
+                .await
+            {
+                Ok(()) => Response::builder()
+                    .status(StatusCode::OK)
+                    .body(Body::empty())
+                    .expect("build put_bucket_versioning response"),
+                Err(e) => internal_error_response(e, resource),
+            }
+        }
+        _ => s3_error_response(S3Error::with_message(
+            S3ErrorCode::MalformedXML,
+            "Invalid or missing Status element (expected Enabled or Suspended)",
+            resource,
+        )),
+    }
+}
+
+/// Parses the Status value from a PutBucketVersioning XML body.
+fn parse_versioning_status(xml: &str) -> Option<String> {
+    let start_tag = "<Status>";
+    let end_tag = "</Status>";
+    let start = xml.find(start_tag)? + start_tag.len();
+    let end = xml[start..].find(end_tag)? + start;
+    Some(xml[start..end].trim().to_string())
+}
+
 /// Parses the SSEAlgorithm value from a PutBucketEncryption XML body.
 fn parse_sse_algorithm(xml: &str) -> Option<String> {
     // Simple extraction — look for <SSEAlgorithm>...</SSEAlgorithm>.
@@ -972,9 +1069,14 @@ pub async fn create_bucket(
         return put_bucket_encryption(state, &bucket, &resource, request).await;
     }
 
+    // PutBucketVersioning
+    if query.starts_with("versioning") || query.starts_with("versioning=") || query.starts_with("versioning&") {
+        return put_bucket_versioning(state, &bucket, &resource, request).await;
+    }
+
     // TECHDEBT(TD-007): Unimplemented bucket-level PUT operations return 501.
     let unimplemented_ops = [
-        "versioning", "acl", "lifecycle", "cors", "logging",
+        "acl", "lifecycle", "cors", "logging",
         "notification", "policy", "replication", "tagging",
         "object-lock", "website", "accelerate",
         "requestPayment", "inventory", "analytics", "metrics",
@@ -1237,14 +1339,16 @@ async fn delete_objects(
 
         match state.metadata.delete_object(&bucket, &obj.key).await {
             Ok(old) => {
-                // Delete blob if record existed.
-                if let Some(old_record) = old {
-                    if let Err(e) = state.blob.delete(&old_record.blob_id).await {
-                        tracing::warn!(
-                            error = %e,
-                            key = %obj.key,
-                            "Failed to delete blob for deleted object"
-                        );
+                // Delete blob if record existed and is not a delete marker.
+                if let Some(ref old_record) = old {
+                    if !old_record.is_delete_marker && !old_record.blob_id.0.is_empty() {
+                        if let Err(e) = state.blob.delete(&old_record.blob_id).await {
+                            tracing::warn!(
+                                error = %e,
+                                key = %obj.key,
+                                "Failed to delete blob for deleted object"
+                            );
+                        }
                     }
                 }
                 // S3 reports success even if the key didn't exist.

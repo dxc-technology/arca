@@ -34,9 +34,11 @@ pub enum S3ErrorCode {
     InvalidPartOrder,
     InvalidRange,
     InvalidRequest,
+    MethodNotAllowed,
     NotModified,
     NoSuchBucket,
     NoSuchKey,
+    NoSuchVersion,
     MalformedXML,
     PreconditionFailed,
     NoSuchUpload,
@@ -63,10 +65,12 @@ impl S3ErrorCode {
             S3ErrorCode::InvalidPartOrder => 400,
             S3ErrorCode::InvalidRange => 416,
             S3ErrorCode::InvalidRequest => 400,
+            S3ErrorCode::MethodNotAllowed => 405,
             S3ErrorCode::MalformedXML => 400,
             S3ErrorCode::NotModified => 304,
             S3ErrorCode::NoSuchBucket => 404,
             S3ErrorCode::NoSuchKey => 404,
+            S3ErrorCode::NoSuchVersion => 404,
             S3ErrorCode::NoSuchUpload => 404,
             S3ErrorCode::NotImplemented => 501,
             S3ErrorCode::PreconditionFailed => 412,
@@ -92,10 +96,12 @@ impl S3ErrorCode {
             S3ErrorCode::InvalidPartOrder => "InvalidPartOrder",
             S3ErrorCode::InvalidRange => "InvalidRange",
             S3ErrorCode::InvalidRequest => "InvalidRequest",
+            S3ErrorCode::MethodNotAllowed => "MethodNotAllowed",
             S3ErrorCode::MalformedXML => "MalformedXML",
             S3ErrorCode::NotModified => "NotModified",
             S3ErrorCode::NoSuchBucket => "NoSuchBucket",
             S3ErrorCode::NoSuchKey => "NoSuchKey",
+            S3ErrorCode::NoSuchVersion => "NoSuchVersion",
             S3ErrorCode::NoSuchUpload => "NoSuchUpload",
             S3ErrorCode::NotImplemented => "NotImplemented",
             S3ErrorCode::PreconditionFailed => "PreconditionFailed",
@@ -143,12 +149,16 @@ impl S3ErrorCode {
                 "The requested range is not satisfiable."
             }
             S3ErrorCode::InvalidRequest => "Invalid Request",
+            S3ErrorCode::MethodNotAllowed => {
+                "The specified method is not allowed against this resource."
+            }
             S3ErrorCode::MalformedXML => {
                 "The XML you provided was not well-formed or did not validate against our published schema."
             }
             S3ErrorCode::NotModified => "Not Modified",
             S3ErrorCode::NoSuchBucket => "The specified bucket does not exist.",
             S3ErrorCode::NoSuchKey => "The specified key does not exist.",
+            S3ErrorCode::NoSuchVersion => "The specified version does not exist.",
             S3ErrorCode::NoSuchUpload => {
                 "The specified multipart upload does not exist."
             }
@@ -310,8 +320,10 @@ mod tests {
         assert_eq!(S3ErrorCode::BadDigest.http_status(), 400);
         assert_eq!(S3ErrorCode::InvalidArgument.http_status(), 400);
         assert_eq!(S3ErrorCode::InternalError.http_status(), 500);
+        assert_eq!(S3ErrorCode::MethodNotAllowed.http_status(), 405);
         assert_eq!(S3ErrorCode::MalformedXML.http_status(), 400);
         assert_eq!(S3ErrorCode::NotModified.http_status(), 304);
+        assert_eq!(S3ErrorCode::NoSuchVersion.http_status(), 404);
         assert_eq!(S3ErrorCode::PreconditionFailed.http_status(), 412);
         assert_eq!(
             S3ErrorCode::ServerSideEncryptionConfigurationNotFoundError.http_status(),

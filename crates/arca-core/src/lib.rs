@@ -14,5 +14,5 @@ pub use policy::{Effect, Evaluation, PolicyDocument, Statement};
 pub use s3::bucket_name::validate_bucket_name;
 pub use types::{
     BlobId, BucketInfo, Credential, Grant, ListBucketResultParams, ListEntry,
-    MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats, Team, User,
+    MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats, Team, User, VersioningState,
 };

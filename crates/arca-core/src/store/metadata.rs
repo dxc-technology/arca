@@ -65,6 +65,36 @@ pub trait MetadataStore: Send + Sync {
         max_keys: u32,
     ) -> Result<Vec<ObjectRecord>, crate::error::ArcaError>;
 
+    // -- Versioned object operations --
+
+    /// Returns a specific version of an object, or None if not found.
+    async fn get_object_version(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: &str,
+    ) -> Result<Option<ObjectRecord>, crate::error::ArcaError>;
+
+    /// Hard-deletes a specific object version. Returns the deleted record.
+    /// If the deleted version was `is_latest`, promotes the next-newest version.
+    async fn delete_object_version(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: &str,
+    ) -> Result<Option<ObjectRecord>, crate::error::ArcaError>;
+
+    /// Lists all versions of objects in a bucket, including delete markers,
+    /// ordered by `(key ASC, last_modified DESC)`.
+    async fn list_object_versions(
+        &self,
+        bucket: &str,
+        prefix: Option<&str>,
+        key_marker: Option<&str>,
+        version_id_marker: Option<&str>,
+        max_keys: u32,
+    ) -> Result<Vec<ObjectRecord>, crate::error::ArcaError>;
+
     // -- Multipart upload operations --
 
     /// Creates a new multipart upload record.

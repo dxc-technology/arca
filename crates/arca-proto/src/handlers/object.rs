@@ -396,6 +396,7 @@ pub async fn put_object(
         last_modified: now.to_rfc3339(),
         metadata: metadata.clone(),
         encryption: encryption_info.clone(),
+        version_id: None,
     };
     if let Err(e) = state.blob.write_sidecar(&blob_id, &sidecar).await {
         return internal_error_response(e, &resource);
@@ -421,6 +422,9 @@ pub async fn put_object(
             }
         }),
         owner: "root".to_string(),
+        version_id: None,
+        is_latest: true,
+        is_delete_marker: false,
     };
     let old = match state.metadata.put_object(&record).await {
         Ok(old) => old,
@@ -434,10 +438,21 @@ pub async fn put_object(
         }
     }
 
+    // Re-read the stored record to get the version_id assigned by the metadata store.
+    let stored = state
+        .metadata
+        .get_object(&record.bucket, &record.key)
+        .await
+        .ok()
+        .flatten();
+
     let etag = format!("\"{}\"", put_result.etag);
     let mut builder = Response::builder()
         .status(StatusCode::OK)
         .header("ETag", &etag);
+    if let Some(ref vid) = stored.as_ref().and_then(|r| r.version_id.as_ref()) {
+        builder = builder.header("x-amz-version-id", vid.as_str());
+    }
     if let Some(ref ssec) = ssec_key {
         builder = builder
             .header("x-amz-server-side-encryption-customer-algorithm", "AES256")
@@ -469,7 +484,7 @@ async fn copy_object(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
-    let (src_bucket, src_key) = match parse_copy_source(copy_source) {
+    let (src_bucket, src_key, src_version_id) = match parse_copy_source(copy_source) {
         Some(parsed) => parsed,
         None => {
             return s3_error_response(S3Error::with_message(
@@ -501,16 +516,40 @@ async fn copy_object(
         Err(e) => return internal_error_response(e, &resource),
     }
 
-    // Get source object record.
-    let src_record = match state.metadata.get_object(&src_bucket, &src_key).await {
-        Ok(Some(r)) => r,
-        Ok(None) => {
-            return s3_error_response(S3Error::new(
-                S3ErrorCode::NoSuchKey,
-                format!("/{src_bucket}/{src_key}"),
-            ));
+    // Get source object record (specific version if requested).
+    let src_record = if let Some(ref vid) = src_version_id {
+        match state
+            .metadata
+            .get_object_version(&src_bucket, &src_key, vid)
+            .await
+        {
+            Ok(Some(r)) if r.is_delete_marker => {
+                return s3_error_response(S3Error::with_message(
+                    S3ErrorCode::InvalidRequest,
+                    "The source of a copy request may not specifically refer to a delete marker by version id.",
+                    &resource,
+                ));
+            }
+            Ok(Some(r)) => r,
+            Ok(None) => {
+                return s3_error_response(S3Error::new(
+                    S3ErrorCode::NoSuchVersion,
+                    format!("/{src_bucket}/{src_key}"),
+                ));
+            }
+            Err(e) => return internal_error_response(e, &resource),
         }
-        Err(e) => return internal_error_response(e, &resource),
+    } else {
+        match state.metadata.get_object(&src_bucket, &src_key).await {
+            Ok(Some(r)) => r,
+            Ok(None) => {
+                return s3_error_response(S3Error::new(
+                    S3ErrorCode::NoSuchKey,
+                    format!("/{src_bucket}/{src_key}"),
+                ));
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
     };
 
     // Check copy-source conditional headers against source object.
@@ -665,6 +704,7 @@ async fn copy_object(
         last_modified: now.to_rfc3339(),
         metadata: metadata.clone(),
         encryption: encryption_info.clone(),
+        version_id: None,
     };
     if let Err(e) = state.blob.write_sidecar(&new_blob_id, &sidecar).await {
         return internal_error_response(e, &resource);
@@ -689,6 +729,9 @@ async fn copy_object(
             }
         }),
         owner: "root".to_string(),
+        version_id: None,
+        is_latest: true,
+        is_delete_marker: false,
     };
     let old = match state.metadata.put_object(&record).await {
         Ok(old) => old,
@@ -702,11 +745,27 @@ async fn copy_object(
         }
     }
 
+    // Re-read the stored record to get the version_id assigned by the metadata store.
+    let stored = state
+        .metadata
+        .get_object(&record.bucket, &record.key)
+        .await
+        .ok()
+        .flatten();
+
     // CopyObject returns XML body (not just headers like PutObject).
     let xml = xml_types::copy_object_result(&put_result.etag, &now);
     let mut builder = Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/xml");
+    // Add x-amz-copy-source-version-id if source had a version_id.
+    if let Some(ref vid) = src_record.version_id {
+        builder = builder.header("x-amz-copy-source-version-id", vid.as_str());
+    }
+    // Add x-amz-version-id for the new destination version.
+    if let Some(ref vid) = stored.as_ref().and_then(|r| r.version_id.as_ref()) {
+        builder = builder.header("x-amz-version-id", vid.as_str());
+    }
     if let Some(ref ssec) = dest_ssec {
         builder = builder
             .header("x-amz-server-side-encryption-customer-algorithm", "AES256")
@@ -754,7 +813,7 @@ async fn upload_part_copy(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
-    let (src_bucket, src_key) = match parse_copy_source(copy_source) {
+    let (src_bucket, src_key, _src_version_id) = match parse_copy_source(copy_source) {
         Some(parsed) => parsed,
         None => {
             return s3_error_response(S3Error::with_message(
@@ -845,6 +904,7 @@ async fn upload_part_copy(
             last_modified: chrono::Utc::now().to_rfc3339(),
             metadata: std::collections::HashMap::new(),
             encryption: put_result.encryption.clone(),
+            version_id: None,
         };
         if let Err(e) = state.blob.write_sidecar(&blob_id, &sidecar).await {
             tracing::warn!(error = %e, "Failed to write part sidecar");
@@ -922,14 +982,22 @@ fn parse_copy_source_range(value: &str, file_size: u64) -> Result<ByteRange, Cop
     })
 }
 
-/// Parses the `x-amz-copy-source` header value into (bucket, key).
+/// Parses the `x-amz-copy-source` header value into (bucket, key, optional version_id).
 ///
 /// The header value may be URL-encoded and may contain a `?versionId=` suffix.
 /// Format: `/bucket/key` or `bucket/key` (leading slash optional).
-fn parse_copy_source(value: &str) -> Option<(String, String)> {
-    // Strip optional ?versionId= suffix BEFORE URL-decoding, since a literal
+fn parse_copy_source(value: &str) -> Option<(String, String, Option<String>)> {
+    // Extract optional ?versionId= suffix BEFORE URL-decoding, since a literal
     // '?' in the key would be encoded as %3F in the URL.
-    let path = value.split('?').next().unwrap_or(value);
+    let (path, version_id) = if let Some(qmark) = value.find('?') {
+        let query = &value[qmark + 1..];
+        let vid = form_urlencoded::parse(query.as_bytes())
+            .find(|(k, _)| k == "versionId")
+            .map(|(_, v)| v.into_owned());
+        (&value[..qmark], vid)
+    } else {
+        (value, None)
+    };
 
     let decoded = urlencoding::decode(path).ok()?;
     let decoded = decoded.as_ref();
@@ -946,7 +1014,7 @@ fn parse_copy_source(value: &str) -> Option<(String, String)> {
         return None;
     }
 
-    Some((bucket.to_string(), key.to_string()))
+    Some((bucket.to_string(), key.to_string(), version_id))
 }
 
 /// GET /{bucket}/{*key} — GetObject
@@ -957,6 +1025,13 @@ pub async fn get_object(
 ) -> Response {
     let resource = format!("/{bucket}/{key}");
 
+    // Parse ?versionId= from query params.
+    let version_id = request.uri().query().and_then(|q| {
+        form_urlencoded::parse(q.as_bytes())
+            .find(|(k, _)| k == "versionId")
+            .map(|(_, v)| v.into_owned())
+    });
+
     // Check bucket exists (S3 returns NoSuchBucket, not NoSuchKey).
     match state.metadata.head_bucket(&bucket).await {
         Ok(Some(_)) => {}
@@ -966,12 +1041,37 @@ pub async fn get_object(
         Err(e) => return internal_error_response(e, &resource),
     }
 
-    let record = match state.metadata.get_object(&bucket, &key).await {
-        Ok(Some(r)) => r,
-        Ok(None) => {
-            return s3_error_response(S3Error::new(S3ErrorCode::NoSuchKey, &resource));
+    let record = if let Some(ref vid) = version_id {
+        match state
+            .metadata
+            .get_object_version(&bucket, &key, vid)
+            .await
+        {
+            Ok(Some(r)) if r.is_delete_marker => {
+                // GetObject on a delete marker returns 405 MethodNotAllowed.
+                let mut builder = Response::builder()
+                    .status(StatusCode::METHOD_NOT_ALLOWED)
+                    .header("x-amz-delete-marker", "true")
+                    .header("Allow", "DELETE");
+                if let Some(ref v) = r.version_id {
+                    builder = builder.header("x-amz-version-id", v.as_str());
+                }
+                return builder.body(Body::empty()).expect("build delete marker 405 response");
+            }
+            Ok(Some(r)) => r,
+            Ok(None) => {
+                return s3_error_response(S3Error::new(S3ErrorCode::NoSuchVersion, &resource));
+            }
+            Err(e) => return internal_error_response(e, &resource),
         }
-        Err(e) => return internal_error_response(e, &resource),
+    } else {
+        match state.metadata.get_object(&bucket, &key).await {
+            Ok(Some(r)) => r,
+            Ok(None) => {
+                return s3_error_response(S3Error::new(S3ErrorCode::NoSuchKey, &resource));
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
     };
 
     // Check conditional headers (If-Match, If-None-Match, etc.).
@@ -1094,6 +1194,9 @@ pub async fn get_object(
         .header("Content-Type", &content_type)
         .header("Accept-Ranges", "bytes");
 
+    if let Some(ref vid) = record.version_id {
+        builder = builder.header("x-amz-version-id", vid.as_str());
+    }
     if let Some(range_str) = content_range {
         builder = builder.header("Content-Range", range_str);
     }
@@ -1144,6 +1247,13 @@ pub async fn head_object(
 ) -> Response {
     let resource = format!("/{bucket}/{key}");
 
+    // Parse ?versionId= from query params.
+    let version_id = request.uri().query().and_then(|q| {
+        form_urlencoded::parse(q.as_bytes())
+            .find(|(k, _)| k == "versionId")
+            .map(|(_, v)| v.into_owned())
+    });
+
     // Check bucket exists.
     match state.metadata.head_bucket(&bucket).await {
         Ok(Some(_)) => {}
@@ -1153,12 +1263,36 @@ pub async fn head_object(
         Err(e) => return internal_error_response(e, &resource),
     }
 
-    let record = match state.metadata.get_object(&bucket, &key).await {
-        Ok(Some(r)) => r,
-        Ok(None) => {
-            return s3_error_response(S3Error::new(S3ErrorCode::NoSuchKey, &resource));
+    let record = if let Some(ref vid) = version_id {
+        match state
+            .metadata
+            .get_object_version(&bucket, &key, vid)
+            .await
+        {
+            Ok(Some(r)) if r.is_delete_marker => {
+                // HeadObject on a delete marker returns 404 with marker headers.
+                let mut builder = Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .header("x-amz-delete-marker", "true");
+                if let Some(ref v) = r.version_id {
+                    builder = builder.header("x-amz-version-id", v.as_str());
+                }
+                return builder.body(Body::empty()).expect("build delete marker 404 response");
+            }
+            Ok(Some(r)) => r,
+            Ok(None) => {
+                return s3_error_response(S3Error::new(S3ErrorCode::NoSuchVersion, &resource));
+            }
+            Err(e) => return internal_error_response(e, &resource),
         }
-        Err(e) => return internal_error_response(e, &resource),
+    } else {
+        match state.metadata.get_object(&bucket, &key).await {
+            Ok(Some(r)) => r,
+            Ok(None) => {
+                return s3_error_response(S3Error::new(S3ErrorCode::NoSuchKey, &resource));
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
     };
 
     // Check conditional headers (If-Match, If-None-Match, etc.).
@@ -1200,6 +1334,10 @@ pub async fn head_object(
         .header("Content-Type", &content_type)
         .header("Accept-Ranges", "bytes");
 
+    if let Some(ref vid) = record.version_id {
+        builder = builder.header("x-amz-version-id", vid.as_str());
+    }
+
     if is_ssec {
         let ssec = ssec_key.as_ref().unwrap();
         builder = builder
@@ -1233,7 +1371,8 @@ pub async fn delete_object(
     Path((bucket, key)): Path<(String, String)>,
     request: axum::extract::Request,
 ) -> Response {
-    // Check for AbortMultipartUpload (distinguished by query param).
+    // Check for AbortMultipartUpload or versionId (distinguished by query param).
+    let mut version_id = None;
     if let Some(query) = request.uri().query() {
         let params: Vec<(String, String)> = form_urlencoded::parse(query.as_bytes())
             .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -1247,6 +1386,10 @@ pub async fn delete_object(
             )
             .await;
         }
+        version_id = params
+            .iter()
+            .find(|(k, _)| k == "versionId")
+            .map(|(_, v)| v.clone());
     }
 
     let resource = format!("/{bucket}/{key}");
@@ -1259,6 +1402,34 @@ pub async fn delete_object(
             return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource));
         }
         Err(e) => return internal_error_response(e, &resource),
+    }
+
+    // Versioned delete: permanent removal of a specific version.
+    if let Some(ref vid) = version_id {
+        let old = match state
+            .metadata
+            .delete_object_version(&bucket, &key, vid)
+            .await
+        {
+            Ok(old) => old,
+            Err(e) => return internal_error_response(e, &resource),
+        };
+
+        let mut builder = Response::builder().status(StatusCode::NO_CONTENT);
+        if let Some(ref old_record) = old {
+            builder = builder.header("x-amz-version-id", vid.as_str());
+            if old_record.is_delete_marker {
+                builder = builder.header("x-amz-delete-marker", "true");
+            } else {
+                // Delete blob only for real objects, not delete markers.
+                if let Err(e) = state.blob.delete(&old_record.blob_id).await {
+                    tracing::warn!(error = %e, "Failed to delete blob for versioned delete");
+                }
+            }
+        }
+        return builder
+            .body(Body::empty())
+            .expect("build versioned delete_object response");
     }
 
     // Check conditional headers on delete (If-Match, x-amz-if-match-*).
@@ -1314,16 +1485,29 @@ pub async fn delete_object(
         Err(e) => return internal_error_response(e, &resource),
     };
 
-    // Delete blob if record existed.
-    if let Some(old_record) = old {
-        if let Err(e) = state.blob.delete(&old_record.blob_id).await {
-            tracing::warn!(error = %e, "Failed to delete blob for deleted object");
+    let mut builder = Response::builder().status(StatusCode::NO_CONTENT);
+
+    if let Some(ref old_record) = old {
+        // If the returned record is a delete marker (versioned soft-delete),
+        // add version headers and don't delete any blob.
+        if old_record.is_delete_marker {
+            if let Some(ref vid) = old_record.version_id {
+                builder = builder.header("x-amz-version-id", vid.as_str());
+            }
+            builder = builder.header("x-amz-delete-marker", "true");
+        } else {
+            // Non-versioned delete or versioned with old record returned: delete blob.
+            if let Some(ref vid) = old_record.version_id {
+                builder = builder.header("x-amz-version-id", vid.as_str());
+            }
+            if let Err(e) = state.blob.delete(&old_record.blob_id).await {
+                tracing::warn!(error = %e, "Failed to delete blob for deleted object");
+            }
         }
     }
 
     // S3 returns 204 regardless of whether the object existed.
-    Response::builder()
-        .status(StatusCode::NO_CONTENT)
+    builder
         .body(Body::empty())
         .expect("build delete_object response")
 }

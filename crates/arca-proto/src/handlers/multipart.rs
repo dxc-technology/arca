@@ -151,6 +151,7 @@ pub async fn upload_part(
             last_modified: chrono::Utc::now().to_rfc3339(),
             metadata: std::collections::HashMap::new(),
             encryption: put_result.encryption.clone(),
+            version_id: None,
         };
         if let Err(e) = state.blob.write_sidecar(&blob_id, &sidecar).await {
             tracing::warn!(error = %e, "Failed to write part sidecar");
@@ -367,6 +368,7 @@ pub async fn complete_multipart_upload(
         last_modified: now.to_rfc3339(),
         metadata: upload.metadata.clone(),
         encryption: put_result.encryption.clone(),
+        version_id: None,
     };
     if let Err(e) = state.blob.write_sidecar(&final_blob_id, &sidecar).await {
         return internal_error_response(e, &resource);
@@ -385,6 +387,9 @@ pub async fn complete_multipart_upload(
         encryption_algorithm: put_result.encryption.as_ref().map(|e| e.algorithm.clone()),
         encryption_key_id: put_result.encryption.as_ref().map(|e| e.key_id.clone()),
         owner: "root".to_string(),
+        version_id: None,
+        is_latest: true,
+        is_delete_marker: false,
     };
     let old = match state.metadata.put_object(&record).await {
         Ok(old) => old,

@@ -19,6 +19,7 @@ tokio-rusqlite = { workspace = true }
 tokio-stream = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
+uuid = { workspace = true }
 ring = { workspace = true }
 base64 = { workspace = true }
 

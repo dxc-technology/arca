@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { formatBytes, ringColors } from '../app.js';
+import { formatBytes, ringColors, icons } from '../app.js';
 
 // Squarified treemap algorithm
 function squarify(items, x, y, w, h) {
@@ -88,8 +88,20 @@ export function bucketDetailView() {
     directories: [],
     loading: true,
     selectedObject: null,
+    versionsExpanded: false,
+    versions: [],
+    versionsLoading: false,
+    versionsError: '',
+    showDeleteVersionModal: false,
+    deleteVersionKey: '',
+    deleteVersionId: '',
+    deleteVersionIsMarker: false,
+    deleteVersionIsLatest: false,
+    deletingVersion: false,
+    icons,
     encryptionEnabled: false,
     bucketEncrypted: false,
+    bucketVersioned: false,
     kmsProvider: null,
     showTreemap: false,
     treemapRects: [],
@@ -159,6 +171,14 @@ export function bucketDetailView() {
       } catch {
         this.bucketEncrypted = this.encryptionEnabled;
       }
+      try {
+        const vResp = await api.s3GetBucketVersioning(this.bucketName);
+        if (vResp.ok) {
+          const xml = await vResp.text();
+          const m = xml.match(/<Status>(.*?)<\/Status>/);
+          this.bucketVersioned = m ? m[1] : false;
+        }
+      } catch {}
       const bucket = this.bucketName;
       try {
         const result = await api.s3ListObjects(bucket, this.prefix);
@@ -221,12 +241,82 @@ export function bucketDetailView() {
 
     async selectObject(obj) {
       this.selectedObject = { ...obj, encrypted: false };
+      this.versionsExpanded = false;
+      this.versions = [];
+      this.versionsError = '';
       try {
         const resp = await api.s3HeadObject(this.bucketName, obj.key);
         if (resp.headers.get('x-amz-server-side-encryption')) {
           this.selectedObject = { ...this.selectedObject, encrypted: true };
         }
       } catch {}
+    },
+
+    async toggleVersions() {
+      this.versionsExpanded = !this.versionsExpanded;
+      if (this.versionsExpanded && this.versions.length === 0) {
+        await this.loadVersions();
+      }
+    },
+
+    async loadVersions() {
+      if (!this.selectedObject) return;
+      this.versionsLoading = true;
+      this.versionsError = '';
+      try {
+        const resp = await api.s3ListObjectVersions(this.bucketName, this.selectedObject.key);
+        if (!resp.ok) throw new Error(`Error ${resp.status}`);
+        const xml = await resp.text();
+        const all = api.parseListVersions(xml);
+        // Filter to only this exact key (prefix match might return more).
+        this.versions = all.filter(v => v.key === this.selectedObject.key);
+      } catch (e) {
+        this.versionsError = e.message;
+      }
+      this.versionsLoading = false;
+    },
+
+    async downloadVersion(key, versionId) {
+      try {
+        const resp = await api.s3GetObjectVersion(this.bucketName, key, versionId);
+        if (!resp.ok) throw new Error(`Error ${resp.status}`);
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = this.fileName(key);
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        this.$dispatch('show-toast', { message: 'Download failed: ' + e.message, type: 'error' });
+      }
+    },
+
+    confirmDeleteVersion(key, versionId, isDeleteMarker, isLatest) {
+      this.deleteVersionKey = key;
+      this.deleteVersionId = versionId;
+      this.deleteVersionIsMarker = isDeleteMarker;
+      this.deleteVersionIsLatest = isLatest;
+      this.deletingVersion = false;
+      this.showDeleteVersionModal = true;
+    },
+
+    async performDeleteVersion() {
+      this.deletingVersion = true;
+      try {
+        const resp = await api.s3DeleteObjectVersion(this.bucketName, this.deleteVersionKey, this.deleteVersionId);
+        if (!resp.ok && resp.status !== 204) throw new Error(`Error ${resp.status}`);
+        this.showDeleteVersionModal = false;
+        await this.loadVersions();
+        await this.loadObjects();
+      } catch (e) {
+        this.$dispatch('show-toast', { message: 'Delete failed: ' + e.message, type: 'error' });
+      }
+    },
+
+    truncateVersionId(vid) {
+      if (!vid || vid === 'null') return 'null';
+      return vid.substring(0, 8);
     },
 
     async downloadObject(key) {

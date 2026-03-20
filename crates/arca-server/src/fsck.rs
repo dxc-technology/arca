@@ -79,10 +79,17 @@ pub async fn run_fsck(config: &Config, verify_checksums: bool) -> Result<i32> {
 
     // Phase 2: Load all objects from DB.
     let db_objects = load_all_objects(&store).await?;
+    // Exclude delete markers (blob_id="", no physical blob).
+    let real_objects: Vec<&ObjectRecord> = db_objects.iter().filter(|o| !o.is_delete_marker).collect();
     let db_blob_ids: HashSet<BlobId> =
-        db_objects.iter().map(|o| o.blob_id.clone()).collect();
+        real_objects.iter().map(|o| o.blob_id.clone()).collect();
 
-    println!("Found {} object(s) in database", db_objects.len());
+    let dm_count = db_objects.len() - real_objects.len();
+    println!(
+        "Found {} object version(s) in database ({} delete markers)",
+        db_objects.len(),
+        dm_count,
+    );
     println!();
 
     // Check A: Orphaned blobs (on disk but not in DB).
@@ -91,8 +98,8 @@ pub async fn run_fsck(config: &Config, verify_checksums: bool) -> Result<i32> {
         .cloned()
         .collect();
 
-    // Check B: Missing blobs (in DB but not on disk).
-    let missing_blobs: Vec<(String, String, BlobId)> = db_objects
+    // Check B: Missing blobs (in DB but not on disk). Skip delete markers.
+    let missing_blobs: Vec<(String, String, BlobId)> = real_objects
         .iter()
         .filter(|o| !disk_blobs.contains(&o.blob_id))
         .map(|o| (o.bucket.clone(), o.key.clone(), o.blob_id.clone()))
@@ -184,21 +191,21 @@ async fn walk_blobs_dir(
     Ok(())
 }
 
-/// Loads all objects from all buckets in the database.
+/// Loads all object versions (including old versions and delete markers) from all buckets.
 async fn load_all_objects(store: &arca_storage::SqliteStore) -> Result<Vec<ObjectRecord>> {
     let buckets = store.list_buckets().await?;
     let mut all_objects = Vec::new();
 
     for bucket in &buckets {
-        let mut start_after: Option<String> = None;
+        let mut key_marker: Option<String> = None;
         loop {
             let objects = store
-                .list_objects(&bucket.name, None, start_after.as_deref(), 1000)
+                .list_object_versions(&bucket.name, None, key_marker.as_deref(), None, 1000)
                 .await?;
             if objects.is_empty() {
                 break;
             }
-            start_after = Some(objects.last().unwrap().key.clone());
+            key_marker = Some(objects.last().unwrap().key.clone());
             all_objects.extend(objects);
         }
     }
@@ -484,6 +491,7 @@ mod tests {
             last_modified: "2024-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: None,
+            version_id: None,
         };
         write_sidecar(&blobs_dir, blob_id, &meta).await;
 
@@ -501,6 +509,9 @@ mod tests {
             encryption_algorithm: None,
             encryption_key_id: None,
             owner: "root".to_string(),
+            version_id: None,
+            is_latest: true,
+            is_delete_marker: false,
         };
         store.put_object(&record).await.unwrap();
     }
@@ -570,6 +581,9 @@ mod tests {
             encryption_algorithm: None,
             encryption_key_id: None,
             owner: "root".to_string(),
+            version_id: None,
+            is_latest: true,
+            is_delete_marker: false,
         };
         store.put_object(&record).await.unwrap();
         drop(store);
@@ -603,6 +617,7 @@ mod tests {
             last_modified: "2024-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: None,
+            version_id: None,
         };
         write_sidecar(&blobs_dir, id, &bad_meta).await;
         drop(store);
@@ -682,6 +697,7 @@ mod tests {
             last_modified: "2024-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: None,
+            version_id: None,
         };
         write_sidecar(&blobs_dir, id, &meta).await;
 
@@ -700,6 +716,9 @@ mod tests {
             encryption_algorithm: None,
             encryption_key_id: None,
             owner: "root".to_string(),
+            version_id: None,
+            is_latest: true,
+            is_delete_marker: false,
         };
         store.put_object(&record).await.unwrap();
         drop(store);

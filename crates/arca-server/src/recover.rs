@@ -86,6 +86,14 @@ pub async fn run_recover(config: &Config, dry_run: bool, skip_verify: bool) -> R
     println!("Created {} bucket(s)", buckets.len());
 
     // Phase 6: Insert objects.
+    // Sort entries by (bucket, key, last_modified DESC) so that for versioned
+    // objects with multiple sidecars, the newest version is inserted last and
+    // becomes the current version (put_object overwrites on unversioned buckets).
+    let mut entries = entries;
+    entries.sort_by(|a, b| {
+        (&a.meta.bucket, &a.meta.key, &b.meta.last_modified)
+            .cmp(&(&b.meta.bucket, &b.meta.key, &a.meta.last_modified))
+    });
     let mut object_count = 0u64;
     for entry in &entries {
         let last_modified = DateTime::parse_from_rfc3339(&entry.meta.last_modified)
@@ -109,6 +117,9 @@ pub async fn run_recover(config: &Config, dry_run: bool, skip_verify: bool) -> R
             encryption_algorithm: entry.meta.encryption.as_ref().map(|e| e.algorithm.clone()),
             encryption_key_id: entry.meta.encryption.as_ref().map(|e| e.key_id.clone()),
             owner: "root".to_string(),
+            version_id: entry.meta.version_id.clone(),
+            is_latest: true,
+            is_delete_marker: false,
         };
         store.put_object(&record).await?;
         object_count += 1;
@@ -352,6 +363,7 @@ mod tests {
                 last_modified: "2024-01-01T00:00:00Z".into(),
                 metadata: HashMap::new(),
                 encryption: None,
+                version_id: None,
             },
         )
         .await;
@@ -369,6 +381,7 @@ mod tests {
                 last_modified: "2024-01-02T00:00:00Z".into(),
                 metadata: HashMap::new(),
                 encryption: None,
+                version_id: None,
             },
         )
         .await;
@@ -386,6 +399,7 @@ mod tests {
                 last_modified: "2024-01-03T00:00:00Z".into(),
                 metadata: HashMap::new(),
                 encryption: None,
+                version_id: None,
             },
         )
         .await;
@@ -435,6 +449,7 @@ mod tests {
                 last_modified: "2024-01-01T00:00:00Z".into(),
                 metadata: HashMap::new(),
                 encryption: None,
+                version_id: None,
             },
         )
         .await;
@@ -467,6 +482,7 @@ mod tests {
             last_modified: "2024-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: None,
+            version_id: None,
         };
         let json = serde_json::to_string(&meta).unwrap();
         fs::write(dir.join(format!("{id}.meta")), json).await.unwrap();
@@ -548,6 +564,7 @@ mod tests {
                 last_modified: "2024-01-01T00:00:00Z".into(),
                 metadata: HashMap::new(),
                 encryption: None,
+                version_id: None,
             },
         )
         .await;
@@ -587,6 +604,7 @@ mod tests {
                 last_modified: "2024-01-01T00:00:00Z".into(),
                 metadata: HashMap::new(),
                 encryption: None,
+                version_id: None,
             },
         )
         .await;
@@ -625,6 +643,7 @@ mod tests {
                 last_modified: "2024-06-15T12:00:00Z".into(),
                 metadata: HashMap::new(),
                 encryption: None,
+                version_id: None,
             },
         )
         .await;
