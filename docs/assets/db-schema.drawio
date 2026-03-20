@@ -1,160 +1,275 @@
 <mxfile>
   <diagram name="Arca DB Schema" id="arca-db">
-    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" background="#f8fafc" math="0" shadow="0">
+    <mxGraphModel dx="2400" dy="1400" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2400" pageHeight="1400" background="#f8fafc" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
 
-        <mxCell id="title" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=18;fontColor=#1a365d;" value="&lt;b&gt;Arca — Database Schema&lt;/b&gt;&lt;br&gt;&lt;font style=&#39;font-size:12px;color:#64748b&#39;&gt;S3-Compatible Object Storage · SQLite3 · WAL mode · 7 tables&lt;/font&gt;" vertex="1">
-          <mxGeometry x="450" y="20" width="700" height="50" as="geometry" />
+        <mxCell id="title" parent="1" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=18;fontColor=#1a365d;" value="&lt;b&gt;Arca — Database Schema&lt;/b&gt;&lt;br&gt;&lt;font style=&#39;font-size:12px;color:#64748b&#39;&gt;S3-Compatible Object Storage · SQLite3 · WAL mode · 13 tables · Migration v9&lt;/font&gt;" vertex="1">
+          <mxGeometry x="650" y="20" width="700" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ============ Auth & Identity (top-left) ============ -->
+
+        <mxCell id="usr_h" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#7c3aed;fontColor=#ffffff;strokeColor=#7c3aed;fontSize=13;verticalAlign=middle;arcSize=12;" value="&lt;b&gt;users&lt;/b&gt;" vertex="1">
+          <mxGeometry x="60" y="110" width="280" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="usr_f" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cbd5e1;fontSize=11;verticalAlign=top;arcSize=8;" value="&lt;div style=&#39;text-align:left;padding:6px 10px;font-size:11px;line-height:1.7&#39;&gt;&#x1f511; &lt;b&gt;user_id&lt;/b&gt; TEXT PK&lt;br&gt;username TEXT NOT NULL UNIQUE&lt;br&gt;description TEXT DEFAULT &#39;&#39;&lt;br&gt;is_root INTEGER NOT NULL DEFAULT 0&lt;br&gt;created_at TEXT NOT NULL&lt;/div&gt;" vertex="1">
+          <mxGeometry x="60" y="150" width="280" height="120" as="geometry" />
         </mxCell>
 
         <mxCell id="cred_h" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#7c3aed;fontColor=#ffffff;strokeColor=#7c3aed;fontSize=13;verticalAlign=middle;arcSize=12;" value="&lt;b&gt;credentials&lt;/b&gt;" vertex="1">
-          <mxGeometry x="60" y="110" width="280" height="40" as="geometry" />
+          <mxGeometry x="400" y="110" width="310" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="cred_f" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cbd5e1;fontSize=11;verticalAlign=top;arcSize=8;" value="&lt;div style=&#39;text-align:left;padding:6px 10px;font-size:11px;line-height:1.7&#39;&gt;&#x1f511; &lt;b&gt;access_key_id&lt;/b&gt; TEXT PK&lt;br&gt;secret_access_key TEXT NOT NULL&lt;br&gt;description TEXT DEFAULT &#39;&#39;&lt;br&gt;created_at TEXT NOT NULL&lt;br&gt;active INTEGER NOT NULL DEFAULT 1&lt;br&gt;admin INTEGER NOT NULL DEFAULT 0&lt;/div&gt;" vertex="1">
-          <mxGeometry x="60" y="150" width="280" height="140" as="geometry" />
+        <mxCell id="cred_f" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cbd5e1;fontSize=11;verticalAlign=top;arcSize=8;" value="&lt;div style=&#39;text-align:left;padding:6px 10px;font-size:11px;line-height:1.7&#39;&gt;&#x1f511; &lt;b&gt;access_key_id&lt;/b&gt; TEXT PK&lt;br&gt;secret_access_key TEXT NOT NULL&lt;br&gt;description TEXT DEFAULT &#39;&#39;&lt;br&gt;created_at TEXT NOT NULL&lt;br&gt;active INTEGER NOT NULL DEFAULT 1&lt;br&gt;admin INTEGER NOT NULL DEFAULT 0&lt;br&gt;&#x1f517; user_id TEXT NOT NULL FK &#x2192; users&lt;/div&gt;" vertex="1">
+          <mxGeometry x="400" y="150" width="310" height="155" as="geometry" />
         </mxCell>
+
+        <!-- ============ Teams (mid-left) ============ -->
+
+        <mxCell id="team_h" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#7c3aed;fontColor=#ffffff;strokeColor=#7c3aed;fontSize=13;verticalAlign=middle;arcSize=12;" value="&lt;b&gt;teams&lt;/b&gt;" vertex="1">
+          <mxGeometry x="60" y="360" width="280" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="team_f" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cbd5e1;fontSize=11;verticalAlign=top;arcSize=8;" value="&lt;div style=&#39;text-align:left;padding:6px 10px;font-size:11px;line-height:1.7&#39;&gt;&#x1f511; &lt;b&gt;team_id&lt;/b&gt; TEXT PK&lt;br&gt;name TEXT NOT NULL UNIQUE&lt;br&gt;description TEXT DEFAULT &#39;&#39;&lt;br&gt;created_at TEXT NOT NULL&lt;/div&gt;" vertex="1">
+          <mxGeometry x="60" y="400" width="280" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tmem_h" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#a78bfa;fontColor=#ffffff;strokeColor=#a78bfa;fontSize=13;verticalAlign=middle;arcSize=12;" value="&lt;b&gt;team_members&lt;/b&gt;" vertex="1">
+          <mxGeometry x="400" y="360" width="250" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="tmem_f" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cbd5e1;fontSize=11;verticalAlign=top;arcSize=8;" value="&lt;div style=&#39;text-align:left;padding:6px 10px;font-size:11px;line-height:1.7&#39;&gt;&#x1f511;&#x1f517; &lt;b&gt;team_id&lt;/b&gt; TEXT PK, FK &#x2192; teams&lt;br&gt;&#x1f511;&#x1f517; &lt;b&gt;user_id&lt;/b&gt; TEXT PK, FK &#x2192; users&lt;/div&gt;" vertex="1">
+          <mxGeometry x="400" y="400" width="250" height="65" as="geometry" />
+        </mxCell>
+
+        <!-- ============ Grants / Policies (bottom-left) ============ -->
+
+        <mxCell id="grant_h" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#059669;fontColor=#ffffff;strokeColor=#059669;fontSize=13;verticalAlign=middle;arcSize=12;" value="&lt;b&gt;grants&lt;/b&gt;" vertex="1">
+          <mxGeometry x="60" y="580" width="290" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="grant_f" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cbd5e1;fontSize=11;verticalAlign=top;arcSize=8;" value="&lt;div style=&#39;text-align:left;padding:6px 10px;font-size:11px;line-height:1.7&#39;&gt;&#x1f511; &lt;b&gt;grant_id&lt;/b&gt; TEXT PK&lt;br&gt;name TEXT NOT NULL UNIQUE&lt;br&gt;description TEXT DEFAULT &#39;&#39;&lt;br&gt;document TEXT NOT NULL (JSON policy)&lt;br&gt;created_at TEXT NOT NULL&lt;br&gt;updated_at TEXT NOT NULL&lt;/div&gt;" vertex="1">
+          <mxGeometry x="60" y="620" width="290" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ug_h" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#6ee7b7;fontColor=#065f46;strokeColor=#6ee7b7;fontSize=13;verticalAlign=middle;arcSize=12;" value="&lt;b&gt;user_grants&lt;/b&gt;" vertex="1">
+          <mxGeometry x="420" y="580" width="250" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="ug_f" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cbd5e1;fontSize=11;verticalAlign=top;arcSize=8;" value="&lt;div style=&#39;text-align:left;padding:6px 10px;font-size:11px;line-height:1.7&#39;&gt;&#x1f511;&#x1f517; &lt;b&gt;user_id&lt;/b&gt; TEXT PK, FK &#x2192; users&lt;br&gt;&#x1f511;&#x1f517; &lt;b&gt;grant_id&lt;/b&gt; TEXT PK, FK &#x2192; grants&lt;/div&gt;" vertex="1">
+          <mxGeometry x="420" y="620" width="250" height="65" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tg_h" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#6ee7b7;fontColor=#065f46;strokeColor=#6ee7b7;fontSize=13;verticalAlign=middle;arcSize=12;" value="&lt;b&gt;team_grants&lt;/b&gt;" vertex="1">
+          <mxGeometry x="420" y="750" width="250" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="tg_f" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cbd5e1;fontSize=11;verticalAlign=top;arcSize=8;" value="&lt;div style=&#39;text-align:left;padding:6px 10px;font-size:11px;line-height:1.7&#39;&gt;&#x1f511;&#x1f517; &lt;b&gt;team_id&lt;/b&gt; TEXT PK, FK &#x2192; teams&lt;br&gt;&#x1f511;&#x1f517; &lt;b&gt;grant_id&lt;/b&gt; TEXT PK, FK &#x2192; grants&lt;/div&gt;" vertex="1">
+          <mxGeometry x="420" y="790" width="250" height="65" as="geometry" />
+        </mxCell>
+
+        <!-- ============ Storage (right side) ============ -->
 
         <mxCell id="bkt_h" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1a365d;fontColor=#ffffff;strokeColor=#1a365d;fontSize=13;verticalAlign=middle;arcSize=12;" value="&lt;b&gt;buckets&lt;/b&gt;" vertex="1">
-          <mxGeometry x="560" y="110" width="280" height="40" as="geometry" />
+          <mxGeometry x="860" y="110" width="280" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="bkt_f" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cbd5e1;fontSize=11;verticalAlign=top;arcSize=8;" value="&lt;div style=&#39;text-align:left;padding:6px 10px;font-size:11px;line-height:1.7&#39;&gt;&#x1f511; &lt;b&gt;name&lt;/b&gt; TEXT PK&lt;br&gt;created_at TEXT NOT NULL&lt;/div&gt;" vertex="1">
-          <mxGeometry x="560" y="150" width="280" height="60" as="geometry" />
-        </mxCell>
-
-        <mxCell id="mig_h" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#64748b;fontColor=#ffffff;strokeColor=#64748b;fontSize=13;verticalAlign=middle;arcSize=12;" value="&lt;b&gt;_migrations&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#cbd5e1&#39; style=&#39;font-size:10px&#39;&gt;Schema version tracking&lt;/font&gt;" vertex="1">
-          <mxGeometry x="1240" y="110" width="280" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="mig_f" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cbd5e1;fontSize=11;verticalAlign=top;arcSize=8;" value="&lt;div style=&#39;text-align:left;padding:6px 10px;font-size:11px;line-height:1.7&#39;&gt;&#x1f511; &lt;b&gt;version&lt;/b&gt; INTEGER PK&lt;br&gt;description TEXT NOT NULL&lt;br&gt;applied_at TEXT NOT NULL&lt;/div&gt;" vertex="1">
-          <mxGeometry x="1240" y="150" width="280" height="78" as="geometry" />
-        </mxCell>
-
-        <mxCell id="obj_h" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2563eb;fontColor=#ffffff;strokeColor=#2563eb;fontSize=13;verticalAlign=middle;arcSize=12;" value="&lt;b&gt;objects&lt;/b&gt;" vertex="1">
-          <mxGeometry x="60" y="340" width="310" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="obj_f" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cbd5e1;fontSize=11;verticalAlign=top;arcSize=8;" value="&lt;div style=&#39;text-align:left;padding:6px 10px;font-size:11px;line-height:1.7&#39;&gt;&#x1f511;&#x1f517; &lt;b&gt;bucket&lt;/b&gt; TEXT PK, FK &#x2192; buckets&lt;br&gt;&#x1f511; &lt;b&gt;key&lt;/b&gt; TEXT PK&lt;br&gt;blob_id TEXT NOT NULL&lt;br&gt;size INTEGER NOT NULL&lt;br&gt;etag TEXT NOT NULL&lt;br&gt;content_type TEXT&lt;br&gt;last_modified TEXT NOT NULL&lt;br&gt;metadata TEXT DEFAULT &#39;{}&#39;&lt;br&gt;encryption_algorithm TEXT&lt;br&gt;encryption_key_id TEXT&lt;/div&gt;" vertex="1">
-          <mxGeometry x="60" y="380" width="310" height="215" as="geometry" />
-        </mxCell>
-
-        <mxCell id="mpu_h" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d97706;fontColor=#ffffff;strokeColor=#d97706;fontSize=13;verticalAlign=middle;arcSize=12;" value="&lt;b&gt;multipart_uploads&lt;/b&gt;" vertex="1">
-          <mxGeometry x="510" y="340" width="290" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="mpu_f" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cbd5e1;fontSize=11;verticalAlign=top;arcSize=8;" value="&lt;div style=&#39;text-align:left;padding:6px 10px;font-size:11px;line-height:1.7&#39;&gt;&#x1f511; &lt;b&gt;upload_id&lt;/b&gt; TEXT PK&lt;br&gt;&#x1f517; &lt;b&gt;bucket&lt;/b&gt; TEXT NOT NULL, FK &#x2192; buckets&lt;br&gt;key TEXT NOT NULL&lt;br&gt;content_type TEXT&lt;br&gt;initiated_at TEXT NOT NULL&lt;br&gt;metadata TEXT DEFAULT &#39;{}&#39;&lt;/div&gt;" vertex="1">
-          <mxGeometry x="510" y="380" width="290" height="140" as="geometry" />
+        <mxCell id="bkt_f" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cbd5e1;fontSize=11;verticalAlign=top;arcSize=8;" value="&lt;div style=&#39;text-align:left;padding:6px 10px;font-size:11px;line-height:1.7&#39;&gt;&#x1f511; &lt;b&gt;name&lt;/b&gt; TEXT PK&lt;br&gt;created_at TEXT NOT NULL&lt;br&gt;&#x1f517; owner TEXT NOT NULL DEFAULT &#39;root&#39; FK &#x2192; users&lt;/div&gt;" vertex="1">
+          <mxGeometry x="860" y="150" width="280" height="78" as="geometry" />
         </mxCell>
 
         <mxCell id="bcfg_h" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0d9488;fontColor=#ffffff;strokeColor=#0d9488;fontSize=13;verticalAlign=middle;arcSize=12;" value="&lt;b&gt;bucket_config&lt;/b&gt;" vertex="1">
-          <mxGeometry x="940" y="340" width="280" height="40" as="geometry" />
+          <mxGeometry x="1200" y="110" width="280" height="40" as="geometry" />
         </mxCell>
         <mxCell id="bcfg_f" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cbd5e1;fontSize=11;verticalAlign=top;arcSize=8;" value="&lt;div style=&#39;text-align:left;padding:6px 10px;font-size:11px;line-height:1.7&#39;&gt;&#x1f511;&#x1f517; &lt;b&gt;bucket&lt;/b&gt; TEXT PK, FK &#x2192; buckets&lt;br&gt;&#x1f511; &lt;b&gt;config_key&lt;/b&gt; TEXT PK&lt;br&gt;config_value TEXT NOT NULL&lt;br&gt;updated_at TEXT NOT NULL&lt;/div&gt;" vertex="1">
-          <mxGeometry x="940" y="380" width="280" height="98" as="geometry" />
+          <mxGeometry x="1200" y="150" width="280" height="98" as="geometry" />
+        </mxCell>
+
+        <mxCell id="obj_h" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2563eb;fontColor=#ffffff;strokeColor=#2563eb;fontSize=13;verticalAlign=middle;arcSize=12;" value="&lt;b&gt;objects&lt;/b&gt;" vertex="1">
+          <mxGeometry x="860" y="320" width="340" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="obj_f" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cbd5e1;fontSize=11;verticalAlign=top;arcSize=8;" value="&lt;div style=&#39;text-align:left;padding:6px 10px;font-size:11px;line-height:1.7&#39;&gt;&#x1f517; &lt;b&gt;bucket&lt;/b&gt; TEXT NOT NULL FK &#x2192; buckets&lt;br&gt;&lt;b&gt;key&lt;/b&gt; TEXT NOT NULL&lt;br&gt;version_id TEXT (nullable)&lt;br&gt;blob_id TEXT NOT NULL DEFAULT &#39;&#39;&lt;br&gt;size INTEGER NOT NULL DEFAULT 0&lt;br&gt;etag TEXT NOT NULL DEFAULT &#39;&#39;&lt;br&gt;content_type TEXT&lt;br&gt;last_modified TEXT NOT NULL&lt;br&gt;metadata TEXT NOT NULL DEFAULT &#39;{}&#39;&lt;br&gt;encryption_algorithm TEXT&lt;br&gt;encryption_key_id TEXT&lt;br&gt;&#x1f517; owner TEXT NOT NULL DEFAULT &#39;root&#39; FK &#x2192; users&lt;br&gt;is_latest INTEGER NOT NULL DEFAULT 1&lt;br&gt;is_delete_marker INTEGER NOT NULL DEFAULT 0&lt;br&gt;&lt;br&gt;&lt;font color=&#39;#64748b&#39;&gt;UNIQUE idx_objects_latest (bucket, key)&lt;br&gt;  WHERE is_latest = 1&lt;br&gt;INDEX idx_objects_versions&lt;br&gt;  (bucket, key, last_modified DESC)&lt;/font&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry x="860" y="360" width="340" height="370" as="geometry" />
+        </mxCell>
+
+        <mxCell id="mpu_h" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d97706;fontColor=#ffffff;strokeColor=#d97706;fontSize=13;verticalAlign=middle;arcSize=12;" value="&lt;b&gt;multipart_uploads&lt;/b&gt;" vertex="1">
+          <mxGeometry x="860" y="810" width="310" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mpu_f" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cbd5e1;fontSize=11;verticalAlign=top;arcSize=8;" value="&lt;div style=&#39;text-align:left;padding:6px 10px;font-size:11px;line-height:1.7&#39;&gt;&#x1f511; &lt;b&gt;upload_id&lt;/b&gt; TEXT PK&lt;br&gt;&#x1f517; bucket TEXT NOT NULL FK &#x2192; buckets&lt;br&gt;key TEXT NOT NULL&lt;br&gt;content_type TEXT&lt;br&gt;initiated_at TEXT NOT NULL&lt;br&gt;metadata TEXT DEFAULT &#39;{}&#39;&lt;/div&gt;" vertex="1">
+          <mxGeometry x="860" y="850" width="310" height="140" as="geometry" />
         </mxCell>
 
         <mxCell id="parts_h" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ea580c;fontColor=#ffffff;strokeColor=#ea580c;fontSize=13;verticalAlign=middle;arcSize=12;" value="&lt;b&gt;parts&lt;/b&gt;" vertex="1">
-          <mxGeometry x="510" y="600" width="290" height="40" as="geometry" />
+          <mxGeometry x="860" y="1060" width="310" height="40" as="geometry" />
         </mxCell>
         <mxCell id="parts_f" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cbd5e1;fontSize=11;verticalAlign=top;arcSize=8;" value="&lt;div style=&#39;text-align:left;padding:6px 10px;font-size:11px;line-height:1.7&#39;&gt;&#x1f511;&#x1f517; &lt;b&gt;upload_id&lt;/b&gt; TEXT PK, FK &#x2192; multipart_uploads&lt;br&gt;&#x1f511; &lt;b&gt;part_number&lt;/b&gt; INTEGER PK&lt;br&gt;blob_id TEXT NOT NULL&lt;br&gt;size INTEGER NOT NULL&lt;br&gt;etag TEXT NOT NULL&lt;/div&gt;" vertex="1">
-          <mxGeometry x="510" y="640" width="290" height="118" as="geometry" />
+          <mxGeometry x="860" y="1100" width="310" height="118" as="geometry" />
         </mxCell>
 
-        <mxCell id="rel_obj_bkt" edge="1" parent="1" source="obj_f" target="bkt_f" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2563eb;strokeWidth=1.5;endArrow=ERmandOne;endFill=0;startArrow=ERmany;startFill=0;curved=1;exitX=0.7;exitY=0;exitDx=0;exitDy=0;entryX=0.15;entryY=1;entryDx=0;entryDy=0;">
+        <!-- ============ System ============ -->
+
+        <mxCell id="mig_h" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#64748b;fontColor=#ffffff;strokeColor=#64748b;fontSize=13;verticalAlign=middle;arcSize=12;" value="&lt;b&gt;_migrations&lt;/b&gt;&lt;br&gt;&lt;font color=&#39;#cbd5e1&#39; style=&#39;font-size:10px&#39;&gt;Schema version tracking&lt;/font&gt;" vertex="1">
+          <mxGeometry x="1560" y="110" width="280" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mig_f" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cbd5e1;fontSize=11;verticalAlign=top;arcSize=8;" value="&lt;div style=&#39;text-align:left;padding:6px 10px;font-size:11px;line-height:1.7&#39;&gt;&#x1f511; &lt;b&gt;version&lt;/b&gt; INTEGER PK&lt;br&gt;description TEXT NOT NULL&lt;br&gt;applied_at TEXT NOT NULL&lt;/div&gt;" vertex="1">
+          <mxGeometry x="1560" y="150" width="280" height="78" as="geometry" />
+        </mxCell>
+
+        <!-- ============ Relationships ============ -->
+
+        <!-- credentials -> users -->
+        <mxCell id="rel_cred_usr" edge="1" parent="1" source="cred_f" target="usr_f" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#7c3aed;strokeWidth=1.5;endArrow=ERmandOne;endFill=0;startArrow=ERmany;startFill=0;curved=1;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel_cred_usr_lbl" connectable="0" parent="rel_cred_usr" style="edgeLabel;html=1;align=center;verticalAlign=middle;" value="&lt;font style=&#39;font-size:10px;color:#7c3aed&#39;&gt;user_id&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="0.3" as="geometry"><mxPoint as="offset" /></mxGeometry>
+        </mxCell>
+
+        <!-- team_members -> users -->
+        <mxCell id="rel_tmem_usr" edge="1" parent="1" source="tmem_f" target="usr_f" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a78bfa;strokeWidth=1.5;endArrow=ERmandOne;endFill=0;startArrow=ERmany;startFill=0;curved=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.8;entryDx=0;entryDy=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel_tmem_usr_lbl" connectable="0" parent="rel_tmem_usr" style="edgeLabel;html=1;align=center;verticalAlign=middle;" value="&lt;font style=&#39;font-size:10px;color:#a78bfa&#39;&gt;user_id&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="0.3" as="geometry"><mxPoint as="offset" /></mxGeometry>
+        </mxCell>
+
+        <!-- team_members -> teams -->
+        <mxCell id="rel_tmem_team" edge="1" parent="1" source="tmem_f" target="team_f" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a78bfa;strokeWidth=1.5;endArrow=ERmandOne;endFill=0;startArrow=ERmany;startFill=0;curved=1;exitX=0;exitY=0.8;exitDx=0;exitDy=0;entryX=1;entryY=0.3;entryDx=0;entryDy=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel_tmem_team_lbl" connectable="0" parent="rel_tmem_team" style="edgeLabel;html=1;align=center;verticalAlign=middle;" value="&lt;font style=&#39;font-size:10px;color:#a78bfa&#39;&gt;team_id&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="0.3" as="geometry"><mxPoint as="offset" /></mxGeometry>
+        </mxCell>
+
+        <!-- user_grants -> users -->
+        <mxCell id="rel_ug_usr" edge="1" parent="1" source="ug_f" target="usr_f" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6ee7b7;strokeWidth=1.5;endArrow=ERmandOne;endFill=0;startArrow=ERmany;startFill=0;curved=1;exitX=0;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=1;entryDx=0;entryDy=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel_ug_usr_lbl" connectable="0" parent="rel_ug_usr" style="edgeLabel;html=1;align=center;verticalAlign=middle;" value="&lt;font style=&#39;font-size:10px;color:#059669&#39;&gt;user_id&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="0.3" as="geometry"><mxPoint as="offset" /></mxGeometry>
+        </mxCell>
+
+        <!-- user_grants -> grants -->
+        <mxCell id="rel_ug_grant" edge="1" parent="1" source="ug_f" target="grant_f" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6ee7b7;strokeWidth=1.5;endArrow=ERmandOne;endFill=0;startArrow=ERmany;startFill=0;curved=1;exitX=0;exitY=0.7;exitDx=0;exitDy=0;entryX=1;entryY=0.3;entryDx=0;entryDy=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel_ug_grant_lbl" connectable="0" parent="rel_ug_grant" style="edgeLabel;html=1;align=center;verticalAlign=middle;" value="&lt;font style=&#39;font-size:10px;color:#059669&#39;&gt;grant_id&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="0.3" as="geometry"><mxPoint as="offset" /></mxGeometry>
+        </mxCell>
+
+        <!-- team_grants -> teams -->
+        <mxCell id="rel_tg_team" edge="1" parent="1" source="tg_f" target="team_f" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6ee7b7;strokeWidth=1.5;endArrow=ERmandOne;endFill=0;startArrow=ERmany;startFill=0;curved=1;exitX=0;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=1;entryDx=0;entryDy=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel_tg_team_lbl" connectable="0" parent="rel_tg_team" style="edgeLabel;html=1;align=center;verticalAlign=middle;" value="&lt;font style=&#39;font-size:10px;color:#059669&#39;&gt;team_id&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="0.3" as="geometry"><mxPoint as="offset" /></mxGeometry>
+        </mxCell>
+
+        <!-- team_grants -> grants -->
+        <mxCell id="rel_tg_grant" edge="1" parent="1" source="tg_f" target="grant_f" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6ee7b7;strokeWidth=1.5;endArrow=ERmandOne;endFill=0;startArrow=ERmany;startFill=0;curved=1;exitX=0;exitY=0.7;exitDx=0;exitDy=0;entryX=1;entryY=0.8;entryDx=0;entryDy=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel_tg_grant_lbl" connectable="0" parent="rel_tg_grant" style="edgeLabel;html=1;align=center;verticalAlign=middle;" value="&lt;font style=&#39;font-size:10px;color:#059669&#39;&gt;grant_id&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="0.3" as="geometry"><mxPoint as="offset" /></mxGeometry>
+        </mxCell>
+
+        <!-- objects -> buckets -->
+        <mxCell id="rel_obj_bkt" edge="1" parent="1" source="obj_f" target="bkt_f" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2563eb;strokeWidth=1.5;endArrow=ERmandOne;endFill=0;startArrow=ERmany;startFill=0;curved=1;exitX=0.3;exitY=0;exitDx=0;exitDy=0;entryX=0.3;entryY=1;entryDx=0;entryDy=0;">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="rel_obj_bkt_lbl" connectable="0" parent="rel_obj_bkt" style="edgeLabel;html=1;align=center;verticalAlign=middle;" value="&lt;font style=&#39;font-size:10px;color:#2563eb&#39;&gt;bucket&lt;/font&gt;" vertex="1">
-          <mxGeometry relative="1" x="0.3" as="geometry">
-            <mxPoint as="offset" />
-          </mxGeometry>
+          <mxGeometry relative="1" x="0.3" as="geometry"><mxPoint as="offset" /></mxGeometry>
         </mxCell>
 
-        <mxCell id="rel_mpu_bkt" edge="1" parent="1" source="mpu_f" target="bkt_f" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d97706;strokeWidth=1.5;endArrow=ERmandOne;endFill=0;startArrow=ERmany;startFill=0;curved=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="rel_mpu_bkt_lbl" connectable="0" parent="rel_mpu_bkt" style="edgeLabel;html=1;align=center;verticalAlign=middle;" value="&lt;font style=&#39;font-size:10px;color:#d97706&#39;&gt;bucket&lt;/font&gt;" vertex="1">
-          <mxGeometry relative="1" x="0.3" as="geometry">
-            <mxPoint as="offset" />
-          </mxGeometry>
-        </mxCell>
-
-        <mxCell id="rel_bcfg_bkt" edge="1" parent="1" source="bcfg_f" target="bkt_f" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0d9488;strokeWidth=1.5;endArrow=ERmandOne;endFill=0;startArrow=ERmany;startFill=0;curved=1;exitX=0.3;exitY=0;exitDx=0;exitDy=0;entryX=0.85;entryY=1;entryDx=0;entryDy=0;">
+        <!-- bucket_config -> buckets -->
+        <mxCell id="rel_bcfg_bkt" edge="1" parent="1" source="bcfg_f" target="bkt_f" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0d9488;strokeWidth=1.5;endArrow=ERmandOne;endFill=0;startArrow=ERmany;startFill=0;curved=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="rel_bcfg_bkt_lbl" connectable="0" parent="rel_bcfg_bkt" style="edgeLabel;html=1;align=center;verticalAlign=middle;" value="&lt;font style=&#39;font-size:10px;color:#0d9488&#39;&gt;bucket&lt;/font&gt;" vertex="1">
-          <mxGeometry relative="1" x="0.3" as="geometry">
-            <mxPoint as="offset" />
-          </mxGeometry>
+          <mxGeometry relative="1" x="0.3" as="geometry"><mxPoint as="offset" /></mxGeometry>
         </mxCell>
 
+        <!-- multipart_uploads -> buckets -->
+        <mxCell id="rel_mpu_bkt" edge="1" parent="1" source="mpu_f" target="bkt_f" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d97706;strokeWidth=1.5;endArrow=ERmandOne;endFill=0;startArrow=ERmany;startFill=0;curved=1;exitX=0.8;exitY=0;exitDx=0;exitDy=0;entryX=0.7;entryY=1;entryDx=0;entryDy=0;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rel_mpu_bkt_lbl" connectable="0" parent="rel_mpu_bkt" style="edgeLabel;html=1;align=center;verticalAlign=middle;" value="&lt;font style=&#39;font-size:10px;color:#d97706&#39;&gt;bucket&lt;/font&gt;" vertex="1">
+          <mxGeometry relative="1" x="0.3" as="geometry"><mxPoint as="offset" /></mxGeometry>
+        </mxCell>
+
+        <!-- parts -> multipart_uploads -->
         <mxCell id="rel_parts_mpu" edge="1" parent="1" source="parts_f" target="mpu_f" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#ea580c;strokeWidth=1.5;endArrow=ERmandOne;endFill=0;startArrow=ERmany;startFill=0;curved=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="rel_parts_mpu_lbl" connectable="0" parent="rel_parts_mpu" style="edgeLabel;html=1;align=center;verticalAlign=middle;" value="&lt;font style=&#39;font-size:10px;color:#ea580c&#39;&gt;upload_id&lt;/font&gt;" vertex="1">
-          <mxGeometry relative="1" x="0.3" as="geometry">
-            <mxPoint as="offset" />
-          </mxGeometry>
+          <mxGeometry relative="1" x="0.3" as="geometry"><mxPoint as="offset" /></mxGeometry>
         </mxCell>
 
+        <!-- ============ Legend ============ -->
+
         <mxCell id="legend_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#e2e8f0;arcSize=8;" value="" vertex="1">
-          <mxGeometry x="1240" y="340" width="280" height="220" as="geometry" />
+          <mxGeometry x="1560" y="320" width="280" height="280" as="geometry" />
         </mxCell>
         <mxCell id="legend_title" parent="1" style="text;html=1;align=left;verticalAlign=middle;fontSize=12;fontColor=#1a365d;" value="&lt;b&gt;Legend&lt;/b&gt;" vertex="1">
-          <mxGeometry x="1255" y="345" width="100" height="25" as="geometry" />
+          <mxGeometry x="1575" y="325" width="100" height="25" as="geometry" />
         </mxCell>
 
         <mxCell id="leg1" parent="1" style="rounded=1;fillColor=#1a365d;strokeColor=#1a365d;" value="" vertex="1">
-          <mxGeometry x="1255" y="375" width="14" height="14" as="geometry" />
+          <mxGeometry x="1575" y="355" width="14" height="14" as="geometry" />
         </mxCell>
-        <mxCell id="leg1t" parent="1" style="text;html=1;align=left;verticalAlign=middle;" value="&lt;font style=&#39;font-size:11px&#39;&gt;Core entity&lt;/font&gt;" vertex="1">
-          <mxGeometry x="1277" y="370" width="120" height="22" as="geometry" />
+        <mxCell id="leg1t" parent="1" style="text;html=1;align=left;verticalAlign=middle;" value="&lt;font style=&#39;font-size:11px&#39;&gt;Core entity (buckets)&lt;/font&gt;" vertex="1">
+          <mxGeometry x="1597" y="350" width="160" height="22" as="geometry" />
         </mxCell>
 
         <mxCell id="leg2" parent="1" style="rounded=1;fillColor=#2563eb;strokeColor=#2563eb;" value="" vertex="1">
-          <mxGeometry x="1255" y="397" width="14" height="14" as="geometry" />
+          <mxGeometry x="1575" y="377" width="14" height="14" as="geometry" />
         </mxCell>
         <mxCell id="leg2t" parent="1" style="text;html=1;align=left;verticalAlign=middle;" value="&lt;font style=&#39;font-size:11px&#39;&gt;Object data&lt;/font&gt;" vertex="1">
-          <mxGeometry x="1277" y="392" width="120" height="22" as="geometry" />
+          <mxGeometry x="1597" y="372" width="120" height="22" as="geometry" />
         </mxCell>
 
         <mxCell id="leg3" parent="1" style="rounded=1;fillColor=#d97706;strokeColor=#d97706;" value="" vertex="1">
-          <mxGeometry x="1255" y="419" width="14" height="14" as="geometry" />
+          <mxGeometry x="1575" y="399" width="14" height="14" as="geometry" />
         </mxCell>
         <mxCell id="leg3t" parent="1" style="text;html=1;align=left;verticalAlign=middle;" value="&lt;font style=&#39;font-size:11px&#39;&gt;Upload workflow&lt;/font&gt;" vertex="1">
-          <mxGeometry x="1277" y="414" width="140" height="22" as="geometry" />
+          <mxGeometry x="1597" y="394" width="140" height="22" as="geometry" />
         </mxCell>
 
         <mxCell id="leg4" parent="1" style="rounded=1;fillColor=#0d9488;strokeColor=#0d9488;" value="" vertex="1">
-          <mxGeometry x="1255" y="441" width="14" height="14" as="geometry" />
+          <mxGeometry x="1575" y="421" width="14" height="14" as="geometry" />
         </mxCell>
         <mxCell id="leg4t" parent="1" style="text;html=1;align=left;verticalAlign=middle;" value="&lt;font style=&#39;font-size:11px&#39;&gt;Configuration&lt;/font&gt;" vertex="1">
-          <mxGeometry x="1277" y="436" width="120" height="22" as="geometry" />
+          <mxGeometry x="1597" y="416" width="120" height="22" as="geometry" />
         </mxCell>
 
         <mxCell id="leg5" parent="1" style="rounded=1;fillColor=#7c3aed;strokeColor=#7c3aed;" value="" vertex="1">
-          <mxGeometry x="1255" y="463" width="14" height="14" as="geometry" />
+          <mxGeometry x="1575" y="443" width="14" height="14" as="geometry" />
         </mxCell>
-        <mxCell id="leg5t" parent="1" style="text;html=1;align=left;verticalAlign=middle;" value="&lt;font style=&#39;font-size:11px&#39;&gt;Authentication&lt;/font&gt;" vertex="1">
-          <mxGeometry x="1277" y="458" width="120" height="22" as="geometry" />
+        <mxCell id="leg5t" parent="1" style="text;html=1;align=left;verticalAlign=middle;" value="&lt;font style=&#39;font-size:11px&#39;&gt;Auth &amp;amp; Identity&lt;/font&gt;" vertex="1">
+          <mxGeometry x="1597" y="438" width="120" height="22" as="geometry" />
         </mxCell>
 
-        <mxCell id="leg6" parent="1" style="rounded=1;fillColor=#64748b;strokeColor=#64748b;" value="" vertex="1">
-          <mxGeometry x="1255" y="485" width="14" height="14" as="geometry" />
+        <mxCell id="leg6" parent="1" style="rounded=1;fillColor=#059669;strokeColor=#059669;" value="" vertex="1">
+          <mxGeometry x="1575" y="465" width="14" height="14" as="geometry" />
         </mxCell>
-        <mxCell id="leg6t" parent="1" style="text;html=1;align=left;verticalAlign=middle;" value="&lt;font style=&#39;font-size:11px&#39;&gt;System / internal&lt;/font&gt;" vertex="1">
-          <mxGeometry x="1277" y="480" width="140" height="22" as="geometry" />
+        <mxCell id="leg6t" parent="1" style="text;html=1;align=left;verticalAlign=middle;" value="&lt;font style=&#39;font-size:11px&#39;&gt;RBAC (grants/policies)&lt;/font&gt;" vertex="1">
+          <mxGeometry x="1597" y="460" width="160" height="22" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg7" parent="1" style="rounded=1;fillColor=#64748b;strokeColor=#64748b;" value="" vertex="1">
+          <mxGeometry x="1575" y="487" width="14" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="leg7t" parent="1" style="text;html=1;align=left;verticalAlign=middle;" value="&lt;font style=&#39;font-size:11px&#39;&gt;System / internal&lt;/font&gt;" vertex="1">
+          <mxGeometry x="1597" y="482" width="140" height="22" as="geometry" />
         </mxCell>
 
         <mxCell id="leg_fk" edge="1" parent="1" style="endArrow=ERmandOne;endFill=0;startArrow=ERmany;startFill=0;strokeColor=#475569;strokeWidth=1.5;" value="">
           <mxGeometry relative="1" as="geometry">
-            <mxPoint x="1255" y="515" as="sourcePoint" />
-            <mxPoint x="1295" y="515" as="targetPoint" />
+            <mxPoint x="1575" y="520" as="sourcePoint" />
+            <mxPoint x="1615" y="520" as="targetPoint" />
           </mxGeometry>
         </mxCell>
         <mxCell id="leg_fkt" parent="1" style="text;html=1;align=left;verticalAlign=middle;" value="&lt;font style=&#39;font-size:11px&#39;&gt;Foreign Key (N &#x2192; 1)&lt;/font&gt;" vertex="1">
-          <mxGeometry x="1300" y="507" width="180" height="22" as="geometry" />
+          <mxGeometry x="1620" y="512" width="180" height="22" as="geometry" />
         </mxCell>
 
         <mxCell id="leg_symbols" parent="1" style="text;html=1;align=left;verticalAlign=middle;" value="&lt;font style=&#39;font-size:10px;color:#64748b&#39;&gt;&#x1f511; = Primary Key · &#x1f517; = Foreign Key&lt;/font&gt;" vertex="1">
-          <mxGeometry x="1255" y="533" width="250" height="22" as="geometry" />
+          <mxGeometry x="1575" y="540" width="250" height="22" as="geometry" />
         </mxCell>
 
       </root>

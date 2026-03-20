@@ -1790,7 +1790,7 @@
 <li><strong>Single database file</strong> — stored at <code>{data_dir}/arca.db</code></li>
 </ul>
 <h4 id="database-schema">Database Schema<a class="headerlink" href="#database-schema" title="Permanent link">&para;</a></h4>
-<p>The schema is managed through version-tracked migrations (currently at version 8). The entity-relationship diagram below shows all tables and their relationships:</p>
+<p>The schema is managed through version-tracked migrations (currently at version 9). The entity-relationship diagram below shows all tables and their relationships:</p>
 <pre class="mermaid"><code>erDiagram
     users {
         TEXT user_id PK
@@ -1848,8 +1848,9 @@
     }
 
     objects {
-        TEXT bucket PK,FK
-        TEXT key PK
+        TEXT bucket FK
+        TEXT key
+        TEXT version_id "nullable"
         TEXT blob_id
         INTEGER size
         TEXT etag
@@ -1859,6 +1860,8 @@
         TEXT encryption_algorithm "nullable"
         TEXT encryption_key_id "nullable"
         TEXT owner FK "default: root"
+        INTEGER is_latest "0 or 1, default 1"
+        INTEGER is_delete_marker "0 or 1, default 0"
     }
 
     multipart_uploads {
@@ -1893,11 +1896,13 @@
     teams ||--o{ team_grants : "has"
     grants ||--o{ team_grants : "attached to"
     buckets ||--o{ objects : "contains"
+    buckets ||--o{ bucket_config : "configured by"
     multipart_uploads ||--o{ parts : "has"</code></pre>
 <p><strong>Authentication model</strong>: users don't log in directly. Each user has one or more <strong>credentials</strong> (access key + secret key pairs), and authentication happens via AWS SigV4 signature verification against a credential. The credential's <code>user_id</code> links back to the owning user, and from there the RBAC system resolves effective permissions through direct grants and team grants.</p>
 <p><strong>RBAC model</strong>: permissions are defined in <strong>grants</strong>, which contain an IAM-style JSON policy document. Grants can be attached directly to users (via <code>user_grants</code>) or to teams (via <code>team_grants</code>). A user's effective permissions are the union of their direct grants plus all grants from teams they belong to. Three built-in grants are seeded at database creation: <code>AdministratorAccess</code>, <code>S3FullAccess</code>, and <code>S3ReadOnlyAccess</code>.</p>
 <p><strong>Ownership</strong>: both <code>buckets</code> and <code>objects</code> track an <code>owner</code> field that records which user created the resource.</p>
-<p><strong>Encryption</strong>: the <code>objects</code> table has optional <code>encryption_algorithm</code> and <code>encryption_key_id</code> columns for SSE-S3 and SSE-KMS. The <code>bucket_config</code> table stores per-bucket settings such as default encryption configuration.</p>
+<p><strong>Encryption</strong>: the <code>objects</code> table has optional <code>encryption_algorithm</code> and <code>encryption_key_id</code> columns for SSE-S3 and SSE-KMS. The <code>bucket_config</code> table stores per-bucket settings such as default encryption configuration and versioning status.</p>
+<p><strong>Versioning</strong>: the <code>objects</code> table supports object versioning through <code>version_id</code>, <code>is_latest</code>, and <code>is_delete_marker</code> columns. When versioning is enabled on a bucket (via <code>bucket_config</code>), each write creates a new version with a unique <code>version_id</code> rather than overwriting the existing row. A partial unique index on <code>(bucket, key) WHERE is_latest = 1</code> guarantees exactly one current version per key, while previous versions remain queryable. Delete operations insert a delete marker (a zero-size row with <code>is_delete_marker = 1</code>) instead of removing the object.</p>
 <h3 id="filesystem-blob-storage">Filesystem (Blob Storage)<a class="headerlink" href="#filesystem-blob-storage" title="Permanent link">&para;</a></h3>
 <p>Object data is stored as UUID-named files under a dedicated <code>blobs/</code> subdirectory, keeping the top-level data directory clean:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>/data/
@@ -1914,7 +1919,7 @@
 <p><strong>Integrity guarantees:</strong></p>
 <ul>
 <li><strong>No duplicate UUIDs</strong> — blob files are created with <code>O_CREAT | O_EXCL</code> (<code>create_new(true)</code> in Rust), which atomically fails if the file already exists</li>
-<li><strong>No duplicate keys</strong> — the <code>objects</code> table enforces a <code>UNIQUE(bucket, key)</code> constraint, so only one blob can own a given key at any time. On overwrite, <code>put_object</code> returns the old record so the caller can delete the orphaned blob</li>
+<li><strong>No duplicate latest versions</strong> — a partial unique index on <code>(bucket, key) WHERE is_latest = 1</code> ensures at most one "current" version per object key. When versioning is disabled, <code>put_object</code> returns the old record so the caller can delete the orphaned blob. When versioning is enabled, previous versions are preserved alongside the new latest version</li>
 <li><strong>Conflict detection</strong> — <code>arca fsck</code> detects orphaned blobs (no DB record) and conflicting sidecars (multiple <code>.meta</code> files claiming the same <code>bucket + key</code>). <code>arca recover</code> resolves conflicts by keeping the newest sidecar (by <code>created_at</code>) and reporting discarded duplicates</li>
 <li><strong>Sidecar integrity</strong> — the <code>objects</code> table stores a SHA-256 checksum of each <code>.meta</code> sidecar file, enabling <code>arca fsck</code> to detect corruption or tampering</li>
 </ul>
@@ -2116,7 +2121,7 @@
 </tbody>
 </table>
 <h2 id="whats-not-yet-implemented">What's NOT Yet Implemented<a class="headerlink" href="#whats-not-yet-implemented" title="Permanent link">&para;</a></h2>
-<p>Object versioning, object tagging, lifecycle rules, object lock, metrics endpoint, replication, multi-node / distributed mode.</p>
+<p>Object tagging, lifecycle rules, object lock, metrics endpoint, replication, multi-node / distributed mode.</p>
 <p>These are deferred by design. The trait-based architecture ensures they can be added incrementally without architectural changes. See the <a href="../../roadmap/">roadmap</a> for the full post-MVP plan.</p>
 
 
