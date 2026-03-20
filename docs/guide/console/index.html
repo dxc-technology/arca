@@ -770,10 +770,110 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#versioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Versioning
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#danger-zone" class="md-nav__link">
     <span class="md-ellipsis">
       
         Danger Zone
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#object-versioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Object Versioning
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Object Versioning">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#versioning-indicators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Versioning Indicators
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#viewing-deleted-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Viewing Deleted Objects
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#version-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version History
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deleting-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deleting Versions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#credential-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Credential Management
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Credential Management">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#creating-credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Creating Credentials
       
     </span>
   </a>
@@ -1586,10 +1686,110 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#versioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Versioning
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#danger-zone" class="md-nav__link">
     <span class="md-ellipsis">
       
         Danger Zone
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#object-versioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Object Versioning
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Object Versioning">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#versioning-indicators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Versioning Indicators
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#viewing-deleted-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Viewing Deleted Objects
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#version-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version History
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deleting-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deleting Versions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#credential-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Credential Management
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Credential Management">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#creating-credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Creating Credentials
       
     </span>
   </a>
@@ -1924,7 +2124,7 @@
 </ul>
 <h2 id="bucket-management">Bucket Management<a class="headerlink" href="#bucket-management" title="Permanent link">&para;</a></h2>
 <p><img alt="Bucket list" src="../../assets/screenshots/console-buckets.png" /></p>
-<p>The Buckets view shows all buckets as cards with creation date. Encrypted buckets display a green shield badge. From here you can:</p>
+<p>The Buckets view shows all buckets as cards with creation date. Encrypted buckets display a green shield badge, and versioned buckets display a blue clock icon (or amber pause icon if versioning is suspended). From here you can:</p>
 <ul>
 <li><strong>Create</strong> a new bucket (click the "+" button)</li>
 <li><strong>Delete</strong> an empty bucket</li>
@@ -1986,10 +2186,98 @@
 <li>When <strong>server-level encryption is enabled</strong>, the card shows a read-only status indicator (e.g., "SSE-S3 (AES-256) Active" or "SSE-S3 (Vault) Active").</li>
 <li>When <strong>server-level encryption is disabled</strong> (per-bucket mode), you can toggle encryption on or off for individual buckets. New objects written after enabling encryption are encrypted; existing objects remain unchanged.</li>
 </ul>
+<h3 id="versioning">Versioning<a class="headerlink" href="#versioning" title="Permanent link">&para;</a></h3>
+<p><img alt="Versioning settings" src="../../assets/screenshots/console-versioning-settings.png" /></p>
+<p>The versioning card lets you control object versioning for the bucket. The toggle cycles through three states:</p>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Not versioned</strong></td>
+<td>Default. Objects are overwritten in place, no history is kept.</td>
+</tr>
+<tr>
+<td><strong>Enabled</strong> (green)</td>
+<td>All object writes create new versions. Deletes create delete markers instead of removing data.</td>
+</tr>
+<tr>
+<td><strong>Suspended</strong> (amber)</td>
+<td>No new versions are created, but existing versions are preserved. New writes use a <code>null</code> version ID.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Versioning cannot be disabled once it has been enabled, only suspended. This matches the S3 specification.</p>
+</div>
 <h3 id="danger-zone">Danger Zone<a class="headerlink" href="#danger-zone" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Delete this bucket</strong> — permanently removes the bucket. Requires typing the bucket name to confirm. The bucket must be empty.</li>
 </ul>
+<h2 id="object-versioning">Object Versioning<a class="headerlink" href="#object-versioning" title="Permanent link">&para;</a></h2>
+<p>When versioning is enabled on a bucket, the console provides several features for managing object versions, viewing deleted objects, and restoring data.</p>
+<h3 id="versioning-indicators">Versioning Indicators<a class="headerlink" href="#versioning-indicators" title="Permanent link">&para;</a></h3>
+<p>Versioned buckets are marked with visual indicators throughout the console:</p>
+<ul>
+<li><strong>Bucket list</strong>: a blue clock icon with "Versioned" label (or amber with "Suspended")</li>
+<li><strong>Object browser breadcrumb</strong>: a clock icon appears next to the bucket name</li>
+<li><strong>Dashboard legend</strong>: versioning status is shown next to each bucket in the storage distribution chart</li>
+</ul>
+<h3 id="viewing-deleted-objects">Viewing Deleted Objects<a class="headerlink" href="#viewing-deleted-objects" title="Permanent link">&para;</a></h3>
+<p><img alt="Show deleted objects" src="../../assets/screenshots/console-show-deleted.png" /></p>
+<p>When browsing a versioned bucket, a <strong>Show deleted</strong> toggle appears in the toolbar. Enabling it reveals:</p>
+<ul>
+<li><strong>Deleted files</strong> — shown with a strikethrough name, red "Deleted" badge, and the deletion date. Click a deleted file to open its detail panel and view its version history.</li>
+<li><strong>Deleted folders</strong> — shown as faded folder icons with a strikethrough name and "Deleted" badge. These are directories where all contained objects have delete markers as their latest version.</li>
+</ul>
+<h3 id="version-history">Version History<a class="headerlink" href="#version-history" title="Permanent link">&para;</a></h3>
+<p><img alt="Version history panel" src="../../assets/screenshots/console-version-history.png" /></p>
+<p>When viewing an object in a versioned bucket, the detail panel includes a collapsible <strong>Versions</strong> section. Click it to expand the version list, which shows:</p>
+<ul>
+<li><strong>Version ID</strong> — truncated to 8 characters, hover for the full ID</li>
+<li><strong>Latest</strong> badge (blue) — marks the current version</li>
+<li><strong>Delete Marker</strong> badge (red) — marks versions that are deletion records, not actual data</li>
+<li><strong>Timestamp</strong> and <strong>size</strong> for each version</li>
+<li><strong>Download</strong> button — download a specific version (not available for delete markers)</li>
+<li><strong>Delete</strong> button — permanently remove a specific version</li>
+</ul>
+<h3 id="deleting-versions">Deleting Versions<a class="headerlink" href="#deleting-versions" title="Permanent link">&para;</a></h3>
+<p><img alt="Delete version modal" src="../../assets/screenshots/console-delete-version-modal.png" /></p>
+<p>Click the delete button on any version to open a confirmation modal. The modal behavior varies based on the version type:</p>
+<ul>
+<li><strong>Regular version</strong>: the modal title reads "Delete Version" and warns that the action is permanent and cannot be undone.</li>
+<li><strong>Delete marker</strong>: the modal title reads "Remove Delete Marker" and explains that removing it will restore the object.</li>
+</ul>
+<p>Both modals show the version ID and object key. A "Latest" badge appears if you are about to delete the current version.</p>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>To <strong>restore a deleted object</strong>, toggle "Show deleted" on, click the deleted file, expand its version history, and remove the delete marker. The most recent non-deleted version becomes the current version.</p>
+</div>
+<h2 id="credential-management">Credential Management<a class="headerlink" href="#credential-management" title="Permanent link">&para;</a></h2>
+<p><img alt="Credentials list" src="../../assets/screenshots/console-credentials.png" /></p>
+<p>The Credentials view is available to <strong>admin credentials only</strong> (navigate to <code>#/credentials</code>). It shows all credentials across all users as cards, each displaying:</p>
+<ul>
+<li><strong>Active/Inactive</strong> badge — green for active, red for inactive</li>
+<li><strong>Admin/User</strong> badge — purple for admin privileges, gray for regular user</li>
+<li><strong>Access Key ID</strong> — the full key ID</li>
+<li><strong>Description</strong> — what the credential is used for</li>
+<li><strong>Creation date</strong></li>
+</ul>
+<p>A warning banner appears when only one active credential remains, to prevent accidental lockout.</p>
+<h3 id="creating-credentials">Creating Credentials<a class="headerlink" href="#creating-credentials" title="Permanent link">&para;</a></h3>
+<p><img alt="Credential created" src="../../assets/screenshots/console-credential-created.png" /></p>
+<p>Click "+ Create Credential" to open the creation form:</p>
+<ol>
+<li>Enter an optional <strong>description</strong> (e.g., "CI/CD Pipeline")</li>
+<li>Check <strong>Admin privileges</strong> if the credential needs access to the Admin API and console management</li>
+<li>Click <strong>Create</strong></li>
+</ol>
+<p>The secret key is displayed <strong>only once</strong> after creation. Copy it immediately, as it cannot be retrieved later.</p>
 <h2 id="user-management">User Management<a class="headerlink" href="#user-management" title="Permanent link">&para;</a></h2>
 <p><img alt="Users list" src="../../assets/screenshots/console-users.png" /></p>
 <p>The Users view is available to <strong>admin credentials only</strong>. It displays all users as cards showing the username, description, credential/team/grant counts, and a "root" badge for the root user.</p>
