@@ -102,6 +102,9 @@ export function bucketDetailView() {
     encryptionEnabled: false,
     bucketEncrypted: false,
     bucketVersioned: false,
+    showDeleted: false,
+    deletedObjects: [],
+    deletedDirectories: [],
     kmsProvider: null,
     showTreemap: false,
     treemapRects: [],
@@ -188,7 +191,65 @@ export function bucketDetailView() {
         this.directories = result.directories;
         if (this.showTreemap) this.computeTreemap();
       } catch (e) { console.error(e); }
+      // Load deleted objects/directories if "Show deleted" is on.
+      if (this.showDeleted && this.bucketVersioned) {
+        await this.loadDeletedObjects();
+      } else {
+        this.deletedObjects = [];
+        this.deletedDirectories = [];
+      }
       this.loading = false;
+    },
+
+    async toggleShowDeleted() {
+      this.showDeleted = !this.showDeleted;
+      if (this.showDeleted) {
+        await this.loadDeletedObjects();
+      } else {
+        this.deletedObjects = [];
+        this.deletedDirectories = [];
+      }
+    },
+
+    async loadDeletedObjects() {
+      try {
+        const resp = await api.s3ListObjectVersions(this.bucketName, this.prefix);
+        if (!resp.ok) return;
+        const xml = await resp.text();
+        const all = api.parseListVersions(xml);
+        // Build sets of currently visible keys and directories.
+        const liveKeys = new Set(this.objects.map(o => o.key));
+        const liveDirs = new Set(this.directories);
+        // Track which keys have their latest version as a delete marker.
+        const latestByKey = new Map(); // key -> first (latest) version entry
+        for (const v of all) {
+          if (!latestByKey.has(v.key)) latestByKey.set(v.key, v);
+        }
+        const deletedFiles = [];
+        const deletedDirPrefixes = new Set();
+        for (const [key, v] of latestByKey) {
+          if (!v.isDeleteMarker || !v.isLatest) continue;
+          if (liveKeys.has(key)) continue;
+          const rest = this.prefix ? key.slice(this.prefix.length) : key;
+          const slashIdx = rest.indexOf('/');
+          if (slashIdx === -1) {
+            // Direct file at this level.
+            deletedFiles.push({
+              key: key,
+              lastModified: v.lastModified,
+              versionId: v.versionId,
+            });
+          } else {
+            // Belongs to a subdirectory.
+            const dirPrefix = (this.prefix || '') + rest.slice(0, slashIdx + 1);
+            if (!liveDirs.has(dirPrefix)) {
+              deletedDirPrefixes.add(dirPrefix);
+            }
+          }
+        }
+        this.deletedObjects = deletedFiles;
+        this.deletedDirectories = [...deletedDirPrefixes].sort();
+      } catch (e) { console.error('loadDeletedObjects:', e); }
     },
 
     get allSelected() {
