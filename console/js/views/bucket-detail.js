@@ -375,10 +375,16 @@ export function bucketDetailView() {
         if (!resp.ok && resp.status !== 204) throw new Error(`Error ${resp.status}`);
         this.showDeleteVersionModal = false;
         await this.loadVersions();
-        await this.loadObjects();
+        // If no versions remain, close the detail panel and refresh the full view.
+        if (this.versions.length === 0) {
+          this.selectedObject = null;
+        }
+        // Refresh object list and deleted objects list.
+        await this.load();
       } catch (e) {
         this.$dispatch('show-toast', { message: 'Delete failed: ' + e.message, type: 'error' });
       }
+      this.deletingVersion = false;
     },
 
     truncateVersionId(vid) {
