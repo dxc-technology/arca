@@ -97,6 +97,7 @@ export function bucketDetailView() {
     deleteVersionId: '',
     deleteVersionIsMarker: false,
     deleteVersionIsLatest: false,
+    deleteVersionError: '',
     deletingVersion: false,
     icons,
     encryptionEnabled: false,
@@ -199,6 +200,11 @@ export function bucketDetailView() {
         this.deletedDirectories = [];
       }
       this.loading = false;
+      // Auto-scroll breadcrumbs to show the deepest level.
+      setTimeout(() => {
+        const bc = document.querySelector('[data-breadcrumbs]');
+        if (bc) bc.scrollLeft = bc.scrollWidth;
+      }, 100);
     },
 
     async toggleShowDeleted() {

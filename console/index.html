@@ -104,6 +104,10 @@
     ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: #475569; }
 
+    /* Hide scrollbar but keep scrolling */
+    .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    .scrollbar-hide::-webkit-scrollbar { display: none; }
+
     /* Drag-drop zone active */
     .drop-active {
       border-color: #00d4ff !important;
@@ -645,11 +649,11 @@
 
         <!-- ==================== BUCKET DETAIL (Object Browser) ==================== -->
         <template x-if="view === 'bucket-detail'">
-          <div class="p-6 max-w-6xl" x-data="bucketDetailView" x-init="load()">
+          <div class="p-6 max-w-6xl overflow-hidden" x-data="bucketDetailView" x-init="load()">
             <!-- Header with breadcrumbs -->
-            <div class="flex items-center justify-between mb-6">
-              <div class="flex items-center gap-2 text-sm">
-                <a href="#/buckets" @click="$store.app && navigate('buckets')" class="text-vault-muted hover:text-vault-accent transition">Buckets</a>
+            <div class="flex items-center justify-between mb-6 gap-4">
+              <div data-breadcrumbs class="flex items-center gap-2 text-sm min-w-0 overflow-x-auto whitespace-nowrap scrollbar-hide">
+                <a href="#/buckets" @click="$store.app && navigate('buckets')" class="text-vault-muted hover:text-vault-accent transition flex-shrink-0">Buckets</a>
                 <span class="text-vault-border">/</span>
                 <span x-show="bucketEncrypted" x-cloak title="Encrypted bucket" x-html="icons.encryptionShield"></span>
                 <span x-show="bucketVersioned" x-cloak :title="'Versioning: ' + bucketVersioned" x-html="bucketVersioned === 'Suspended' ? icons.versioningSuspended : icons.versioningClock"></span>
@@ -661,7 +665,7 @@
                   </span>
                 </template>
               </div>
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 flex-shrink-0">
                 <!-- Show deleted toggle (versioned buckets only) -->
                 <div x-show="bucketVersioned" x-cloak class="flex items-center gap-1.5 mr-1">
                   <span class="text-[11px] text-vault-muted">Show deleted</span>
