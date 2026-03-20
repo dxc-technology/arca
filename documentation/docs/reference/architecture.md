@@ -133,7 +133,7 @@ Key characteristics:
 
 #### Database Schema
 
-The schema is managed through version-tracked migrations (currently at version 8). The entity-relationship diagram below shows all tables and their relationships:
+The schema is managed through version-tracked migrations (currently at version 9). The entity-relationship diagram below shows all tables and their relationships:
 
 ```mermaid
 erDiagram
@@ -193,8 +193,9 @@ erDiagram
     }
 
     objects {
-        TEXT bucket PK,FK
-        TEXT key PK
+        TEXT bucket FK
+        TEXT key
+        TEXT version_id "nullable"
         TEXT blob_id
         INTEGER size
         TEXT etag
@@ -204,6 +205,8 @@ erDiagram
         TEXT encryption_algorithm "nullable"
         TEXT encryption_key_id "nullable"
         TEXT owner FK "default: root"
+        INTEGER is_latest "0 or 1, default 1"
+        INTEGER is_delete_marker "0 or 1, default 0"
     }
 
     multipart_uploads {
@@ -238,6 +241,7 @@ erDiagram
     teams ||--o{ team_grants : "has"
     grants ||--o{ team_grants : "attached to"
     buckets ||--o{ objects : "contains"
+    buckets ||--o{ bucket_config : "configured by"
     multipart_uploads ||--o{ parts : "has"
 ```
 
@@ -247,7 +251,9 @@ erDiagram
 
 **Ownership**: both `buckets` and `objects` track an `owner` field that records which user created the resource.
 
-**Encryption**: the `objects` table has optional `encryption_algorithm` and `encryption_key_id` columns for SSE-S3 and SSE-KMS. The `bucket_config` table stores per-bucket settings such as default encryption configuration.
+**Encryption**: the `objects` table has optional `encryption_algorithm` and `encryption_key_id` columns for SSE-S3 and SSE-KMS. The `bucket_config` table stores per-bucket settings such as default encryption configuration and versioning status.
+
+**Versioning**: the `objects` table supports object versioning through `version_id`, `is_latest`, and `is_delete_marker` columns. When versioning is enabled on a bucket (via `bucket_config`), each write creates a new version with a unique `version_id` rather than overwriting the existing row. A partial unique index on `(bucket, key) WHERE is_latest = 1` guarantees exactly one current version per key, while previous versions remain queryable. Delete operations insert a delete marker (a zero-size row with `is_delete_marker = 1`) instead of removing the object.
 
 ### Filesystem (Blob Storage)
 
@@ -270,7 +276,7 @@ UUID-based naming eliminates path-traversal risks entirely — object keys (whic
 **Integrity guarantees:**
 
 - **No duplicate UUIDs** — blob files are created with `O_CREAT | O_EXCL` (`create_new(true)` in Rust), which atomically fails if the file already exists
-- **No duplicate keys** — the `objects` table enforces a `UNIQUE(bucket, key)` constraint, so only one blob can own a given key at any time. On overwrite, `put_object` returns the old record so the caller can delete the orphaned blob
+- **No duplicate latest versions** — a partial unique index on `(bucket, key) WHERE is_latest = 1` ensures at most one "current" version per object key. When versioning is disabled, `put_object` returns the old record so the caller can delete the orphaned blob. When versioning is enabled, previous versions are preserved alongside the new latest version
 - **Conflict detection** — `arca fsck` detects orphaned blobs (no DB record) and conflicting sidecars (multiple `.meta` files claiming the same `bucket + key`). `arca recover` resolves conflicts by keeping the newest sidecar (by `created_at`) and reporting discarded duplicates
 - **Sidecar integrity** — the `objects` table stores a SHA-256 checksum of each `.meta` sidecar file, enabling `arca fsck` to detect corruption or tampering
 
@@ -408,6 +414,6 @@ All subcommands accept `--config-path` (default: `/etc/arca/config.toml`) to loc
 
 ## What's NOT Yet Implemented
 
-Object versioning, object tagging, lifecycle rules, object lock, metrics endpoint, replication, multi-node / distributed mode.
+Object tagging, lifecycle rules, object lock, metrics endpoint, replication, multi-node / distributed mode.
 
 These are deferred by design. The trait-based architecture ensures they can be added incrementally without architectural changes. See the [roadmap](../roadmap.md) for the full post-MVP plan.
