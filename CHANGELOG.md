@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Phase 17: Object Versioning**
+- **Bucket versioning config**: `PutBucketVersioning` / `GetBucketVersioning` with three states (Disabled / Enabled / Suspended)
+- **Version IDs**: every `PutObject` on a versioned bucket generates a UUID version ID, returned via `x-amz-version-id` header
+- **Delete markers**: `DeleteObject` on versioned buckets creates a delete marker instead of removing the object; `x-amz-delete-marker: true` header
+- **Version-specific operations**: `GetObject?versionId=X`, `HeadObject?versionId=X`, `DeleteObject?versionId=X` for accessing or permanently deleting specific versions
+- **ListObjectVersions**: rewritten with real version data, delete markers, and `Owner` elements (replaces TD-003 fake implementation)
+- **CopyObject with source versionId**: `x-amz-copy-source: bucket/key?versionId=X` copies a specific version
+- **Suspended versioning**: new writes get null version ID, existing real versions preserved
+- **Batch DeleteObjects**: safe on versioned buckets (creates delete markers, no panic on empty blob_id)
+- **SQLite migration v9**: objects table recreated with `version_id`, `is_latest`, `is_delete_marker` columns, partial unique index
+- **Error codes**: `NoSuchVersion` (404), `MethodNotAllowed` (405) for GET on delete markers
+- **`arca recover`**: sorts sidecars by `last_modified` to recover newest version; `SidecarMeta` gains `version_id` field
+- **`arca fsck`**: handles all object versions and skips blob checks for delete markers
+- **Web console**: bucket versioning toggle (Enable/Suspend) matching encryption switch style
+- **Web console**: versioning indicators (clock icon) in dashboard, bucket list, and bucket detail breadcrumbs (blue=Enabled, amber=Suspended)
+- **Web console**: version history panel in object detail with download/delete per version, Latest badge, delete marker indicators
+- **Web console**: "Show deleted" toggle in bucket browser header for versioned buckets, showing deleted files and directories with strikethrough + red badge
+- **Web console**: scrollable breadcrumbs for deep directory paths with auto-scroll to deepest level
+- **Web console**: centralized SVG icons (`icons.encryptionShield`, `icons.versioningClock`, `icons.versioningSuspended`) in `app.js`
+- 13 new unit tests for versioning (put/get/delete versioned, delete markers, suspended mode, stats)
+- 20 versioning integration tests (config, PUT, GET, HEAD, DELETE, batch delete, ListVersions, CopyObject, backward compat)
+- Resolves: TD-003
+
+### Fixed
+
+- File re-upload after delete now works (reset file input value after upload)
+- Batch `DeleteObjects` no longer panics on versioned buckets (skip blob deletion for delete markers)
+
 ## [0.7.0] — 2026-03-18
 
 ### Added
