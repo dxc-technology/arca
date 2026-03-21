@@ -86,8 +86,8 @@ fi
 PYTEST_ARGS+=("${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}")
 
 echo "==> Running s3-tests..."
-$COMPOSE run --rm s3-tests "${PYTEST_ARGS[@]}"
-EXIT_CODE=$?
+EXIT_CODE=0
+$COMPOSE run --rm s3-tests "${PYTEST_ARGS[@]}" || EXIT_CODE=$?
 
 # Generate HTML report if results.xml exists
 if [[ -f "s3-tests/results.xml" ]]; then

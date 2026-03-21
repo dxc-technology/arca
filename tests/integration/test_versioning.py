@@ -230,6 +230,33 @@ class TestBatchDeleteVersioned:
         assert len(versions) == 3
         assert len(markers) == 3
 
+    def test_batch_delete_with_version_ids(self, s3_client, vbucket):
+        """DeleteObjects with VersionId hard-deletes specific versions (Ceph teardown pattern)."""
+        # Create objects, then soft-delete them (creates delete markers).
+        for i in range(3):
+            s3_client.put_object(Bucket=vbucket, Key=f"h{i}.txt", Body=f"d{i}".encode())
+        s3_client.delete_objects(
+            Bucket=vbucket,
+            Delete={"Objects": [{"Key": f"h{i}.txt"} for i in range(3)], "Quiet": True},
+        )
+        # Now list all versions + delete markers and hard-delete them by VersionId.
+        resp = s3_client.list_object_versions(Bucket=vbucket, Prefix="h")
+        to_delete = []
+        for v in resp.get("Versions", []):
+            to_delete.append({"Key": v["Key"], "VersionId": v["VersionId"]})
+        for dm in resp.get("DeleteMarkers", []):
+            to_delete.append({"Key": dm["Key"], "VersionId": dm["VersionId"]})
+        assert len(to_delete) == 6  # 3 versions + 3 delete markers
+        resp = s3_client.delete_objects(
+            Bucket=vbucket, Delete={"Objects": to_delete, "Quiet": False}
+        )
+        assert resp.get("Errors", []) == []
+        assert len(resp.get("Deleted", [])) == 6
+        # Bucket should now be truly empty.
+        resp = s3_client.list_object_versions(Bucket=vbucket, Prefix="h")
+        assert resp.get("Versions", []) == []
+        assert resp.get("DeleteMarkers", []) == []
+
 
 class TestUnversionedBucketBackcompat:
     """Ensure unversioned buckets still work as before."""

@@ -1322,6 +1322,9 @@ async fn delete_objects(
                     // Object doesn't exist — delete is a no-op, report success.
                     deleted.push(DeletedEntry {
                         key: obj.key.clone(),
+                        version_id: obj.version_id.clone(),
+                        delete_marker: false,
+                        delete_marker_version_id: None,
                     });
                     continue;
                 }
@@ -1337,32 +1340,82 @@ async fn delete_objects(
             }
         }
 
-        match state.metadata.delete_object(&bucket, &obj.key).await {
-            Ok(old) => {
-                // Delete blob if record existed and is not a delete marker.
-                if let Some(ref old_record) = old {
-                    if !old_record.is_delete_marker && !old_record.blob_id.0.is_empty() {
-                        if let Err(e) = state.blob.delete(&old_record.blob_id).await {
-                            tracing::warn!(
-                                error = %e,
-                                key = %obj.key,
-                                "Failed to delete blob for deleted object"
-                            );
+        // Version-specific delete: hard-remove the exact version or delete marker.
+        if let Some(ref vid) = obj.version_id {
+            match state
+                .metadata
+                .delete_object_version(&bucket, &obj.key, vid)
+                .await
+            {
+                Ok(old) => {
+                    if let Some(ref old_record) = old {
+                        if !old_record.is_delete_marker && !old_record.blob_id.0.is_empty() {
+                            if let Err(e) = state.blob.delete(&old_record.blob_id).await {
+                                tracing::warn!(
+                                    error = %e,
+                                    key = %obj.key,
+                                    "Failed to delete blob for versioned object"
+                                );
+                            }
                         }
                     }
+                    let is_dm = old.as_ref().map_or(false, |r| r.is_delete_marker);
+                    deleted.push(DeletedEntry {
+                        key: obj.key.clone(),
+                        version_id: Some(vid.clone()),
+                        delete_marker: is_dm,
+                        delete_marker_version_id: if is_dm { Some(vid.clone()) } else { None },
+                    });
                 }
-                // S3 reports success even if the key didn't exist.
-                deleted.push(DeletedEntry {
-                    key: obj.key.clone(),
-                });
+                Err(e) => {
+                    tracing::error!(error = %e, key = %obj.key, "Error deleting object version");
+                    errors.push(DeleteErrorEntry {
+                        key: obj.key.clone(),
+                        code: S3ErrorCode::InternalError.as_str().to_string(),
+                        message: "We encountered an internal error. Please try again."
+                            .to_string(),
+                    });
+                }
             }
-            Err(e) => {
-                tracing::error!(error = %e, key = %obj.key, "Error deleting object");
-                errors.push(DeleteErrorEntry {
-                    key: obj.key.clone(),
-                    code: S3ErrorCode::InternalError.as_str().to_string(),
-                    message: "We encountered an internal error. Please try again.".to_string(),
-                });
+        } else {
+            // Non-versioned delete: may create a delete marker in versioned buckets.
+            match state.metadata.delete_object(&bucket, &obj.key).await {
+                Ok(old) => {
+                    // Delete blob if record existed and is not a delete marker.
+                    if let Some(ref old_record) = old {
+                        if !old_record.is_delete_marker && !old_record.blob_id.0.is_empty() {
+                            if let Err(e) = state.blob.delete(&old_record.blob_id).await {
+                                tracing::warn!(
+                                    error = %e,
+                                    key = %obj.key,
+                                    "Failed to delete blob for deleted object"
+                                );
+                            }
+                        }
+                    }
+                    // In versioned buckets, delete_object returns the new delete marker.
+                    let is_dm = old.as_ref().map_or(false, |r| r.is_delete_marker);
+                    let dm_vid = if is_dm {
+                        old.as_ref().and_then(|r| r.version_id.clone())
+                    } else {
+                        None
+                    };
+                    deleted.push(DeletedEntry {
+                        key: obj.key.clone(),
+                        version_id: old.as_ref().and_then(|r| r.version_id.clone()),
+                        delete_marker: is_dm,
+                        delete_marker_version_id: dm_vid,
+                    });
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, key = %obj.key, "Error deleting object");
+                    errors.push(DeleteErrorEntry {
+                        key: obj.key.clone(),
+                        code: S3ErrorCode::InternalError.as_str().to_string(),
+                        message: "We encountered an internal error. Please try again."
+                            .to_string(),
+                    });
+                }
             }
         }
     }

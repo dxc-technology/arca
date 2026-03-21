@@ -159,10 +159,10 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 
 | Suite | Tests | Details |
 |-------|------:|---------|
-| Unit tests (Rust) | 384 | arca-auth: 37, arca-core: 103, arca-proto: 25, arca-server: 58, arca-storage: 161 |
+| Unit tests (Rust) | 386 | arca-auth: 37, arca-core: 105, arca-proto: 25, arca-server: 58, arca-storage: 161 |
 | Integration — boto3 | 146 | buckets, objects, list, multipart, copy, folders, auth, admin, credentials, conditional ops |
 | Integration — RBAC | 41 | user/team/grant CRUD, attachments, effective grants, E2E access control |
-| Integration — Versioning | 20 | versioning config, PUT/GET/HEAD/DELETE with versionId, delete markers, batch delete, ListVersions, copy |
+| Integration — Versioning | 21 | versioning config, PUT/GET/HEAD/DELETE with versionId, delete markers, batch delete with VersionId, ListVersions, copy |
 | Integration — Presigned URLs | 17 | presigned GET/PUT/HEAD/DELETE, security, admin presign, special chars, endpoint override |
 | Integration — SSE-C | 17 | put/get roundtrip, error handling, head, copy, range, delete, validation, multipart rejection |
 | Integration — Encryption | 16 | encrypted put/get, ETag, range reads, multipart, copy, bucket config |
@@ -170,9 +170,9 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — KMS | 10 | Vault/OpenBAO key fetch, encrypted put/get, headers, ETag, multipart, copy, range, admin info |
 | Integration — TLS | 7 | HTTPS health/info/put/get/multipart, minio client, wrong CA rejection |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
-| **Arca tests** | **765** | **All tests written for this project** |
-| [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 829 | 270 pass, 468 fail, 91 skip — 0 unexpected failures |
-| **Total** | **1,594** | |
+| **Arca tests** | **768** | **All tests written for this project** |
+| [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 829 | 320 pass, 418 fail, 91 skip — 0 unexpected failures |
+| **Total** | **1,597** | |
 
 ## License
 

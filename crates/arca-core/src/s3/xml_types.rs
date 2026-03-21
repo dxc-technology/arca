@@ -53,6 +53,9 @@ pub struct DeleteObjectsBody {
 pub struct DeleteObject {
     #[serde(rename = "Key")]
     pub key: String,
+    /// Optional version ID for version-specific deletion.
+    #[serde(rename = "VersionId", default)]
+    pub version_id: Option<String>,
     /// Optional ETag for conditional delete (If-Match semantics per-key).
     #[serde(rename = "ETag", default)]
     pub etag: Option<String>,
@@ -80,6 +83,7 @@ pub fn parse_delete_objects(xml: &str) -> Result<DeleteObjectsBody, quick_xml::D
     let mut quiet = false;
     let mut objects = Vec::new();
     let mut current_key: Option<String> = None;
+    let mut current_version_id: Option<String> = None;
     let mut current_etag: Option<String> = None;
     let mut current_last_modified_time: Option<String> = None;
     let mut current_if_match_size: Option<String> = None;
@@ -97,6 +101,7 @@ pub fn parse_delete_objects(xml: &str) -> Result<DeleteObjectsBody, quick_xml::D
                     let text = e.unescape().map_err(|e| quick_xml::DeError::InvalidXml(e.into()))?.to_string();
                     match tag.as_str() {
                         "Key" => current_key = Some(text),
+                        "VersionId" => current_version_id = Some(text),
                         "ETag" => current_etag = Some(text),
                         "LastModifiedTime" => current_last_modified_time = Some(text),
                         "Size" => current_if_match_size = Some(text),
@@ -111,6 +116,7 @@ pub fn parse_delete_objects(xml: &str) -> Result<DeleteObjectsBody, quick_xml::D
                     if let Some(key) = current_key.take() {
                         objects.push(DeleteObject {
                             key,
+                            version_id: current_version_id.take(),
                             etag: current_etag.take(),
                             last_modified_time: current_last_modified_time.take(),
                             size: current_if_match_size.take(),
@@ -642,6 +648,12 @@ pub fn location_constraint() -> String {
 /// A successfully deleted key in a `DeleteObjects` response.
 pub struct DeletedEntry {
     pub key: String,
+    /// Version ID of the deleted version (or the new delete marker).
+    pub version_id: Option<String>,
+    /// True when a delete marker was created (non-versioned delete in versioned bucket).
+    pub delete_marker: bool,
+    /// Version ID of the delete marker (when delete_marker is true).
+    pub delete_marker_version_id: Option<String>,
 }
 
 /// A failed key in a `DeleteObjects` response.
@@ -677,6 +689,15 @@ pub fn delete_objects_result(
                 .write_event(Event::Start(BytesStart::new("Deleted")))
                 .expect("write Deleted start");
             write_xml_element(&mut writer, "Key", &entry.key);
+            if let Some(ref vid) = entry.version_id {
+                write_xml_element(&mut writer, "VersionId", vid);
+            }
+            if entry.delete_marker {
+                write_xml_element(&mut writer, "DeleteMarker", "true");
+                if let Some(ref dm_vid) = entry.delete_marker_version_id {
+                    write_xml_element(&mut writer, "DeleteMarkerVersionId", dm_vid);
+                }
+            }
             writer
                 .write_event(Event::End(BytesEnd::new("Deleted")))
                 .expect("write Deleted end");
@@ -1150,13 +1171,30 @@ mod tests {
         assert!(!body.quiet);
     }
 
+    #[test]
+    fn parse_delete_objects_with_version_id() {
+        let xml = r#"<Delete>
+            <Quiet>true</Quiet>
+            <Object><Key>key1</Key><VersionId>vid-1</VersionId></Object>
+            <Object><Key>key2</Key></Object>
+        </Delete>"#;
+
+        let body = parse_delete_objects(xml).unwrap();
+        assert!(body.quiet);
+        assert_eq!(body.objects.len(), 2);
+        assert_eq!(body.objects[0].key, "key1");
+        assert_eq!(body.objects[0].version_id.as_deref(), Some("vid-1"));
+        assert_eq!(body.objects[1].key, "key2");
+        assert!(body.objects[1].version_id.is_none());
+    }
+
     // -- DeleteResult XML builder tests --
 
     #[test]
     fn delete_objects_result_verbose() {
         let deleted = vec![
-            DeletedEntry { key: "a.txt".to_string() },
-            DeletedEntry { key: "b.txt".to_string() },
+            DeletedEntry { key: "a.txt".to_string(), version_id: None, delete_marker: false, delete_marker_version_id: None },
+            DeletedEntry { key: "b.txt".to_string(), version_id: None, delete_marker: false, delete_marker_version_id: None },
         ];
         let errors = vec![DeleteErrorEntry {
             key: "c.txt".to_string(),
@@ -1178,7 +1216,7 @@ mod tests {
 
     #[test]
     fn delete_objects_result_quiet_omits_deleted() {
-        let deleted = vec![DeletedEntry { key: "a.txt".to_string() }];
+        let deleted = vec![DeletedEntry { key: "a.txt".to_string(), version_id: None, delete_marker: false, delete_marker_version_id: None }];
         let errors: Vec<DeleteErrorEntry> = vec![];
         let xml = delete_objects_result(&deleted, &errors, true);
 
@@ -1197,7 +1235,7 @@ mod tests {
 
     #[test]
     fn delete_objects_result_quiet_includes_errors() {
-        let deleted = vec![DeletedEntry { key: "a.txt".to_string() }];
+        let deleted = vec![DeletedEntry { key: "a.txt".to_string(), version_id: None, delete_marker: false, delete_marker_version_id: None }];
         let errors = vec![DeleteErrorEntry {
             key: "b.txt".to_string(),
             code: "AccessDenied".to_string(),
@@ -1208,5 +1246,30 @@ mod tests {
         assert!(!xml.contains("<Key>a.txt</Key>"));
         assert!(xml.contains("<Key>b.txt</Key>"));
         assert!(xml.contains("<Code>AccessDenied</Code>"));
+    }
+
+    #[test]
+    fn delete_objects_result_with_version_info() {
+        let deleted = vec![
+            DeletedEntry {
+                key: "a.txt".to_string(),
+                version_id: Some("vid-123".to_string()),
+                delete_marker: false,
+                delete_marker_version_id: None,
+            },
+            DeletedEntry {
+                key: "b.txt".to_string(),
+                version_id: None,
+                delete_marker: true,
+                delete_marker_version_id: Some("dm-456".to_string()),
+            },
+        ];
+        let xml = delete_objects_result(&deleted, &[], false);
+
+        // First entry: version ID, no delete marker.
+        assert!(xml.contains("<VersionId>vid-123</VersionId>"));
+        // Second entry: delete marker with its version ID.
+        assert!(xml.contains("<DeleteMarker>true</DeleteMarker>"));
+        assert!(xml.contains("<DeleteMarkerVersionId>dm-456</DeleteMarkerVersionId>"));
     }
 }

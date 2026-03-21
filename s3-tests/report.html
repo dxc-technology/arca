@@ -93,19 +93,19 @@
 <body>
 
 <h1>Arca S3 Compatibility Report</h1>
-<p class="meta">2026-03-10 15:37:14 UTC</p>
+<p class="meta">2026-03-21 08:52:03 UTC</p>
 
 <div class="cards">
   <div class="card"><div class="value">829</div><div class="label">Total</div></div>
-  <div class="card passed"><div class="value">270</div><div class="label">Passed</div></div>
-  <div class="card failed"><div class="value">468</div><div class="label">Failed</div></div>
+  <div class="card passed"><div class="value">320</div><div class="label">Passed</div></div>
+  <div class="card failed"><div class="value">418</div><div class="label">Failed</div></div>
   <div class="card skipped"><div class="value">91</div><div class="label">Skipped</div></div>
-  <div class="card expected"><div class="value">468</div><div class="label">Expected Fail</div></div>
-  <div class="card rate"><div class="value">32.6%</div><div class="label">Pass Rate</div></div>
+  <div class="card expected"><div class="value">418</div><div class="label">Expected Fail</div></div>
+  <div class="card rate"><div class="value">38.6%</div><div class="label">Pass Rate</div></div>
 </div>
 
 <div class="progress-bar">
-  <div class="progress-fill" style="width: 32.56936067551266%"></div>
+  <div class="progress-fill" style="width: 38.600723763570564%"></div>
 </div>
 
 <h2>Category Breakdown</h2>
@@ -172,10 +172,10 @@
         <tr>
           <td>Encryption</td>
           <td class="num">136</td>
-          <td class="num passed">29</td>
-          <td class="num failed">106</td>
+          <td class="num passed">46</td>
+          <td class="num failed">89</td>
           <td class="num skipped">1</td>
-          <td class="num bad">21%</td>
+          <td class="num bad">34%</td>
         </tr>
         <tr>
           <td>Headers</td>
@@ -244,10 +244,10 @@
         <tr>
           <td>Presigned/POST</td>
           <td class="num">57</td>
-          <td class="num passed">11</td>
-          <td class="num failed">46</td>
+          <td class="num passed">13</td>
+          <td class="num failed">44</td>
           <td class="num skipped">0</td>
-          <td class="num bad">19%</td>
+          <td class="num bad">23%</td>
         </tr>
         <tr>
           <td>RGW Extensions</td>
@@ -268,16 +268,74 @@
         <tr>
           <td>Versioning</td>
           <td class="num">65</td>
-          <td class="num passed">0</td>
-          <td class="num failed">63</td>
+          <td class="num passed">31</td>
+          <td class="num failed">32</td>
           <td class="num skipped">2</td>
-          <td class="num bad">0%</td>
+          <td class="num warn">48%</td>
         </tr>
 </table>
 
 
+        <h2>Passlist Diff</h2>
+        <div class="diff-box"><div class="diff-new">+ test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-1024]</div>
+<div class="diff-new">+ test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-1048576]</div>
+<div class="diff-new">+ test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-1]</div>
+<div class="diff-new">+ test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-8388608]</div>
+<div class="diff-new">+ test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-1024]</div>
+<div class="diff-new">+ test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-1048576]</div>
+<div class="diff-new">+ test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-1]</div>
+<div class="diff-new">+ test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-8388608]</div>
+<div class="diff-new">+ test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-1024]</div>
+<div class="diff-new">+ test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-1048576]</div>
+<div class="diff-new">+ test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-1]</div>
+<div class="diff-new">+ test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-8388608]</div>
+<div class="diff-new">+ test_delete_objects_version_if_match</div>
+<div class="diff-new">+ test_delete_objects_version_if_match_last_modified_time</div>
+<div class="diff-new">+ test_delete_objects_version_if_match_size</div>
+<div class="diff-new">+ test_encryption_key_no_sse_c</div>
+<div class="diff-new">+ test_encryption_sse_c_invalid_md5</div>
+<div class="diff-new">+ test_encryption_sse_c_method_head</div>
+<div class="diff-new">+ test_encryption_sse_c_multipart_invalid_chunks_1</div>
+<div class="diff-new">+ test_encryption_sse_c_multipart_invalid_chunks_2</div>
+<div class="diff-new">+ test_encryption_sse_c_no_key</div>
+<div class="diff-new">+ test_encryption_sse_c_no_md5</div>
+<div class="diff-new">+ test_encryption_sse_c_present</div>
+<div class="diff-new">+ test_multipart_put_current_object_if_none_match</div>
+<div class="diff-new">+ test_object_copy_versioned_bucket</div>
+<div class="diff-new">+ test_object_copy_versioned_url_encoding</div>
+<div class="diff-new">+ test_object_copy_versioning_multipart_upload</div>
+<div class="diff-new">+ test_object_presigned_put_object_with_acl</div>
+<div class="diff-new">+ test_object_presigned_put_object_with_acl_tenant</div>
+<div class="diff-new">+ test_put_current_object_if_match</div>
+<div class="diff-new">+ test_put_current_object_if_none_match</div>
+<div class="diff-new">+ test_put_object_current_if_match</div>
+<div class="diff-new">+ test_versioned_concurrent_object_create_and_remove</div>
+<div class="diff-new">+ test_versioned_concurrent_object_create_concurrent_remove</div>
+<div class="diff-new">+ test_versioning_bucket_atomic_upload_return_version_id</div>
+<div class="diff-new">+ test_versioning_bucket_create_suspend</div>
+<div class="diff-new">+ test_versioning_concurrent_multi_object_delete</div>
+<div class="diff-new">+ test_versioning_copy_obj_version</div>
+<div class="diff-new">+ test_versioning_multi_object_delete</div>
+<div class="diff-new">+ test_versioning_multi_object_delete_with_marker</div>
+<div class="diff-new">+ test_versioning_multi_object_delete_with_marker_create</div>
+<div class="diff-new">+ test_versioning_obj_create_overwrite_multipart</div>
+<div class="diff-new">+ test_versioning_obj_create_read_remove</div>
+<div class="diff-new">+ test_versioning_obj_create_read_remove_head</div>
+<div class="diff-new">+ test_versioning_obj_create_versions_remove_all</div>
+<div class="diff-new">+ test_versioning_obj_create_versions_remove_special_names</div>
+<div class="diff-new">+ test_versioning_obj_list_marker</div>
+<div class="diff-new">+ test_versioning_obj_plain_null_version_overwrite</div>
+<div class="diff-new">+ test_versioning_obj_plain_null_version_overwrite_suspended</div>
+<div class="diff-new">+ test_versioning_obj_plain_null_version_removal</div>
+<div class="diff-new">+ test_versioning_obj_suspend_versions</div>
+<div class="diff-new">+ test_versioning_obj_suspended_copy</div>
+<div class="diff-new">+ test_versioning_stack_delete_merkers</div>
+<div class="diff-lost">- test_copy_part_enc[sse-c-unencrypted-STANDARD-STANDARD-8388608]</div>
+<div class="diff-lost">- test_encryption_sse_c_multipart_upload</div>
+<div class="diff-lost">- test_encryption_sse_c_unaligned_multipart_upload</div>
+</div>
 
-<h2>Failures (468)</h2>
+<h2>Failures (418)</h2>
 
         <details class="fail-item">
           <summary>
@@ -613,7 +671,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_bucket_list_return_data_versioning</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -677,7 +735,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_bucket_logging_copy_objects_bucket_versioned</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -685,7 +743,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_bucket_logging_copy_objects_versioned</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -701,7 +759,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_bucket_logging_delete_objects_versioned</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -717,7 +775,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_bucket_logging_get_objects_versioned</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -733,7 +791,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_bucket_logging_head_objects_versioned</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -749,7 +807,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_bucket_logging_mpu_copy_versioned</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -765,7 +823,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_bucket_logging_mpu_versioned_s</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -789,7 +847,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_bucket_logging_multi_delete_versioned</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -853,7 +911,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_bucket_logging_put_objects_versioned</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1099,38 +1157,6 @@
           <summary>
             <span class="badge expected">Expected</span>
             <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-1024]</code>
-          </summary>
-          <pre>KeyError: 'x-amz-server-side-encryption-customer-algorithm'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-1048576]</code>
-          </summary>
-          <pre>KeyError: 'x-amz-server-side-encryption-customer-algorithm'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-1]</code>
-          </summary>
-          <pre>KeyError: 'x-amz-server-side-encryption-customer-algorithm'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-8388608]</code>
-          </summary>
-          <pre>KeyError: 'x-amz-server-side-encryption-customer-algorithm'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-c-sse-kms-STANDARD-STANDARD-1024]</code>
           </summary>
           <pre>KeyError: 'x-amz-server-side-encryption'</pre>
@@ -1190,38 +1216,6 @@
             <code>test_copy_enc[sse-c-sse-s3-STANDARD-STANDARD-8388608]</code>
           </summary>
           <pre>KeyError: 'x-amz-server-side-encryption'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-1024]</code>
-          </summary>
-          <pre>KeyError: 'x-amz-server-side-encryption-customer-algorithm'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-1048576]</code>
-          </summary>
-          <pre>KeyError: 'x-amz-server-side-encryption-customer-algorithm'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-1]</code>
-          </summary>
-          <pre>KeyError: 'x-amz-server-side-encryption-customer-algorithm'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-8388608]</code>
-          </summary>
-          <pre>KeyError: 'x-amz-server-side-encryption-customer-algorithm'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1419,38 +1413,6 @@
           <summary>
             <span class="badge expected">Expected</span>
             <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-1024]</code>
-          </summary>
-          <pre>KeyError: 'x-amz-server-side-encryption-customer-algorithm'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-1048576]</code>
-          </summary>
-          <pre>KeyError: 'x-amz-server-side-encryption-customer-algorithm'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-1]</code>
-          </summary>
-          <pre>KeyError: 'x-amz-server-side-encryption-customer-algorithm'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-8388608]</code>
-          </summary>
-          <pre>KeyError: 'x-amz-server-side-encryption-customer-algorithm'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[unencrypted-sse-kms-STANDARD-STANDARD-1024]</code>
           </summary>
           <pre>KeyError: 'x-amz-server-side-encryption'</pre>
@@ -1517,7 +1479,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_part_enc[sse-c-sse-c-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>KeyError: 'x-amz-server-side-encryption-customer-algorithm'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the CreateMultipartUpload operation: SSE-C is not supported for multipart uploads</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1539,9 +1501,17 @@
           <summary>
             <span class="badge expected">Expected</span>
             <span class="cat-tag">Encryption</span>
+            <code>test_copy_part_enc[sse-c-unencrypted-STANDARD-STANDARD-8388608]</code>
+          </summary>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the UploadPartCopy operation: SSE-C is not supported for multipart uploads</pre>
+        </details>
+        <details class="fail-item">
+          <summary>
+            <span class="badge expected">Expected</span>
+            <span class="cat-tag">Encryption</span>
             <code>test_copy_part_enc[sse-kms-sse-c-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>KeyError: 'x-amz-server-side-encryption-customer-algorithm'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the CreateMultipartUpload operation: SSE-C is not supported for multipart uploads</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1597,7 +1567,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_part_enc[unencrypted-sse-c-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>KeyError: 'x-amz-server-side-encryption-customer-algorithm'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the CreateMultipartUpload operation: SSE-C is not supported for multipart uploads</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1743,14 +1713,7 @@
           </summary>
           <pre>AssertionError: assert (404, 'Owners...otFoundError') == (501, 'NotImplemented')
   
-  At index 0 diff: 404 != 501
-  
-  Full diff:
-    (
-  -     501,
-  ?     ^ ^...
-  
-  ...Full output truncated (5 lin</pre>
+  At index 0 diff: #x1B[0m#x1B[94m404#x1B[39;49;00m#x1B[90m#x1B[39;49;00m != #x1B[0m#x1B[94m501#x1B[39;49;00m#x1B[90</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1766,7 +1729,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_delete_bucket_encryption_kms</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketEncryption operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1774,7 +1737,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_delete_bucket_encryption_s3</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketEncryption operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1782,7 +1745,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_delete_marker_expiration</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>KeyError: 'x-amz-delete-marker'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1798,7 +1761,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_delete_marker_suspended</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>KeyError: 'x-amz-delete-marker'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1806,7 +1769,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_delete_marker_versioned</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>KeyError: 'x-amz-delete-marker'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1814,7 +1777,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_delete_object_current_if_match</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1822,7 +1785,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_delete_object_current_if_match_last_modified_time</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1830,7 +1793,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_delete_object_current_if_match_size</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1838,7 +1801,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_delete_object_version_if_match</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1846,7 +1809,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_delete_object_version_if_match_last_modified_time</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1854,7 +1817,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_delete_object_version_if_match_size</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1862,7 +1825,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_delete_objects_current_if_match</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>KeyError: 'Errors'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1870,7 +1833,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_delete_objects_current_if_match_last_modified_time</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>KeyError: 'Errors'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1878,31 +1841,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_delete_objects_current_if_match_size</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_objects_version_if_match</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_objects_version_if_match_last_modified_time</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_objects_version_if_match_size</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>KeyError: 'Errors'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1911,14 +1850,6 @@
             <code>test_delete_tags_obj_public</code>
           </summary>
           <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_encryption_key_no_sse_c</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1940,57 +1871,17 @@
           <summary>
             <span class="badge expected">Expected</span>
             <span class="cat-tag">Encryption</span>
-            <code>test_encryption_sse_c_invalid_md5</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_encryption_sse_c_method_head</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
             <code>test_encryption_sse_c_multipart_bad_download</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the CreateMultipartUpload operation: SSE-C is not supported for multipart uploads</pre>
         </details>
         <details class="fail-item">
           <summary>
             <span class="badge expected">Expected</span>
             <span class="cat-tag">Encryption</span>
-            <code>test_encryption_sse_c_multipart_invalid_chunks_1</code>
+            <code>test_encryption_sse_c_multipart_upload</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_encryption_sse_c_multipart_invalid_chunks_2</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_encryption_sse_c_no_key</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_encryption_sse_c_no_md5</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the CreateMultipartUpload operation: SSE-C is not supported for multipart uploads</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2013,9 +1904,9 @@
           <summary>
             <span class="badge expected">Expected</span>
             <span class="cat-tag">Encryption</span>
-            <code>test_encryption_sse_c_present</code>
+            <code>test_encryption_sse_c_unaligned_multipart_upload</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the CreateMultipartUpload operation: SSE-C is not supported for multipart uploads</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2039,7 +1930,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_get_bucket_encryption_kms</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketEncryption operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2047,7 +1938,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_get_bucket_encryption_s3</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketEncryption operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2167,7 +2058,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_get_sse_c_encrypted_object_attributes</code>
           </summary>
-          <pre>assert 500 == 400</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAttributes operation (reached max retries: 4): Internal Server Error</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2185,8 +2076,8 @@
           </summary>
           <pre>AssertionError: assert 'NotImplemented' == 'NoSuchPublic...Configuration'
   
-  - NoSuchPublicAccessBlockConfiguration
-  + NotImplemented</pre>
+  #x1B[0m#x1B[91m- NoSuchPublicAccessBlockConfiguration#x1B[39;49;00m#x1B[90m#x1B[39;49;00m
+  #x1B[92m+ NotImplemented#x1B[</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2194,7 +2085,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_get_versioned_object_attributes</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAttributes operation (reached max retries: 4): Internal Server Error</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2226,7 +2117,7 @@
             <span class="cat-tag">Lifecycle</span>
             <code>test_lifecycle_deletemarker_expiration</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketLifecycleConfiguration operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2234,7 +2125,7 @@
             <span class="cat-tag">Lifecycle</span>
             <code>test_lifecycle_deletemarker_expiration_with_days_tag</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketLifecycleConfiguration operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2260,8 +2151,8 @@
           </summary>
           <pre>AssertionError: assert 'NotImplemented' == 'InvalidArgument'
   
-  - InvalidArgument
-  + NotImplemented</pre>
+  #x1B[0m#x1B[91m- InvalidArgument#x1B[39;49;00m#x1B[90m#x1B[39;49;00m
+  #x1B[92m+ NotImplemented#x1B[39;49;00m#x1B[90m#x1B[39;49;00m</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2301,7 +2192,7 @@
             <span class="cat-tag">Lifecycle</span>
             <code>test_lifecycle_expiration_newer_noncurrent</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketLifecycleConfiguration operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2309,7 +2200,7 @@
             <span class="cat-tag">Tagging</span>
             <code>test_lifecycle_expiration_noncur_tags1</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketLifecycleConfiguration operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2317,7 +2208,7 @@
             <span class="cat-tag">Lifecycle</span>
             <code>test_lifecycle_expiration_size_gt</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketLifecycleConfiguration operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2325,7 +2216,7 @@
             <span class="cat-tag">Lifecycle</span>
             <code>test_lifecycle_expiration_size_lt</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketLifecycleConfiguration operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2349,7 +2240,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_lifecycle_expiration_versioned_tags2</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketLifecycleConfiguration operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2357,7 +2248,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_lifecycle_expiration_versioning_enabled</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketLifecycleConfiguration operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2405,7 +2296,7 @@
             <span class="cat-tag">Lifecycle</span>
             <code>test_lifecycle_noncur_expiration</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketLifecycleConfiguration operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2509,8 +2400,8 @@
             <span class="cat-tag">Not Implemented</span>
             <code>test_list_buckets_paginated</code>
           </summary>
-          <pre>AssertionError: assert 5 == 0
- +  where 5 = len([{'CreationDate': datetime.datetime(2026, 3, 9, 16, 58, 47, 84000, tzinfo=tzlocal()), 'Name': 'arca-test-ma54si5x4omslchi29g-1'}, {'CreationDate': datet</pre>
+          <pre>AssertionError: assert 2 == 0
+ +  where 2 = len([{'CreationDate': datetime.datetime(2026, 3, 21, 7, 15, 53, 330000, tzinfo=tzlocal()), 'Name': 'arca-test-5aw73sr0kq6lt1ip1w6-81'}, {'CreationDate': dat</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2534,7 +2425,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_multipart_copy_versioned</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>Failed: Timeout (&gt;30.0s) from pytest-timeout.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2550,15 +2441,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_multipart_put_current_object_if_match</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_multipart_put_current_object_if_none_match</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>KeyError: 'VersionId'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2574,7 +2457,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_multipart_sse_c_get_part</code>
           </summary>
-          <pre>KeyError: 'PartsCount'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the CreateMultipartUpload operation: SSE-C is not supported for multipart uploads</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2783,30 +2666,6 @@
             <code>test_object_copy_not_owned_object_bucket</code>
           </summary>
           <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_object_copy_versioned_bucket</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_object_copy_versioned_url_encoding</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_object_copy_versioning_multipart_upload</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3102,7 +2961,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_object_lock_suspend_versioning</code>
           </summary>
-          <pre>assert 501 == 409</pre>
+          <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3115,28 +2974,10 @@
         <details class="fail-item">
           <summary>
             <span class="badge expected">Expected</span>
-            <span class="cat-tag">Presigned/POST</span>
-            <code>test_object_presigned_put_object_with_acl</code>
-          </summary>
-          <pre>assert 403 == 200
- +  where 403 = &lt;Response [403]&gt;.status_code</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Presigned/POST</span>
-            <code>test_object_presigned_put_object_with_acl_tenant</code>
-          </summary>
-          <pre>assert 403 == 200
- +  where 403 = &lt;Response [403]&gt;.status_code</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
             <span class="cat-tag">ACL/Policy</span>
             <code>test_object_put_acl_mtime</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>assert datetime.datetime(2026, 3, 21, 8, 39, 18, tzinfo=tzutc()) == datetime.datetime(2026, 3, 21, 8, 39, 20, tzinfo=tzutc())</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3460,7 +3301,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_put_bucket_encryption_kms</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketEncryption operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3468,7 +3309,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_put_bucket_encryption_s3</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketEncryption operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3494,8 +3335,8 @@
           </summary>
           <pre>AssertionError: assert 'NotImplemented' == 'NoSuchBucket'
   
-  - NoSuchBucket
-  + NotImplemented</pre>
+  #x1B[0m#x1B[91m- NoSuchBucket#x1B[39;49;00m#x1B[90m#x1B[39;49;00m
+  #x1B[92m+ NotImplemented#x1B[39;49;00m#x1B[90m#x1B[39;49;00m</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3505,8 +3346,8 @@
           </summary>
           <pre>AssertionError: assert 'NotImplemented' == 'AccessDenied'
   
-  - AccessDenied
-  + NotImplemented</pre>
+  #x1B[0m#x1B[91m- AccessDenied#x1B[39;49;00m#x1B[90m#x1B[39;49;00m
+  #x1B[92m+ NotImplemented#x1B[39;49;00m#x1B[90m#x1B[39;49;00m</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3555,22 +3396,6 @@
             <code>test_put_bucket_ownership_object_writer</code>
           </summary>
           <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketOwnershipControls operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_put_current_object_if_match</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_put_current_object_if_none_match</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3655,14 +3480,6 @@
         <details class="fail-item">
           <summary>
             <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_put_object_current_if_match</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
             <span class="cat-tag">ACL/Policy</span>
             <code>test_put_public_block</code>
           </summary>
@@ -3722,7 +3539,7 @@
             <span class="cat-tag">Presigned/POST</span>
             <code>test_sse_kms_default_post_object_authenticated_request</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketEncryption operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3730,7 +3547,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_kms_default_upload_1b</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketEncryption operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3738,7 +3555,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_kms_default_upload_1kb</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketEncryption operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3746,7 +3563,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_kms_default_upload_1mb</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketEncryption operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3754,7 +3571,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_kms_default_upload_8mb</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketEncryption operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3803,7 +3620,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_s3_default_method_head</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketEncryption operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3811,7 +3628,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_s3_default_multipart_upload</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketEncryption operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3819,7 +3636,7 @@
             <span class="cat-tag">Presigned/POST</span>
             <code>test_sse_s3_default_post_object_authenticated_request</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketEncryption operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3827,7 +3644,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_s3_default_upload_1b</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketEncryption operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3835,7 +3652,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_s3_default_upload_1kb</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketEncryption operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3843,7 +3660,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_s3_default_upload_1mb</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketEncryption operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3851,7 +3668,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_s3_default_upload_8mb</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketEncryption operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3889,25 +3706,9 @@
           <summary>
             <span class="badge expected">Expected</span>
             <span class="cat-tag">Versioning</span>
-            <code>test_versioned_concurrent_object_create_and_remove</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioned_concurrent_object_create_concurrent_remove</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
             <code>test_versioned_object_acl</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3915,23 +3716,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_versioned_object_acl_no_version_specified</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioning_bucket_atomic_upload_return_version_id</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioning_bucket_create_suspend</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3939,143 +3724,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_versioning_bucket_multipart_upload_return_version_id</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioning_concurrent_multi_object_delete</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioning_copy_obj_version</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioning_multi_object_delete</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioning_multi_object_delete_with_marker</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioning_multi_object_delete_with_marker_create</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioning_obj_create_overwrite_multipart</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioning_obj_create_read_remove</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioning_obj_create_read_remove_head</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioning_obj_create_versions_remove_all</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioning_obj_create_versions_remove_special_names</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioning_obj_list_marker</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioning_obj_plain_null_version_overwrite</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioning_obj_plain_null_version_overwrite_suspended</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioning_obj_plain_null_version_removal</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioning_obj_suspend_versions</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioning_obj_suspended_copy</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioning_stack_delete_merkers</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketVersioning operation: A header you provided implies functionality that is not implemented.</pre>
+          <pre>KeyError: 'VersionId'</pre>
         </details>
 
 </body>

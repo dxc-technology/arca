@@ -1,0 +1,131 @@
+{
+  "timestamp": "2026-03-21T08:52:03Z",
+  "total": 829,
+  "passed": 320,
+  "failed": 418,
+  "skipped": 91,
+  "unexpected_failures": 0,
+  "pass_pct": 38.6,
+  "categories": {
+    "ACL/Policy": {
+      "total": 119,
+      "passed": 5,
+      "failed": 112,
+      "skipped": 2
+    },
+    "Anonymous": {
+      "total": 11,
+      "passed": 3,
+      "failed": 8,
+      "skipped": 0
+    },
+    "Auth": {
+      "total": 5,
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    "Bucket": {
+      "total": 103,
+      "passed": 103,
+      "failed": 0,
+      "skipped": 0
+    },
+    "CORS": {
+      "total": 4,
+      "passed": 0,
+      "failed": 4,
+      "skipped": 0
+    },
+    "Checksums": {
+      "total": 10,
+      "passed": 0,
+      "failed": 10,
+      "skipped": 0
+    },
+    "Copy": {
+      "total": 15,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    "Encryption": {
+      "total": 136,
+      "passed": 46,
+      "failed": 89,
+      "skipped": 1
+    },
+    "Headers": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    "Lifecycle": {
+      "total": 36,
+      "passed": 0,
+      "failed": 28,
+      "skipped": 8
+    },
+    "Logging": {
+      "total": 101,
+      "passed": 0,
+      "failed": 28,
+      "skipped": 73
+    },
+    "Multipart": {
+      "total": 23,
+      "passed": 23,
+      "failed": 0,
+      "skipped": 0
+    },
+    "Not Implemented": {
+      "total": 9,
+      "passed": 0,
+      "failed": 9,
+      "skipped": 0
+    },
+    "Object": {
+      "total": 42,
+      "passed": 42,
+      "failed": 0,
+      "skipped": 0
+    },
+    "Object Lock": {
+      "total": 38,
+      "passed": 3,
+      "failed": 35,
+      "skipped": 0
+    },
+    "Other": {
+      "total": 30,
+      "passed": 25,
+      "failed": 0,
+      "skipped": 5
+    },
+    "Presigned/POST": {
+      "total": 57,
+      "passed": 13,
+      "failed": 44,
+      "skipped": 0
+    },
+    "RGW Extensions": {
+      "total": 5,
+      "passed": 0,
+      "failed": 5,
+      "skipped": 0
+    },
+    "Tagging": {
+      "total": 18,
+      "passed": 4,
+      "failed": 14,
+      "skipped": 0
+    },
+    "Versioning": {
+      "total": 65,
+      "passed": 31,
+      "failed": 32,
+      "skipped": 2
+    }
+  }
+}
