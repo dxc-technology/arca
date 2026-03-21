@@ -10,6 +10,7 @@ use arca_core::s3::xml_types::{DeleteErrorEntry, DeletedEntry};
 use arca_core::types::{ListBucketResultParams, ListBucketV1ResultParams, ListEntry, ObjectRecord};
 use arca_core::{validate_bucket_name, S3Error, S3ErrorCode};
 
+use crate::handlers::admin_settings::effective_region;
 use crate::state::AppState;
 use crate::xml::error_response::{
     internal_error_response, not_implemented_response, s3_error_response,
@@ -80,7 +81,8 @@ pub async fn get_bucket(
         // Check bucket exists first.
         match state.metadata.head_bucket(&bucket).await {
             Ok(Some(_)) => {
-                let xml = xml_types::location_constraint();
+                let region = effective_region(&state, Some(&bucket)).await;
+                let xml = xml_types::location_constraint(&region);
                 return Response::builder()
                     .status(StatusCode::OK)
                     .header("Content-Type", "application/xml")
@@ -1039,11 +1041,14 @@ pub async fn head_bucket(
 ) -> Response {
     let resource = format!("/{bucket}");
     match state.metadata.head_bucket(&bucket).await {
-        Ok(Some(_)) => Response::builder()
-            .status(StatusCode::OK)
-            .header("x-amz-bucket-region", "us-east-1") // TECHDEBT(TD-004): hardcoded region
-            .body(axum::body::Body::empty())
-            .expect("build head bucket response"),
+        Ok(Some(_)) => {
+            let region = effective_region(&state, Some(&bucket)).await;
+            Response::builder()
+                .status(StatusCode::OK)
+                .header("x-amz-bucket-region", region)
+                .body(axum::body::Body::empty())
+                .expect("build head bucket response")
+        }
         Ok(None) => {
             let err = S3Error::new(S3ErrorCode::NoSuchBucket, &resource);
             s3_error_response(err)

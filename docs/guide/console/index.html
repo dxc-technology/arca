@@ -1087,6 +1087,95 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#audit-log" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audit Log
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Audit Log">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filtering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#detail-panel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Detail Panel
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#general" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        General
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#monitoring_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#custom-deployment" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2003,6 +2092,95 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#audit-log" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audit Log
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Audit Log">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filtering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#detail-panel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Detail Panel
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settings
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Settings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#general" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        General
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#monitoring_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#custom-deployment" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2370,6 +2548,58 @@
 <p>A visual breakdown of the policy statements, color-coded by effect: green for Allow, red for Deny. Each statement shows its actions and resources.</p>
 <h4 id="attached-to">Attached To<a class="headerlink" href="#attached-to" title="Permanent link">&para;</a></h4>
 <p>Shows which users and teams have this grant attached. Click a user or team name to navigate to their detail page.</p>
+<h2 id="audit-log">Audit Log<a class="headerlink" href="#audit-log" title="Permanent link">&para;</a></h2>
+<p><img alt="Audit Log" src="../../assets/screenshots/console-audit-log.png" /></p>
+<p>The Audit Log view is available to <strong>admin credentials only</strong>. It shows a chronological log of all S3 and admin operations performed on the server, with details about who performed them, when, and what the result was.</p>
+<p>The table shows: timestamp, operation name, bucket, key, user, HTTP status (color-coded: green for 2xx, amber for 4xx, red for 5xx), and request duration.</p>
+<h3 id="filtering">Filtering<a class="headerlink" href="#filtering" title="Permanent link">&para;</a></h3>
+<p>The filter bar provides three controls:</p>
+<ul>
+<li><strong>Bucket</strong> — text input, filters by bucket name (server-side)</li>
+<li><strong>User ID</strong> — text input, filters by user ID (server-side)</li>
+<li><strong>Operations</strong> — tag-based filter with autocomplete:<ul>
+<li>Type to search operations, press Enter or click to add as a tag</li>
+<li>Toggle <strong>IN</strong> (include, show only selected) / <strong>EX</strong> (exclude, hide selected) mode by clicking the mode badge</li>
+<li>Remove tags with the X button or Backspace</li>
+<li>Clear all tags with the X button on the right</li>
+<li>Filters and page size are persisted across navigation</li>
+</ul>
+</li>
+</ul>
+<h3 id="detail-panel">Detail Panel<a class="headerlink" href="#detail-panel" title="Permanent link">&para;</a></h3>
+<p>Click any row to open a slide-in detail panel on the right showing all fields: operation, timestamp, HTTP method, status, duration, bucket, key, version ID, error code, user ID, access key, source IP, user agent, bytes received/sent, and request ID.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Read-only monitoring operations (Health, Metrics, ListAudit, etc.) are not logged to avoid feedback loops.</p>
+</div>
+<h2 id="monitoring">Monitoring<a class="headerlink" href="#monitoring" title="Permanent link">&para;</a></h2>
+<p><img alt="Monitoring" src="../../assets/screenshots/console-monitoring.png" /></p>
+<p>The Monitoring view is available to <strong>admin credentials only</strong>. It displays historical metrics as SVG sparkline charts with labeled axes:</p>
+<ul>
+<li><strong>Objects</strong> — total object count over time</li>
+<li><strong>Storage Size</strong> — total storage bytes over time</li>
+<li><strong>Buckets</strong> — bucket count over time</li>
+<li><strong>Connections</strong> — active HTTP connections at each snapshot</li>
+</ul>
+<p>A time range selector at the top right offers: <strong>1h</strong>, <strong>6h</strong>, <strong>24h</strong>, <strong>7d</strong>, <strong>30d</strong>. Each chart shows the current value in the header and the trend line with labeled Y-axis ticks and X-axis time labels.</p>
+<p>Metrics snapshots are recorded periodically (default: every 60 seconds) and stored in the database. The retention period is configurable in the Settings page.</p>
+<h2 id="settings">Settings<a class="headerlink" href="#settings" title="Permanent link">&para;</a></h2>
+<p><img alt="Settings" src="../../assets/screenshots/console-settings.png" /></p>
+<p>The Settings view is available to <strong>admin credentials only</strong>. It manages instance-wide configuration with a TOML &gt; database &gt; default precedence chain:</p>
+<ul>
+<li>Settings defined in the TOML configuration file are <strong>locked</strong> (shown with a lock icon and "Config file" badge, read-only in the console)</li>
+<li>Settings not in the TOML file can be edited from the console (stored in the database, shown with "Custom" or "Default" badge)</li>
+<li>Values save automatically on change</li>
+</ul>
+<h3 id="general">General<a class="headerlink" href="#general" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>S3 Region</strong> — default region for HeadBucket, GetBucketLocation, and presigned URL generation. Can also be set per-bucket.</li>
+</ul>
+<h3 id="monitoring_1">Monitoring<a class="headerlink" href="#monitoring_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Audit Log Retention</strong> — days to keep audit log entries (0 = keep forever, default: 90 days)</li>
+<li><strong>Metrics Retention</strong> — days to keep metrics snapshots (0 = keep forever, default: 30 days)</li>
+</ul>
 <h2 id="custom-deployment">Custom Deployment<a class="headerlink" href="#custom-deployment" title="Permanent link">&para;</a></h2>
 <h3 id="environment-variables">Environment Variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h3>
 <table>

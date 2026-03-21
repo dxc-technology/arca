@@ -219,6 +219,55 @@ const MIGRATIONS: &[Migration] = &[
                 ON objects(bucket, key, last_modified DESC);
         ",
     },
+    Migration {
+        version: 10,
+        description: "Add server_config, audit_log, and metrics_snapshot tables",
+        sql: "
+            CREATE TABLE server_config (
+                config_key   TEXT PRIMARY KEY NOT NULL,
+                config_value TEXT NOT NULL,
+                updated_at   TEXT NOT NULL
+            );
+
+            CREATE TABLE audit_log (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp       TEXT NOT NULL,
+                request_id      TEXT NOT NULL,
+                operation       TEXT NOT NULL,
+                bucket          TEXT,
+                key             TEXT,
+                version_id      TEXT,
+                user_id         TEXT,
+                access_key_id   TEXT,
+                source_ip       TEXT,
+                http_method     TEXT NOT NULL,
+                http_status     INTEGER NOT NULL,
+                error_code      TEXT,
+                bytes_sent      INTEGER NOT NULL DEFAULT 0,
+                bytes_received  INTEGER NOT NULL DEFAULT 0,
+                duration_ms     INTEGER NOT NULL DEFAULT 0,
+                user_agent      TEXT
+            );
+
+            CREATE INDEX idx_audit_log_timestamp ON audit_log(timestamp);
+            CREATE INDEX idx_audit_log_bucket ON audit_log(bucket, timestamp);
+            CREATE INDEX idx_audit_log_user ON audit_log(user_id, timestamp);
+            CREATE INDEX idx_audit_log_operation ON audit_log(operation, timestamp);
+
+            CREATE TABLE metrics_snapshot (
+                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp            TEXT NOT NULL,
+                bucket_count         INTEGER NOT NULL,
+                object_count         INTEGER NOT NULL,
+                total_size_bytes     INTEGER NOT NULL,
+                disk_total_bytes     INTEGER,
+                disk_available_bytes INTEGER,
+                active_connections   INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE INDEX idx_metrics_snapshot_timestamp ON metrics_snapshot(timestamp);
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -292,7 +341,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 9);
+        assert_eq!(version, 10);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -334,12 +383,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 9);
+        assert_eq!(version, 10);
 
-        // Nine migration records
+        // Ten migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 9);
+        assert_eq!(count, 10);
     }
 }

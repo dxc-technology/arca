@@ -307,8 +307,8 @@ export function bucketDetailView() {
     },
 
     async selectObject(obj) {
+      const keepVersionsOpen = this.versionsExpanded;
       this.selectedObject = { ...obj, encrypted: false };
-      this.versionsExpanded = false;
       this.versions = [];
       this.versionsError = '';
       try {
@@ -317,6 +317,11 @@ export function bucketDetailView() {
           this.selectedObject = { ...this.selectedObject, encrypted: true };
         }
       } catch {}
+      // If versions panel was open, keep it open and load versions for the new object
+      if (keepVersionsOpen && this.bucketVersioned) {
+        this.versionsExpanded = true;
+        await this.loadVersions();
+      }
     },
 
     async toggleVersions() {
@@ -498,10 +503,13 @@ export function bucketDetailView() {
 
     async uploadFiles(files) {
       if (!files || files.length === 0) return;
+      // Copy the FileList to an Array immediately, before the input element
+      // is reset (which would empty the live FileList during async iteration).
+      const fileArray = Array.from(files);
       const bucket = this.bucketName;
       const prefix = this.prefix;
 
-      for (const file of files) {
+      for (const file of fileArray) {
         // webkitRelativePath is set when uploading a folder (e.g. "mydir/sub/file.txt").
         // For regular file uploads it's empty, so we fall back to file.name.
         const relativePath = file.webkitRelativePath || file.name;

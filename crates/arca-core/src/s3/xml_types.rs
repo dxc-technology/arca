@@ -1,6 +1,6 @@
 //! S3 XML request/response types.
 
-use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, Event};
+use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
 use quick_xml::Writer;
 
 use crate::error::write_xml_element;
@@ -622,14 +622,10 @@ pub fn versioning_configuration_result(status: Option<&str>) -> String {
 
 /// Builds the XML response for `GetBucketLocation`.
 ///
-/// TECHDEBT(TD-004): Returns an empty `LocationConstraint` element, which
-/// indicates US Standard (us-east-1). Hardcoded — no per-bucket region support.
-///
-/// ```xml
-/// <?xml version="1.0" encoding="UTF-8"?>
-/// <LocationConstraint xmlns="http://s3.amazonaws.com/doc/2006-03-01/"/>
-/// ```
-pub fn location_constraint() -> String {
+/// Per the S3 spec, an empty `LocationConstraint` element means `us-east-1`.
+/// When `region` is `"us-east-1"`, we return an empty element for compatibility.
+/// For any other region, we return the region as the element text.
+pub fn location_constraint(region: &str) -> String {
     let mut writer = Writer::new(Vec::new());
 
     writer
@@ -638,9 +634,23 @@ pub fn location_constraint() -> String {
 
     let mut elem = BytesStart::new("LocationConstraint");
     elem.push_attribute(("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
-    writer
-        .write_event(Event::Empty(elem))
-        .expect("write LocationConstraint");
+
+    if region == "us-east-1" {
+        // Empty element = us-east-1 (S3 convention)
+        writer
+            .write_event(Event::Empty(elem))
+            .expect("write LocationConstraint");
+    } else {
+        writer
+            .write_event(Event::Start(elem))
+            .expect("write LocationConstraint start");
+        writer
+            .write_event(Event::Text(BytesText::new(region)))
+            .expect("write region text");
+        writer
+            .write_event(Event::End(BytesEnd::new("LocationConstraint")))
+            .expect("write LocationConstraint end");
+    }
 
     String::from_utf8(writer.into_inner()).expect("valid UTF-8 XML")
 }
@@ -1225,12 +1235,20 @@ mod tests {
     }
 
     #[test]
-    fn location_constraint_xml() {
-        let xml = location_constraint();
+    fn location_constraint_us_east_1() {
+        let xml = location_constraint("us-east-1");
         assert!(xml.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
         assert!(xml.contains("<LocationConstraint"));
         assert!(xml.contains("xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\""));
+        // us-east-1 returns empty element (S3 convention)
         assert!(xml.contains("/>"));
+        assert!(!xml.contains("us-east-1"));
+    }
+
+    #[test]
+    fn location_constraint_custom_region() {
+        let xml = location_constraint("eu-west-1");
+        assert!(xml.contains(">eu-west-1</LocationConstraint>"));
     }
 
     #[test]

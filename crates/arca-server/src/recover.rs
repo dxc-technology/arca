@@ -296,6 +296,7 @@ mod tests {
                 bind: "127.0.0.1".to_string(),
                 port: 9000,
                 domain: None,
+                region: None,
                 tls: None,
             },
             storage: StorageConfig {
@@ -303,6 +304,7 @@ mod tests {
                 blob_prefix_depth: 2,
             },
             encryption: None,
+            monitoring: None,
         }
     }
 

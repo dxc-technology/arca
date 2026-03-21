@@ -350,6 +350,68 @@ A visual breakdown of the policy statements, color-coded by effect: green for Al
 
 Shows which users and teams have this grant attached. Click a user or team name to navigate to their detail page.
 
+## Audit Log
+
+![Audit Log](../assets/screenshots/console-audit-log.png)
+
+The Audit Log view is available to **admin credentials only**. It shows a chronological log of all S3 and admin operations performed on the server, with details about who performed them, when, and what the result was.
+
+The table shows: timestamp, operation name, bucket, key, user, HTTP status (color-coded: green for 2xx, amber for 4xx, red for 5xx), and request duration.
+
+### Filtering
+
+The filter bar provides three controls:
+
+- **Bucket** — text input, filters by bucket name (server-side)
+- **User ID** — text input, filters by user ID (server-side)
+- **Operations** — tag-based filter with autocomplete:
+    - Type to search operations, press Enter or click to add as a tag
+    - Toggle **IN** (include, show only selected) / **EX** (exclude, hide selected) mode by clicking the mode badge
+    - Remove tags with the X button or Backspace
+    - Clear all tags with the X button on the right
+    - Filters and page size are persisted across navigation
+
+### Detail Panel
+
+Click any row to open a slide-in detail panel on the right showing all fields: operation, timestamp, HTTP method, status, duration, bucket, key, version ID, error code, user ID, access key, source IP, user agent, bytes received/sent, and request ID.
+
+!!! note
+    Read-only monitoring operations (Health, Metrics, ListAudit, etc.) are not logged to avoid feedback loops.
+
+## Monitoring
+
+![Monitoring](../assets/screenshots/console-monitoring.png)
+
+The Monitoring view is available to **admin credentials only**. It displays historical metrics as SVG sparkline charts with labeled axes:
+
+- **Objects** — total object count over time
+- **Storage Size** — total storage bytes over time
+- **Buckets** — bucket count over time
+- **Connections** — active HTTP connections at each snapshot
+
+A time range selector at the top right offers: **1h**, **6h**, **24h**, **7d**, **30d**. Each chart shows the current value in the header and the trend line with labeled Y-axis ticks and X-axis time labels.
+
+Metrics snapshots are recorded periodically (default: every 60 seconds) and stored in the database. The retention period is configurable in the Settings page.
+
+## Settings
+
+![Settings](../assets/screenshots/console-settings.png)
+
+The Settings view is available to **admin credentials only**. It manages instance-wide configuration with a TOML > database > default precedence chain:
+
+- Settings defined in the TOML configuration file are **locked** (shown with a lock icon and "Config file" badge, read-only in the console)
+- Settings not in the TOML file can be edited from the console (stored in the database, shown with "Custom" or "Default" badge)
+- Values save automatically on change
+
+### General
+
+- **S3 Region** — default region for HeadBucket, GetBucketLocation, and presigned URL generation. Can also be set per-bucket.
+
+### Monitoring
+
+- **Audit Log Retention** — days to keep audit log entries (0 = keep forever, default: 90 days)
+- **Metrics Retention** — days to keep metrics snapshots (0 = keep forever, default: 30 days)
+
 ## Custom Deployment
 
 ### Environment Variables

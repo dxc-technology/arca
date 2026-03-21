@@ -6,6 +6,9 @@ import { credentialsView } from './views/credentials.js';
 import { usersView, userDetailView } from './views/users.js';
 import { teamsView, teamDetailView } from './views/teams.js';
 import { grantsView, grantDetailView } from './views/grants.js';
+import { settingsView } from './views/settings.js';
+import { auditView } from './views/audit.js';
+import { monitoringView } from './views/monitoring.js';
 
 // ==================== SHARED SVG ICONS ====================
 // Centralized SVG strings for consistent use across views.
@@ -100,6 +103,12 @@ export function app() {
         this.view = this.isAdmin ? 'grant-detail' : 'buckets';
       } else if (hash === '#/grants') {
         this.view = this.isAdmin ? 'grants' : 'buckets';
+      } else if (hash === '#/settings') {
+        this.view = this.isAdmin ? 'settings' : 'buckets';
+      } else if (hash === '#/audit') {
+        this.view = this.isAdmin ? 'audit' : 'buckets';
+      } else if (hash === '#/monitoring') {
+        this.view = this.isAdmin ? 'monitoring' : 'buckets';
       } else if (hash === '#/dashboard' || hash === '#/' || hash === '#') {
         this.view = this.isAdmin ? 'dashboard' : 'buckets';
       } else {
@@ -193,4 +202,7 @@ document.addEventListener('alpine:init', () => {
   Alpine.data('teamDetailView', teamDetailView);
   Alpine.data('grantsView', grantsView);
   Alpine.data('grantDetailView', grantDetailView);
+  Alpine.data('settingsView', settingsView);
+  Alpine.data('auditView', auditView);
+  Alpine.data('monitoringView', monitoringView);
 });

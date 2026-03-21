@@ -32,7 +32,7 @@ continuing from the MVP phases (0–11).
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">15</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">16</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">17</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">18</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">18</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">19</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">20</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">21</div>
@@ -96,7 +96,7 @@ graph LR
 | 15 | [Presigned URLs, Query-String Auth, and SSE-C](#phase-15-presigned-urls-query-string-auth-and-sse-c-p1) | P1 | 12, 13 | `v0.6.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 16 | [Access Control and Bucket Policies](#phase-16-access-control-and-bucket-policies-p1) | P1 | 13 | `v0.7.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 17 | [Object Versioning](#phase-17-object-versioning-p1) | P1 | 16 | `v0.8.1` | <span style="color:#4caf50">&#x2714;</span> |
-| 18 | [Monitoring, Metrics, and Audit](#phase-18-monitoring-metrics-and-audit-p1) | P1 | — | | |
+| 18 | [Monitoring, Metrics, and Audit](#phase-18-monitoring-metrics-and-audit-p1) | P1 | — | `v0.9.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 19 | [Object Tagging and Lifecycle Rules](#phase-19-object-tagging-and-lifecycle-rules-p2) | P2 | 13 | | |
 | 20 | [Object Lock (WORM Compliance)](#phase-20-object-lock-worm-compliance-p2) | P2 | 17 | | |
 | 21 | [S3 API Completeness](#phase-21-s3-api-completeness-p2) | P2 | — | | |
@@ -235,16 +235,23 @@ Full object versioning with version IDs, delete markers, and version-specific op
 
 ---
 
-### Phase 18 — Monitoring, Metrics, and Audit [P1]
+### Phase 18 — Monitoring, Metrics, and Audit [P1] ✅
 
-Operational visibility through metrics, distributed tracing, and audit logging.
+Operational visibility through metrics, audit logging, instance-wide settings, and region support.
 
-- [ ] Prometheus metrics endpoint: `GET /metrics`. Counters: request count by operation/status. Histograms: request latency. Gauges: active connections, storage bytes used, object count, bucket count
-- [ ] OpenTelemetry tracing: optional OTLP exporter, distributed trace IDs in request headers
-- [ ] Audit logging: structured JSON for every S3 operation (who, what, where, when, result). Configurable output: file, stdout, syslog. Optional S3 server access log format
-- [ ] Configurable region in `config.toml`, per-bucket region stored in `bucket_config`
-- [ ] (Console) Real-time metrics dashboard, audit log viewer with filtering
-- [ ] Resolves: TD-004
+- [x] Prometheus metrics endpoint: `GET /admin/metrics` (unauthenticated). Counters: request count by operation/status. Histograms: request latency (10 buckets). Gauges: active connections, storage bytes, object count, bucket count
+- [ ] OpenTelemetry tracing: deferred to sub-phase (audit + Prometheus covers 90% of visibility needs; OTLP requires external collector)
+- [x] Audit logging: structured JSON for every S3 and admin operation (who, what, where, when, result). Stored in SQLite `audit_log` table. Admin API: `GET /admin/audit` with filters (bucket, operation, user, time range, pagination)
+- [x] Configurable region: `[server]` TOML section or Admin API (`/admin/settings/region`). Per-bucket region via `bucket_config`. TOML > DB > default precedence
+- [x] Instance-wide settings: new `server_config` table, `GET/PUT/DELETE /admin/settings/{key}`, console Settings page with lock indicators for TOML-set values
+- [x] Metrics snapshot worker: periodic gauge snapshots to `metrics_snapshot` table. Admin API: `GET /admin/metrics/history`
+- [x] Retention purge worker: hourly cleanup of old audit and metrics records based on configurable retention days
+- [x] Background worker framework: reusable `BackgroundWorker::spawn_periodic` for Phase 19 lifecycle rules
+- [x] (Console) Audit log viewer with table, filters, pagination, color-coded status. Monitoring dashboard with SVG sparkline charts and time range selector. Settings page for region and retention
+- [x] Resolves: TD-004 (region), adds TD-005 (audit write contention)
+- [x] Integration tests: 27 tests (Prometheus, audit, metrics history, settings, region)
+
+**Depends on**: None
 
 ---
 
@@ -614,7 +621,8 @@ Remaining items:
 - ~~**Ownership model** (TD-001)~~: **Resolved** — Owner ID derived from credential's user; buckets/objects track creator's username
 - **Storage classes** (TD-002): Always `STANDARD` — no storage tiering
 - ~~**Versioning** (TD-003)~~: **Resolved** — Full object versioning implemented in Phase 17
-- **Region support** (TD-004): Hardcoded `us-east-1` — no per-bucket regions
+- ~~**Region support** (TD-004)~~: **Resolved** — Configurable region in `[server]` TOML or Admin API, per-bucket via `bucket_config`. Phase 18
+- **Audit write contention** (TD-005): Per-request SQLite inserts may bottleneck under heavy load — batch via mpsc channel if needed
 - ~~**Request ID consistency** (TD-005)~~: **Resolved** — error XML and response header now match
 - ~~**Encryption** (TD-006)~~: **Resolved** — SSE-S3 with AES-256-GCM implemented in Phase 13
 - **Unimplemented ops** (TD-007): ~33 bucket operations return 501

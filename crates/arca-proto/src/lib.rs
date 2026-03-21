@@ -4,6 +4,7 @@
 
 pub mod authorize;
 pub mod handlers;
+pub mod metrics;
 pub mod middleware;
 pub mod router;
 pub mod state;

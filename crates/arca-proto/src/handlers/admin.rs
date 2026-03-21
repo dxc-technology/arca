@@ -2,6 +2,7 @@
 //!
 //! JSON-based administration endpoints under `/admin/*`.
 
+use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -11,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::ffi::CString;
 
+use crate::handlers::admin_settings::effective_region;
 use crate::middleware::admin_auth::AuthenticatedCredential;
 use crate::middleware::identity::AuthenticatedIdentity;
 use crate::state::AppState;
@@ -111,6 +113,27 @@ pub struct CreateCredentialRequest {
 /// GET /admin/health — unauthenticated health check.
 pub async fn health() -> impl IntoResponse {
     Json(HealthResponse { status: "ok" })
+}
+
+/// GET /admin/metrics — Prometheus text exposition format (unauthenticated).
+pub async fn prometheus_metrics(State(state): State<AppState>) -> Response {
+    let (bucket_count, object_count, total_size_bytes) =
+        match state.metadata.get_stats().await {
+            Ok(stats) => (stats.bucket_count, stats.object_count, stats.total_size_bytes),
+            Err(_) => (0, 0, 0),
+        };
+
+    let body = if let Some(ref registry) = state.metrics_registry {
+        registry.render_prometheus(bucket_count, object_count, total_size_bytes)
+    } else {
+        String::new()
+    };
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+        .body(Body::from(body))
+        .expect("build prometheus response")
 }
 
 /// GET /admin/info — server version and uptime.
@@ -511,6 +534,7 @@ pub async fn presign(
         .map_err(|e| AdminError::internal(e.to_string()))?
         .ok_or_else(|| AdminError::internal("credential not found"))?;
 
+    let region = effective_region(&state, Some(&body.bucket)).await;
     let query_string = arca_auth::generate_presigned_url(
         &method,
         &host,
@@ -518,7 +542,7 @@ pub async fn presign(
         &[],
         &credential.access_key_id,
         &credential.secret_access_key,
-        "us-east-1",
+        &region,
         body.expires,
         &datetime,
     );

@@ -4,10 +4,13 @@
 //! keeping the async runtime non-blocking. The database runs in WAL mode
 //! for concurrent read performance.
 
+mod audit;
 mod credential;
 mod grant;
 mod metadata;
+mod metrics;
 mod migrations;
+mod server_config;
 mod team;
 pub(crate) mod user;
 

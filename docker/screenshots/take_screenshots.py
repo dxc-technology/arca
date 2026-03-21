@@ -305,7 +305,7 @@ def take_screenshots(rbac_ids):
     """Capture screenshots of the web console using Playwright."""
     print("\n=== Phase B: Taking screenshots ===")
 
-    total = 23
+    total = 26
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     with sync_playwright() as p:
@@ -539,6 +539,30 @@ def take_screenshots(rbac_ids):
         page.wait_for_selector('text=Statement Preview', timeout=10000)
         page.wait_for_timeout(1500)
         screenshot(page, "console-grant-detail.png")
+
+        # ----- 24. Audit Log -----
+        print(f"  24/{total} console-audit-log.png")
+        page.goto(f"{CONSOLE_URL}#/audit")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_selector('h2:has-text("Audit Log")', timeout=10000)
+        page.wait_for_timeout(2000)
+        screenshot(page, "console-audit-log.png")
+
+        # ----- 25. Monitoring -----
+        print(f"  25/{total} console-monitoring.png")
+        page.goto(f"{CONSOLE_URL}#/monitoring")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_selector('h2:has-text("Monitoring")', timeout=10000)
+        page.wait_for_timeout(2000)
+        screenshot(page, "console-monitoring.png")
+
+        # ----- 26. Settings -----
+        print(f"  26/{total} console-settings.png")
+        page.goto(f"{CONSOLE_URL}#/settings")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_selector('h2:has-text("Settings")', timeout=10000)
+        page.wait_for_timeout(1500)
+        screenshot(page, "console-settings.png")
 
         browser.close()
 

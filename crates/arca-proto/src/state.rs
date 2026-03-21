@@ -3,7 +3,9 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use arca_core::store::{BlobStore, CredentialStore, GrantStore, MetadataStore, SsecBlobOps, TeamStore, UserStore};
+use arca_core::store::{AuditStore, BlobStore, CredentialStore, GrantStore, MetadataStore, MetricsStore, ServerConfigStore, SsecBlobOps, TeamStore, UserStore};
+
+use crate::metrics::MetricsRegistry;
 
 /// Application state shared across all handlers.
 #[derive(Clone)]
@@ -22,10 +24,21 @@ pub struct AppState {
     pub users: Arc<dyn UserStore>,
     pub teams: Arc<dyn TeamStore>,
     pub grants: Arc<dyn GrantStore>,
+    pub server_config: Arc<dyn ServerConfigStore>,
     pub domain: Option<String>,
+    /// S3 region from config file (when set, locked and read-only from console).
+    pub config_region: Option<String>,
     pub started_at: std::time::Instant,
     pub version: String,
     pub tls_enabled: bool,
+    /// Whether audit logging is enabled.
+    pub audit_enabled: bool,
+    /// Audit log retention days from config file (None = console can set it).
+    pub config_audit_retention_days: Option<u32>,
+    /// Whether metrics collection is enabled.
+    pub metrics_enabled: bool,
+    /// Metrics retention days from config file (None = console can set it).
+    pub config_metrics_retention_days: Option<u32>,
     /// Whether server-side encryption is enabled by default for new objects.
     pub encryption_enabled: bool,
     /// KMS provider: "local" (config file), "vault" (Vault/OpenBAO), or None.
@@ -34,6 +47,12 @@ pub struct AppState {
     pub kms_endpoint: Option<String>,
     /// Data directories (for filesystem stats). Multiple entries for multi-volume setups.
     pub data_dirs: Vec<PathBuf>,
+    /// Audit log store (for writing audit entries).
+    pub audit_store: Option<Arc<dyn AuditStore>>,
+    /// Metrics snapshot store (for writing periodic gauge snapshots).
+    pub metrics_store: Option<Arc<dyn MetricsStore>>,
+    /// In-memory metrics registry (counters, histograms, active connections).
+    pub metrics_registry: Option<Arc<MetricsRegistry>>,
 }
 
 impl AppState {

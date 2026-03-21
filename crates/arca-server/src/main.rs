@@ -8,6 +8,7 @@ mod recover;
 mod tls;
 mod tls_generate;
 mod vault;
+mod worker;
 
 use std::sync::Arc;
 
@@ -111,6 +112,21 @@ async fn main() -> Result<()> {
 
             let tls_enabled = config.server.tls.is_some();
 
+            // Extract monitoring config values for AppState
+            let (audit_enabled, config_audit_retention_days, metrics_enabled, config_metrics_retention_days) =
+                match &config.monitoring {
+                    Some(mon) => {
+                        let audit_enabled = mon.audit.as_ref().map_or(true, |a| a.enabled);
+                        let audit_ret = mon.audit.as_ref().and_then(|a| a.retention_days);
+                        let metrics_enabled = mon.metrics.as_ref().map_or(true, |m| m.enabled);
+                        let metrics_ret = mon.metrics.as_ref().and_then(|m| m.retention_days);
+                        (audit_enabled, audit_ret, metrics_enabled, metrics_ret)
+                    }
+                    None => (true, None, true, None),
+                };
+
+            let metrics_registry = Arc::new(arca_proto::metrics::MetricsRegistry::new());
+
             let state = AppState {
                 metadata: store.clone() as Arc<dyn arca_core::store::MetadataStore>,
                 blob,
@@ -119,16 +135,43 @@ async fn main() -> Result<()> {
                 credentials: store.clone() as Arc<dyn CredentialStore>,
                 users: store.clone() as Arc<dyn arca_core::store::UserStore>,
                 teams: store.clone() as Arc<dyn arca_core::store::TeamStore>,
-                grants: store as Arc<dyn arca_core::store::GrantStore>,
+                grants: store.clone() as Arc<dyn arca_core::store::GrantStore>,
+                server_config: store.clone() as Arc<dyn arca_core::store::ServerConfigStore>,
                 domain: config.server.domain.clone(),
+                config_region: config.server.region.clone(),
                 started_at: std::time::Instant::now(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
                 tls_enabled,
+                audit_enabled,
+                config_audit_retention_days,
+                metrics_enabled,
+                config_metrics_retention_days,
                 encryption_enabled,
                 kms_provider,
                 kms_endpoint,
                 data_dirs: vec![std::path::PathBuf::from(&config.storage.data_dir)],
+                audit_store: if audit_enabled {
+                    Some(store.clone() as Arc<dyn arca_core::store::AuditStore>)
+                } else {
+                    None
+                },
+                metrics_store: if metrics_enabled {
+                    Some(store as Arc<dyn arca_core::store::MetricsStore>)
+                } else {
+                    None
+                },
+                metrics_registry: Some(metrics_registry),
             };
+
+            // Spawn background workers
+            let metrics_interval = config
+                .monitoring
+                .as_ref()
+                .and_then(|m| m.metrics.as_ref())
+                .map(|m| m.interval_seconds)
+                .unwrap_or(60);
+            let _metrics_worker = worker::spawn_metrics_worker(&state, metrics_interval);
+            let _retention_worker = worker::spawn_retention_worker(&state);
 
             let addr = format!("{}:{}", config.server.bind, config.server.port);
             tracing::info!("Starting Arca on {addr}");

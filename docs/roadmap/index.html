@@ -1114,7 +1114,7 @@
   <a href="#phase-18-monitoring-metrics-and-audit-p1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 18 — Monitoring, Metrics, and Audit [P1]
+        Phase 18 — Monitoring, Metrics, and Audit [P1] ✅
       
     </span>
   </a>
@@ -1594,7 +1594,7 @@
   <a href="#phase-18-monitoring-metrics-and-audit-p1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 18 — Monitoring, Metrics, and Audit [P1]
+        Phase 18 — Monitoring, Metrics, and Audit [P1] ✅
       
     </span>
   </a>
@@ -1938,7 +1938,7 @@ continuing from the MVP phases (0–11).</p>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">15</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">16</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">17</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">18</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">18</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">19</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">20</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">21</div>
@@ -2053,8 +2053,8 @@ continuing from the MVP phases (0–11).</p>
 <td><a href="#phase-18-monitoring-metrics-and-audit-p1">Monitoring, Metrics, and Audit</a></td>
 <td style="text-align: center;">P1</td>
 <td style="text-align: center;">—</td>
-<td style="text-align: center;"></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><code>v0.9.0</code></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">19</td>
@@ -2234,16 +2234,22 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 </ul>
 <p><strong>Depends on</strong>: Phase 16 (access control interacts with versioning)</p>
 <hr />
-<h3 id="phase-18-monitoring-metrics-and-audit-p1">Phase 18 — Monitoring, Metrics, and Audit [P1]<a class="headerlink" href="#phase-18-monitoring-metrics-and-audit-p1" title="Permanent link">&para;</a></h3>
-<p>Operational visibility through metrics, distributed tracing, and audit logging.</p>
+<h3 id="phase-18-monitoring-metrics-and-audit-p1">Phase 18 — Monitoring, Metrics, and Audit [P1] ✅<a class="headerlink" href="#phase-18-monitoring-metrics-and-audit-p1" title="Permanent link">&para;</a></h3>
+<p>Operational visibility through metrics, audit logging, instance-wide settings, and region support.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Prometheus metrics endpoint: <code>GET /metrics</code>. Counters: request count by operation/status. Histograms: request latency. Gauges: active connections, storage bytes used, object count, bucket count</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> OpenTelemetry tracing: optional OTLP exporter, distributed trace IDs in request headers</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Audit logging: structured JSON for every S3 operation (who, what, where, when, result). Configurable output: file, stdout, syslog. Optional S3 server access log format</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Configurable region in <code>config.toml</code>, per-bucket region stored in <code>bucket_config</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> (Console) Real-time metrics dashboard, audit log viewer with filtering</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Resolves: TD-004</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Prometheus metrics endpoint: <code>GET /admin/metrics</code> (unauthenticated). Counters: request count by operation/status. Histograms: request latency (10 buckets). Gauges: active connections, storage bytes, object count, bucket count</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> OpenTelemetry tracing: deferred to sub-phase (audit + Prometheus covers 90% of visibility needs; OTLP requires external collector)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Audit logging: structured JSON for every S3 and admin operation (who, what, where, when, result). Stored in SQLite <code>audit_log</code> table. Admin API: <code>GET /admin/audit</code> with filters (bucket, operation, user, time range, pagination)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Configurable region: <code>[server]</code> TOML section or Admin API (<code>/admin/settings/region</code>). Per-bucket region via <code>bucket_config</code>. TOML &gt; DB &gt; default precedence</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Instance-wide settings: new <code>server_config</code> table, <code>GET/PUT/DELETE /admin/settings/{key}</code>, console Settings page with lock indicators for TOML-set values</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Metrics snapshot worker: periodic gauge snapshots to <code>metrics_snapshot</code> table. Admin API: <code>GET /admin/metrics/history</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Retention purge worker: hourly cleanup of old audit and metrics records based on configurable retention days</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Background worker framework: reusable <code>BackgroundWorker::spawn_periodic</code> for Phase 19 lifecycle rules</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> (Console) Audit log viewer with table, filters, pagination, color-coded status. Monitoring dashboard with SVG sparkline charts and time range selector. Settings page for region and retention</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Resolves: TD-004 (region), adds TD-005 (audit write contention)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Integration tests: 27 tests (Prometheus, audit, metrics history, settings, region)</li>
 </ul>
+<p><strong>Depends on</strong>: None</p>
 <hr />
 <h3 id="phase-19-object-tagging-and-lifecycle-rules-p2">Phase 19 — Object Tagging and Lifecycle Rules [P2]<a class="headerlink" href="#phase-19-object-tagging-and-lifecycle-rules-p2" title="Permanent link">&para;</a></h3>
 <p>Object metadata tagging and automated lifecycle management for storage hygiene.</p>
@@ -2602,7 +2608,8 @@ with unique IDs (<code>TD-XXX</code>) referenced in source code comments.</p>
 <li>~~<strong>Ownership model</strong> (TD-001)~~: <strong>Resolved</strong> — Owner ID derived from credential's user; buckets/objects track creator's username</li>
 <li><strong>Storage classes</strong> (TD-002): Always <code>STANDARD</code> — no storage tiering</li>
 <li>~~<strong>Versioning</strong> (TD-003)~~: <strong>Resolved</strong> — Full object versioning implemented in Phase 17</li>
-<li><strong>Region support</strong> (TD-004): Hardcoded <code>us-east-1</code> — no per-bucket regions</li>
+<li>~~<strong>Region support</strong> (TD-004)~~: <strong>Resolved</strong> — Configurable region in <code>[server]</code> TOML or Admin API, per-bucket via <code>bucket_config</code>. Phase 18</li>
+<li><strong>Audit write contention</strong> (TD-005): Per-request SQLite inserts may bottleneck under heavy load — batch via mpsc channel if needed</li>
 <li>~~<strong>Request ID consistency</strong> (TD-005)~~: <strong>Resolved</strong> — error XML and response header now match</li>
 <li>~~<strong>Encryption</strong> (TD-006)~~: <strong>Resolved</strong> — SSE-S3 with AES-256-GCM implemented in Phase 13</li>
 <li><strong>Unimplemented ops</strong> (TD-007): ~33 bucket operations return 501</li>

@@ -7,7 +7,7 @@
 
   <!-- Console version and documentation URL -->
   <script>
-    window.ARCA_CONSOLE_VERSION = "0.8.1";
+    window.ARCA_CONSOLE_VERSION = "0.9.0";
     window.ARCA_DOCS_URL = "https://dxc-technology.github.io/arca/";
   </script>
 
@@ -122,6 +122,11 @@
     .treemap-rect { transition: opacity 0.15s ease; cursor: pointer; }
     .treemap-rect:hover { opacity: 0.85; }
 
+    /* Number input spinners — visible in dark theme */
+    .setting-number {
+      color-scheme: dark;
+    }
+
     /* Slide-in panel */
     .slide-panel {
       transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -199,7 +204,7 @@
 
   <!-- ==================== MAIN LAYOUT ==================== -->
   <template x-if="authenticated">
-    <div class="flex min-h-screen" x-cloak>
+    <div class="flex h-screen overflow-hidden" x-cloak>
 
       <!-- Sidebar -->
       <aside class="w-56 flex-shrink-0 border-r border-vault-border/50 flex flex-col bg-vault-bg/80">
@@ -242,6 +247,21 @@
           <a x-show="isAdmin" @click="navigate('grants')" :class="view === 'grants' || view === 'grant-detail' ? 'text-vault-accent bg-vault-accent/10 border-r-2 border-vault-accent' : 'text-vault-muted hover:text-vault-text hover:bg-white/5'" class="flex items-center gap-3 px-4 py-2.5 text-sm cursor-pointer transition-all duration-150">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z"/></svg>
             Grants
+          </a>
+          <!-- Audit Log (admin only) -->
+          <a x-show="isAdmin" @click="navigate('audit')" :class="view === 'audit' ? 'text-vault-accent bg-vault-accent/10 border-r-2 border-vault-accent' : 'text-vault-muted hover:text-vault-text hover:bg-white/5'" class="flex items-center gap-3 px-4 py-2.5 text-sm cursor-pointer transition-all duration-150">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25Z"/></svg>
+            Audit Log
+          </a>
+          <!-- Monitoring (admin only) -->
+          <a x-show="isAdmin" @click="navigate('monitoring')" :class="view === 'monitoring' ? 'text-vault-accent bg-vault-accent/10 border-r-2 border-vault-accent' : 'text-vault-muted hover:text-vault-text hover:bg-white/5'" class="flex items-center gap-3 px-4 py-2.5 text-sm cursor-pointer transition-all duration-150">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"/></svg>
+            Monitoring
+          </a>
+          <!-- Settings (admin only) -->
+          <a x-show="isAdmin" @click="navigate('settings')" :class="view === 'settings' ? 'text-vault-accent bg-vault-accent/10 border-r-2 border-vault-accent' : 'text-vault-muted hover:text-vault-text hover:bg-white/5'" class="flex items-center gap-3 px-4 py-2.5 text-sm cursor-pointer transition-all duration-150">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 0 1 1.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.559.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.894.149c-.424.07-.764.383-.929.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 0 1-1.449.12l-.738-.527c-.35-.25-.806-.272-1.204-.107-.397.165-.71.505-.78.929l-.15.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 0 1-.12-1.45l.527-.737c.25-.35.272-.806.108-1.204-.165-.397-.506-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.108-1.204l-.526-.738a1.125 1.125 0 0 1 .12-1.45l.773-.773a1.125 1.125 0 0 1 1.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894ZM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
+            Settings
           </a>
         </nav>
 
@@ -1842,6 +1862,418 @@
             </div>
           </div>
         </div>
+
+        <!-- ==================== AUDIT LOG ==================== -->
+        <template x-if="view === 'audit'">
+          <div class="p-6 max-w-7xl" x-data="auditView" x-init="init()" @destroy="destroy()">
+            <div class="flex items-center justify-between mb-6">
+              <h2 class="text-xl font-semibold tracking-tight">Audit Log</h2>
+              <span class="text-xs text-vault-muted" x-text="total + ' entries'"></span>
+            </div>
+
+            <!-- Filters + top pagination -->
+            <div class="flex items-center justify-between gap-3 mb-4">
+              <div class="flex items-center gap-2 min-w-0 flex-1">
+                <input type="text" x-model="filterBucket" @change="applyFilters()" placeholder="Bucket" class="px-3 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition w-28 flex-shrink-0">
+                <input type="text" x-model="filterUser" @change="applyFilters()" placeholder="User ID" class="px-3 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition w-28 flex-shrink-0">
+                <!-- Operation tag filter -->
+                <div class="relative min-w-0 flex-1">
+                  <div class="flex flex-wrap gap-1 items-center px-2 py-1 rounded-lg bg-vault-bg border transition min-h-[30px]"
+                    :class="opFocused ? 'border-vault-accent/50 ring-1 ring-vault-accent/30' : 'border-vault-border'"
+                    @click="$refs.opInput.focus()">
+                    <button @click.stop="toggleOpMode()" class="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded flex-shrink-0 transition"
+                      :class="opMode === 'include' ? 'bg-vault-accent/15 text-vault-accent' : 'bg-red-500/15 text-red-400'"
+                      x-text="opMode === 'include' ? 'IN' : 'EX'" title="Toggle include/exclude mode"></button>
+                    <template x-for="tag in opTags" :key="tag">
+                      <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-mono whitespace-nowrap flex-shrink-0"
+                        :class="opMode === 'include' ? 'bg-vault-accent/10 text-vault-accent' : 'bg-red-500/10 text-red-400'">
+                        <span x-text="tag"></span>
+                        <span @click.stop="removeOpTag(tag)" class="cursor-pointer opacity-50 hover:opacity-100 ml-0.5">
+                          <svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </span>
+                      </span>
+                    </template>
+                    <input type="text" x-ref="opInput" x-model="opQuery"
+                      @focus="opFocused = true; opShowAC = true"
+                      @blur="setTimeout(() => { opFocused = false; opShowAC = false }, 150)"
+                      @keydown.enter.prevent="addOpHighlighted()"
+                      @keydown.backspace="onOpBackspace()"
+                      @keydown.down.prevent="moveOpHighlight(1)"
+                      @keydown.up.prevent="moveOpHighlight(-1)"
+                      @keydown.escape="opShowAC = false"
+                      :placeholder="opTags.length === 0 ? 'Operations...' : ''"
+                      class="bg-transparent border-none outline-none text-vault-text font-mono text-[11px] min-w-[60px] flex-1 py-0.5">
+                    <button x-show="opTags.length > 0" x-cloak @click.stop="clearOpTags()" class="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded flex-shrink-0 bg-vault-border/30 text-vault-muted hover:text-vault-text transition" title="Clear operation filter">&times;</button>
+                  </div>
+                  <!-- Autocomplete -->
+                  <div x-show="opShowAC && opFiltered.length > 0" class="absolute top-full left-0 right-0 mt-1 max-h-52 overflow-y-auto bg-[#1e293b] border border-vault-border rounded-lg shadow-xl z-50 py-1 scrollbar-hide">
+                    <template x-for="(item, idx) in opFiltered" :key="item.op">
+                      <div @mousedown.prevent="addOpTag(item.op)"
+                        class="flex items-center gap-2 px-3 py-1.5 cursor-pointer transition text-xs"
+                        :class="idx === opHighlight ? 'bg-vault-accent/10 text-vault-text' : 'text-vault-muted hover:bg-white/[0.03]'">
+                        <span class="font-mono text-[11px]" x-html="opHighlightText(item.op)"></span>
+                        <span class="text-[9px] uppercase tracking-wide text-vault-border ml-auto" x-text="item.cat"></span>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+                <button x-show="hasAnyFilter" @click="clearFilters()" class="text-xs text-vault-muted hover:text-vault-text transition flex-shrink-0">Clear</button>
+              </div>
+              <div class="flex items-center gap-3 flex-shrink-0">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-[11px] text-vault-muted">Show</span>
+                  <select x-model="limit" @change="limit = Number($event.target.value) || 50; page = 0; sessionStorage.setItem('audit_page_size', limit)" class="setting-number px-2 py-1 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-xs focus:outline-none focus:border-vault-accent/50 transition">
+                    <option value="10">10</option>
+                    <option value="15">15</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                  </select>
+                </div>
+                <span class="text-xs text-vault-muted" x-text="'Page ' + currentPage + ' of ' + totalPages"></span>
+                <div class="flex gap-0.5">
+                  <button @click="firstPage()" :disabled="page === 0" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="First page">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5"/></svg>
+                  </button>
+                  <button @click="prevPage()" :disabled="page === 0" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Previous page">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
+                  </button>
+                  <button @click="nextPage()" :disabled="currentPage >= totalPages" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Next page">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+                  </button>
+                  <button @click="lastPage()" :disabled="currentPage >= totalPages" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Last page">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 4.5l7.5 7.5-7.5 7.5m6-15l7.5 7.5-7.5 7.5"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Loading -->
+            <div x-show="loading" class="flex justify-center py-16">
+              <svg class="animate-spin h-6 w-6 text-vault-accent" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            </div>
+
+            <!-- Table -->
+            <div x-show="!loading" class="glass rounded-xl overflow-hidden">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="text-left text-[11px] uppercase tracking-wider text-vault-muted border-b border-vault-border/30">
+                    <th class="px-4 py-3">Time</th>
+                    <th class="px-4 py-3">Operation</th>
+                    <th class="px-4 py-3">Bucket</th>
+                    <th class="px-4 py-3">Key</th>
+                    <th class="px-4 py-3">User</th>
+                    <th class="px-4 py-3 text-right">Status</th>
+                    <th class="px-4 py-3 text-right">Duration</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="entry in filteredEntries" :key="entry.id">
+                    <tr @click="selectEntry(entry)" class="border-b border-vault-border/10 hover:bg-white/[0.02] cursor-pointer transition"
+                      :class="selectedEntry?.id === entry.id ? 'bg-vault-accent/5' : ''">
+                      <td class="px-4 py-2.5 text-xs text-vault-muted whitespace-nowrap" x-text="formatTime(entry.timestamp)"></td>
+                      <td class="px-4 py-2.5">
+                        <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-vault-border/20" x-text="entry.operation"></span>
+                      </td>
+                      <td class="px-4 py-2.5 text-xs text-vault-text" x-text="entry.bucket || '—'"></td>
+                      <td class="px-4 py-2.5 text-xs text-vault-muted max-w-[200px] truncate" :title="entry.key" x-text="entry.key || '—'"></td>
+                      <td class="px-4 py-2.5 text-xs text-vault-muted" x-text="entry.user_id || '—'"></td>
+                      <td class="px-4 py-2.5 text-xs text-right font-mono" :class="statusClass(entry.http_status)" x-text="entry.http_status"></td>
+                      <td class="px-4 py-2.5 text-xs text-right text-vault-muted" x-text="entry.duration_ms + ' ms'"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+
+              <!-- Empty state -->
+              <div x-show="filteredEntries.length === 0" class="py-12 text-center text-vault-muted text-sm">
+                No audit log entries found
+              </div>
+            </div>
+
+            <!-- Side panel -->
+            <div x-show="selectedEntry" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0"
+              class="fixed right-0 top-0 h-full w-80 glass border-l border-vault-border/50 z-40 slide-panel overflow-y-auto">
+              <div class="p-5">
+                <div class="flex items-center justify-between mb-5">
+                  <h3 class="text-sm font-semibold uppercase tracking-wider text-vault-muted">Audit Detail</h3>
+                  <button @click="selectedEntry = null" class="p-1 rounded hover:bg-white/5 text-vault-muted hover:text-vault-text transition">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                  </button>
+                </div>
+                <template x-if="selectedEntry">
+                  <div class="space-y-4">
+                    <div>
+                      <div class="text-xs text-vault-muted mb-1">Operation</div>
+                      <div class="text-sm font-mono" x-text="selectedEntry.operation"></div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-vault-muted mb-1">Timestamp</div>
+                      <div class="text-sm" x-text="formatTime(selectedEntry.timestamp)"></div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-vault-muted mb-1">HTTP Method</div>
+                      <div class="text-sm font-mono" x-text="selectedEntry.http_method"></div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-vault-muted mb-1">Status</div>
+                      <div class="text-sm font-mono" :class="statusClass(selectedEntry.http_status)" x-text="selectedEntry.http_status"></div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-vault-muted mb-1">Duration</div>
+                      <div class="text-sm" x-text="selectedEntry.duration_ms + ' ms'"></div>
+                    </div>
+                    <div class="border-t border-vault-border/30 pt-4">
+                      <div class="text-xs text-vault-muted mb-1">Bucket</div>
+                      <div class="text-sm" x-text="selectedEntry.bucket || '—'"></div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-vault-muted mb-1">Key</div>
+                      <div class="text-sm font-mono break-all" x-text="selectedEntry.key || '—'"></div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-vault-muted mb-1">Version ID</div>
+                      <div class="text-sm font-mono" x-text="selectedEntry.version_id || '—'"></div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-vault-muted mb-1">Error Code</div>
+                      <div class="text-sm" x-text="selectedEntry.error_code || '—'"></div>
+                    </div>
+                    <div class="border-t border-vault-border/30 pt-4">
+                      <div class="text-xs text-vault-muted mb-1">User ID</div>
+                      <div class="text-sm" x-text="selectedEntry.user_id || '—'"></div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-vault-muted mb-1">Access Key</div>
+                      <div class="text-sm font-mono break-all" x-text="selectedEntry.access_key_id || '—'"></div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-vault-muted mb-1">Source IP</div>
+                      <div class="text-sm" x-text="selectedEntry.source_ip || '—'"></div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-vault-muted mb-1">User Agent</div>
+                      <div class="text-sm break-all" x-text="selectedEntry.user_agent || '—'"></div>
+                    </div>
+                    <div class="border-t border-vault-border/30 pt-4">
+                      <div class="text-xs text-vault-muted mb-1">Bytes Received</div>
+                      <div class="text-sm font-mono" x-text="selectedEntry.bytes_received || 0"></div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-vault-muted mb-1">Bytes Sent</div>
+                      <div class="text-sm font-mono" x-text="selectedEntry.bytes_sent || 0"></div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-vault-muted mb-1">Request ID</div>
+                      <div class="text-sm font-mono break-all text-vault-muted" x-text="selectedEntry.request_id"></div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- Bottom pagination -->
+            <div x-show="total > limit" class="flex items-center justify-end mt-4 gap-3">
+              <span class="text-xs text-vault-muted" x-text="'Page ' + currentPage + ' of ' + totalPages"></span>
+              <div class="flex gap-0.5">
+                <button @click="firstPage()" :disabled="page === 0" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="First page">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5"/></svg>
+                </button>
+                <button @click="prevPage()" :disabled="page === 0" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Previous page">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
+                </button>
+                <button @click="nextPage()" :disabled="currentPage >= totalPages" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Next page">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+                </button>
+                <button @click="lastPage()" :disabled="currentPage >= totalPages" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Last page">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 4.5l7.5 7.5-7.5 7.5m6-15l7.5 7.5-7.5 7.5"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- ==================== MONITORING ==================== -->
+        <template x-if="view === 'monitoring'">
+          <div class="p-6 max-w-6xl" x-data="monitoringView" x-init="load()">
+            <div class="flex items-center justify-between mb-6">
+              <h2 class="text-xl font-semibold tracking-tight">Monitoring</h2>
+              <div class="flex gap-1">
+                <template x-for="r in ['1h','6h','24h','7d','30d']">
+                  <button @click="setRange(r)" :class="timeRange === r ? 'bg-vault-accent/20 text-vault-accent border-vault-accent/30' : 'text-vault-muted border-vault-border hover:text-vault-text'"
+                    class="px-2.5 py-1 rounded-lg text-xs border transition" x-text="r"></button>
+                </template>
+              </div>
+            </div>
+
+            <div x-show="loading" class="flex justify-center py-16">
+              <svg class="animate-spin h-6 w-6 text-vault-accent" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            </div>
+
+            <div x-show="!loading" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <!-- Objects -->
+              <div class="glass rounded-xl p-5">
+                <div class="flex items-center justify-between mb-3">
+                  <span class="text-xs text-vault-muted uppercase tracking-wider font-medium">Objects</span>
+                  <span class="text-lg font-semibold text-vault-text" x-text="latestValue('object_count')"></span>
+                </div>
+                <div x-html="sparkline('object_count', '#00d4ff')"></div>
+              </div>
+
+              <!-- Storage Size -->
+              <div class="glass rounded-xl p-5">
+                <div class="flex items-center justify-between mb-3">
+                  <span class="text-xs text-vault-muted uppercase tracking-wider font-medium">Storage Size</span>
+                  <span class="text-lg font-semibold text-vault-text" x-text="formatBytes(latestValue('total_size_bytes') || 0)"></span>
+                </div>
+                <div x-html="sparkline('total_size_bytes', '#6366f1')"></div>
+              </div>
+
+              <!-- Buckets -->
+              <div class="glass rounded-xl p-5">
+                <div class="flex items-center justify-between mb-3">
+                  <span class="text-xs text-vault-muted uppercase tracking-wider font-medium">Buckets</span>
+                  <span class="text-lg font-semibold text-vault-text" x-text="latestValue('bucket_count')"></span>
+                </div>
+                <div x-html="sparkline('bucket_count', '#22d3ee')"></div>
+              </div>
+
+              <!-- Active Connections -->
+              <div class="glass rounded-xl p-5">
+                <div class="flex items-center justify-between mb-3">
+                  <span class="text-xs text-vault-muted uppercase tracking-wider font-medium">Connections</span>
+                  <span class="text-lg font-semibold text-vault-text" x-text="latestValue('active_connections')"></span>
+                </div>
+                <div x-html="sparkline('active_connections', '#a78bfa')"></div>
+              </div>
+            </div>
+
+            <!-- Empty state -->
+            <div x-show="!loading && snapshots.length === 0" class="py-16 text-center">
+              <p class="text-vault-muted text-sm">No metrics data yet. Snapshots are recorded every 60 seconds.</p>
+            </div>
+          </div>
+        </template>
+
+        <!-- ==================== SETTINGS ==================== -->
+        <template x-if="view === 'settings'">
+          <div class="p-6 max-w-4xl" x-data="settingsView" x-init="load()">
+            <h2 class="text-xl font-semibold tracking-tight mb-6">Settings</h2>
+
+            <div x-show="loading" class="flex justify-center py-16">
+              <svg class="animate-spin h-6 w-6 text-vault-accent" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            </div>
+
+            <div x-show="!loading && settings" class="space-y-6">
+              <!-- General Settings -->
+              <div class="glass rounded-xl p-5">
+                <div class="flex items-center gap-2 mb-4">
+                  <svg class="w-4 h-4 text-vault-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 0 1 3 12c0-1.605.42-3.113 1.157-4.418"/></svg>
+                  <span class="text-sm font-semibold uppercase tracking-wider text-vault-muted">General</span>
+                </div>
+
+                <!-- Region -->
+                <div class="flex items-center justify-between">
+                  <div class="flex-1">
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm font-medium text-vault-text">S3 Region</span>
+                      <span x-show="settings.region" :class="sourceClass(settings.region.source)" class="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase" x-text="sourceLabel(settings.region.source)"></span>
+                      <svg x-show="settings.region?.readonly" class="w-3.5 h-3.5 text-vault-muted" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" title="Locked by configuration file"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/></svg>
+                    </div>
+                    <div class="text-xs text-vault-muted mt-0.5">Default region for S3 operations (HeadBucket, GetBucketLocation)</div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <template x-if="settings.region?.readonly">
+                      <span class="text-sm font-mono text-vault-text bg-vault-border/20 px-3 py-1.5 rounded-lg" x-text="settings.region.value"></span>
+                    </template>
+                    <template x-if="!settings.region?.readonly">
+                      <div class="flex items-center gap-2">
+                        <div class="w-7 flex justify-center">
+                          <button x-show="settings.region.source === 'database'" x-cloak @click="resetSetting('region')" class="p-1.5 rounded-lg hover:bg-red-500/10 text-vault-muted hover:text-red-400 transition" title="Reset to default">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182"/></svg>
+                          </button>
+                        </div>
+                        <input type="text" :value="settings.region.value" @change="saveSetting('region', $event.target.value)"
+                          class="w-40 px-3 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm font-mono focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition" placeholder="us-east-1">
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Monitoring Settings -->
+              <div class="glass rounded-xl p-5">
+                <div class="flex items-center gap-2 mb-4">
+                  <svg class="w-4 h-4 text-vault-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"/></svg>
+                  <span class="text-sm font-semibold uppercase tracking-wider text-vault-muted">Monitoring</span>
+                </div>
+
+                <div class="space-y-4">
+                  <!-- Audit Retention -->
+                  <div class="flex items-center justify-between">
+                    <div class="flex-1">
+                      <div class="flex items-center gap-2">
+                        <span class="text-sm font-medium text-vault-text">Audit Log Retention</span>
+                        <span x-show="settings.audit_retention_days" :class="sourceClass(settings.audit_retention_days.source)" class="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase" x-text="sourceLabel(settings.audit_retention_days.source)"></span>
+                        <svg x-show="settings.audit_retention_days?.readonly" class="w-3.5 h-3.5 text-vault-muted" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" title="Locked by configuration file"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/></svg>
+                      </div>
+                      <div class="text-xs text-vault-muted mt-0.5">Days to keep audit log entries (0 = forever)</div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <template x-if="settings.audit_retention_days?.readonly">
+                        <span class="text-sm font-mono text-vault-text bg-vault-border/20 px-3 py-1.5 rounded-lg"><span x-text="settings.audit_retention_days.value"></span> days</span>
+                      </template>
+                      <template x-if="!settings.audit_retention_days?.readonly">
+                        <div class="flex items-center gap-2">
+                          <div class="w-7 flex justify-center">
+                            <button x-show="settings.audit_retention_days.source === 'database'" x-cloak @click="resetSetting('audit_retention_days')" class="p-1.5 rounded-lg hover:bg-red-500/10 text-vault-muted hover:text-red-400 transition" title="Reset to default">
+                              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182"/></svg>
+                            </button>
+                          </div>
+                          <input type="number" min="0" max="3650" :value="settings.audit_retention_days.value" @change="saveSetting('audit_retention_days', $event.target.value)"
+                            class="setting-number w-24 px-3 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm font-mono focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition text-right">
+                          <span class="text-xs text-vault-muted">days</span>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+
+                  <div class="border-t border-vault-border/20"></div>
+
+                  <!-- Metrics Retention -->
+                  <div class="flex items-center justify-between">
+                    <div class="flex-1">
+                      <div class="flex items-center gap-2">
+                        <span class="text-sm font-medium text-vault-text">Metrics Retention</span>
+                        <span x-show="settings.metrics_retention_days" :class="sourceClass(settings.metrics_retention_days.source)" class="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase" x-text="sourceLabel(settings.metrics_retention_days.source)"></span>
+                        <svg x-show="settings.metrics_retention_days?.readonly" class="w-3.5 h-3.5 text-vault-muted" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" title="Locked by configuration file"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/></svg>
+                      </div>
+                      <div class="text-xs text-vault-muted mt-0.5">Days to keep metrics snapshots (0 = forever)</div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <template x-if="settings.metrics_retention_days?.readonly">
+                        <span class="text-sm font-mono text-vault-text bg-vault-border/20 px-3 py-1.5 rounded-lg"><span x-text="settings.metrics_retention_days.value"></span> days</span>
+                      </template>
+                      <template x-if="!settings.metrics_retention_days?.readonly">
+                        <div class="flex items-center gap-2">
+                          <div class="w-7 flex justify-center">
+                            <button x-show="settings.metrics_retention_days.source === 'database'" x-cloak @click="resetSetting('metrics_retention_days')" class="p-1.5 rounded-lg hover:bg-red-500/10 text-vault-muted hover:text-red-400 transition" title="Reset to default">
+                              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182"/></svg>
+                            </button>
+                          </div>
+                          <input type="number" min="0" max="3650" :value="settings.metrics_retention_days.value" @change="saveSetting('metrics_retention_days', $event.target.value)"
+                            class="setting-number w-24 px-3 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm font-mono focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition text-right">
+                          <span class="text-xs text-vault-muted">days</span>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
 
       </main>
     </div>

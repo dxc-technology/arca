@@ -10,7 +10,7 @@ use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, OnRequest, OnResponse, TraceLayer};
 use tracing::Level;
 
-use crate::handlers::{admin, admin_grants, admin_teams, admin_users, archive, bucket, object};
+use crate::handlers::{admin, admin_grants, admin_monitoring, admin_settings, admin_teams, admin_users, archive, bucket, object};
 use crate::middleware;
 use crate::state::AppState;
 
@@ -133,6 +133,16 @@ pub fn build_router(state: AppState) -> Router {
             "/teams/{team_id}/grants/{grant_id}",
             put(admin_teams::attach_team_grant).delete(admin_teams::detach_team_grant),
         )
+        // Instance settings
+        .route("/settings", get(admin_settings::list_settings))
+        .route(
+            "/settings/{key}",
+            put(admin_settings::update_setting).delete(admin_settings::delete_setting),
+        )
+        // Audit log and metrics history
+        .route("/audit", get(admin_monitoring::list_audit))
+        .route("/audit/stats", get(admin_monitoring::audit_stats))
+        .route("/metrics/history", get(admin_monitoring::metrics_history))
         // Grant management
         .route("/grants", get(admin_grants::list_grants).post(admin_grants::create_grant))
         .route(
@@ -147,7 +157,9 @@ pub fn build_router(state: AppState) -> Router {
         ));
 
     // --- Admin router (public endpoints) ---
-    let admin_public = Router::new().route("/health", get(admin::health));
+    let admin_public = Router::new()
+        .route("/health", get(admin::health))
+        .route("/metrics", get(admin::prometheus_metrics));
 
     // --- Combine admin routers ---
     let admin = Router::new().merge(admin_public).merge(admin_auth);
@@ -191,7 +203,7 @@ pub fn build_router(state: AppState) -> Router {
     // --- Merge everything ---
     // Admin routes are nested under /admin, S3 routes at root.
     // Layer order (outermost → innermost):
-    //   RequestId → Trace → CORS → Auth → Handlers
+    //   RequestId → Audit → Trace → CORS → Auth → Handlers
     Router::new()
         .nest("/admin", admin)
         .merge(s3_app)
@@ -202,6 +214,10 @@ pub fn build_router(state: AppState) -> Router {
                 .on_request(RequestLogger)
                 .on_response(ResponseLogger),
         )
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            middleware::audit::audit_middleware,
+        ))
         .layer(axum::middleware::from_fn(
             middleware::request_id::request_id_middleware,
         ))

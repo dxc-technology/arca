@@ -10,6 +10,7 @@ pub struct Config {
     pub server: ServerConfig,
     pub storage: StorageConfig,
     pub encryption: Option<EncryptionConfig>,
+    pub monitoring: Option<MonitoringConfig>,
 }
 
 /// Server configuration.
@@ -20,6 +21,10 @@ pub struct ServerConfig {
     /// Optional domain for virtual-hosted-style requests (e.g. "s3.example.com").
     /// When set, requests to `bucket.s3.example.com` are rewritten to `/{bucket}/...`.
     pub domain: Option<String>,
+    /// Optional S3 region. When set, this is the instance-wide default and cannot
+    /// be changed from the console. When absent, the region can be set via the
+    /// Admin API / console (stored in `server_config` table), defaulting to "us-east-1".
+    pub region: Option<String>,
     /// Optional TLS configuration. When set, the server serves HTTPS.
     pub tls: Option<TlsConfig>,
 }
@@ -273,6 +278,50 @@ fn validate_master_key(key: &str, field_name: &str) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// Monitoring and audit configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MonitoringConfig {
+    /// Audit log configuration.
+    pub audit: Option<AuditConfig>,
+    /// Metrics snapshot configuration.
+    pub metrics: Option<MetricsConfig>,
+}
+
+/// Audit log configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AuditConfig {
+    /// Whether audit logging is enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Number of days to retain audit log entries. 0 = keep forever.
+    /// When set, this value is locked (read-only in console).
+    /// When absent, the retention can be set via the Admin API / console.
+    pub retention_days: Option<u32>,
+}
+
+/// Metrics snapshot configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MetricsConfig {
+    /// Whether metrics collection is enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Number of days to retain metrics snapshots. 0 = keep forever.
+    /// When set, this value is locked (read-only in console).
+    /// When absent, the retention can be set via the Admin API / console.
+    pub retention_days: Option<u32>,
+    /// How often to snapshot gauge metrics, in seconds.
+    #[serde(default = "default_metrics_interval")]
+    pub interval_seconds: u64,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_metrics_interval() -> u64 {
+    60
 }
 
 /// Loads configuration from a TOML file.
@@ -748,6 +797,104 @@ ca_file = "/etc/ssl/vault-ca.pem"
         assert_eq!(kms.role_id.as_deref(), Some("abc-123"));
         assert_eq!(kms.secret_id.as_deref(), Some("def-456"));
         assert_eq!(kms.ca_file.as_deref(), Some("/etc/ssl/vault-ca.pem"));
+    }
+
+    #[test]
+    fn parse_config_with_region() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+region = "eu-west-1"
+
+[storage]
+data_dir = "/data"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.server.region.as_deref(), Some("eu-west-1"));
+    }
+
+    #[test]
+    fn parse_config_without_region() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.server.region.is_none());
+    }
+
+    #[test]
+    fn parse_config_with_monitoring() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+
+[monitoring.audit]
+enabled = true
+retention_days = 90
+
+[monitoring.metrics]
+enabled = true
+retention_days = 30
+interval_seconds = 120
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let mon = config.monitoring.unwrap();
+        let audit = mon.audit.unwrap();
+        assert!(audit.enabled);
+        assert_eq!(audit.retention_days, Some(90));
+        let metrics = mon.metrics.unwrap();
+        assert!(metrics.enabled);
+        assert_eq!(metrics.retention_days, Some(30));
+        assert_eq!(metrics.interval_seconds, 120);
+    }
+
+    #[test]
+    fn parse_config_monitoring_defaults() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+
+[monitoring.audit]
+
+[monitoring.metrics]
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let mon = config.monitoring.unwrap();
+        let audit = mon.audit.unwrap();
+        assert!(audit.enabled); // default true
+        assert!(audit.retention_days.is_none()); // not set, console can manage
+        let metrics = mon.metrics.unwrap();
+        assert!(metrics.enabled); // default true
+        assert!(metrics.retention_days.is_none()); // not set, console can manage
+        assert_eq!(metrics.interval_seconds, 60); // default
+    }
+
+    #[test]
+    fn parse_config_without_monitoring() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.monitoring.is_none());
     }
 
     #[test]
