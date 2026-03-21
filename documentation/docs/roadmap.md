@@ -95,7 +95,7 @@ graph LR
 | 14 | [SSE-KMS with HashiCorp Vault/OpenBAO](#phase-14-sse-kms-with-hashicorp-vaultopenbao-p0) | P0 | 13 | `v0.5.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 15 | [Presigned URLs, Query-String Auth, and SSE-C](#phase-15-presigned-urls-query-string-auth-and-sse-c-p1) | P1 | 12, 13 | `v0.6.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 16 | [Access Control and Bucket Policies](#phase-16-access-control-and-bucket-policies-p1) | P1 | 13 | `v0.7.0` | <span style="color:#4caf50">&#x2714;</span> |
-| 17 | [Object Versioning](#phase-17-object-versioning-p1) | P1 | 16 | `v0.8.0` | <span style="color:#4caf50">&#x2714;</span> |
+| 17 | [Object Versioning](#phase-17-object-versioning-p1) | P1 | 16 | `v0.8.1` | <span style="color:#4caf50">&#x2714;</span> |
 | 18 | [Monitoring, Metrics, and Audit](#phase-18-monitoring-metrics-and-audit-p1) | P1 | — | | |
 | 19 | [Object Tagging and Lifecycle Rules](#phase-19-object-tagging-and-lifecycle-rules-p2) | P2 | 13 | | |
 | 20 | [Object Lock (WORM Compliance)](#phase-20-object-lock-worm-compliance-p2) | P2 | 17 | | |

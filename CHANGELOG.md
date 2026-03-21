@@ -7,9 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-03-21
+
 ### Fixed
 
 - **DeleteObjects with VersionId**: batch delete (`POST /{bucket}?delete`) now supports `<VersionId>` per object, enabling hard-deletion of specific versions and delete markers. Previously, VersionId was ignored and versioned deletes only created more delete markers, making buckets impossible to empty.
+- **Console**: object list now refreshes after deleting a specific version from the version history panel.
+- **Ceph s3-tests**: 50 additional tests now pass (270 → 320), primarily in Versioning and Bucket categories.
 
 ### Changed
 
@@ -177,7 +181,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/dxc-technology/arca/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/dxc-technology/arca/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/dxc-technology/arca/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/dxc-technology/arca/compare/v0.5.0...v0.6.0
