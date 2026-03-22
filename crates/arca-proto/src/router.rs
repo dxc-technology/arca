@@ -140,7 +140,7 @@ pub fn build_router(state: AppState) -> Router {
             put(admin_settings::update_setting).delete(admin_settings::delete_setting),
         )
         // Audit log and metrics history
-        .route("/audit", get(admin_monitoring::list_audit))
+        .route("/audit", get(admin_monitoring::list_audit).delete(admin_monitoring::clear_audit))
         .route("/audit/stats", get(admin_monitoring::audit_stats))
         .route("/metrics/history", get(admin_monitoring::metrics_history))
         // Grant management

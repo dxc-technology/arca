@@ -186,8 +186,13 @@ export function apiClient() {
       return await this.request('PUT', '/admin' + path, opts);
     },
 
-    async adminDelete(path) {
-      return await this.request('DELETE', '/admin' + path);
+    async adminDelete(path, data) {
+      const opts = {};
+      if (data) {
+        opts.body = JSON.stringify(data);
+        opts.contentType = 'application/json';
+      }
+      return await this.request('DELETE', '/admin' + path, opts);
     },
 
     async adminArchive(bucket, keys) {

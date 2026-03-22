@@ -360,16 +360,14 @@ The table shows: timestamp, operation name, bucket, key, user, HTTP status (colo
 
 ### Filtering
 
-The filter bar provides three controls:
+Filters are built into the column headers. Click a filterable column header (indicated by a funnel icon on hover) to activate its filter. Active filters show a cyan badge with the filter value and an X to clear. All filters persist across navigation.
 
-- **Bucket** — text input, filters by bucket name (server-side)
-- **User ID** — text input, filters by user ID (server-side)
-- **Operations** — tag-based filter with autocomplete:
-    - Type to search operations, press Enter or click to add as a tag
-    - Toggle **IN** (include, show only selected) / **EX** (exclude, hide selected) mode by clicking the mode badge
-    - Remove tags with the X button or Backspace
-    - Clear all tags with the X button on the right
-    - Filters and page size are persisted across navigation
+- **Time** — click to open a date range popover with From/To datetime pickers (server-side filtered)
+- **Operation** — click to open a tag-based filter popover with Include/Exclude mode toggle and autocomplete search
+- **Bucket** — click to open a dropdown with all distinct bucket names as checkboxes with occurrence counts
+- **Key** — click to reveal an inline text input for substring search
+- **User** — click to open a dropdown with all distinct user IDs as checkboxes with counts
+- **Status** — click to open a dropdown with all distinct HTTP status codes as checkboxes, color-coded (green/amber/red)
 
 ### Detail Panel
 

@@ -3,6 +3,7 @@
 use axum::extract::{Query, State};
 use axum::response::IntoResponse;
 use axum::Json;
+use http::StatusCode;
 use serde::Deserialize;
 
 use arca_core::store::audit::AuditFilter;
@@ -84,6 +85,42 @@ pub async fn audit_stats(
     Ok(Json(serde_json::json!({
         "total_entries": total,
     })))
+}
+
+/// Request body for DELETE /admin/audit.
+#[derive(Debug, Deserialize)]
+pub struct ClearAuditRequest {
+    pub confirm: String,
+}
+
+/// DELETE /admin/audit — clear all audit log entries.
+/// Requires confirmation: body must contain `{"confirm": "CLEAR AUDIT LOG"}`.
+pub async fn clear_audit(
+    State(state): State<AppState>,
+    Json(body): Json<ClearAuditRequest>,
+) -> Result<impl IntoResponse, AdminError> {
+    if body.confirm != "CLEAR AUDIT LOG" {
+        return Err(AdminError::bad_request(
+            "Confirmation required: send {\"confirm\": \"CLEAR AUDIT LOG\"}",
+        ));
+    }
+
+    let audit_store = state
+        .audit_store
+        .as_ref()
+        .ok_or_else(|| AdminError::bad_request("Audit logging is not enabled"))?;
+
+    // Delete all entries by purging with a far-future cutoff
+    let cutoff = chrono::Utc::now() + chrono::Duration::days(36500);
+    let deleted = audit_store
+        .purge_audit_entries(cutoff)
+        .await
+        .map_err(|e| AdminError::internal(e.to_string()))?;
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "deleted": deleted })),
+    ))
 }
 
 /// Query parameters for GET /admin/metrics/history.

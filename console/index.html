@@ -7,7 +7,7 @@
 
   <!-- Console version and documentation URL -->
   <script>
-    window.ARCA_CONSOLE_VERSION = "0.9.0";
+    window.ARCA_CONSOLE_VERSION = "0.9.1";
     window.ARCA_DOCS_URL = "https://dxc-technology.github.io/arca/";
   </script>
 
@@ -126,6 +126,82 @@
     .setting-number {
       color-scheme: dark;
     }
+
+    /* Column header filters */
+    .col-filter { position: relative; user-select: none; }
+    .col-label { cursor: pointer; display: flex; align-items: center; gap: 4px; transition: color 0.15s; white-space: nowrap; }
+    .col-label:hover { color: #e2e8f0; }
+    .col-label .fi { width: 10px; height: 10px; opacity: 0; transition: opacity 0.15s; flex-shrink: 0; }
+    .col-filter:hover .fi { opacity: 0.5; }
+    .col-filter.active .fi { opacity: 1; color: #00d4ff; }
+    .col-filter.active::after {
+      content: ''; position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%);
+      width: 16px; height: 2px; background: #00d4ff; border-radius: 1px;
+    }
+    .filter-badge {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #00d4ff;
+      max-width: 100%; cursor: pointer;
+    }
+    .filter-badge .val { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fbx {
+      flex-shrink: 0; width: 12px; height: 12px; display: flex; align-items: center; justify-content: center;
+      border-radius: 2px; cursor: pointer; opacity: 0.6; transition: opacity 0.1s, background 0.1s;
+    }
+    .fbx:hover { opacity: 1; background: rgba(0,212,255,0.15); }
+    .col-popover {
+      position: absolute; top: calc(100% + 6px); left: -8px; z-index: 50;
+      border-radius: 8px; background: #1e293b; border: 1px solid rgba(51,65,85,0.7);
+      box-shadow: 0 12px 32px rgba(0,0,0,0.4); animation: colPopIn 0.12s ease-out; overflow: hidden;
+    }
+    @keyframes colPopIn { from { opacity: 0; transform: translateY(-3px); } }
+    .col-popover .pop-search { padding: 8px; border-bottom: 1px solid rgba(51,65,85,0.4); }
+    .col-popover .pop-search input {
+      width: 100%; background: rgba(15,23,42,0.8); border: 1px solid rgba(51,65,85,0.5);
+      border-radius: 5px; color: #e2e8f0; font-size: 11px; padding: 4px 8px; outline: none;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .col-popover .pop-search input::placeholder { color: #475569; }
+    .col-popover .pop-search input:focus { border-color: rgba(0,212,255,0.4); }
+    .col-popover .pop-list { max-height: 200px; overflow-y: auto; padding: 4px; }
+    .col-popover .pop-list::-webkit-scrollbar { width: 4px; }
+    .col-popover .pop-list::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+    .pop-item {
+      padding: 4px 8px; border-radius: 5px; cursor: pointer; transition: background 0.1s;
+      font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #94a3b8;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .pop-item:hover { background: rgba(0,212,255,0.08); color: #e2e8f0; }
+    .pop-item.selected { color: #00d4ff; }
+    .pop-item .check {
+      width: 12px; height: 12px; border-radius: 3px; border: 1.5px solid #475569;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.12s;
+    }
+    .pop-item.selected .check { border-color: #00d4ff; background: #00d4ff; }
+    .pop-item .check svg { width: 8px; height: 8px; opacity: 0; }
+    .pop-item.selected .check svg { opacity: 1; }
+    .pop-item .cnt { margin-left: auto; font-size: 9px; color: #475569; }
+    .time-pop {
+      position: absolute; top: calc(100% + 6px); left: -8px; z-index: 50;
+      padding: 10px; border-radius: 8px; background: #1e293b;
+      border: 1px solid rgba(51,65,85,0.7); box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+      animation: colPopIn 0.12s ease-out; min-width: 200px;
+    }
+    .time-pop label { display: block; font-size: 10px; color: #94a3b8; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+    .time-pop input[type="datetime-local"] {
+      color-scheme: dark; width: 100%; background: rgba(15,23,42,0.8);
+      border: 1px solid rgba(51,65,85,0.6); border-radius: 5px; color: #e2e8f0;
+      font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 4px 8px; outline: none;
+    }
+    .time-pop input:focus { border-color: rgba(0,212,255,0.5); }
+    .key-inline {
+      background: rgba(15,23,42,0.8); border: 1px solid rgba(0,212,255,0.3);
+      border-radius: 4px; color: #e2e8f0; font-family: 'JetBrains Mono', monospace;
+      font-size: 10px; padding: 2px 6px; width: 100%; outline: none;
+      position: absolute; top: 50%; left: 8px; right: 8px; transform: translateY(-50%);
+    }
+    .key-inline:focus { border-color: rgba(0,212,255,0.6); }
+    .key-inline::placeholder { color: #475569; }
 
     /* Slide-in panel */
     .slide-panel {
@@ -1866,59 +1942,17 @@
         <!-- ==================== AUDIT LOG ==================== -->
         <template x-if="view === 'audit'">
           <div class="p-6 max-w-7xl" x-data="auditView" x-init="init()" @destroy="destroy()">
-            <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center justify-between mb-4">
               <h2 class="text-xl font-semibold tracking-tight">Audit Log</h2>
-              <span class="text-xs text-vault-muted" x-text="total + ' entries'"></span>
+              <div class="flex items-center gap-3">
+                <span class="text-xs text-vault-muted" x-text="total + ' entries'"></span>
+                <button x-show="hasAnyFilter" @click="clearAllFilters()" class="text-xs text-vault-muted hover:text-vault-text transition">Clear filters</button>
+                <button @click="showClearModal = true; clearConfirmText = ''" class="px-2.5 py-1 rounded-lg text-xs border border-red-500/30 text-red-400 hover:bg-red-500/10 transition">Clear All</button>
+              </div>
             </div>
 
-            <!-- Filters + top pagination -->
-            <div class="flex items-center justify-between gap-3 mb-4">
-              <div class="flex items-center gap-2 min-w-0 flex-1">
-                <input type="text" x-model="filterBucket" @change="applyFilters()" placeholder="Bucket" class="px-3 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition w-28 flex-shrink-0">
-                <input type="text" x-model="filterUser" @change="applyFilters()" placeholder="User ID" class="px-3 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition w-28 flex-shrink-0">
-                <!-- Operation tag filter -->
-                <div class="relative min-w-0 flex-1">
-                  <div class="flex flex-wrap gap-1 items-center px-2 py-1 rounded-lg bg-vault-bg border transition min-h-[30px]"
-                    :class="opFocused ? 'border-vault-accent/50 ring-1 ring-vault-accent/30' : 'border-vault-border'"
-                    @click="$refs.opInput.focus()">
-                    <button @click.stop="toggleOpMode()" class="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded flex-shrink-0 transition"
-                      :class="opMode === 'include' ? 'bg-vault-accent/15 text-vault-accent' : 'bg-red-500/15 text-red-400'"
-                      x-text="opMode === 'include' ? 'IN' : 'EX'" title="Toggle include/exclude mode"></button>
-                    <template x-for="tag in opTags" :key="tag">
-                      <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-mono whitespace-nowrap flex-shrink-0"
-                        :class="opMode === 'include' ? 'bg-vault-accent/10 text-vault-accent' : 'bg-red-500/10 text-red-400'">
-                        <span x-text="tag"></span>
-                        <span @click.stop="removeOpTag(tag)" class="cursor-pointer opacity-50 hover:opacity-100 ml-0.5">
-                          <svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                        </span>
-                      </span>
-                    </template>
-                    <input type="text" x-ref="opInput" x-model="opQuery"
-                      @focus="opFocused = true; opShowAC = true"
-                      @blur="setTimeout(() => { opFocused = false; opShowAC = false }, 150)"
-                      @keydown.enter.prevent="addOpHighlighted()"
-                      @keydown.backspace="onOpBackspace()"
-                      @keydown.down.prevent="moveOpHighlight(1)"
-                      @keydown.up.prevent="moveOpHighlight(-1)"
-                      @keydown.escape="opShowAC = false"
-                      :placeholder="opTags.length === 0 ? 'Operations...' : ''"
-                      class="bg-transparent border-none outline-none text-vault-text font-mono text-[11px] min-w-[60px] flex-1 py-0.5">
-                    <button x-show="opTags.length > 0" x-cloak @click.stop="clearOpTags()" class="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded flex-shrink-0 bg-vault-border/30 text-vault-muted hover:text-vault-text transition" title="Clear operation filter">&times;</button>
-                  </div>
-                  <!-- Autocomplete -->
-                  <div x-show="opShowAC && opFiltered.length > 0" class="absolute top-full left-0 right-0 mt-1 max-h-52 overflow-y-auto bg-[#1e293b] border border-vault-border rounded-lg shadow-xl z-50 py-1 scrollbar-hide">
-                    <template x-for="(item, idx) in opFiltered" :key="item.op">
-                      <div @mousedown.prevent="addOpTag(item.op)"
-                        class="flex items-center gap-2 px-3 py-1.5 cursor-pointer transition text-xs"
-                        :class="idx === opHighlight ? 'bg-vault-accent/10 text-vault-text' : 'text-vault-muted hover:bg-white/[0.03]'">
-                        <span class="font-mono text-[11px]" x-html="opHighlightText(item.op)"></span>
-                        <span class="text-[9px] uppercase tracking-wide text-vault-border ml-auto" x-text="item.cat"></span>
-                      </div>
-                    </template>
-                  </div>
-                </div>
-                <button x-show="hasAnyFilter" @click="clearFilters()" class="text-xs text-vault-muted hover:text-vault-text transition flex-shrink-0">Clear</button>
-              </div>
+            <!-- Pagination bar -->
+            <div class="flex items-center justify-end gap-3 mb-4">
               <div class="flex items-center gap-3 flex-shrink-0">
                 <div class="flex items-center gap-1.5">
                   <span class="text-[11px] text-vault-muted">Show</span>
@@ -1933,18 +1967,10 @@
                 </div>
                 <span class="text-xs text-vault-muted" x-text="'Page ' + currentPage + ' of ' + totalPages"></span>
                 <div class="flex gap-0.5">
-                  <button @click="firstPage()" :disabled="page === 0" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="First page">
-                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5"/></svg>
-                  </button>
-                  <button @click="prevPage()" :disabled="page === 0" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Previous page">
-                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
-                  </button>
-                  <button @click="nextPage()" :disabled="currentPage >= totalPages" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Next page">
-                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
-                  </button>
-                  <button @click="lastPage()" :disabled="currentPage >= totalPages" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Last page">
-                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 4.5l7.5 7.5-7.5 7.5m6-15l7.5 7.5-7.5 7.5"/></svg>
-                  </button>
+                  <button @click="firstPage()" :disabled="page === 0" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="First page"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5"/></svg></button>
+                  <button @click="prevPage()" :disabled="page === 0" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Previous page"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg></button>
+                  <button @click="nextPage()" :disabled="currentPage >= totalPages" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Next page"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg></button>
+                  <button @click="lastPage()" :disabled="currentPage >= totalPages" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Last page"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 4.5l7.5 7.5-7.5 7.5m6-15l7.5 7.5-7.5 7.5"/></svg></button>
                 </div>
               </div>
             </div>
@@ -1954,17 +1980,182 @@
               <svg class="animate-spin h-6 w-6 text-vault-accent" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
             </div>
 
-            <!-- Table -->
-            <div x-show="!loading" class="glass rounded-xl overflow-hidden">
+            <!-- Table with inline header filters -->
+            <div x-show="!loading" class="glass rounded-xl overflow-visible">
               <table class="w-full text-sm">
                 <thead>
                   <tr class="text-left text-[11px] uppercase tracking-wider text-vault-muted border-b border-vault-border/30">
-                    <th class="px-4 py-3">Time</th>
-                    <th class="px-4 py-3">Operation</th>
-                    <th class="px-4 py-3">Bucket</th>
-                    <th class="px-4 py-3">Key</th>
-                    <th class="px-4 py-3">User</th>
-                    <th class="px-4 py-3 text-right">Status</th>
+                    <!-- TIME header (date range popover) -->
+                    <th class="px-4 py-3 w-[180px]">
+                      <div class="col-filter" :class="{ active: filterFrom || filterTo }" @click.outside="timeOpen = false">
+                        <div class="col-label" @click="timeOpen = !timeOpen" x-show="!filterFrom && !filterTo">
+                          Time <svg class="fi" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/></svg>
+                        </div>
+                        <div x-show="filterFrom || filterTo" class="filter-badge" @click="timeOpen = !timeOpen">
+                          <span class="val" x-text="timeLabel()"></span>
+                          <span class="fbx" @click.stop="filterFrom = ''; filterTo = ''; timeOpen = false; load()"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                        </div>
+                        <div class="time-pop" x-show="timeOpen" x-cloak>
+                          <div class="mb-2"><label>From</label><input type="datetime-local" x-model="filterFrom" @change="page = 0; load()"></div>
+                          <div><label>To</label><input type="datetime-local" x-model="filterTo" @change="page = 0; load()"></div>
+                        </div>
+                      </div>
+                    </th>
+                    <!-- OPERATION header (tag filter popover) -->
+                    <th class="px-4 py-3">
+                      <div class="col-filter" :class="{ active: opTags.length > 0 }" @click.outside="opOpen = false">
+                        <div class="col-label" @click="opOpen = !opOpen" x-show="opTags.length === 0">
+                          Operation <svg class="fi" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/></svg>
+                        </div>
+                        <div x-show="opTags.length > 0" class="filter-badge" @click="opOpen = !opOpen">
+                          <span :class="opMode === 'include' ? 'text-vault-accent' : 'text-red-400'" class="text-[9px] font-bold uppercase" x-text="opMode === 'include' ? 'IN' : 'EX'"></span>
+                          <span class="val" x-text="opTags.length + ' ops'"></span>
+                          <span class="fbx" @click.stop="clearOpTags(); opOpen = false"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                        </div>
+                        <!-- Operation filter popover -->
+                        <div class="col-popover" x-show="opOpen" x-cloak style="min-width:300px" @click.stop>
+                          <!-- Mode toggle -->
+                          <div class="flex gap-1 p-2 border-b border-vault-border/30">
+                            <button @click="toggleOpMode()" class="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded transition flex-1 text-center"
+                              :class="opMode === 'include' ? 'bg-vault-accent/15 text-vault-accent' : 'bg-vault-border/20 text-vault-muted'" x-text="'Include'"></button>
+                            <button @click="toggleOpMode()" class="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded transition flex-1 text-center"
+                              :class="opMode === 'exclude' ? 'bg-red-500/15 text-red-400' : 'bg-vault-border/20 text-vault-muted'" x-text="'Exclude'"></button>
+                          </div>
+                          <!-- Search + autocomplete -->
+                          <div class="p-2 border-b border-vault-border/30">
+                            <div class="flex flex-wrap gap-1 items-center px-2 py-1 rounded-lg bg-vault-bg border border-vault-border min-h-[28px]"
+                              @click="$refs.opInput.focus()">
+                              <template x-for="tag in opTags" :key="tag">
+                                <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-mono whitespace-nowrap"
+                                  :class="opMode === 'include' ? 'bg-vault-accent/10 text-vault-accent' : 'bg-red-500/10 text-red-400'">
+                                  <span x-text="tag"></span>
+                                  <span @click.stop="removeOpTag(tag)" class="cursor-pointer opacity-50 hover:opacity-100 ml-0.5">
+                                    <svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                  </span>
+                                </span>
+                              </template>
+                              <input type="text" x-ref="opInput" x-model="opQuery"
+                                @focus="opFocused = true; opShowAC = true"
+                                @blur="setTimeout(() => { opFocused = false; opShowAC = false }, 150)"
+                                @keydown.enter.prevent="addOpHighlighted()"
+                                @keydown.backspace="onOpBackspace()"
+                                @keydown.down.prevent="moveOpHighlight(1)"
+                                @keydown.up.prevent="moveOpHighlight(-1)"
+                                :placeholder="opTags.length === 0 ? 'Type to search...' : ''"
+                                class="bg-transparent border-none outline-none text-vault-text font-mono text-[11px] min-w-[80px] flex-1 py-0.5">
+                            </div>
+                          </div>
+                          <!-- Autocomplete results -->
+                          <div class="pop-list" x-show="opShowAC && opFiltered.length > 0" style="max-height:220px">
+                            <template x-for="(item, idx) in opFiltered" :key="item.op">
+                              <div @mousedown.prevent="addOpTag(item.op)"
+                                class="pop-item" :class="idx === opHighlight ? 'bg-vault-accent/10 !text-vault-text' : ''">
+                                <span class="font-mono text-[11px]" x-html="opHighlightText(item.op)"></span>
+                                <span class="cnt" x-text="item.cat"></span>
+                              </div>
+                            </template>
+                          </div>
+                          <!-- Empty state when no search -->
+                          <div x-show="!opShowAC || opFiltered.length === 0" class="px-3 py-2 text-[11px] text-vault-muted">
+                            <span x-show="opQuery && opFiltered.length === 0">No matching operations</span>
+                            <span x-show="!opQuery">Type to search operations</span>
+                          </div>
+                        </div>
+                      </div>
+                    </th>
+                    <!-- BUCKET header (value list dropdown) -->
+                    <th class="px-4 py-3">
+                      <div class="col-filter" :class="{ active: selectedBuckets.size > 0 }" @click.outside="bucketOpen = false">
+                        <div class="col-label" @click="bucketOpen = !bucketOpen" x-show="selectedBuckets.size === 0">
+                          Bucket <svg class="fi" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/></svg>
+                        </div>
+                        <div x-show="selectedBuckets.size > 0" class="filter-badge" @click="bucketOpen = !bucketOpen">
+                          <span class="val" x-text="[...selectedBuckets].join(', ')"></span>
+                          <span class="fbx" @click.stop="selectedBuckets = new Set(); bucketOpen = false; page = 0"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                        </div>
+                        <div class="col-popover" x-show="bucketOpen" x-cloak style="min-width:180px">
+                          <div class="pop-search"><input type="text" x-model="bucketSearch" placeholder="Search..."></div>
+                          <div class="pop-list">
+                            <template x-for="item in bucketValues" :key="item.name">
+                              <div class="pop-item" :class="{ selected: selectedBuckets.has(item.name) }"
+                                x-show="!bucketSearch || item.name.toLowerCase().includes(bucketSearch.toLowerCase())"
+                                @click="toggleSet(selectedBuckets, item.name); selectedBuckets = new Set(selectedBuckets); page = 0">
+                                <div class="check"><svg fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="white"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg></div>
+                                <span x-text="item.name"></span>
+                                <span class="cnt" x-text="item.count"></span>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </div>
+                    </th>
+                    <!-- KEY header (inline text filter) -->
+                    <th class="px-4 py-3">
+                      <div class="col-filter" :class="{ active: filterKey }">
+                        <div class="col-label" @click="keyEditing = true; $nextTick(() => $refs.keyInput.focus())" x-show="!keyEditing && !filterKey">
+                          Key <svg class="fi" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/></svg>
+                        </div>
+                        <div x-show="filterKey && !keyEditing" class="filter-badge" @click="keyEditing = true; $nextTick(() => $refs.keyInput.focus())">
+                          <span class="val" x-text="filterKey"></span>
+                          <span class="fbx" @click.stop="filterKey = ''; page = 0"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                        </div>
+                        <input type="text" x-ref="keyInput" x-model="filterKey" x-show="keyEditing" class="key-inline"
+                          @focus="keyEditing = true" @blur="keyEditing = false"
+                          @keydown.enter="keyEditing = false; $refs.keyInput.blur(); page = 0"
+                          @keydown.escape="filterKey = ''; keyEditing = false; $refs.keyInput.blur(); page = 0"
+                          placeholder="filter key...">
+                      </div>
+                    </th>
+                    <!-- USER header (value list dropdown) -->
+                    <th class="px-4 py-3">
+                      <div class="col-filter" :class="{ active: selectedUsers.size > 0 }" @click.outside="userOpen = false">
+                        <div class="col-label" @click="userOpen = !userOpen" x-show="selectedUsers.size === 0">
+                          User <svg class="fi" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/></svg>
+                        </div>
+                        <div x-show="selectedUsers.size > 0" class="filter-badge" @click="userOpen = !userOpen">
+                          <span class="val" x-text="[...selectedUsers].join(', ')"></span>
+                          <span class="fbx" @click.stop="selectedUsers = new Set(); userOpen = false; page = 0"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                        </div>
+                        <div class="col-popover" x-show="userOpen" x-cloak style="min-width:160px">
+                          <div class="pop-search"><input type="text" x-model="userSearch" placeholder="Search..."></div>
+                          <div class="pop-list">
+                            <template x-for="item in userValues" :key="item.name">
+                              <div class="pop-item" :class="{ selected: selectedUsers.has(item.name) }"
+                                x-show="!userSearch || item.name.toLowerCase().includes(userSearch.toLowerCase())"
+                                @click="toggleSet(selectedUsers, item.name); selectedUsers = new Set(selectedUsers); page = 0">
+                                <div class="check"><svg fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="white"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg></div>
+                                <span x-text="item.name"></span>
+                                <span class="cnt" x-text="item.count"></span>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </div>
+                    </th>
+                    <!-- STATUS header (value list dropdown) -->
+                    <th class="px-4 py-3 text-right">
+                      <div class="col-filter" :class="{ active: selectedStatuses.size > 0 }" @click.outside="statusOpen = false" style="display:flex;justify-content:flex-end">
+                        <div class="col-label" @click="statusOpen = !statusOpen" x-show="selectedStatuses.size === 0">
+                          Status <svg class="fi" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/></svg>
+                        </div>
+                        <div x-show="selectedStatuses.size > 0" class="filter-badge" @click="statusOpen = !statusOpen">
+                          <span class="val" x-text="[...selectedStatuses].join(', ')"></span>
+                          <span class="fbx" @click.stop="selectedStatuses = new Set(); statusOpen = false; page = 0"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                        </div>
+                        <div class="col-popover" x-show="statusOpen" x-cloak style="min-width:120px;right:-8px;left:auto">
+                          <div class="pop-list">
+                            <template x-for="item in statusValues" :key="item.name">
+                              <div class="pop-item" :class="{ selected: selectedStatuses.has(item.name) }"
+                                @click="toggleSet(selectedStatuses, item.name); selectedStatuses = new Set(selectedStatuses); page = 0">
+                                <div class="check"><svg fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="white"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg></div>
+                                <span class="font-mono" :class="Number(item.name) < 300 ? 'text-green-400' : Number(item.name) < 500 ? 'text-amber-400' : 'text-red-400'" x-text="item.name"></span>
+                                <span class="cnt" x-text="item.count"></span>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </div>
+                    </th>
                     <th class="px-4 py-3 text-right">Duration</th>
                   </tr>
                 </thead>
@@ -1989,6 +2180,22 @@
               <!-- Empty state -->
               <div x-show="filteredEntries.length === 0" class="py-12 text-center text-vault-muted text-sm">
                 No audit log entries found
+              </div>
+            </div>
+
+            <!-- Clear audit modal -->
+            <div x-show="showClearModal" x-transition.opacity class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="showClearModal = false">
+              <div class="glass rounded-xl p-6 w-full max-w-sm mx-4" @click.stop>
+                <h3 class="text-lg font-semibold mb-2 text-red-400">Clear Audit Log</h3>
+                <p class="text-sm text-vault-muted mb-3">This will permanently delete all audit log entries. This cannot be undone.</p>
+                <p class="text-sm text-vault-muted mb-3">Type <strong class="text-vault-text">CLEAR AUDIT LOG</strong> to confirm:</p>
+                <input type="text" x-model="clearConfirmText" class="w-full px-3.5 py-2.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/30 transition text-sm mb-4" placeholder="CLEAR AUDIT LOG">
+                <div class="flex gap-3 justify-end">
+                  <button @click="showClearModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                  <button @click="clearAllAudit()" :disabled="clearConfirmText !== 'CLEAR AUDIT LOG' || clearing"
+                    class="px-4 py-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 text-sm font-medium hover:bg-red-500/30 transition disabled:opacity-30"
+                    x-text="clearing ? 'Clearing...' : 'Clear All'"></button>
+                </div>
               </div>
             </div>
 

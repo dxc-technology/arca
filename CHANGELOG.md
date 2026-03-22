@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-03-22
+
+### Added
+
+- **Console: inline column header filters** — Time (date range popover), Bucket (value list with counts), Key (text search), User (value list with counts), Status (value list with color-coded codes), and Operation (tag-based include/exclude popover) filters are built into the table column headers
+- **Console: clear audit log** — "Clear All" button with confirmation modal requiring explicit `CLEAR AUDIT LOG` text input. `DELETE /admin/audit` backend endpoint
+- **Console: date range filter** — From/To datetime pickers for the Time column, server-side filtered
+- **Console: status column filter** — filterable by HTTP status code via dropdown with checkboxes and counts
+- **Console: sticky filters** — all audit log filters (column headers, operation tags, page size) persist across navigation via sessionStorage
+
+### Changed
+
+- **Console: audit log layout** — filter bar removed, all filters moved into column headers with consistent UX (funnel icon on hover, cyan badge when active, X to clear)
+- **Console: fixed sidebar** — sidebar no longer scrolls with page content
+
+### Fixed
+
+- **Console: multi-file upload** — fixed regression where only the first file was uploaded (live FileList invalidated during async iteration)
+- **Audit log feedback loop** — read-only monitoring operations (Health, Metrics, ListAudit, etc.) are no longer logged to prevent audit entries from generating more audit entries
+- **Audit log missing identity** — access key and user ID now correctly extracted from the Authorization header before auth middleware consumes the request
+
 ## [0.9.0] — 2026-03-21
 
 ### Added
