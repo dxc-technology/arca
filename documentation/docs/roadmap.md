@@ -41,6 +41,7 @@ continuing from the MVP phases (0–11).
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">24</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">25</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">26</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">27</div>
   </div>
 </div>
 <!-- /post-mvp-progress-bar -->
@@ -61,6 +62,7 @@ graph LR
     13 --> 22["22 Performance\n+ Hardening"]
     23["23 PostgreSQL\nBackend"] --> 25
     25 --> 26["26 Multi-Node\n+ Erasure Coding"]
+    18 --> 27["27 OpenTelemetry\nIntegration"]
 
     style 12 fill:#c62828,color:#fff
     style 13 fill:#c62828,color:#fff
@@ -77,6 +79,7 @@ graph LR
     style 24 fill:#1565c0,color:#fff
     style 25 fill:#1565c0,color:#fff
     style 26 fill:#1565c0,color:#fff
+    style 27 fill:#1565c0,color:#fff
 
     18["18 Monitoring\n+ Audit"]
     21["21 S3 API\nCompleteness"]
@@ -105,6 +108,7 @@ graph LR
 | 24 | [Notifications and Event System](#phase-24-notifications-and-event-system-p3) | P3 | 19 | | |
 | 25 | [Replication](#phase-25-replication-p3) | P3 | 17, 23 | | |
 | 26 | [Multi-Node and Erasure Coding](#phase-26-multi-node-and-erasure-coding-p3) | P3 | All prior | | |
+| 27 | [OpenTelemetry Integration](#phase-27-opentelemetry-integration-p3) | P3 | 18 | | |
 
 ---
 
@@ -240,7 +244,6 @@ Full object versioning with version IDs, delete markers, and version-specific op
 Operational visibility through metrics, audit logging, instance-wide settings, and region support.
 
 - [x] Prometheus metrics endpoint: `GET /admin/metrics` (unauthenticated). Counters: request count by operation/status. Histograms: request latency (10 buckets). Gauges: active connections, storage bytes, object count, bucket count
-- [ ] OpenTelemetry tracing: deferred to sub-phase (audit + Prometheus covers 90% of visibility needs; OTLP requires external collector)
 - [x] Audit logging: structured JSON for every S3 and admin operation (who, what, where, when, result). Stored in SQLite `audit_log` table. Admin API: `GET /admin/audit` with filters (bucket, operation, user, time range, pagination)
 - [x] Configurable region: `[server]` TOML section or Admin API (`/admin/settings/region`). Per-bucket region via `bucket_config`. TOML > DB > default precedence
 - [x] Instance-wide settings: new `server_config` table, `GET/PUT/DELETE /admin/settings/{key}`, console Settings page with lock indicators for TOML-set values
@@ -361,6 +364,22 @@ Distributed storage for horizontal scalability and data durability beyond single
 - [ ] `SelectObjectContent` (SQL queries on CSV/JSON)
 
 **Depends on**: All prior phases. Major architecture evolution.
+
+---
+
+### Phase 27 — OpenTelemetry Integration [P3]
+
+Export traces, metrics, and logs via the OpenTelemetry Protocol (OTLP) for integration
+with observability platforms (Grafana, Datadog, Jaeger, etc.).
+
+- [ ] Distributed tracing: instrument request handling with `tracing` + `opentelemetry-otlp`. Each S3/admin request produces a trace span with operation, bucket, key, status, latency. Spans propagate `traceparent` (W3C Trace Context) for end-to-end visibility
+- [ ] OTLP metrics export: export the existing Prometheus counters, histograms, and gauges via OTLP gRPC/HTTP alongside the `/admin/metrics` scrape endpoint
+- [ ] OTLP log export: forward structured log entries (and optionally audit records) via OTLP for centralized log aggregation
+- [ ] Config: `[monitoring.otlp]` section with `endpoint`, `protocol` (`grpc` | `http`), per-signal enable flags (`traces`, `metrics`, `logs`), `service_name`, optional headers/auth
+- [ ] Docker Compose overlay with OpenTelemetry Collector + Jaeger for local development and testing
+- [ ] (Console) Trace ID in audit log entries, linkable to external trace viewer
+
+**Depends on**: Phase 18 (monitoring and audit infrastructure)
 
 ---
 
