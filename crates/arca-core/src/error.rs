@@ -196,10 +196,6 @@ pub struct S3Error {
 
 impl S3Error {
     /// Creates a new S3 error with the default message for the given code.
-    ///
-    /// TECHDEBT(TD-005): request_id is a new UUID, not the one from the
-    /// request_id middleware — so `<RequestId>` in the XML body won't match
-    /// the `x-amz-request-id` response header.
     pub fn new(code: S3ErrorCode, resource: impl Into<String>) -> Self {
         Self {
             message: code.default_message().to_string(),

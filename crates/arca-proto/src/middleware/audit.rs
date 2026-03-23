@@ -4,7 +4,7 @@
 //! every request. Writes audit entries asynchronously via `tokio::spawn`
 //! so it never blocks the response. Also feeds in-memory metrics.
 //!
-//! TECHDEBT(TD-005): Per-request inserts. Under heavy load, consider batching
+//! TECHDEBT(TD-009): Per-request inserts. Under heavy load, consider batching
 //! via an mpsc channel with a dedicated writer task.
 
 use std::sync::atomic::Ordering;
@@ -282,7 +282,7 @@ pub async fn audit_middleware(
                 .unwrap_or("")
                 .to_string();
 
-            // TECHDEBT(TD-005): per-request insert + credential lookup
+            // TECHDEBT(TD-009): per-request insert + credential lookup
             tokio::spawn(async move {
                 // Look up user_id from access key
                 let user_id = if let Some(ref ak) = access_key_id {

@@ -1062,6 +1062,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#resolved-items" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resolved Items
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1129,6 +1140,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#resolved-items" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resolved Items
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1166,52 +1188,12 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 </thead>
 <tbody>
 <tr>
-<td>TD-001</td>
-<td>Owner identity</td>
-<td>RESOLVED ✅ — Owner ID derived from credential's user. Buckets and objects store creator's username. Migration v8 adds <code>owner</code> columns and <code>user_id</code> on credentials</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-</tr>
-<tr>
 <td>TD-002</td>
 <td>Storage class</td>
 <td>Always <code>"STANDARD"</code> — no storage class field in ObjectRecord</td>
 <td>Add <code>storage_class</code> field to ObjectRecord, DB column, accept <code>x-amz-storage-class</code> header</td>
 <td>None currently failing</td>
 <td><code>types.rs</code>, <code>bucket.rs</code>, <code>xml_types.rs</code></td>
-</tr>
-<tr>
-<td>TD-003</td>
-<td>Versioning</td>
-<td>RESOLVED ✅ — Full object versioning implemented in Phase 17. PutBucketVersioning/GetBucketVersioning, version IDs, delete markers, version-specific GET/HEAD/DELETE/COPY, ListObjectVersions with real data. Migration v9 adds versioning columns to objects table</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-</tr>
-<tr>
-<td>TD-004</td>
-<td>Region</td>
-<td>RESOLVED ✅ — Region configurable in <code>[server]</code> TOML section or via Admin API (<code>/admin/settings/region</code>). Per-bucket region via <code>bucket_config</code>. HeadBucket and GetBucketLocation return effective region. Phase 18</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-</tr>
-<tr>
-<td>TD-005</td>
-<td>Request ID</td>
-<td>RESOLVED ✅ — Error XML placeholder <code>&lt;RequestId&gt;</code> is now replaced by the request-ID middleware with the real <code>x-amz-request-id</code> value</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-</tr>
-<tr>
-<td>TD-006</td>
-<td>Encryption config</td>
-<td>RESOLVED ✅ — <code>PutBucketEncryption</code> / <code>GetBucketEncryption</code> / <code>DeleteBucketEncryption</code> implemented in Phase 13 with SSE-S3 (AES-256-GCM). Per-bucket config stored in <code>bucket_config</code> table, global default from <code>[encryption]</code> config section</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
 </tr>
 <tr>
 <td>TD-007</td>
@@ -1230,7 +1212,7 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>multipart.rs</code></td>
 </tr>
 <tr>
-<td>TD-005</td>
+<td>TD-009</td>
 <td>Audit write contention</td>
 <td>Every S3/admin request inserts one row into <code>audit_log</code> synchronously via <code>tokio::spawn</code>. Under heavy load, SQLite write contention may become a bottleneck</td>
 <td>Batch audit writes using a bounded <code>tokio::sync::mpsc</code> channel with a dedicated writer task doing bulk inserts</td>
@@ -1268,15 +1250,53 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <ul>
 <li><strong>Tests Affected</strong>: Ceph s3-tests that are impacted (either currently failing, or passing due to the workaround)</li>
 <li><strong>Files</strong>: Source files containing the workaround (abbreviated — full paths under <code>crates/</code>)</li>
-<li>Items are removed from this table when properly implemented</li>
+<li>Items are moved to the Resolved table when properly implemented</li>
 </ul>
 <h2 id="how-to-use">How to Use<a class="headerlink" href="#how-to-use" title="Permanent link">&para;</a></h2>
 <ol>
 <li>When adding a new workaround, assign the next <code>TD-XXX</code> ID</li>
 <li>Add a <code>// TECHDEBT(TD-XXX): brief description</code> comment in the source code</li>
-<li>Add a row to the table above</li>
-<li>When implementing the proper fix, remove both the code comment and the table row</li>
+<li>Add a row to the Active Items table above</li>
+<li>When implementing the proper fix, remove the code comment and move the row to the Resolved table below</li>
 </ol>
+<hr />
+<h2 id="resolved-items">Resolved Items<a class="headerlink" href="#resolved-items" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Area</th>
+<th>Resolution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TD-001</td>
+<td>Owner identity</td>
+<td>Owner ID derived from credential's user. Buckets and objects store creator's username. Migration v8 adds <code>owner</code> columns and <code>user_id</code> on credentials. Phase 16</td>
+</tr>
+<tr>
+<td>TD-003</td>
+<td>Versioning</td>
+<td>Full object versioning: PutBucketVersioning/GetBucketVersioning, version IDs, delete markers, version-specific GET/HEAD/DELETE/COPY, ListObjectVersions with real data. Migration v9 adds versioning columns. Phase 17</td>
+</tr>
+<tr>
+<td>TD-004</td>
+<td>Region</td>
+<td>Region configurable in <code>[server]</code> TOML section or via Admin API (<code>/admin/settings/region</code>). Per-bucket region via <code>bucket_config</code>. HeadBucket and GetBucketLocation return effective region. Phase 18</td>
+</tr>
+<tr>
+<td>TD-005</td>
+<td>Request ID</td>
+<td>Error XML placeholder <code>&lt;RequestId&gt;</code> replaced by the request-ID middleware with the real <code>x-amz-request-id</code> value</td>
+</tr>
+<tr>
+<td>TD-006</td>
+<td>Encryption config</td>
+<td><code>PutBucketEncryption</code> / <code>GetBucketEncryption</code> / <code>DeleteBucketEncryption</code> implemented with SSE-S3 (AES-256-GCM). Per-bucket config in <code>bucket_config</code> table, global default from <code>[encryption]</code> config section. Phase 13</td>
+</tr>
+</tbody>
+</table>
 
 
 
