@@ -118,6 +118,7 @@
     /* Override highlight.js theme background to match our glass panels */
     pre code.hljs { background: transparent; padding: 0; }
 
+
     /* Drag-drop zone active */
     .drop-active {
       border-color: #00d4ff !important;
@@ -991,13 +992,20 @@
 
                     <!-- Object Preview -->
                     <div class="pt-2 border-t border-vault-border/30">
-                      <button @click="togglePreview()" class="flex items-center justify-between w-full py-2 text-sm font-medium text-vault-muted hover:text-vault-text transition">
-                        <span class="flex items-center gap-1.5">
+                      <div class="flex items-center justify-between py-2">
+                        <button @click="togglePreview()" class="flex items-center gap-1.5 text-sm font-medium text-vault-muted hover:text-vault-text transition">
                           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
                           Preview
-                        </span>
-                        <svg :class="previewExpanded ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
-                      </button>
+                        </button>
+                        <div class="flex items-center gap-1">
+                          <button x-show="previewType" @click="$data.showPreviewModal = true" class="p-1 rounded hover:bg-white/5 text-vault-muted hover:text-vault-text transition" title="Expand preview">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"/></svg>
+                          </button>
+                          <button @click="togglePreview()" class="p-1 rounded hover:bg-white/5 text-vault-muted hover:text-vault-text transition">
+                            <svg :class="previewExpanded ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
+                          </button>
+                        </div>
+                      </div>
 
                       <div x-show="previewExpanded" x-transition>
                         <!-- Loading -->
@@ -1018,7 +1026,7 @@
                         <!-- Video preview -->
                         <template x-if="previewType === 'video'">
                           <div class="rounded-lg overflow-hidden bg-black/20">
-                            <video :src="previewUrl" controls class="w-full max-h-96">Your browser does not support this video format.</video>
+                            <video :src="previewUrl" controls disablepictureinpicture controlslist="nodownload" x-webkit-airplay="deny" class="w-full max-h-96">Your browser does not support this video format.</video>
                           </div>
                         </template>
 
@@ -1096,6 +1104,36 @@
                       </div>
                     </div>
                   </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- Preview modal (fullscreen) -->
+            <div x-show="$data.showPreviewModal" x-transition.opacity class="fixed inset-0 bg-black/80 z-50 flex flex-col" @keydown.escape.window="$data.showPreviewModal = false">
+              <div class="flex items-center justify-between px-6 py-3 border-b border-vault-border/30">
+                <div class="flex items-center gap-2 text-sm text-vault-muted min-w-0">
+                  <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
+                  <span class="font-mono truncate" x-text="selectedObject?.key"></span>
+                </div>
+                <button @click="$data.showPreviewModal = false" class="p-1.5 rounded hover:bg-white/10 text-vault-muted hover:text-vault-text transition">
+                  <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+              </div>
+              <div class="flex-1 overflow-auto p-6 flex items-start justify-center">
+                <template x-if="previewType === 'image'">
+                  <img :src="previewUrl" class="max-w-full max-h-full object-contain" :alt="selectedObject?.key">
+                </template>
+                <template x-if="previewType === 'video'">
+                  <video :src="previewUrl" controls disablepictureinpicture controlslist="nodownload" x-webkit-airplay="deny" class="max-w-full max-h-full">Your browser does not support this video format.</video>
+                </template>
+                <template x-if="previewType === 'text'">
+                  <pre class="w-full rounded-lg bg-black/30 p-4 text-sm font-mono overflow-auto whitespace-pre-wrap break-all"><code x-html="$data.previewHtml"></code></pre>
+                </template>
+                <template x-if="previewType === 'html'">
+                  <iframe :src="previewUrl" sandbox class="w-full h-full rounded-lg border border-vault-border/30"></iframe>
+                </template>
+                <template x-if="previewType === 'pdf'">
+                  <iframe :src="previewUrl" class="w-full h-full rounded-lg border border-vault-border/30"></iframe>
                 </template>
               </div>
             </div>

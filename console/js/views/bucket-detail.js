@@ -150,6 +150,7 @@ export function bucketDetailView() {
     previewText: null,    // text content for text/json
     previewHtml: '',      // syntax-highlighted HTML for text preview
     previewContentType: '',
+    showPreviewModal: false,
     ringColors,
 
     get prefixParts() {
