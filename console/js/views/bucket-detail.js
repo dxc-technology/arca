@@ -142,6 +142,14 @@ export function bucketDetailView() {
     shareError: '',
     shareGenerating: false,
     shareCopied: false,
+    previewExpanded: false,
+    previewLoading: false,
+    previewError: '',
+    previewType: null,    // 'image' | 'text' | 'html' | 'pdf' | null
+    previewUrl: null,     // blob URL for image/pdf/html
+    previewText: null,    // text content for text/json
+    previewHtml: '',      // syntax-highlighted HTML for text preview
+    previewContentType: '',
     ringColors,
 
     get prefixParts() {
@@ -308,19 +316,27 @@ export function bucketDetailView() {
 
     async selectObject(obj) {
       const keepVersionsOpen = this.versionsExpanded;
+      const keepPreviewOpen = this.previewExpanded;
       this.selectedObject = { ...obj, encrypted: false };
       this.versions = [];
       this.versionsError = '';
+      this.cleanupPreview();
       try {
         const resp = await api.s3HeadObject(this.bucketName, obj.key);
         if (resp.headers.get('x-amz-server-side-encryption')) {
           this.selectedObject = { ...this.selectedObject, encrypted: true };
         }
+        this.previewContentType = resp.headers.get('content-type') || '';
       } catch {}
       // If versions panel was open, keep it open and load versions for the new object
       if (keepVersionsOpen && this.bucketVersioned) {
         this.versionsExpanded = true;
         await this.loadVersions();
+      }
+      // If preview panel was open, keep it open and load preview for the new object
+      if (keepPreviewOpen) {
+        this.previewExpanded = true;
+        await this.loadPreview();
       }
     },
 
@@ -760,6 +776,184 @@ export function bucketDetailView() {
         this.shareCopied = true;
         setTimeout(() => this.shareCopied = false, 2000);
       }
+    },
+
+    // ==================== OBJECT PREVIEW ====================
+
+    /** Max size for preview (10 MB). */
+    PREVIEW_MAX_SIZE: 10 * 1024 * 1024,
+
+    /** Max size for text preview (1 MB). */
+    PREVIEW_MAX_TEXT: 1 * 1024 * 1024,
+
+    /** Max size for video preview (100 MB). */
+    PREVIEW_MAX_VIDEO: 100 * 1024 * 1024,
+
+    previewCategory() {
+      const ct = (this.previewContentType || '').toLowerCase();
+      const key = this.selectedObject ? this.selectedObject.key.toLowerCase() : '';
+      // Markdown: check extension first (MIME is usually text/plain or text/markdown)
+      if (/\.md$/.test(key) || ct === 'text/markdown') return 'markdown';
+      if (ct.startsWith('image/')) return 'image';
+      if (ct.startsWith('video/')) return 'video';
+      if (ct === 'application/pdf') return 'pdf';
+      if (ct === 'text/html') return 'html';
+      if (ct.startsWith('text/')
+        || ct === 'application/json'
+        || ct === 'application/xml'
+        || ct === 'application/x-yaml'
+        || ct === 'application/yaml'
+        || ct === 'application/javascript'
+        || ct === 'application/x-sh'
+        || ct === 'application/toml'
+        || ct === 'application/x-toml') return 'text';
+      // Fallback: common extensions that may have generic content-type
+      if (this.selectedObject) {
+        if (/\.(jpe?g|png|gif|webp|svg|bmp|ico|avif)$/.test(key)) return 'image';
+        if (/\.(mp4|m4v|webm|mov|mkv|avi|ogv|ogg|3gp)$/.test(key)) return 'video';
+        if (/\.pdf$/.test(key)) return 'pdf';
+        if (/\.html?$/.test(key)) return 'html';
+        if (/\.(txt|log|csv|tsv|json|ya?ml|toml|xml|css|jsx?|tsx?|py|rs|go|java|c|cpp|h|sh|bash|zsh|conf|cfg|ini|env|sql|rb|php|pl|lua|r|swift|kt|scala|hs|ex|exs|erl|clj|vim|dockerfile|makefile|gitignore)$/.test(key)) return 'text';
+      }
+      return null;
+    },
+
+    /** Map file extension to highlight.js language name for better results. */
+    previewLang() {
+      if (!this.selectedObject) return null;
+      const key = this.selectedObject.key.toLowerCase();
+      const ext = key.split('.').pop();
+      const map = {
+        json: 'json', js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
+        py: 'python', rs: 'rust', go: 'go', java: 'java', c: 'c', cpp: 'cpp', h: 'c',
+        rb: 'ruby', php: 'php', pl: 'perl', lua: 'lua', r: 'r', swift: 'swift', kt: 'kotlin',
+        scala: 'scala', hs: 'haskell', ex: 'elixir', exs: 'elixir', erl: 'erlang', clj: 'clojure',
+        sh: 'bash', bash: 'bash', zsh: 'bash', sql: 'sql', css: 'css',
+        xml: 'xml', html: 'xml', htm: 'xml',
+        yaml: 'yaml', yml: 'yaml', toml: 'ini', ini: 'ini', conf: 'ini', cfg: 'ini',
+        md: 'markdown', csv: 'plaintext', tsv: 'plaintext', txt: 'plaintext', log: 'plaintext',
+        dockerfile: 'dockerfile', makefile: 'makefile',
+      };
+      // Also check filename (no extension) for Dockerfile, Makefile, etc.
+      const filename = key.split('/').pop();
+      if (filename === 'dockerfile') return 'dockerfile';
+      if (filename === 'makefile') return 'makefile';
+      return map[ext] || null;
+    },
+
+    async togglePreview() {
+      this.previewExpanded = !this.previewExpanded;
+      if (this.previewExpanded && this.previewType === null) {
+        await this.loadPreview();
+      }
+    },
+
+    cleanupPreview() {
+      if (this.previewUrl) {
+        URL.revokeObjectURL(this.previewUrl);
+      }
+      this.previewUrl = null;
+      this.previewText = null;
+      this.previewHtml = '';
+      this.previewType = null;
+      this.previewLoading = false;
+      this.previewError = '';
+    },
+
+    async loadPreview() {
+      if (!this.selectedObject) return;
+      this.previewLoading = true;
+      this.previewError = '';
+      this.previewType = null;
+
+      const category = this.previewCategory();
+      if (!category) {
+        this.previewError = 'Preview not available for this file type.';
+        this.previewLoading = false;
+        return;
+      }
+
+      const size = this.selectedObject.size || 0;
+      const maxSize = category === 'video' ? this.PREVIEW_MAX_VIDEO : this.PREVIEW_MAX_SIZE;
+      if (size > maxSize) {
+        this.previewError = 'File too large to preview (' + formatBytes(size) + '). Maximum: ' + formatBytes(maxSize) + '.';
+        this.previewLoading = false;
+        return;
+      }
+      if ((category === 'text' || category === 'markdown') && size > this.PREVIEW_MAX_TEXT) {
+        this.previewError = 'Text file too large to preview (' + formatBytes(size) + '). Maximum: ' + formatBytes(this.PREVIEW_MAX_TEXT) + '.';
+        this.previewLoading = false;
+        return;
+      }
+
+      try {
+        const resp = await api.s3GetObject(this.bucketName, this.selectedObject.key);
+        if (!resp.ok) throw new Error(`Error ${resp.status}`);
+
+        if (category === 'image') {
+          const blob = await resp.blob();
+          this.previewUrl = URL.createObjectURL(blob);
+          this.previewType = 'image';
+        } else if (category === 'video') {
+          const blob = await resp.blob();
+          this.previewUrl = URL.createObjectURL(blob);
+          this.previewType = 'video';
+        } else if (category === 'pdf') {
+          const blob = await resp.blob();
+          this.previewUrl = URL.createObjectURL(blob);
+          this.previewType = 'pdf';
+        } else if (category === 'html') {
+          const blob = await resp.blob();
+          this.previewUrl = URL.createObjectURL(blob);
+          this.previewType = 'html';
+        } else if (category === 'markdown') {
+          const md = await resp.text();
+          const html = window.marked ? marked.parse(md) : md;
+          const wrapped = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; padding: 16px; line-height: 1.6; color: #adbac7; background: #1c2128; max-width: 100%; }
+            h1, h2, h3 { border-bottom: 1px solid #373e47; padding-bottom: .3em; color: #cdd9e5; }
+            pre { background: #2d333b; padding: 12px; border-radius: 6px; overflow-x: auto; }
+            code { background: #2d333b; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+            pre code { background: none; padding: 0; }
+            a { color: #539bf5; }
+            img { max-width: 100%; }
+            blockquote { border-left: 4px solid #373e47; margin: 0; padding: 0 16px; color: #768390; }
+            table { border-collapse: collapse; } th, td { border: 1px solid #373e47; padding: 6px 12px; }
+            hr { border: none; border-top: 1px solid #373e47; }
+          </style></head><body>${html}</body></html>`;
+          const blob = new Blob([wrapped], { type: 'text/html' });
+          this.previewUrl = URL.createObjectURL(blob);
+          this.previewType = 'html';
+        } else if (category === 'text') {
+          let text = await resp.text();
+          // Try to pretty-print JSON
+          const ct = (this.previewContentType || '').toLowerCase();
+          const key = this.selectedObject.key.toLowerCase();
+          if (ct === 'application/json' || key.endsWith('.json')) {
+            try { text = JSON.stringify(JSON.parse(text), null, 2); } catch {}
+          }
+          this.previewText = text;
+          // Syntax highlight
+          const lang = this.previewLang();
+          if (window.hljs) {
+            if (lang && hljs.getLanguage(lang)) {
+              this.previewHtml = hljs.highlight(text, { language: lang }).value;
+            } else {
+              this.previewHtml = hljs.highlightAuto(text).value;
+            }
+          } else {
+            this.previewHtml = this.escapeHtml(text);
+          }
+          this.previewType = 'text';
+        }
+      } catch (e) {
+        this.previewError = 'Failed to load preview: ' + e.message;
+      }
+      this.previewLoading = false;
+    },
+
+    escapeHtml(text) {
+      return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     },
 
     formatBytes,

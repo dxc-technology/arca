@@ -393,7 +393,7 @@ Independent of server phases — can ship at any time.
 - [x] Multi-select with batch operations (P2)
 - [x] Batch delete with recursive directory support (P2)
 - [x] Batch download as streaming tar.gz archive (P2) — requires `POST /admin/archive` endpoint
-- [ ] Object preview: images, text, JSON, PDF (P2)
+- [x] Object preview: images, text, JSON, PDF (P2)
 - [ ] Search and filter within buckets (P2)
 - [ ] Dark/light theme toggle (P3)
 - [ ] Responsive mobile layout (P3)

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Console: object preview** — collapsible preview panel in the object detail sidebar. Supports images (JPEG, PNG, GIF, WebP, SVG, AVIF), text/code files with syntax highlighting via highlight.js (detected by MIME type or extension: .txt, .md, .json, .yaml, .toml, .xml, .py, .rs, .go, .js, .ts, etc.), HTML files rendered in a sandboxed iframe, and PDF via browser viewer. JSON files are auto pretty-printed. Size limits: 10 MB for images/PDF/HTML, 1 MB for text. Unsupported types show a graceful message
 - **Environment variable overrides** — `ARCA_SERVER_BIND`, `ARCA_SERVER_PORT`, and `ARCA_STORAGE_DATA_DIR` environment variables can now override the corresponding config file values, useful for Docker/Kubernetes deployments
 
 ## [0.9.1] — 2026-03-22

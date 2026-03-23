@@ -56,6 +56,13 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
+  <!-- Syntax highlighting (highlight.js) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/styles/github-dark-dimmed.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>
+
+  <!-- Markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
+
   <!-- App module (registers Alpine.data before Alpine initializes) -->
   <script type="module" src="/js/app.js"></script>
 
@@ -107,6 +114,9 @@
     /* Hide scrollbar but keep scrolling */
     .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
     .scrollbar-hide::-webkit-scrollbar { display: none; }
+
+    /* Override highlight.js theme background to match our glass panels */
+    pre code.hljs { background: transparent; padding: 0; }
 
     /* Drag-drop zone active */
     .drop-active {
@@ -977,6 +987,56 @@
                       <button @click="openShareModal(selectedObject.key)" class="flex-1 py-2 rounded-lg bg-vault-indigo/10 text-vault-indigo text-sm font-medium hover:bg-vault-indigo/20 transition">Share</button>
                       <button @click="downloadObject(selectedObject.key)" class="flex-1 py-2 rounded-lg bg-vault-accent/10 text-vault-accent text-sm font-medium hover:bg-vault-accent/20 transition">Download</button>
                       <button @click="confirmDeleteObject(selectedObject.key)" class="flex-1 py-2 rounded-lg bg-red-500/10 text-red-400 text-sm font-medium hover:bg-red-500/20 transition">Delete</button>
+                    </div>
+
+                    <!-- Object Preview -->
+                    <div class="pt-2 border-t border-vault-border/30">
+                      <button @click="togglePreview()" class="flex items-center justify-between w-full py-2 text-sm font-medium text-vault-muted hover:text-vault-text transition">
+                        <span class="flex items-center gap-1.5">
+                          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
+                          Preview
+                        </span>
+                        <svg :class="previewExpanded ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
+                      </button>
+
+                      <div x-show="previewExpanded" x-transition>
+                        <!-- Loading -->
+                        <div x-show="previewLoading" class="flex justify-center py-4">
+                          <svg class="animate-spin h-4 w-4 text-vault-accent" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                        </div>
+
+                        <!-- Error / unsupported -->
+                        <p x-show="previewError" x-text="previewError" class="text-vault-muted/60 text-xs text-center py-4"></p>
+
+                        <!-- Image preview -->
+                        <template x-if="previewType === 'image'">
+                          <div class="rounded-lg overflow-hidden bg-black/20">
+                            <img :src="previewUrl" class="w-full h-auto max-h-96 object-contain" :alt="selectedObject.key">
+                          </div>
+                        </template>
+
+                        <!-- Video preview -->
+                        <template x-if="previewType === 'video'">
+                          <div class="rounded-lg overflow-hidden bg-black/20">
+                            <video :src="previewUrl" controls class="w-full max-h-96">Your browser does not support this video format.</video>
+                          </div>
+                        </template>
+
+                        <!-- Text / code preview (syntax highlighted) -->
+                        <template x-if="previewType === 'text'">
+                          <pre class="rounded-lg bg-black/30 p-3 text-xs font-mono overflow-auto max-h-96 whitespace-pre-wrap break-all"><code x-html="$data.previewHtml"></code></pre>
+                        </template>
+
+                        <!-- HTML / Markdown preview (sandboxed iframe) -->
+                        <template x-if="previewType === 'html'">
+                          <iframe :src="previewUrl" sandbox class="w-full rounded-lg border border-vault-border/30" style="height:400px"></iframe>
+                        </template>
+
+                        <!-- PDF preview -->
+                        <template x-if="previewType === 'pdf'">
+                          <iframe :src="previewUrl" class="w-full rounded-lg border border-vault-border/30" style="height:400px"></iframe>
+                        </template>
+                      </div>
                     </div>
 
                     <!-- Version History (only for versioned buckets) -->
