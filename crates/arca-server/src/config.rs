@@ -324,12 +324,38 @@ fn default_metrics_interval() -> u64 {
     60
 }
 
+/// Applies environment variable overrides to the loaded configuration.
+///
+/// Supported variables:
+/// - `ARCA_SERVER_BIND` — overrides `server.bind`
+/// - `ARCA_SERVER_PORT` — overrides `server.port`
+/// - `ARCA_STORAGE_DATA_DIR` — overrides `storage.data_dir`
+fn apply_env_overrides(config: &mut Config) -> Result<()> {
+    if let Ok(val) = std::env::var("ARCA_SERVER_BIND") {
+        tracing::info!(bind = %val, "Overriding server.bind from ARCA_SERVER_BIND");
+        config.server.bind = val;
+    }
+    if let Ok(val) = std::env::var("ARCA_SERVER_PORT") {
+        let port: u16 = val
+            .parse()
+            .with_context(|| format!("ARCA_SERVER_PORT: invalid port number \"{val}\""))?;
+        tracing::info!(port, "Overriding server.port from ARCA_SERVER_PORT");
+        config.server.port = port;
+    }
+    if let Ok(val) = std::env::var("ARCA_STORAGE_DATA_DIR") {
+        tracing::info!(data_dir = %val, "Overriding storage.data_dir from ARCA_STORAGE_DATA_DIR");
+        config.storage.data_dir = val;
+    }
+    Ok(())
+}
+
 /// Loads configuration from a TOML file.
 pub fn load_config(path: &Path) -> Result<Config> {
     let content =
         std::fs::read_to_string(path).with_context(|| format!("reading config: {}", path.display()))?;
-    let config: Config =
+    let mut config: Config =
         toml::from_str(&content).with_context(|| format!("parsing config: {}", path.display()))?;
+    apply_env_overrides(&mut config)?;
     if let Some(tls) = &config.server.tls {
         tls.validate()?;
     }
@@ -914,5 +940,92 @@ data_dir = "/data"
             ca_file: None,
         };
         assert!(tls.validate().is_err());
+    }
+
+    /// Helper: build a minimal Config for env override tests.
+    fn base_config() -> Config {
+        Config {
+            server: ServerConfig {
+                bind: "0.0.0.0".to_string(),
+                port: 9000,
+                domain: None,
+                region: None,
+                tls: None,
+            },
+            storage: StorageConfig {
+                data_dir: "/data".to_string(),
+                blob_prefix_depth: 2,
+            },
+            encryption: None,
+            monitoring: None,
+        }
+    }
+
+    #[test]
+    fn env_override_server_bind() {
+        // Use a unique env var name via temp_env pattern: set, run, unset.
+        std::env::set_var("ARCA_SERVER_BIND", "127.0.0.1");
+        let mut config = base_config();
+        apply_env_overrides(&mut config).unwrap();
+        std::env::remove_var("ARCA_SERVER_BIND");
+
+        assert_eq!(config.server.bind, "127.0.0.1");
+    }
+
+    #[test]
+    fn env_override_server_port() {
+        std::env::set_var("ARCA_SERVER_PORT", "8080");
+        let mut config = base_config();
+        apply_env_overrides(&mut config).unwrap();
+        std::env::remove_var("ARCA_SERVER_PORT");
+
+        assert_eq!(config.server.port, 8080);
+    }
+
+    #[test]
+    fn env_override_storage_data_dir() {
+        std::env::set_var("ARCA_STORAGE_DATA_DIR", "/mnt/storage");
+        let mut config = base_config();
+        apply_env_overrides(&mut config).unwrap();
+        std::env::remove_var("ARCA_STORAGE_DATA_DIR");
+
+        assert_eq!(config.storage.data_dir, "/mnt/storage");
+    }
+
+    #[test]
+    fn env_override_invalid_port_fails() {
+        std::env::set_var("ARCA_SERVER_PORT", "not_a_number");
+        let mut config = base_config();
+        let result = apply_env_overrides(&mut config);
+        std::env::remove_var("ARCA_SERVER_PORT");
+
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("ARCA_SERVER_PORT"), "got: {msg}");
+    }
+
+    #[test]
+    fn env_override_port_out_of_range_fails() {
+        std::env::set_var("ARCA_SERVER_PORT", "99999");
+        let mut config = base_config();
+        let result = apply_env_overrides(&mut config);
+        std::env::remove_var("ARCA_SERVER_PORT");
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn env_override_absent_leaves_defaults() {
+        // Ensure none of the override vars are set.
+        std::env::remove_var("ARCA_SERVER_BIND");
+        std::env::remove_var("ARCA_SERVER_PORT");
+        std::env::remove_var("ARCA_STORAGE_DATA_DIR");
+
+        let mut config = base_config();
+        apply_env_overrides(&mut config).unwrap();
+
+        assert_eq!(config.server.bind, "0.0.0.0");
+        assert_eq!(config.server.port, 9000);
+        assert_eq!(config.storage.data_dir, "/data");
     }
 }

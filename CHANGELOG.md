@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Environment variable overrides** — `ARCA_SERVER_BIND`, `ARCA_SERVER_PORT`, and `ARCA_STORAGE_DATA_DIR` environment variables can now override the corresponding config file values, useful for Docker/Kubernetes deployments
+
 ## [0.9.1] — 2026-03-22
 
 ### Added

@@ -1621,6 +1621,7 @@
 <a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>========================================
 </code></pre></div>
 <h2 id="environment-variables">Environment Variables<a class="headerlink" href="#environment-variables" title="Permanent link">&para;</a></h2>
+<p>Environment variables override the corresponding config file values. This is useful for Docker/Kubernetes deployments where you want a single base config but need to vary a few settings per instance.</p>
 <table>
 <thead>
 <tr>
@@ -1629,6 +1630,18 @@
 </tr>
 </thead>
 <tbody>
+<tr>
+<td><code>ARCA_SERVER_BIND</code></td>
+<td>Override <code>server.bind</code> (e.g. <code>127.0.0.1</code>).</td>
+</tr>
+<tr>
+<td><code>ARCA_SERVER_PORT</code></td>
+<td>Override <code>server.port</code> (e.g. <code>8080</code>).</td>
+</tr>
+<tr>
+<td><code>ARCA_STORAGE_DATA_DIR</code></td>
+<td>Override <code>storage.data_dir</code> (e.g. <code>/mnt/data</code>).</td>
+</tr>
 <tr>
 <td><code>ARCA_LOG</code></td>
 <td>Logging level filter (default: <code>info</code>). Example: <code>ARCA_LOG=debug</code>. Supports per-module filtering (e.g. <code>ARCA_LOG=info,arca_auth=debug</code>).</td>

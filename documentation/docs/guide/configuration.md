@@ -150,8 +150,13 @@ On first startup, if no credentials exist, Arca auto-generates a root access key
 
 ## Environment Variables
 
+Environment variables override the corresponding config file values. This is useful for Docker/Kubernetes deployments where you want a single base config but need to vary a few settings per instance.
+
 | Variable | Description |
 |----------|-------------|
+| `ARCA_SERVER_BIND` | Override `server.bind` (e.g. `127.0.0.1`). |
+| `ARCA_SERVER_PORT` | Override `server.port` (e.g. `8080`). |
+| `ARCA_STORAGE_DATA_DIR` | Override `storage.data_dir` (e.g. `/mnt/data`). |
 | `ARCA_LOG` | Logging level filter (default: `info`). Example: `ARCA_LOG=debug`. Supports per-module filtering (e.g. `ARCA_LOG=info,arca_auth=debug`). |
 | `ARCA_ROOT_ACCESS_KEY` | Override root credential access key (used when no active credentials exist). For testing/CI. |
 | `ARCA_ROOT_SECRET_KEY` | Override root credential secret key (used with `ARCA_ROOT_ACCESS_KEY`). Both must be set. |
