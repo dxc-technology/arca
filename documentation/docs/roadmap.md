@@ -395,7 +395,6 @@ Independent of server phases — can ship at any time.
 - [x] Batch download as streaming tar.gz archive (P2) — requires `POST /admin/archive` endpoint
 - [x] Object preview: images, text, JSON, PDF (P2)
 - [ ] Search and filter within buckets (P2)
-- [ ] Dark/light theme toggle (P3)
 - [ ] Responsive mobile layout (P3)
 
 ---
