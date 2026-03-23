@@ -1267,6 +1267,7 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <th>ID</th>
 <th>Area</th>
 <th>Resolution</th>
+<th style="text-align: center;">Status</th>
 </tr>
 </thead>
 <tbody>
@@ -1274,26 +1275,31 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>TD-001</td>
 <td>Owner identity</td>
 <td>Owner ID derived from credential's user. Buckets and objects store creator's username. Migration v8 adds <code>owner</code> columns and <code>user_id</code> on credentials. Phase 16</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td>TD-003</td>
 <td>Versioning</td>
 <td>Full object versioning: PutBucketVersioning/GetBucketVersioning, version IDs, delete markers, version-specific GET/HEAD/DELETE/COPY, ListObjectVersions with real data. Migration v9 adds versioning columns. Phase 17</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td>TD-004</td>
 <td>Region</td>
 <td>Region configurable in <code>[server]</code> TOML section or via Admin API (<code>/admin/settings/region</code>). Per-bucket region via <code>bucket_config</code>. HeadBucket and GetBucketLocation return effective region. Phase 18</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td>TD-005</td>
 <td>Request ID</td>
 <td>Error XML placeholder <code>&lt;RequestId&gt;</code> replaced by the request-ID middleware with the real <code>x-amz-request-id</code> value</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td>TD-006</td>
 <td>Encryption config</td>
 <td><code>PutBucketEncryption</code> / <code>GetBucketEncryption</code> / <code>DeleteBucketEncryption</code> implemented with SSE-S3 (AES-256-GCM). Per-bucket config in <code>bucket_config</code> table, global default from <code>[encryption]</code> config section. Phase 13</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 </tbody>
 </table>
