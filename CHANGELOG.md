@@ -7,9 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-03-23
+
 ### Added
 
-- **Console: object preview** — collapsible preview panel in the object detail sidebar. Supports images (JPEG, PNG, GIF, WebP, SVG, AVIF), text/code files with syntax highlighting via highlight.js (detected by MIME type or extension: .txt, .md, .json, .yaml, .toml, .xml, .py, .rs, .go, .js, .ts, etc.), HTML files rendered in a sandboxed iframe, and PDF via browser viewer. JSON files are auto pretty-printed. Size limits: 10 MB for images/PDF/HTML, 1 MB for text. Unsupported types show a graceful message
+- **Console: object preview** — collapsible preview panel in the object detail sidebar with fullscreen modal (expand button). Supports images (JPEG, PNG, GIF, WebP, SVG, AVIF), video (MP4, WebM, MOV, MKV, OGV, AVI with native controls, 100 MB limit), text/code with syntax highlighting via highlight.js (~40 extensions), Markdown rendered via marked.js with dark theme, HTML in sandboxed iframe, and PDF via browser viewer. JSON auto pretty-printed. Size limits: 100 MB video, 10 MB images/PDF/HTML, 1 MB text
 - **Environment variable overrides** — `ARCA_SERVER_BIND`, `ARCA_SERVER_PORT`, and `ARCA_STORAGE_DATA_DIR` environment variables can now override the corresponding config file values, useful for Docker/Kubernetes deployments
 
 ## [0.9.1] — 2026-03-22
@@ -230,7 +232,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/dxc-technology/arca/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/dxc-technology/arca/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/dxc-technology/arca/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/dxc-technology/arca/compare/v0.8.0...v0.8.1
