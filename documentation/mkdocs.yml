@@ -58,6 +58,7 @@ nav:
     - Production Deployment: operations/deployment.md
   - Roadmap: roadmap.md
   - Changelog: changelog.md
+  - Technical Debt: tech-debt.md
 
 markdown_extensions:
   - admonition
