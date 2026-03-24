@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-03-24
+
 ### Added
 
 - **Console: search and filter** — real-time debounced search bar on all list views (Buckets, Users, Teams, Grants, Credentials, Bucket Detail). Client-side filtering with 300ms debounce, magnifying glass icon, clear button, and "no results" empty state. Bucket Detail search filters both files and folders, updates treemap and select-all in sync
 - **Console: audit operation filter** — replaced text-search autocomplete with smart presets (S3 Read, S3 Write, All S3, All Admin, Data Changes) and category chips with drill-down. One-click presets for common scenarios, category-level toggling, and individual operation checkboxes. Active preset auto-detected from selection
+- **Console: responsive mobile layout** — full mobile support down to 375px (iPhone SE). Collapsible sidebar with hamburger menu, responsive dashboard grid, touch-friendly controls (no hover required), horizontal-scrolling audit table, viewport-safe popovers, full-width side panels on mobile, icon-only bucket detail buttons, vertically stacked shuttles, and centered toast notifications
 
 ### Fixed
 
@@ -241,7 +244,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/dxc-technology/arca/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/dxc-technology/arca/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/dxc-technology/arca/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/dxc-technology/arca/compare/v0.8.1...v0.9.0
