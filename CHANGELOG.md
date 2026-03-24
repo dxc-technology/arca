@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-03-24
+
 ### Added
 
 - **Phase 19: Object Tagging** — S3-compatible object and bucket tagging with 6 new operations: `GetBucketTagging`, `PutBucketTagging`, `DeleteBucketTagging`, `GetObjectTagging`, `PutObjectTagging`, `DeleteObjectTagging`. Inline tags on `PutObject` via `x-amz-tagging` header and `CopyObject` with `x-amz-tagging-directive`. Max 10 tags per object/bucket, key max 128 chars, value max 256 chars. Version-aware: tags tied to specific object versions. Cascade deletes on object/bucket removal. New `object_tags` and `bucket_tags` tables (migration v11)
@@ -250,7 +252,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/dxc-technology/arca/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/dxc-technology/arca/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/dxc-technology/arca/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/dxc-technology/arca/compare/v0.9.0...v0.9.1
