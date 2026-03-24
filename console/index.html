@@ -7,7 +7,7 @@
 
   <!-- Console version and documentation URL -->
   <script>
-    window.ARCA_CONSOLE_VERSION = "0.10.0";
+    window.ARCA_CONSOLE_VERSION = "0.11.0";
     window.ARCA_DOCS_URL = "https://dxc-technology.github.io/arca/";
   </script>
 
@@ -340,8 +340,22 @@
   <template x-if="authenticated">
     <div class="flex h-screen overflow-hidden" x-cloak>
 
+      <!-- Mobile top bar -->
+      <div class="md:hidden fixed top-0 left-0 right-0 h-12 bg-vault-bg/95 backdrop-blur-sm border-b border-vault-border/50 flex items-center px-4 gap-3 z-30">
+        <button @click="sidebarOpen = !sidebarOpen" class="p-1.5 rounded-lg hover:bg-white/5 text-vault-muted">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>
+        </button>
+        <img src="/assets/logo.svg" class="w-6 h-6 flex-shrink-0" alt="Arca">
+        <span class="text-sm font-semibold tracking-tight">Arca</span>
+      </div>
+
+      <!-- Sidebar backdrop (mobile) -->
+      <div x-show="sidebarOpen" x-transition.opacity @click="sidebarOpen = false"
+        class="fixed inset-0 bg-black/50 z-30 md:hidden"></div>
+
       <!-- Sidebar -->
-      <aside class="w-56 flex-shrink-0 border-r border-vault-border/50 flex flex-col bg-vault-bg/80">
+      <aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
+        class="fixed inset-y-0 left-0 w-56 z-40 border-r border-vault-border/50 flex flex-col bg-vault-bg transition-transform duration-300 md:static md:translate-x-0 md:flex-shrink-0">
         <!-- Logo area -->
         <div class="px-5 py-5 flex items-center gap-3">
           <img src="/assets/logo.svg" class="w-8 h-8 flex-shrink-0" alt="Arca">
@@ -425,7 +439,7 @@
       </aside>
 
       <!-- Main content -->
-      <main class="flex-1 overflow-auto">
+      <main class="flex-1 overflow-auto pt-12 md:pt-0">
 
         <!-- ==================== DASHBOARD ==================== -->
         <template x-if="view === 'dashboard'">
@@ -439,14 +453,14 @@
             </div>
 
             <!-- Bento grid -->
-            <div class="grid grid-cols-4 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <!-- Server info (spans 2 cols) -->
-              <div class="col-span-2 glass rounded-xl p-5 glass-hover fade-in">
+              <div class="sm:col-span-2 glass rounded-xl p-5 glass-hover fade-in">
                 <div class="flex items-center gap-2 mb-4">
                   <svg class="w-4 h-4 text-vault-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 01-3-3m3 3a3 3 0 100 6h13.5a3 3 0 100-6m-16.5-3a3 3 0 013-3h13.5a3 3 0 013 3m-19.5 0a4.5 4.5 0 01.9-2.7L5.737 5.1a3.375 3.375 0 012.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 01.9 2.7m0 0a3 3 0 01-3 3m0 3h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008zm-3 6h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008z"/></svg>
                   <span class="text-xs font-medium text-vault-muted uppercase tracking-wider">Server</span>
                 </div>
-                <div class="grid grid-cols-3 gap-4">
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   <div>
                     <div class="text-vault-muted text-xs mb-1">Version</div>
                     <div class="text-lg font-semibold font-mono" x-text="info.version || '—'"></div>
@@ -501,7 +515,7 @@
               </div>
 
               <!-- Storage ring (spans 2 cols, 2 rows) -->
-              <div class="col-span-2 row-span-2 glass rounded-xl p-5 glass-hover fade-in fade-in-delay-3">
+              <div class="sm:col-span-2 lg:row-span-2 glass rounded-xl p-5 glass-hover fade-in fade-in-delay-3">
                 <div class="flex items-center gap-2 mb-4">
                   <svg class="w-4 h-4 text-vault-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 107.5 7.5h-7.5V6z"/><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0013.5 3v7.5z"/></svg>
                   <span class="text-xs font-medium text-vault-muted uppercase tracking-wider">Storage Distribution</span>
@@ -526,7 +540,7 @@
               </div>
 
               <!-- Total storage -->
-              <div class="col-span-2 glass rounded-xl p-5 glass-hover fade-in fade-in-delay-4">
+              <div class="sm:col-span-2 glass rounded-xl p-5 glass-hover fade-in fade-in-delay-4">
                 <div class="text-vault-muted text-xs mb-3 uppercase tracking-wider font-medium">Total Storage</div>
                 <div class="text-3xl font-semibold">
                   <span class="bg-gradient-to-r from-vault-accent to-vault-indigo bg-clip-text text-transparent" x-text="formatBytes(stats.total_size_bytes || 0)"></span>
@@ -587,7 +601,7 @@
                       <span class="font-medium text-sm" x-text="b.name"></span>
                     </div>
                     <button @click.stop="window.location.hash = '#/buckets/' + encodeURIComponent(b.name) + '/settings'"
-                      class="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-vault-accent/10 text-vault-muted hover:text-vault-accent transition" title="Bucket settings">
+                      class="md:opacity-0 md:group-hover:opacity-100 p-1 rounded hover:bg-vault-accent/10 text-vault-muted hover:text-vault-accent transition" title="Bucket settings">
                       <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                     </button>
                   </div>
@@ -827,7 +841,7 @@
         <template x-if="view === 'bucket-detail'">
           <div class="p-6 max-w-6xl overflow-hidden" x-data="bucketDetailView" x-init="load(); $watch('searchQuery', () => { if (showTreemap) computeTreemap(); })">
             <!-- Header with breadcrumbs -->
-            <div class="flex items-center justify-between mb-6 gap-4">
+            <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-6">
               <div data-breadcrumbs class="flex items-center gap-2 text-sm min-w-0 overflow-x-auto whitespace-nowrap scrollbar-hide">
                 <a href="#/buckets" @click="$store.app && navigate('buckets')" class="text-vault-muted hover:text-vault-accent transition flex-shrink-0">Buckets</a>
                 <span class="text-vault-border">/</span>
@@ -841,10 +855,10 @@
                   </span>
                 </template>
               </div>
-              <div class="flex items-center gap-2 flex-shrink-0">
+              <div class="flex items-center gap-2 flex-shrink-0 flex-wrap">
                 <!-- Show deleted toggle (versioned buckets only) -->
                 <div x-show="bucketVersioned" x-cloak class="flex items-center gap-1.5 mr-1">
-                  <span class="text-[11px] text-vault-muted">Show deleted</span>
+                  <span class="text-[11px] text-vault-muted hidden md:inline">Show deleted</span>
                   <button @click="toggleShowDeleted()"
                     :class="showDeleted ? 'bg-red-500' : 'bg-vault-border'"
                     class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
@@ -863,15 +877,18 @@
                   <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"/></svg>
                 </button>
                 <button @click="showCreateFolderModal = true"
-                  class="px-3.5 py-1.5 rounded-lg bg-vault-indigo/10 text-vault-indigo border border-vault-indigo/20 text-sm font-medium hover:bg-vault-indigo/20 transition">
-                  + Folder
+                  class="p-2 md:px-3.5 md:py-1.5 rounded-lg bg-vault-indigo/10 text-vault-indigo border border-vault-indigo/20 text-sm font-medium hover:bg-vault-indigo/20 transition" title="New folder">
+                  <svg class="w-4 h-4 md:hidden" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z"/></svg>
+                  <span class="hidden md:inline">+ Folder</span>
                 </button>
-                <label class="px-3.5 py-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 text-sm font-medium hover:bg-vault-accent/20 transition cursor-pointer">
-                  Upload Files
+                <label class="p-2 md:px-3.5 md:py-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 text-sm font-medium hover:bg-vault-accent/20 transition cursor-pointer" title="Upload files">
+                  <svg class="w-4 h-4 md:hidden" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"/></svg>
+                  <span class="hidden md:inline">Upload Files</span>
                   <input type="file" multiple class="hidden" @change="uploadFiles($event.target.files); $event.target.value = ''">
                 </label>
-                <label class="px-3.5 py-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 text-sm font-medium hover:bg-vault-accent/20 transition cursor-pointer">
-                  Upload Folder
+                <label class="p-2 md:px-3.5 md:py-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 text-sm font-medium hover:bg-vault-accent/20 transition cursor-pointer" title="Upload folder">
+                  <svg class="w-4 h-4 md:hidden" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 8.25H7.5a2.25 2.25 0 0 0-2.25 2.25v9a2.25 2.25 0 0 0 2.25 2.25h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25H15m0-3-3-3m0 0-3 3m3-3V15"/></svg>
+                  <span class="hidden md:inline">Upload Folder</span>
                   <input type="file" webkitdirectory class="hidden" @change="uploadFiles($event.target.files); $event.target.value = ''">
                 </label>
               </div>
@@ -879,7 +896,7 @@
 
             <!-- Selection action bar -->
             <div x-show="selectedKeys.size > 0" x-transition
-              class="glass rounded-xl px-4 py-2.5 mb-3 flex items-center justify-between">
+              class="glass rounded-xl px-4 py-2.5 mb-3 flex flex-wrap items-center justify-between gap-2">
               <span class="text-sm text-vault-muted">
                 <span class="text-vault-accent font-semibold" x-text="selectedKeys.size"></span> selected
               </span>
@@ -957,7 +974,7 @@
                       <svg class="w-5 h-5 text-vault-accent/70 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
                       <span class="text-sm flex-1" x-text="dirName(dir)"></span>
                     </div>
-                    <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                    <div class="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition">
                       <button @click.stop="confirmDeleteDir(dir)" class="p-1 rounded hover:bg-red-500/10 text-vault-muted hover:text-red-400 transition" title="Delete folder">
                         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
                       </button>
@@ -987,8 +1004,8 @@
                     <svg class="w-5 h-5 text-vault-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
                     <span class="text-sm flex-1 truncate" x-text="fileName(obj.key)"></span>
                     <span class="text-xs text-vault-muted font-mono" x-text="formatBytes(obj.size)"></span>
-                    <span class="text-xs text-vault-muted" x-text="new Date(obj.lastModified).toLocaleDateString()"></span>
-                    <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                    <span class="text-xs text-vault-muted hidden sm:inline" x-text="new Date(obj.lastModified).toLocaleDateString()"></span>
+                    <div class="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition">
                       <button @click.stop="openShareModal(obj.key)" class="p-1 rounded hover:bg-vault-accent/10 text-vault-muted hover:text-vault-accent transition" title="Share">
                         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z"/></svg>
                       </button>
@@ -1010,7 +1027,7 @@
                     <svg class="w-5 h-5 text-red-400/60 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
                     <span class="text-sm flex-1 truncate line-through text-red-400/60" x-text="fileName(obj.key)"></span>
                     <span class="text-[9px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 font-medium uppercase">Deleted</span>
-                    <span class="text-xs text-vault-muted" x-text="new Date(obj.lastModified).toLocaleDateString()"></span>
+                    <span class="text-xs text-vault-muted hidden sm:inline" x-text="new Date(obj.lastModified).toLocaleDateString()"></span>
                   </div>
                 </template>
               </div>
@@ -1039,9 +1056,11 @@
             <div x-show="showTreemap && objects.length > 0" class="glass rounded-xl p-4"
               x-html="renderTreemap()"></div>
 
+            <!-- Object detail backdrop (mobile) -->
+            <div x-show="selectedObject" @click="selectedObject = null" class="fixed inset-0 bg-black/40 z-30 md:hidden"></div>
             <!-- Object detail panel -->
             <div x-show="selectedObject" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0"
-              class="fixed right-0 top-0 h-full w-80 glass border-l border-vault-border/50 z-40 slide-panel overflow-y-auto">
+              class="fixed right-0 top-12 md:top-0 h-[calc(100%-3rem)] md:h-full w-full md:w-80 glass border-l border-vault-border/50 z-40 slide-panel overflow-y-auto">
               <div class="p-5">
                 <div class="flex items-center justify-between mb-5">
                   <h3 class="text-sm font-semibold uppercase tracking-wider text-vault-muted">Object Detail</h3>
@@ -1657,7 +1676,7 @@
 
             <!-- Grants tab -->
             <div x-show="activeTab === 'grants'">
-              <div class="flex gap-3 items-stretch" style="min-height:280px">
+              <div class="flex flex-col md:flex-row gap-3 md:items-stretch md:min-h-[280px]"
                 <!-- Assigned (left) -->
                 <div class="flex-1 flex flex-col">
                   <div class="text-xs text-vault-muted mb-2 font-medium uppercase tracking-wide">Attached Grants</div>
@@ -1675,7 +1694,7 @@
                   </div>
                 </div>
                 <!-- Arrows -->
-                <div class="flex flex-col items-center justify-center gap-1.5 px-1">
+                <div class="flex flex-row md:flex-col items-center justify-center gap-1.5 px-1 py-2 md:py-0">
                   <button @click="grantsMoveRight()" :disabled="grantsSelLeft.length === 0 || grantsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Add selected"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg></button>
                   <button @click="grantsMoveAllRight()" :disabled="grantsAvailable.length === 0 || grantsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Add all"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m18.75 4.5-7.5 7.5 7.5 7.5m-6-15-7.5 7.5 7.5 7.5"/></svg></button>
                   <button @click="grantsMoveLeft()" :disabled="grantsSelRight.length === 0 || grantsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Remove selected"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"/></svg></button>
@@ -1702,7 +1721,7 @@
 
             <!-- Teams tab -->
             <div x-show="activeTab === 'teams'">
-              <div class="flex gap-3 items-stretch" style="min-height:280px">
+              <div class="flex flex-col md:flex-row gap-3 md:items-stretch md:min-h-[280px]"
                 <!-- Assigned (left) -->
                 <div class="flex-1 flex flex-col">
                   <div class="text-xs text-vault-muted mb-2 font-medium uppercase tracking-wide">Member Of</div>
@@ -1720,7 +1739,7 @@
                   </div>
                 </div>
                 <!-- Arrows -->
-                <div class="flex flex-col items-center justify-center gap-1.5 px-1">
+                <div class="flex flex-row md:flex-col items-center justify-center gap-1.5 px-1 py-2 md:py-0">
                   <button @click="teamsMoveRight()" :disabled="teamsSelLeft.length === 0 || teamsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Add selected"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg></button>
                   <button @click="teamsMoveAllRight()" :disabled="teamsAvailable.length === 0 || teamsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Add all"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m18.75 4.5-7.5 7.5 7.5 7.5m-6-15-7.5 7.5 7.5 7.5"/></svg></button>
                   <button @click="teamsMoveLeft()" :disabled="teamsSelRight.length === 0 || teamsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Remove selected"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"/></svg></button>
@@ -1932,7 +1951,7 @@
 
             <!-- Members tab -->
             <div x-show="activeTab === 'members'">
-              <div class="flex gap-3 items-stretch" style="min-height:280px">
+              <div class="flex flex-col md:flex-row gap-3 md:items-stretch md:min-h-[280px]"
                 <!-- Assigned (left) -->
                 <div class="flex-1 flex flex-col">
                   <div class="text-xs text-vault-muted mb-2 font-medium uppercase tracking-wide">Team Members</div>
@@ -1950,7 +1969,7 @@
                   </div>
                 </div>
                 <!-- Arrows -->
-                <div class="flex flex-col items-center justify-center gap-1.5 px-1">
+                <div class="flex flex-row md:flex-col items-center justify-center gap-1.5 px-1 py-2 md:py-0">
                   <button @click="membersMoveRight()" :disabled="membersSelLeft.length === 0 || membersMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Add selected"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg></button>
                   <button @click="membersMoveAllRight()" :disabled="membersAvailable.length === 0 || membersMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Add all"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m18.75 4.5-7.5 7.5 7.5 7.5m-6-15-7.5 7.5 7.5 7.5"/></svg></button>
                   <button @click="membersMoveLeft()" :disabled="membersSelRight.length === 0 || membersMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Remove selected"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"/></svg></button>
@@ -1977,7 +1996,7 @@
 
             <!-- Grants tab -->
             <div x-show="activeTab === 'grants'">
-              <div class="flex gap-3 items-stretch" style="min-height:280px">
+              <div class="flex flex-col md:flex-row gap-3 md:items-stretch md:min-h-[280px]"
                 <!-- Assigned (left) -->
                 <div class="flex-1 flex flex-col">
                   <div class="text-xs text-vault-muted mb-2 font-medium uppercase tracking-wide">Attached Grants</div>
@@ -1995,7 +2014,7 @@
                   </div>
                 </div>
                 <!-- Arrows -->
-                <div class="flex flex-col items-center justify-center gap-1.5 px-1">
+                <div class="flex flex-row md:flex-col items-center justify-center gap-1.5 px-1 py-2 md:py-0">
                   <button @click="grantsMoveRight()" :disabled="grantsSelLeft.length === 0 || grantsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Add selected"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg></button>
                   <button @click="grantsMoveAllRight()" :disabled="grantsAvailable.length === 0 || grantsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Add all"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m18.75 4.5-7.5 7.5 7.5 7.5m-6-15-7.5 7.5 7.5 7.5"/></svg></button>
                   <button @click="grantsMoveLeft()" :disabled="grantsSelRight.length === 0 || grantsMoving" class="p-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/20 hover:bg-vault-accent/20 transition disabled:opacity-30 disabled:cursor-default" title="Remove selected"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"/></svg></button>
@@ -2214,7 +2233,7 @@
         <!-- ==================== AUDIT LOG ==================== -->
         <template x-if="view === 'audit'">
           <div class="p-6 max-w-7xl" x-data="auditView" x-init="init()" @destroy="destroy()">
-            <div class="flex items-center justify-between mb-4">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
               <h2 class="text-xl font-semibold tracking-tight">Audit Log</h2>
               <div class="flex items-center gap-3">
                 <span class="text-xs text-vault-muted" x-text="total + ' entries'"></span>
@@ -2224,7 +2243,7 @@
             </div>
 
             <!-- Pagination bar -->
-            <div class="flex items-center justify-end gap-3 mb-4">
+            <div class="flex flex-wrap items-center justify-end gap-3 mb-4">
               <div class="flex items-center gap-3 flex-shrink-0">
                 <div class="flex items-center gap-1.5">
                   <span class="text-[11px] text-vault-muted">Show</span>
@@ -2253,8 +2272,8 @@
             </div>
 
             <!-- Table with inline header filters -->
-            <div x-show="!loading" class="glass rounded-xl overflow-visible">
-              <table class="w-full text-sm">
+            <div x-show="!loading" class="glass rounded-xl overflow-x-auto">
+              <table class="w-full text-sm min-w-[700px]">
                 <thead>
                   <tr class="text-left text-[11px] uppercase tracking-wider text-vault-muted border-b border-vault-border/30">
                     <!-- TIME header (date range popover) -->
@@ -2285,7 +2304,7 @@
                           <span class="fbx" @click.stop="clearOpTags(); opOpen = false"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
                         </div>
                         <!-- Operation filter popover -->
-                        <div class="col-popover" x-show="opOpen" x-cloak style="min-width:340px" @click.stop @click.outside="opOpen = false; opExpandedCat = null">
+                        <div class="col-popover" x-show="opOpen" x-cloak style="min-width:min(340px, calc(100vw - 2rem))" @click.stop @click.outside="opOpen = false; opExpandedCat = null">
                           <!-- Mode toggle -->
                           <div class="flex gap-1 p-2 border-b border-vault-border/30">
                             <button @click="toggleOpMode()" class="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded transition flex-1 text-center"
@@ -2349,7 +2368,7 @@
                           <span class="val" x-text="[...selectedBuckets].join(', ')"></span>
                           <span class="fbx" @click.stop="selectedBuckets = new Set(); bucketOpen = false; page = 0"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
                         </div>
-                        <div class="col-popover" x-show="bucketOpen" x-cloak style="min-width:180px">
+                        <div class="col-popover" x-show="bucketOpen" x-cloak style="min-width:min(180px, calc(100vw - 2rem))">
                           <div class="pop-search"><input type="text" x-model="bucketSearch" placeholder="Search..."></div>
                           <div class="pop-list">
                             <template x-for="item in bucketValues" :key="item.name">
@@ -2392,7 +2411,7 @@
                           <span class="val" x-text="[...selectedUsers].join(', ')"></span>
                           <span class="fbx" @click.stop="selectedUsers = new Set(); userOpen = false; page = 0"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
                         </div>
-                        <div class="col-popover" x-show="userOpen" x-cloak style="min-width:160px">
+                        <div class="col-popover" x-show="userOpen" x-cloak style="min-width:min(160px, calc(100vw - 2rem))">
                           <div class="pop-search"><input type="text" x-model="userSearch" placeholder="Search..."></div>
                           <div class="pop-list">
                             <template x-for="item in userValues" :key="item.name">
@@ -2418,7 +2437,7 @@
                           <span class="val" x-text="[...selectedStatuses].join(', ')"></span>
                           <span class="fbx" @click.stop="selectedStatuses = new Set(); statusOpen = false; page = 0"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
                         </div>
-                        <div class="col-popover" x-show="statusOpen" x-cloak style="min-width:120px;right:-8px;left:auto">
+                        <div class="col-popover" x-show="statusOpen" x-cloak style="min-width:min(120px, calc(100vw - 2rem));right:-8px;left:auto">
                           <div class="pop-list">
                             <template x-for="item in statusValues" :key="item.name">
                               <div class="pop-item" :class="{ selected: selectedStatuses.has(item.name) }"
@@ -2475,9 +2494,11 @@
               </div>
             </div>
 
+            <!-- Audit detail backdrop (mobile) -->
+            <div x-show="selectedEntry" @click="selectedEntry = null" class="fixed inset-0 bg-black/40 z-30 md:hidden"></div>
             <!-- Side panel -->
             <div x-show="selectedEntry" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0"
-              class="fixed right-0 top-0 h-full w-80 glass border-l border-vault-border/50 z-40 slide-panel overflow-y-auto">
+              class="fixed right-0 top-12 md:top-0 h-[calc(100%-3rem)] md:h-full w-full md:w-80 glass border-l border-vault-border/50 z-40 slide-panel overflow-y-auto">
               <div class="p-5">
                 <div class="flex items-center justify-between mb-5">
                   <h3 class="text-sm font-semibold uppercase tracking-wider text-vault-muted">Audit Detail</h3>
@@ -2657,7 +2678,7 @@
                 </div>
 
                 <!-- Region -->
-                <div class="flex items-center justify-between">
+                <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div class="flex-1">
                     <div class="flex items-center gap-2">
                       <span class="text-sm font-medium text-vault-text">S3 Region</span>
@@ -2694,7 +2715,7 @@
 
                 <div class="space-y-4">
                   <!-- Audit Retention -->
-                  <div class="flex items-center justify-between">
+                  <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div class="flex-1">
                       <div class="flex items-center gap-2">
                         <span class="text-sm font-medium text-vault-text">Audit Log Retention</span>
@@ -2725,7 +2746,7 @@
                   <div class="border-t border-vault-border/20"></div>
 
                   <!-- Metrics Retention -->
-                  <div class="flex items-center justify-between">
+                  <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div class="flex-1">
                       <div class="flex items-center gap-2">
                         <span class="text-sm font-medium text-vault-text">Metrics Retention</span>
@@ -2765,7 +2786,7 @@
   <!-- ==================== TOAST NOTIFICATION ==================== -->
   <div x-show="toast" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 translate-y-2" x-transition:enter-end="opacity-1 translate-y-0"
     x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-1" x-transition:leave-end="opacity-0"
-    class="fixed bottom-6 right-6 z-50 glass rounded-lg px-4 py-3 text-sm max-w-sm"
+    class="fixed bottom-6 left-4 right-4 md:left-auto md:right-6 z-50 glass rounded-lg px-4 py-3 text-sm max-w-sm mx-auto md:mx-0"
     :class="toastType === 'error' ? 'border-red-500/30 text-red-400' : 'border-vault-accent/30 text-vault-accent'">
     <span x-text="toast"></span>
   </div>

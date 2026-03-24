@@ -58,6 +58,7 @@ export function app() {
     authenticated: hasSession,
     isAdmin: sessionStorage.getItem('arca_is_admin') === 'true',
     view: 'dashboard',
+    sidebarOpen: false,
     currentBucket: '',
     currentPrefix: '',
     toast: '',
@@ -117,6 +118,7 @@ export function app() {
     },
 
     navigate(view, params = {}) {
+      this.sidebarOpen = false;
       if (view === 'bucket-detail') {
         let hash = '#/buckets/' + encodeURIComponent(params.bucket);
         if (params.prefix) hash += '?prefix=' + encodeURIComponent(params.prefix);
