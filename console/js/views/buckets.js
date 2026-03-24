@@ -11,6 +11,13 @@ export function bucketsView() {
     creating: false,
     createError: '',
     icons,
+    searchQuery: '',
+
+    get filteredBuckets() {
+      const q = this.searchQuery.toLowerCase().trim();
+      if (!q) return this.buckets;
+      return this.buckets.filter(b => b.name.toLowerCase().includes(q));
+    },
 
     async load() {
       this.loading = true;

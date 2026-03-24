@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use axum::routing::{delete, get, post, put};
+use axum::routing::{get, post, put};
 use axum::Router;
 use http::header::{AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE, ETAG};
 use http::{HeaderName, Method};

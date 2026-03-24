@@ -12,6 +12,16 @@ export function teamsView() {
     showDeleteModal: false,
     deleteTeam: null,
     deleteError: '',
+    searchQuery: '',
+
+    get filteredTeams() {
+      const q = this.searchQuery.toLowerCase().trim();
+      if (!q) return this.teams;
+      return this.teams.filter(t =>
+        t.name.toLowerCase().includes(q) ||
+        (t.description || '').toLowerCase().includes(q)
+      );
+    },
 
     async load() {
       this.loading = true;

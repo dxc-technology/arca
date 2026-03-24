@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Console: search and filter** — real-time debounced search bar on all list views (Buckets, Users, Teams, Grants, Credentials, Bucket Detail). Client-side filtering with 300ms debounce, magnifying glass icon, clear button, and "no results" empty state. Bucket Detail search filters both files and folders, updates treemap and select-all in sync
+- **Console: audit operation filter** — replaced text-search autocomplete with smart presets (S3 Read, S3 Write, All S3, All Admin, Data Changes) and category chips with drill-down. One-click presets for common scenarios, category-level toggling, and individual operation checkboxes. Active preset auto-detected from selection
+
+### Fixed
+
+- Removed unused Rust imports (`delete` in router, `MetadataStore` and `admin_settings` in worker) to eliminate compiler warnings
+
 ## [0.10.0] — 2026-03-23
 
 ### Added

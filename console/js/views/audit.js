@@ -1,30 +1,30 @@
 import { api } from '../api.js';
 
-const ALL_OPERATIONS = [
-  { op: 'ListBuckets', cat: 'Bucket' }, { op: 'CreateBucket', cat: 'Bucket' }, { op: 'DeleteBucket', cat: 'Bucket' },
-  { op: 'HeadBucket', cat: 'Bucket' }, { op: 'GetBucketLocation', cat: 'Bucket' },
-  { op: 'GetBucketVersioning', cat: 'Bucket' }, { op: 'PutBucketVersioning', cat: 'Bucket' },
-  { op: 'GetBucketEncryption', cat: 'Bucket' }, { op: 'PutBucketEncryption', cat: 'Bucket' }, { op: 'DeleteBucketEncryption', cat: 'Bucket' },
-  { op: 'PutObject', cat: 'Object' }, { op: 'GetObject', cat: 'Object' }, { op: 'HeadObject', cat: 'Object' },
-  { op: 'DeleteObject', cat: 'Object' }, { op: 'DeleteObjects', cat: 'Object' }, { op: 'CopyObject', cat: 'Object' },
-  { op: 'ListObjectsV1', cat: 'Listing' }, { op: 'ListObjectsV2', cat: 'Listing' },
-  { op: 'CreateMultipartUpload', cat: 'Multipart' }, { op: 'UploadPart', cat: 'Multipart' },
-  { op: 'CompleteMultipartUpload', cat: 'Multipart' }, { op: 'AbortMultipartUpload', cat: 'Multipart' },
-  { op: 'ListMultipartUploads', cat: 'Multipart' },
-  { op: 'Admin::Health', cat: 'Admin' }, { op: 'Admin::Info', cat: 'Admin' }, { op: 'Admin::Stats', cat: 'Admin' },
-  { op: 'Admin::Me', cat: 'Admin' }, { op: 'Admin::Metrics', cat: 'Admin' }, { op: 'Admin::ListAudit', cat: 'Admin' },
-  { op: 'Admin::AuditStats', cat: 'Admin' }, { op: 'Admin::MetricsHistory', cat: 'Admin' },
-  { op: 'Admin::ListSettings', cat: 'Admin' }, { op: 'Admin::UpdateSetting', cat: 'Admin' },
-  { op: 'Admin::DeleteSetting', cat: 'Admin' }, { op: 'Admin::Presign', cat: 'Admin' }, { op: 'Admin::Archive', cat: 'Admin' },
-  { op: 'Admin::CreateUser', cat: 'Users' }, { op: 'Admin::ListUsers', cat: 'Users' },
-  { op: 'Admin::GetUser', cat: 'Users' }, { op: 'Admin::UpdateUser', cat: 'Users' }, { op: 'Admin::DeleteUser', cat: 'Users' },
-  { op: 'Admin::CreateTeam', cat: 'Teams' }, { op: 'Admin::ListTeams', cat: 'Teams' },
-  { op: 'Admin::GetTeam', cat: 'Teams' }, { op: 'Admin::UpdateTeam', cat: 'Teams' }, { op: 'Admin::DeleteTeam', cat: 'Teams' },
-  { op: 'Admin::CreateGrant', cat: 'Grants' }, { op: 'Admin::ListGrants', cat: 'Grants' },
-  { op: 'Admin::GetGrant', cat: 'Grants' }, { op: 'Admin::UpdateGrant', cat: 'Grants' }, { op: 'Admin::DeleteGrant', cat: 'Grants' },
-  { op: 'Admin::CreateCredential', cat: 'Creds' }, { op: 'Admin::ListCredentials', cat: 'Creds' },
-  { op: 'Admin::UpdateCredential', cat: 'Creds' }, { op: 'Admin::DeleteCredential', cat: 'Creds' },
-];
+// Operations grouped by category
+const OP_CATEGORIES = {
+  Bucket: ['ListBuckets','CreateBucket','DeleteBucket','HeadBucket','GetBucketLocation','GetBucketVersioning','PutBucketVersioning','GetBucketEncryption','PutBucketEncryption','DeleteBucketEncryption'],
+  Object: ['PutObject','GetObject','HeadObject','DeleteObject','DeleteObjects','CopyObject'],
+  Listing: ['ListObjectsV1','ListObjectsV2'],
+  Multipart: ['CreateMultipartUpload','UploadPart','CompleteMultipartUpload','AbortMultipartUpload','ListMultipartUploads'],
+  Admin: ['Admin::Health','Admin::Info','Admin::Stats','Admin::Me','Admin::Metrics','Admin::ListAudit','Admin::AuditStats','Admin::MetricsHistory','Admin::ListSettings','Admin::UpdateSetting','Admin::DeleteSetting','Admin::Presign','Admin::Archive'],
+  Users: ['Admin::CreateUser','Admin::ListUsers','Admin::GetUser','Admin::UpdateUser','Admin::DeleteUser'],
+  Teams: ['Admin::CreateTeam','Admin::ListTeams','Admin::GetTeam','Admin::UpdateTeam','Admin::DeleteTeam'],
+  Grants: ['Admin::CreateGrant','Admin::ListGrants','Admin::GetGrant','Admin::UpdateGrant','Admin::DeleteGrant'],
+  Creds: ['Admin::CreateCredential','Admin::ListCredentials','Admin::UpdateCredential','Admin::DeleteCredential'],
+};
+const OP_CAT_NAMES = Object.keys(OP_CATEGORIES);
+const ALL_OP_NAMES = Object.values(OP_CATEGORIES).flat();
+const S3_CATS = ['Bucket','Object','Listing','Multipart'];
+const ADMIN_CATS = ['Admin','Users','Teams','Grants','Creds'];
+
+// Smart presets
+const OP_PRESETS = {
+  'S3 Read': ALL_OP_NAMES.filter(o => /^(Get|Head|List)/.test(o) && S3_CATS.some(c => OP_CATEGORIES[c].includes(o))),
+  'S3 Write': ALL_OP_NAMES.filter(o => /^(Put|Create|Delete|Copy|Upload|Complete|Abort)/.test(o) && S3_CATS.some(c => OP_CATEGORIES[c].includes(o))),
+  'All S3': S3_CATS.flatMap(c => OP_CATEGORIES[c]),
+  'All Admin': ADMIN_CATS.flatMap(c => OP_CATEGORIES[c]),
+  'Data Changes': ALL_OP_NAMES.filter(o => /^(Put|Create|Delete|Copy|Upload|Complete|Admin::(Create|Update|Delete))/.test(o)),
+};
 
 // ==================== AUDIT LOG VIEW ====================
 export function auditView() {
@@ -58,14 +58,22 @@ export function auditView() {
     statusOpen: false,
     statusSearch: '',
 
-    // Operation tag filter (persisted in sessionStorage)
+    // Operation filter (persisted in sessionStorage)
     opTags: JSON.parse(sessionStorage.getItem('audit_op_tags') || '[]'),
     opMode: sessionStorage.getItem('audit_op_mode') || 'include',
     opOpen: false,
-    opQuery: '',
-    opFocused: false,
-    opShowAC: false,
-    opHighlight: 0,
+    opExpandedCat: null,
+    opCategories: OP_CATEGORIES,
+    opCatNames: OP_CAT_NAMES,
+    opPresets: OP_PRESETS,
+
+    get opActivePreset() {
+      const tagSet = new Set(this.opTags);
+      for (const [name, ops] of Object.entries(OP_PRESETS)) {
+        if (ops.length === tagSet.size && ops.every(o => tagSet.has(o))) return name;
+      }
+      return null;
+    },
 
     // Distinct values for bucket/user dropdowns (computed from raw entries)
     get bucketValues() {
@@ -159,44 +167,59 @@ export function auditView() {
       return '';
     },
 
-    // Operation tag autocomplete
-    get opFiltered() {
-      const q = this.opQuery.toLowerCase();
-      const tagSet = new Set(this.opTags);
-      return ALL_OPERATIONS.filter(o => !tagSet.has(o.op) && (!q || o.op.toLowerCase().includes(q))).slice(0, 12);
-    },
-
-    opHighlightText(text) {
-      if (!this.opQuery) return text;
-      const idx = text.toLowerCase().indexOf(this.opQuery.toLowerCase());
-      if (idx === -1) return text;
-      return text.slice(0, idx) + '<span class="text-vault-accent">' + text.slice(idx, idx + this.opQuery.length) + '</span>' + text.slice(idx + this.opQuery.length);
-    },
-
+    // Operation filter helpers
     _saveOpFilter() {
       sessionStorage.setItem('audit_op_tags', JSON.stringify(this.opTags));
       sessionStorage.setItem('audit_op_mode', this.opMode);
     },
 
-    addOpTag(op) {
-      if (!this.opTags.includes(op)) this.opTags.push(op);
-      this.opQuery = ''; this.opHighlight = 0; this.page = 0; this._saveOpFilter();
-    },
-    removeOpTag(op) { this.opTags = this.opTags.filter(t => t !== op); this.page = 0; this._saveOpFilter(); },
-    addOpHighlighted() {
-      if (this.opFiltered.length > 0) this.addOpTag((this.opFiltered[this.opHighlight] || this.opFiltered[0]).op);
-    },
-    onOpBackspace() { if (this.opQuery === '' && this.opTags.length > 0) { this.opTags.pop(); this.page = 0; this._saveOpFilter(); } },
-    moveOpHighlight(dir) { this.opHighlight = Math.max(0, Math.min(this.opFiltered.length - 1, this.opHighlight + dir)); },
     toggleOpMode() { this.opMode = this.opMode === 'include' ? 'exclude' : 'include'; this.page = 0; this._saveOpFilter(); },
-    clearOpTags() { this.opTags = []; this.opQuery = ''; this.page = 0; this._saveOpFilter(); },
+    clearOpTags() { this.opTags = []; this.page = 0; this._saveOpFilter(); },
+    selectAllOps() { this.opTags = [...ALL_OP_NAMES]; this.page = 0; this._saveOpFilter(); },
+
+    applyOpPreset(name) {
+      this.opTags = [...OP_PRESETS[name]];
+      this.page = 0; this._saveOpFilter();
+    },
+
+    toggleOpCat(cat) {
+      const ops = OP_CATEGORIES[cat];
+      const tagSet = new Set(this.opTags);
+      const allSelected = ops.every(o => tagSet.has(o));
+      if (allSelected) {
+        this.opTags = this.opTags.filter(t => !ops.includes(t));
+      } else {
+        const merged = new Set(this.opTags);
+        ops.forEach(o => merged.add(o));
+        this.opTags = [...merged];
+      }
+      this.page = 0; this._saveOpFilter();
+    },
+
+    toggleSingleOp(op) {
+      const idx = this.opTags.indexOf(op);
+      if (idx >= 0) this.opTags.splice(idx, 1); else this.opTags.push(op);
+      this.page = 0; this._saveOpFilter();
+    },
+
+    opCatSelected(cat) {
+      const ops = OP_CATEGORIES[cat];
+      const tagSet = new Set(this.opTags);
+      return ops.filter(o => tagSet.has(o)).length;
+    },
+
+    opCatClass(cat) {
+      const sel = this.opCatSelected(cat);
+      if (sel === 0) return '';
+      return sel === OP_CATEGORIES[cat].length ? 'selected' : 'partial';
+    },
 
     get hasAnyFilter() {
       return this.opTags.length > 0 || this.selectedBuckets.size > 0 || this.selectedUsers.size > 0 || this.selectedStatuses.size > 0 || this.filterKey || this.filterFrom || this.filterTo;
     },
 
     clearAllFilters() {
-      this.opTags = []; this.opQuery = '';
+      this.opTags = [];
       this.selectedBuckets = new Set(); this.selectedUsers = new Set(); this.selectedStatuses = new Set();
       this.filterKey = ''; this.filterFrom = ''; this.filterTo = '';
       this.page = 0; this._saveOpFilter(); this._saveColumnFilters(); this.load();

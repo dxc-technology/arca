@@ -46,6 +46,16 @@ export function grantsView() {
     showDeleteModal: false,
     deleteGrant: null,
     deleteError: '',
+    searchQuery: '',
+
+    get filteredGrants() {
+      const q = this.searchQuery.toLowerCase().trim();
+      if (!q) return this.grants;
+      return this.grants.filter(g =>
+        g.name.toLowerCase().includes(q) ||
+        (g.description || '').toLowerCase().includes(q)
+      );
+    },
 
     async load() {
       this.loading = true;

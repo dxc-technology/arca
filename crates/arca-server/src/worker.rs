@@ -9,10 +9,8 @@ use std::time::Duration;
 
 use arca_core::store::audit::AuditStore;
 use arca_core::store::metrics::MetricsStore;
-use arca_core::store::metadata::MetadataStore;
 use arca_core::store::server_config::ServerConfigStore;
 use arca_proto::AppState;
-use arca_proto::handlers::admin_settings;
 
 /// Handle to a background worker task. Aborts the task when dropped.
 pub struct BackgroundWorker {

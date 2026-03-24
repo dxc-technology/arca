@@ -14,6 +14,16 @@ export function credentialsView() {
     creating: false,
     createError: '',
     deleteError: '',
+    searchQuery: '',
+
+    get filteredCredentials() {
+      const q = this.searchQuery.toLowerCase().trim();
+      if (!q) return this.credentials;
+      return this.credentials.filter(c =>
+        c.access_key_id.toLowerCase().includes(q) ||
+        (c.description || '').toLowerCase().includes(q)
+      );
+    },
 
     async load() {
       this.loading = true;

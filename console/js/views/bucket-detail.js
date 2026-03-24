@@ -152,6 +152,28 @@ export function bucketDetailView() {
     previewContentType: '',
     showPreviewModal: false,
     ringColors,
+    searchQuery: '',
+
+    get filteredDirectories() {
+      const q = this.searchQuery.toLowerCase().trim();
+      if (!q) return this.directories;
+      return this.directories.filter(d => this.dirName(d).toLowerCase().includes(q));
+    },
+    get filteredObjects() {
+      const q = this.searchQuery.toLowerCase().trim();
+      if (!q) return this.objects;
+      return this.objects.filter(o => this.fileName(o.key).toLowerCase().includes(q));
+    },
+    get filteredDeletedDirectories() {
+      const q = this.searchQuery.toLowerCase().trim();
+      if (!q) return this.deletedDirectories;
+      return this.deletedDirectories.filter(d => this.dirName(d).toLowerCase().includes(q));
+    },
+    get filteredDeletedObjects() {
+      const q = this.searchQuery.toLowerCase().trim();
+      if (!q) return this.deletedObjects;
+      return this.deletedObjects.filter(o => this.fileName(o.key).toLowerCase().includes(q));
+    },
 
     get prefixParts() {
       if (!this.prefix) return [];
@@ -163,6 +185,7 @@ export function bucketDetailView() {
     },
 
     async load() {
+      this.searchQuery = '';
       // Parse bucket name and prefix from current hash
       const hash = window.location.hash || '';
       if (hash.startsWith('#/buckets/')) {
@@ -268,11 +291,11 @@ export function bucketDetailView() {
     },
 
     get allSelected() {
-      if (this.objects.length === 0 && this.directories.length === 0) return false;
-      for (const obj of this.objects) {
+      if (this.filteredObjects.length === 0 && this.filteredDirectories.length === 0) return false;
+      for (const obj of this.filteredObjects) {
         if (!this.selectedKeys.has(obj.key)) return false;
       }
-      for (const dir of this.directories) {
+      for (const dir of this.filteredDirectories) {
         if (!this.selectedKeys.has('dir:' + dir)) return false;
       }
       return true;
@@ -288,9 +311,9 @@ export function bucketDetailView() {
       if (this.allSelected) {
         this.selectedKeys = new Set();
       } else {
-        const next = new Set();
-        for (const obj of this.objects) next.add(obj.key);
-        for (const dir of this.directories) next.add('dir:' + dir);
+        const next = new Set(this.selectedKeys);
+        for (const obj of this.filteredObjects) next.add(obj.key);
+        for (const dir of this.filteredDirectories) next.add('dir:' + dir);
         this.selectedKeys = next;
       }
     },
@@ -709,7 +732,7 @@ export function bucketDetailView() {
 
     // Treemap (squarified layout)
     computeTreemap() {
-      const items = this.objects.filter(o => o.size > 0).map(o => ({ obj: o, size: o.size }));
+      const items = this.filteredObjects.filter(o => o.size > 0).map(o => ({ obj: o, size: o.size }));
       if (items.length === 0) { this.treemapRects = []; return; }
       items.sort((a, b) => b.size - a.size);
       this.treemapRects = squarify(items, 0, 0, 800, 400);

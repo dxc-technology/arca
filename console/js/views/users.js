@@ -12,6 +12,16 @@ export function usersView() {
     showDeleteModal: false,
     deleteUser: null,
     deleteError: '',
+    searchQuery: '',
+
+    get filteredUsers() {
+      const q = this.searchQuery.toLowerCase().trim();
+      if (!q) return this.users;
+      return this.users.filter(u =>
+        u.username.toLowerCase().includes(q) ||
+        (u.description || '').toLowerCase().includes(q)
+      );
+    },
 
     async load() {
       this.loading = true;
