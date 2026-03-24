@@ -1158,6 +1158,40 @@
                       </div>
                     </div>
 
+                    <!-- Tags -->
+                    <div class="pt-2 border-t border-vault-border/30">
+                      <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-medium text-vault-muted uppercase tracking-wider">Tags</span>
+                        <span x-show="tagsLoading" class="text-[10px] text-vault-muted">Loading...</span>
+                      </div>
+                      <!-- Existing tags -->
+                      <div x-show="objectTags.length > 0" class="space-y-1 mb-2">
+                        <template x-for="tag in objectTags" :key="tag.key">
+                          <div class="flex items-center justify-between gap-2 px-2 py-1 rounded bg-vault-bg/50 text-xs">
+                            <span class="font-mono text-vault-accent truncate" x-text="tag.key"></span>
+                            <span class="text-vault-muted">=</span>
+                            <span class="font-mono text-vault-text truncate flex-1" x-text="tag.value || '(empty)'"></span>
+                            <button @click="removeObjectTag(tag.key)" :disabled="tagSaving"
+                              class="p-0.5 rounded hover:bg-red-500/10 text-vault-muted hover:text-red-400 transition flex-shrink-0 disabled:opacity-30">
+                              <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
+                          </div>
+                        </template>
+                      </div>
+                      <div x-show="!tagsLoading && objectTags.length === 0" class="text-[10px] text-vault-muted/50 mb-2">No tags</div>
+                      <!-- Add tag form -->
+                      <div x-show="objectTags.length < 10" class="flex gap-1">
+                        <input type="text" x-model="newTagKey" placeholder="Key"
+                          class="flex-1 px-2 py-1 rounded bg-vault-bg border border-vault-border text-[11px] font-mono text-vault-text focus:outline-none focus:border-vault-accent/50 transition min-w-0">
+                        <input type="text" x-model="newTagValue" placeholder="Value"
+                          class="flex-1 px-2 py-1 rounded bg-vault-bg border border-vault-border text-[11px] font-mono text-vault-text focus:outline-none focus:border-vault-accent/50 transition min-w-0">
+                        <button @click="addObjectTag()" :disabled="!newTagKey.trim() || tagSaving"
+                          class="px-2 py-1 rounded bg-vault-accent/10 text-vault-accent text-[10px] font-medium hover:bg-vault-accent/20 transition disabled:opacity-30 flex-shrink-0">
+                          +
+                        </button>
+                      </div>
+                    </div>
+
                     <!-- Version History (only for versioned buckets) -->
                     <div x-show="bucketVersioned" class="pt-2 border-t border-vault-border/30">
                       <button @click="toggleVersions()" class="flex items-center justify-between w-full py-2 text-sm font-medium text-vault-muted hover:text-vault-text transition">

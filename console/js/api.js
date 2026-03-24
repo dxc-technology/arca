@@ -348,6 +348,25 @@ export function apiClient() {
       });
     },
 
+    async s3GetObjectTagging(bucket, key) {
+      const path = '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key);
+      return await this.request('GET', path, { queryParams: { tagging: '' } });
+    },
+
+    async s3PutObjectTagging(bucket, key, xml) {
+      const path = '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key);
+      return await this.request('PUT', path, {
+        body: xml,
+        contentType: 'application/xml',
+        queryParams: { tagging: '' },
+      });
+    },
+
+    async s3DeleteObjectTagging(bucket, key) {
+      const path = '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key);
+      return await this.request('DELETE', path, { queryParams: { tagging: '' } });
+    },
+
     async s3ListObjectVersions(bucket, prefix = '') {
       return await this.request('GET', '/' + encodeURIComponent(bucket), {
         queryParams: { versions: '', prefix, 'max-keys': '1000' },

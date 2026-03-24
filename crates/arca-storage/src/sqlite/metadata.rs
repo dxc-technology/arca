@@ -120,6 +120,9 @@ impl MetadataStore for SqliteStore {
         let name = name.to_string();
         self.conn
             .call(move |conn| {
+                // Clean up tags associated with this bucket
+                conn.execute("DELETE FROM bucket_tags WHERE bucket = ?1", params![name])?;
+                conn.execute("DELETE FROM object_tags WHERE bucket = ?1", params![name])?;
                 let affected =
                     conn.execute("DELETE FROM buckets WHERE name = ?1", params![name])?;
                 Ok(affected > 0)
@@ -166,6 +169,11 @@ impl MetadataStore for SqliteStore {
                             "DELETE FROM objects WHERE bucket = ?1 AND key = ?2",
                             params![record.bucket, record.key],
                         )?;
+                        // Clean up tags from overwritten object
+                        tx.execute(
+                            "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2",
+                            params![record.bucket, record.key],
+                        )?;
                         record.version_id = None;
                         record.is_latest = true;
                         record.is_delete_marker = false;
@@ -192,6 +200,11 @@ impl MetadataStore for SqliteStore {
                         let old_null = fetch_null_version(&tx, &record.bucket, &record.key)?;
                         tx.execute(
                             "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
+                            params![record.bucket, record.key],
+                        )?;
+                        // Clean up tags from old null-version
+                        tx.execute(
+                            "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ''",
                             params![record.bucket, record.key],
                         )?;
                         // Mark any remaining latest as not-latest.
@@ -327,6 +340,11 @@ impl MetadataStore for SqliteStore {
                                 "DELETE FROM objects WHERE bucket = ?1 AND key = ?2",
                                 params![bucket, key],
                             )?;
+                            // Clean up tags
+                            tx.execute(
+                                "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2",
+                                params![bucket, key],
+                            )?;
                         }
                         tx.commit()?;
                         old // blob to clean up
@@ -369,6 +387,11 @@ impl MetadataStore for SqliteStore {
                         let old_null = fetch_null_version(&tx, &bucket, &key)?;
                         tx.execute(
                             "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
+                            params![bucket, key],
+                        )?;
+                        // Clean up tags from old null-version
+                        tx.execute(
+                            "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ''",
                             params![bucket, key],
                         )?;
                         // Mark any remaining latest as not-latest.
@@ -478,6 +501,13 @@ impl MetadataStore for SqliteStore {
                             params![bucket, key, version_id],
                         )?;
                     }
+
+                    // Clean up tags for this version.
+                    let tag_vid = if version_id == "null" { String::new() } else { version_id.clone() };
+                    tx.execute(
+                        "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
+                        params![bucket, key, tag_vid],
+                    )?;
 
                     // If deleted version was latest, promote next-newest.
                     if rec.is_latest {
@@ -631,6 +661,150 @@ impl MetadataStore for SqliteStore {
             })
             .await
             .map_err(|e: TrError| ArcaError::Internal(format!("delete_bucket_config: {e}")))
+    }
+
+    // -- Tag operations --
+
+    async fn get_bucket_tags(
+        &self,
+        bucket: &str,
+    ) -> Result<Vec<(String, String)>, ArcaError> {
+        let bucket = bucket.to_string();
+        self.conn
+            .call(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT tag_key, tag_value FROM bucket_tags WHERE bucket = ?1 ORDER BY tag_key",
+                )?;
+                let tags = stmt
+                    .query_map(params![bucket], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(tags)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("get_bucket_tags: {e}")))
+    }
+
+    async fn put_bucket_tags(
+        &self,
+        bucket: &str,
+        tags: &[(String, String)],
+    ) -> Result<(), ArcaError> {
+        let bucket = bucket.to_string();
+        let tags = tags.to_vec();
+        self.conn
+            .call(move |conn| {
+                let tx = conn.transaction()?;
+                tx.execute("DELETE FROM bucket_tags WHERE bucket = ?1", params![bucket])?;
+                for (k, v) in &tags {
+                    tx.execute(
+                        "INSERT INTO bucket_tags (bucket, tag_key, tag_value) VALUES (?1, ?2, ?3)",
+                        params![bucket, k, v],
+                    )?;
+                }
+                tx.commit()?;
+                Ok(())
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("put_bucket_tags: {e}")))
+    }
+
+    async fn delete_bucket_tags(
+        &self,
+        bucket: &str,
+    ) -> Result<bool, ArcaError> {
+        let bucket = bucket.to_string();
+        self.conn
+            .call(move |conn| {
+                let affected = conn.execute(
+                    "DELETE FROM bucket_tags WHERE bucket = ?1",
+                    params![bucket],
+                )?;
+                Ok(affected > 0)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("delete_bucket_tags: {e}")))
+    }
+
+    async fn get_object_tags(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: &str,
+    ) -> Result<Vec<(String, String)>, ArcaError> {
+        let bucket = bucket.to_string();
+        let key = key.to_string();
+        let version_id = version_id.to_string();
+        self.conn
+            .call(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT tag_key, tag_value FROM object_tags
+                     WHERE bucket = ?1 AND key = ?2 AND version_id = ?3
+                     ORDER BY tag_key",
+                )?;
+                let tags = stmt
+                    .query_map(params![bucket, key, version_id], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(tags)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("get_object_tags: {e}")))
+    }
+
+    async fn put_object_tags(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: &str,
+        tags: &[(String, String)],
+    ) -> Result<(), ArcaError> {
+        let bucket = bucket.to_string();
+        let key = key.to_string();
+        let version_id = version_id.to_string();
+        let tags = tags.to_vec();
+        self.conn
+            .call(move |conn| {
+                let tx = conn.transaction()?;
+                tx.execute(
+                    "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
+                    params![bucket, key, version_id],
+                )?;
+                for (k, v) in &tags {
+                    tx.execute(
+                        "INSERT INTO object_tags (bucket, key, version_id, tag_key, tag_value)
+                         VALUES (?1, ?2, ?3, ?4, ?5)",
+                        params![bucket, key, version_id, k, v],
+                    )?;
+                }
+                tx.commit()?;
+                Ok(())
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("put_object_tags: {e}")))
+    }
+
+    async fn delete_object_tags(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: &str,
+    ) -> Result<bool, ArcaError> {
+        let bucket = bucket.to_string();
+        let key = key.to_string();
+        let version_id = version_id.to_string();
+        self.conn
+            .call(move |conn| {
+                let affected = conn.execute(
+                    "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
+                    params![bucket, key, version_id],
+                )?;
+                Ok(affected > 0)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("delete_object_tags: {e}")))
     }
 
     // -- Multipart upload operations --

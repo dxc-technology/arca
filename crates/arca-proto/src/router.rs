@@ -189,6 +189,8 @@ pub fn build_router(state: AppState) -> Router {
             HeaderName::from_static("x-amz-copy-source-server-side-encryption-customer-algorithm"),
             HeaderName::from_static("x-amz-copy-source-server-side-encryption-customer-key"),
             HeaderName::from_static("x-amz-copy-source-server-side-encryption-customer-key-md5"),
+            HeaderName::from_static("x-amz-tagging"),
+            HeaderName::from_static("x-amz-tagging-directive"),
         ]))
         .expose_headers([
             ETAG,
@@ -198,6 +200,7 @@ pub fn build_router(state: AppState) -> Router {
             HeaderName::from_static("x-amz-server-side-encryption"),
             HeaderName::from_static("x-amz-server-side-encryption-customer-algorithm"),
             HeaderName::from_static("x-amz-server-side-encryption-customer-key-md5"),
+            HeaderName::from_static("x-amz-version-id"),
         ]);
 
     // --- Merge everything ---

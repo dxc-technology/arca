@@ -41,8 +41,10 @@ pub enum S3ErrorCode {
     NoSuchVersion,
     MalformedXML,
     PreconditionFailed,
+    NoSuchTagSet,
     NoSuchUpload,
     NotImplemented,
+    InvalidTag,
     ServerSideEncryptionConfigurationNotFoundError,
     SignatureDoesNotMatch,
 }
@@ -71,8 +73,10 @@ impl S3ErrorCode {
             S3ErrorCode::NoSuchBucket => 404,
             S3ErrorCode::NoSuchKey => 404,
             S3ErrorCode::NoSuchVersion => 404,
+            S3ErrorCode::NoSuchTagSet => 404,
             S3ErrorCode::NoSuchUpload => 404,
             S3ErrorCode::NotImplemented => 501,
+            S3ErrorCode::InvalidTag => 400,
             S3ErrorCode::PreconditionFailed => 412,
             S3ErrorCode::ServerSideEncryptionConfigurationNotFoundError => 400,
             S3ErrorCode::SignatureDoesNotMatch => 403,
@@ -102,8 +106,10 @@ impl S3ErrorCode {
             S3ErrorCode::NoSuchBucket => "NoSuchBucket",
             S3ErrorCode::NoSuchKey => "NoSuchKey",
             S3ErrorCode::NoSuchVersion => "NoSuchVersion",
+            S3ErrorCode::NoSuchTagSet => "NoSuchTagSet",
             S3ErrorCode::NoSuchUpload => "NoSuchUpload",
             S3ErrorCode::NotImplemented => "NotImplemented",
+            S3ErrorCode::InvalidTag => "InvalidTag",
             S3ErrorCode::PreconditionFailed => "PreconditionFailed",
             S3ErrorCode::ServerSideEncryptionConfigurationNotFoundError => {
                 "ServerSideEncryptionConfigurationNotFoundError"
@@ -159,12 +165,14 @@ impl S3ErrorCode {
             S3ErrorCode::NoSuchBucket => "The specified bucket does not exist.",
             S3ErrorCode::NoSuchKey => "The specified key does not exist.",
             S3ErrorCode::NoSuchVersion => "The specified version does not exist.",
+            S3ErrorCode::NoSuchTagSet => "The TagSet does not exist.",
             S3ErrorCode::NoSuchUpload => {
                 "The specified multipart upload does not exist."
             }
             S3ErrorCode::NotImplemented => {
                 "A header you provided implies functionality that is not implemented."
             }
+            S3ErrorCode::InvalidTag => "The tag provided was not valid.",
             S3ErrorCode::PreconditionFailed => {
                 "At least one of the pre-conditions you specified did not hold."
             }

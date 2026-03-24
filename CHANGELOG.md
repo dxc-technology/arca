@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Phase 19: Object Tagging** — S3-compatible object and bucket tagging with 6 new operations: `GetBucketTagging`, `PutBucketTagging`, `DeleteBucketTagging`, `GetObjectTagging`, `PutObjectTagging`, `DeleteObjectTagging`. Inline tags on `PutObject` via `x-amz-tagging` header and `CopyObject` with `x-amz-tagging-directive`. Max 10 tags per object/bucket, key max 128 chars, value max 256 chars. Version-aware: tags tied to specific object versions. Cascade deletes on object/bucket removal. New `object_tags` and `bucket_tags` tables (migration v11)
+- **Console: tag editor** — view, add, and remove object tags in the detail side panel
+- **Roadmap restructured** — Phase 19 split into Object Tagging (19) and Lifecycle Rules (20), all subsequent phases renumbered (20-27 became 21-28)
+
 ## [0.11.0] — 2026-03-24
 
 ### Added

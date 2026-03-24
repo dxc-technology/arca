@@ -2,8 +2,8 @@ import { api } from '../api.js';
 
 // Operations grouped by category
 const OP_CATEGORIES = {
-  Bucket: ['ListBuckets','CreateBucket','DeleteBucket','HeadBucket','GetBucketLocation','GetBucketVersioning','PutBucketVersioning','GetBucketEncryption','PutBucketEncryption','DeleteBucketEncryption'],
-  Object: ['PutObject','GetObject','HeadObject','DeleteObject','DeleteObjects','CopyObject'],
+  Bucket: ['ListBuckets','CreateBucket','DeleteBucket','HeadBucket','GetBucketLocation','GetBucketVersioning','PutBucketVersioning','GetBucketEncryption','PutBucketEncryption','DeleteBucketEncryption','GetBucketTagging','PutBucketTagging','DeleteBucketTagging'],
+  Object: ['PutObject','GetObject','HeadObject','DeleteObject','DeleteObjects','CopyObject','GetObjectTagging','PutObjectTagging','DeleteObjectTagging'],
   Listing: ['ListObjectsV1','ListObjectsV2'],
   Multipart: ['CreateMultipartUpload','UploadPart','CompleteMultipartUpload','AbortMultipartUpload','ListMultipartUploads'],
   Admin: ['Admin::Health','Admin::Info','Admin::Stats','Admin::Me','Admin::Metrics','Admin::ListAudit','Admin::AuditStats','Admin::MetricsHistory','Admin::ListSettings','Admin::UpdateSetting','Admin::DeleteSetting','Admin::Presign','Admin::Archive'],

@@ -42,6 +42,7 @@ continuing from the MVP phases (0–11).
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">25</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">26</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">27</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">28</div>
   </div>
 </div>
 <!-- /post-mvp-progress-bar -->
@@ -54,15 +55,16 @@ graph LR
     13["13 SSE-S3"] --> 14["14 SSE-KMS\nVault/OpenBAO"]
     14 --> 15
     13 --> 16["16 Access Control\n+ Policies"]
-    13 --> 19["19 Tagging\n+ Lifecycle"]
+    13 --> 19["19 Object\nTagging"]
+    19 --> 20["20 Lifecycle\nRules"]
     16 --> 17["17 Object\nVersioning"]
-    17 --> 20["20 Object Lock\nWORM"]
-    19 --> 24["24 Notifications\n+ Events"]
-    17 --> 25["25 Replication"]
-    13 --> 22["22 Performance\n+ Hardening"]
-    23["23 PostgreSQL\nBackend"] --> 25
-    25 --> 26["26 Multi-Node\n+ Erasure Coding"]
-    18 --> 27["27 OpenTelemetry\nIntegration"]
+    17 --> 21["21 Object Lock\nWORM"]
+    20 --> 25["25 Notifications\n+ Events"]
+    17 --> 26["26 Replication"]
+    13 --> 23["23 Performance\n+ Hardening"]
+    24["24 PostgreSQL\nBackend"] --> 26
+    26 --> 27["27 Multi-Node\n+ Erasure Coding"]
+    18 --> 28["28 OpenTelemetry\nIntegration"]
 
     style 12 fill:#c62828,color:#fff
     style 13 fill:#c62828,color:#fff
@@ -76,13 +78,14 @@ graph LR
     style 21 fill:#2e7d32,color:#fff
     style 22 fill:#2e7d32,color:#fff
     style 23 fill:#2e7d32,color:#fff
-    style 24 fill:#1565c0,color:#fff
+    style 24 fill:#2e7d32,color:#fff
     style 25 fill:#1565c0,color:#fff
     style 26 fill:#1565c0,color:#fff
     style 27 fill:#1565c0,color:#fff
+    style 28 fill:#1565c0,color:#fff
 
     18["18 Monitoring\n+ Audit"]
-    21["21 S3 API\nCompleteness"]
+    22["22 S3 API\nCompleteness"]
 ```
 
 <span style="font-size:.8em">
@@ -100,15 +103,16 @@ graph LR
 | 16 | [Access Control and Bucket Policies](#phase-16-access-control-and-bucket-policies-p1) | P1 | 13 | `v0.7.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 17 | [Object Versioning](#phase-17-object-versioning-p1) | P1 | 16 | `v0.8.1` | <span style="color:#4caf50">&#x2714;</span> |
 | 18 | [Monitoring, Metrics, and Audit](#phase-18-monitoring-metrics-and-audit-p1) | P1 | — | `v0.9.0` | <span style="color:#4caf50">&#x2714;</span> |
-| 19 | [Object Tagging and Lifecycle Rules](#phase-19-object-tagging-and-lifecycle-rules-p2) | P2 | 13 | | |
-| 20 | [Object Lock (WORM Compliance)](#phase-20-object-lock-worm-compliance-p2) | P2 | 17 | | |
-| 21 | [S3 API Completeness](#phase-21-s3-api-completeness-p2) | P2 | — | | |
-| 22 | [Performance and Hardening](#phase-22-performance-and-hardening-p2) | P2 | 13 | | |
-| 23 | [PostgreSQL Backend](#phase-23-postgresql-backend-p2) | P2 | — | | |
-| 24 | [Notifications and Event System](#phase-24-notifications-and-event-system-p3) | P3 | 19 | | |
-| 25 | [Replication](#phase-25-replication-p3) | P3 | 17, 23 | | |
-| 26 | [Multi-Node and Erasure Coding](#phase-26-multi-node-and-erasure-coding-p3) | P3 | All prior | | |
-| 27 | [OpenTelemetry Integration](#phase-27-opentelemetry-integration-p3) | P3 | 18 | | |
+| 19 | [Object Tagging](#phase-19-object-tagging-p2) | P2 | 13 | | |
+| 20 | [Lifecycle Rules](#phase-20-lifecycle-rules-p2) | P2 | 19, 18 | | |
+| 21 | [Object Lock (WORM Compliance)](#phase-21-object-lock-worm-compliance-p2) | P2 | 17 | | |
+| 22 | [S3 API Completeness](#phase-22-s3-api-completeness-p2) | P2 | — | | |
+| 23 | [Performance and Hardening](#phase-23-performance-and-hardening-p2) | P2 | 13 | | |
+| 24 | [PostgreSQL Backend](#phase-24-postgresql-backend-p2) | P2 | — | | |
+| 25 | [Notifications and Event System](#phase-25-notifications-and-event-system-p3) | P3 | 20 | | |
+| 26 | [Replication](#phase-26-replication-p3) | P3 | 17, 24 | | |
+| 27 | [Multi-Node and Erasure Coding](#phase-27-multi-node-and-erasure-coding-p3) | P3 | All prior | | |
+| 28 | [OpenTelemetry Integration](#phase-28-opentelemetry-integration-p3) | P3 | 18 | | |
 
 ---
 
@@ -258,21 +262,37 @@ Operational visibility through metrics, audit logging, instance-wide settings, a
 
 ---
 
-### Phase 19 — Object Tagging and Lifecycle Rules [P2]
+### Phase 19 — Object Tagging [P2]
 
-Object metadata tagging and automated lifecycle management for storage hygiene.
+S3-compatible object and bucket tagging with key-value metadata.
 
-- [ ] Object tagging: `PutObjectTagging` / `GetObjectTagging` / `DeleteObjectTagging`. New `object_tags` table. Tags on `PutObject` via `x-amz-tagging` header
-- [ ] Lifecycle rules: `PutBucketLifecycleConfiguration` / `GetBucketLifecycleConfiguration` / `DeleteBucketLifecycleConfiguration`. Rules stored in `bucket_config`
-- [ ] Expiration (delete after N days), abort incomplete multipart uploads after N days, tag-based filtering
-- [ ] Background worker framework: tokio task scheduler in `main.rs` for periodic lifecycle evaluation (reused by notifications later)
-- [ ] (Console) Object tagging UI (view/edit key-value pairs), lifecycle rules editor in bucket settings
+- [ ] Object tagging: `PutObjectTagging` / `GetObjectTagging` / `DeleteObjectTagging`. New `object_tags` table (migration v11). Max 10 tags per object, key max 128 chars, value max 256 chars
+- [ ] Bucket tagging: `PutBucketTagging` / `GetBucketTagging` / `DeleteBucketTagging`. New `bucket_tags` table
+- [ ] Tags on `PutObject` via `x-amz-tagging` header. Tags on `CopyObject` via `x-amz-tagging-directive`
+- [ ] Version-aware tagging: tags tied to specific object versions when bucket versioning is enabled
+- [ ] Cascade deletes: object/bucket tags cleaned up on object/bucket deletion
+- [ ] (Console) Object tagging UI (view/edit key-value pairs in detail panel), bucket tags in bucket settings
 
 **Depends on**: Phase 13 (`bucket_config` table)
 
 ---
 
-### Phase 20 — Object Lock (WORM Compliance) [P2]
+### Phase 20 — Lifecycle Rules [P2]
+
+Automated lifecycle management for storage hygiene with configurable expiration and cleanup rules.
+
+- [ ] Lifecycle rules: `PutBucketLifecycleConfiguration` / `GetBucketLifecycleConfiguration` / `DeleteBucketLifecycleConfiguration`. XML format (S3 compatible). Rules stored in `bucket_config`
+- [ ] Expiration: delete objects after N days, tag-based filtering
+- [ ] Abort incomplete multipart uploads after N days
+- [ ] Configurable evaluation interval via `lifecycle_evaluation_interval` setting (default: hourly)
+- [ ] Background lifecycle worker using existing `BackgroundWorker::spawn_periodic` framework
+- [ ] (Console) Lifecycle rules editor in bucket settings
+
+**Depends on**: Phase 19 (tagging for tag-based filtering), Phase 18 (background worker framework)
+
+---
+
+### Phase 21 — Object Lock (WORM Compliance) [P2]
 
 Write-Once-Read-Many compliance for regulatory and data protection requirements.
 
@@ -286,7 +306,7 @@ Write-Once-Read-Many compliance for regulatory and data protection requirements.
 
 ---
 
-### Phase 21 — S3 API Completeness [P2]
+### Phase 22 — S3 API Completeness [P2]
 
 Fill remaining gaps in the S3 API surface to maximize compatibility.
 
@@ -299,7 +319,7 @@ Fill remaining gaps in the S3 API surface to maximize compatibility.
 
 ---
 
-### Phase 22 — Performance and Hardening [P2]
+### Phase 23 — Performance and Hardening [P2]
 
 Production-grade limits, caching, and graceful operations.
 
@@ -315,7 +335,7 @@ Production-grade limits, caching, and graceful operations.
 
 ---
 
-### Phase 23 — PostgreSQL Backend [P2]
+### Phase 24 — PostgreSQL Backend [P2]
 
 Alternative metadata backend for deployments requiring a shared database.
 
@@ -327,7 +347,7 @@ Alternative metadata backend for deployments requiring a shared database.
 
 ---
 
-### Phase 24 — Notifications and Event System [P3]
+### Phase 25 — Notifications and Event System [P3]
 
 S3-compatible bucket notifications for event-driven architectures.
 
@@ -337,11 +357,11 @@ S3-compatible bucket notifications for event-driven architectures.
 - [ ] S3-compatible JSON event format (`Records[].s3.bucket/object/eventName`)
 - [ ] (Console) Notification rules editor, event log viewer
 
-**Benefits from**: Phase 19 (background worker framework)
+**Benefits from**: Phase 20 (lifecycle worker framework)
 
 ---
 
-### Phase 25 — Replication [P3]
+### Phase 26 — Replication [P3]
 
 Asynchronous cross-instance replication for disaster recovery and geographic distribution.
 
@@ -350,11 +370,11 @@ Asynchronous cross-instance replication for disaster recovery and geographic dis
 - [ ] `x-amz-replication-status` headers (PENDING / COMPLETED / FAILED / REPLICA)
 - [ ] Conflict resolution: last-writer-wins by timestamp
 
-**Depends on**: Phase 17 (versioning), Phase 23 (PostgreSQL for production)
+**Depends on**: Phase 17 (versioning), Phase 24 (PostgreSQL for production)
 
 ---
 
-### Phase 26 — Multi-Node and Erasure Coding [P3]
+### Phase 27 — Multi-Node and Erasure Coding [P3]
 
 Distributed storage for horizontal scalability and data durability beyond single-node.
 
@@ -367,7 +387,7 @@ Distributed storage for horizontal scalability and data durability beyond single
 
 ---
 
-### Phase 27 — OpenTelemetry Integration [P3]
+### Phase 28 — OpenTelemetry Integration [P3]
 
 Export traces, metrics, and logs via the OpenTelemetry Protocol (OTLP) for integration
 with observability platforms (Grafana, Datadog, Jaeger, etc.).
@@ -396,6 +416,7 @@ Independent of server phases — can ship at any time.
 - [x] Object preview: images, text, JSON, PDF (P2)
 - [x] Search and filter within buckets (P2)
 - [x] Responsive mobile layout (P3)
+- [ ] Deep search: recursive object search across all prefixes with server-side API, tag-based search (`tag:key=value` syntax with autocompletion), dedicated search results view showing full key paths (P2)
 
 ---
 

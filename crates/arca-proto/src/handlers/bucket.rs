@@ -145,10 +145,33 @@ pub async fn get_bucket(
         };
     }
 
+    // GetBucketTagging
+    if params.iter().any(|(k, _)| k == "tagging") {
+        match state.metadata.head_bucket(&bucket).await {
+            Ok(Some(_)) => {}
+            Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
+            Err(e) => return internal_error_response(e, &resource),
+        }
+        match state.metadata.get_bucket_tags(&bucket).await {
+            Ok(tags) => {
+                if tags.is_empty() {
+                    return s3_error_response(S3Error::new(S3ErrorCode::NoSuchTagSet, &resource));
+                }
+                let xml = arca_core::s3::xml_types::tagging_result(&tags);
+                return Response::builder()
+                    .status(StatusCode::OK)
+                    .header("Content-Type", "application/xml")
+                    .body(Body::from(xml))
+                    .expect("build get_bucket_tagging response");
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
+    }
+
     // TECHDEBT(TD-007): Unimplemented GET bucket operations return 501.
     let unimplemented_get_ops = [
         "acl", "cors", "lifecycle", "logging", "notification",
-        "policy", "replication", "tagging", "website", "object-lock",
+        "policy", "replication", "website", "object-lock",
         "ownershipControls", "publicAccessBlock", "policyStatus",
         "accelerate", "requestPayment", "inventory", "analytics",
         "metrics", "intelligenttiering",
@@ -1079,10 +1102,37 @@ pub async fn create_bucket(
         return put_bucket_versioning(state, &bucket, &resource, request).await;
     }
 
+    // PutBucketTagging
+    if query.starts_with("tagging") || query.starts_with("tagging=") || query.starts_with("tagging&") {
+        match state.metadata.head_bucket(&bucket).await {
+            Ok(Some(_)) => {}
+            Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
+            Err(e) => return internal_error_response(e, &resource),
+        }
+        let body_bytes = match axum::body::to_bytes(request.into_body(), 64 * 1024).await {
+            Ok(b) => b,
+            Err(_) => return s3_error_response(S3Error::new(S3ErrorCode::InvalidRequest, &resource)),
+        };
+        let xml_str = String::from_utf8_lossy(&body_bytes);
+        let tags = match arca_core::s3::xml_types::parse_tagging_xml(&xml_str) {
+            Ok(t) => t,
+            Err(e) => return s3_error_response(e),
+        };
+        match state.metadata.put_bucket_tags(&bucket, &tags).await {
+            Ok(()) => {
+                return Response::builder()
+                    .status(StatusCode::OK)
+                    .body(Body::empty())
+                    .expect("build put_bucket_tagging response");
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
+    }
+
     // TECHDEBT(TD-007): Unimplemented bucket-level PUT operations return 501.
     let unimplemented_ops = [
         "acl", "lifecycle", "cors", "logging",
-        "notification", "policy", "replication", "tagging",
+        "notification", "policy", "replication",
         "object-lock", "website", "accelerate",
         "requestPayment", "inventory", "analytics", "metrics",
         "ownershipControls", "publicAccessBlock", "intelligenttiering",
@@ -1118,7 +1168,7 @@ pub async fn create_bucket(
     }
 }
 
-/// DELETE /{bucket} — DeleteBucket or DeleteBucketEncryption.
+/// DELETE /{bucket} — DeleteBucket, DeleteBucketEncryption, or DeleteBucketTagging.
 pub async fn delete_bucket(
     State(state): State<AppState>,
     Path(bucket): Path<String>,
@@ -1126,6 +1176,24 @@ pub async fn delete_bucket(
 ) -> Response {
     let resource = format!("/{bucket}");
     let query = request.uri().query().unwrap_or("");
+
+    // DeleteBucketTagging
+    if query.starts_with("tagging") || query.starts_with("tagging=") || query.starts_with("tagging&") {
+        match state.metadata.head_bucket(&bucket).await {
+            Ok(Some(_)) => {}
+            Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
+            Err(e) => return internal_error_response(e, &resource),
+        }
+        match state.metadata.delete_bucket_tags(&bucket).await {
+            Ok(_) => {
+                return Response::builder()
+                    .status(StatusCode::NO_CONTENT)
+                    .body(Body::empty())
+                    .expect("build delete_bucket_tagging response");
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
+    }
 
     // DeleteBucketEncryption
     if query.starts_with("encryption") || query.starts_with("encryption=") || query.starts_with("encryption&") {

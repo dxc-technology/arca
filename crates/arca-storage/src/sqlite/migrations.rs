@@ -268,6 +268,27 @@ const MIGRATIONS: &[Migration] = &[
             CREATE INDEX idx_metrics_snapshot_timestamp ON metrics_snapshot(timestamp);
         ",
     },
+    Migration {
+        version: 11,
+        description: "Add object_tags and bucket_tags tables",
+        sql: "
+            CREATE TABLE object_tags (
+                bucket     TEXT NOT NULL,
+                key        TEXT NOT NULL,
+                version_id TEXT NOT NULL DEFAULT '',
+                tag_key    TEXT NOT NULL,
+                tag_value  TEXT NOT NULL,
+                PRIMARY KEY (bucket, key, version_id, tag_key)
+            );
+
+            CREATE TABLE bucket_tags (
+                bucket    TEXT NOT NULL,
+                tag_key   TEXT NOT NULL,
+                tag_value TEXT NOT NULL,
+                PRIMARY KEY (bucket, tag_key)
+            );
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -341,7 +362,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 10);
+        assert_eq!(version, 11);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -383,12 +404,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 10);
+        assert_eq!(version, 11);
 
-        // Ten migration records
+        // Eleven migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 10);
+        assert_eq!(count, 11);
     }
 }

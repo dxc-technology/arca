@@ -92,6 +92,14 @@ pub fn classify_operation(method: &str, path: &str, query: Option<&str>) -> &'st
         if query.contains("uploads") {
             return "CreateMultipartUpload";
         }
+        if query.contains("tagging") {
+            return match method {
+                "GET" => "GetObjectTagging",
+                "PUT" => "PutObjectTagging",
+                "DELETE" => "DeleteObjectTagging",
+                _ => "Unknown",
+            };
+        }
         return match method {
             "GET" => "GetObject",
             "HEAD" => "HeadObject",
@@ -124,6 +132,14 @@ pub fn classify_operation(method: &str, path: &str, query: Option<&str>) -> &'st
             "GET" => "GetBucketEncryption",
             "PUT" => "PutBucketEncryption",
             "DELETE" => "DeleteBucketEncryption",
+            _ => "Unknown",
+        };
+    }
+    if query.contains("tagging") {
+        return match method {
+            "GET" => "GetBucketTagging",
+            "PUT" => "PutBucketTagging",
+            "DELETE" => "DeleteBucketTagging",
             _ => "Unknown",
         };
     }

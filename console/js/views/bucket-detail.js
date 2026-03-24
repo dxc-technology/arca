@@ -153,6 +153,12 @@ export function bucketDetailView() {
     showPreviewModal: false,
     ringColors,
     searchQuery: '',
+    // Object tags
+    objectTags: [],
+    tagsLoading: false,
+    newTagKey: '',
+    newTagValue: '',
+    tagSaving: false,
 
     get filteredDirectories() {
       const q = this.searchQuery.toLowerCase().trim();
@@ -352,6 +358,8 @@ export function bucketDetailView() {
         }
         this.previewContentType = resp.headers.get('content-type') || '';
       } catch {}
+      // Load tags for the object
+      this.loadObjectTags();
       // If versions panel was open, keep it open and load versions for the new object
       if (keepVersionsOpen && this.bucketVersioned) {
         this.versionsExpanded = true;
@@ -362,6 +370,57 @@ export function bucketDetailView() {
         this.previewExpanded = true;
         await this.loadPreview();
       }
+    },
+
+    async loadObjectTags() {
+      this.tagsLoading = true;
+      this.objectTags = [];
+      try {
+        const resp = await api.s3GetObjectTagging(this.bucketName, this.selectedObject.key);
+        if (resp.ok) {
+          const xml = await resp.text();
+          // Parse <Tag><Key>...</Key><Value>...</Value></Tag> elements
+          const tags = [];
+          const tagRegex = /<Tag>\s*<Key>(.*?)<\/Key>\s*<Value>(.*?)<\/Value>\s*<\/Tag>/g;
+          let match;
+          while ((match = tagRegex.exec(xml)) !== null) {
+            tags.push({ key: match[1], value: match[2] });
+          }
+          this.objectTags = tags;
+        }
+      } catch {}
+      this.tagsLoading = false;
+    },
+
+    async addObjectTag() {
+      if (!this.newTagKey.trim()) return;
+      this.tagSaving = true;
+      const tags = [...this.objectTags, { key: this.newTagKey.trim(), value: this.newTagValue }];
+      const tagSet = tags.map(t => `<Tag><Key>${t.key}</Key><Value>${t.value}</Value></Tag>`).join('');
+      const xml = `<?xml version="1.0" encoding="UTF-8"?><Tagging xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><TagSet>${tagSet}</TagSet></Tagging>`;
+      try {
+        const resp = await api.s3PutObjectTagging(this.bucketName, this.selectedObject.key, xml);
+        if (resp.ok) {
+          this.newTagKey = '';
+          this.newTagValue = '';
+          await this.loadObjectTags();
+        }
+      } catch {}
+      this.tagSaving = false;
+    },
+
+    async removeObjectTag(tagKey) {
+      this.tagSaving = true;
+      const tags = this.objectTags.filter(t => t.key !== tagKey);
+      if (tags.length === 0) {
+        try { await api.s3DeleteObjectTagging(this.bucketName, this.selectedObject.key); } catch {}
+      } else {
+        const tagSet = tags.map(t => `<Tag><Key>${t.key}</Key><Value>${t.value}</Value></Tag>`).join('');
+        const xml = `<?xml version="1.0" encoding="UTF-8"?><Tagging xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><TagSet>${tagSet}</TagSet></Tagging>`;
+        try { await api.s3PutObjectTagging(this.bucketName, this.selectedObject.key, xml); } catch {}
+      }
+      await this.loadObjectTags();
+      this.tagSaving = false;
     },
 
     async toggleVersions() {

@@ -257,6 +257,15 @@ pub async fn put_object(
     Path((bucket, key)): Path<(String, String)>,
     request: axum::extract::Request,
 ) -> Response {
+    // PutObjectTagging
+    {
+        let query_owned = request.uri().query().unwrap_or("").to_string();
+        if query_owned.contains("tagging") {
+            let resource = format!("/{bucket}/{key}");
+            return put_object_tagging(&state, &bucket, &key, &resource, &query_owned, request).await;
+        }
+    }
+
     // Check for UploadPart / UploadPartCopy FIRST (query params take priority).
     if let Some(query) = request.uri().query() {
         let params: Vec<(String, String)> = form_urlencoded::parse(query.as_bytes())
@@ -344,6 +353,11 @@ pub async fn put_object(
         .map(|s| s.to_string());
 
     let metadata = extract_metadata(request.headers());
+    let tagging_header = request
+        .headers()
+        .get("x-amz-tagging")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
 
     let headers = request.headers().clone();
     let body = request.into_body();
@@ -445,6 +459,30 @@ pub async fn put_object(
         .await
         .ok()
         .flatten();
+
+    // Store inline tags from x-amz-tagging header (if present).
+    if let Some(ref th) = tagging_header {
+        match xml_types::parse_tagging_header(th) {
+            Ok(tags) if !tags.is_empty() => {
+                let tag_vid = stored
+                    .as_ref()
+                    .and_then(|r| r.version_id.as_ref())
+                    .cloned()
+                    .unwrap_or_default();
+                if let Err(e) = state
+                    .metadata
+                    .put_object_tags(&record.bucket, &record.key, &tag_vid, &tags)
+                    .await
+                {
+                    tracing::warn!(error = %e, "Failed to store inline object tags");
+                }
+            }
+            Ok(_) => {} // Empty tag header, ignore
+            Err(e) => {
+                tracing::warn!(error = %e, "Invalid x-amz-tagging header, ignoring");
+            }
+        }
+    }
 
     let etag = format!("\"{}\"", put_result.etag);
     let mut builder = Response::builder()
@@ -569,6 +607,19 @@ async fn copy_object(
         .get("x-amz-metadata-directive")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("COPY");
+
+    // Parse x-amz-tagging-directive (default: COPY).
+    let tagging_directive = request
+        .headers()
+        .get("x-amz-tagging-directive")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("COPY")
+        .to_string();
+    let tagging_header = request
+        .headers()
+        .get("x-amz-tagging")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
 
     // S3 requires REPLACE directive when copying an object to itself.
     if src_bucket == dest_bucket
@@ -752,6 +803,41 @@ async fn copy_object(
         .await
         .ok()
         .flatten();
+
+    // Handle tagging directive: COPY source tags or REPLACE with x-amz-tagging header.
+    let dest_tag_vid = stored
+        .as_ref()
+        .and_then(|r| r.version_id.as_ref())
+        .cloned()
+        .unwrap_or_default();
+    if tagging_directive.eq_ignore_ascii_case("REPLACE") {
+        // REPLACE: use x-amz-tagging header from copy request.
+        if let Some(ref th) = tagging_header {
+            if let Ok(tags) = xml_types::parse_tagging_header(th) {
+                if !tags.is_empty() {
+                    let _ = state
+                        .metadata
+                        .put_object_tags(&record.bucket, &record.key, &dest_tag_vid, &tags)
+                        .await;
+                }
+            }
+        }
+    } else {
+        // COPY (default): copy source object tags to destination.
+        let src_tag_vid = src_record.version_id.as_deref().unwrap_or("");
+        if let Ok(src_tags) = state
+            .metadata
+            .get_object_tags(&src_bucket, &src_key, src_tag_vid)
+            .await
+        {
+            if !src_tags.is_empty() {
+                let _ = state
+                    .metadata
+                    .put_object_tags(&record.bucket, &record.key, &dest_tag_vid, &src_tags)
+                    .await;
+            }
+        }
+    }
 
     // CopyObject returns XML body (not just headers like PutObject).
     let xml = xml_types::copy_object_result(&put_result.etag, &now);
@@ -1017,20 +1103,28 @@ fn parse_copy_source(value: &str) -> Option<(String, String, Option<String>)> {
     Some((bucket.to_string(), key.to_string(), version_id))
 }
 
-/// GET /{bucket}/{*key} — GetObject
+/// GET /{bucket}/{*key} — GetObject or GetObjectTagging
 pub async fn get_object(
     State(state): State<AppState>,
     Path((bucket, key)): Path<(String, String)>,
     request: axum::extract::Request,
 ) -> Response {
     let resource = format!("/{bucket}/{key}");
+    let query_str = request.uri().query().unwrap_or("").to_string();
+
+    // GetObjectTagging
+    if query_str.contains("tagging") {
+        return get_object_tagging(&state, &bucket, &key, &resource, &query_str).await;
+    }
 
     // Parse ?versionId= from query params.
-    let version_id = request.uri().query().and_then(|q| {
-        form_urlencoded::parse(q.as_bytes())
+    let version_id = if query_str.is_empty() {
+        None
+    } else {
+        form_urlencoded::parse(query_str.as_bytes())
             .find(|(k, _)| k == "versionId")
             .map(|(_, v)| v.into_owned())
-    });
+    };
 
     // Check bucket exists (S3 returns NoSuchBucket, not NoSuchKey).
     match state.metadata.head_bucket(&bucket).await {
@@ -1371,6 +1465,14 @@ pub async fn delete_object(
     Path((bucket, key)): Path<(String, String)>,
     request: axum::extract::Request,
 ) -> Response {
+    // DeleteObjectTagging
+    if let Some(query) = request.uri().query() {
+        if query.contains("tagging") {
+            let resource = format!("/{bucket}/{key}");
+            return delete_object_tagging(&state, &bucket, &key, &resource, query).await;
+        }
+    }
+
     // Check for AbortMultipartUpload or versionId (distinguished by query param).
     let mut version_id = None;
     if let Some(query) = request.uri().query() {
@@ -1616,4 +1718,136 @@ fn parse_range_header(headers: &http::HeaderMap, file_size: u64) -> RangeParseRe
     }
 
     RangeParseResult::Range(ByteRange { start, end })
+}
+
+// -- Object tagging helpers --
+
+/// Resolve the version_id for tagging operations: use explicit versionId param, or find the latest.
+async fn resolve_version_for_tagging(
+    state: &crate::AppState,
+    bucket: &str,
+    key: &str,
+    query: &str,
+    resource: &str,
+) -> Result<(String, Option<String>), Response> {
+    // Check bucket exists
+    match state.metadata.head_bucket(bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return Err(s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, resource))),
+        Err(e) => return Err(internal_error_response(e, resource)),
+    }
+
+    // Parse versionId from query
+    let version_id = form_urlencoded::parse(query.as_bytes())
+        .find(|(k, _)| k == "versionId")
+        .map(|(_, v)| v.into_owned());
+
+    // Verify the object/version exists
+    let record = if let Some(ref vid) = version_id {
+        match state.metadata.get_object_version(bucket, key, vid).await {
+            Ok(Some(r)) => r,
+            Ok(None) => return Err(s3_error_response(S3Error::new(S3ErrorCode::NoSuchVersion, resource))),
+            Err(e) => return Err(internal_error_response(e, resource)),
+        }
+    } else {
+        match state.metadata.get_object(bucket, key).await {
+            Ok(Some(r)) => r,
+            Ok(None) => return Err(s3_error_response(S3Error::new(S3ErrorCode::NoSuchKey, resource))),
+            Err(e) => return Err(internal_error_response(e, resource)),
+        }
+    };
+
+    if record.is_delete_marker {
+        return Err(s3_error_response(S3Error::new(S3ErrorCode::NoSuchKey, resource)));
+    }
+
+    // The version_id for tag storage: use the record's version_id or "" for unversioned
+    let tag_vid = record.version_id.clone().unwrap_or_default();
+    Ok((tag_vid, record.version_id))
+}
+
+async fn get_object_tagging(
+    state: &crate::AppState,
+    bucket: &str,
+    key: &str,
+    resource: &str,
+    query: &str,
+) -> Response {
+    let (tag_vid, resp_vid) = match resolve_version_for_tagging(state, bucket, key, query, resource).await {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+
+    match state.metadata.get_object_tags(bucket, key, &tag_vid).await {
+        Ok(tags) => {
+            let xml = xml_types::tagging_result(&tags);
+            let mut builder = Response::builder()
+                .status(StatusCode::OK)
+                .header("Content-Type", "application/xml");
+            if let Some(ref vid) = resp_vid {
+                builder = builder.header("x-amz-version-id", vid.as_str());
+            }
+            builder.body(Body::from(xml)).expect("build get_object_tagging response")
+        }
+        Err(e) => internal_error_response(e, resource),
+    }
+}
+
+async fn put_object_tagging(
+    state: &crate::AppState,
+    bucket: &str,
+    key: &str,
+    resource: &str,
+    query: &str,
+    request: axum::extract::Request,
+) -> Response {
+    let (tag_vid, resp_vid) = match resolve_version_for_tagging(state, bucket, key, query, resource).await {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+
+    let body_bytes = match axum::body::to_bytes(request.into_body(), 64 * 1024).await {
+        Ok(b) => b,
+        Err(_) => return s3_error_response(S3Error::new(S3ErrorCode::InvalidRequest, resource)),
+    };
+    let xml_str = String::from_utf8_lossy(&body_bytes);
+    let tags = match xml_types::parse_tagging_xml(&xml_str) {
+        Ok(t) => t,
+        Err(e) => return s3_error_response(e),
+    };
+
+    match state.metadata.put_object_tags(bucket, key, &tag_vid, &tags).await {
+        Ok(()) => {
+            let mut builder = Response::builder().status(StatusCode::OK);
+            if let Some(ref vid) = resp_vid {
+                builder = builder.header("x-amz-version-id", vid.as_str());
+            }
+            builder.body(Body::empty()).expect("build put_object_tagging response")
+        }
+        Err(e) => internal_error_response(e, resource),
+    }
+}
+
+async fn delete_object_tagging(
+    state: &crate::AppState,
+    bucket: &str,
+    key: &str,
+    resource: &str,
+    query: &str,
+) -> Response {
+    let (tag_vid, resp_vid) = match resolve_version_for_tagging(state, bucket, key, query, resource).await {
+        Ok(v) => v,
+        Err(resp) => return resp,
+    };
+
+    match state.metadata.delete_object_tags(bucket, key, &tag_vid).await {
+        Ok(_) => {
+            let mut builder = Response::builder().status(StatusCode::NO_CONTENT);
+            if let Some(ref vid) = resp_vid {
+                builder = builder.header("x-amz-version-id", vid.as_str());
+            }
+            builder.body(Body::empty()).expect("build delete_object_tagging response")
+        }
+        Err(e) => internal_error_response(e, resource),
+    }
 }

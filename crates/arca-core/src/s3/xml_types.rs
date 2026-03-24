@@ -866,6 +866,140 @@ pub fn list_multipart_uploads_result(
     String::from_utf8(writer.into_inner()).expect("valid UTF-8 XML")
 }
 
+// -- Tagging XML types --
+
+/// Serialize a tag set into S3 Tagging XML response.
+pub fn tagging_result(tags: &[(String, String)]) -> String {
+    let mut writer = Writer::new(Vec::new());
+    writer
+        .write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
+        .expect("write XML decl");
+
+    let mut root = BytesStart::new("Tagging");
+    root.push_attribute(("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
+    writer
+        .write_event(Event::Start(root))
+        .expect("write Tagging start");
+
+    writer
+        .write_event(Event::Start(BytesStart::new("TagSet")))
+        .expect("write TagSet start");
+
+    for (key, value) in tags {
+        writer
+            .write_event(Event::Start(BytesStart::new("Tag")))
+            .expect("write Tag start");
+        write_xml_element(&mut writer, "Key", key);
+        write_xml_element(&mut writer, "Value", value);
+        writer
+            .write_event(Event::End(BytesEnd::new("Tag")))
+            .expect("write Tag end");
+    }
+
+    writer
+        .write_event(Event::End(BytesEnd::new("TagSet")))
+        .expect("write TagSet end");
+    writer
+        .write_event(Event::End(BytesEnd::new("Tagging")))
+        .expect("write Tagging end");
+
+    String::from_utf8(writer.into_inner()).expect("valid UTF-8 XML")
+}
+
+/// Parse an S3 Tagging XML request body into a list of (key, value) pairs.
+pub fn parse_tagging_xml(xml: &str) -> Result<Vec<(String, String)>, crate::error::S3Error> {
+    use crate::error::{S3Error, S3ErrorCode};
+
+    // Deserialize with quick_xml + serde
+    #[derive(serde::Deserialize)]
+    #[serde(rename = "Tagging")]
+    struct TaggingBody {
+        #[serde(rename = "TagSet")]
+        tag_set: TagSetBody,
+    }
+    #[derive(serde::Deserialize)]
+    struct TagSetBody {
+        #[serde(rename = "Tag", default)]
+        tags: Vec<TagBody>,
+    }
+    #[derive(serde::Deserialize)]
+    struct TagBody {
+        #[serde(rename = "Key")]
+        key: String,
+        #[serde(rename = "Value")]
+        value: String,
+    }
+
+    let body: TaggingBody = quick_xml::de::from_str(xml).map_err(|e| {
+        S3Error::with_message(S3ErrorCode::MalformedXML, format!("Invalid tagging XML: {e}"), "")
+    })?;
+
+    let tags: Vec<(String, String)> = body
+        .tag_set
+        .tags
+        .into_iter()
+        .map(|t| (t.key, t.value))
+        .collect();
+
+    validate_tags(&tags)?;
+    Ok(tags)
+}
+
+/// Parse the `x-amz-tagging` header value (URL-encoded key=value pairs).
+pub fn parse_tagging_header(header: &str) -> Result<Vec<(String, String)>, crate::error::S3Error> {
+    let tags: Vec<(String, String)> = form_urlencoded::parse(header.as_bytes())
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+
+    validate_tags(&tags)?;
+    Ok(tags)
+}
+
+/// Validate tag constraints: max 10 tags, key max 128 chars, value max 256 chars, no duplicates.
+fn validate_tags(tags: &[(String, String)]) -> Result<(), crate::error::S3Error> {
+    use crate::error::{S3Error, S3ErrorCode};
+
+    if tags.len() > 10 {
+        return Err(S3Error::with_message(
+            S3ErrorCode::InvalidTag,
+            "Object tags cannot be greater than 10",
+            "",
+        ));
+    }
+    let mut seen = std::collections::HashSet::new();
+    for (key, value) in tags {
+        if key.len() > 128 {
+            return Err(S3Error::with_message(
+                S3ErrorCode::InvalidTag,
+                "The TagKey you have provided is too long, max 128 chars",
+                "",
+            ));
+        }
+        if value.len() > 256 {
+            return Err(S3Error::with_message(
+                S3ErrorCode::InvalidTag,
+                "The TagValue you have provided is too long, max 256 chars",
+                "",
+            ));
+        }
+        if key.is_empty() {
+            return Err(S3Error::with_message(
+                S3ErrorCode::InvalidTag,
+                "The TagKey cannot be empty",
+                "",
+            ));
+        }
+        if !seen.insert(key.as_str()) {
+            return Err(S3Error::with_message(
+                S3ErrorCode::InvalidTag,
+                format!("Cannot provide multiple Tags with the same key: {key}"),
+                "",
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

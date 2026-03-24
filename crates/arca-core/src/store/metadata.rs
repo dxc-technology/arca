@@ -153,6 +153,52 @@ pub trait MetadataStore: Send + Sync {
         config_key: &str,
     ) -> Result<bool, crate::error::ArcaError>;
 
+    // -- Tag operations --
+
+    /// Gets all tags for a bucket.
+    async fn get_bucket_tags(
+        &self,
+        bucket: &str,
+    ) -> Result<Vec<(String, String)>, crate::error::ArcaError>;
+
+    /// Replaces all tags for a bucket.
+    async fn put_bucket_tags(
+        &self,
+        bucket: &str,
+        tags: &[(String, String)],
+    ) -> Result<(), crate::error::ArcaError>;
+
+    /// Deletes all tags for a bucket.
+    async fn delete_bucket_tags(
+        &self,
+        bucket: &str,
+    ) -> Result<bool, crate::error::ArcaError>;
+
+    /// Gets all tags for an object (version_id="" for unversioned).
+    async fn get_object_tags(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: &str,
+    ) -> Result<Vec<(String, String)>, crate::error::ArcaError>;
+
+    /// Replaces all tags for an object.
+    async fn put_object_tags(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: &str,
+        tags: &[(String, String)],
+    ) -> Result<(), crate::error::ArcaError>;
+
+    /// Deletes all tags for an object.
+    async fn delete_object_tags(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: &str,
+    ) -> Result<bool, crate::error::ArcaError>;
+
     // -- Multipart upload operations --
 
     /// Lists in-progress multipart uploads for a bucket.
