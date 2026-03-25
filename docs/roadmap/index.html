@@ -1114,7 +1114,7 @@
   <a href="#phase-18-monitoring-metrics-and-audit-p1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 18 — Monitoring, Metrics, and Audit [P1] ✅
+        Phase 18 — Monitoring, Metrics, and Audit [P1]
       
     </span>
   </a>
@@ -1643,7 +1643,7 @@
   <a href="#phase-18-monitoring-metrics-and-audit-p1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 18 — Monitoring, Metrics, and Audit [P1] ✅
+        Phase 18 — Monitoring, Metrics, and Audit [P1]
       
     </span>
   </a>
@@ -2010,7 +2010,7 @@ continuing from the MVP phases (0–11).</p>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">16</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">17</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">18</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">19</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">19</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">20</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">21</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">22</div>
@@ -2138,8 +2138,8 @@ continuing from the MVP phases (0–11).</p>
 <td><a href="#phase-19-object-tagging-p2">Object Tagging</a></td>
 <td style="text-align: center;">P2</td>
 <td style="text-align: center;">13</td>
-<td style="text-align: center;"></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><code>v0.12.0</code></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">20</td>
@@ -2327,7 +2327,7 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 </ul>
 <p><strong>Depends on</strong>: Phase 16 (access control interacts with versioning)</p>
 <hr />
-<h3 id="phase-18-monitoring-metrics-and-audit-p1">Phase 18 — Monitoring, Metrics, and Audit [P1] ✅<a class="headerlink" href="#phase-18-monitoring-metrics-and-audit-p1" title="Permanent link">&para;</a></h3>
+<h3 id="phase-18-monitoring-metrics-and-audit-p1">Phase 18 — Monitoring, Metrics, and Audit [P1]<a class="headerlink" href="#phase-18-monitoring-metrics-and-audit-p1" title="Permanent link">&para;</a></h3>
 <p>Operational visibility through metrics, audit logging, instance-wide settings, and region support.</p>
 <ul class="task-list">
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Prometheus metrics endpoint: <code>GET /admin/metrics</code> (unauthenticated). Counters: request count by operation/status. Histograms: request latency (10 buckets). Gauges: active connections, storage bytes, object count, bucket count</li>
@@ -2346,12 +2346,12 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 <h3 id="phase-19-object-tagging-p2">Phase 19 — Object Tagging [P2]<a class="headerlink" href="#phase-19-object-tagging-p2" title="Permanent link">&para;</a></h3>
 <p>S3-compatible object and bucket tagging with key-value metadata.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Object tagging: <code>PutObjectTagging</code> / <code>GetObjectTagging</code> / <code>DeleteObjectTagging</code>. New <code>object_tags</code> table (migration v11). Max 10 tags per object, key max 128 chars, value max 256 chars</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Bucket tagging: <code>PutBucketTagging</code> / <code>GetBucketTagging</code> / <code>DeleteBucketTagging</code>. New <code>bucket_tags</code> table</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Tags on <code>PutObject</code> via <code>x-amz-tagging</code> header. Tags on <code>CopyObject</code> via <code>x-amz-tagging-directive</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Version-aware tagging: tags tied to specific object versions when bucket versioning is enabled</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Cascade deletes: object/bucket tags cleaned up on object/bucket deletion</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> (Console) Object tagging UI (view/edit key-value pairs in detail panel), bucket tags in bucket settings</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Object tagging: <code>PutObjectTagging</code> / <code>GetObjectTagging</code> / <code>DeleteObjectTagging</code>. New <code>object_tags</code> table (migration v11). Max 10 tags per object, key max 128 chars, value max 256 chars</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Bucket tagging: <code>PutBucketTagging</code> / <code>GetBucketTagging</code> / <code>DeleteBucketTagging</code>. New <code>bucket_tags</code> table</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Tags on <code>PutObject</code> via <code>x-amz-tagging</code> header. Tags on <code>CopyObject</code> via <code>x-amz-tagging-directive</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Version-aware tagging: tags tied to specific object versions when bucket versioning is enabled</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Cascade deletes: object/bucket tags cleaned up on object/bucket deletion</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> (Console) Object tagging UI (view/edit key-value pairs in detail panel), bucket tags in bucket settings</li>
 </ul>
 <p><strong>Depends on</strong>: Phase 13 (<code>bucket_config</code> table)</p>
 <hr />

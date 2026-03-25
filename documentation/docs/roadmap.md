@@ -33,7 +33,7 @@ continuing from the MVP phases (0–11).
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">16</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">17</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">18</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">19</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">19</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">20</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">21</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">22</div>
@@ -103,7 +103,7 @@ graph LR
 | 16 | [Access Control and Bucket Policies](#phase-16-access-control-and-bucket-policies-p1) | P1 | 13 | `v0.7.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 17 | [Object Versioning](#phase-17-object-versioning-p1) | P1 | 16 | `v0.8.1` | <span style="color:#4caf50">&#x2714;</span> |
 | 18 | [Monitoring, Metrics, and Audit](#phase-18-monitoring-metrics-and-audit-p1) | P1 | — | `v0.9.0` | <span style="color:#4caf50">&#x2714;</span> |
-| 19 | [Object Tagging](#phase-19-object-tagging-p2) | P2 | 13 | | |
+| 19 | [Object Tagging](#phase-19-object-tagging-p2) | P2 | 13 | `v0.12.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 20 | [Lifecycle Rules](#phase-20-lifecycle-rules-p2) | P2 | 19, 18 | | |
 | 21 | [Object Lock (WORM Compliance)](#phase-21-object-lock-worm-compliance-p2) | P2 | 17 | | |
 | 22 | [S3 API Completeness](#phase-22-s3-api-completeness-p2) | P2 | — | | |
@@ -243,7 +243,7 @@ Full object versioning with version IDs, delete markers, and version-specific op
 
 ---
 
-### Phase 18 — Monitoring, Metrics, and Audit [P1] ✅
+### Phase 18 — Monitoring, Metrics, and Audit [P1]
 
 Operational visibility through metrics, audit logging, instance-wide settings, and region support.
 
@@ -266,12 +266,12 @@ Operational visibility through metrics, audit logging, instance-wide settings, a
 
 S3-compatible object and bucket tagging with key-value metadata.
 
-- [ ] Object tagging: `PutObjectTagging` / `GetObjectTagging` / `DeleteObjectTagging`. New `object_tags` table (migration v11). Max 10 tags per object, key max 128 chars, value max 256 chars
-- [ ] Bucket tagging: `PutBucketTagging` / `GetBucketTagging` / `DeleteBucketTagging`. New `bucket_tags` table
-- [ ] Tags on `PutObject` via `x-amz-tagging` header. Tags on `CopyObject` via `x-amz-tagging-directive`
-- [ ] Version-aware tagging: tags tied to specific object versions when bucket versioning is enabled
-- [ ] Cascade deletes: object/bucket tags cleaned up on object/bucket deletion
-- [ ] (Console) Object tagging UI (view/edit key-value pairs in detail panel), bucket tags in bucket settings
+- [x] Object tagging: `PutObjectTagging` / `GetObjectTagging` / `DeleteObjectTagging`. New `object_tags` table (migration v11). Max 10 tags per object, key max 128 chars, value max 256 chars
+- [x] Bucket tagging: `PutBucketTagging` / `GetBucketTagging` / `DeleteBucketTagging`. New `bucket_tags` table
+- [x] Tags on `PutObject` via `x-amz-tagging` header. Tags on `CopyObject` via `x-amz-tagging-directive`
+- [x] Version-aware tagging: tags tied to specific object versions when bucket versioning is enabled
+- [x] Cascade deletes: object/bucket tags cleaned up on object/bucket deletion
+- [x] (Console) Object tagging UI (view/edit key-value pairs in detail panel), bucket tags in bucket settings
 
 **Depends on**: Phase 13 (`bucket_config` table)
 
