@@ -59,7 +59,22 @@ pub async fn create_multipart_upload(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
 
-    let metadata = extract_metadata(request.headers());
+    let mut metadata = extract_metadata(request.headers());
+
+    // Capture x-amz-tagging header for application at CompleteMultipartUpload time.
+    // Validate early so invalid tags are rejected at init time.
+    let tagging_header = request
+        .headers()
+        .get("x-amz-tagging")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    if let Some(ref th) = tagging_header {
+        if let Err(e) = xml_types::parse_tagging_header(th) {
+            return s3_error_response(e);
+        }
+        // Store as internal sentinel key (filtered out at completion).
+        metadata.insert("_arca_tagging".to_string(), th.clone());
+    }
 
     let upload_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now();
@@ -374,6 +389,10 @@ pub async fn complete_multipart_upload(
         return internal_error_response(e, &resource);
     }
 
+    // Extract inline tags sentinel from upload metadata before building the object record.
+    let mut obj_metadata = upload.metadata;
+    let inline_tagging = obj_metadata.remove("_arca_tagging");
+
     // Insert object record (returns old for cleanup).
     let record = ObjectRecord {
         bucket: bucket.clone(),
@@ -383,7 +402,7 @@ pub async fn complete_multipart_upload(
         etag: composite_etag.clone(),
         content_type: upload.content_type,
         last_modified: now,
-        metadata: upload.metadata,
+        metadata: obj_metadata,
         encryption_algorithm: put_result.encryption.as_ref().map(|e| e.algorithm.clone()),
         encryption_key_id: put_result.encryption.as_ref().map(|e| e.key_id.clone()),
         owner: "root".to_string(),
@@ -403,6 +422,34 @@ pub async fn complete_multipart_upload(
         }
     }
 
+    // Re-read the stored record to get the version_id assigned by the metadata store.
+    let stored = state
+        .metadata
+        .get_object(&bucket, &key)
+        .await
+        .ok()
+        .flatten();
+
+    // Store inline tags from CreateMultipartUpload x-amz-tagging header.
+    if let Some(ref th) = inline_tagging {
+        if let Ok(tags) = xml_types::parse_tagging_header(th) {
+            if !tags.is_empty() {
+                let tag_vid = stored
+                    .as_ref()
+                    .and_then(|r| r.version_id.as_ref())
+                    .cloned()
+                    .unwrap_or_default();
+                if let Err(e) = state
+                    .metadata
+                    .put_object_tags(&bucket, &key, &tag_vid, &tags)
+                    .await
+                {
+                    tracing::warn!(error = %e, "Failed to store multipart inline tags");
+                }
+            }
+        }
+    }
+
     // Delete upload + parts from DB and clean up part blobs.
     let old_parts = match state.metadata.delete_multipart_upload(&upload_id).await {
         Ok(p) => p,
@@ -418,9 +465,13 @@ pub async fn complete_multipart_upload(
     }
 
     let xml = xml_types::complete_multipart_upload_result(&bucket, &key, &composite_etag);
-    Response::builder()
+    let mut builder = Response::builder()
         .status(StatusCode::OK)
-        .header("Content-Type", "application/xml")
+        .header("Content-Type", "application/xml");
+    if let Some(ref vid) = stored.as_ref().and_then(|r| r.version_id.as_ref()) {
+        builder = builder.header("x-amz-version-id", vid.as_str());
+    }
+    builder
         .body(Body::from(xml))
         .expect("build complete_multipart_upload response")
 }

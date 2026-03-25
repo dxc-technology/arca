@@ -38,7 +38,16 @@ pub trait MetadataStore: Send + Sync {
     ) -> Result<Option<ObjectRecord>, crate::error::ArcaError>;
 
     /// Returns the object record for the given bucket/key, or None if not found.
+    /// Filters out delete markers (use `get_latest_object` to include them).
     async fn get_object(
+        &self,
+        bucket: &str,
+        key: &str,
+    ) -> Result<Option<ObjectRecord>, crate::error::ArcaError>;
+
+    /// Returns the latest version of an object (including delete markers).
+    /// Used by GET/HEAD to detect delete markers and return appropriate headers.
+    async fn get_latest_object(
         &self,
         bucket: &str,
         key: &str,

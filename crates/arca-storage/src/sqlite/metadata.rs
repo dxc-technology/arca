@@ -255,6 +255,33 @@ impl MetadataStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("get_object: {e}")))
     }
 
+    async fn get_latest_object(
+        &self,
+        bucket: &str,
+        key: &str,
+    ) -> Result<Option<ObjectRecord>, ArcaError> {
+        let bucket = bucket.to_string();
+        let key = key.to_string();
+        self.conn
+            .call(move |conn| {
+                let sql = format!(
+                    "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND is_latest = 1"
+                );
+                let mut stmt = conn.prepare(&sql)?;
+                let result = stmt.query_row(
+                    params![bucket, key],
+                    |row| Ok(row_to_object_record(row)),
+                );
+                match result {
+                    Ok(rec) => Ok(Some(rec?)),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(e.into()),
+                }
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("get_latest_object: {e}")))
+    }
+
     async fn list_objects(
         &self,
         bucket: &str,

@@ -93,19 +93,19 @@
 <body>
 
 <h1>Arca S3 Compatibility Report</h1>
-<p class="meta">2026-03-21 08:52:03 UTC</p>
+<p class="meta">2026-03-25 08:58:04 UTC</p>
 
 <div class="cards">
   <div class="card"><div class="value">829</div><div class="label">Total</div></div>
-  <div class="card passed"><div class="value">320</div><div class="label">Passed</div></div>
-  <div class="card failed"><div class="value">418</div><div class="label">Failed</div></div>
+  <div class="card passed"><div class="value">338</div><div class="label">Passed</div></div>
+  <div class="card failed"><div class="value">400</div><div class="label">Failed</div></div>
   <div class="card skipped"><div class="value">91</div><div class="label">Skipped</div></div>
-  <div class="card expected"><div class="value">418</div><div class="label">Expected Fail</div></div>
-  <div class="card rate"><div class="value">38.6%</div><div class="label">Pass Rate</div></div>
+  <div class="card expected"><div class="value">400</div><div class="label">Expected Fail</div></div>
+  <div class="card rate"><div class="value">40.8%</div><div class="label">Pass Rate</div></div>
 </div>
 
 <div class="progress-bar">
-  <div class="progress-fill" style="width: 38.600723763570564%"></div>
+  <div class="progress-fill" style="width: 40.77201447527141%"></div>
 </div>
 
 <h2>Category Breakdown</h2>
@@ -260,82 +260,44 @@
         <tr>
           <td>Tagging</td>
           <td class="num">18</td>
-          <td class="num passed">4</td>
-          <td class="num failed">14</td>
+          <td class="num passed">12</td>
+          <td class="num failed">6</td>
           <td class="num skipped">0</td>
-          <td class="num bad">22%</td>
+          <td class="num warn">67%</td>
         </tr>
         <tr>
           <td>Versioning</td>
           <td class="num">65</td>
-          <td class="num passed">31</td>
-          <td class="num failed">32</td>
+          <td class="num passed">41</td>
+          <td class="num failed">22</td>
           <td class="num skipped">2</td>
-          <td class="num warn">48%</td>
+          <td class="num warn">63%</td>
         </tr>
 </table>
 
 
         <h2>Passlist Diff</h2>
-        <div class="diff-box"><div class="diff-new">+ test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-1024]</div>
-<div class="diff-new">+ test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-1048576]</div>
-<div class="diff-new">+ test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-1]</div>
-<div class="diff-new">+ test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-8388608]</div>
-<div class="diff-new">+ test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-1024]</div>
-<div class="diff-new">+ test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-1048576]</div>
-<div class="diff-new">+ test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-1]</div>
-<div class="diff-new">+ test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-8388608]</div>
-<div class="diff-new">+ test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-1024]</div>
-<div class="diff-new">+ test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-1048576]</div>
-<div class="diff-new">+ test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-1]</div>
-<div class="diff-new">+ test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-8388608]</div>
-<div class="diff-new">+ test_delete_objects_version_if_match</div>
-<div class="diff-new">+ test_delete_objects_version_if_match_last_modified_time</div>
-<div class="diff-new">+ test_delete_objects_version_if_match_size</div>
-<div class="diff-new">+ test_encryption_key_no_sse_c</div>
-<div class="diff-new">+ test_encryption_sse_c_invalid_md5</div>
-<div class="diff-new">+ test_encryption_sse_c_method_head</div>
-<div class="diff-new">+ test_encryption_sse_c_multipart_invalid_chunks_1</div>
-<div class="diff-new">+ test_encryption_sse_c_multipart_invalid_chunks_2</div>
-<div class="diff-new">+ test_encryption_sse_c_no_key</div>
-<div class="diff-new">+ test_encryption_sse_c_no_md5</div>
-<div class="diff-new">+ test_encryption_sse_c_present</div>
-<div class="diff-new">+ test_multipart_put_current_object_if_none_match</div>
-<div class="diff-new">+ test_object_copy_versioned_bucket</div>
-<div class="diff-new">+ test_object_copy_versioned_url_encoding</div>
-<div class="diff-new">+ test_object_copy_versioning_multipart_upload</div>
-<div class="diff-new">+ test_object_presigned_put_object_with_acl</div>
-<div class="diff-new">+ test_object_presigned_put_object_with_acl_tenant</div>
-<div class="diff-new">+ test_put_current_object_if_match</div>
-<div class="diff-new">+ test_put_current_object_if_none_match</div>
-<div class="diff-new">+ test_put_object_current_if_match</div>
-<div class="diff-new">+ test_versioned_concurrent_object_create_and_remove</div>
-<div class="diff-new">+ test_versioned_concurrent_object_create_concurrent_remove</div>
-<div class="diff-new">+ test_versioning_bucket_atomic_upload_return_version_id</div>
-<div class="diff-new">+ test_versioning_bucket_create_suspend</div>
-<div class="diff-new">+ test_versioning_concurrent_multi_object_delete</div>
-<div class="diff-new">+ test_versioning_copy_obj_version</div>
-<div class="diff-new">+ test_versioning_multi_object_delete</div>
-<div class="diff-new">+ test_versioning_multi_object_delete_with_marker</div>
-<div class="diff-new">+ test_versioning_multi_object_delete_with_marker_create</div>
-<div class="diff-new">+ test_versioning_obj_create_overwrite_multipart</div>
-<div class="diff-new">+ test_versioning_obj_create_read_remove</div>
-<div class="diff-new">+ test_versioning_obj_create_read_remove_head</div>
-<div class="diff-new">+ test_versioning_obj_create_versions_remove_all</div>
-<div class="diff-new">+ test_versioning_obj_create_versions_remove_special_names</div>
-<div class="diff-new">+ test_versioning_obj_list_marker</div>
-<div class="diff-new">+ test_versioning_obj_plain_null_version_overwrite</div>
-<div class="diff-new">+ test_versioning_obj_plain_null_version_overwrite_suspended</div>
-<div class="diff-new">+ test_versioning_obj_plain_null_version_removal</div>
-<div class="diff-new">+ test_versioning_obj_suspend_versions</div>
-<div class="diff-new">+ test_versioning_obj_suspended_copy</div>
-<div class="diff-new">+ test_versioning_stack_delete_merkers</div>
-<div class="diff-lost">- test_copy_part_enc[sse-c-unencrypted-STANDARD-STANDARD-8388608]</div>
-<div class="diff-lost">- test_encryption_sse_c_multipart_upload</div>
-<div class="diff-lost">- test_encryption_sse_c_unaligned_multipart_upload</div>
+        <div class="diff-box"><div class="diff-new">+ test_delete_marker_suspended</div>
+<div class="diff-new">+ test_delete_marker_versioned</div>
+<div class="diff-new">+ test_delete_object_current_if_match_last_modified_time</div>
+<div class="diff-new">+ test_delete_object_current_if_match_size</div>
+<div class="diff-new">+ test_delete_objects_current_if_match</div>
+<div class="diff-new">+ test_delete_objects_current_if_match_last_modified_time</div>
+<div class="diff-new">+ test_delete_objects_current_if_match_size</div>
+<div class="diff-new">+ test_get_obj_head_tagging</div>
+<div class="diff-new">+ test_multipart_copy_versioned</div>
+<div class="diff-new">+ test_multipart_put_current_object_if_match</div>
+<div class="diff-new">+ test_put_delete_tags</div>
+<div class="diff-new">+ test_put_excess_key_tags</div>
+<div class="diff-new">+ test_put_excess_tags</div>
+<div class="diff-new">+ test_put_excess_val_tags</div>
+<div class="diff-new">+ test_put_obj_with_tags</div>
+<div class="diff-new">+ test_set_bucket_tagging</div>
+<div class="diff-new">+ test_set_multipart_tagging</div>
+<div class="diff-new">+ test_versioning_bucket_multipart_upload_return_version_id</div>
 </div>
 
-<h2>Failures (418)</h2>
+<h2>Failures (400)</h2>
 
         <details class="fail-item">
           <summary>
@@ -1713,7 +1675,14 @@
           </summary>
           <pre>AssertionError: assert (404, 'Owners...otFoundError') == (501, 'NotImplemented')
   
-  At index 0 diff: #x1B[0m#x1B[94m404#x1B[39;49;00m#x1B[90m#x1B[39;49;00m != #x1B[0m#x1B[94m501#x1B[39;49;00m#x1B[90</pre>
+  At index 0 diff: 404 != 501
+  
+  Full diff:
+    (
+  -     501,
+  ?     ^ ^...
+  
+  ...Full output truncated (5 lin</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1745,7 +1714,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_delete_marker_expiration</code>
           </summary>
-          <pre>KeyError: 'x-amz-delete-marker'</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketLifecycleConfiguration operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1759,41 +1728,9 @@
           <summary>
             <span class="badge expected">Expected</span>
             <span class="cat-tag">Versioning</span>
-            <code>test_delete_marker_suspended</code>
-          </summary>
-          <pre>KeyError: 'x-amz-delete-marker'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_marker_versioned</code>
-          </summary>
-          <pre>KeyError: 'x-amz-delete-marker'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
             <code>test_delete_object_current_if_match</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_object_current_if_match_last_modified_time</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_object_current_if_match_size</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (PreconditionFailed) when calling the DeleteObject operation: At least one of the pre-conditions you specified did not hold.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1818,30 +1755,6 @@
             <code>test_delete_object_version_if_match_size</code>
           </summary>
           <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_objects_current_if_match</code>
-          </summary>
-          <pre>KeyError: 'Errors'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_objects_current_if_match_last_modified_time</code>
-          </summary>
-          <pre>KeyError: 'Errors'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_objects_current_if_match_size</code>
-          </summary>
-          <pre>KeyError: 'Errors'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1991,14 +1904,6 @@
         <details class="fail-item">
           <summary>
             <span class="badge expected">Expected</span>
-            <span class="cat-tag">Tagging</span>
-            <code>test_get_obj_head_tagging</code>
-          </summary>
-          <pre>KeyError: 'x-amz-tagging-count'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
             <span class="cat-tag">Not Implemented</span>
             <code>test_get_object_attributes</code>
           </summary>
@@ -2076,8 +1981,8 @@
           </summary>
           <pre>AssertionError: assert 'NotImplemented' == 'NoSuchPublic...Configuration'
   
-  #x1B[0m#x1B[91m- NoSuchPublicAccessBlockConfiguration#x1B[39;49;00m#x1B[90m#x1B[39;49;00m
-  #x1B[92m+ NotImplemented#x1B[</pre>
+  - NoSuchPublicAccessBlockConfiguration
+  + NotImplemented</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2151,8 +2056,8 @@
           </summary>
           <pre>AssertionError: assert 'NotImplemented' == 'InvalidArgument'
   
-  #x1B[0m#x1B[91m- InvalidArgument#x1B[39;49;00m#x1B[90m#x1B[39;49;00m
-  #x1B[92m+ NotImplemented#x1B[39;49;00m#x1B[90m#x1B[39;49;00m</pre>
+  - InvalidArgument
+  + NotImplemented</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2401,7 +2306,7 @@
             <code>test_list_buckets_paginated</code>
           </summary>
           <pre>AssertionError: assert 2 == 0
- +  where 2 = len([{'CreationDate': datetime.datetime(2026, 3, 21, 7, 15, 53, 330000, tzinfo=tzlocal()), 'Name': 'arca-test-5aw73sr0kq6lt1ip1w6-81'}, {'CreationDate': dat</pre>
+ +  where 2 = len([{'CreationDate': datetime.datetime(2026, 3, 24, 12, 40, 4, 106000, tzinfo=tzlocal()), 'Name': 'nuvo'}, {'CreationDate': datetime.datetime(2026, 3, 23, </pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2422,26 +2327,10 @@
         <details class="fail-item">
           <summary>
             <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_multipart_copy_versioned</code>
-          </summary>
-          <pre>Failed: Timeout (&gt;30.0s) from pytest-timeout.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
             <span class="cat-tag">Not Implemented</span>
             <code>test_multipart_get_part</code>
           </summary>
           <pre>KeyError: 'PartsCount'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_multipart_put_current_object_if_match</code>
-          </summary>
-          <pre>KeyError: 'VersionId'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2977,7 +2866,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_object_put_acl_mtime</code>
           </summary>
-          <pre>assert datetime.datetime(2026, 3, 21, 8, 39, 18, tzinfo=tzutc()) == datetime.datetime(2026, 3, 21, 8, 39, 20, tzinfo=tzutc())</pre>
+          <pre>assert datetime.datetime(2026, 3, 25, 8, 52, 59, tzinfo=tzutc()) == datetime.datetime(2026, 3, 25, 8, 53, 2, tzinfo=tzutc())</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3335,8 +3224,8 @@
           </summary>
           <pre>AssertionError: assert 'NotImplemented' == 'NoSuchBucket'
   
-  #x1B[0m#x1B[91m- NoSuchBucket#x1B[39;49;00m#x1B[90m#x1B[39;49;00m
-  #x1B[92m+ NotImplemented#x1B[39;49;00m#x1B[90m#x1B[39;49;00m</pre>
+  - NoSuchBucket
+  + NotImplemented</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3346,8 +3235,8 @@
           </summary>
           <pre>AssertionError: assert 'NotImplemented' == 'AccessDenied'
   
-  #x1B[0m#x1B[91m- AccessDenied#x1B[39;49;00m#x1B[90m#x1B[39;49;00m
-  #x1B[92m+ NotImplemented#x1B[39;49;00m#x1B[90m#x1B[39;49;00m</pre>
+  - AccessDenied
+  + NotImplemented</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3400,38 +3289,6 @@
         <details class="fail-item">
           <summary>
             <span class="badge expected">Expected</span>
-            <span class="cat-tag">Tagging</span>
-            <code>test_put_delete_tags</code>
-          </summary>
-          <pre>botocore.errorfactory.NoSuchKey: An error occurred (NoSuchKey) when calling the GetObjectTagging operation: The specified key does not exist.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Tagging</span>
-            <code>test_put_excess_key_tags</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Tagging</span>
-            <code>test_put_excess_tags</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Tagging</span>
-            <code>test_put_excess_val_tags</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
             <span class="cat-tag">ACL/Policy</span>
             <code>test_put_get_delete_public_block</code>
           </summary>
@@ -3472,14 +3329,6 @@
         <details class="fail-item">
           <summary>
             <span class="badge expected">Expected</span>
-            <span class="cat-tag">Tagging</span>
-            <code>test_put_obj_with_tags</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectTagging operation (reached max retries: 4): Internal Server Error</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
             <span class="cat-tag">ACL/Policy</span>
             <code>test_put_public_block</code>
           </summary>
@@ -3504,14 +3353,6 @@
         <details class="fail-item">
           <summary>
             <span class="badge expected">Expected</span>
-            <span class="cat-tag">Tagging</span>
-            <code>test_set_bucket_tagging</code>
-          </summary>
-          <pre>assert 501 == 404</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
             <span class="cat-tag">CORS</span>
             <code>test_set_cors</code>
           </summary>
@@ -3524,14 +3365,6 @@
             <code>test_set_get_del_bucket_policy</code>
           </summary>
           <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Tagging</span>
-            <code>test_set_multipart_tagging</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectTagging operation (reached max retries: 4): Internal Server Error</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3717,14 +3550,6 @@
             <code>test_versioned_object_acl_no_version_specified</code>
           </summary>
           <pre>botocore.exceptions.ClientError: An error occurred (500) when calling the GetObjectAcl operation (reached max retries: 4): Internal Server Error</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_versioning_bucket_multipart_upload_return_version_id</code>
-          </summary>
-          <pre>KeyError: 'VersionId'</pre>
         </details>
 
 </body>

@@ -359,6 +359,13 @@ pub async fn put_object(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
 
+    // Validate inline tags early, before writing the blob.
+    if let Some(ref th) = tagging_header {
+        if let Err(e) = xml_types::parse_tagging_header(th) {
+            return s3_error_response(e);
+        }
+    }
+
     let headers = request.headers().clone();
     let body = request.into_body();
     let stream = super::body::body_to_byte_stream(body, &headers);
@@ -460,10 +467,12 @@ pub async fn put_object(
         .ok()
         .flatten();
 
-    // Store inline tags from x-amz-tagging header (if present).
+    // Store inline tags from x-amz-tagging header (already validated above).
     if let Some(ref th) = tagging_header {
-        match xml_types::parse_tagging_header(th) {
-            Ok(tags) if !tags.is_empty() => {
+        // parse_tagging_header was already validated before writing the blob,
+        // so Err here is unreachable, but handle defensively.
+        if let Ok(tags) = xml_types::parse_tagging_header(th) {
+            if !tags.is_empty() {
                 let tag_vid = stored
                     .as_ref()
                     .and_then(|r| r.version_id.as_ref())
@@ -476,10 +485,6 @@ pub async fn put_object(
                 {
                     tracing::warn!(error = %e, "Failed to store inline object tags");
                 }
-            }
-            Ok(_) => {} // Empty tag header, ignore
-            Err(e) => {
-                tracing::warn!(error = %e, "Invalid x-amz-tagging header, ignoring");
             }
         }
     }
@@ -899,7 +904,7 @@ async fn upload_part_copy(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
-    let (src_bucket, src_key, _src_version_id) = match parse_copy_source(copy_source) {
+    let (src_bucket, src_key, src_version_id) = match parse_copy_source(copy_source) {
         Some(parsed) => parsed,
         None => {
             return s3_error_response(S3Error::with_message(
@@ -929,16 +934,40 @@ async fn upload_part_copy(
         return s3_error_response(S3Error::new(S3ErrorCode::NoSuchUpload, &resource));
     }
 
-    // Get source object.
-    let src_record = match state.metadata.get_object(&src_bucket, &src_key).await {
-        Ok(Some(r)) => r,
-        Ok(None) => {
-            return s3_error_response(S3Error::new(
-                S3ErrorCode::NoSuchKey,
-                format!("/{src_bucket}/{src_key}"),
-            ));
+    // Get source object (specific version if requested).
+    let src_record = if let Some(ref vid) = src_version_id {
+        match state
+            .metadata
+            .get_object_version(&src_bucket, &src_key, vid)
+            .await
+        {
+            Ok(Some(r)) if r.is_delete_marker => {
+                return s3_error_response(S3Error::with_message(
+                    S3ErrorCode::InvalidRequest,
+                    "The source of a copy request may not specifically refer to a delete marker by version id.",
+                    &resource,
+                ));
+            }
+            Ok(Some(r)) => r,
+            Ok(None) => {
+                return s3_error_response(S3Error::new(
+                    S3ErrorCode::NoSuchVersion,
+                    format!("/{src_bucket}/{src_key}"),
+                ));
+            }
+            Err(e) => return internal_error_response(e, &resource),
         }
-        Err(e) => return internal_error_response(e, &resource),
+    } else {
+        match state.metadata.get_object(&src_bucket, &src_key).await {
+            Ok(Some(r)) => r,
+            Ok(None) => {
+                return s3_error_response(S3Error::new(
+                    S3ErrorCode::NoSuchKey,
+                    format!("/{src_bucket}/{src_key}"),
+                ));
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
     };
 
     // Parse the copy-source-range if provided.
@@ -1162,6 +1191,19 @@ pub async fn get_object(
         match state.metadata.get_object(&bucket, &key).await {
             Ok(Some(r)) => r,
             Ok(None) => {
+                // Check if the latest version is a delete marker.
+                if let Ok(Some(latest)) = state.metadata.get_latest_object(&bucket, &key).await {
+                    if latest.is_delete_marker {
+                        let mut resp = s3_error_response(S3Error::new(S3ErrorCode::NoSuchKey, &resource));
+                        resp.headers_mut().insert("x-amz-delete-marker", "true".parse().unwrap());
+                        if let Some(ref v) = latest.version_id {
+                            if let Ok(hv) = v.parse() {
+                                resp.headers_mut().insert("x-amz-version-id", hv);
+                            }
+                        }
+                        return resp;
+                    }
+                }
                 return s3_error_response(S3Error::new(S3ErrorCode::NoSuchKey, &resource));
             }
             Err(e) => return internal_error_response(e, &resource),
@@ -1319,6 +1361,18 @@ pub async fn get_object(
         builder = builder.header("x-amz-server-side-encryption", "AES256");
     }
 
+    // x-amz-tagging-count: number of tags (only if > 0).
+    let tag_vid = record.version_id.as_deref().unwrap_or("");
+    if let Ok(tags) = state
+        .metadata
+        .get_object_tags(&bucket, &key, tag_vid)
+        .await
+    {
+        if !tags.is_empty() {
+            builder = builder.header("x-amz-tagging-count", tags.len().to_string());
+        }
+    }
+
     // Return stored metadata as response headers.
     // Values may contain unicode chars; encode as Latin-1 for HTTP headers
     // (clients like boto3 decode header bytes as Latin-1 per HTTP spec).
@@ -1383,6 +1437,19 @@ pub async fn head_object(
         match state.metadata.get_object(&bucket, &key).await {
             Ok(Some(r)) => r,
             Ok(None) => {
+                // Check if the latest version is a delete marker.
+                if let Ok(Some(latest)) = state.metadata.get_latest_object(&bucket, &key).await {
+                    if latest.is_delete_marker {
+                        let mut resp = s3_error_response(S3Error::new(S3ErrorCode::NoSuchKey, &resource));
+                        resp.headers_mut().insert("x-amz-delete-marker", "true".parse().unwrap());
+                        if let Some(ref v) = latest.version_id {
+                            if let Ok(hv) = v.parse() {
+                                resp.headers_mut().insert("x-amz-version-id", hv);
+                            }
+                        }
+                        return resp;
+                    }
+                }
                 return s3_error_response(S3Error::new(S3ErrorCode::NoSuchKey, &resource));
             }
             Err(e) => return internal_error_response(e, &resource),
@@ -1439,6 +1506,18 @@ pub async fn head_object(
             .header("x-amz-server-side-encryption-customer-key-md5", &ssec.key_md5);
     } else if record.encryption_algorithm.is_some() {
         builder = builder.header("x-amz-server-side-encryption", "AES256");
+    }
+
+    // x-amz-tagging-count: number of tags (only if > 0).
+    let tag_vid = record.version_id.as_deref().unwrap_or("");
+    if let Ok(tags) = state
+        .metadata
+        .get_object_tags(&bucket, &key, tag_vid)
+        .await
+    {
+        if !tags.is_empty() {
+            builder = builder.header("x-amz-tagging-count", tags.len().to_string());
+        }
     }
 
     // Return stored metadata as response headers.
@@ -1540,7 +1619,8 @@ pub async fn delete_object(
         || headers.contains_key("x-amz-if-match-size");
 
     if has_delete_conditionals {
-        let existing = match state.metadata.get_object(&bucket, &key).await {
+        // Use get_latest_object to include delete markers for conditional checks.
+        let existing = match state.metadata.get_latest_object(&bucket, &key).await {
             Ok(obj) => obj,
             Err(e) => return internal_error_response(e, &resource),
         };

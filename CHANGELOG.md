@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Tagging: tag validation on PutObject** — invalid `x-amz-tagging` headers (excess tags, key/value too long) now rejected with 400 before writing the blob, instead of being silently ignored
+- **Tagging: `x-amz-tagging-count` header** — GET and HEAD object responses now include `x-amz-tagging-count` header when the object has tags
+- **Tagging: multipart upload tags** — `CreateMultipartUpload` now captures `x-amz-tagging` header and applies tags to the final object at `CompleteMultipartUpload` time
+- **Versioning: delete marker detection** — GET/HEAD on a key whose current version is a delete marker now returns 404 with `x-amz-delete-marker: true` and `x-amz-version-id` headers, instead of plain NoSuchKey
+- **Versioning: CompleteMultipartUpload `x-amz-version-id`** — response now includes the version ID when the target bucket has versioning enabled
+- **Versioning: UploadPartCopy with versioned source** — now uses the `?versionId=` from the copy source header to fetch the correct version, instead of always fetching the latest
+- **Versioning: conditional DELETE with delete markers** — `If-Match`, `x-amz-if-match-last-modified-time`, and `x-amz-if-match-size` conditional headers on DELETE and batch DELETE now correctly evaluate against the latest version including delete markers
+- **S3 compatibility: +18 Ceph s3-tests passing** — 338/829 (40.8%), up from 320/829 (38.6%)
+
 ## [0.12.0] — 2026-03-24
 
 ### Added

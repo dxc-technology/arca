@@ -1338,7 +1338,8 @@ async fn delete_objects(
             || obj.last_modified_time.is_some()
             || obj.size.is_some();
         if has_condition {
-            match state.metadata.get_object(&bucket, &obj.key).await {
+            // Use get_latest_object to include delete markers for conditional checks.
+            match state.metadata.get_latest_object(&bucket, &obj.key).await {
                 Ok(Some(existing)) => {
                     let mut failed = false;
 

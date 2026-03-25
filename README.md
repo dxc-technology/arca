@@ -32,7 +32,7 @@ The MVP is complete. All 12 implementation phases (0–11) have been delivered. 
 - **Server-side encryption** — AES-256-GCM at-rest encryption (SSE-S3) with envelope encryption, per-object DEKs, and streaming chunk-based encrypt/decrypt. Master key from config file or Vault/OpenBAO KMS
 - **Native TLS** — HTTPS without a reverse proxy (`bin/arca start --tls`), with auto-detection and SIGHUP cert reload
 - **Web console** — browser-based UI for managing buckets, objects, and credentials
-- **S3 compatibility tested** — 270/829 Ceph s3-tests passing, 0 unexpected failures
+- **S3 compatibility tested** — 338/829 Ceph s3-tests passing, 0 unexpected failures
 
 ## S3 API Surface
 
@@ -172,7 +172,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — TLS | 7 | HTTPS health/info/put/get/multipart, minio client, wrong CA rejection |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
 | **Arca tests** | **820** | **All tests written for this project** |
-| [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 829 | 320 pass, 418 fail, 91 skip — 0 unexpected failures |
+| [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 829 | 338 pass, 400 fail, 91 skip — 0 unexpected failures |
 | **Total** | **1,649** | |
 
 ## License
