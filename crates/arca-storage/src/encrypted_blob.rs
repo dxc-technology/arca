@@ -67,7 +67,9 @@ impl EncryptingBlobStore {
             .map_err(|e| ArcaError::Internal(format!("decode dek_nonce: {e}")))?;
         self.master_key
             .unwrap_dek(&encrypted_dek, &dek_nonce)
-            .map_err(|e| ArcaError::Internal(format!("unwrap DEK: {e}")))
+            .map_err(|_| ArcaError::DecryptionFailed(
+                "The object was encrypted with a different master key and cannot be decrypted with the current key".to_string(),
+            ))
     }
 
     /// Handles `get()` for an encrypted blob (full read).

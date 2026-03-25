@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Versioning: UploadPartCopy with versioned source** — now uses the `?versionId=` from the copy source header to fetch the correct version, instead of always fetching the latest
 - **Versioning: conditional DELETE with delete markers** — `If-Match`, `x-amz-if-match-last-modified-time`, and `x-amz-if-match-size` conditional headers on DELETE and batch DELETE now correctly evaluate against the latest version including delete markers
 - **S3 compatibility: +18 Ceph s3-tests passing** — 338/829 (40.8%), up from 320/829 (38.6%)
+- **Encryption: key mismatch returns 403 instead of 500** — downloading an object encrypted with a different master key now returns `403 AccessDenied` with a clear message instead of `500 InternalError`
 
 ## [0.12.0] — 2026-03-24
 

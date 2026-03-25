@@ -450,7 +450,7 @@ export function bucketDetailView() {
     async downloadVersion(key, versionId) {
       try {
         const resp = await api.s3GetObjectVersion(this.bucketName, key, versionId);
-        if (!resp.ok) throw new Error(`Error ${resp.status}`);
+        if (!resp.ok) throw new Error(await this._extractS3Error(resp));
         const blob = await resp.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -500,6 +500,7 @@ export function bucketDetailView() {
       const bucket = this.bucketName;
       try {
         const resp = await api.s3GetObject(bucket, key);
+        if (!resp.ok) throw new Error(await this._extractS3Error(resp));
         const blob = await resp.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -1037,6 +1038,17 @@ export function bucketDetailView() {
 
     escapeHtml(text) {
       return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    },
+
+    /** Extract a human-readable message from an S3 XML error response. */
+    async _extractS3Error(resp) {
+      try {
+        const text = await resp.text();
+        const doc = new DOMParser().parseFromString(text, 'text/xml');
+        const msg = doc.querySelector('Message');
+        if (msg && msg.textContent) return msg.textContent;
+      } catch (_) { /* ignore parse errors */ }
+      return `HTTP ${resp.status}`;
     },
 
     formatBytes,

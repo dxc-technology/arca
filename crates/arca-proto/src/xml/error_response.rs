@@ -45,6 +45,11 @@ pub fn not_implemented_response(resource: &str) -> Response {
 pub fn internal_error_response(err: ArcaError, resource: &str) -> Response {
     match err {
         ArcaError::S3(s3_err) => s3_error_response(s3_err),
+        ArcaError::DecryptionFailed(msg) => {
+            tracing::warn!(error = %msg, resource, "Decryption failed");
+            let s3_err = S3Error::with_message(S3ErrorCode::AccessDenied, msg, resource);
+            s3_error_response(s3_err)
+        }
         ArcaError::Internal(msg) => {
             tracing::error!(error = %msg, resource, "Internal error");
             let s3_err = S3Error::new(S3ErrorCode::InternalError, resource);

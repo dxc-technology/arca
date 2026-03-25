@@ -13,6 +13,9 @@ pub enum ArcaError {
     #[error("S3 error: {0}")]
     S3(#[from] S3Error),
 
+    #[error("decryption failed: {0}")]
+    DecryptionFailed(String),
+
     #[error("internal error: {0}")]
     Internal(String),
 }
