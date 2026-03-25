@@ -284,7 +284,7 @@
   </style>
 </head>
 
-<body x-data="app" x-init="init()" class="min-h-screen bg-vault-bg">
+<body x-data="app" x-init="init()" @show-toast.window="showToast($event.detail.message, $event.detail.type)" class="min-h-screen bg-vault-bg">
 
   <!-- ==================== LOGIN SCREEN ==================== -->
   <template x-if="!authenticated">

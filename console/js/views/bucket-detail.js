@@ -450,7 +450,11 @@ export function bucketDetailView() {
     async downloadVersion(key, versionId) {
       try {
         const resp = await api.s3GetObjectVersion(this.bucketName, key, versionId);
-        if (!resp.ok) throw new Error(await this._extractS3Error(resp));
+        if (!resp.ok) {
+          const errMsg = await this._extractS3Error(resp);
+          this.$dispatch('show-toast', { message: 'Download failed: ' + errMsg, type: 'error' });
+          return;
+        }
         const blob = await resp.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -500,7 +504,11 @@ export function bucketDetailView() {
       const bucket = this.bucketName;
       try {
         const resp = await api.s3GetObject(bucket, key);
-        if (!resp.ok) throw new Error(await this._extractS3Error(resp));
+        if (!resp.ok) {
+          const errMsg = await this._extractS3Error(resp);
+          this.$dispatch('show-toast', { message: 'Download failed: ' + errMsg, type: 'error' });
+          return;
+        }
         const blob = await resp.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -1047,7 +1055,9 @@ export function bucketDetailView() {
         const doc = new DOMParser().parseFromString(text, 'text/xml');
         const msg = doc.querySelector('Message');
         if (msg && msg.textContent) return msg.textContent;
-      } catch (_) { /* ignore parse errors */ }
+      } catch (e) {
+        console.error('Failed to parse S3 error response:', e);
+      }
       return `HTTP ${resp.status}`;
     },
 
