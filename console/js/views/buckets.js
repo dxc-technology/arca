@@ -90,6 +90,8 @@ export function bucketSettingsView() {
     lifecycleError: '',
     lifecycleSaving: false,
     showAddRule: false,
+    editingIndex: -1,
+    editRule: null,
     newRule: null,
 
     async load() {
@@ -146,8 +148,6 @@ export function bucketSettingsView() {
         if (resp.ok) {
           const xml = await resp.text();
           this.lifecycleRules = parseLifecycleXml(xml);
-        } else if (resp.status === 404) {
-          this.lifecycleRules = [];
         } else {
           this.lifecycleRules = [];
         }
@@ -157,7 +157,33 @@ export function bucketSettingsView() {
       this.lifecycleLoading = false;
     },
 
+    /** Persist current rules array to the server. */
+    async _persistRules() {
+      this.lifecycleSaving = true;
+      this.lifecycleError = '';
+      try {
+        if (this.lifecycleRules.length === 0) {
+          const resp = await api.s3DeleteBucketLifecycle(this.bucketName);
+          if (!resp.ok && resp.status !== 204) throw new Error(`Error ${resp.status}`);
+        } else {
+          const xml = buildLifecycleXml(this.lifecycleRules);
+          const resp = await api.s3PutBucketLifecycle(this.bucketName, xml);
+          if (!resp.ok) {
+            const text = await resp.text();
+            throw new Error(text.match(/<Message>(.*?)<\/Message>/)?.[1] || `Error ${resp.status}`);
+          }
+        }
+      } catch (e) {
+        this.lifecycleError = e.message;
+        // Reload to get back to server state on error
+        await this.loadLifecycleRules();
+      }
+      this.lifecycleSaving = false;
+    },
+
     initNewRule() {
+      this.editingIndex = -1;
+      this.editRule = null;
       this.newRule = {
         id: '',
         status: 'Enabled',
@@ -174,51 +200,50 @@ export function bucketSettingsView() {
       this.newRule = null;
     },
 
-    addRule() {
+    async addRule() {
       if (!this.newRule) return;
       const rule = { ...this.newRule };
       if (!rule.id) rule.id = 'rule-' + Date.now();
       this.lifecycleRules.push(rule);
       this.showAddRule = false;
       this.newRule = null;
+      await this._persistRules();
     },
 
-    removeRule(index) {
+    async removeRule(index) {
       this.lifecycleRules.splice(index, 1);
+      await this._persistRules();
     },
 
-    async saveLifecycleRules() {
-      if (this.lifecycleRules.length === 0) {
-        await this.deleteAllLifecycleRules();
-        return;
-      }
-      this.lifecycleSaving = true;
-      this.lifecycleError = '';
-      try {
-        const xml = buildLifecycleXml(this.lifecycleRules);
-        const resp = await api.s3PutBucketLifecycle(this.bucketName, xml);
-        if (!resp.ok) {
-          const text = await resp.text();
-          throw new Error(text.match(/<Message>(.*?)<\/Message>/)?.[1] || `Error ${resp.status}`);
-        }
-      } catch (e) {
-        this.lifecycleError = e.message;
-      }
-      this.lifecycleSaving = false;
+    async toggleRuleStatus(index) {
+      const rule = this.lifecycleRules[index];
+      rule.status = rule.status === 'Enabled' ? 'Disabled' : 'Enabled';
+      await this._persistRules();
+    },
+
+    startEditRule(index) {
+      this.showAddRule = false;
+      this.newRule = null;
+      this.editingIndex = index;
+      this.editRule = { ...this.lifecycleRules[index] };
+    },
+
+    cancelEditRule() {
+      this.editingIndex = -1;
+      this.editRule = null;
+    },
+
+    async saveEditRule() {
+      if (!this.editRule || this.editingIndex < 0) return;
+      this.lifecycleRules[this.editingIndex] = { ...this.editRule };
+      this.editingIndex = -1;
+      this.editRule = null;
+      await this._persistRules();
     },
 
     async deleteAllLifecycleRules() {
-      this.lifecycleSaving = true;
-      this.lifecycleError = '';
-      try {
-        const resp = await api.s3DeleteBucketLifecycle(this.bucketName);
-        if (resp.ok || resp.status === 204) {
-          this.lifecycleRules = [];
-        }
-      } catch (e) {
-        this.lifecycleError = e.message;
-      }
-      this.lifecycleSaving = false;
+      this.lifecycleRules = [];
+      await this._persistRules();
     },
 
     async toggleVersioning() {
