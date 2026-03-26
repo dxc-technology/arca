@@ -2011,7 +2011,7 @@ continuing from the MVP phases (0–11).</p>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">17</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">18</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">19</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">20</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">20</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">21</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">22</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">23</div>
@@ -2146,8 +2146,8 @@ continuing from the MVP phases (0–11).</p>
 <td><a href="#phase-20-lifecycle-rules-p2">Lifecycle Rules</a></td>
 <td style="text-align: center;">P2</td>
 <td style="text-align: center;">19, 18</td>
-<td style="text-align: center;"></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><code>v0.13.0</code></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">21</td>
@@ -2358,12 +2358,13 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 <h3 id="phase-20-lifecycle-rules-p2">Phase 20 — Lifecycle Rules [P2]<a class="headerlink" href="#phase-20-lifecycle-rules-p2" title="Permanent link">&para;</a></h3>
 <p>Automated lifecycle management for storage hygiene with configurable expiration and cleanup rules.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Lifecycle rules: <code>PutBucketLifecycleConfiguration</code> / <code>GetBucketLifecycleConfiguration</code> / <code>DeleteBucketLifecycleConfiguration</code>. XML format (S3 compatible). Rules stored in <code>bucket_config</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Expiration: delete objects after N days, tag-based filtering</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Abort incomplete multipart uploads after N days</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Configurable evaluation interval via <code>lifecycle_evaluation_interval</code> setting (default: hourly)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Background lifecycle worker using existing <code>BackgroundWorker::spawn_periodic</code> framework</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> (Console) Lifecycle rules editor in bucket settings</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Lifecycle rules: <code>PutBucketLifecycleConfiguration</code> / <code>GetBucketLifecycleConfiguration</code> / <code>DeleteBucketLifecycleConfiguration</code>. XML format (S3 compatible). Rules stored as JSON in <code>bucket_config</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Expiration: delete objects after N days, with prefix and tag-based filtering (single tag, And filter with prefix + tags)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> NoncurrentVersionExpiration: hard-delete old versions after N days</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Abort incomplete multipart uploads after N days</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Configurable evaluation interval via <code>lifecycle_evaluation_interval</code> admin setting (default: 3600s / hourly)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Background lifecycle worker using existing <code>BackgroundWorker::spawn_periodic</code> framework. Batch processing (100 objects/rule/cycle), audit logging for all lifecycle actions</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> (Console) Lifecycle rules editor in bucket settings: add/remove/save rules with prefix filter, expiration days, noncurrent days, abort upload days</li>
 </ul>
 <p><strong>Depends on</strong>: Phase 19 (tagging for tag-based filtering), Phase 18 (background worker framework)</p>
 <hr />
