@@ -1013,7 +1013,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0130-2026-03-26" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.13.0 — 2026-03-26
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.13.0 — 2026-03-26">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1643,7 +1654,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0130-2026-03-26" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.13.0 — 2026-03-26
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.13.0 — 2026-03-26">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2224,14 +2246,15 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.12.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.13.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="0130-2026-03-26"><a href="https://github.com/dxc-technology/arca/compare/v0.12.0...v0.13.0">0.13.0</a> — 2026-03-26<a class="headerlink" href="#0130-2026-03-26" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Phase 21: Object Lock (WORM Compliance)</strong> — 6 new S3 operations: <code>PutObjectLockConfiguration</code>, <code>GetObjectLockConfiguration</code>, <code>PutObjectRetention</code>, <code>GetObjectRetention</code>, <code>PutObjectLegalHold</code>, <code>GetObjectLegalHold</code>. GOVERNANCE mode (bypassable with permission) and COMPLIANCE mode (absolute protection). Per-object retention with retain-until-date, legal hold (ON/OFF). Default retention applied from bucket config on PutObject. Enforcement blocks hard-deletion of locked versions. Delete markers always allowed. Auto-enables versioning, prevents suspension. Schema migration v12 adds <code>retention_mode</code>, <code>retain_until_date</code>, <code>legal_hold_status</code> columns. 7 new S3 policy actions including <code>s3:BypassGovernanceRetention</code>. Lifecycle worker respects Object Lock</li>
-<li><strong>Console: Object Lock</strong> — Enable Object Lock with retention mode/period in bucket settings, status indicator, versioning suspend disabled when locked</li>
+<li><strong>Console: Object Lock</strong> — Enable Object Lock with retention mode/period in bucket settings, lock badge in bucket list and breadcrumbs, versioning suspend disabled when locked</li>
 <li><strong>Phase 20: Lifecycle Rules</strong> — S3-compatible lifecycle management with 3 new operations: <code>PutBucketLifecycleConfiguration</code>, <code>GetBucketLifecycleConfiguration</code>, <code>DeleteBucketLifecycleConfiguration</code>. Rules support object expiration after N days, noncurrent version expiration, and abort of incomplete multipart uploads. Filter by prefix, tag, or combined (And filter). Rules stored as JSON in <code>bucket_config</code> table (no schema migration required)</li>
 <li><strong>Lifecycle background worker</strong> — periodic evaluation of lifecycle rules across all buckets. Configurable interval via <code>lifecycle_evaluation_interval</code> admin setting (default: 1 hour). Batch processing (100 objects per rule per cycle). Audit logging for all lifecycle actions (<code>Lifecycle::ExpireObject</code>, <code>Lifecycle::ExpireNoncurrentVersion</code>, <code>Lifecycle::AbortMultipartUpload</code>)</li>
-<li><strong>Console: lifecycle rules editor</strong> — manage lifecycle rules in bucket settings: add/remove rules with prefix filter, expiration days, noncurrent version days, and abort upload days</li>
+<li><strong>Console: lifecycle rules editor</strong> — manage lifecycle rules in bucket settings: add/remove rules with prefix filter, expiration days, noncurrent version days, and abort upload days. Immediate persistence on add/remove/toggle</li>
 <li><strong>Admin setting: <code>lifecycle_evaluation_interval</code></strong> — configurable lifecycle evaluation interval (60-86400 seconds) via <code>GET/PUT/DELETE /admin/settings/lifecycle_evaluation_interval</code></li>
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>

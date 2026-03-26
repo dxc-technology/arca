@@ -105,7 +105,7 @@ graph LR
 | 18 | [Monitoring, Metrics, and Audit](#phase-18-monitoring-metrics-and-audit-p1) | P1 | — | `v0.9.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 19 | [Object Tagging](#phase-19-object-tagging-p2) | P2 | 13 | `v0.12.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 20 | [Lifecycle Rules](#phase-20-lifecycle-rules-p2) | P2 | 19, 18 | `v0.13.0` | <span style="color:#4caf50">&#x2714;</span> |
-| 21 | [Object Lock (WORM Compliance)](#phase-21-object-lock-worm-compliance-p2) | P2 | 17 | `v0.14.0` | <span style="color:#4caf50">&#x2714;</span> |
+| 21 | [Object Lock (WORM Compliance)](#phase-21-object-lock-worm-compliance-p2) | P2 | 17 | `v0.13.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 22 | [S3 API Completeness](#phase-22-s3-api-completeness-p2) | P2 | — | | |
 | 23 | [Performance and Hardening](#phase-23-performance-and-hardening-p2) | P2 | 13 | | |
 | 24 | [PostgreSQL Backend](#phase-24-postgresql-backend-p2) | P2 | — | | |

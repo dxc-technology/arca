@@ -7,13 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-03-26
+
 ### Added
 
 - **Phase 21: Object Lock (WORM Compliance)** — 6 new S3 operations: `PutObjectLockConfiguration`, `GetObjectLockConfiguration`, `PutObjectRetention`, `GetObjectRetention`, `PutObjectLegalHold`, `GetObjectLegalHold`. GOVERNANCE mode (bypassable with permission) and COMPLIANCE mode (absolute protection). Per-object retention with retain-until-date, legal hold (ON/OFF). Default retention applied from bucket config on PutObject. Enforcement blocks hard-deletion of locked versions. Delete markers always allowed. Auto-enables versioning, prevents suspension. Schema migration v12 adds `retention_mode`, `retain_until_date`, `legal_hold_status` columns. 7 new S3 policy actions including `s3:BypassGovernanceRetention`. Lifecycle worker respects Object Lock
-- **Console: Object Lock** — Enable Object Lock with retention mode/period in bucket settings, status indicator, versioning suspend disabled when locked
+- **Console: Object Lock** — Enable Object Lock with retention mode/period in bucket settings, lock badge in bucket list and breadcrumbs, versioning suspend disabled when locked
 - **Phase 20: Lifecycle Rules** — S3-compatible lifecycle management with 3 new operations: `PutBucketLifecycleConfiguration`, `GetBucketLifecycleConfiguration`, `DeleteBucketLifecycleConfiguration`. Rules support object expiration after N days, noncurrent version expiration, and abort of incomplete multipart uploads. Filter by prefix, tag, or combined (And filter). Rules stored as JSON in `bucket_config` table (no schema migration required)
 - **Lifecycle background worker** — periodic evaluation of lifecycle rules across all buckets. Configurable interval via `lifecycle_evaluation_interval` admin setting (default: 1 hour). Batch processing (100 objects per rule per cycle). Audit logging for all lifecycle actions (`Lifecycle::ExpireObject`, `Lifecycle::ExpireNoncurrentVersion`, `Lifecycle::AbortMultipartUpload`)
-- **Console: lifecycle rules editor** — manage lifecycle rules in bucket settings: add/remove rules with prefix filter, expiration days, noncurrent version days, and abort upload days
+- **Console: lifecycle rules editor** — manage lifecycle rules in bucket settings: add/remove rules with prefix filter, expiration days, noncurrent version days, and abort upload days. Immediate persistence on add/remove/toggle
 - **Admin setting: `lifecycle_evaluation_interval`** — configurable lifecycle evaluation interval (60-86400 seconds) via `GET/PUT/DELETE /admin/settings/lifecycle_evaluation_interval`
 
 ### Fixed
@@ -274,6 +276,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Scratch-based production Docker image (8.6 MB)
 
 [Unreleased]: https://github.com/dxc-technology/arca/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/dxc-technology/arca/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/dxc-technology/arca/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/dxc-technology/arca/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/dxc-technology/arca/compare/v0.9.1...v0.10.0
