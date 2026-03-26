@@ -143,6 +143,14 @@ pub fn classify_operation(method: &str, path: &str, query: Option<&str>) -> &'st
             _ => "Unknown",
         };
     }
+    if query.contains("lifecycle") {
+        return match method {
+            "GET" => "GetBucketLifecycleConfiguration",
+            "PUT" => "PutBucketLifecycleConfiguration",
+            "DELETE" => "DeleteBucketLifecycleConfiguration",
+            _ => "Unknown",
+        };
+    }
     if query.contains("delete") {
         return "DeleteObjects";
     }
@@ -367,6 +375,9 @@ mod tests {
         assert_eq!(classify_operation("PUT", "/my-bucket", Some("encryption")), "PutBucketEncryption");
         assert_eq!(classify_operation("DELETE", "/my-bucket", Some("encryption")), "DeleteBucketEncryption");
         assert_eq!(classify_operation("GET", "/my-bucket", Some("uploads")), "ListMultipartUploads");
+        assert_eq!(classify_operation("GET", "/my-bucket", Some("lifecycle")), "GetBucketLifecycleConfiguration");
+        assert_eq!(classify_operation("PUT", "/my-bucket", Some("lifecycle")), "PutBucketLifecycleConfiguration");
+        assert_eq!(classify_operation("DELETE", "/my-bucket", Some("lifecycle")), "DeleteBucketLifecycleConfiguration");
     }
 
     #[test]

@@ -159,11 +159,12 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 
 | Suite | Tests | Details |
 |-------|------:|---------|
-| Unit tests (Rust) | 411 | arca-auth: 37, arca-core: 106, arca-proto: 31, arca-server: 69, arca-storage: 168 |
+| Unit tests (Rust) | 434 | arca-auth: 37, arca-core: 129, arca-proto: 31, arca-server: 69, arca-storage: 168 |
 | Integration — boto3 | 146 | buckets, objects, list, multipart, copy, folders, auth, admin, credentials, conditional ops |
 | Integration — RBAC | 41 | user/team/grant CRUD, attachments, effective grants, E2E access control |
 | Integration — Versioning | 21 | versioning config, PUT/GET/HEAD/DELETE with versionId, delete markers, batch delete with VersionId, ListVersions, copy |
 | Integration — Monitoring | 27 | Prometheus metrics, audit log, metrics history, instance settings, region (TD-004) |
+| Integration — Lifecycle | 17 | Put/Get/Delete lifecycle config, expiration rules, noncurrent version, abort upload, tag/and filters |
 | Integration — Presigned URLs | 17 | presigned GET/PUT/HEAD/DELETE, security, admin presign, special chars, endpoint override |
 | Integration — SSE-C | 17 | put/get roundtrip, error handling, head, copy, range, delete, validation, multipart rejection |
 | Integration — Encryption | 16 | encrypted put/get, ETag, range reads, multipart, copy, bucket config |
@@ -171,9 +172,9 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — KMS | 10 | Vault/OpenBAO key fetch, encrypted put/get, headers, ETag, multipart, copy, range, admin info |
 | Integration — TLS | 7 | HTTPS health/info/put/get/multipart, minio client, wrong CA rejection |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
-| **Arca tests** | **820** | **All tests written for this project** |
+| **Arca tests** | **860** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 829 | 338 pass, 400 fail, 91 skip — 0 unexpected failures |
-| **Total** | **1,649** | |
+| **Total** | **1,689** | |
 
 ## License
 

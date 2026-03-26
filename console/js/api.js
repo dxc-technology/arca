@@ -348,6 +348,22 @@ export function apiClient() {
       });
     },
 
+    async s3GetBucketLifecycle(bucket) {
+      return await this.request('GET', '/' + encodeURIComponent(bucket), { queryParams: { lifecycle: '' } });
+    },
+
+    async s3PutBucketLifecycle(bucket, xml) {
+      return await this.request('PUT', '/' + encodeURIComponent(bucket), {
+        body: xml,
+        contentType: 'application/xml',
+        queryParams: { lifecycle: '' },
+      });
+    },
+
+    async s3DeleteBucketLifecycle(bucket) {
+      return await this.request('DELETE', '/' + encodeURIComponent(bucket), { queryParams: { lifecycle: '' } });
+    },
+
     async s3GetObjectTagging(bucket, key) {
       const path = '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key);
       return await this.request('GET', path, { queryParams: { tagging: '' } });

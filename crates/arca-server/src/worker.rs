@@ -1,13 +1,16 @@
 //! Background workers for periodic tasks.
 //!
 //! Provides a simple `BackgroundWorker` abstraction for spawning periodic
-//! tasks. Designed for reuse by future phases (e.g., Phase 19 lifecycle rules).
+//! tasks, used by the metrics snapshot, retention purge, and lifecycle
+//! evaluation workers.
 
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
-use arca_core::store::audit::AuditStore;
+use arca_core::store::audit::{AuditEntry, AuditStore};
+use arca_core::store::blob::BlobStore;
+use arca_core::store::metadata::MetadataStore;
 use arca_core::store::metrics::MetricsStore;
 use arca_core::store::server_config::ServerConfigStore;
 use arca_proto::AppState;
@@ -195,6 +198,367 @@ async fn resolve_retention(
         }
     }
     default
+}
+
+/// Spawn the lifecycle evaluation worker.
+///
+/// Periodically evaluates lifecycle rules on all buckets: expires objects,
+/// deletes noncurrent versions, and aborts stale multipart uploads.
+pub fn spawn_lifecycle_worker(
+    state: &AppState,
+    config_interval_seconds: Option<u64>,
+) -> BackgroundWorker {
+    let metadata = state.metadata.clone();
+    let blob = state.blob.clone();
+    let audit_store: Option<Arc<dyn AuditStore>> = state.audit_store.clone();
+
+    // Resolve interval: TOML config > DB setting > 3600s (1 hour) default.
+    // The interval is fixed at spawn time; changing the DB setting requires
+    // a server restart to take effect.
+    let interval_secs = config_interval_seconds.unwrap_or(3600);
+    let interval = Duration::from_secs(interval_secs);
+
+    BackgroundWorker::spawn_periodic(
+        "lifecycle-evaluator",
+        interval,
+        move || {
+            let metadata = metadata.clone();
+            let blob = blob.clone();
+            let audit_store = audit_store.clone();
+            async move {
+                evaluate_lifecycle_rules(
+                    metadata.as_ref(),
+                    blob.as_ref(),
+                    audit_store.as_deref(),
+                )
+                .await;
+            }
+        },
+    )
+}
+
+/// Maximum objects processed per rule per evaluation cycle.
+const LIFECYCLE_BATCH_SIZE: u32 = 100;
+
+/// Evaluate lifecycle rules for all buckets.
+async fn evaluate_lifecycle_rules(
+    metadata: &dyn MetadataStore,
+    blob: &dyn BlobStore,
+    audit_store: Option<&dyn AuditStore>,
+) {
+    let buckets = match metadata.list_buckets().await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!(error = %e, "lifecycle: failed to list buckets");
+            return;
+        }
+    };
+
+    for bucket_info in &buckets {
+        let bucket = &bucket_info.name;
+
+        // Read lifecycle rules for this bucket
+        let config_json = match metadata.get_bucket_config(bucket, "lifecycle_rules").await {
+            Ok(Some(json)) => json,
+            Ok(None) => continue, // No lifecycle rules
+            Err(e) => {
+                tracing::warn!(error = %e, bucket = %bucket, "lifecycle: failed to read config");
+                continue;
+            }
+        };
+
+        let config: arca_core::s3::lifecycle::LifecycleConfiguration =
+            match serde_json::from_str(&config_json) {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::error!(error = %e, bucket = %bucket, "lifecycle: corrupted config JSON");
+                    continue;
+                }
+            };
+
+        // Determine bucket versioning state once per bucket
+        let is_versioned = matches!(
+            metadata.get_bucket_config(bucket, "versioning").await,
+            Ok(Some(ref v)) if v == "Enabled" || v == "Suspended"
+        );
+
+        let now = chrono::Utc::now();
+
+        for rule in &config.rules {
+            if rule.status != arca_core::s3::lifecycle::RuleStatus::Enabled {
+                continue;
+            }
+
+            let prefix = rule.filter.prefix();
+            let tags: Vec<(String, String)> = rule
+                .filter
+                .tags()
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect();
+
+            // Expiration: delete current objects older than N days
+            if let Some(ref exp) = rule.expiration {
+                let cutoff = now - chrono::Duration::days(exp.days as i64);
+                match metadata
+                    .list_expired_objects(bucket, prefix, &tags, cutoff, None, LIFECYCLE_BATCH_SIZE)
+                    .await
+                {
+                    Ok(objects) => {
+                        for obj in &objects {
+                            expire_object(metadata, blob, audit_store, bucket, obj, is_versioned)
+                                .await;
+                        }
+                        if !objects.is_empty() {
+                            tracing::info!(
+                                bucket = %bucket,
+                                rule = %rule.id,
+                                count = objects.len(),
+                                "lifecycle: expired objects"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            bucket = %bucket,
+                            rule = %rule.id,
+                            "lifecycle: failed to list expired objects"
+                        );
+                    }
+                }
+            }
+
+            // NoncurrentVersionExpiration: hard-delete old versions
+            if let Some(ref nve) = rule.noncurrent_version_expiration {
+                let cutoff = now - chrono::Duration::days(nve.noncurrent_days as i64);
+                match metadata
+                    .list_noncurrent_expired_versions(
+                        bucket,
+                        prefix,
+                        cutoff,
+                        None,
+                        LIFECYCLE_BATCH_SIZE,
+                    )
+                    .await
+                {
+                    Ok(versions) => {
+                        for obj in &versions {
+                            expire_noncurrent_version(metadata, blob, audit_store, bucket, obj)
+                                .await;
+                        }
+                        if !versions.is_empty() {
+                            tracing::info!(
+                                bucket = %bucket,
+                                rule = %rule.id,
+                                count = versions.len(),
+                                "lifecycle: expired noncurrent versions"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            bucket = %bucket,
+                            rule = %rule.id,
+                            "lifecycle: failed to list noncurrent versions"
+                        );
+                    }
+                }
+            }
+
+            // AbortIncompleteMultipartUpload
+            if let Some(ref abort) = rule.abort_incomplete_multipart_upload {
+                let cutoff = now - chrono::Duration::days(abort.days_after_initiation as i64);
+                match metadata
+                    .list_stale_multipart_uploads(bucket, cutoff, LIFECYCLE_BATCH_SIZE)
+                    .await
+                {
+                    Ok(uploads) => {
+                        for upload in &uploads {
+                            abort_stale_upload(metadata, blob, audit_store, bucket, upload).await;
+                        }
+                        if !uploads.is_empty() {
+                            tracing::info!(
+                                bucket = %bucket,
+                                rule = %rule.id,
+                                count = uploads.len(),
+                                "lifecycle: aborted stale multipart uploads"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            bucket = %bucket,
+                            rule = %rule.id,
+                            "lifecycle: failed to list stale uploads"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Expire a single current object.
+async fn expire_object(
+    metadata: &dyn MetadataStore,
+    blob: &dyn BlobStore,
+    audit_store: Option<&dyn AuditStore>,
+    bucket: &str,
+    obj: &arca_core::types::ObjectRecord,
+    is_versioned: bool,
+) {
+    // For versioned buckets, delete_object creates a delete marker (no blob cleanup).
+    // For unversioned, it hard-deletes and returns the record for blob cleanup.
+    match metadata.delete_object(bucket, &obj.key).await {
+        Ok(Some(deleted)) => {
+            if !is_versioned && !deleted.is_delete_marker && !deleted.blob_id.0.is_empty() {
+                if let Err(e) = blob.delete(&deleted.blob_id).await {
+                    tracing::warn!(
+                        error = %e,
+                        blob_id = %deleted.blob_id,
+                        "lifecycle: failed to delete blob"
+                    );
+                }
+            }
+        }
+        Ok(None) => {} // Already gone
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                bucket = %bucket,
+                key = %obj.key,
+                "lifecycle: failed to delete object"
+            );
+            return;
+        }
+    }
+
+    write_lifecycle_audit(audit_store, "Lifecycle::ExpireObject", bucket, &obj.key, obj.version_id.as_deref()).await;
+}
+
+/// Hard-delete a noncurrent object version.
+async fn expire_noncurrent_version(
+    metadata: &dyn MetadataStore,
+    blob: &dyn BlobStore,
+    audit_store: Option<&dyn AuditStore>,
+    bucket: &str,
+    obj: &arca_core::types::ObjectRecord,
+) {
+    let version_id = match &obj.version_id {
+        Some(v) => v.as_str(),
+        None => return, // Noncurrent versions always have a version_id
+    };
+
+    match metadata.delete_object_version(bucket, &obj.key, version_id).await {
+        Ok(Some(deleted)) => {
+            if !deleted.blob_id.0.is_empty() {
+                if let Err(e) = blob.delete(&deleted.blob_id).await {
+                    tracing::warn!(
+                        error = %e,
+                        blob_id = %deleted.blob_id,
+                        "lifecycle: failed to delete noncurrent blob"
+                    );
+                }
+            }
+        }
+        Ok(None) => {}
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                bucket = %bucket,
+                key = %obj.key,
+                version_id = %version_id,
+                "lifecycle: failed to delete noncurrent version"
+            );
+            return;
+        }
+    }
+
+    write_lifecycle_audit(
+        audit_store,
+        "Lifecycle::ExpireNoncurrentVersion",
+        bucket,
+        &obj.key,
+        Some(version_id),
+    )
+    .await;
+}
+
+/// Abort a stale multipart upload and clean up part blobs.
+async fn abort_stale_upload(
+    metadata: &dyn MetadataStore,
+    blob: &dyn BlobStore,
+    audit_store: Option<&dyn AuditStore>,
+    bucket: &str,
+    upload: &arca_core::types::MultipartUploadRecord,
+) {
+    match metadata.delete_multipart_upload(&upload.upload_id).await {
+        Ok(parts) => {
+            for part in &parts {
+                if let Err(e) = blob.delete(&part.blob_id).await {
+                    tracing::warn!(
+                        error = %e,
+                        blob_id = %part.blob_id,
+                        "lifecycle: failed to delete part blob"
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                upload_id = %upload.upload_id,
+                "lifecycle: failed to abort multipart upload"
+            );
+            return;
+        }
+    }
+
+    write_lifecycle_audit(
+        audit_store,
+        "Lifecycle::AbortMultipartUpload",
+        bucket,
+        &upload.key,
+        None,
+    )
+    .await;
+}
+
+/// Write an audit entry for a lifecycle action.
+async fn write_lifecycle_audit(
+    audit_store: Option<&dyn AuditStore>,
+    operation: &str,
+    bucket: &str,
+    key: &str,
+    version_id: Option<&str>,
+) {
+    if let Some(store) = audit_store {
+        let entry = AuditEntry {
+            id: 0,
+            timestamp: chrono::Utc::now(),
+            request_id: uuid::Uuid::new_v4().to_string(),
+            operation: operation.to_string(),
+            bucket: Some(bucket.to_string()),
+            key: Some(key.to_string()),
+            version_id: version_id.map(|v| v.to_string()),
+            user_id: Some("system".to_string()),
+            access_key_id: None,
+            source_ip: None,
+            http_method: String::new(),
+            http_status: 204,
+            error_code: None,
+            bytes_sent: 0,
+            bytes_received: 0,
+            duration_ms: 0,
+            user_agent: Some("arca-lifecycle-worker".to_string()),
+        };
+        if let Err(e) = store.insert_audit_entry(&entry).await {
+            tracing::warn!(error = %e, "lifecycle: failed to write audit entry");
+        }
+    }
 }
 
 /// Read disk stats from the first data directory using statvfs.

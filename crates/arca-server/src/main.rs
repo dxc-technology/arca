@@ -172,6 +172,7 @@ async fn main() -> Result<()> {
                 .unwrap_or(60);
             let _metrics_worker = worker::spawn_metrics_worker(&state, metrics_interval);
             let _retention_worker = worker::spawn_retention_worker(&state);
+            let _lifecycle_worker = worker::spawn_lifecycle_worker(&state, None);
 
             let addr = format!("{}:{}", config.server.bind, config.server.port);
             tracing::info!("Starting Arca on {addr}");

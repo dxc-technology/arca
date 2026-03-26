@@ -34,7 +34,7 @@ continuing from the MVP phases (0–11).
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">17</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">18</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">19</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">20</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">20</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">21</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">22</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">23</div>
@@ -104,7 +104,7 @@ graph LR
 | 17 | [Object Versioning](#phase-17-object-versioning-p1) | P1 | 16 | `v0.8.1` | <span style="color:#4caf50">&#x2714;</span> |
 | 18 | [Monitoring, Metrics, and Audit](#phase-18-monitoring-metrics-and-audit-p1) | P1 | — | `v0.9.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 19 | [Object Tagging](#phase-19-object-tagging-p2) | P2 | 13 | `v0.12.0` | <span style="color:#4caf50">&#x2714;</span> |
-| 20 | [Lifecycle Rules](#phase-20-lifecycle-rules-p2) | P2 | 19, 18 | | |
+| 20 | [Lifecycle Rules](#phase-20-lifecycle-rules-p2) | P2 | 19, 18 | `v0.13.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 21 | [Object Lock (WORM Compliance)](#phase-21-object-lock-worm-compliance-p2) | P2 | 17 | | |
 | 22 | [S3 API Completeness](#phase-22-s3-api-completeness-p2) | P2 | — | | |
 | 23 | [Performance and Hardening](#phase-23-performance-and-hardening-p2) | P2 | 13 | | |
@@ -281,12 +281,13 @@ S3-compatible object and bucket tagging with key-value metadata.
 
 Automated lifecycle management for storage hygiene with configurable expiration and cleanup rules.
 
-- [ ] Lifecycle rules: `PutBucketLifecycleConfiguration` / `GetBucketLifecycleConfiguration` / `DeleteBucketLifecycleConfiguration`. XML format (S3 compatible). Rules stored in `bucket_config`
-- [ ] Expiration: delete objects after N days, tag-based filtering
-- [ ] Abort incomplete multipart uploads after N days
-- [ ] Configurable evaluation interval via `lifecycle_evaluation_interval` setting (default: hourly)
-- [ ] Background lifecycle worker using existing `BackgroundWorker::spawn_periodic` framework
-- [ ] (Console) Lifecycle rules editor in bucket settings
+- [x] Lifecycle rules: `PutBucketLifecycleConfiguration` / `GetBucketLifecycleConfiguration` / `DeleteBucketLifecycleConfiguration`. XML format (S3 compatible). Rules stored as JSON in `bucket_config`
+- [x] Expiration: delete objects after N days, with prefix and tag-based filtering (single tag, And filter with prefix + tags)
+- [x] NoncurrentVersionExpiration: hard-delete old versions after N days
+- [x] Abort incomplete multipart uploads after N days
+- [x] Configurable evaluation interval via `lifecycle_evaluation_interval` admin setting (default: 3600s / hourly)
+- [x] Background lifecycle worker using existing `BackgroundWorker::spawn_periodic` framework. Batch processing (100 objects/rule/cycle), audit logging for all lifecycle actions
+- [x] (Console) Lifecycle rules editor in bucket settings: add/remove/save rules with prefix filter, expiration days, noncurrent days, abort upload days
 
 **Depends on**: Phase 19 (tagging for tag-based filtering), Phase 18 (background worker framework)
 

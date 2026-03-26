@@ -21,11 +21,15 @@ const DEFAULT_AUDIT_RETENTION_DAYS: u32 = 90;
 /// Default metrics retention in days.
 const DEFAULT_METRICS_RETENTION_DAYS: u32 = 30;
 
+/// Default lifecycle evaluation interval in seconds (1 hour).
+const DEFAULT_LIFECYCLE_EVALUATION_INTERVAL: u64 = 3600;
+
 /// Known setting keys.
 const KNOWN_SETTINGS: &[&str] = &[
     "region",
     "audit_retention_days",
     "metrics_retention_days",
+    "lifecycle_evaluation_interval",
 ];
 
 /// A single setting with its effective value and source.
@@ -42,6 +46,7 @@ struct SettingsResponse {
     region: SettingValue,
     audit_retention_days: SettingValue,
     metrics_retention_days: SettingValue,
+    lifecycle_evaluation_interval: SettingValue,
 }
 
 /// Request body for PUT /admin/settings/{key}.
@@ -119,6 +124,21 @@ async fn resolve_setting(
                 })
             }
         }
+        "lifecycle_evaluation_interval" => {
+            if let Ok(Some(val)) = state.server_config.get_server_config("lifecycle_evaluation_interval").await {
+                Ok(SettingValue {
+                    value: val,
+                    source: "database",
+                    readonly: false,
+                })
+            } else {
+                Ok(SettingValue {
+                    value: DEFAULT_LIFECYCLE_EVALUATION_INTERVAL.to_string(),
+                    source: "default",
+                    readonly: false,
+                })
+            }
+        }
         _ => Err(AdminError::not_found(format!("Unknown setting: {key}"))),
     }
 }
@@ -130,11 +150,13 @@ pub async fn list_settings(
     let region = resolve_setting(&state, "region").await?;
     let audit_retention_days = resolve_setting(&state, "audit_retention_days").await?;
     let metrics_retention_days = resolve_setting(&state, "metrics_retention_days").await?;
+    let lifecycle_evaluation_interval = resolve_setting(&state, "lifecycle_evaluation_interval").await?;
 
     Ok(Json(SettingsResponse {
         region,
         audit_retention_days,
         metrics_retention_days,
+        lifecycle_evaluation_interval,
     }))
 }
 
@@ -225,6 +247,22 @@ fn validate_setting_value(key: &str, value: &str) -> Result<(), AdminError> {
                 return Err(AdminError::bad_request(format!(
                     "{key} cannot exceed 3650 (10 years)"
                 )));
+            }
+            Ok(())
+        }
+        "lifecycle_evaluation_interval" => {
+            let secs: u64 = value.parse().map_err(|_| {
+                AdminError::bad_request("lifecycle_evaluation_interval must be a positive integer (seconds)")
+            })?;
+            if secs < 60 {
+                return Err(AdminError::bad_request(
+                    "lifecycle_evaluation_interval cannot be less than 60 seconds",
+                ));
+            }
+            if secs > 86400 {
+                return Err(AdminError::bad_request(
+                    "lifecycle_evaluation_interval cannot exceed 86400 seconds (24 hours)",
+                ));
             }
             Ok(())
         }

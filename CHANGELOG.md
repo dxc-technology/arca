@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Phase 20: Lifecycle Rules** — S3-compatible lifecycle management with 3 new operations: `PutBucketLifecycleConfiguration`, `GetBucketLifecycleConfiguration`, `DeleteBucketLifecycleConfiguration`. Rules support object expiration after N days, noncurrent version expiration, and abort of incomplete multipart uploads. Filter by prefix, tag, or combined (And filter). Rules stored as JSON in `bucket_config` table (no schema migration required)
+- **Lifecycle background worker** — periodic evaluation of lifecycle rules across all buckets. Configurable interval via `lifecycle_evaluation_interval` admin setting (default: 1 hour). Batch processing (100 objects per rule per cycle). Audit logging for all lifecycle actions (`Lifecycle::ExpireObject`, `Lifecycle::ExpireNoncurrentVersion`, `Lifecycle::AbortMultipartUpload`)
+- **Console: lifecycle rules editor** — manage lifecycle rules in bucket settings: add/remove rules with prefix filter, expiration days, noncurrent version days, and abort upload days
+- **Admin setting: `lifecycle_evaluation_interval`** — configurable lifecycle evaluation interval (60-86400 seconds) via `GET/PUT/DELETE /admin/settings/lifecycle_evaluation_interval`
+
 ### Fixed
 
 - **Tagging: tag validation on PutObject** — invalid `x-amz-tagging` headers (excess tags, key/value too long) now rejected with 400 before writing the blob, instead of being silently ignored

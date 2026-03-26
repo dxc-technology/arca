@@ -44,6 +44,7 @@ pub enum S3ErrorCode {
     NoSuchVersion,
     MalformedXML,
     PreconditionFailed,
+    NoSuchLifecycleConfiguration,
     NoSuchTagSet,
     NoSuchUpload,
     NotImplemented,
@@ -76,6 +77,7 @@ impl S3ErrorCode {
             S3ErrorCode::NoSuchBucket => 404,
             S3ErrorCode::NoSuchKey => 404,
             S3ErrorCode::NoSuchVersion => 404,
+            S3ErrorCode::NoSuchLifecycleConfiguration => 404,
             S3ErrorCode::NoSuchTagSet => 404,
             S3ErrorCode::NoSuchUpload => 404,
             S3ErrorCode::NotImplemented => 501,
@@ -109,6 +111,7 @@ impl S3ErrorCode {
             S3ErrorCode::NoSuchBucket => "NoSuchBucket",
             S3ErrorCode::NoSuchKey => "NoSuchKey",
             S3ErrorCode::NoSuchVersion => "NoSuchVersion",
+            S3ErrorCode::NoSuchLifecycleConfiguration => "NoSuchLifecycleConfiguration",
             S3ErrorCode::NoSuchTagSet => "NoSuchTagSet",
             S3ErrorCode::NoSuchUpload => "NoSuchUpload",
             S3ErrorCode::NotImplemented => "NotImplemented",
@@ -168,6 +171,9 @@ impl S3ErrorCode {
             S3ErrorCode::NoSuchBucket => "The specified bucket does not exist.",
             S3ErrorCode::NoSuchKey => "The specified key does not exist.",
             S3ErrorCode::NoSuchVersion => "The specified version does not exist.",
+            S3ErrorCode::NoSuchLifecycleConfiguration => {
+                "The lifecycle configuration does not exist."
+            }
             S3ErrorCode::NoSuchTagSet => "The TagSet does not exist.",
             S3ErrorCode::NoSuchUpload => {
                 "The specified multipart upload does not exist."

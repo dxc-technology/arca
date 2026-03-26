@@ -210,6 +210,40 @@ pub trait MetadataStore: Send + Sync {
 
     // -- Multipart upload operations --
 
+    // -- Lifecycle query operations --
+
+    /// Lists objects whose last_modified is before cutoff, filtered by prefix
+    /// and optional tags. For lifecycle expiration evaluation.
+    /// Only returns `is_latest = 1` and `is_delete_marker = 0` objects.
+    async fn list_expired_objects(
+        &self,
+        bucket: &str,
+        prefix: Option<&str>,
+        tags: &[(String, String)],
+        cutoff: chrono::DateTime<chrono::Utc>,
+        start_after: Option<&str>,
+        max_keys: u32,
+    ) -> Result<Vec<ObjectRecord>, crate::error::ArcaError>;
+
+    /// Lists noncurrent (is_latest=0, is_delete_marker=0) object versions
+    /// whose last_modified is before cutoff. For NoncurrentVersionExpiration.
+    async fn list_noncurrent_expired_versions(
+        &self,
+        bucket: &str,
+        prefix: Option<&str>,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        start_after: Option<&str>,
+        max_keys: u32,
+    ) -> Result<Vec<ObjectRecord>, crate::error::ArcaError>;
+
+    /// Lists multipart uploads initiated before the cutoff date.
+    async fn list_stale_multipart_uploads(
+        &self,
+        bucket: &str,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        max_uploads: u32,
+    ) -> Result<Vec<MultipartUploadRecord>, crate::error::ArcaError>;
+
     /// Lists in-progress multipart uploads for a bucket.
     ///
     /// - `prefix`: only return uploads whose key starts with this prefix.

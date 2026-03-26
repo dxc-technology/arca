@@ -84,6 +84,13 @@ export function bucketSettingsView() {
     deleteBucketConfirmName: '',
     deleteError: '',
     deleting: false,
+    // Lifecycle state
+    lifecycleRules: [],
+    lifecycleLoading: false,
+    lifecycleError: '',
+    lifecycleSaving: false,
+    showAddRule: false,
+    newRule: null,
 
     async load() {
       const hash = window.location.hash || '';
@@ -125,7 +132,93 @@ export function bucketSettingsView() {
         }
       } catch {}
 
+      // Fetch lifecycle rules
+      await this.loadLifecycleRules();
+
       this.loading = false;
+    },
+
+    async loadLifecycleRules() {
+      this.lifecycleLoading = true;
+      this.lifecycleError = '';
+      try {
+        const resp = await api.s3GetBucketLifecycle(this.bucketName);
+        if (resp.ok) {
+          const xml = await resp.text();
+          this.lifecycleRules = parseLifecycleXml(xml);
+        } else if (resp.status === 404) {
+          this.lifecycleRules = [];
+        } else {
+          this.lifecycleRules = [];
+        }
+      } catch {
+        this.lifecycleRules = [];
+      }
+      this.lifecycleLoading = false;
+    },
+
+    initNewRule() {
+      this.newRule = {
+        id: '',
+        status: 'Enabled',
+        prefix: '',
+        expirationDays: '',
+        noncurrentDays: '',
+        abortUploadDays: '',
+      };
+      this.showAddRule = true;
+    },
+
+    cancelAddRule() {
+      this.showAddRule = false;
+      this.newRule = null;
+    },
+
+    addRule() {
+      if (!this.newRule) return;
+      const rule = { ...this.newRule };
+      if (!rule.id) rule.id = 'rule-' + Date.now();
+      this.lifecycleRules.push(rule);
+      this.showAddRule = false;
+      this.newRule = null;
+    },
+
+    removeRule(index) {
+      this.lifecycleRules.splice(index, 1);
+    },
+
+    async saveLifecycleRules() {
+      if (this.lifecycleRules.length === 0) {
+        await this.deleteAllLifecycleRules();
+        return;
+      }
+      this.lifecycleSaving = true;
+      this.lifecycleError = '';
+      try {
+        const xml = buildLifecycleXml(this.lifecycleRules);
+        const resp = await api.s3PutBucketLifecycle(this.bucketName, xml);
+        if (!resp.ok) {
+          const text = await resp.text();
+          throw new Error(text.match(/<Message>(.*?)<\/Message>/)?.[1] || `Error ${resp.status}`);
+        }
+      } catch (e) {
+        this.lifecycleError = e.message;
+      }
+      this.lifecycleSaving = false;
+    },
+
+    async deleteAllLifecycleRules() {
+      this.lifecycleSaving = true;
+      this.lifecycleError = '';
+      try {
+        const resp = await api.s3DeleteBucketLifecycle(this.bucketName);
+        if (resp.ok || resp.status === 204) {
+          this.lifecycleRules = [];
+        }
+      } catch (e) {
+        this.lifecycleError = e.message;
+      }
+      this.lifecycleSaving = false;
     },
 
     async toggleVersioning() {
@@ -191,4 +284,62 @@ export function bucketSettingsView() {
       this.deleting = false;
     },
   };
+}
+
+// ==================== LIFECYCLE HELPERS ====================
+
+/** Parse lifecycle configuration XML into an array of rule objects. */
+function parseLifecycleXml(xml) {
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  const rules = [];
+  for (const ruleEl of doc.querySelectorAll('Rule')) {
+    const id = ruleEl.querySelector('ID')?.textContent || '';
+    const status = ruleEl.querySelector('Status')?.textContent || 'Enabled';
+
+    // Parse filter prefix
+    let prefix = '';
+    const filterEl = ruleEl.querySelector('Filter');
+    if (filterEl) {
+      const andEl = filterEl.querySelector('And');
+      if (andEl) {
+        prefix = andEl.querySelector('Prefix')?.textContent || '';
+      } else {
+        prefix = filterEl.querySelector('Prefix')?.textContent || '';
+      }
+    }
+
+    const expirationDays = ruleEl.querySelector('Expiration > Days')?.textContent || '';
+    const noncurrentDays = ruleEl.querySelector('NoncurrentVersionExpiration > NoncurrentDays')?.textContent || '';
+    const abortUploadDays = ruleEl.querySelector('AbortIncompleteMultipartUpload > DaysAfterInitiation')?.textContent || '';
+
+    rules.push({ id, status, prefix, expirationDays, noncurrentDays, abortUploadDays });
+  }
+  return rules;
+}
+
+/** Build lifecycle configuration XML from an array of rule objects. */
+function buildLifecycleXml(rules) {
+  let xml = '<LifecycleConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">';
+  for (const rule of rules) {
+    xml += '<Rule>';
+    xml += `<ID>${escapeXml(rule.id)}</ID>`;
+    xml += `<Status>${rule.status}</Status>`;
+    xml += `<Filter><Prefix>${escapeXml(rule.prefix || '')}</Prefix></Filter>`;
+    if (rule.expirationDays) {
+      xml += `<Expiration><Days>${parseInt(rule.expirationDays, 10)}</Days></Expiration>`;
+    }
+    if (rule.noncurrentDays) {
+      xml += `<NoncurrentVersionExpiration><NoncurrentDays>${parseInt(rule.noncurrentDays, 10)}</NoncurrentDays></NoncurrentVersionExpiration>`;
+    }
+    if (rule.abortUploadDays) {
+      xml += `<AbortIncompleteMultipartUpload><DaysAfterInitiation>${parseInt(rule.abortUploadDays, 10)}</DaysAfterInitiation></AbortIncompleteMultipartUpload>`;
+    }
+    xml += '</Rule>';
+  }
+  xml += '</LifecycleConfiguration>';
+  return xml;
+}
+
+function escapeXml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

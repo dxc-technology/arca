@@ -1090,6 +1090,197 @@ impl MetadataStore for SqliteStore {
             .await
             .map_err(|e: TrError| ArcaError::Internal(format!("list_multipart_uploads: {e}")))
     }
+
+    async fn list_expired_objects(
+        &self,
+        bucket: &str,
+        prefix: Option<&str>,
+        tags: &[(String, String)],
+        cutoff: chrono::DateTime<chrono::Utc>,
+        start_after: Option<&str>,
+        max_keys: u32,
+    ) -> Result<Vec<ObjectRecord>, ArcaError> {
+        let bucket = bucket.to_string();
+        let prefix = prefix.map(|s| s.to_string());
+        let tags: Vec<(String, String)> = tags.to_vec();
+        let cutoff_str = cutoff.to_rfc3339();
+        let start_after = start_after.map(|s| s.to_string());
+
+        self.conn
+            .call(move |conn| {
+                let mut sql = format!(
+                    "SELECT {OBJECT_COLUMNS} FROM objects \
+                     WHERE bucket = ?1 AND is_latest = 1 AND is_delete_marker = 0 AND last_modified < ?2"
+                );
+                let mut param_idx = 3u32;
+
+                let prefix_pattern = prefix.as_ref().map(|p| {
+                    let idx = param_idx;
+                    param_idx += 1;
+                    sql.push_str(&format!(" AND key LIKE ?{idx} ESCAPE '\\'"));
+                    format!("{}%", escape_like(p))
+                });
+
+                let start_after_idx = start_after.as_ref().map(|_| {
+                    let idx = param_idx;
+                    param_idx += 1;
+                    sql.push_str(&format!(" AND key > ?{idx}"));
+                    idx
+                });
+
+                // Tag filter: each tag requires an EXISTS subquery
+                let mut tag_indices = Vec::new();
+                for _ in &tags {
+                    let key_idx = param_idx;
+                    param_idx += 1;
+                    let val_idx = param_idx;
+                    param_idx += 1;
+                    sql.push_str(&format!(
+                        " AND EXISTS (SELECT 1 FROM object_tags \
+                         WHERE object_tags.bucket = objects.bucket \
+                         AND object_tags.key = objects.key \
+                         AND object_tags.version_id = COALESCE(objects.version_id, '') \
+                         AND object_tags.tag_key = ?{key_idx} \
+                         AND object_tags.tag_value = ?{val_idx})"
+                    ));
+                    tag_indices.push((key_idx, val_idx));
+                }
+
+                sql.push_str(&format!(" ORDER BY key LIMIT {max_keys}"));
+
+                let mut stmt = conn.prepare(&sql)?;
+
+                let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+                params_vec.push(Box::new(bucket));
+                params_vec.push(Box::new(cutoff_str));
+                if let Some(ref pattern) = prefix_pattern {
+                    params_vec.push(Box::new(pattern.clone()));
+                }
+                if let Some(_) = start_after_idx {
+                    params_vec.push(Box::new(start_after.unwrap()));
+                }
+                for (i, (key, value)) in tags.iter().enumerate() {
+                    let _ = tag_indices[i]; // indices match
+                    params_vec.push(Box::new(key.clone()));
+                    params_vec.push(Box::new(value.clone()));
+                }
+
+                let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+                    params_vec.iter().map(|p| p.as_ref()).collect();
+
+                let rows = stmt.query_map(params_refs.as_slice(), |row| {
+                    Ok(row_to_object_record(row))
+                })?;
+
+                let mut records = Vec::new();
+                for row in rows {
+                    records.push(row??);
+                }
+                Ok(records)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("list_expired_objects: {e}")))
+    }
+
+    async fn list_noncurrent_expired_versions(
+        &self,
+        bucket: &str,
+        prefix: Option<&str>,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        start_after: Option<&str>,
+        max_keys: u32,
+    ) -> Result<Vec<ObjectRecord>, ArcaError> {
+        let bucket = bucket.to_string();
+        let prefix = prefix.map(|s| s.to_string());
+        let cutoff_str = cutoff.to_rfc3339();
+        let start_after = start_after.map(|s| s.to_string());
+
+        self.conn
+            .call(move |conn| {
+                let mut sql = format!(
+                    "SELECT {OBJECT_COLUMNS} FROM objects \
+                     WHERE bucket = ?1 AND is_latest = 0 AND is_delete_marker = 0 AND last_modified < ?2"
+                );
+                let mut param_idx = 3u32;
+
+                let prefix_pattern = prefix.as_ref().map(|p| {
+                    let idx = param_idx;
+                    param_idx += 1;
+                    sql.push_str(&format!(" AND key LIKE ?{idx} ESCAPE '\\'"));
+                    format!("{}%", escape_like(p))
+                });
+
+                let start_after_idx = start_after.as_ref().map(|_| {
+                    let idx = param_idx;
+                    #[allow(unused_assignments)]
+                    { param_idx += 1; }
+                    sql.push_str(&format!(" AND key > ?{idx}"));
+                    idx
+                });
+
+                sql.push_str(&format!(" ORDER BY key, last_modified DESC LIMIT {max_keys}"));
+
+                let mut stmt = conn.prepare(&sql)?;
+
+                let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+                params_vec.push(Box::new(bucket));
+                params_vec.push(Box::new(cutoff_str));
+                if let Some(ref pattern) = prefix_pattern {
+                    params_vec.push(Box::new(pattern.clone()));
+                }
+                if let Some(_) = start_after_idx {
+                    params_vec.push(Box::new(start_after.unwrap()));
+                }
+
+                let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+                    params_vec.iter().map(|p| p.as_ref()).collect();
+
+                let rows = stmt.query_map(params_refs.as_slice(), |row| {
+                    Ok(row_to_object_record(row))
+                })?;
+
+                let mut records = Vec::new();
+                for row in rows {
+                    records.push(row??);
+                }
+                Ok(records)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("list_noncurrent_expired_versions: {e}")))
+    }
+
+    async fn list_stale_multipart_uploads(
+        &self,
+        bucket: &str,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        max_uploads: u32,
+    ) -> Result<Vec<MultipartUploadRecord>, ArcaError> {
+        let bucket = bucket.to_string();
+        let cutoff_str = cutoff.to_rfc3339();
+
+        self.conn
+            .call(move |conn| {
+                let sql = format!(
+                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata \
+                     FROM multipart_uploads \
+                     WHERE bucket = ?1 AND initiated_at < ?2 \
+                     ORDER BY key, upload_id \
+                     LIMIT {max_uploads}"
+                );
+                let mut stmt = conn.prepare(&sql)?;
+                let rows = stmt.query_map(params![bucket, cutoff_str], |row| {
+                    Ok(row_to_multipart_upload_record(row))
+                })?;
+
+                let mut records = Vec::new();
+                for row in rows {
+                    records.push(row??);
+                }
+                Ok(records)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("list_stale_multipart_uploads: {e}")))
+    }
 }
 
 /// Fetches the latest object version (the row with `is_latest=1`) for a given bucket/key.
