@@ -25,9 +25,10 @@ export function bucketsView() {
         this.buckets = await api.s3ListBuckets();
         // Load encryption and versioning status for each bucket in parallel
         await Promise.all(this.buckets.map(async (b) => {
-          const [enc, vResp] = await Promise.all([
+          const [enc, vResp, lockResp] = await Promise.all([
             api.s3GetBucketEncryption(b.name),
             api.s3GetBucketVersioning(b.name).catch(() => null),
+            api.s3GetObjectLockConfiguration(b.name).catch(() => null),
           ]);
           b.encrypted = !!(enc && enc.algorithm);
           if (vResp && vResp.ok) {
@@ -37,6 +38,7 @@ export function bucketsView() {
           } else {
             b.versioned = false;
           }
+          b.locked = !!(lockResp && lockResp.ok);
         }));
       } catch {}
       this.loading = false;
@@ -84,6 +86,12 @@ export function bucketSettingsView() {
     deleteBucketConfirmName: '',
     deleteError: '',
     deleting: false,
+    // Object Lock state
+    objectLockEnabled: false,
+    objectLockMode: null,
+    objectLockDays: null,
+    objectLockSaving: false,
+    objectLockError: '',
     // Lifecycle state
     lifecycleRules: [],
     lifecycleLoading: false,
@@ -134,10 +142,48 @@ export function bucketSettingsView() {
         }
       } catch {}
 
+      // Fetch Object Lock config
+      try {
+        const lockResp = await api.s3GetObjectLockConfiguration(this.bucketName);
+        if (lockResp.ok) {
+          this.objectLockEnabled = true;
+          const xml = await lockResp.text();
+          const modeMatch = xml.match(/<Mode>(.*?)<\/Mode>/);
+          const daysMatch = xml.match(/<Days>(.*?)<\/Days>/);
+          this.objectLockMode = modeMatch ? modeMatch[1] : null;
+          this.objectLockDays = daysMatch ? parseInt(daysMatch[1], 10) : null;
+        }
+      } catch {}
+
       // Fetch lifecycle rules
       await this.loadLifecycleRules();
 
       this.loading = false;
+    },
+
+    async enableObjectLock(mode, days) {
+      this.objectLockSaving = true;
+      this.objectLockError = '';
+      try {
+        let ruleXml = '';
+        if (mode && days) {
+          ruleXml = `<Rule><DefaultRetention><Mode>${mode}</Mode><Days>${days}</Days></DefaultRetention></Rule>`;
+        }
+        const xml = `<ObjectLockConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><ObjectLockEnabled>Enabled</ObjectLockEnabled>${ruleXml}</ObjectLockConfiguration>`;
+        const resp = await api.s3PutObjectLockConfiguration(this.bucketName, xml);
+        if (!resp.ok) {
+          const text = await resp.text();
+          throw new Error(text.match(/<Message>(.*?)<\/Message>/)?.[1] || `Error ${resp.status}`);
+        }
+        this.objectLockEnabled = true;
+        this.objectLockMode = mode || null;
+        this.objectLockDays = days || null;
+        // Object Lock auto-enables versioning
+        this.versioningStatus = 'Enabled';
+      } catch (e) {
+        this.objectLockError = e.message;
+      }
+      this.objectLockSaving = false;
     },
 
     async loadLifecycleRules() {

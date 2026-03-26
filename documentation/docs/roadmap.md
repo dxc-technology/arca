@@ -35,7 +35,7 @@ continuing from the MVP phases (0–11).
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">18</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">19</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">20</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">21</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">21</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">22</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">23</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">24</div>
@@ -105,7 +105,7 @@ graph LR
 | 18 | [Monitoring, Metrics, and Audit](#phase-18-monitoring-metrics-and-audit-p1) | P1 | — | `v0.9.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 19 | [Object Tagging](#phase-19-object-tagging-p2) | P2 | 13 | `v0.12.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 20 | [Lifecycle Rules](#phase-20-lifecycle-rules-p2) | P2 | 19, 18 | `v0.13.0` | <span style="color:#4caf50">&#x2714;</span> |
-| 21 | [Object Lock (WORM Compliance)](#phase-21-object-lock-worm-compliance-p2) | P2 | 17 | | |
+| 21 | [Object Lock (WORM Compliance)](#phase-21-object-lock-worm-compliance-p2) | P2 | 17 | `v0.14.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 22 | [S3 API Completeness](#phase-22-s3-api-completeness-p2) | P2 | — | | |
 | 23 | [Performance and Hardening](#phase-23-performance-and-hardening-p2) | P2 | 13 | | |
 | 24 | [PostgreSQL Backend](#phase-24-postgresql-backend-p2) | P2 | — | | |
@@ -297,11 +297,14 @@ Automated lifecycle management for storage hygiene with configurable expiration 
 
 Write-Once-Read-Many compliance for regulatory and data protection requirements.
 
-- [ ] Object Lock config: `PutObjectLockConfiguration` / `GetObjectLockConfiguration`. Per-bucket default retention mode (GOVERNANCE / COMPLIANCE) and period
-- [ ] Per-object retention: `PutObjectRetention` / `GetObjectRetention`. Mode + retain-until-date per version
-- [ ] Legal hold: `PutObjectLegalHold` / `GetObjectLegalHold`. Binary flag per object version
-- [ ] Enforcement: locked objects cannot be deleted or overwritten. GOVERNANCE mode allows bypass with permission. COMPLIANCE mode: no bypass whatsoever
-- [ ] (Console) Object lock status indicator, retention date display, legal hold toggle
+- [x] Object Lock config: `PutObjectLockConfiguration` / `GetObjectLockConfiguration`. Per-bucket default retention mode (GOVERNANCE / COMPLIANCE) and period (days or years). Auto-enables versioning, prevents suspension. Stored as JSON in `bucket_config`
+- [x] Per-object retention: `PutObjectRetention` / `GetObjectRetention`. Mode + retain-until-date per version. COMPLIANCE can only be extended. GOVERNANCE requires bypass header to modify. Default retention applied on PutObject from bucket config
+- [x] Legal hold: `PutObjectLegalHold` / `GetObjectLegalHold`. Binary ON/OFF flag per object version. Requires Object Lock enabled on bucket
+- [x] Enforcement: locked objects cannot be hard-deleted (version-specific DELETE blocked). GOVERNANCE mode allows bypass with `x-amz-bypass-governance-retention: true` + `s3:BypassGovernanceRetention` permission. COMPLIANCE mode: no bypass until retention expires. Legal hold: blocks deletion when ON. Delete marker creation always allowed. Lifecycle worker respects locks
+- [x] Response headers: `x-amz-object-lock-mode`, `x-amz-object-lock-retain-until-date`, `x-amz-object-lock-legal-hold-status` on GET/HEAD
+- [x] Schema migration v12: `retention_mode`, `retain_until_date`, `legal_hold_status` columns on objects table
+- [x] 7 new S3 policy actions including `s3:BypassGovernanceRetention`
+- [x] (Console) Object Lock card in bucket settings: enable with mode/days, status indicator. Versioning suspend disabled when locked
 
 **Depends on**: Phase 17 (versioning — Object Lock operates on object versions)
 

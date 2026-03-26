@@ -72,6 +72,15 @@ pub struct ObjectRecord {
     /// Whether this is a delete marker (has no blob).
     #[serde(default)]
     pub is_delete_marker: bool,
+    /// Object Lock retention mode: "GOVERNANCE" or "COMPLIANCE".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retention_mode: Option<String>,
+    /// Retain-until-date: object cannot be hard-deleted before this time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retain_until_date: Option<DateTime<Utc>>,
+    /// Legal hold status: "ON" means object cannot be hard-deleted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub legal_hold_status: Option<String>,
 }
 
 fn default_true() -> bool {

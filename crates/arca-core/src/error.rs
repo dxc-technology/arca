@@ -45,7 +45,9 @@ pub enum S3ErrorCode {
     MalformedXML,
     PreconditionFailed,
     NoSuchLifecycleConfiguration,
+    NoSuchObjectLockConfiguration,
     NoSuchTagSet,
+    ObjectLocked,
     NoSuchUpload,
     NotImplemented,
     InvalidTag,
@@ -78,7 +80,9 @@ impl S3ErrorCode {
             S3ErrorCode::NoSuchKey => 404,
             S3ErrorCode::NoSuchVersion => 404,
             S3ErrorCode::NoSuchLifecycleConfiguration => 404,
+            S3ErrorCode::NoSuchObjectLockConfiguration => 404,
             S3ErrorCode::NoSuchTagSet => 404,
+            S3ErrorCode::ObjectLocked => 403,
             S3ErrorCode::NoSuchUpload => 404,
             S3ErrorCode::NotImplemented => 501,
             S3ErrorCode::InvalidTag => 400,
@@ -112,7 +116,11 @@ impl S3ErrorCode {
             S3ErrorCode::NoSuchKey => "NoSuchKey",
             S3ErrorCode::NoSuchVersion => "NoSuchVersion",
             S3ErrorCode::NoSuchLifecycleConfiguration => "NoSuchLifecycleConfiguration",
+            S3ErrorCode::NoSuchObjectLockConfiguration => {
+                "ObjectLockConfigurationNotFoundError"
+            }
             S3ErrorCode::NoSuchTagSet => "NoSuchTagSet",
+            S3ErrorCode::ObjectLocked => "AccessDenied",
             S3ErrorCode::NoSuchUpload => "NoSuchUpload",
             S3ErrorCode::NotImplemented => "NotImplemented",
             S3ErrorCode::InvalidTag => "InvalidTag",
@@ -174,7 +182,13 @@ impl S3ErrorCode {
             S3ErrorCode::NoSuchLifecycleConfiguration => {
                 "The lifecycle configuration does not exist."
             }
+            S3ErrorCode::NoSuchObjectLockConfiguration => {
+                "Object Lock configuration does not exist for this bucket."
+            }
             S3ErrorCode::NoSuchTagSet => "The TagSet does not exist.",
+            S3ErrorCode::ObjectLocked => {
+                "Object is protected by Object Lock and cannot be deleted."
+            }
             S3ErrorCode::NoSuchUpload => {
                 "The specified multipart upload does not exist."
             }

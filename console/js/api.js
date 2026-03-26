@@ -364,6 +364,46 @@ export function apiClient() {
       return await this.request('DELETE', '/' + encodeURIComponent(bucket), { queryParams: { lifecycle: '' } });
     },
 
+    async s3GetObjectLockConfiguration(bucket) {
+      return await this.request('GET', '/' + encodeURIComponent(bucket), { queryParams: { 'object-lock': '' } });
+    },
+
+    async s3PutObjectLockConfiguration(bucket, xml) {
+      return await this.request('PUT', '/' + encodeURIComponent(bucket), {
+        body: xml,
+        contentType: 'application/xml',
+        queryParams: { 'object-lock': '' },
+      });
+    },
+
+    async s3GetObjectRetention(bucket, key, versionId) {
+      const path = '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key);
+      const qp = { retention: '' };
+      if (versionId) qp.versionId = versionId;
+      return await this.request('GET', path, { queryParams: qp });
+    },
+
+    async s3PutObjectRetention(bucket, key, xml, versionId) {
+      const path = '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key);
+      const qp = { retention: '' };
+      if (versionId) qp.versionId = versionId;
+      return await this.request('PUT', path, { body: xml, contentType: 'application/xml', queryParams: qp });
+    },
+
+    async s3GetObjectLegalHold(bucket, key, versionId) {
+      const path = '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key);
+      const qp = { 'legal-hold': '' };
+      if (versionId) qp.versionId = versionId;
+      return await this.request('GET', path, { queryParams: qp });
+    },
+
+    async s3PutObjectLegalHold(bucket, key, xml, versionId) {
+      const path = '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key);
+      const qp = { 'legal-hold': '' };
+      if (versionId) qp.versionId = versionId;
+      return await this.request('PUT', path, { body: xml, contentType: 'application/xml', queryParams: qp });
+    },
+
     async s3GetObjectTagging(bucket, key) {
       const path = '/' + encodeURIComponent(bucket) + '/' + encodeKeyPath(key);
       return await this.request('GET', path, { queryParams: { tagging: '' } });

@@ -27,6 +27,15 @@ pub mod actions {
     pub const S3_PUT_OBJECT: &str = "s3:PutObject";
     pub const S3_DELETE_OBJECT: &str = "s3:DeleteObject";
 
+    // Object Lock actions
+    pub const S3_GET_BUCKET_OBJECT_LOCK_CONFIGURATION: &str = "s3:GetBucketObjectLockConfiguration";
+    pub const S3_PUT_BUCKET_OBJECT_LOCK_CONFIGURATION: &str = "s3:PutBucketObjectLockConfiguration";
+    pub const S3_GET_OBJECT_RETENTION: &str = "s3:GetObjectRetention";
+    pub const S3_PUT_OBJECT_RETENTION: &str = "s3:PutObjectRetention";
+    pub const S3_GET_OBJECT_LEGAL_HOLD: &str = "s3:GetObjectLegalHold";
+    pub const S3_PUT_OBJECT_LEGAL_HOLD: &str = "s3:PutObjectLegalHold";
+    pub const S3_BYPASS_GOVERNANCE_RETENTION: &str = "s3:BypassGovernanceRetention";
+
     // Admin actions
     pub const ARCA_VIEW_SERVER_INFO: &str = "arca:ViewServerInfo";
     pub const ARCA_MANAGE_USERS: &str = "arca:ManageUsers";
@@ -49,6 +58,13 @@ pub mod actions {
         S3_GET_OBJECT,
         S3_PUT_OBJECT,
         S3_DELETE_OBJECT,
+        S3_GET_BUCKET_OBJECT_LOCK_CONFIGURATION,
+        S3_PUT_BUCKET_OBJECT_LOCK_CONFIGURATION,
+        S3_GET_OBJECT_RETENTION,
+        S3_PUT_OBJECT_RETENTION,
+        S3_GET_OBJECT_LEGAL_HOLD,
+        S3_PUT_OBJECT_LEGAL_HOLD,
+        S3_BYPASS_GOVERNANCE_RETENTION,
         ARCA_VIEW_SERVER_INFO,
         ARCA_MANAGE_USERS,
         ARCA_MANAGE_TEAMS,

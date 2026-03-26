@@ -240,6 +240,19 @@ pub fn spawn_lifecycle_worker(
 /// Maximum objects processed per rule per evaluation cycle.
 const LIFECYCLE_BATCH_SIZE: u32 = 100;
 
+/// Check if an object is protected by Object Lock (retention or legal hold).
+fn is_object_locked(obj: &arca_core::types::ObjectRecord) -> bool {
+    if obj.legal_hold_status.as_deref() == Some("ON") {
+        return true;
+    }
+    if let (Some(_mode), Some(until)) = (&obj.retention_mode, &obj.retain_until_date) {
+        if chrono::Utc::now() < *until {
+            return true;
+        }
+    }
+    false
+}
+
 /// Evaluate lifecycle rules for all buckets.
 async fn evaluate_lifecycle_rules(
     metadata: &dyn MetadataStore,
@@ -451,6 +464,17 @@ async fn expire_noncurrent_version(
         Some(v) => v.as_str(),
         None => return, // Noncurrent versions always have a version_id
     };
+
+    // Skip locked objects (Object Lock enforcement)
+    if is_object_locked(obj) {
+        tracing::debug!(
+            bucket = %bucket,
+            key = %obj.key,
+            version_id = %version_id,
+            "lifecycle: skipping locked noncurrent version"
+        );
+        return;
+    }
 
     match metadata.delete_object_version(bucket, &obj.key, version_id).await {
         Ok(Some(deleted)) => {

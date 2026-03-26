@@ -26,8 +26,8 @@ fn get_versioning_state(conn: &Connection, bucket: &str) -> VersioningState {
     }
 }
 
-/// Column list for all object SELECT queries (14 columns).
-const OBJECT_COLUMNS: &str = "bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker";
+/// Column list for all object SELECT queries (17 columns).
+const OBJECT_COLUMNS: &str = "bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status";
 
 #[async_trait::async_trait]
 impl MetadataStore for SqliteStore {
@@ -386,8 +386,8 @@ impl MetadataStore for SqliteStore {
                         let version_id = uuid::Uuid::new_v4().to_string();
                         let now = chrono::Utc::now();
                         tx.execute(
-                            "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker)
-                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, 'root', ?4, 1, 1)",
+                            "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status)
+                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, 'root', ?4, 1, 1, NULL, NULL, NULL)",
                             params![bucket, key, now.to_rfc3339(), version_id],
                         )?;
                         tx.commit()?;
@@ -407,6 +407,9 @@ impl MetadataStore for SqliteStore {
                             version_id: Some(version_id),
                             is_latest: true,
                             is_delete_marker: true,
+                            retention_mode: None,
+                            retain_until_date: None,
+                            legal_hold_status: None,
                         })
                     }
                     VersioningState::Suspended => {
@@ -429,8 +432,8 @@ impl MetadataStore for SqliteStore {
                         // Insert delete marker with NULL version_id.
                         let now = chrono::Utc::now();
                         tx.execute(
-                            "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker)
-                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, 'root', NULL, 1, 1)",
+                            "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status)
+                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, 'root', NULL, 1, 1, NULL, NULL, NULL)",
                             params![bucket, key, now.to_rfc3339()],
                         )?;
                         tx.commit()?;
@@ -1091,6 +1094,74 @@ impl MetadataStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("list_multipart_uploads: {e}")))
     }
 
+    async fn set_object_retention(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+        retention_mode: Option<&str>,
+        retain_until_date: Option<&str>,
+    ) -> Result<bool, ArcaError> {
+        let bucket = bucket.to_string();
+        let key = key.to_string();
+        let version_id = version_id.map(|s| s.to_string());
+        let retention_mode = retention_mode.map(|s| s.to_string());
+        let retain_until_date = retain_until_date.map(|s| s.to_string());
+
+        self.conn
+            .call(move |conn| {
+                let rows = if let Some(ref vid) = version_id {
+                    conn.execute(
+                        "UPDATE objects SET retention_mode = ?1, retain_until_date = ?2 \
+                         WHERE bucket = ?3 AND key = ?4 AND version_id = ?5",
+                        params![retention_mode, retain_until_date, bucket, key, vid],
+                    )?
+                } else {
+                    conn.execute(
+                        "UPDATE objects SET retention_mode = ?1, retain_until_date = ?2 \
+                         WHERE bucket = ?3 AND key = ?4 AND is_latest = 1",
+                        params![retention_mode, retain_until_date, bucket, key],
+                    )?
+                };
+                Ok(rows > 0)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("set_object_retention: {e}")))
+    }
+
+    async fn set_object_legal_hold(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+        status: Option<&str>,
+    ) -> Result<bool, ArcaError> {
+        let bucket = bucket.to_string();
+        let key = key.to_string();
+        let version_id = version_id.map(|s| s.to_string());
+        let status = status.map(|s| s.to_string());
+
+        self.conn
+            .call(move |conn| {
+                let rows = if let Some(ref vid) = version_id {
+                    conn.execute(
+                        "UPDATE objects SET legal_hold_status = ?1 \
+                         WHERE bucket = ?2 AND key = ?3 AND version_id = ?4",
+                        params![status, bucket, key, vid],
+                    )?
+                } else {
+                    conn.execute(
+                        "UPDATE objects SET legal_hold_status = ?1 \
+                         WHERE bucket = ?2 AND key = ?3 AND is_latest = 1",
+                        params![status, bucket, key],
+                    )?
+                };
+                Ok(rows > 0)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("set_object_legal_hold: {e}")))
+    }
+
     async fn list_expired_objects(
         &self,
         bucket: &str,
@@ -1328,9 +1399,10 @@ fn insert_object_row(
     record: &ObjectRecord,
     metadata_json: &str,
 ) -> Result<(), rusqlite::Error> {
+    let retain_until_str = record.retain_until_date.map(|dt| dt.to_rfc3339());
     conn.execute(
-        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
         params![
             record.bucket,
             record.key,
@@ -1346,6 +1418,9 @@ fn insert_object_row(
             record.version_id,
             record.is_latest as i32,
             record.is_delete_marker as i32,
+            record.retention_mode,
+            retain_until_str,
+            record.legal_hold_status,
         ],
     )?;
     Ok(())
@@ -1463,6 +1538,15 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
     let is_latest: bool = row.get::<_, i32>(12).unwrap_or(1) != 0;
     let is_delete_marker: bool = row.get::<_, i32>(13).unwrap_or(0) != 0;
 
+    let retention_mode: Option<String> = row.get(14).unwrap_or(None);
+    let retain_until_date_str: Option<String> = row.get(15).unwrap_or(None);
+    let retain_until_date = retain_until_date_str.and_then(|s| {
+        DateTime::parse_from_rfc3339(&s)
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .ok()
+    });
+    let legal_hold_status: Option<String> = row.get(16).unwrap_or(None);
+
     Ok(ObjectRecord {
         bucket: row.get(0)?,
         key: row.get(1)?,
@@ -1478,6 +1562,9 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
         version_id,
         is_latest,
         is_delete_marker,
+        retention_mode,
+        retain_until_date,
+        legal_hold_status,
     })
 }
 
@@ -1505,6 +1592,9 @@ mod tests {
             version_id: None,
             is_latest: true,
             is_delete_marker: false,
+            retention_mode: None,
+            retain_until_date: None,
+            legal_hold_status: None,
         }
     }
 

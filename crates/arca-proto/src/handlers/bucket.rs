@@ -205,10 +205,47 @@ pub async fn get_bucket(
         }
     }
 
+    // GetObjectLockConfiguration
+    if params.iter().any(|(k, _)| k == "object-lock") {
+        match state.metadata.head_bucket(&bucket).await {
+            Ok(Some(_)) => {}
+            Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
+            Err(e) => return internal_error_response(e, &resource),
+        }
+        match state.metadata.get_bucket_config(&bucket, "object_lock").await {
+            Ok(Some(json_str)) => {
+                match serde_json::from_str::<arca_core::s3::object_lock::ObjectLockConfiguration>(&json_str) {
+                    Ok(config) => {
+                        let xml = arca_core::s3::object_lock::object_lock_configuration_to_xml(&config);
+                        return Response::builder()
+                            .status(StatusCode::OK)
+                            .header("Content-Type", "application/xml")
+                            .body(Body::from(xml))
+                            .expect("build get_object_lock response");
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, bucket = %bucket, "corrupted object lock config in DB");
+                        return internal_error_response(
+                            arca_core::error::ArcaError::Internal(e.to_string()),
+                            &resource,
+                        );
+                    }
+                }
+            }
+            Ok(None) => {
+                return s3_error_response(S3Error::new(
+                    S3ErrorCode::NoSuchObjectLockConfiguration,
+                    &resource,
+                ));
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
+    }
+
     // TECHDEBT(TD-007): Unimplemented GET bucket operations return 501.
     let unimplemented_get_ops = [
         "acl", "cors", "logging", "notification",
-        "policy", "replication", "website", "object-lock",
+        "policy", "replication", "website",
         "ownershipControls", "publicAccessBlock", "policyStatus",
         "accelerate", "requestPayment", "inventory", "analytics",
         "metrics", "intelligenttiering",
@@ -1041,6 +1078,16 @@ async fn put_bucket_versioning(
     let status = parse_versioning_status(body_str);
     match status.as_deref() {
         Some("Enabled") | Some("Suspended") => {
+            // Object Lock prevents versioning suspension
+            if status.as_deref() == Some("Suspended") {
+                if let Ok(Some(_)) = state.metadata.get_bucket_config(bucket, "object_lock").await {
+                    return s3_error_response(S3Error::with_message(
+                        S3ErrorCode::InvalidArgument,
+                        "Cannot suspend versioning on a bucket with Object Lock enabled",
+                        resource,
+                    ));
+                }
+            }
             match state
                 .metadata
                 .set_bucket_config(bucket, "versioning", status.as_deref().unwrap())
@@ -1202,11 +1249,56 @@ pub async fn create_bucket(
         }
     }
 
+    // PutObjectLockConfiguration
+    if query.starts_with("object-lock") || query.starts_with("object-lock=") || query.starts_with("object-lock&") {
+        match state.metadata.head_bucket(&bucket).await {
+            Ok(Some(_)) => {}
+            Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
+            Err(e) => return internal_error_response(e, &resource),
+        }
+        let body_bytes = match axum::body::to_bytes(request.into_body(), 64 * 1024).await {
+            Ok(b) => b,
+            Err(_) => return s3_error_response(S3Error::new(S3ErrorCode::InvalidRequest, &resource)),
+        };
+        let xml_str = String::from_utf8_lossy(&body_bytes);
+        let config = match arca_core::s3::object_lock::parse_object_lock_configuration_xml(&xml_str) {
+            Ok(c) => c,
+            Err(e) => return s3_error_response(e),
+        };
+        // Once Object Lock is enabled, it cannot be disabled
+        // (but the default retention can be changed)
+        let json_str = match serde_json::to_string(&config) {
+            Ok(s) => s,
+            Err(e) => {
+                return internal_error_response(
+                    arca_core::error::ArcaError::Internal(e.to_string()),
+                    &resource,
+                );
+            }
+        };
+        // Auto-enable versioning if not already enabled
+        let versioning = state.metadata.get_bucket_config(&bucket, "versioning").await.unwrap_or(None);
+        if versioning.as_deref() != Some("Enabled") {
+            if let Err(e) = state.metadata.set_bucket_config(&bucket, "versioning", "Enabled").await {
+                return internal_error_response(e, &resource);
+            }
+        }
+        match state.metadata.set_bucket_config(&bucket, "object_lock", &json_str).await {
+            Ok(()) => {
+                return Response::builder()
+                    .status(StatusCode::OK)
+                    .body(Body::empty())
+                    .expect("build put_object_lock response");
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
+    }
+
     // TECHDEBT(TD-007): Unimplemented bucket-level PUT operations return 501.
     let unimplemented_ops = [
         "acl", "cors", "logging",
         "notification", "policy", "replication",
-        "object-lock", "website", "accelerate",
+        "website", "accelerate",
         "requestPayment", "inventory", "analytics", "metrics",
         "ownershipControls", "publicAccessBlock", "intelligenttiering",
     ];
@@ -1507,6 +1599,19 @@ async fn delete_objects(
 
         // Version-specific delete: hard-remove the exact version or delete marker.
         if let Some(ref vid) = obj.version_id {
+            // Object Lock enforcement: check if version is locked before hard-deleting
+            if let Ok(Some(lock_record)) = state.metadata.get_object_version(&bucket, &obj.key, vid).await {
+                if !lock_record.is_delete_marker {
+                    if let Err(lock_err) = super::object::check_object_lock_allows_delete_batch(&lock_record) {
+                        errors.push(DeleteErrorEntry {
+                            key: obj.key.clone(),
+                            code: lock_err.code.as_str().to_string(),
+                            message: lock_err.message,
+                        });
+                        continue;
+                    }
+                }
+            }
             match state
                 .metadata
                 .delete_object_version(&bucket, &obj.key, vid)

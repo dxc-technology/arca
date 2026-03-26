@@ -120,6 +120,9 @@ pub async fn run_recover(config: &Config, dry_run: bool, skip_verify: bool) -> R
             version_id: entry.meta.version_id.clone(),
             is_latest: true,
             is_delete_marker: false,
+            retention_mode: None,
+            retain_until_date: None,
+            legal_hold_status: None,
         };
         store.put_object(&record).await?;
         object_count += 1;

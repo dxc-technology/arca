@@ -138,6 +138,29 @@ pub trait MetadataStore: Send + Sync {
         upload_id: &str,
     ) -> Result<Vec<PartRecord>, crate::error::ArcaError>;
 
+    // -- Object Lock operations --
+
+    /// Sets the retention mode and retain-until-date on an object version.
+    /// Returns true if the object was found and updated, false if not found.
+    async fn set_object_retention(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+        retention_mode: Option<&str>,
+        retain_until_date: Option<&str>,
+    ) -> Result<bool, crate::error::ArcaError>;
+
+    /// Sets the legal hold status on an object version.
+    /// Returns true if the object was found and updated, false if not found.
+    async fn set_object_legal_hold(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+        status: Option<&str>,
+    ) -> Result<bool, crate::error::ArcaError>;
+
     // -- Bucket config operations --
 
     /// Gets a bucket configuration value.

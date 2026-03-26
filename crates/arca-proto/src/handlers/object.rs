@@ -36,6 +36,96 @@ fn string_to_latin1(s: &str) -> Vec<u8> {
         .collect()
 }
 
+/// Check if Object Lock allows hard-deletion of an object version.
+/// Returns Ok(()) if deletion is allowed, Err(S3Error) if blocked.
+fn check_object_lock_allows_delete(
+    record: &ObjectRecord,
+    headers: &http::HeaderMap,
+) -> Result<(), S3Error> {
+    let now = chrono::Utc::now();
+    let resource = format!("/{}/{}", record.bucket, record.key);
+
+    // Legal hold blocks deletion regardless of retention
+    if record.legal_hold_status.as_deref() == Some("ON") {
+        return Err(S3Error::with_message(
+            S3ErrorCode::AccessDenied,
+            "Object is under legal hold and cannot be deleted",
+            &resource,
+        ));
+    }
+
+    // Check retention
+    if let (Some(mode), Some(until)) = (&record.retention_mode, &record.retain_until_date) {
+        if now < *until {
+            match mode.as_str() {
+                "COMPLIANCE" => {
+                    return Err(S3Error::with_message(
+                        S3ErrorCode::AccessDenied,
+                        format!(
+                            "Object is protected by COMPLIANCE retention until {}",
+                            until.to_rfc3339()
+                        ),
+                        &resource,
+                    ));
+                }
+                "GOVERNANCE" => {
+                    let bypass = headers
+                        .get("x-amz-bypass-governance-retention")
+                        .and_then(|v| v.to_str().ok())
+                        .map(|v| v.eq_ignore_ascii_case("true"))
+                        .unwrap_or(false);
+                    if !bypass {
+                        return Err(S3Error::with_message(
+                            S3ErrorCode::AccessDenied,
+                            "Object is protected by GOVERNANCE retention. Use x-amz-bypass-governance-retention: true to delete",
+                            &resource,
+                        ));
+                    }
+                    // With bypass header, GOVERNANCE allows deletion
+                    // (permission check is done by the auth middleware)
+                }
+                _ => {}
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Check if Object Lock allows hard-deletion in batch operations (DeleteObjects).
+/// Batch delete does not support per-key bypass headers, so GOVERNANCE retention
+/// blocks deletion in batch mode.
+pub(super) fn check_object_lock_allows_delete_batch(
+    record: &ObjectRecord,
+) -> Result<(), S3Error> {
+    let now = chrono::Utc::now();
+    let resource = format!("/{}/{}", record.bucket, record.key);
+
+    if record.legal_hold_status.as_deref() == Some("ON") {
+        return Err(S3Error::with_message(
+            S3ErrorCode::AccessDenied,
+            "Object is under legal hold and cannot be deleted",
+            &resource,
+        ));
+    }
+
+    if let (Some(mode), Some(until)) = (&record.retention_mode, &record.retain_until_date) {
+        if now < *until {
+            return Err(S3Error::with_message(
+                S3ErrorCode::AccessDenied,
+                format!(
+                    "Object is protected by {} retention until {}",
+                    mode,
+                    until.to_rfc3339()
+                ),
+                &resource,
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 /// Extracts user metadata (`x-amz-meta-*`) and S3 system metadata headers
 /// from the request headers. Returns a HashMap of lowercased key → value.
 pub(super) fn extract_metadata(headers: &http::HeaderMap) -> HashMap<String, String> {
@@ -257,12 +347,20 @@ pub async fn put_object(
     Path((bucket, key)): Path<(String, String)>,
     request: axum::extract::Request,
 ) -> Response {
-    // PutObjectTagging
+    // PutObjectTagging / PutObjectRetention / PutObjectLegalHold
     {
         let query_owned = request.uri().query().unwrap_or("").to_string();
         if query_owned.contains("tagging") {
             let resource = format!("/{bucket}/{key}");
             return put_object_tagging(&state, &bucket, &key, &resource, &query_owned, request).await;
+        }
+        if query_owned.contains("retention") {
+            let resource = format!("/{bucket}/{key}");
+            return put_object_retention(&state, &bucket, &key, &resource, &query_owned, request).await;
+        }
+        if query_owned.contains("legal-hold") {
+            let resource = format!("/{bucket}/{key}");
+            return put_object_legal_hold(&state, &bucket, &key, &resource, &query_owned, request).await;
         }
     }
 
@@ -424,6 +522,12 @@ pub async fn put_object(
     }
 
     // Insert into metadata (returns old record for cleanup).
+    // Object Lock: resolve retention from headers or bucket default
+    let (lock_mode, lock_until, lock_hold) = resolve_object_lock_headers(
+        &headers, &state, &bucket, now,
+    )
+    .await;
+
     // For SSE-C, store the nonce_prefix in encryption_key_id (no master key ID).
     let record = ObjectRecord {
         bucket,
@@ -446,6 +550,9 @@ pub async fn put_object(
         version_id: None,
         is_latest: true,
         is_delete_marker: false,
+        retention_mode: lock_mode,
+        retain_until_date: lock_until,
+        legal_hold_status: lock_hold,
     };
     let old = match state.metadata.put_object(&record).await {
         Ok(old) => old,
@@ -788,6 +895,9 @@ async fn copy_object(
         version_id: None,
         is_latest: true,
         is_delete_marker: false,
+        retention_mode: None,
+        retain_until_date: None,
+        legal_hold_status: None,
     };
     let old = match state.metadata.put_object(&record).await {
         Ok(old) => old,
@@ -1141,9 +1251,15 @@ pub async fn get_object(
     let resource = format!("/{bucket}/{key}");
     let query_str = request.uri().query().unwrap_or("").to_string();
 
-    // GetObjectTagging
+    // GetObjectTagging / GetObjectRetention / GetObjectLegalHold
     if query_str.contains("tagging") {
         return get_object_tagging(&state, &bucket, &key, &resource, &query_str).await;
+    }
+    if query_str.contains("retention") {
+        return get_object_retention(&state, &bucket, &key, &resource, &query_str).await;
+    }
+    if query_str.contains("legal-hold") {
+        return get_object_legal_hold(&state, &bucket, &key, &resource, &query_str).await;
     }
 
     // Parse ?versionId= from query params.
@@ -1373,6 +1489,17 @@ pub async fn get_object(
         }
     }
 
+    // Object Lock headers
+    if let Some(ref mode) = record.retention_mode {
+        builder = builder.header("x-amz-object-lock-mode", mode.as_str());
+    }
+    if let Some(ref until) = record.retain_until_date {
+        builder = builder.header("x-amz-object-lock-retain-until-date", until.to_rfc3339());
+    }
+    if record.legal_hold_status.as_deref() == Some("ON") {
+        builder = builder.header("x-amz-object-lock-legal-hold-status", "ON");
+    }
+
     // Return stored metadata as response headers.
     // Values may contain unicode chars; encode as Latin-1 for HTTP headers
     // (clients like boto3 decode header bytes as Latin-1 per HTTP spec).
@@ -1520,6 +1647,17 @@ pub async fn head_object(
         }
     }
 
+    // Object Lock headers
+    if let Some(ref mode) = record.retention_mode {
+        builder = builder.header("x-amz-object-lock-mode", mode.as_str());
+    }
+    if let Some(ref until) = record.retain_until_date {
+        builder = builder.header("x-amz-object-lock-retain-until-date", until.to_rfc3339());
+    }
+    if record.legal_hold_status.as_deref() == Some("ON") {
+        builder = builder.header("x-amz-object-lock-legal-hold-status", "ON");
+    }
+
     // Return stored metadata as response headers.
     // Values may contain unicode chars; encode as Latin-1 for HTTP headers
     // (clients like boto3 decode header bytes as Latin-1 per HTTP spec).
@@ -1587,6 +1725,14 @@ pub async fn delete_object(
 
     // Versioned delete: permanent removal of a specific version.
     if let Some(ref vid) = version_id {
+        // Object Lock enforcement: check if version is locked before hard-deleting
+        if let Ok(Some(lock_record)) = state.metadata.get_object_version(&bucket, &key, vid).await {
+            if !lock_record.is_delete_marker {
+                if let Err(e) = check_object_lock_allows_delete(&lock_record, &headers) {
+                    return s3_error_response(e);
+                }
+            }
+        }
         let old = match state
             .metadata
             .delete_object_version(&bucket, &key, vid)
@@ -1800,6 +1946,52 @@ fn parse_range_header(headers: &http::HeaderMap, file_size: u64) -> RangeParseRe
     RangeParseResult::Range(ByteRange { start, end })
 }
 
+// -- Object Lock helpers --
+
+/// Resolve Object Lock fields for a new object from request headers or bucket default.
+async fn resolve_object_lock_headers(
+    headers: &http::HeaderMap,
+    state: &crate::AppState,
+    bucket: &str,
+    now: chrono::DateTime<chrono::Utc>,
+) -> (Option<String>, Option<chrono::DateTime<chrono::Utc>>, Option<String>) {
+    // Check explicit headers first
+    let header_mode = headers
+        .get("x-amz-object-lock-mode")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    let header_until = headers
+        .get("x-amz-object-lock-retain-until-date")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| {
+            chrono::DateTime::parse_from_rfc3339(s)
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .ok()
+        });
+    let header_hold = headers
+        .get("x-amz-object-lock-legal-hold-status")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| if s == "ON" { Some("ON".to_string()) } else { None });
+
+    if header_mode.is_some() || header_until.is_some() {
+        return (header_mode, header_until, header_hold);
+    }
+
+    // No explicit headers: check bucket default retention
+    if let Ok(Some(config_json)) = state.metadata.get_bucket_config(bucket, "object_lock").await {
+        if let Ok(config) =
+            serde_json::from_str::<arca_core::s3::object_lock::ObjectLockConfiguration>(&config_json)
+        {
+            if let Some(ref dr) = config.default_retention {
+                let until = arca_core::s3::object_lock::compute_retain_until(dr, now);
+                return (Some(dr.mode.clone()), Some(until), header_hold);
+            }
+        }
+    }
+
+    (None, None, header_hold)
+}
+
 // -- Object tagging helpers --
 
 /// Resolve the version_id for tagging operations: use explicit versionId param, or find the latest.
@@ -1930,4 +2122,258 @@ async fn delete_object_tagging(
         }
         Err(e) => internal_error_response(e, resource),
     }
+}
+
+// ── Object Lock: Retention handlers ──
+
+async fn put_object_retention(
+    state: &crate::AppState,
+    bucket: &str,
+    key: &str,
+    resource: &str,
+    query: &str,
+    request: axum::extract::Request,
+) -> Response {
+    // Check bucket exists
+    match state.metadata.head_bucket(bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, resource)),
+        Err(e) => return internal_error_response(e, resource),
+    }
+
+    // Parse versionId from query
+    let version_id = form_urlencoded::parse(query.as_bytes())
+        .find(|(k, _)| k == "versionId")
+        .map(|(_, v)| v.into_owned());
+
+    // Check bypass governance header
+    let bypass_governance = request
+        .headers()
+        .get("x-amz-bypass-governance-retention")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    // Parse XML body
+    let body_bytes = match axum::body::to_bytes(request.into_body(), 64 * 1024).await {
+        Ok(b) => b,
+        Err(_) => return s3_error_response(S3Error::new(S3ErrorCode::InvalidRequest, resource)),
+    };
+    let xml_str = String::from_utf8_lossy(&body_bytes);
+    let (new_mode, new_until) = match arca_core::s3::object_lock::parse_retention_xml(&xml_str) {
+        Ok(v) => v,
+        Err(e) => return s3_error_response(e),
+    };
+
+    // Fetch existing object to check current retention
+    let existing = if let Some(ref vid) = version_id {
+        state.metadata.get_object_version(bucket, key, vid).await
+    } else {
+        state.metadata.get_object(bucket, key).await
+    };
+    let record = match existing {
+        Ok(Some(r)) => r,
+        Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchKey, resource)),
+        Err(e) => return internal_error_response(e, resource),
+    };
+
+    // Enforce COMPLIANCE rules: can only extend, never shorten or change mode
+    if let Some(ref current_mode) = record.retention_mode {
+        if let Some(ref current_until) = record.retain_until_date {
+            if chrono::Utc::now() < *current_until {
+                // Retention is still active
+                if current_mode == "COMPLIANCE" {
+                    // COMPLIANCE: can only extend the date, cannot change mode
+                    if new_mode != "COMPLIANCE" || new_until < *current_until {
+                        return s3_error_response(S3Error::with_message(
+                            S3ErrorCode::AccessDenied,
+                            "COMPLIANCE retention can only be extended, not shortened or changed",
+                            resource,
+                        ));
+                    }
+                } else if current_mode == "GOVERNANCE" && !bypass_governance {
+                    // GOVERNANCE: need bypass header to modify
+                    return s3_error_response(S3Error::with_message(
+                        S3ErrorCode::AccessDenied,
+                        "Object is under GOVERNANCE retention. Use x-amz-bypass-governance-retention: true to modify",
+                        resource,
+                    ));
+                }
+            }
+        }
+    }
+
+    let retain_str = new_until.to_rfc3339();
+    let vid_ref = version_id.as_deref();
+    match state
+        .metadata
+        .set_object_retention(bucket, key, vid_ref, Some(&new_mode), Some(&retain_str))
+        .await
+    {
+        Ok(true) => {
+            let mut builder = Response::builder().status(StatusCode::OK);
+            if let Some(ref vid) = version_id {
+                builder = builder.header("x-amz-version-id", vid.as_str());
+            }
+            builder.body(Body::empty()).expect("build put_object_retention response")
+        }
+        Ok(false) => s3_error_response(S3Error::new(S3ErrorCode::NoSuchKey, resource)),
+        Err(e) => internal_error_response(e, resource),
+    }
+}
+
+async fn get_object_retention(
+    state: &crate::AppState,
+    bucket: &str,
+    key: &str,
+    resource: &str,
+    query: &str,
+) -> Response {
+    // Check bucket exists
+    match state.metadata.head_bucket(bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, resource)),
+        Err(e) => return internal_error_response(e, resource),
+    }
+
+    let version_id = form_urlencoded::parse(query.as_bytes())
+        .find(|(k, _)| k == "versionId")
+        .map(|(_, v)| v.into_owned());
+
+    let record = if let Some(ref vid) = version_id {
+        state.metadata.get_object_version(bucket, key, vid).await
+    } else {
+        state.metadata.get_object(bucket, key).await
+    };
+    let record = match record {
+        Ok(Some(r)) => r,
+        Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchKey, resource)),
+        Err(e) => return internal_error_response(e, resource),
+    };
+
+    match (&record.retention_mode, &record.retain_until_date) {
+        (Some(mode), Some(until)) => {
+            let xml = arca_core::s3::object_lock::retention_to_xml(mode, until);
+            let mut builder = Response::builder()
+                .status(StatusCode::OK)
+                .header("Content-Type", "application/xml");
+            if let Some(ref vid) = version_id {
+                builder = builder.header("x-amz-version-id", vid.as_str());
+            }
+            builder.body(Body::from(xml)).expect("build get_object_retention response")
+        }
+        _ => s3_error_response(S3Error::with_message(
+            S3ErrorCode::NoSuchKey,
+            "No retention policy is set on this object",
+            resource,
+        )),
+    }
+}
+
+// ── Object Lock: Legal Hold handlers ──
+
+async fn put_object_legal_hold(
+    state: &crate::AppState,
+    bucket: &str,
+    key: &str,
+    resource: &str,
+    query: &str,
+    request: axum::extract::Request,
+) -> Response {
+    // Check bucket exists
+    match state.metadata.head_bucket(bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, resource)),
+        Err(e) => return internal_error_response(e, resource),
+    }
+
+    // Object Lock must be enabled on the bucket for legal hold
+    match state.metadata.get_bucket_config(bucket, "object_lock").await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return s3_error_response(S3Error::with_message(
+                S3ErrorCode::InvalidRequest,
+                "Bucket does not have Object Lock enabled",
+                resource,
+            ));
+        }
+        Err(e) => return internal_error_response(e, resource),
+    }
+
+    let version_id = form_urlencoded::parse(query.as_bytes())
+        .find(|(k, _)| k == "versionId")
+        .map(|(_, v)| v.into_owned());
+
+    // Parse XML body
+    let body_bytes = match axum::body::to_bytes(request.into_body(), 64 * 1024).await {
+        Ok(b) => b,
+        Err(_) => return s3_error_response(S3Error::new(S3ErrorCode::InvalidRequest, resource)),
+    };
+    let xml_str = String::from_utf8_lossy(&body_bytes);
+    let status = match arca_core::s3::object_lock::parse_legal_hold_xml(&xml_str) {
+        Ok(s) => s,
+        Err(e) => return s3_error_response(e),
+    };
+
+    let hold_value = if status == "ON" { Some("ON") } else { None };
+    let vid_ref = version_id.as_deref();
+    match state
+        .metadata
+        .set_object_legal_hold(bucket, key, vid_ref, hold_value)
+        .await
+    {
+        Ok(true) => {
+            let mut builder = Response::builder().status(StatusCode::OK);
+            if let Some(ref vid) = version_id {
+                builder = builder.header("x-amz-version-id", vid.as_str());
+            }
+            builder.body(Body::empty()).expect("build put_object_legal_hold response")
+        }
+        Ok(false) => s3_error_response(S3Error::new(S3ErrorCode::NoSuchKey, resource)),
+        Err(e) => internal_error_response(e, resource),
+    }
+}
+
+async fn get_object_legal_hold(
+    state: &crate::AppState,
+    bucket: &str,
+    key: &str,
+    resource: &str,
+    query: &str,
+) -> Response {
+    // Check bucket exists
+    match state.metadata.head_bucket(bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, resource)),
+        Err(e) => return internal_error_response(e, resource),
+    }
+
+    let version_id = form_urlencoded::parse(query.as_bytes())
+        .find(|(k, _)| k == "versionId")
+        .map(|(_, v)| v.into_owned());
+
+    let record = if let Some(ref vid) = version_id {
+        state.metadata.get_object_version(bucket, key, vid).await
+    } else {
+        state.metadata.get_object(bucket, key).await
+    };
+    let record = match record {
+        Ok(Some(r)) => r,
+        Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchKey, resource)),
+        Err(e) => return internal_error_response(e, resource),
+    };
+
+    let status = if record.legal_hold_status.as_deref() == Some("ON") {
+        "ON"
+    } else {
+        "OFF"
+    };
+    let xml = arca_core::s3::object_lock::legal_hold_to_xml(status);
+    let mut builder = Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/xml");
+    if let Some(ref vid) = version_id {
+        builder = builder.header("x-amz-version-id", vid.as_str());
+    }
+    builder.body(Body::from(xml)).expect("build get_object_legal_hold response")
 }

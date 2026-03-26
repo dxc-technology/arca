@@ -103,6 +103,7 @@ export function bucketDetailView() {
     encryptionEnabled: false,
     bucketEncrypted: false,
     bucketVersioned: false,
+    bucketLocked: false,
     showDeleted: false,
     deletedObjects: [],
     deletedDirectories: [],
@@ -220,6 +221,10 @@ export function bucketDetailView() {
           const m = xml.match(/<Status>(.*?)<\/Status>/);
           this.bucketVersioned = m ? m[1] : false;
         }
+      } catch {}
+      try {
+        const lockResp = await api.s3GetObjectLockConfiguration(this.bucketName);
+        this.bucketLocked = !!(lockResp && lockResp.ok);
       } catch {}
       const bucket = this.bucketName;
       try {

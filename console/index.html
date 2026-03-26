@@ -531,6 +531,7 @@
                         <span class="truncate flex-1 group-hover:text-vault-accent transition" x-text="b.name"></span>
                         <span x-show="b.encrypted" x-html="icons.encryptionShield" title="Encrypted"></span>
                         <span x-show="b.versioned" x-html="b.versioned === 'Suspended' ? icons.versioningSuspended : icons.versioningClock" :title="'Versioning: ' + b.versioned"></span>
+                        <span x-show="b.locked" x-html="icons.objectLock" title="Object Lock"></span>
                         <span class="text-vault-muted font-mono" x-text="formatBytes(b.size)"></span>
                       </a>
                     </template>
@@ -617,6 +618,12 @@
                       <span class="flex items-center gap-1" :class="b.versioned === 'Suspended' ? 'text-amber-400' : 'text-blue-400'" :title="'Versioning: ' + b.versioned">
                         <span x-html="b.versioned === 'Suspended' ? icons.versioningSuspended : icons.versioningClock"></span>
                         <span class="text-[10px] font-medium" x-text="b.versioned === 'Suspended' ? 'Suspended' : 'Versioned'"></span>
+                      </span>
+                    </template>
+                    <template x-if="b.locked">
+                      <span class="flex items-center gap-1 text-orange-400" title="Object Lock (WORM)">
+                        <span x-html="icons.objectLock"></span>
+                        <span class="text-[10px] font-medium">Locked</span>
                       </span>
                     </template>
                   </div>
@@ -760,7 +767,7 @@
                     <div class="text-xs text-vault-muted mt-0.5"
                       x-text="versioningStatus === 'Enabled' ? 'All object writes create new versions' : versioningStatus === 'Suspended' ? 'Suspended, new writes use null version ID' : 'Not enabled'"></div>
                   </div>
-                  <button @click="toggleVersioning()" :disabled="versioningSaving"
+                  <button @click="toggleVersioning()" :disabled="versioningSaving || (objectLockEnabled && versioningStatus === 'Enabled')"
                     :class="versioningStatus === 'Enabled' ? 'bg-vault-accent' : versioningStatus === 'Suspended' ? 'bg-amber-500' : 'bg-vault-border'"
                     class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50">
                     <span :class="versioningStatus === 'Enabled' || versioningStatus === 'Suspended' ? 'translate-x-6' : 'translate-x-1'"
@@ -794,6 +801,43 @@
                 </div>
 
                 <p x-show="versioningError" x-text="versioningError" class="text-red-400 text-xs mt-3"></p>
+              </div>
+
+              <!-- Object Lock card -->
+              <div class="glass rounded-xl p-5">
+                <div class="flex items-center justify-between mb-3">
+                  <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-vault-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/></svg>
+                    <span class="text-sm font-semibold uppercase tracking-wider text-vault-text">Object Lock (WORM)</span>
+                  </div>
+                  <span x-show="objectLockEnabled" x-cloak class="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-emerald-500/15 text-emerald-400">Enabled</span>
+                </div>
+
+                <div x-show="objectLockEnabled" x-cloak>
+                  <div class="text-xs text-vault-muted">
+                    <span x-show="objectLockMode">Default retention: <span class="text-vault-text" x-text="objectLockMode"></span></span>
+                    <span x-show="objectLockDays"> for <span class="text-vault-text" x-text="objectLockDays"></span> days</span>
+                    <span x-show="!objectLockMode">Enabled with no default retention</span>
+                  </div>
+                  <p class="text-[11px] text-vault-muted/60 mt-1">Object Lock cannot be disabled once enabled.</p>
+                </div>
+
+                <div x-show="!objectLockEnabled">
+                  <p class="text-xs text-vault-muted mb-3">Enable Object Lock to prevent objects from being deleted during a retention period (WORM compliance). This also enables versioning. <span class="text-amber-400">This action cannot be undone.</span></p>
+                  <div class="flex items-center gap-3">
+                    <select x-ref="lockMode" class="px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-xs">
+                      <option value="">No default retention</option>
+                      <option value="GOVERNANCE">GOVERNANCE</option>
+                      <option value="COMPLIANCE">COMPLIANCE</option>
+                    </select>
+                    <input type="number" min="1" x-ref="lockDays" placeholder="Days" class="w-20 px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-xs placeholder-slate-500">
+                    <button @click="enableObjectLock($refs.lockMode.value, $refs.lockDays.value ? parseInt($refs.lockDays.value) : null)"
+                      :disabled="objectLockSaving"
+                      class="px-3 py-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/30 text-xs font-medium hover:bg-vault-accent/20 transition disabled:opacity-40"
+                      x-text="objectLockSaving ? 'Enabling...' : 'Enable Object Lock'"></button>
+                  </div>
+                  <p x-show="objectLockError" x-text="objectLockError" class="text-red-400 text-xs mt-2"></p>
+                </div>
               </div>
 
               <!-- Lifecycle Rules card -->
@@ -999,6 +1043,7 @@
                 <span class="text-vault-border">/</span>
                 <span x-show="bucketEncrypted" x-cloak title="Encrypted bucket" x-html="icons.encryptionShield"></span>
                 <span x-show="bucketVersioned" x-cloak :title="'Versioning: ' + bucketVersioned" x-html="bucketVersioned === 'Suspended' ? icons.versioningSuspended : icons.versioningClock"></span>
+                <span x-show="bucketLocked" x-cloak title="Object Lock (WORM)" x-html="icons.objectLock"></span>
                 <button @click="navigatePrefix('')" class="text-vault-accent hover:underline font-medium" x-text="bucketName"></button>
                 <template x-for="(part, i) in prefixParts" :key="i">
                   <span class="flex items-center gap-2">

@@ -191,6 +191,10 @@ pub fn build_router(state: AppState) -> Router {
             HeaderName::from_static("x-amz-copy-source-server-side-encryption-customer-key-md5"),
             HeaderName::from_static("x-amz-tagging"),
             HeaderName::from_static("x-amz-tagging-directive"),
+            HeaderName::from_static("x-amz-object-lock-mode"),
+            HeaderName::from_static("x-amz-object-lock-retain-until-date"),
+            HeaderName::from_static("x-amz-object-lock-legal-hold-status"),
+            HeaderName::from_static("x-amz-bypass-governance-retention"),
         ]))
         .expose_headers([
             ETAG,
@@ -201,6 +205,9 @@ pub fn build_router(state: AppState) -> Router {
             HeaderName::from_static("x-amz-server-side-encryption-customer-algorithm"),
             HeaderName::from_static("x-amz-server-side-encryption-customer-key-md5"),
             HeaderName::from_static("x-amz-version-id"),
+            HeaderName::from_static("x-amz-object-lock-mode"),
+            HeaderName::from_static("x-amz-object-lock-retain-until-date"),
+            HeaderName::from_static("x-amz-object-lock-legal-hold-status"),
         ]);
 
     // --- Merge everything ---

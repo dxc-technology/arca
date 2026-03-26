@@ -289,6 +289,15 @@ const MIGRATIONS: &[Migration] = &[
             );
         ",
     },
+    Migration {
+        version: 12,
+        description: "Add Object Lock columns to objects table",
+        sql: "
+            ALTER TABLE objects ADD COLUMN retention_mode TEXT;
+            ALTER TABLE objects ADD COLUMN retain_until_date TEXT;
+            ALTER TABLE objects ADD COLUMN legal_hold_status TEXT;
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -362,7 +371,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 11);
+        assert_eq!(version, 12);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -404,12 +413,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 11);
+        assert_eq!(version, 12);
 
-        // Eleven migration records
+        // Twelve migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 11);
+        assert_eq!(count, 12);
     }
 }

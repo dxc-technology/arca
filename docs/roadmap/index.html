@@ -2012,7 +2012,7 @@ continuing from the MVP phases (0–11).</p>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">18</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">19</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">20</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">21</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">21</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">22</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">23</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">24</div>
@@ -2154,8 +2154,8 @@ continuing from the MVP phases (0–11).</p>
 <td><a href="#phase-21-object-lock-worm-compliance-p2">Object Lock (WORM Compliance)</a></td>
 <td style="text-align: center;">P2</td>
 <td style="text-align: center;">17</td>
-<td style="text-align: center;"></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><code>v0.14.0</code></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">22</td>
@@ -2371,11 +2371,14 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 <h3 id="phase-21-object-lock-worm-compliance-p2">Phase 21 — Object Lock (WORM Compliance) [P2]<a class="headerlink" href="#phase-21-object-lock-worm-compliance-p2" title="Permanent link">&para;</a></h3>
 <p>Write-Once-Read-Many compliance for regulatory and data protection requirements.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Object Lock config: <code>PutObjectLockConfiguration</code> / <code>GetObjectLockConfiguration</code>. Per-bucket default retention mode (GOVERNANCE / COMPLIANCE) and period</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Per-object retention: <code>PutObjectRetention</code> / <code>GetObjectRetention</code>. Mode + retain-until-date per version</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Legal hold: <code>PutObjectLegalHold</code> / <code>GetObjectLegalHold</code>. Binary flag per object version</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Enforcement: locked objects cannot be deleted or overwritten. GOVERNANCE mode allows bypass with permission. COMPLIANCE mode: no bypass whatsoever</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> (Console) Object lock status indicator, retention date display, legal hold toggle</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Object Lock config: <code>PutObjectLockConfiguration</code> / <code>GetObjectLockConfiguration</code>. Per-bucket default retention mode (GOVERNANCE / COMPLIANCE) and period (days or years). Auto-enables versioning, prevents suspension. Stored as JSON in <code>bucket_config</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Per-object retention: <code>PutObjectRetention</code> / <code>GetObjectRetention</code>. Mode + retain-until-date per version. COMPLIANCE can only be extended. GOVERNANCE requires bypass header to modify. Default retention applied on PutObject from bucket config</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Legal hold: <code>PutObjectLegalHold</code> / <code>GetObjectLegalHold</code>. Binary ON/OFF flag per object version. Requires Object Lock enabled on bucket</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Enforcement: locked objects cannot be hard-deleted (version-specific DELETE blocked). GOVERNANCE mode allows bypass with <code>x-amz-bypass-governance-retention: true</code> + <code>s3:BypassGovernanceRetention</code> permission. COMPLIANCE mode: no bypass until retention expires. Legal hold: blocks deletion when ON. Delete marker creation always allowed. Lifecycle worker respects locks</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Response headers: <code>x-amz-object-lock-mode</code>, <code>x-amz-object-lock-retain-until-date</code>, <code>x-amz-object-lock-legal-hold-status</code> on GET/HEAD</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Schema migration v12: <code>retention_mode</code>, <code>retain_until_date</code>, <code>legal_hold_status</code> columns on objects table</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> 7 new S3 policy actions including <code>s3:BypassGovernanceRetention</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> (Console) Object Lock card in bucket settings: enable with mode/days, status indicator. Versioning suspend disabled when locked</li>
 </ul>
 <p><strong>Depends on</strong>: Phase 17 (versioning — Object Lock operates on object versions)</p>
 <hr />

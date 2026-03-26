@@ -100,6 +100,20 @@ pub fn classify_operation(method: &str, path: &str, query: Option<&str>) -> &'st
                 _ => "Unknown",
             };
         }
+        if query.contains("retention") {
+            return match method {
+                "GET" => "GetObjectRetention",
+                "PUT" => "PutObjectRetention",
+                _ => "Unknown",
+            };
+        }
+        if query.contains("legal-hold") {
+            return match method {
+                "GET" => "GetObjectLegalHold",
+                "PUT" => "PutObjectLegalHold",
+                _ => "Unknown",
+            };
+        }
         return match method {
             "GET" => "GetObject",
             "HEAD" => "HeadObject",
@@ -148,6 +162,13 @@ pub fn classify_operation(method: &str, path: &str, query: Option<&str>) -> &'st
             "GET" => "GetBucketLifecycleConfiguration",
             "PUT" => "PutBucketLifecycleConfiguration",
             "DELETE" => "DeleteBucketLifecycleConfiguration",
+            _ => "Unknown",
+        };
+    }
+    if query.contains("object-lock") {
+        return match method {
+            "GET" => "GetObjectLockConfiguration",
+            "PUT" => "PutObjectLockConfiguration",
             _ => "Unknown",
         };
     }
@@ -378,6 +399,12 @@ mod tests {
         assert_eq!(classify_operation("GET", "/my-bucket", Some("lifecycle")), "GetBucketLifecycleConfiguration");
         assert_eq!(classify_operation("PUT", "/my-bucket", Some("lifecycle")), "PutBucketLifecycleConfiguration");
         assert_eq!(classify_operation("DELETE", "/my-bucket", Some("lifecycle")), "DeleteBucketLifecycleConfiguration");
+        assert_eq!(classify_operation("GET", "/my-bucket", Some("object-lock")), "GetObjectLockConfiguration");
+        assert_eq!(classify_operation("PUT", "/my-bucket", Some("object-lock")), "PutObjectLockConfiguration");
+        assert_eq!(classify_operation("GET", "/bucket/key.txt", Some("retention")), "GetObjectRetention");
+        assert_eq!(classify_operation("PUT", "/bucket/key.txt", Some("retention")), "PutObjectRetention");
+        assert_eq!(classify_operation("GET", "/bucket/key.txt", Some("legal-hold")), "GetObjectLegalHold");
+        assert_eq!(classify_operation("PUT", "/bucket/key.txt", Some("legal-hold")), "PutObjectLegalHold");
     }
 
     #[test]
