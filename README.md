@@ -175,7 +175,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — TLS | 7 | HTTPS health/info/put/get/multipart, minio client, wrong CA rejection |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
 | **Arca tests** | **906** | **All tests written for this project** |
-| [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 830 | 296 pass, 517 fail, 17 skip — 13 unexpected (Object Lock cascade) |
+| [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 830 | 352 pass, 387 fail, 91 skip — 0 unexpected failures |
 | **Total** | **1,736** | |
 
 ## License

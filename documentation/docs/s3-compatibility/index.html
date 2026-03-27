@@ -93,19 +93,19 @@
 <body>
 
 <h1>Arca S3 Compatibility Report</h1>
-<p class="meta">2026-03-27 10:27:18 UTC</p>
+<p class="meta">2026-03-27 11:28:50 UTC</p>
 
 <div class="cards">
   <div class="card"><div class="value">830</div><div class="label">Total</div></div>
-  <div class="card passed"><div class="value">296</div><div class="label">Passed</div></div>
-  <div class="card failed"><div class="value">517</div><div class="label">Failed</div></div>
-  <div class="card skipped"><div class="value">17</div><div class="label">Skipped</div></div>
-  <div class="card expected"><div class="value">504</div><div class="label">Expected Fail</div></div>
-  <div class="card rate"><div class="value">35.7%</div><div class="label">Pass Rate</div></div>
+  <div class="card passed"><div class="value">352</div><div class="label">Passed</div></div>
+  <div class="card failed"><div class="value">387</div><div class="label">Failed</div></div>
+  <div class="card skipped"><div class="value">91</div><div class="label">Skipped</div></div>
+  <div class="card expected"><div class="value">387</div><div class="label">Expected Fail</div></div>
+  <div class="card rate"><div class="value">42.4%</div><div class="label">Pass Rate</div></div>
 </div>
 
 <div class="progress-bar">
-  <div class="progress-fill" style="width: 35.66265060240964%"></div>
+  <div class="progress-fill" style="width: 42.40963855421687%"></div>
 </div>
 
 <h2>Category Breakdown</h2>
@@ -156,26 +156,26 @@
         <tr>
           <td>Checksums</td>
           <td class="num">10</td>
-          <td class="num passed">0</td>
-          <td class="num failed">10</td>
+          <td class="num passed">1</td>
+          <td class="num failed">9</td>
           <td class="num skipped">0</td>
-          <td class="num bad">0%</td>
+          <td class="num bad">10%</td>
         </tr>
         <tr>
           <td>Copy</td>
           <td class="num">15</td>
-          <td class="num passed">11</td>
-          <td class="num failed">4</td>
+          <td class="num passed">15</td>
+          <td class="num failed">0</td>
           <td class="num skipped">0</td>
-          <td class="num warn">73%</td>
+          <td class="num good">100%</td>
         </tr>
         <tr>
           <td>Encryption</td>
           <td class="num">136</td>
-          <td class="num passed">20</td>
-          <td class="num failed">115</td>
+          <td class="num passed">46</td>
+          <td class="num failed">89</td>
           <td class="num skipped">1</td>
-          <td class="num bad">15%</td>
+          <td class="num bad">34%</td>
         </tr>
         <tr>
           <td>Headers</td>
@@ -197,33 +197,33 @@
           <td>Logging</td>
           <td class="num">101</td>
           <td class="num passed">0</td>
-          <td class="num failed">101</td>
-          <td class="num skipped">0</td>
+          <td class="num failed">28</td>
+          <td class="num skipped">73</td>
           <td class="num bad">0%</td>
         </tr>
         <tr>
           <td>Multipart</td>
           <td class="num">23</td>
-          <td class="num passed">21</td>
-          <td class="num failed">2</td>
+          <td class="num passed">23</td>
+          <td class="num failed">0</td>
           <td class="num skipped">0</td>
-          <td class="num good">91%</td>
+          <td class="num good">100%</td>
         </tr>
         <tr>
           <td>Not Implemented</td>
           <td class="num">9</td>
-          <td class="num passed">0</td>
-          <td class="num failed">9</td>
+          <td class="num passed">1</td>
+          <td class="num failed">8</td>
           <td class="num skipped">0</td>
-          <td class="num bad">0%</td>
+          <td class="num bad">11%</td>
         </tr>
         <tr>
           <td>Object</td>
           <td class="num">42</td>
-          <td class="num passed">35</td>
-          <td class="num failed">7</td>
+          <td class="num passed">42</td>
+          <td class="num failed">0</td>
           <td class="num skipped">0</td>
-          <td class="num good">83%</td>
+          <td class="num good">100%</td>
         </tr>
         <tr>
           <td>Object Lock</td>
@@ -268,131 +268,75 @@
         <tr>
           <td>Versioning</td>
           <td class="num">65</td>
-          <td class="num passed">26</td>
-          <td class="num failed">38</td>
-          <td class="num skipped">1</td>
-          <td class="num warn">40%</td>
+          <td class="num passed">41</td>
+          <td class="num failed">22</td>
+          <td class="num skipped">2</td>
+          <td class="num warn">63%</td>
         </tr>
 </table>
 
 
         <h2>Passlist Diff</h2>
-        <div class="diff-box"><div class="diff-new">+ test_multipart_copy_multiple_sizes</div>
-<div class="diff-new">+ test_multipart_copy_small</div>
-<div class="diff-new">+ test_multipart_copy_special_names</div>
-<div class="diff-new">+ test_object_lock_put_obj_retention</div>
-<div class="diff-new">+ test_ranged_big_request_response_code</div>
-<div class="diff-new">+ test_ranged_request_response_code</div>
-<div class="diff-new">+ test_ranged_request_return_trailing_bytes_response_code</div>
-<div class="diff-new">+ test_ranged_request_skip_leading_bytes_response_code</div>
+        <div class="diff-box"><div class="diff-new">+ test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-1024]</div>
+<div class="diff-new">+ test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-1048576]</div>
+<div class="diff-new">+ test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-1]</div>
+<div class="diff-new">+ test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-8388608]</div>
+<div class="diff-new">+ test_copy_enc[sse-c-unencrypted-STANDARD-STANDARD-1024]</div>
+<div class="diff-new">+ test_copy_enc[sse-c-unencrypted-STANDARD-STANDARD-1048576]</div>
+<div class="diff-new">+ test_copy_enc[sse-c-unencrypted-STANDARD-STANDARD-1]</div>
+<div class="diff-new">+ test_copy_enc[sse-c-unencrypted-STANDARD-STANDARD-8388608]</div>
+<div class="diff-new">+ test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-1024]</div>
+<div class="diff-new">+ test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-1048576]</div>
+<div class="diff-new">+ test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-1]</div>
+<div class="diff-new">+ test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-8388608]</div>
+<div class="diff-new">+ test_copy_enc[sse-kms-unencrypted-STANDARD-STANDARD-1024]</div>
+<div class="diff-new">+ test_copy_enc[sse-kms-unencrypted-STANDARD-STANDARD-1048576]</div>
+<div class="diff-new">+ test_copy_enc[sse-kms-unencrypted-STANDARD-STANDARD-1]</div>
+<div class="diff-new">+ test_copy_enc[sse-kms-unencrypted-STANDARD-STANDARD-8388608]</div>
+<div class="diff-new">+ test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-1024]</div>
+<div class="diff-new">+ test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-1048576]</div>
+<div class="diff-new">+ test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-1]</div>
+<div class="diff-new">+ test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-8388608]</div>
+<div class="diff-new">+ test_copy_enc[unencrypted-unencrypted-STANDARD-STANDARD-1024]</div>
+<div class="diff-new">+ test_copy_enc[unencrypted-unencrypted-STANDARD-STANDARD-1048576]</div>
+<div class="diff-new">+ test_copy_enc[unencrypted-unencrypted-STANDARD-STANDARD-1]</div>
+<div class="diff-new">+ test_copy_enc[unencrypted-unencrypted-STANDARD-STANDARD-8388608]</div>
+<div class="diff-new">+ test_copy_object_ifmatch_failed</div>
+<div class="diff-new">+ test_copy_object_ifmatch_good</div>
+<div class="diff-new">+ test_copy_object_ifnonematch_failed</div>
+<div class="diff-new">+ test_copy_object_ifnonematch_good</div>
+<div class="diff-new">+ test_copy_part_enc[sse-kms-unencrypted-STANDARD-STANDARD-8388608]</div>
+<div class="diff-new">+ test_copy_part_enc[unencrypted-unencrypted-STANDARD-STANDARD-8388608]</div>
+<div class="diff-new">+ test_delete_marker_suspended</div>
+<div class="diff-new">+ test_delete_marker_versioned</div>
+<div class="diff-new">+ test_delete_object_current_if_match_last_modified_time</div>
+<div class="diff-new">+ test_delete_object_current_if_match_size</div>
+<div class="diff-new">+ test_delete_object_if_match</div>
+<div class="diff-new">+ test_delete_object_if_match_last_modified_time</div>
+<div class="diff-new">+ test_delete_object_if_match_size</div>
+<div class="diff-new">+ test_delete_objects_current_if_match</div>
+<div class="diff-new">+ test_delete_objects_current_if_match_last_modified_time</div>
+<div class="diff-new">+ test_delete_objects_current_if_match_size</div>
+<div class="diff-new">+ test_delete_objects_if_match</div>
+<div class="diff-new">+ test_delete_objects_if_match_last_modified_time</div>
+<div class="diff-new">+ test_delete_objects_if_match_size</div>
+<div class="diff-new">+ test_delete_objects_version_if_match</div>
+<div class="diff-new">+ test_delete_objects_version_if_match_last_modified_time</div>
+<div class="diff-new">+ test_delete_objects_version_if_match_size</div>
+<div class="diff-new">+ test_get_checksum_object_attributes</div>
+<div class="diff-new">+ test_get_object_attributes</div>
+<div class="diff-new">+ test_multipart_put_current_object_if_match</div>
+<div class="diff-new">+ test_multipart_put_current_object_if_none_match</div>
+<div class="diff-new">+ test_multipart_put_object_if_match</div>
+<div class="diff-new">+ test_put_current_object_if_match</div>
+<div class="diff-new">+ test_put_current_object_if_none_match</div>
+<div class="diff-new">+ test_put_object_current_if_match</div>
+<div class="diff-new">+ test_put_object_if_match</div>
+<div class="diff-new">+ test_upload_part_copy_percent_encoded_key</div>
 </div>
 
-<h2>Failures (517)</h2>
+<h2>Failures (387)</h2>
 
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Copy</span>
-            <code>test_copy_object_ifmatch_failed</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.444846 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Copy</span>
-            <code>test_copy_object_ifmatch_good</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.470156 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Copy</span>
-            <code>test_copy_object_ifnonematch_failed</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.372413 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Copy</span>
-            <code>test_copy_object_ifnonematch_good</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.397416 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Object</span>
-            <code>test_delete_object_if_match</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.309162 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Object</span>
-            <code>test_delete_object_if_match_last_modified_time</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.186228 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Object</span>
-            <code>test_delete_object_if_match_size</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.099641 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Object</span>
-            <code>test_delete_objects_if_match</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.014942 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Object</span>
-            <code>test_delete_objects_if_match_last_modified_time</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.924865 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Object</span>
-            <code>test_delete_objects_if_match_size</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.80844 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Multipart</span>
-            <code>test_multipart_put_object_if_match</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.47084 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Object</span>
-            <code>test_put_object_if_match</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.496087 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge unexpected">Unexpected</span>
-            <span class="cat-tag">Multipart</span>
-            <code>test_upload_part_copy_percent_encoded_key</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.66161 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
         <details class="fail-item">
           <summary>
             <span class="badge expected">Expected</span>
@@ -511,7 +455,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_block_public_object_canned_acls</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.028656 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutPublicAccessBlock operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -519,7 +463,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_block_public_policy</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.003834 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutPublicAccessBlock operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -527,7 +471,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_block_public_policy_with_principal</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.978714 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutPublicAccessBlock operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -535,7 +479,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_block_public_put_bucket_acls</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.054142 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutPublicAccessBlock operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -543,7 +487,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_block_public_restrict_public_buckets</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.954434 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.errorfactory.NoSuchBucket: An error occurred (NoSuchBucket) when calling the PutObject operation: The specified bucket does not exist.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -679,7 +623,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_bucket_create_delete_bucket_ownership</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.514383 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketOwnershipControls operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -759,7 +703,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_bucket_logging_bucket_acl_required</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.826084 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -767,295 +711,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_bucket_logging_bucket_auth_type</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.851259 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_bucket_concurrent_deletion_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.807362 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_bucket_concurrent_deletion_j_single</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.782076 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_bucket_concurrent_deletion_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.652945 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_bucket_concurrent_deletion_s_single</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.624369 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_bucket_deletion_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.355592 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_bucket_deletion_j_single</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.330562 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_bucket_deletion_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.153116 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_bucket_deletion_s_single</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.10596 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_concurrent_disabling_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.756967 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_concurrent_disabling_j_single</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.732254 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_concurrent_disabling_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.599417 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_concurrent_disabling_s_single</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.573722 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_concurrent_updating_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.705808 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_concurrent_updating_j_single</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.67818 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_concurrent_updating_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.547535 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_concurrent_updating_s_single</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.498551 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_disabling_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.30586 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_disabling_j_single</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.280654 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_disabling_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.080471 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_disabling_s_single</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.055801 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_updating_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.254751 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_updating_j_single</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.2296 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_updating_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.030975 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_cleanup_updating_s_single</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.005738 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_concurrent_flush_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.577889 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_concurrent_flush_j_single</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.527591 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_concurrent_flush_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.552934 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_concurrent_flush_s_single</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.502869 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_conf_concurrent_updating_pfx_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.958426 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_conf_concurrent_updating_pfx_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.987495 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_conf_concurrent_updating_roll_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.014559 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_conf_concurrent_updating_roll_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.043514 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_conf_updating_pfx_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.068651 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_conf_updating_pfx_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.093998 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_conf_updating_roll_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.11974 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_conf_updating_roll_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.144466 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1063,7 +719,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_bucket_logging_copy_objects</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.904745 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1071,7 +727,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_bucket_logging_copy_objects_bucket</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.85536 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1079,7 +735,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_bucket_logging_copy_objects_bucket_versioned</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.830673 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1087,7 +743,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_bucket_logging_copy_objects_versioned</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.880218 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1095,7 +751,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_bucket_logging_delete_objects</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.004501 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1103,63 +759,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_bucket_logging_delete_objects_versioned</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.979502 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_event_type_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.529662 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_event_type_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.504596 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_flush_empty</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.726396 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_flush_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.70167 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_flush_j_single</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.649428 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_flush_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.677355 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_flush_s_single</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.603094 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1167,7 +767,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_bucket_logging_get_objects</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.954649 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1175,7 +775,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_bucket_logging_get_objects_versioned</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.929001 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1183,7 +783,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_bucket_logging_head_objects</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.804328 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1191,23 +791,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_bucket_logging_head_objects_versioned</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.779296 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_key_filter_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.751464 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_key_filter_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.776426 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1215,7 +799,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_bucket_logging_mpu_copy</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.630886 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1223,15 +807,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_bucket_logging_mpu_copy_versioned</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.605765 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_mpu_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.683353 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1239,15 +815,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_bucket_logging_mpu_s</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.754769 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_bucket_logging_mpu_versioned_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.65841 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1255,7 +823,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_bucket_logging_mpu_versioned_s</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.708144 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1263,7 +831,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_bucket_logging_mtime</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.948713 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1271,7 +839,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_bucket_logging_multi_delete</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.58026 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1279,7 +847,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_bucket_logging_multi_delete_versioned</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.555656 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1287,39 +855,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_bucket_logging_multiple_prefixes</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.453529 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_notupdating_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.203618 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_notupdating_j_single</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.179155 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_notupdating_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.980886 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_notupdating_s_single</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.955851 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1327,15 +863,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_bucket_logging_object_acl_required</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.801145 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_object_meta</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.380091 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1343,103 +871,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_bucket_logging_owner</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.42717 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_part_cleanup_concurrent_deletion_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.345107 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_part_cleanup_concurrent_deletion_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.422433 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_part_cleanup_concurrent_disabling_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.371503 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_part_cleanup_concurrent_disabling_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.448272 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_part_cleanup_concurrent_updating_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.397128 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_part_cleanup_concurrent_updating_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.473163 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_part_cleanup_deletion_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.170037 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_part_cleanup_deletion_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.268632 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_part_cleanup_disabling_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.19446 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_part_cleanup_disabling_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.293575 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_part_cleanup_updating_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.242749 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_part_cleanup_updating_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.319366 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1447,15 +879,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_bucket_logging_partitioned_key</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.876411 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_permission_change_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.277586 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1463,15 +887,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_bucket_logging_permission_change_s</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.302574 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_put_and_flush</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.478317 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1479,7 +895,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_bucket_logging_put_concurrency</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.051835 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1487,7 +903,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_bucket_logging_put_objects</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.102414 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1495,15 +911,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_bucket_logging_put_objects_versioned</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.076738 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_roll_time</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.478766 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1511,7 +919,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_bucket_logging_simple_key</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.901419 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1519,39 +927,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_bucket_logging_single_prefix</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848767.405347 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_target_cleanup_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.93107 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_target_cleanup_j_single</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.906636 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_target_cleanup_s</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.880525 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_bucket_logging_target_cleanup_s_single</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848766.855495 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1575,7 +951,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_bucket_policy_allow_notprincipal</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.174304 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>assert 501 == 400</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1781,41 +1157,9 @@
           <summary>
             <span class="badge expected">Expected</span>
             <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-1024]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.916811 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-1048576]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.892224 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-1]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.941806 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-8388608]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.8631 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-c-sse-kms-STANDARD-STANDARD-1024]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.810698 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1823,7 +1167,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-c-sse-kms-STANDARD-STANDARD-1048576]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.785331 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1831,7 +1175,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-c-sse-kms-STANDARD-STANDARD-1]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.836309 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1839,7 +1183,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-c-sse-kms-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.760399 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1847,7 +1191,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-c-sse-s3-STANDARD-STANDARD-1024]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.043867 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1855,7 +1199,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-c-sse-s3-STANDARD-STANDARD-1048576]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.994839 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1863,7 +1207,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-c-sse-s3-STANDARD-STANDARD-1]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.068886 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1871,71 +1215,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-c-sse-s3-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.968101 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-c-unencrypted-STANDARD-STANDARD-1024]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.144375 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-c-unencrypted-STANDARD-STANDARD-1048576]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.118598 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-c-unencrypted-STANDARD-STANDARD-1]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.169729 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-c-unencrypted-STANDARD-STANDARD-8388608]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.093997 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-1024]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.477423 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-1048576]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.45193 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-1]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.502462 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-8388608]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.426339 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1943,7 +1223,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-kms-sse-kms-STANDARD-STANDARD-1024]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.352086 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1951,7 +1231,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-kms-sse-kms-STANDARD-STANDARD-1048576]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.326592 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1959,7 +1239,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-kms-sse-kms-STANDARD-STANDARD-1]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.376652 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1967,7 +1247,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-kms-sse-kms-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.301442 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1975,7 +1255,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-kms-sse-s3-STANDARD-STANDARD-1024]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.581585 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1983,7 +1263,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-kms-sse-s3-STANDARD-STANDARD-1048576]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.555161 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1991,7 +1271,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-kms-sse-s3-STANDARD-STANDARD-1]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.611576 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1999,39 +1279,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-kms-sse-s3-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.5282 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-kms-unencrypted-STANDARD-STANDARD-1024]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.686614 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-kms-unencrypted-STANDARD-STANDARD-1048576]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.66103 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-kms-unencrypted-STANDARD-STANDARD-1]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.735212 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[sse-kms-unencrypted-STANDARD-STANDARD-8388608]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848762.636649 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2039,7 +1287,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-s3-sse-c-STANDARD-STANDARD-1024]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.376259 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2047,7 +1295,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-s3-sse-c-STANDARD-STANDARD-1048576]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.350466 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2055,7 +1303,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-s3-sse-c-STANDARD-STANDARD-1]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.402151 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2063,7 +1311,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-s3-sse-c-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.297985 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2071,7 +1319,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-s3-sse-kms-STANDARD-STANDARD-1024]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.246937 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2079,7 +1327,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-s3-sse-kms-STANDARD-STANDARD-1048576]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.220954 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2087,7 +1335,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-s3-sse-kms-STANDARD-STANDARD-1]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.272251 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2095,7 +1343,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-s3-sse-kms-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.195017 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2103,7 +1351,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-s3-sse-s3-STANDARD-STANDARD-1024]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.480893 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2111,7 +1359,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-s3-sse-s3-STANDARD-STANDARD-1048576]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.455562 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2119,7 +1367,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-s3-sse-s3-STANDARD-STANDARD-1]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.507547 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2127,7 +1375,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-s3-sse-s3-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.428278 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2135,7 +1383,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-s3-unencrypted-STANDARD-STANDARD-1024]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.582636 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2143,7 +1391,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-s3-unencrypted-STANDARD-STANDARD-1048576]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.55751 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2151,7 +1399,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-s3-unencrypted-STANDARD-STANDARD-1]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.611085 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2159,39 +1407,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[sse-s3-unencrypted-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.532402 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-1024]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.812893 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-1048576]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.786768 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-1]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.838679 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-8388608]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.761521 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2199,7 +1415,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[unencrypted-sse-kms-STANDARD-STANDARD-1024]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.711177 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2207,7 +1423,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[unencrypted-sse-kms-STANDARD-STANDARD-1048576]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.686371 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2215,7 +1431,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[unencrypted-sse-kms-STANDARD-STANDARD-1]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.736049 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2223,7 +1439,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[unencrypted-sse-kms-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.66093 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2231,7 +1447,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[unencrypted-sse-s3-STANDARD-STANDARD-1024]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.911863 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2239,7 +1455,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[unencrypted-sse-s3-STANDARD-STANDARD-1048576]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.888012 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2247,7 +1463,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[unencrypted-sse-s3-STANDARD-STANDARD-1]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.959949 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2255,39 +1471,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_enc[unencrypted-sse-s3-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.863574 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[unencrypted-unencrypted-STANDARD-STANDARD-1024]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.035398 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[unencrypted-unencrypted-STANDARD-STANDARD-1048576]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.010583 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[unencrypted-unencrypted-STANDARD-STANDARD-1]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.06021 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_enc[unencrypted-unencrypted-STANDARD-STANDARD-8388608]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848763.984956 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2295,7 +1479,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_part_enc[sse-c-sse-c-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.21034 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the CreateMultipartUpload operation: SSE-C is not supported for multipart uploads</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2303,7 +1487,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_part_enc[sse-c-sse-kms-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.185312 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2311,7 +1495,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_part_enc[sse-c-sse-s3-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.258875 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2319,7 +1503,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_part_enc[sse-c-unencrypted-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.283435 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the UploadPartCopy operation: SSE-C is not supported for multipart uploads</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2327,7 +1511,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_part_enc[sse-kms-sse-c-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.110491 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the CreateMultipartUpload operation: SSE-C is not supported for multipart uploads</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2335,7 +1519,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_part_enc[sse-kms-sse-kms-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.084966 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2343,15 +1527,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_part_enc[sse-kms-sse-s3-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.135034 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_part_enc[sse-kms-unencrypted-STANDARD-STANDARD-8388608]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.159882 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2359,7 +1535,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_part_enc[sse-s3-sse-c-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.333462 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2367,7 +1543,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_part_enc[sse-s3-sse-kms-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.308255 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2375,7 +1551,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_part_enc[sse-s3-sse-s3-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.359257 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2383,7 +1559,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_part_enc[sse-s3-unencrypted-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.384433 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2391,7 +1567,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_part_enc[unencrypted-sse-c-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.43755 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the CreateMultipartUpload operation: SSE-C is not supported for multipart uploads</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2399,7 +1575,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_part_enc[unencrypted-sse-kms-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.412035 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2407,15 +1583,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_copy_part_enc[unencrypted-sse-s3-STANDARD-STANDARD-8388608]</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.462767 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_copy_part_enc[unencrypted-unencrypted-STANDARD-STANDARD-8388608]</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.487955 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2527,7 +1695,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_create_bucket_bucket_owner_enforced</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.698515 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketOwnershipControls operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2535,7 +1703,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_create_bucket_bucket_owner_preferred</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.670569 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketOwnershipControls operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2543,7 +1711,16 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_create_bucket_no_ownership_controls</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.72524 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>AssertionError: assert (404, 'Owners...otFoundError') == (501, 'NotImplemented')
+  
+  At index 0 diff: 404 != 501
+  
+  Full diff:
+    (
+  -     501,
+  ?     ^ ^...
+  
+  ...Full output truncated (5 lin</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2551,7 +1728,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_create_bucket_object_writer</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.645125 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketOwnershipControls operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2559,7 +1736,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_delete_bucket_encryption_kms</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.709983 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2567,7 +1744,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_delete_bucket_encryption_s3</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.733936 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2575,7 +1752,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_delete_marker_expiration</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.521314 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (MalformedXML) when calling the PutBucketLifecycleConfiguration operation: Expiration element must contain Days</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2583,23 +1760,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_delete_marker_nonversioned</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.634237 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_marker_suspended</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.575058 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_marker_versioned</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.604489 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-delete-marker'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2607,23 +1768,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_delete_object_current_if_match</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.279868 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_object_current_if_match_last_modified_time</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.157161 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_object_current_if_match_size</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.072242 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (PreconditionFailed) when calling the DeleteObject operation: At least one of the pre-conditions you specified did not hold.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2631,7 +1776,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_delete_object_version_if_match</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.250861 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2639,7 +1784,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_delete_object_version_if_match_last_modified_time</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.128783 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2647,55 +1792,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_delete_object_version_if_match_size</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.042264 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_objects_current_if_match</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.987493 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_objects_current_if_match_last_modified_time</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.895392 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_objects_current_if_match_size</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.780128 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_objects_version_if_match</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.955163 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_objects_version_if_match_last_modified_time</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.836956 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_objects_version_if_match_size</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.753316 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2776,7 +1873,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_get_authpublic_acl_bucket_policy_status</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.272978 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2784,7 +1881,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_get_bucket_encryption_kms</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.758486 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2792,7 +1889,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_get_bucket_encryption_s3</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.783702 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2800,15 +1897,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_get_bucket_policy_status</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.322265 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Checksums</span>
-            <code>test_get_checksum_object_attributes</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.778532 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketPolicyStatus operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2816,7 +1905,7 @@
             <span class="cat-tag">Checksums</span>
             <code>test_get_multipart_checksum_object_attributes</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.927567 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'ChecksumSHA256'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2824,7 +1913,7 @@
             <span class="cat-tag">Not Implemented</span>
             <code>test_get_multipart_object_attributes</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.867319 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'PartsCount'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2832,7 +1921,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_get_nonpublicpolicy_acl_bucket_policy_status</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.223984 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketPolicyStatus operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2840,15 +1929,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_get_nonpublicpolicy_principal_bucket_policy_status</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.198625 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Not Implemented</span>
-            <code>test_get_object_attributes</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.690129 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2856,7 +1937,7 @@
             <span class="cat-tag">Not Implemented</span>
             <code>test_get_object_torrent</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.255362 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>AssertionError: assert 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2864,7 +1945,7 @@
             <span class="cat-tag">Not Implemented</span>
             <code>test_get_paginated_multipart_object_attributes</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.837068 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'PartsCount'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2872,7 +1953,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_get_public_acl_bucket_policy_status</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.298181 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2880,7 +1961,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_get_public_block_deny_bucket_policy</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.103769 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutPublicAccessBlock operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2888,7 +1969,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_get_publicpolicy_acl_bucket_policy_status</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.248719 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketPolicyStatus operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2896,7 +1977,7 @@
             <span class="cat-tag">Not Implemented</span>
             <code>test_get_single_multipart_object_attributes</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.809028 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'PartsCount'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2904,7 +1985,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_get_sse_c_encrypted_object_attributes</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.721267 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2920,7 +2001,10 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_get_undefined_public_block</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.149383 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>AssertionError: assert 'NotImplemented' == 'NoSuchPublic...Configuration'
+  
+  - NoSuchPublicAccessBlockConfiguration
+  + NotImplemented</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2928,7 +2012,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_get_versioned_object_attributes</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.750378 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'VersionId'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2944,7 +2028,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_ignore_public_acls</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.929632 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2961,7 +2045,7 @@
             <code>test_lifecycle_deletemarker_expiration_with_days_tag</code>
           </summary>
           <pre>assert 1 == 0
- +  where 1 = len([{'ETag': '&quot;8e689ba88b92e4020c6508e8a73e4ec1&quot;', 'IsLatest': False, 'Key': 'test1/a', 'LastModified': datetime.datetime(2026, 3, 27, 10, 26, 2, 47000, tzinfo=tzlocal()),</pre>
+ +  where 1 = len([{'ETag': '&quot;8e689ba88b92e4020c6508e8a73e4ec1&quot;', 'IsLatest': False, 'Key': 'test1/a', 'LastModified': datetime.datetime(2026, 3, 27, 11, 26, 1, 96000, tzinfo=tzlocal()),</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3037,7 +2121,7 @@
             <code>test_lifecycle_expiration_size_lt</code>
           </summary>
           <pre>assert 2 == 1
- +  where 2 = len([{'ETag': '&quot;62495ddaf6daa2d10ac0fac67fbb43bf&quot;', 'Key': 'myobject_big', 'LastModified': datetime.datetime(2026, 3, 27, 10, 25, 9, 287000, tzinfo=tzlocal()), 'Size': 3000</pre>
+ +  where 2 = len([{'ETag': '&quot;62495ddaf6daa2d10ac0fac67fbb43bf&quot;', 'Key': 'myobject_big', 'LastModified': datetime.datetime(2026, 3, 27, 11, 25, 8, 367000, tzinfo=tzlocal()), 'Size': 3000</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3168,7 +2252,7 @@
             <code>test_list_buckets_paginated</code>
           </summary>
           <pre>AssertionError: assert 2 == 1
- +  where 2 = len([{'CreationDate': datetime.datetime(2026, 3, 27, 10, 19, 33, 501000, tzinfo=tzlocal()), 'Name': 'arca-test-lwfe525eczx61twcvlm-259'}, {'CreationDate': d</pre>
+ +  where 2 = len([{'CreationDate': datetime.datetime(2026, 3, 27, 11, 19, 40, 784000, tzinfo=tzlocal()), 'Name': 'arca-test-yhjo1sayhkgc52rulpe-259'}, {'CreationDate': d</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3184,7 +2268,7 @@
             <span class="cat-tag">Checksums</span>
             <code>test_multipart_checksum_sha256</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.158886 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'ChecksumAlgorithm'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3193,22 +2277,6 @@
             <code>test_multipart_get_part</code>
           </summary>
           <pre>KeyError: 'PartsCount'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_multipart_put_current_object_if_match</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.367603 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_multipart_put_current_object_if_none_match</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.41978 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3232,7 +2300,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_multipart_upload_on_a_bucket_with_policy</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.880148 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3240,7 +2308,7 @@
             <span class="cat-tag">Checksums</span>
             <code>test_multipart_use_cksum_helper_crc32</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.084254 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'ChecksumAlgorithm'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3248,7 +2316,7 @@
             <span class="cat-tag">Checksums</span>
             <code>test_multipart_use_cksum_helper_crc32c</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.051501 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'ChecksumAlgorithm'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3256,7 +2324,7 @@
             <span class="cat-tag">Checksums</span>
             <code>test_multipart_use_cksum_helper_crc64nvme</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.109229 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'ChecksumAlgorithm'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3264,7 +2332,7 @@
             <span class="cat-tag">Checksums</span>
             <code>test_multipart_use_cksum_helper_sha1</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.026431 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'ChecksumAlgorithm'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3272,7 +2340,7 @@
             <span class="cat-tag">Checksums</span>
             <code>test_multipart_use_cksum_helper_sha256</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.134575 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'ChecksumAlgorithm'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3408,7 +2476,7 @@
             <span class="cat-tag">Checksums</span>
             <code>test_object_checksum_crc64nvme</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.183576 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>AssertionError: assert 'ChecksumCRC64NVME' not in {'AcceptRanges': 'bytes', 'ChecksumCRC64NVME': 'Qeh8oXvGiSo=', 'ContentLength': 1024, 'ContentType': 'application/octet-stream', ...}</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3416,7 +2484,7 @@
             <span class="cat-tag">Checksums</span>
             <code>test_object_checksum_sha256</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.20853 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>AssertionError: assert 'ChecksumSHA256' not in {'AcceptRanges': 'bytes', 'ChecksumSHA256': 'arcu6553sHVAiX4MjW0j7I7vD4w6R+Gz9Ok0Q9lTa+0=', 'ContentLength': 1024, 'ContentType': 'application/octet-stre</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3456,7 +2524,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_changing_mode_from_compliance</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.494889 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.467753 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3464,7 +2532,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_changing_mode_from_governance_with_bypass</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.544659 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.535348 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3472,7 +2540,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_changing_mode_from_governance_without_bypass</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.519605 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.509288 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3480,7 +2548,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_delete_multipart_object_with_legal_hold_on</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.646044 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.648431 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3488,7 +2556,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_delete_multipart_object_with_retention</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.900123 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.896651 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3496,7 +2564,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_delete_object_with_legal_hold_off</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.621314 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.62258 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3504,7 +2572,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_delete_object_with_legal_hold_on</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.671311 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.676775 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3512,7 +2580,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_delete_object_with_retention</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.925557 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.925875 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3520,7 +2588,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_delete_object_with_retention_and_marker</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.87439 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.871515 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3528,7 +2596,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_get_legal_hold</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.745119 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.727255 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3536,7 +2604,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_get_legal_hold_invalid_bucket</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.698987 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.702076 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3544,7 +2612,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_get_obj_metadata</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.59654 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.595799 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3552,7 +2620,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_get_obj_retention</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848771.158283 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845071.146575 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3560,7 +2628,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_get_obj_retention_invalid_bucket</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848771.105579 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845071.080952 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3568,7 +2636,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_get_obj_retention_iso8601</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848771.132372 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845071.124067 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3576,7 +2644,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_multi_delete_object_with_retention</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.847867 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.845908 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3584,7 +2652,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_legal_hold</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.823081 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.820943 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3592,7 +2660,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_legal_hold_invalid_bucket</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.798419 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.779136 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3600,7 +2668,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_legal_hold_invalid_status</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.773174 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.753264 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3665,7 +2733,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_obj_retention_increase_period</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848771.002559 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845071.002543 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3681,7 +2749,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_obj_retention_invalid_bucket</code>
           </summary>
-          <pre>failed on teardown with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848771.211773 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on teardown with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845071.195504 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3689,7 +2757,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_obj_retention_invalid_mode</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848771.18501 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845071.172971 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3697,7 +2765,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_obj_retention_override_default_retention</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848771.054234 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845071.027963 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3705,7 +2773,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_obj_retention_shorten_period</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.976593 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.976393 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3713,7 +2781,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_obj_retention_shorten_period_bypass</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.951134 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.950594 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3721,7 +2789,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_obj_retention_versionid</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848771.080183 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845071.055863 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3737,7 +2805,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_uploading_obj</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.570266 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.570614 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3745,7 +2813,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_object_put_acl_mtime</code>
           </summary>
-          <pre>assert datetime.datetime(2026, 3, 27, 10, 17, 30, tzinfo=tzutc()) == datetime.datetime(2026, 3, 27, 10, 17, 32, tzinfo=tzutc())</pre>
+          <pre>assert datetime.datetime(2026, 3, 27, 11, 18, 6, tzinfo=tzutc()) == datetime.datetime(2026, 3, 27, 11, 18, 8, tzinfo=tzutc())</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3801,7 +2869,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_object_read_unreadable</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.34712 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>assert 404 == 400</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4007,7 +3075,8 @@
             <span class="cat-tag">Presigned/POST</span>
             <code>test_post_object_upload_checksum</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.001771 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>assert 403 == 204
+ +  where 403 = &lt;Response [403]&gt;.status_code</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4068,7 +3137,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_put_bucket_encryption_kms</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.808137 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4076,7 +3145,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_put_bucket_encryption_s3</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.854961 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4084,15 +3153,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_put_bucket_logging</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.973866 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_put_bucket_logging_account_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.17806 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4100,7 +3161,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_put_bucket_logging_account_s</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.202951 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4108,15 +3169,10 @@
             <span class="cat-tag">Logging</span>
             <code>test_put_bucket_logging_errors</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.452918 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_put_bucket_logging_extensions</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.128429 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>AssertionError: assert 'NotImplemented' == 'NoSuchBucket'
+  
+  - NoSuchBucket
+  + NotImplemented</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4124,7 +3180,10 @@
             <span class="cat-tag">Logging</span>
             <code>test_put_bucket_logging_permissions</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.401247 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>AssertionError: assert 'NotImplemented' == 'AccessDenied'
+  
+  - AccessDenied
+  + NotImplemented</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4132,7 +3191,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_put_bucket_logging_policy_wildcard</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.376099 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4140,15 +3199,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_put_bucket_logging_policy_wildcard_objects</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.350092 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Logging</span>
-            <code>test_put_bucket_logging_tenant_j</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.227806 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4156,7 +3207,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_put_bucket_logging_tenant_s</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.252646 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4164,7 +3215,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_put_bucket_ownership_bucket_owner_enforced</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.619276 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>assert 501 == 400</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4172,7 +3223,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_put_bucket_ownership_bucket_owner_preferred</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.590954 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketOwnershipControls operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4180,23 +3231,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_put_bucket_ownership_object_writer</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848764.564479 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_put_current_object_if_match</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.394481 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_put_current_object_if_none_match</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.445313 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketOwnershipControls operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4204,7 +3239,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_put_get_delete_public_block</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.904937 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutPublicAccessBlock operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4241,18 +3276,10 @@
         <details class="fail-item">
           <summary>
             <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_put_object_current_if_match</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848765.336773 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
             <span class="cat-tag">ACL/Policy</span>
             <code>test_put_public_block</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848770.078251 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutPublicAccessBlock operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4268,7 +3295,7 @@
             <span class="cat-tag">Logging</span>
             <code>test_rm_bucket_logging</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848768.153345 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4292,7 +3319,7 @@
             <span class="cat-tag">Presigned/POST</span>
             <code>test_sse_kms_default_post_object_authenticated_request</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.383978 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4300,7 +3327,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_kms_default_upload_1b</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.582477 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4308,7 +3335,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_kms_default_upload_1kb</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.556913 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4316,7 +3343,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_kms_default_upload_1mb</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.511138 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4324,7 +3351,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_kms_default_upload_8mb</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.485846 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4373,7 +3400,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_s3_default_method_head</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.460508 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4381,7 +3408,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_s3_default_multipart_upload</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.434685 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4389,7 +3416,7 @@
             <span class="cat-tag">Presigned/POST</span>
             <code>test_sse_s3_default_post_object_authenticated_request</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.409837 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4397,7 +3424,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_s3_default_upload_1b</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.685194 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4405,7 +3432,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_s3_default_upload_1kb</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.657363 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4413,7 +3440,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_s3_default_upload_1mb</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.633364 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4421,7 +3448,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_s3_default_upload_8mb</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.607633 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the PutBucketEncryption operation: Server-side encryption is not available: no master key configured in [encryption] s</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4429,7 +3456,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_s3_encrypted_upload_1b</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.356349 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4437,7 +3464,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_s3_encrypted_upload_1kb</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.330726 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4445,7 +3472,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_s3_encrypted_upload_1mb</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.305341 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -4453,7 +3480,7 @@
             <span class="cat-tag">Encryption</span>
             <code>test_sse_s3_encrypted_upload_8mb</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-lwfe525eczx61twcvlm-514 still has objects locked for 118848769.280257 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>KeyError: 'x-amz-server-side-encryption'</pre>
         </details>
         <details class="fail-item">
           <summary>

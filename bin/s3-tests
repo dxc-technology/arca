@@ -122,9 +122,61 @@ fi
 
 PYTEST_ARGS+=("${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}")
 
-echo "==> Running s3-tests..."
-EXIT_CODE=0
-$COMPOSE run --rm s3-tests "${PYTEST_ARGS[@]}" || EXIT_CODE=$?
+# Split test run: non-Object-Lock tests first, then wipe and run Object Lock tests.
+# This prevents COMPLIANCE-locked buckets from cascading failures into unrelated tests.
+OBJECT_LOCK_FILTER="test_object_lock"
+
+if ! $PASSLIST_MODE && [[ ${#EXTRA_ARGS[@]} -eq 0 ]] && ! $NO_CLEAN; then
+    echo "==> Phase 1: Running non-Object-Lock tests..."
+    EXIT_CODE=0
+    PHASE1_ARGS=("${PYTEST_ARGS[@]}" "-k" "not $OBJECT_LOCK_FILTER"
+        "--junitxml=/s3-tests/output/results_phase1.xml" "--override-ini=junit_suite_name=phase1")
+    # Remove the default junitxml (we override it per phase)
+    PHASE1_ARGS=("s3tests/functional/test_s3.py" "-v" "--tb=short" "--timeout=30"
+        "--junitxml=/s3-tests/output/results_phase1.xml" "-k" "not $OBJECT_LOCK_FILTER")
+    $COMPOSE run --rm s3-tests "${PHASE1_ARGS[@]}" || EXIT_CODE=$?
+
+    echo ""
+    echo "==> Wiping storage between test phases..."
+    bin/arca stop 2>/dev/null || true
+    docker volume rm docker_arca-data 2>/dev/null || true
+    bin/arca start -d --encryption
+    echo "==> Waiting for Arca to be ready..."
+    for i in $(seq 1 30); do
+        if curl -sf http://localhost:9000/ >/dev/null 2>&1; then break; fi
+        sleep 1
+    done
+
+    echo ""
+    echo "==> Phase 2: Running Object Lock tests..."
+    PHASE2_ARGS=("s3tests/functional/test_s3.py" "-v" "--tb=short" "--timeout=30"
+        "--junitxml=/s3-tests/output/results_phase2.xml" "-k" "$OBJECT_LOCK_FILTER")
+    $COMPOSE run --rm s3-tests "${PHASE2_ARGS[@]}" || EXIT_CODE=$?
+
+    # Merge results: concatenate XML files for the report generator
+    echo "==> Merging test results..."
+    python3 -c "
+import xml.etree.ElementTree as ET, sys, os
+merged = ET.Element('testsuites')
+for f in ['s3-tests/results_phase1.xml', 's3-tests/results_phase2.xml']:
+    if os.path.exists(f):
+        tree = ET.parse(f)
+        for suite in tree.getroot().iter('testsuite'):
+            merged.append(suite)
+        # Also handle case where root IS a testsuite
+        root = tree.getroot()
+        if root.tag == 'testsuite':
+            merged.append(root)
+ET.ElementTree(merged).write('s3-tests/results.xml', xml_declaration=True, encoding='unicode')
+" 2>/dev/null || {
+        # Fallback: just use phase1 results if merge fails
+        cp s3-tests/results_phase1.xml s3-tests/results.xml 2>/dev/null || true
+    }
+else
+    echo "==> Running s3-tests..."
+    EXIT_CODE=0
+    $COMPOSE run --rm s3-tests "${PYTEST_ARGS[@]}" || EXIT_CODE=$?
+fi
 
 # Generate HTML report if results.xml exists
 if [[ -f "s3-tests/results.xml" ]]; then
