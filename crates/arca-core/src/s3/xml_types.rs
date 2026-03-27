@@ -6,7 +6,7 @@ use quick_xml::Writer;
 use crate::error::write_xml_element;
 use crate::types::{
     BucketInfo, ListBucketResultParams, ListBucketV1ResultParams, ListEntry,
-    MultipartUploadRecord,
+    MultipartUploadRecord, PartRecord,
 };
 
 
@@ -560,7 +560,7 @@ pub fn list_versions_result(
             write_xml_element(&mut writer, "ETag", &quoted_etag);
 
             write_xml_element(&mut writer, "Size", &entry.size.to_string());
-            write_xml_element(&mut writer, "StorageClass", "STANDARD");
+            write_xml_element(&mut writer, "StorageClass", &entry.storage_class);
 
             // Owner
             writer
@@ -669,6 +669,7 @@ pub struct DeletedEntry {
 /// A failed key in a `DeleteObjects` response.
 pub struct DeleteErrorEntry {
     pub key: String,
+    pub version_id: Option<String>,
     pub code: String,
     pub message: String,
 }
@@ -719,6 +720,9 @@ pub fn delete_objects_result(
             .write_event(Event::Start(BytesStart::new("Error")))
             .expect("write Error start");
         write_xml_element(&mut writer, "Key", &entry.key);
+        if let Some(ref vid) = entry.version_id {
+            write_xml_element(&mut writer, "VersionId", vid);
+        }
         write_xml_element(&mut writer, "Code", &entry.code);
         write_xml_element(&mut writer, "Message", &entry.message);
         writer
@@ -998,6 +1002,183 @@ fn validate_tags(tags: &[(String, String)]) -> Result<(), crate::error::S3Error>
         }
     }
     Ok(())
+}
+
+/// Build a ListPartsResult XML response.
+pub fn list_parts_result(
+    bucket: &str,
+    key: &str,
+    upload_id: &str,
+    owner: &str,
+    storage_class: &str,
+    part_number_marker: u32,
+    next_part_number_marker: Option<u32>,
+    max_parts: u32,
+    is_truncated: bool,
+    parts: &[PartRecord],
+    checksum_algorithm: Option<&str>,
+) -> String {
+    let mut writer = Writer::new(Vec::new());
+    writer
+        .write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
+        .expect("write XML decl");
+
+    let mut root = BytesStart::new("ListPartsResult");
+    root.push_attribute(("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
+    writer.write_event(Event::Start(root)).expect("write root");
+
+    write_xml_element(&mut writer, "Bucket", bucket);
+    write_xml_element(&mut writer, "Key", key);
+    write_xml_element(&mut writer, "UploadId", upload_id);
+
+    // Initiator
+    writer
+        .write_event(Event::Start(BytesStart::new("Initiator")))
+        .expect("write Initiator");
+    write_xml_element(&mut writer, "ID", owner);
+    write_xml_element(&mut writer, "DisplayName", owner);
+    writer
+        .write_event(Event::End(BytesEnd::new("Initiator")))
+        .expect("write Initiator end");
+
+    // Owner
+    writer
+        .write_event(Event::Start(BytesStart::new("Owner")))
+        .expect("write Owner");
+    write_xml_element(&mut writer, "ID", owner);
+    write_xml_element(&mut writer, "DisplayName", owner);
+    writer
+        .write_event(Event::End(BytesEnd::new("Owner")))
+        .expect("write Owner end");
+
+    write_xml_element(&mut writer, "StorageClass", storage_class);
+    write_xml_element(
+        &mut writer,
+        "PartNumberMarker",
+        &part_number_marker.to_string(),
+    );
+    if let Some(next) = next_part_number_marker {
+        write_xml_element(&mut writer, "NextPartNumberMarker", &next.to_string());
+    }
+    write_xml_element(&mut writer, "MaxParts", &max_parts.to_string());
+    write_xml_element(
+        &mut writer,
+        "IsTruncated",
+        if is_truncated { "true" } else { "false" },
+    );
+
+    if let Some(algo) = checksum_algorithm {
+        write_xml_element(&mut writer, "ChecksumAlgorithm", algo);
+    }
+
+    for part in parts {
+        writer
+            .write_event(Event::Start(BytesStart::new("Part")))
+            .expect("write Part");
+        write_xml_element(&mut writer, "PartNumber", &part.part_number.to_string());
+
+        // LastModified: use part's last_modified if available, otherwise empty
+        if let Some(ref lm) = part.last_modified {
+            write_xml_element(&mut writer, "LastModified", &lm.to_rfc3339());
+        }
+
+        let quoted_etag = if part.etag.starts_with('"') {
+            part.etag.clone()
+        } else {
+            format!("\"{}\"", part.etag)
+        };
+        write_xml_element(&mut writer, "ETag", &quoted_etag);
+        write_xml_element(&mut writer, "Size", &part.size.to_string());
+
+        // Part checksum
+        if let (Some(algo), Some(ref val)) = (checksum_algorithm, &part.checksum_value) {
+            let tag = format!("Checksum{}", algo.to_uppercase());
+            write_xml_element(&mut writer, &tag, val);
+        }
+
+        writer
+            .write_event(Event::End(BytesEnd::new("Part")))
+            .expect("write Part end");
+    }
+
+    writer
+        .write_event(Event::End(BytesEnd::new("ListPartsResult")))
+        .expect("write root end");
+
+    String::from_utf8(writer.into_inner()).expect("valid UTF-8 XML")
+}
+
+/// Requested attributes for GetObjectAttributes.
+pub struct ObjectAttributesRequest {
+    pub etag: bool,
+    pub checksum: bool,
+    pub object_parts: bool,
+    pub storage_class: bool,
+    pub object_size: bool,
+}
+
+/// Build a GetObjectAttributesResponse XML.
+pub fn get_object_attributes_result(
+    etag: Option<&str>,
+    checksum_algorithm: Option<&str>,
+    checksum_value: Option<&str>,
+    parts_count: Option<u32>,
+    storage_class: Option<&str>,
+    object_size: Option<u64>,
+) -> String {
+    let mut writer = Writer::new(Vec::new());
+    writer
+        .write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
+        .expect("write XML decl");
+
+    let mut root = BytesStart::new("GetObjectAttributesResponse");
+    root.push_attribute(("xmlns", "http://s3.amazonaws.com/doc/2006-03-01/"));
+    writer.write_event(Event::Start(root)).expect("write root");
+
+    // ETag (without quotes, per S3 spec for this API)
+    if let Some(etag) = etag {
+        let unquoted = etag.trim_matches('"');
+        write_xml_element(&mut writer, "ETag", unquoted);
+    }
+
+    // Checksum
+    if let (Some(algo), Some(val)) = (checksum_algorithm, checksum_value) {
+        writer
+            .write_event(Event::Start(BytesStart::new("Checksum")))
+            .expect("write Checksum");
+        let tag = format!("Checksum{}", algo.to_uppercase());
+        write_xml_element(&mut writer, &tag, val);
+        writer
+            .write_event(Event::End(BytesEnd::new("Checksum")))
+            .expect("write Checksum end");
+    }
+
+    // ObjectParts
+    if let Some(count) = parts_count {
+        writer
+            .write_event(Event::Start(BytesStart::new("ObjectParts")))
+            .expect("write ObjectParts");
+        write_xml_element(&mut writer, "TotalPartsCount", &count.to_string());
+        writer
+            .write_event(Event::End(BytesEnd::new("ObjectParts")))
+            .expect("write ObjectParts end");
+    }
+
+    // StorageClass
+    if let Some(sc) = storage_class {
+        write_xml_element(&mut writer, "StorageClass", sc);
+    }
+
+    // ObjectSize
+    if let Some(size) = object_size {
+        write_xml_element(&mut writer, "ObjectSize", &size.to_string());
+    }
+
+    writer
+        .write_event(Event::End(BytesEnd::new("GetObjectAttributesResponse")))
+        .expect("write root end");
+
+    String::from_utf8(writer.into_inner()).expect("valid UTF-8 XML")
 }
 
 #[cfg(test)]
@@ -1342,6 +1523,7 @@ mod tests {
         ];
         let errors = vec![DeleteErrorEntry {
             key: "c.txt".to_string(),
+            version_id: None,
             code: "InternalError".to_string(),
             message: "oops".to_string(),
         }];
@@ -1390,6 +1572,7 @@ mod tests {
         let deleted = vec![DeletedEntry { key: "a.txt".to_string(), version_id: None, delete_marker: false, delete_marker_version_id: None }];
         let errors = vec![DeleteErrorEntry {
             key: "b.txt".to_string(),
+            version_id: None,
             code: "AccessDenied".to_string(),
             message: "denied".to_string(),
         }];

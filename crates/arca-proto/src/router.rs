@@ -195,6 +195,13 @@ pub fn build_router(state: AppState) -> Router {
             HeaderName::from_static("x-amz-object-lock-retain-until-date"),
             HeaderName::from_static("x-amz-object-lock-legal-hold-status"),
             HeaderName::from_static("x-amz-bypass-governance-retention"),
+            HeaderName::from_static("x-amz-checksum-algorithm"),
+            HeaderName::from_static("x-amz-checksum-sha256"),
+            HeaderName::from_static("x-amz-checksum-crc32"),
+            HeaderName::from_static("x-amz-checksum-crc32c"),
+            HeaderName::from_static("x-amz-checksum-crc64nvme"),
+            HeaderName::from_static("x-amz-storage-class"),
+            HeaderName::from_static("x-amz-object-attributes"),
         ]))
         .expose_headers([
             ETAG,
@@ -208,6 +215,11 @@ pub fn build_router(state: AppState) -> Router {
             HeaderName::from_static("x-amz-object-lock-mode"),
             HeaderName::from_static("x-amz-object-lock-retain-until-date"),
             HeaderName::from_static("x-amz-object-lock-legal-hold-status"),
+            HeaderName::from_static("x-amz-checksum-sha256"),
+            HeaderName::from_static("x-amz-checksum-crc32"),
+            HeaderName::from_static("x-amz-checksum-crc32c"),
+            HeaderName::from_static("x-amz-checksum-crc64nvme"),
+            HeaderName::from_static("x-amz-storage-class"),
         ]);
 
     // --- Merge everything ---

@@ -26,8 +26,8 @@ fn get_versioning_state(conn: &Connection, bucket: &str) -> VersioningState {
     }
 }
 
-/// Column list for all object SELECT queries (17 columns).
-const OBJECT_COLUMNS: &str = "bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status";
+/// Column list for all object SELECT queries (20 columns).
+const OBJECT_COLUMNS: &str = "bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value";
 
 #[async_trait::async_trait]
 impl MetadataStore for SqliteStore {
@@ -386,8 +386,8 @@ impl MetadataStore for SqliteStore {
                         let version_id = uuid::Uuid::new_v4().to_string();
                         let now = chrono::Utc::now();
                         tx.execute(
-                            "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status)
-                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, 'root', ?4, 1, 1, NULL, NULL, NULL)",
+                            "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value)
+                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, 'root', ?4, 1, 1, NULL, NULL, NULL, 'STANDARD', NULL, NULL)",
                             params![bucket, key, now.to_rfc3339(), version_id],
                         )?;
                         tx.commit()?;
@@ -410,6 +410,9 @@ impl MetadataStore for SqliteStore {
                             retention_mode: None,
                             retain_until_date: None,
                             legal_hold_status: None,
+                            storage_class: "STANDARD".to_string(),
+                            checksum_algorithm: None,
+                            checksum_value: None,
                         })
                     }
                     VersioningState::Suspended => {
@@ -432,8 +435,8 @@ impl MetadataStore for SqliteStore {
                         // Insert delete marker with NULL version_id.
                         let now = chrono::Utc::now();
                         tx.execute(
-                            "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status)
-                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, 'root', NULL, 1, 1, NULL, NULL, NULL)",
+                            "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value)
+                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, 'root', NULL, 1, 1, NULL, NULL, NULL, 'STANDARD', NULL, NULL)",
                             params![bucket, key, now.to_rfc3339()],
                         )?;
                         tx.commit()?;
@@ -849,8 +852,8 @@ impl MetadataStore for SqliteStore {
                 let metadata_json = serde_json::to_string(&record.metadata)
                     .unwrap_or_else(|_| "{}".to_string());
                 conn.execute(
-                    "INSERT INTO multipart_uploads (upload_id, bucket, key, content_type, initiated_at, metadata)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    "INSERT INTO multipart_uploads (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                     params![
                         record.upload_id,
                         record.bucket,
@@ -858,6 +861,7 @@ impl MetadataStore for SqliteStore {
                         record.content_type,
                         record.initiated_at.to_rfc3339(),
                         metadata_json,
+                        record.checksum_algorithm,
                     ],
                 )?;
                 Ok(())
@@ -874,7 +878,7 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata
+                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm
                      FROM multipart_uploads WHERE upload_id = ?1",
                 )?;
                 let result = stmt.query_row(params![upload_id], |row| {
@@ -899,7 +903,7 @@ impl MetadataStore for SqliteStore {
                 // Check for existing part to return for cleanup.
                 let old = {
                     let mut stmt = tx.prepare(
-                        "SELECT upload_id, part_number, blob_id, size, etag
+                        "SELECT upload_id, part_number, blob_id, size, etag, checksum_value, last_modified
                          FROM parts WHERE upload_id = ?1 AND part_number = ?2",
                     )?;
                     let result = stmt.query_row(
@@ -918,15 +922,18 @@ impl MetadataStore for SqliteStore {
                     "DELETE FROM parts WHERE upload_id = ?1 AND part_number = ?2",
                     params![part.upload_id, part.part_number],
                 )?;
+                let last_modified_str = part.last_modified.map(|dt| dt.to_rfc3339());
                 tx.execute(
-                    "INSERT INTO parts (upload_id, part_number, blob_id, size, etag)
-                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    "INSERT INTO parts (upload_id, part_number, blob_id, size, etag, checksum_value, last_modified)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                     params![
                         part.upload_id,
                         part.part_number,
                         part.blob_id.0,
                         part.size as i64,
                         part.etag,
+                        part.checksum_value,
+                        last_modified_str,
                     ],
                 )?;
 
@@ -942,7 +949,7 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT upload_id, part_number, blob_id, size, etag
+                    "SELECT upload_id, part_number, blob_id, size, etag, checksum_value, last_modified
                      FROM parts WHERE upload_id = ?1 ORDER BY part_number",
                 )?;
                 let rows = stmt.query_map(params![upload_id], |row| {
@@ -970,7 +977,7 @@ impl MetadataStore for SqliteStore {
                 // Collect parts for blob cleanup.
                 let parts = {
                     let mut stmt = tx.prepare(
-                        "SELECT upload_id, part_number, blob_id, size, etag
+                        "SELECT upload_id, part_number, blob_id, size, etag, checksum_value, last_modified
                          FROM parts WHERE upload_id = ?1",
                     )?;
                     let rows = stmt.query_map(params![upload_id], |row| {
@@ -1015,7 +1022,7 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let mut sql = String::from(
-                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata
+                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm
                      FROM multipart_uploads WHERE bucket = ?1",
                 );
                 let mut param_idx = 2u32;
@@ -1332,7 +1339,7 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let sql = format!(
-                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata \
+                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm \
                      FROM multipart_uploads \
                      WHERE bucket = ?1 AND initiated_at < ?2 \
                      ORDER BY key, upload_id \
@@ -1401,8 +1408,8 @@ fn insert_object_row(
 ) -> Result<(), rusqlite::Error> {
     let retain_until_str = record.retain_until_date.map(|dt| dt.to_rfc3339());
     conn.execute(
-        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
         params![
             record.bucket,
             record.key,
@@ -1421,6 +1428,9 @@ fn insert_object_row(
             record.retention_mode,
             retain_until_str,
             record.legal_hold_status,
+            record.storage_class,
+            record.checksum_algorithm,
+            record.checksum_value,
         ],
     )?;
     Ok(())
@@ -1486,6 +1496,8 @@ fn row_to_multipart_upload_record(
     let metadata: HashMap<String, String> =
         serde_json::from_str(&metadata_json).unwrap_or_default();
 
+    let checksum_algorithm: Option<String> = row.get(6).unwrap_or(None);
+
     Ok(MultipartUploadRecord {
         upload_id: row.get(0)?,
         bucket: row.get(1)?,
@@ -1493,19 +1505,29 @@ fn row_to_multipart_upload_record(
         content_type: row.get(3)?,
         initiated_at,
         metadata,
+        checksum_algorithm,
     })
 }
 
 /// Converts a SQLite row to a `PartRecord`.
 ///
-/// Expects columns: upload_id, part_number, blob_id, size, etag.
+/// Expects columns: upload_id, part_number, blob_id, size, etag, checksum_value, last_modified.
 fn row_to_part_record(row: &rusqlite::Row) -> Result<PartRecord, rusqlite::Error> {
+    let checksum_value: Option<String> = row.get(5).unwrap_or(None);
+    let last_modified_str: Option<String> = row.get(6).unwrap_or(None);
+    let last_modified = last_modified_str.and_then(|s| {
+        DateTime::parse_from_rfc3339(&s)
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .ok()
+    });
     Ok(PartRecord {
         upload_id: row.get(0)?,
         part_number: row.get(1)?,
         blob_id: BlobId(row.get(2)?),
         size: row.get::<_, i64>(3)? as u64,
         etag: row.get(4)?,
+        checksum_value,
+        last_modified,
     })
 }
 
@@ -1546,6 +1568,9 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
             .ok()
     });
     let legal_hold_status: Option<String> = row.get(16).unwrap_or(None);
+    let storage_class: String = row.get(17).unwrap_or_else(|_| "STANDARD".to_string());
+    let checksum_algorithm: Option<String> = row.get(18).unwrap_or(None);
+    let checksum_value: Option<String> = row.get(19).unwrap_or(None);
 
     Ok(ObjectRecord {
         bucket: row.get(0)?,
@@ -1565,6 +1590,9 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
         retention_mode,
         retain_until_date,
         legal_hold_status,
+        storage_class,
+        checksum_algorithm,
+        checksum_value,
     })
 }
 
@@ -1595,6 +1623,9 @@ mod tests {
             retention_mode: None,
             retain_until_date: None,
             legal_hold_status: None,
+            storage_class: "STANDARD".to_string(),
+            checksum_algorithm: None,
+            checksum_value: None,
         }
     }
 
@@ -1909,6 +1940,7 @@ mod tests {
             content_type: Some("application/octet-stream".to_string()),
             initiated_at: chrono::Utc::now(),
             metadata: HashMap::new(),
+            checksum_algorithm: None,
         }
     }
 
@@ -1919,6 +1951,8 @@ mod tests {
             blob_id: BlobId(format!("blob-{upload_id}-{part_number}")),
             size: 5_242_880,
             etag: format!("etag-{part_number}"),
+            checksum_value: None,
+            last_modified: None,
         }
     }
 

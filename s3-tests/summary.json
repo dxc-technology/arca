@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-03-25T08:58:04Z",
-  "total": 829,
-  "passed": 338,
-  "failed": 400,
-  "skipped": 91,
-  "unexpected_failures": 0,
-  "pass_pct": 40.8,
+  "timestamp": "2026-03-27T10:27:18Z",
+  "total": 830,
+  "passed": 296,
+  "failed": 517,
+  "skipped": 17,
+  "unexpected_failures": 13,
+  "pass_pct": 35.7,
   "categories": {
     "ACL/Policy": {
       "total": 119,
@@ -45,14 +45,14 @@
     },
     "Copy": {
       "total": 15,
-      "passed": 15,
-      "failed": 0,
+      "passed": 11,
+      "failed": 4,
       "skipped": 0
     },
     "Encryption": {
       "total": 136,
-      "passed": 46,
-      "failed": 89,
+      "passed": 20,
+      "failed": 115,
       "skipped": 1
     },
     "Headers": {
@@ -63,20 +63,20 @@
     },
     "Lifecycle": {
       "total": 36,
-      "passed": 0,
-      "failed": 28,
+      "passed": 9,
+      "failed": 19,
       "skipped": 8
     },
     "Logging": {
       "total": 101,
       "passed": 0,
-      "failed": 28,
-      "skipped": 73
+      "failed": 101,
+      "skipped": 0
     },
     "Multipart": {
       "total": 23,
-      "passed": 23,
-      "failed": 0,
+      "passed": 21,
+      "failed": 2,
       "skipped": 0
     },
     "Not Implemented": {
@@ -87,14 +87,14 @@
     },
     "Object": {
       "total": 42,
-      "passed": 42,
-      "failed": 0,
+      "passed": 35,
+      "failed": 7,
       "skipped": 0
     },
     "Object Lock": {
-      "total": 38,
-      "passed": 3,
-      "failed": 35,
+      "total": 39,
+      "passed": 5,
+      "failed": 34,
       "skipped": 0
     },
     "Other": {
@@ -117,15 +117,15 @@
     },
     "Tagging": {
       "total": 18,
-      "passed": 12,
-      "failed": 6,
+      "passed": 13,
+      "failed": 5,
       "skipped": 0
     },
     "Versioning": {
       "total": 65,
-      "passed": 41,
-      "failed": 22,
-      "skipped": 2
+      "passed": 26,
+      "failed": 38,
+      "skipped": 1
     }
   }
 }

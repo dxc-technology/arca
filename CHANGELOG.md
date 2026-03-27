@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Phase 22: S3 API Completeness** — `ListParts` (`GET /{bucket}/{key}?uploadId=X`) with pagination, `GetObjectAttributes` (`GET /{bucket}/{key}?attributes`) with ETag/Checksum/ObjectParts/StorageClass/ObjectSize. Checksum algorithms: store and return client-provided `x-amz-checksum-sha256/crc32/crc32c/crc64nvme` on PutObject, GetObject, HeadObject. Storage classes: `storage_class` field on ObjectRecord, accept `x-amz-storage-class` header. Schema migration v13 adds storage_class, checksum_algorithm, checksum_value to objects; checksum_value, last_modified to parts; checksum_algorithm to multipart_uploads. Resolves TD-002 (storage class) and TD-008 (content-type source)
+
 ## [0.13.0] — 2026-03-26
 
 ### Added

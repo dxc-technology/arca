@@ -528,6 +528,16 @@ pub async fn put_object(
     )
     .await;
 
+    // Checksum: store client-provided checksum
+    let (checksum_algorithm, checksum_value) = extract_checksum_headers(&headers);
+
+    // Storage class
+    let storage_class = headers
+        .get("x-amz-storage-class")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("STANDARD")
+        .to_string();
+
     // For SSE-C, store the nonce_prefix in encryption_key_id (no master key ID).
     let record = ObjectRecord {
         bucket,
@@ -553,6 +563,9 @@ pub async fn put_object(
         retention_mode: lock_mode,
         retain_until_date: lock_until,
         legal_hold_status: lock_hold,
+        storage_class,
+        checksum_algorithm,
+        checksum_value,
     };
     let old = match state.metadata.put_object(&record).await {
         Ok(old) => old,
@@ -609,6 +622,10 @@ pub async fn put_object(
             .header("x-amz-server-side-encryption-customer-key-md5", &ssec.key_md5);
     } else if record.encryption_algorithm.is_some() {
         builder = builder.header("x-amz-server-side-encryption", "AES256");
+    }
+    if let (Some(ref algo), Some(ref val)) = (&record.checksum_algorithm, &record.checksum_value) {
+        let header_name = format!("x-amz-checksum-{}", algo.to_lowercase());
+        builder = builder.header(header_name, val.as_str());
     }
     builder
         .body(Body::empty())
@@ -898,6 +915,9 @@ async fn copy_object(
         retention_mode: None,
         retain_until_date: None,
         legal_hold_status: None,
+        storage_class: src_record.storage_class.clone(),
+        checksum_algorithm: src_record.checksum_algorithm.clone(),
+        checksum_value: src_record.checksum_value.clone(),
     };
     let old = match state.metadata.put_object(&record).await {
         Ok(old) => old,
@@ -1143,6 +1163,8 @@ async fn upload_part_copy(
         blob_id,
         size: put_result.size,
         etag: put_result.etag.clone(),
+        checksum_value: None,
+        last_modified: Some(chrono::Utc::now()),
     };
     let old_part = match state.metadata.put_part(&part).await {
         Ok(old) => old,
@@ -1260,6 +1282,20 @@ pub async fn get_object(
     }
     if query_str.contains("legal-hold") {
         return get_object_legal_hold(&state, &bucket, &key, &resource, &query_str).await;
+    }
+    // ListParts: GET /{bucket}/{key}?uploadId=X
+    if query_str.contains("uploadId") {
+        return list_parts_handler(&state, &bucket, &key, &resource, &query_str).await;
+    }
+    // GetObjectAttributes: GET /{bucket}/{key}?attributes
+    if query_str.contains("attributes") {
+        let attrs_header = request
+            .headers()
+            .get("x-amz-object-attributes")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        return get_object_attributes(&state, &bucket, &key, &resource, &query_str, &attrs_header).await;
     }
 
     // Parse ?versionId= from query params.
@@ -1500,6 +1536,19 @@ pub async fn get_object(
         builder = builder.header("x-amz-object-lock-legal-hold-status", "ON");
     }
 
+    // Checksum header (skip on range/partial responses: stored checksum is for full object)
+    if status != StatusCode::PARTIAL_CONTENT {
+        if let (Some(ref algo), Some(ref val)) = (&record.checksum_algorithm, &record.checksum_value) {
+            let header_name = format!("x-amz-checksum-{}", algo.to_lowercase());
+            builder = builder.header(header_name, val.as_str());
+        }
+    }
+
+    // Storage class (only if not STANDARD, per S3 convention)
+    if record.storage_class != "STANDARD" {
+        builder = builder.header("x-amz-storage-class", record.storage_class.as_str());
+    }
+
     // Return stored metadata as response headers.
     // Values may contain unicode chars; encode as Latin-1 for HTTP headers
     // (clients like boto3 decode header bytes as Latin-1 per HTTP spec).
@@ -1656,6 +1705,17 @@ pub async fn head_object(
     }
     if record.legal_hold_status.as_deref() == Some("ON") {
         builder = builder.header("x-amz-object-lock-legal-hold-status", "ON");
+    }
+
+    // Checksum header
+    if let (Some(ref algo), Some(ref val)) = (&record.checksum_algorithm, &record.checksum_value) {
+        let header_name = format!("x-amz-checksum-{}", algo.to_lowercase());
+        builder = builder.header(header_name, val.as_str());
+    }
+
+    // Storage class (only if not STANDARD, per S3 convention)
+    if record.storage_class != "STANDARD" {
+        builder = builder.header("x-amz-storage-class", record.storage_class.as_str());
     }
 
     // Return stored metadata as response headers.
@@ -1944,6 +2004,40 @@ fn parse_range_header(headers: &http::HeaderMap, file_size: u64) -> RangeParseRe
     }
 
     RangeParseResult::Range(ByteRange { start, end })
+}
+
+// -- Checksum helpers --
+
+/// Known checksum header suffixes and their algorithm names.
+const CHECKSUM_ALGORITHMS: &[(&str, &str)] = &[
+    ("x-amz-checksum-sha256", "SHA256"),
+    ("x-amz-checksum-crc32", "CRC32"),
+    ("x-amz-checksum-crc32c", "CRC32C"),
+    ("x-amz-checksum-crc64nvme", "CRC64NVME"),
+];
+
+/// Extract checksum algorithm and value from request headers.
+/// Checks `x-amz-checksum-algorithm` header and the specific `x-amz-checksum-*` headers.
+fn extract_checksum_headers(headers: &http::HeaderMap) -> (Option<String>, Option<String>) {
+    // Check explicit algorithm header first
+    let algo_header = headers
+        .get("x-amz-checksum-algorithm")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_uppercase());
+
+    // Find the matching checksum value header
+    for &(header_name, algo_name) in CHECKSUM_ALGORITHMS {
+        if let Some(value) = headers.get(header_name).and_then(|v| v.to_str().ok()) {
+            return (Some(algo_name.to_string()), Some(value.to_string()));
+        }
+    }
+
+    // If only the algorithm header is set without a value, record just the algorithm
+    if let Some(algo) = algo_header {
+        return (Some(algo), None);
+    }
+
+    (None, None)
 }
 
 // -- Object Lock helpers --
@@ -2376,4 +2470,190 @@ async fn get_object_legal_hold(
         builder = builder.header("x-amz-version-id", vid.as_str());
     }
     builder.body(Body::from(xml)).expect("build get_object_legal_hold response")
+}
+
+// ── ListParts handler ──
+
+async fn list_parts_handler(
+    state: &crate::AppState,
+    bucket: &str,
+    key: &str,
+    resource: &str,
+    query: &str,
+) -> Response {
+    // Check bucket exists
+    match state.metadata.head_bucket(bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, resource)),
+        Err(e) => return internal_error_response(e, resource),
+    }
+
+    // Parse query params
+    let params: Vec<(String, String)> = form_urlencoded::parse(query.as_bytes())
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+
+    let upload_id = match params.iter().find(|(k, _)| k == "uploadId") {
+        Some((_, v)) => v.clone(),
+        None => return s3_error_response(S3Error::new(S3ErrorCode::InvalidArgument, resource)),
+    };
+
+    let max_parts: u32 = params
+        .iter()
+        .find(|(k, _)| k == "max-parts")
+        .and_then(|(_, v)| v.parse().ok())
+        .unwrap_or(1000);
+
+    let part_number_marker: u32 = params
+        .iter()
+        .find(|(k, _)| k == "part-number-marker")
+        .and_then(|(_, v)| v.parse().ok())
+        .unwrap_or(0);
+
+    // Verify upload exists
+    let upload = match state.metadata.get_multipart_upload(&upload_id).await {
+        Ok(Some(u)) => u,
+        Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchUpload, resource)),
+        Err(e) => return internal_error_response(e, resource),
+    };
+
+    // Get all parts
+    let all_parts = match state.metadata.list_parts(&upload_id).await {
+        Ok(p) => p,
+        Err(e) => return internal_error_response(e, resource),
+    };
+
+    // Apply pagination
+    let filtered: Vec<&arca_core::types::PartRecord> = all_parts
+        .iter()
+        .filter(|p| p.part_number > part_number_marker)
+        .collect();
+
+    let is_truncated = filtered.len() > max_parts as usize;
+    let page: Vec<arca_core::types::PartRecord> = filtered
+        .into_iter()
+        .take(max_parts as usize)
+        .cloned()
+        .collect();
+
+    let next_marker = if is_truncated {
+        page.last().map(|p| p.part_number)
+    } else {
+        None
+    };
+
+    let xml = xml_types::list_parts_result(
+        bucket,
+        key,
+        &upload_id,
+        "root", // owner
+        "STANDARD",
+        part_number_marker,
+        next_marker,
+        max_parts,
+        is_truncated,
+        &page,
+        upload.checksum_algorithm.as_deref(),
+    );
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/xml")
+        .body(Body::from(xml))
+        .expect("build list_parts response")
+}
+
+// ── GetObjectAttributes handler ──
+
+async fn get_object_attributes(
+    state: &crate::AppState,
+    bucket: &str,
+    key: &str,
+    resource: &str,
+    query: &str,
+    attrs_header: &str,
+) -> Response {
+    // Check bucket exists
+    match state.metadata.head_bucket(bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, resource)),
+        Err(e) => return internal_error_response(e, resource),
+    }
+
+    // Parse requested attributes from x-amz-object-attributes header
+    let requested: Vec<&str> = attrs_header.split(',').map(|s| s.trim()).collect();
+
+    // Parse versionId
+    let version_id = form_urlencoded::parse(query.as_bytes())
+        .find(|(k, _)| k == "versionId")
+        .map(|(_, v)| v.into_owned());
+
+    // Fetch object
+    let record = if let Some(ref vid) = version_id {
+        state.metadata.get_object_version(bucket, key, vid).await
+    } else {
+        state.metadata.get_object(bucket, key).await
+    };
+    let record = match record {
+        Ok(Some(r)) => r,
+        Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchKey, resource)),
+        Err(e) => return internal_error_response(e, resource),
+    };
+
+    // Build response with only requested attributes
+    let etag = if requested.contains(&"ETag") {
+        Some(record.etag.as_str())
+    } else {
+        None
+    };
+
+    let (cksum_algo, cksum_val) = if requested.contains(&"Checksum") {
+        (
+            record.checksum_algorithm.as_deref(),
+            record.checksum_value.as_deref(),
+        )
+    } else {
+        (None, None)
+    };
+
+    // Parse part count from composite ETag (format: hex-N)
+    let parts_count = if requested.contains(&"ObjectParts") {
+        record
+            .etag
+            .rsplit_once('-')
+            .and_then(|(_, n)| n.parse::<u32>().ok())
+    } else {
+        None
+    };
+
+    let storage_class = if requested.contains(&"StorageClass") {
+        Some(record.storage_class.as_str())
+    } else {
+        None
+    };
+
+    let object_size = if requested.contains(&"ObjectSize") {
+        Some(record.size)
+    } else {
+        None
+    };
+
+    let xml = xml_types::get_object_attributes_result(
+        etag,
+        cksum_algo,
+        cksum_val,
+        parts_count,
+        storage_class,
+        object_size,
+    );
+
+    let mut builder = Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/xml");
+    if let Some(ref vid) = version_id {
+        builder = builder.header("x-amz-version-id", vid.as_str());
+    }
+    builder
+        .body(Body::from(xml))
+        .expect("build get_object_attributes response")
 }

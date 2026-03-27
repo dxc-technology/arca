@@ -298,6 +298,18 @@ const MIGRATIONS: &[Migration] = &[
             ALTER TABLE objects ADD COLUMN legal_hold_status TEXT;
         ",
     },
+    Migration {
+        version: 13,
+        description: "Add storage_class and checksum columns; add checksum and last_modified to parts; add checksum_algorithm to multipart_uploads",
+        sql: "
+            ALTER TABLE objects ADD COLUMN storage_class TEXT NOT NULL DEFAULT 'STANDARD';
+            ALTER TABLE objects ADD COLUMN checksum_algorithm TEXT;
+            ALTER TABLE objects ADD COLUMN checksum_value TEXT;
+            ALTER TABLE parts ADD COLUMN checksum_value TEXT;
+            ALTER TABLE parts ADD COLUMN last_modified TEXT;
+            ALTER TABLE multipart_uploads ADD COLUMN checksum_algorithm TEXT;
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -371,7 +383,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 12);
+        assert_eq!(version, 13);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -413,12 +425,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 12);
+        assert_eq!(version, 13);
 
-        // Twelve migration records
+        // Thirteen migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 12);
+        assert_eq!(count, 13);
     }
 }

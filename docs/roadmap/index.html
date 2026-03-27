@@ -2013,7 +2013,7 @@ continuing from the MVP phases (0–11).</p>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">19</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">20</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">21</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">22</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">22</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">23</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">24</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">25</div>
@@ -2162,8 +2162,8 @@ continuing from the MVP phases (0–11).</p>
 <td><a href="#phase-22-s3-api-completeness-p2">S3 API Completeness</a></td>
 <td style="text-align: center;">P2</td>
 <td style="text-align: center;">—</td>
-<td style="text-align: center;"></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><code>v0.14.0</code></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">23</td>
@@ -2385,12 +2385,12 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 <h3 id="phase-22-s3-api-completeness-p2">Phase 22 — S3 API Completeness [P2]<a class="headerlink" href="#phase-22-s3-api-completeness-p2" title="Permanent link">&para;</a></h3>
 <p>Fill remaining gaps in the S3 API surface to maximize compatibility.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>ListParts</code>: <code>GET /{bucket}/{key}?uploadId=X</code> (MetadataStore method already exists)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>GetObjectAttributes</code>: <code>GET /{bucket}/{key}?attributes</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Checksum algorithms: <code>x-amz-checksum-sha256</code>, <code>x-amz-checksum-crc32</code>, <code>x-amz-checksum-crc64nvme</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Storage classes: <code>storage_class</code> field on <code>ObjectRecord</code>, accept <code>x-amz-storage-class</code> header on PutObject</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Chunked transfer with SigV4 payload signing (<code>STREAMING-AWS4-HMAC-SHA256-PAYLOAD</code>)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Resolves: TD-002, TD-008</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>ListParts</code>: <code>GET /{bucket}/{key}?uploadId=X</code> with pagination (max-parts, part-number-marker)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>GetObjectAttributes</code>: <code>GET /{bucket}/{key}?attributes</code> with x-amz-object-attributes header (ETag, Checksum, ObjectParts, StorageClass, ObjectSize)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Checksum algorithms: store and return client-provided <code>x-amz-checksum-sha256</code>, <code>x-amz-checksum-crc32</code>, <code>x-amz-checksum-crc32c</code>, <code>x-amz-checksum-crc64nvme</code> on PutObject/GetObject/HeadObject. Schema migration v13</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Storage classes: <code>storage_class</code> field on ObjectRecord (default STANDARD), accept <code>x-amz-storage-class</code> header on PutObject, return in list and head responses</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Chunked transfer with SigV4 payload signing (<code>STREAMING-AWS4-HMAC-SHA256-PAYLOAD</code>) — already implemented in body.rs</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Resolves: TD-002 (storage class), TD-008 (content-type source)</li>
 </ul>
 <hr />
 <h3 id="phase-23-performance-and-hardening-p2">Phase 23 — Performance and Hardening [P2]<a class="headerlink" href="#phase-23-performance-and-hardening-p2" title="Permanent link">&para;</a></h3>

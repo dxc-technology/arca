@@ -81,6 +81,19 @@ pub struct ObjectRecord {
     /// Legal hold status: "ON" means object cannot be hard-deleted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub legal_hold_status: Option<String>,
+    /// Storage class (e.g. "STANDARD", "REDUCED_REDUNDANCY").
+    #[serde(default = "default_standard")]
+    pub storage_class: String,
+    /// Checksum algorithm (e.g. "SHA256", "CRC32", "CRC32C", "CRC64NVME").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum_algorithm: Option<String>,
+    /// Base64-encoded checksum value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum_value: Option<String>,
+}
+
+fn default_standard() -> String {
+    "STANDARD".to_string()
 }
 
 fn default_true() -> bool {
@@ -159,6 +172,9 @@ pub struct MultipartUploadRecord {
     /// final object at `CompleteMultipartUpload`.
     #[serde(default)]
     pub metadata: HashMap<String, String>,
+    /// Checksum algorithm selected at CreateMultipartUpload time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum_algorithm: Option<String>,
 }
 
 /// Metadata about a single uploaded part.
@@ -169,6 +185,12 @@ pub struct PartRecord {
     pub blob_id: BlobId,
     pub size: u64,
     pub etag: String,
+    /// Base64-encoded checksum value for this part.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum_value: Option<String>,
+    /// Timestamp when the part was uploaded (for ListParts response).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_modified: Option<DateTime<Utc>>,
 }
 
 /// Aggregate storage statistics.

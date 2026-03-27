@@ -1135,7 +1135,7 @@ fn record_to_list_entry(record: &ObjectRecord, fetch_owner: bool) -> ListEntry {
         last_modified: record.last_modified,
         etag: record.etag.clone(),
         size: record.size,
-        storage_class: "STANDARD".to_string(), // TECHDEBT(TD-002): hardcoded storage class
+        storage_class: record.storage_class.clone(),
         owner_id: if fetch_owner { Some(owner.to_string()) } else { None },
         owner_display_name: if fetch_owner { Some(owner.to_string()) } else { None },
     }
@@ -1314,11 +1314,30 @@ pub async fn create_bucket(
     }
 
     match state.metadata.create_bucket(&bucket).await {
-        Ok(()) => Response::builder()
-            .status(StatusCode::OK)
-            .header("Location", format!("/{bucket}"))
-            .body(axum::body::Body::empty())
-            .expect("build create bucket response"),
+        Ok(()) => {
+            // If x-amz-bucket-object-lock-enabled: true, enable Object Lock + versioning
+            let lock_enabled = request
+                .headers()
+                .get("x-amz-bucket-object-lock-enabled")
+                .and_then(|v| v.to_str().ok())
+                .map(|v| v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+            if lock_enabled {
+                let lock_config = arca_core::s3::object_lock::ObjectLockConfiguration {
+                    enabled: true,
+                    default_retention: None,
+                };
+                if let Ok(json) = serde_json::to_string(&lock_config) {
+                    let _ = state.metadata.set_bucket_config(&bucket, "object_lock", &json).await;
+                }
+                let _ = state.metadata.set_bucket_config(&bucket, "versioning", "Enabled").await;
+            }
+            Response::builder()
+                .status(StatusCode::OK)
+                .header("Location", format!("/{bucket}"))
+                .body(axum::body::Body::empty())
+                .expect("build create bucket response")
+        }
         Err(arca_core::ArcaError::S3(ref s3err))
             if s3err.code == S3ErrorCode::BucketAlreadyOwnedByYou =>
         {
@@ -1569,6 +1588,7 @@ async fn delete_objects(
                     if failed {
                         errors.push(DeleteErrorEntry {
                             key: obj.key.clone(),
+                            version_id: obj.version_id.clone(),
                             code: S3ErrorCode::PreconditionFailed.as_str().to_string(),
                             message: "At least one of the pre-conditions you specified did not hold.".to_string(),
                         });
@@ -1589,6 +1609,7 @@ async fn delete_objects(
                     tracing::error!(error = %e, key = %obj.key, "Error checking object for conditional delete");
                     errors.push(DeleteErrorEntry {
                         key: obj.key.clone(),
+                        version_id: obj.version_id.clone(),
                         code: S3ErrorCode::InternalError.as_str().to_string(),
                         message: "We encountered an internal error. Please try again.".to_string(),
                     });
@@ -1605,6 +1626,7 @@ async fn delete_objects(
                     if let Err(lock_err) = super::object::check_object_lock_allows_delete_batch(&lock_record) {
                         errors.push(DeleteErrorEntry {
                             key: obj.key.clone(),
+                            version_id: obj.version_id.clone(),
                             code: lock_err.code.as_str().to_string(),
                             message: lock_err.message,
                         });
@@ -1641,6 +1663,7 @@ async fn delete_objects(
                     tracing::error!(error = %e, key = %obj.key, "Error deleting object version");
                     errors.push(DeleteErrorEntry {
                         key: obj.key.clone(),
+                        version_id: obj.version_id.clone(),
                         code: S3ErrorCode::InternalError.as_str().to_string(),
                         message: "We encountered an internal error. Please try again."
                             .to_string(),
@@ -1681,6 +1704,7 @@ async fn delete_objects(
                     tracing::error!(error = %e, key = %obj.key, "Error deleting object");
                     errors.push(DeleteErrorEntry {
                         key: obj.key.clone(),
+                        version_id: obj.version_id.clone(),
                         code: S3ErrorCode::InternalError.as_str().to_string(),
                         message: "We encountered an internal error. Please try again."
                             .to_string(),

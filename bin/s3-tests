@@ -1,13 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run Ceph s3-tests against a running Arca instance.
+# Run Ceph s3-tests against a clean Arca instance with encryption enabled.
+#
+# By default, this script:
+#   1. Stops any running Arca instance
+#   2. Deletes the data volume for clean state
+#   3. Rebuilds and starts Arca with --encryption (required for SSE-C/KMS tests)
+#   4. Runs the full Ceph s3-test suite
+#   5. Generates reports and updates the passlist
+#   6. Restores Arca to its previous state (stop the test instance)
 #
 # Usage:
-#   bin/s3-tests                          Run default test_s3.py
-#   bin/s3-tests -- -k bucket_list        Filter by name
+#   bin/s3-tests                          Run full suite with clean state
+#   bin/s3-tests --build                  Rebuild all images first
+#   bin/s3-tests --no-clean               Skip clean state setup (use running Arca as-is)
 #   bin/s3-tests --passlist               Run only pass-listed tests
-#   bin/s3-tests --build                  Rebuild the s3-tests image first
+#   bin/s3-tests -- -k bucket_list        Filter by name
 
 cd "$(git rev-parse --show-toplevel)"
 
@@ -15,6 +24,7 @@ COMPOSE="docker compose -f docker/docker-compose.yml --profile s3-tests"
 PASSLIST="s3-tests/passlist.txt"
 BUILD=false
 PASSLIST_MODE=false
+NO_CLEAN=false
 EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -27,11 +37,16 @@ while [[ $# -gt 0 ]]; do
             PASSLIST_MODE=true
             shift
             ;;
+        --no-clean)
+            NO_CLEAN=true
+            shift
+            ;;
         -h|--help)
-            echo "Usage: bin/s3-tests [--build] [--passlist] [-- <pytest args>]"
+            echo "Usage: bin/s3-tests [--build] [--no-clean] [--passlist] [-- <pytest args>]"
             echo ""
             echo "Options:"
-            echo "  --build     Rebuild the s3-tests image first"
+            echo "  --build     Rebuild all images (arca + s3-tests) first"
+            echo "  --no-clean  Skip clean state setup, use running Arca as-is"
             echo "  --passlist  Run only tests listed in s3-tests/passlist.txt"
             echo "  -- <args>   Pass extra arguments to pytest"
             exit 0
@@ -47,6 +62,28 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Clean state: stop Arca, wipe volume, restart with encryption
+if ! $NO_CLEAN; then
+    echo "==> Preparing clean state for s3-tests..."
+    bin/arca stop 2>/dev/null || true
+    # Delete data volume for clean state
+    docker volume rm docker_arca-data 2>/dev/null || true
+    echo "==> Starting Arca with --encryption for s3-tests..."
+    if $BUILD; then
+        bin/arca start -d --build --encryption
+    else
+        bin/arca start -d --encryption
+    fi
+    # Wait for Arca to be ready
+    echo "==> Waiting for Arca to be ready..."
+    for i in $(seq 1 30); do
+        if curl -sf http://localhost:9000/ >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
+fi
 
 if $BUILD; then
     echo "==> Building s3-tests image..."
@@ -114,6 +151,14 @@ if [[ -f "s3-tests/results.xml" ]]; then
         echo "==> Summary: s3-tests/summary.json"
         cat s3-tests/summary.json
     fi
+fi
+
+# Stop the test Arca instance (user can restart with their preferred config)
+if ! $NO_CLEAN; then
+    echo ""
+    echo "==> Stopping s3-test Arca instance..."
+    bin/arca stop 2>/dev/null || true
+    echo "==> Done. Restart Arca with your preferred config (e.g. bin/arca start -d --dev --encryption)."
 fi
 
 exit $EXIT_CODE

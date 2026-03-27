@@ -52,7 +52,7 @@ pub async fn create_multipart_upload(
         Err(e) => return internal_error_response(e, &resource),
     }
 
-    // TECHDEBT(TD-008): Content-Type captured from CreateMultipartUpload init request.
+    // Content-Type captured from CreateMultipartUpload init request (matches AWS behavior).
     let content_type = request
         .headers()
         .get(header::CONTENT_TYPE)
@@ -86,6 +86,7 @@ pub async fn create_multipart_upload(
         content_type,
         initiated_at: now,
         metadata,
+        checksum_algorithm: None,
     };
 
     if let Err(e) = state.metadata.create_multipart_upload(&record).await {
@@ -180,6 +181,8 @@ pub async fn upload_part(
         blob_id,
         size: put_result.size,
         etag: put_result.etag.clone(),
+        checksum_value: None,
+        last_modified: Some(chrono::Utc::now()),
     };
     let old_part = match state.metadata.put_part(&part).await {
         Ok(old) => old,
@@ -412,6 +415,9 @@ pub async fn complete_multipart_upload(
         retention_mode: None,
         retain_until_date: None,
         legal_hold_status: None,
+        storage_class: "STANDARD".to_string(),
+        checksum_algorithm: None,
+        checksum_value: None,
     };
     let old = match state.metadata.put_object(&record).await {
         Ok(old) => old,

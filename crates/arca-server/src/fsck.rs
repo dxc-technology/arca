@@ -517,6 +517,9 @@ mod tests {
             retention_mode: None,
             retain_until_date: None,
             legal_hold_status: None,
+            storage_class: "STANDARD".to_string(),
+            checksum_algorithm: None,
+            checksum_value: None,
         };
         store.put_object(&record).await.unwrap();
     }
@@ -592,6 +595,9 @@ mod tests {
             retention_mode: None,
             retain_until_date: None,
             legal_hold_status: None,
+            storage_class: "STANDARD".to_string(),
+            checksum_algorithm: None,
+            checksum_value: None,
         };
         store.put_object(&record).await.unwrap();
         drop(store);
@@ -730,6 +736,9 @@ mod tests {
             retention_mode: None,
             retain_until_date: None,
             legal_hold_status: None,
+            storage_class: "STANDARD".to_string(),
+            checksum_algorithm: None,
+            checksum_value: None,
         };
         store.put_object(&record).await.unwrap();
         drop(store);

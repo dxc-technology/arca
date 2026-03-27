@@ -166,6 +166,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — Monitoring | 27 | Prometheus metrics, audit log, metrics history, instance settings, region (TD-004) |
 | Integration — Lifecycle | 17 | Put/Get/Delete lifecycle config, expiration rules, noncurrent version, abort upload, tag/and filters |
 | Integration — Object Lock | 16 | Put/Get config, retention, legal hold, COMPLIANCE/GOVERNANCE enforcement, bypass, delete markers |
+| Integration — API Completeness | 11 | ListParts, GetObjectAttributes, checksum SHA256/CRC32 roundtrip, storage class, pagination |
 | Integration — Presigned URLs | 17 | presigned GET/PUT/HEAD/DELETE, security, admin presign, special chars, endpoint override |
 | Integration — SSE-C | 17 | put/get roundtrip, error handling, head, copy, range, delete, validation, multipart rejection |
 | Integration — Encryption | 16 | encrypted put/get, ETag, range reads, multipart, copy, bucket config |
@@ -173,9 +174,9 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — KMS | 10 | Vault/OpenBAO key fetch, encrypted put/get, headers, ETag, multipart, copy, range, admin info |
 | Integration — TLS | 7 | HTTPS health/info/put/get/multipart, minio client, wrong CA rejection |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
-| **Arca tests** | **895** | **All tests written for this project** |
-| [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 829 | 338 pass, 400 fail, 91 skip — 0 unexpected failures |
-| **Total** | **1,724** | |
+| **Arca tests** | **906** | **All tests written for this project** |
+| [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 830 | 296 pass, 517 fail, 17 skip — 13 unexpected (Object Lock cascade) |
+| **Total** | **1,736** | |
 
 ## License
 

@@ -84,6 +84,7 @@ pub fn classify_operation(method: &str, path: &str, query: Option<&str>) -> &'st
         }
         if query.contains("uploadId") {
             return match method {
+                "GET" => "ListParts",
                 "POST" => "CompleteMultipartUpload",
                 "DELETE" => "AbortMultipartUpload",
                 _ => "Unknown",
@@ -113,6 +114,9 @@ pub fn classify_operation(method: &str, path: &str, query: Option<&str>) -> &'st
                 "PUT" => "PutObjectLegalHold",
                 _ => "Unknown",
             };
+        }
+        if query.contains("attributes") {
+            return "GetObjectAttributes";
         }
         return match method {
             "GET" => "GetObject",
@@ -405,6 +409,8 @@ mod tests {
         assert_eq!(classify_operation("PUT", "/bucket/key.txt", Some("retention")), "PutObjectRetention");
         assert_eq!(classify_operation("GET", "/bucket/key.txt", Some("legal-hold")), "GetObjectLegalHold");
         assert_eq!(classify_operation("PUT", "/bucket/key.txt", Some("legal-hold")), "PutObjectLegalHold");
+        assert_eq!(classify_operation("GET", "/bucket/key.txt", Some("uploadId=abc")), "ListParts");
+        assert_eq!(classify_operation("GET", "/bucket/key.txt", Some("attributes")), "GetObjectAttributes");
     }
 
     #[test]

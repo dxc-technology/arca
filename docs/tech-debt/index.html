@@ -1188,28 +1188,12 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 </thead>
 <tbody>
 <tr>
-<td>TD-002</td>
-<td>Storage class</td>
-<td>Always <code>"STANDARD"</code> — no storage class field in ObjectRecord</td>
-<td>Add <code>storage_class</code> field to ObjectRecord, DB column, accept <code>x-amz-storage-class</code> header</td>
-<td>None currently failing</td>
-<td><code>types.rs</code>, <code>bucket.rs</code>, <code>xml_types.rs</code></td>
-</tr>
-<tr>
 <td>TD-007</td>
 <td>Unimplemented ops</td>
-<td>~33 bucket-level GET/PUT operations return 501 NotImplemented (ACLs, lifecycle, CORS, policies, etc.)</td>
+<td>~33 bucket-level GET/PUT operations return 501 NotImplemented (ACLs, CORS, policies, etc.)</td>
 <td>Implement each feature as needed post-MVP</td>
 <td>All tests in skipped/unimplemented categories</td>
 <td><code>bucket.rs</code></td>
-</tr>
-<tr>
-<td>TD-008</td>
-<td>Content-Type source</td>
-<td>Multipart upload captures Content-Type from <code>CreateMultipartUpload</code> request — S3 spec is ambiguous but some clients set it at init time</td>
-<td>Verify this matches AWS behavior; potentially accept from CompleteMultipartUpload too</td>
-<td>None currently failing</td>
-<td><code>multipart.rs</code></td>
 </tr>
 <tr>
 <td>TD-009</td>
@@ -1299,6 +1283,18 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>TD-006</td>
 <td>Encryption config</td>
 <td><code>PutBucketEncryption</code> / <code>GetBucketEncryption</code> / <code>DeleteBucketEncryption</code> implemented with SSE-S3 (AES-256-GCM). Per-bucket config in <code>bucket_config</code> table, global default from <code>[encryption]</code> config section. Phase 13</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-002</td>
+<td>Storage class</td>
+<td><code>storage_class</code> field added to ObjectRecord, DB migration v13, <code>x-amz-storage-class</code> header accepted on PutObject, returned in list and head responses. Phase 22</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-008</td>
+<td>Content-Type source</td>
+<td>Verified: Content-Type captured from CreateMultipartUpload matches AWS behavior. Clients set it at init time. Phase 22</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 </tbody>

@@ -36,7 +36,7 @@ continuing from the MVP phases (0–11).
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">19</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">20</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">21</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">22</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">22</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">23</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">24</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">25</div>
@@ -106,7 +106,7 @@ graph LR
 | 19 | [Object Tagging](#phase-19-object-tagging-p2) | P2 | 13 | `v0.12.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 20 | [Lifecycle Rules](#phase-20-lifecycle-rules-p2) | P2 | 19, 18 | `v0.13.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 21 | [Object Lock (WORM Compliance)](#phase-21-object-lock-worm-compliance-p2) | P2 | 17 | `v0.13.0` | <span style="color:#4caf50">&#x2714;</span> |
-| 22 | [S3 API Completeness](#phase-22-s3-api-completeness-p2) | P2 | — | | |
+| 22 | [S3 API Completeness](#phase-22-s3-api-completeness-p2) | P2 | — | `v0.14.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 23 | [Performance and Hardening](#phase-23-performance-and-hardening-p2) | P2 | 13 | | |
 | 24 | [PostgreSQL Backend](#phase-24-postgresql-backend-p2) | P2 | — | | |
 | 25 | [Notifications and Event System](#phase-25-notifications-and-event-system-p3) | P3 | 20 | | |
@@ -314,12 +314,12 @@ Write-Once-Read-Many compliance for regulatory and data protection requirements.
 
 Fill remaining gaps in the S3 API surface to maximize compatibility.
 
-- [ ] `ListParts`: `GET /{bucket}/{key}?uploadId=X` (MetadataStore method already exists)
-- [ ] `GetObjectAttributes`: `GET /{bucket}/{key}?attributes`
-- [ ] Checksum algorithms: `x-amz-checksum-sha256`, `x-amz-checksum-crc32`, `x-amz-checksum-crc64nvme`
-- [ ] Storage classes: `storage_class` field on `ObjectRecord`, accept `x-amz-storage-class` header on PutObject
-- [ ] Chunked transfer with SigV4 payload signing (`STREAMING-AWS4-HMAC-SHA256-PAYLOAD`)
-- [ ] Resolves: TD-002, TD-008
+- [x] `ListParts`: `GET /{bucket}/{key}?uploadId=X` with pagination (max-parts, part-number-marker)
+- [x] `GetObjectAttributes`: `GET /{bucket}/{key}?attributes` with x-amz-object-attributes header (ETag, Checksum, ObjectParts, StorageClass, ObjectSize)
+- [x] Checksum algorithms: store and return client-provided `x-amz-checksum-sha256`, `x-amz-checksum-crc32`, `x-amz-checksum-crc32c`, `x-amz-checksum-crc64nvme` on PutObject/GetObject/HeadObject. Schema migration v13
+- [x] Storage classes: `storage_class` field on ObjectRecord (default STANDARD), accept `x-amz-storage-class` header on PutObject, return in list and head responses
+- [x] Chunked transfer with SigV4 payload signing (`STREAMING-AWS4-HMAC-SHA256-PAYLOAD`) — already implemented in body.rs
+- [x] Resolves: TD-002 (storage class), TD-008 (content-type source)
 
 ---
 
