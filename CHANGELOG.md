@@ -75,17 +75,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Phase 19: Object Tagging** — S3-compatible object and bucket tagging with 6 new operations: `GetBucketTagging`, `PutBucketTagging`, `DeleteBucketTagging`, `GetObjectTagging`, `PutObjectTagging`, `DeleteObjectTagging`. Inline tags on `PutObject` via `x-amz-tagging` header and `CopyObject` with `x-amz-tagging-directive`. Max 10 tags per object/bucket, key max 128 chars, value max 256 chars. Version-aware: tags tied to specific object versions. Cascade deletes on object/bucket removal. New `object_tags` and `bucket_tags` tables (migration v11)
+- **Phase 19: Object Tagging**
+- **6 new S3 operations**: `GetBucketTagging`, `PutBucketTagging`, `DeleteBucketTagging`, `GetObjectTagging`, `PutObjectTagging`, `DeleteObjectTagging`
+- **Inline tags**: `x-amz-tagging` header on PutObject, `x-amz-tagging-directive` on CopyObject
+- **Limits**: max 10 tags per object/bucket, key max 128 chars, value max 256 chars
+- **Version-aware**: tags tied to specific object versions, cascade deletes on object/bucket removal
+- **SQLite migration v11**: new `object_tags` and `bucket_tags` tables
 - **Console: tag editor** — view, add, and remove object tags in the detail side panel
-- **Roadmap restructured** — Phase 19 split into Object Tagging (19) and Lifecycle Rules (20), all subsequent phases renumbered (20-27 became 21-28)
+- **Roadmap restructured** — Phase 19 split into Object Tagging (19) and Lifecycle Rules (20), subsequent phases renumbered
 
 ## [0.11.0] — 2026-03-24
 
 ### Added
 
-- **Console: search and filter** — real-time debounced search bar on all list views (Buckets, Users, Teams, Grants, Credentials, Bucket Detail). Client-side filtering with 300ms debounce, magnifying glass icon, clear button, and "no results" empty state. Bucket Detail search filters both files and folders, updates treemap and select-all in sync
-- **Console: audit operation filter** — replaced text-search autocomplete with smart presets (S3 Read, S3 Write, All S3, All Admin, Data Changes) and category chips with drill-down. One-click presets for common scenarios, category-level toggling, and individual operation checkboxes. Active preset auto-detected from selection
-- **Console: responsive mobile layout** — full mobile support down to 375px (iPhone SE). Collapsible sidebar with hamburger menu, responsive dashboard grid, touch-friendly controls (no hover required), horizontal-scrolling audit table, viewport-safe popovers, full-width side panels on mobile, icon-only bucket detail buttons, vertically stacked shuttles, and centered toast notifications
+- **Console: search and filter** — real-time debounced search bar on all list views (Buckets, Users, Teams, Grants, Credentials, Bucket Detail), filters files and folders, updates treemap and select-all in sync
+- **Console: audit operation filter** — smart presets (S3 Read, S3 Write, All S3, All Admin, Data Changes) with category chips, drill-down, and individual operation checkboxes
+- **Console: responsive mobile layout** — full support down to 375px, collapsible sidebar, responsive grid, touch-friendly controls, horizontal-scrolling tables, viewport-safe popovers
 
 ### Fixed
 
@@ -95,8 +100,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Console: object preview** — collapsible preview panel in the object detail sidebar with fullscreen modal (expand button). Supports images (JPEG, PNG, GIF, WebP, SVG, AVIF), video (MP4, WebM, MOV, MKV, OGV, AVI with native controls, 100 MB limit), text/code with syntax highlighting via highlight.js (~40 extensions), Markdown rendered via marked.js with dark theme, HTML in sandboxed iframe, and PDF via browser viewer. JSON auto pretty-printed. Size limits: 100 MB video, 10 MB images/PDF/HTML, 1 MB text
-- **Environment variable overrides** — `ARCA_SERVER_BIND`, `ARCA_SERVER_PORT`, and `ARCA_STORAGE_DATA_DIR` environment variables can now override the corresponding config file values, useful for Docker/Kubernetes deployments
+- **Console: object preview** — collapsible preview panel with fullscreen modal. Supports images (JPEG, PNG, GIF, WebP, SVG, AVIF), video (MP4, WebM, MOV with native controls), text/code with syntax highlighting, Markdown, HTML in sandboxed iframe, and PDF
+- **Environment variable overrides** — `ARCA_SERVER_BIND`, `ARCA_SERVER_PORT`, `ARCA_STORAGE_DATA_DIR` override config file values
 
 ## [0.9.1] — 2026-03-22
 
