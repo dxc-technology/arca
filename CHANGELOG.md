@@ -11,31 +11,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Phase 22: S3 API Completeness** — `ListParts` (`GET /{bucket}/{key}?uploadId=X`) with pagination, `GetObjectAttributes` (`GET /{bucket}/{key}?attributes`) with ETag/Checksum/ObjectParts/StorageClass/ObjectSize. Checksum algorithms: store and return client-provided `x-amz-checksum-sha256/crc32/crc32c/crc64nvme` on PutObject, GetObject, HeadObject. Storage classes: `storage_class` field on ObjectRecord, accept `x-amz-storage-class` header. Schema migration v13 adds storage_class, checksum_algorithm, checksum_value to objects; checksum_value, last_modified to parts; checksum_algorithm to multipart_uploads. Resolves TD-002 (storage class) and TD-008 (content-type source)
-- **Phase 23: Performance and Hardening** — Request size limits (`[server.limits]` TOML section, streaming `LimitedByteStream`, Content-Length fast-reject, `EntityTooLarge` S3 error, default 5 GB). Rate limiting via `governor` crate (per-IP and per-credential GCRA, `SlowDown` 503 error with `Retry-After`, disabled by default). In-memory LRU metadata cache via `moka` crate (`CachingMetadataStore` wrapper for bucket existence and object HEAD, configurable size/TTL in `[server.cache]`, write-through invalidation). Graceful shutdown with drain mode (`tokio::sync::watch` channel, health endpoint returns 503 `{"status":"draining"}` during configurable drain window). Security hardening (request validation middleware: header count limit, null byte rejection, user metadata size limit). Performance benchmarking suite (HEAD/DELETE benchmarks, `--json` output, `--baseline` comparison)
+- **Phase 22: S3 API Completeness**
+- **`ListParts`**: `GET /{bucket}/{key}?uploadId=X` with pagination
+- **`GetObjectAttributes`**: `GET /{bucket}/{key}?attributes` with ETag, Checksum, ObjectParts, StorageClass, ObjectSize
+- **Checksum algorithms**: store and return client-provided `x-amz-checksum-sha256/crc32/crc32c/crc64nvme` on PutObject, GetObject, HeadObject
+- **Storage classes**: `storage_class` field on ObjectRecord, accept `x-amz-storage-class` header
+- **SQLite migration v13**: `storage_class`, `checksum_algorithm`, `checksum_value` on objects; `checksum_value`, `last_modified` on parts; `checksum_algorithm` on multipart_uploads
+- Resolves TD-002 (storage class) and TD-008 (content-type source)
+- **Phase 23: Performance and Hardening**
+- **Request size limits**: `[server.limits]` TOML section, streaming `LimitedByteStream`, Content-Length fast-reject, `EntityTooLarge` error (default 5 GB)
+- **Rate limiting**: per-IP and per-credential GCRA via `governor` crate, `SlowDown` 503 with `Retry-After` (disabled by default)
+- **Metadata cache**: in-memory LRU via `moka` crate, `CachingMetadataStore` for bucket existence and object HEAD, configurable size/TTL in `[server.cache]`, write-through invalidation
+- **Graceful shutdown**: drain mode via `tokio::sync::watch`, health endpoint returns 503 during configurable drain window
+- **Request validation middleware**: header count limit, null byte rejection, user metadata size limit
+- **Performance benchmarks**: HEAD/DELETE benchmarks with `--json` output and `--baseline` comparison
 
 ## [0.13.0] — 2026-03-26
 
 ### Added
 
-- **Phase 21: Object Lock (WORM Compliance)** — 6 new S3 operations: `PutObjectLockConfiguration`, `GetObjectLockConfiguration`, `PutObjectRetention`, `GetObjectRetention`, `PutObjectLegalHold`, `GetObjectLegalHold`. GOVERNANCE mode (bypassable with permission) and COMPLIANCE mode (absolute protection). Per-object retention with retain-until-date, legal hold (ON/OFF). Default retention applied from bucket config on PutObject. Enforcement blocks hard-deletion of locked versions. Delete markers always allowed. Auto-enables versioning, prevents suspension. Schema migration v12 adds `retention_mode`, `retain_until_date`, `legal_hold_status` columns. 7 new S3 policy actions including `s3:BypassGovernanceRetention`. Lifecycle worker respects Object Lock
-- **Console: Object Lock** — Enable Object Lock with retention mode/period in bucket settings, lock badge in bucket list and breadcrumbs, versioning suspend disabled when locked
-- **Phase 20: Lifecycle Rules** — S3-compatible lifecycle management with 3 new operations: `PutBucketLifecycleConfiguration`, `GetBucketLifecycleConfiguration`, `DeleteBucketLifecycleConfiguration`. Rules support object expiration after N days, noncurrent version expiration, and abort of incomplete multipart uploads. Filter by prefix, tag, or combined (And filter). Rules stored as JSON in `bucket_config` table (no schema migration required)
-- **Lifecycle background worker** — periodic evaluation of lifecycle rules across all buckets. Configurable interval via `lifecycle_evaluation_interval` admin setting (default: 1 hour). Batch processing (100 objects per rule per cycle). Audit logging for all lifecycle actions (`Lifecycle::ExpireObject`, `Lifecycle::ExpireNoncurrentVersion`, `Lifecycle::AbortMultipartUpload`)
-- **Console: lifecycle rules editor** — manage lifecycle rules in bucket settings: add/remove rules with prefix filter, expiration days, noncurrent version days, and abort upload days. Immediate persistence on add/remove/toggle
-- **Admin setting: `lifecycle_evaluation_interval`** — configurable lifecycle evaluation interval (60-86400 seconds) via `GET/PUT/DELETE /admin/settings/lifecycle_evaluation_interval`
+- **Phase 21: Object Lock (WORM Compliance)**
+- **6 new S3 operations**: `PutObjectLockConfiguration`, `GetObjectLockConfiguration`, `PutObjectRetention`, `GetObjectRetention`, `PutObjectLegalHold`, `GetObjectLegalHold`
+- **Retention modes**: GOVERNANCE (bypassable with permission) and COMPLIANCE (absolute protection) with retain-until-date
+- **Legal hold**: per-object ON/OFF flag, independent of retention
+- **Default retention**: bucket-level config applied automatically on PutObject
+- **Enforcement**: blocks hard-deletion of locked versions, delete markers always allowed, auto-enables versioning (prevents suspension)
+- **SQLite migration v12**: adds `retention_mode`, `retain_until_date`, `legal_hold_status` columns
+- 7 new S3 policy actions including `s3:BypassGovernanceRetention`
+- Lifecycle worker respects Object Lock
+- **Console: Object Lock** — lock badge in bucket list and breadcrumbs, retention mode/period in bucket settings, versioning suspend disabled when locked
+- **Phase 20: Lifecycle Rules**
+- **3 new S3 operations**: `PutBucketLifecycleConfiguration`, `GetBucketLifecycleConfiguration`, `DeleteBucketLifecycleConfiguration`
+- **Rule features**: object expiration after N days, noncurrent version expiration, abort incomplete multipart uploads
+- **Filters**: by prefix, tag, or combined (And filter). Rules stored as JSON in `bucket_config` table (no schema migration)
+- **Background worker**: periodic evaluation across all buckets, configurable interval (default 1 hour), batch processing (100 objects per rule per cycle), audit logging for all lifecycle actions
+- **Console: lifecycle rules editor** — add/remove rules with prefix filter, expiration days, noncurrent version days, abort upload days
+- **Admin setting: `lifecycle_evaluation_interval`** — configurable evaluation interval (60–86400 seconds) via `GET/PUT/DELETE /admin/settings/lifecycle_evaluation_interval`
 
 ### Fixed
 
-- **Tagging: tag validation on PutObject** — invalid `x-amz-tagging` headers (excess tags, key/value too long) now rejected with 400 before writing the blob, instead of being silently ignored
-- **Tagging: `x-amz-tagging-count` header** — GET and HEAD object responses now include `x-amz-tagging-count` header when the object has tags
-- **Tagging: multipart upload tags** — `CreateMultipartUpload` now captures `x-amz-tagging` header and applies tags to the final object at `CompleteMultipartUpload` time
-- **Versioning: delete marker detection** — GET/HEAD on a key whose current version is a delete marker now returns 404 with `x-amz-delete-marker: true` and `x-amz-version-id` headers, instead of plain NoSuchKey
-- **Versioning: CompleteMultipartUpload `x-amz-version-id`** — response now includes the version ID when the target bucket has versioning enabled
-- **Versioning: UploadPartCopy with versioned source** — now uses the `?versionId=` from the copy source header to fetch the correct version, instead of always fetching the latest
-- **Versioning: conditional DELETE with delete markers** — `If-Match`, `x-amz-if-match-last-modified-time`, and `x-amz-if-match-size` conditional headers on DELETE and batch DELETE now correctly evaluate against the latest version including delete markers
-- **S3 compatibility: +18 Ceph s3-tests passing** — 338/829 (40.8%), up from 320/829 (38.6%)
-- **Encryption: key mismatch returns 403 instead of 500** — downloading an object encrypted with a different master key now returns `403 AccessDenied` with a clear message instead of `500 InternalError`
+- **Tagging: tag validation on PutObject** — invalid `x-amz-tagging` headers now rejected with 400 before writing the blob
+- **Tagging: `x-amz-tagging-count` header** — GET and HEAD responses now include tag count when the object has tags
+- **Tagging: multipart upload tags** — `CreateMultipartUpload` now captures `x-amz-tagging` and applies tags at `CompleteMultipartUpload`
+- **Versioning: delete marker detection** — GET/HEAD on a delete marker now returns 404 with `x-amz-delete-marker: true` and `x-amz-version-id`
+- **Versioning: CompleteMultipartUpload `x-amz-version-id`** — response now includes version ID when versioning is enabled
+- **Versioning: UploadPartCopy with versioned source** — now uses `?versionId=` from copy source header instead of always fetching latest
+- **Versioning: conditional DELETE with delete markers** — conditional headers on DELETE now correctly evaluate against latest version including delete markers
+- **S3 compatibility**: +18 Ceph s3-tests passing, 338/829 (40.8%), up from 320/829 (38.6%)
+- **Encryption: key mismatch returns 403** — wrong master key now returns `AccessDenied` instead of `InternalError`
 
 ## [0.12.0] — 2026-03-24
 
