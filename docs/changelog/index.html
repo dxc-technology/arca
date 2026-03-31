@@ -1013,7 +1013,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0140-2026-03-31" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.14.0 — 2026-03-31
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.14.0 — 2026-03-31">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1671,7 +1682,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0140-2026-03-31" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.14.0 — 2026-03-31
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.14.0 — 2026-03-31">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2280,7 +2302,8 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.13.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.14.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="0140-2026-03-31"><a href="https://github.com/dxc-technology/arca/compare/v0.13.0...v0.14.0">0.14.0</a> — 2026-03-31<a class="headerlink" href="#0140-2026-03-31" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Phase 22: S3 API Completeness</strong> — <code>ListParts</code> (<code>GET /{bucket}/{key}?uploadId=X</code>) with pagination, <code>GetObjectAttributes</code> (<code>GET /{bucket}/{key}?attributes</code>) with ETag/Checksum/ObjectParts/StorageClass/ObjectSize. Checksum algorithms: store and return client-provided <code>x-amz-checksum-sha256/crc32/crc32c/crc64nvme</code> on PutObject, GetObject, HeadObject. Storage classes: <code>storage_class</code> field on ObjectRecord, accept <code>x-amz-storage-class</code> header. Schema migration v13 adds storage_class, checksum_algorithm, checksum_value to objects; checksum_value, last_modified to parts; checksum_algorithm to multipart_uploads. Resolves TD-002 (storage class) and TD-008 (content-type source)</li>
