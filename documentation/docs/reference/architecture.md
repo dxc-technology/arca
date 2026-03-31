@@ -76,22 +76,29 @@ Every S3 request passes through a pipeline of middleware layers before reaching 
 
 ```mermaid
 flowchart TD
-    REQ(["HTTP Request"]) --> MW1
+    REQ(["HTTP Request"]) --> MW0
 
     subgraph MIDDLEWARE["Tower Middleware Stack"]
-        MW1["Tracing + Timeouts"]
-        MW2["Virtual Host Rewrite<br/>bucket.s3.domain -> /bucket/path"]
-        MW3["SigV4 Auth<br/>verify signature · inject identity"]
+        MW0["Request ID<br/>assign UUID · set x-amz-request-id"]
+        MW1["Validate<br/>header count · null bytes · metadata size"]
+        MW2["IP Rate Limit<br/>per-IP GCRA · X-Forwarded-For aware"]
+        MW3["Audit<br/>record operation · status · latency"]
+        MW4["Tracing<br/>method · URI · status · latency_ms"]
+        MW5["SigV4 Auth<br/>verify signature · inject identity"]
+        MW6["Credential Rate Limit<br/>per-credential GCRA"]
+        MW7["Virtual Host Rewrite<br/>bucket.s3.domain → /bucket/path"]
     end
 
-    MW1 --> MW2 --> MW3
+    MW0 --> MW1 --> MW2 --> MW3 --> MW4 --> MW5 --> MW6 --> MW7
 
-    MW3 --> ROUTER["Axum Router<br/>route by method + path<br/>dispatch by query params"]
+    MW7 --> ROUTER["Axum Router<br/>route by method + path<br/>dispatch by query params"]
 
     ROUTER --> UC["Use Case Layer<br/>BucketUsecase · ObjectUsecase · MultipartUsecase"]
 
-    UC --> META["MetadataStore<br/>(trait)"]
+    UC --> CACHE["CachingMetadataStore<br/>LRU cache (moka)"]
     UC --> BLOB["BlobStore<br/>(trait)"]
+
+    CACHE --> META["MetadataStore<br/>(trait)"]
 
     META --> SQLITE[("SqliteStore<br/>WAL mode")]
     BLOB --> FS["FsBlobStore<br/>UUID + .meta sidecar"]
@@ -100,7 +107,7 @@ flowchart TD
     SQLITE --> DB[("/data/arca.db")]
 ```
 
-The middleware stack is built with [Tower](https://docs.rs/tower), the standard Rust middleware framework. Each layer is independently testable and can be reordered or replaced without affecting the others.
+The middleware stack is built with [Tower](https://docs.rs/tower), the standard Rust middleware framework. Each layer is independently testable and can be reordered or replaced without affecting the others. Rate limiting and request validation layers are no-ops when disabled in configuration.
 
 ## Storage Architecture
 
@@ -120,6 +127,10 @@ The use-case layer depends only on these traits, never on concrete implementatio
 - **Testing**: use cases are tested against in-memory implementations
 - **Flexibility**: swap SQLite for Postgres without touching business logic
 - **Separation**: storage internals are encapsulated behind clean interfaces
+
+### Metadata Caching
+
+`CachingMetadataStore` wraps any `MetadataStore` implementation with an in-memory LRU cache (via the `moka` crate). It caches `head_bucket` and `get_latest_object` results, and invalidates entries on writes. This reduces SQLite query pressure for the most frequent operations (bucket existence checks on every request, HEAD object for conditional operations). The cache is enabled by default and configurable via `[server.cache]`.
 
 ### SQLite (Metadata + Credentials)
 

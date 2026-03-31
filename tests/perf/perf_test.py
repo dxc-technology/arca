@@ -3,16 +3,19 @@
 Performance test suite for Arca S3 server.
 
 Measures throughput and latency for common S3 operations:
-  - Small-object PUT/GET (concurrent)
+  - Small-object PUT/GET/HEAD/DELETE (concurrent)
   - Large-object multipart upload
   - Mixed workload (GET/PUT/DELETE)
   - Listing performance
 
 Usage:
     python perf_test.py [--endpoint URL] [--threads N] [--objects N]
+    python perf_test.py --json                         # machine-readable output
+    python perf_test.py --json --baseline results.json # compare against baseline
 """
 
 import argparse
+import json
 import os
 import statistics
 import string
@@ -65,26 +68,41 @@ def percentile(data: list[float], p: float) -> float:
     return data_sorted[f] + (k - f) * (data_sorted[c] - data_sorted[f])
 
 
-def report_latencies(name: str, latencies: list[float], errors: int = 0):
-    """Print a formatted latency report."""
+def report_latencies(name: str, latencies: list[float], errors: int = 0) -> dict:
+    """Print a formatted latency report and return structured data."""
     if not latencies:
         print(f"  {name}: no successful operations")
-        return
+        return {"name": name, "ops": 0, "errors": errors}
 
     total = len(latencies)
     total_time = sum(latencies)
     ops_sec = total / total_time if total_time > 0 else 0
 
+    result = {
+        "name": name,
+        "ops": total,
+        "errors": errors,
+        "ops_per_sec": round(ops_sec, 1),
+        "p50_ms": round(percentile(latencies, 50) * 1000, 1),
+        "p95_ms": round(percentile(latencies, 95) * 1000, 1),
+        "p99_ms": round(percentile(latencies, 99) * 1000, 1),
+        "min_ms": round(min(latencies) * 1000, 1),
+        "max_ms": round(max(latencies) * 1000, 1),
+        "avg_ms": round(statistics.mean(latencies) * 1000, 1),
+    }
+
     print(f"  {name}:")
     print(f"    Operations: {total} ({errors} errors)")
     print(f"    Throughput: {ops_sec:.1f} ops/sec")
     print(f"    Latency (ms):")
-    print(f"      p50: {percentile(latencies, 50)*1000:.1f}")
-    print(f"      p95: {percentile(latencies, 95)*1000:.1f}")
-    print(f"      p99: {percentile(latencies, 99)*1000:.1f}")
-    print(f"      min: {min(latencies)*1000:.1f}")
-    print(f"      max: {max(latencies)*1000:.1f}")
-    print(f"      avg: {statistics.mean(latencies)*1000:.1f}")
+    print(f"      p50: {result['p50_ms']}")
+    print(f"      p95: {result['p95_ms']}")
+    print(f"      p99: {result['p99_ms']}")
+    print(f"      min: {result['min_ms']}")
+    print(f"      max: {result['max_ms']}")
+    print(f"      avg: {result['avg_ms']}")
+
+    return result
 
 
 def ensure_bucket(client, bucket: str):
@@ -154,6 +172,58 @@ def test_small_object_get(client, bucket: str, threads: int, count: int):
 
     report_latencies("GET", latencies, errors)
     return latencies
+
+
+def test_head_object(client, bucket: str, threads: int, count: int):
+    """Concurrent HEAD object (metadata lookup, tests cache effectiveness)."""
+    print(f"\n--- HEAD Object ({count} objects, {threads} threads) ---")
+    latencies = []
+    errors = 0
+
+    def head_one(i):
+        _, elapsed = timed(
+            lambda: client.head_object(Bucket=bucket, Key=f"perf/put/{i}")
+        )
+        return elapsed
+
+    with ThreadPoolExecutor(max_workers=threads) as pool:
+        futures = {pool.submit(head_one, i): i for i in range(count)}
+        for fut in as_completed(futures):
+            try:
+                latencies.append(fut.result())
+            except Exception:
+                errors += 1
+
+    return report_latencies("HEAD", latencies, errors)
+
+
+def test_delete_object(client, bucket: str, threads: int, count: int):
+    """Concurrent DELETE object."""
+    print(f"\n--- DELETE Object ({count} objects, {threads} threads) ---")
+
+    # Pre-populate objects for deletion.
+    data = os.urandom(256)
+    for i in range(count):
+        client.put_object(Bucket=bucket, Key=f"perf/del/{i}", Body=data)
+
+    latencies = []
+    errors = 0
+
+    def del_one(i):
+        _, elapsed = timed(
+            lambda: client.delete_object(Bucket=bucket, Key=f"perf/del/{i}")
+        )
+        return elapsed
+
+    with ThreadPoolExecutor(max_workers=threads) as pool:
+        futures = {pool.submit(del_one, i): i for i in range(count)}
+        for fut in as_completed(futures):
+            try:
+                latencies.append(fut.result())
+            except Exception:
+                errors += 1
+
+    return report_latencies("DELETE", latencies, errors)
 
 
 def test_large_multipart(client, bucket: str, size_mb: int):
@@ -292,6 +362,39 @@ def test_listing(client, bucket: str, object_count: int):
     print(f"  Objects/sec: {object_count/avg:.0f}")
 
 
+def compare_with_baseline(current: dict, baseline_path: str):
+    """Compare current results with a baseline JSON file."""
+    try:
+        with open(baseline_path) as f:
+            baseline = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        print(f"\n  Warning: Could not load baseline: {e}")
+        return
+
+    print("\n" + "=" * 60)
+    print("  Comparison with baseline")
+    print("=" * 60)
+
+    current_by_name = {r["name"]: r for r in current.get("results", [])}
+    baseline_by_name = {r["name"]: r for r in baseline.get("results", [])}
+
+    for name in current_by_name:
+        if name not in baseline_by_name:
+            continue
+        cur = current_by_name[name]
+        base = baseline_by_name[name]
+        if cur.get("ops_per_sec") and base.get("ops_per_sec"):
+            ratio = cur["ops_per_sec"] / base["ops_per_sec"]
+            direction = "faster" if ratio > 1 else "slower"
+            print(f"  {name}: {ratio:.2f}x {direction} "
+                  f"({base['ops_per_sec']:.1f} -> {cur['ops_per_sec']:.1f} ops/sec)")
+        if cur.get("p50_ms") and base.get("p50_ms"):
+            delta = cur["p50_ms"] - base["p50_ms"]
+            sign = "+" if delta > 0 else ""
+            print(f"    p50: {sign}{delta:.1f}ms "
+                  f"({base['p50_ms']:.1f} -> {cur['p50_ms']:.1f})")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Arca S3 Performance Tests")
     parser.add_argument(
@@ -303,6 +406,8 @@ def main():
     parser.add_argument("--list-objects", type=int, default=1000)
     parser.add_argument("--large-mb", type=int, default=50)
     parser.add_argument("--mixed-ops", type=int, default=500)
+    parser.add_argument("--json", action="store_true", help="Output JSON results")
+    parser.add_argument("--baseline", help="Baseline JSON file for comparison")
     args = parser.parse_args()
 
     client = create_client(args.endpoint)
@@ -315,10 +420,19 @@ def main():
     print("=" * 60)
 
     ensure_bucket(client, bucket)
+    all_results = []
 
     try:
         test_small_object_put(client, bucket, args.threads, args.objects, 1024)
-        test_small_object_get(client, bucket, args.threads, args.objects)
+        r = test_small_object_get(client, bucket, args.threads, args.objects)
+        if isinstance(r, dict):
+            all_results.append(r)
+        r = test_head_object(client, bucket, args.threads, args.objects)
+        if isinstance(r, dict):
+            all_results.append(r)
+        r = test_delete_object(client, bucket, args.threads, args.objects)
+        if isinstance(r, dict):
+            all_results.append(r)
         test_large_multipart(client, bucket, args.large_mb)
         test_mixed_workload(client, bucket, args.threads, args.mixed_ops)
         test_listing(client, bucket, args.list_objects)
@@ -326,6 +440,23 @@ def main():
         print("\n--- Cleanup ---")
         cleanup_bucket(client, bucket)
         print("  Done.")
+
+    output = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "endpoint": args.endpoint,
+        "threads": args.threads,
+        "objects": args.objects,
+        "results": all_results,
+    }
+
+    if args.json:
+        json_path = "perf_results.json"
+        with open(json_path, "w") as f:
+            json.dump(output, f, indent=2)
+        print(f"\n  JSON results written to {json_path}")
+
+    if args.baseline:
+        compare_with_baseline(output, args.baseline)
 
 
 if __name__ == "__main__":

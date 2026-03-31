@@ -423,6 +423,8 @@ mod tests {
                 domain: None,
                 region: None,
                 tls: None,
+                limits: None,
+                cache: None,
             },
             storage: StorageConfig {
                 data_dir: dir.to_str().unwrap().to_string(),

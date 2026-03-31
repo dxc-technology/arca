@@ -59,6 +59,12 @@ pub fn build_router(state: AppState) -> Router {
         ));
     }
 
+    // Per-credential rate limiting (after auth, so identity is available).
+    s3_app = s3_app.layer(axum::middleware::from_fn_with_state(
+        state.clone(),
+        middleware::rate_limit::credential_rate_limit_middleware,
+    ));
+
     // S3 auth middleware (returns S3 XML errors).
     s3_app = s3_app.layer(axum::middleware::from_fn_with_state(
         state.clone(),
@@ -225,7 +231,7 @@ pub fn build_router(state: AppState) -> Router {
     // --- Merge everything ---
     // Admin routes are nested under /admin, S3 routes at root.
     // Layer order (outermost → innermost):
-    //   RequestId → Audit → Trace → CORS → Auth → Handlers
+    //   RequestId → Validate → IP RateLimit → Audit → Trace → CORS → Auth → [Credential RateLimit] → Handlers
     Router::new()
         .nest("/admin", admin)
         .merge(s3_app)
@@ -239,6 +245,14 @@ pub fn build_router(state: AppState) -> Router {
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::audit::audit_middleware,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            middleware::rate_limit::ip_rate_limit_middleware,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            middleware::validate::validate_middleware,
         ))
         .layer(axum::middleware::from_fn(
             middleware::request_id::request_id_middleware,

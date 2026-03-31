@@ -111,8 +111,18 @@ pub struct CreateCredentialRequest {
 // -- Handlers --
 
 /// GET /admin/health — unauthenticated health check.
-pub async fn health() -> impl IntoResponse {
-    Json(HealthResponse { status: "ok" })
+///
+/// Returns 200 `{"status": "ok"}` normally, or 503 `{"status": "draining"}`
+/// during graceful shutdown drain window (so load balancers stop routing traffic).
+pub async fn health(State(state): State<AppState>) -> Response {
+    if *state.draining.borrow() {
+        return Response::builder()
+            .status(StatusCode::SERVICE_UNAVAILABLE)
+            .header("Content-Type", "application/json")
+            .body(Body::from(r#"{"status":"draining"}"#))
+            .expect("build draining response");
+    }
+    Json(HealthResponse { status: "ok" }).into_response()
 }
 
 /// GET /admin/metrics — Prometheus text exposition format (unauthenticated).

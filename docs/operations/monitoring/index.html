@@ -1417,7 +1417,32 @@
 <h3 id="endpoint">Endpoint<a class="headerlink" href="#endpoint" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>GET /admin/health
 </code></pre></div>
-<p>Returns <code>200 OK</code> with <code>{"status": "ok"}</code>. No authentication required — designed for load balancer and container orchestrator probes.</p>
+<p>No authentication required, designed for load balancer and container orchestrator probes.</p>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Code</th>
+<th>Body</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Healthy</td>
+<td>200</td>
+<td><code>{"status":"ok"}</code></td>
+<td>Server is running and accepting requests</td>
+</tr>
+<tr>
+<td>Draining</td>
+<td>503</td>
+<td><code>{"status":"draining"}</code></td>
+<td>Server received SIGTERM/SIGINT, draining in-flight connections before shutdown</td>
+</tr>
+</tbody>
+</table>
+<p>During <a href="../deployment/#graceful-shutdown">graceful shutdown</a>, the health endpoint returns 503 for <code>drain_timeout_seconds</code> (default: 30), giving load balancers time to remove the instance from rotation before connections are closed.</p>
 <h3 id="docker-healthcheck">Docker HEALTHCHECK<a class="headerlink" href="#docker-healthcheck" title="Permanent link">&para;</a></h3>
 <p>Add a health check to your Docker Compose configuration:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">services</span><span class="p">:</span>
@@ -1437,9 +1462,10 @@
 <p>Point your load balancer's health check at <code>/admin/health</code>:</p>
 <ul>
 <li><strong>Path</strong>: <code>/admin/health</code></li>
-<li><strong>Expected status</strong>: <code>200</code></li>
-<li><strong>Expected body</strong>: <code>{"status":"ok"}</code></li>
-<li><strong>Interval</strong>: 10–30 seconds</li>
+<li><strong>Expected healthy status</strong>: <code>200</code></li>
+<li><strong>Expected healthy body</strong>: <code>{"status":"ok"}</code></li>
+<li><strong>Drain status</strong>: <code>503</code> with <code>{"status":"draining"}</code> — remove instance from rotation</li>
+<li><strong>Interval</strong>: 10–30 seconds (should be ≤ <code>drain_timeout_seconds</code>)</li>
 </ul>
 <h2 id="server-metrics">Server Metrics<a class="headerlink" href="#server-metrics" title="Permanent link">&para;</a></h2>
 <p>Arca exposes server information and storage statistics via the Admin API. These endpoints require SigV4 authentication with admin credentials.</p>

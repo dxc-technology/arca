@@ -18,7 +18,10 @@ use arca_core::store::ByteStream;
 ///
 /// If the `x-amz-content-sha256` header starts with `STREAMING-`, the body
 /// uses AWS chunked transfer encoding and will be transparently decoded.
-pub fn body_to_byte_stream(body: Body, headers: &HeaderMap) -> ByteStream {
+///
+/// When `max_body_size` is `Some(n)` with `n > 0`, the stream enforces a byte
+/// limit and returns an `EntityTooLarge` I/O error if exceeded.
+pub fn body_to_byte_stream(body: Body, headers: &HeaderMap, max_body_size: Option<u64>) -> ByteStream {
     use tokio_stream::StreamExt;
 
     let is_chunked = headers
@@ -31,10 +34,59 @@ pub fn body_to_byte_stream(body: Body, headers: &HeaderMap) -> ByteStream {
         result.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
     }));
 
-    if is_chunked {
-        Box::pin(AwsChunkedDecoder::new(mapped))
+    let decoded = if is_chunked {
+        Box::pin(AwsChunkedDecoder::new(mapped)) as ByteStream
     } else {
         mapped
+    };
+
+    match max_body_size {
+        Some(limit) if limit > 0 => Box::pin(LimitedByteStream::new(decoded, limit)),
+        _ => decoded,
+    }
+}
+
+/// Wraps a `ByteStream` and enforces a maximum byte count.
+///
+/// Once the cumulative bytes exceed `limit`, the stream yields an I/O error
+/// with kind `Other` and message "EntityTooLarge" (used by handlers to return
+/// the appropriate S3 error response).
+pub(crate) struct LimitedByteStream {
+    inner: ByteStream,
+    limit: u64,
+    bytes_read: u64,
+}
+
+impl LimitedByteStream {
+    pub fn new(inner: ByteStream, limit: u64) -> Self {
+        Self {
+            inner,
+            limit,
+            bytes_read: 0,
+        }
+    }
+}
+
+impl Stream for LimitedByteStream {
+    type Item = Result<Bytes, io::Error>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = unsafe { self.get_unchecked_mut() };
+
+        match Pin::new(&mut this.inner).poll_next(cx) {
+            Poll::Ready(Some(Ok(chunk))) => {
+                this.bytes_read += chunk.len() as u64;
+                if this.bytes_read > this.limit {
+                    Poll::Ready(Some(Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        "EntityTooLarge",
+                    ))))
+                } else {
+                    Poll::Ready(Some(Ok(chunk)))
+                }
+            }
+            other => other,
+        }
     }
 }
 
@@ -283,7 +335,7 @@ mod tests {
     async fn body_to_byte_stream_passthrough_for_normal_body() {
         let body = Body::from("hello world");
         let headers = HeaderMap::new();
-        let stream = body_to_byte_stream(body, &headers);
+        let stream = body_to_byte_stream(body, &headers, None);
         let result = collect_stream(stream).await.unwrap();
         assert_eq!(result, b"hello world");
     }
@@ -297,8 +349,48 @@ mod tests {
             "x-amz-content-sha256",
             "STREAMING-AWS4-HMAC-SHA256-PAYLOAD".parse().unwrap(),
         );
-        let stream = body_to_byte_stream(body, &headers);
+        let stream = body_to_byte_stream(body, &headers, None);
         let result = collect_stream(stream).await.unwrap();
         assert_eq!(result, b"hello");
+    }
+
+    #[tokio::test]
+    async fn limited_stream_under_limit_passes() {
+        let data = b"hello";
+        let inner: ByteStream = Box::pin(tokio_stream::once(Ok(Bytes::from_static(data))));
+        let stream = LimitedByteStream::new(inner, 100);
+        let result = collect_stream(Box::pin(stream)).await.unwrap();
+        assert_eq!(result, b"hello");
+    }
+
+    #[tokio::test]
+    async fn limited_stream_over_limit_returns_error() {
+        let data = b"hello world, this is a longer payload";
+        let inner: ByteStream = Box::pin(tokio_stream::once(Ok(Bytes::from_static(data))));
+        let stream = LimitedByteStream::new(inner, 10);
+        let result = collect_stream(Box::pin(stream)).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("EntityTooLarge"));
+    }
+
+    #[tokio::test]
+    async fn limited_stream_exact_limit_passes() {
+        let data = b"12345";
+        let inner: ByteStream = Box::pin(tokio_stream::once(Ok(Bytes::from_static(data))));
+        let stream = LimitedByteStream::new(inner, 5);
+        let result = collect_stream(Box::pin(stream)).await.unwrap();
+        assert_eq!(result, b"12345");
+    }
+
+    #[tokio::test]
+    async fn limited_stream_zero_limit_is_unlimited() {
+        let data = b"hello world";
+        let body = Body::from(data.to_vec());
+        let headers = HeaderMap::new();
+        // max_body_size = Some(0) should mean unlimited
+        let stream = body_to_byte_stream(body, &headers, Some(0));
+        let result = collect_stream(stream).await.unwrap();
+        assert_eq!(result, b"hello world");
     }
 }

@@ -53,6 +53,18 @@ pub struct AppState {
     pub metrics_store: Option<Arc<dyn MetricsStore>>,
     /// In-memory metrics registry (counters, histograms, active connections).
     pub metrics_registry: Option<Arc<MetricsRegistry>>,
+    /// Per-IP rate limiter (None = disabled).
+    pub ip_rate_limiter: Option<std::sync::Arc<crate::middleware::rate_limit::KeyedRateLimiter>>,
+    /// Per-credential rate limiter (None = disabled).
+    pub credential_rate_limiter: Option<std::sync::Arc<crate::middleware::rate_limit::KeyedRateLimiter>>,
+    /// Maximum request body size in bytes (0 = unlimited).
+    pub max_body_size: u64,
+    /// Maximum number of HTTP headers per request.
+    pub max_header_count: u32,
+    /// Maximum total size of user metadata headers (`x-amz-meta-*`) in bytes.
+    pub max_metadata_size: u32,
+    /// Drain mode receiver — when true, health endpoint returns 503.
+    pub draining: tokio::sync::watch::Receiver<bool>,
 }
 
 impl AppState {

@@ -1221,10 +1221,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-28-opentelemetry-integration-p3" class="md-nav__link">
+  <a href="#phase-28-cli-enhancements-and-migration-tools-p3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 28 — OpenTelemetry Integration [P3]
+        Phase 28 — CLI Enhancements and Migration Tools [P3]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-29-opentelemetry-integration-p3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 29 — OpenTelemetry Integration [P3]
       
     </span>
   </a>
@@ -1750,10 +1761,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-28-opentelemetry-integration-p3" class="md-nav__link">
+  <a href="#phase-28-cli-enhancements-and-migration-tools-p3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 28 — OpenTelemetry Integration [P3]
+        Phase 28 — CLI Enhancements and Migration Tools [P3]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-29-opentelemetry-integration-p3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 29 — OpenTelemetry Integration [P3]
       
     </span>
   </a>
@@ -2014,12 +2036,13 @@ continuing from the MVP phases (0–11).</p>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">20</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">21</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">22</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">23</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">23</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">24</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">25</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">26</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">27</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">28</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">29</div>
   </div>
 </div>
 <!-- /post-mvp-progress-bar -->
@@ -2039,7 +2062,9 @@ continuing from the MVP phases (0–11).</p>
     13 --&gt; 23["23 Performance\n+ Hardening"]
     24["24 PostgreSQL\nBackend"] --&gt; 26
     26 --&gt; 27["27 Multi-Node\n+ Erasure Coding"]
-    18 --&gt; 28["28 OpenTelemetry\nIntegration"]
+    27 --&gt; 28["28 CLI Enhancements\n+ Migration"]
+    13 --&gt; 28
+    18 --&gt; 29["29 OpenTelemetry\nIntegration"]
 
     style 12 fill:#c62828,color:#fff
     style 13 fill:#c62828,color:#fff
@@ -2058,6 +2083,7 @@ continuing from the MVP phases (0–11).</p>
     style 26 fill:#1565c0,color:#fff
     style 27 fill:#1565c0,color:#fff
     style 28 fill:#1565c0,color:#fff
+    style 29 fill:#1565c0,color:#fff
 
     18["18 Monitoring\n+ Audit"]
     22["22 S3 API\nCompleteness"]</code></pre>
@@ -2170,8 +2196,8 @@ continuing from the MVP phases (0–11).</p>
 <td><a href="#phase-23-performance-and-hardening-p2">Performance and Hardening</a></td>
 <td style="text-align: center;">P2</td>
 <td style="text-align: center;">13</td>
-<td style="text-align: center;"></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><code>v0.14.0</code></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">24</td>
@@ -2207,7 +2233,15 @@ continuing from the MVP phases (0–11).</p>
 </tr>
 <tr>
 <td style="text-align: center;">28</td>
-<td><a href="#phase-28-opentelemetry-integration-p3">OpenTelemetry Integration</a></td>
+<td><a href="#phase-28-cli-enhancements-and-migration-tools-p3">CLI Enhancements and Migration Tools</a></td>
+<td style="text-align: center;">P3</td>
+<td style="text-align: center;">13, 27</td>
+<td style="text-align: center;"></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr>
+<td style="text-align: center;">29</td>
+<td><a href="#phase-29-opentelemetry-integration-p3">OpenTelemetry Integration</a></td>
 <td style="text-align: center;">P3</td>
 <td style="text-align: center;">18</td>
 <td style="text-align: center;"></td>
@@ -2396,13 +2430,12 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 <h3 id="phase-23-performance-and-hardening-p2">Phase 23 — Performance and Hardening [P2]<a class="headerlink" href="#phase-23-performance-and-hardening-p2" title="Permanent link">&para;</a></h3>
 <p>Production-grade limits, caching, and graceful operations.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Request size limits: configurable max body size (default 5 GB for PutObject)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Rate limiting: per-credential and per-IP via Tower middleware</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> In-memory LRU cache for metadata lookups (bucket existence, HEAD). Invalidation on writes</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Graceful rolling upgrades: drain connections, health endpoint reports "draining", configurable drain timeout</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Performance benchmarking suite: automated benchmarks (concurrent uploads, large files, metadata ops/sec)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Security hardening: request validation, header size limits</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>arca encrypt-existing</code> / <code>arca decrypt-existing</code> CLI tools for background encryption/decryption of existing objects in-place</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Request size limits: configurable max body size (default 5 GB for PutObject). <code>[server.limits]</code> TOML section with <code>max_body_size</code>, streaming <code>LimitedByteStream</code> wrapper, Content-Length fast-reject, <code>EntityTooLarge</code> S3 error</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Rate limiting: per-credential and per-IP via <code>governor</code> crate (GCRA algorithm). <code>SlowDown</code> (503) S3 error with <code>Retry-After</code> header. Configurable rates and burst in <code>[server.limits]</code>, disabled by default (rate = 0)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> In-memory LRU cache for metadata lookups (bucket existence, HEAD) via <code>moka</code> crate. <code>CachingMetadataStore</code> wrapper with configurable size and TTL in <code>[server.cache]</code>. Write-through invalidation on create/delete/put</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Graceful rolling upgrades: drain mode via <code>tokio::sync::watch</code> channel. Health endpoint returns 503 <code>{"status":"draining"}</code> during configurable drain window (<code>drain_timeout_seconds</code>). Load balancers stop routing traffic before connections are closed</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Performance benchmarking suite: HEAD and DELETE benchmarks, JSON output (<code>--json</code>), baseline comparison (<code>--baseline FILE</code>), p50/p95/p99 latency reporting</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Security hardening: request validation middleware (header count limit, null byte rejection, user metadata size limit). Configurable via <code>max_header_count</code> and <code>max_metadata_size</code> in <code>[server.limits]</code></li>
 </ul>
 <p><strong>Depends on</strong>: Phase 13 (encryption pipeline)</p>
 <hr />
@@ -2447,7 +2480,18 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 </ul>
 <p><strong>Depends on</strong>: All prior phases. Major architecture evolution.</p>
 <hr />
-<h3 id="phase-28-opentelemetry-integration-p3">Phase 28 — OpenTelemetry Integration [P3]<a class="headerlink" href="#phase-28-opentelemetry-integration-p3" title="Permanent link">&para;</a></h3>
+<h3 id="phase-28-cli-enhancements-and-migration-tools-p3">Phase 28 — CLI Enhancements and Migration Tools [P3]<a class="headerlink" href="#phase-28-cli-enhancements-and-migration-tools-p3" title="Permanent link">&para;</a></h3>
+<p>Comprehensive CLI tooling for administration, data migration, and remote S3 operations.</p>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>arca encrypt-existing</code> / <code>arca decrypt-existing</code>: offline encryption/decryption of existing objects in-place. Atomic renames for crash safety, resumable (skips already-processed blobs), configurable concurrency, progress reporting</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>arca migrate-topology</code>: migrate data between single-node and multi-node (HA) deployments. Resharding, metadata redistribution, rollback support</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Remote S3 client mode: <code>arca</code> binary acts as an S3 client (like <code>mc</code> or <code>aws s3</code>), connecting to any S3-compatible endpoint. Subcommands: <code>arca s3 ls</code>, <code>arca s3 cp</code>, <code>arca s3 mv</code>, <code>arca s3 rm</code>, <code>arca s3 sync</code>, <code>arca s3 presign</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Profile management: <code>arca profile add/list/remove/use</code> for managing multiple endpoint/credential profiles (stored in <code>~/.arca/profiles.toml</code>)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Interactive shell mode: <code>arca shell</code> with tab completion, history, and prompt showing current profile/bucket</li>
+</ul>
+<p><strong>Depends on</strong>: Phase 13 (encryption pipeline for encrypt/decrypt), Phase 27 (multi-node for topology migration)</p>
+<hr />
+<h3 id="phase-29-opentelemetry-integration-p3">Phase 29 — OpenTelemetry Integration [P3]<a class="headerlink" href="#phase-29-opentelemetry-integration-p3" title="Permanent link">&para;</a></h3>
 <p>Export traces, metrics, and logs via the OpenTelemetry Protocol (OTLP) for integration
 with observability platforms (Grafana, Datadog, Jaeger, etc.).</p>
 <ul class="task-list">

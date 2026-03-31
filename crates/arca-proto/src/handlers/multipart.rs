@@ -143,16 +143,41 @@ pub async fn upload_part(
         return s3_error_response(S3Error::new(S3ErrorCode::NoSuchUpload, &resource));
     }
 
+    // Fast-reject if Content-Length exceeds the configured body size limit.
+    let max_body = if state.max_body_size > 0 {
+        Some(state.max_body_size)
+    } else {
+        None
+    };
+    if let Some(limit) = max_body {
+        if let Some(cl) = request.headers().get(http::header::CONTENT_LENGTH) {
+            if let Ok(len) = cl.to_str().unwrap_or("").parse::<u64>() {
+                if len > limit {
+                    return s3_error_response(S3Error::new(
+                        S3ErrorCode::EntityTooLarge,
+                        &resource,
+                    ));
+                }
+            }
+        }
+    }
+
     let headers = request.headers().clone();
     let body = request.into_body();
-    let stream = super::body::body_to_byte_stream(body, &headers);
+    let stream = super::body::body_to_byte_stream(body, &headers, max_body);
 
     // Write part blob (route through encrypting or plain store based on bucket config).
     let blob_id = BlobId::new();
     let write_blob = state.blob_for_write(&bucket).await;
     let put_result = match write_blob.put(&blob_id, stream).await {
         Ok(r) => r,
-        Err(e) => return internal_error_response(e, &resource),
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("EntityTooLarge") {
+                return s3_error_response(S3Error::new(S3ErrorCode::EntityTooLarge, &resource));
+            }
+            return internal_error_response(e, &resource);
+        }
     };
 
     // Write sidecar for the part blob so that EncryptingBlobStore.get()

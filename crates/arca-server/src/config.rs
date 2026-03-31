@@ -27,6 +27,119 @@ pub struct ServerConfig {
     pub region: Option<String>,
     /// Optional TLS configuration. When set, the server serves HTTPS.
     pub tls: Option<TlsConfig>,
+    /// Request limits and rate limiting configuration.
+    pub limits: Option<LimitsConfig>,
+    /// In-memory metadata cache configuration.
+    pub cache: Option<CacheConfig>,
+}
+
+/// Request limits and rate limiting configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LimitsConfig {
+    /// Maximum request body size in bytes (default: 5,000,000,000 = 5 GB).
+    /// Set to 0 for unlimited.
+    #[serde(default = "default_max_body_size")]
+    pub max_body_size: u64,
+    /// Maximum number of HTTP headers per request (default: 100).
+    #[serde(default = "default_max_header_count")]
+    pub max_header_count: u32,
+    /// Maximum total size in bytes of user metadata headers (`x-amz-meta-*`, default: 2048).
+    #[serde(default = "default_max_metadata_size")]
+    pub max_metadata_size: u32,
+    /// Per-credential requests per second (default: 0 = disabled).
+    #[serde(default)]
+    pub rate_limit_per_second: u32,
+    /// Per-credential burst capacity (default: 0 = disabled).
+    #[serde(default)]
+    pub rate_limit_burst: u32,
+    /// Per-IP requests per second (default: 0 = disabled).
+    #[serde(default)]
+    pub rate_limit_per_ip_per_second: u32,
+    /// Per-IP burst capacity (default: 0 = disabled).
+    #[serde(default)]
+    pub rate_limit_per_ip_burst: u32,
+    /// Graceful shutdown drain timeout in seconds (default: 30).
+    #[serde(default = "default_drain_timeout")]
+    pub drain_timeout_seconds: u32,
+}
+
+impl Default for LimitsConfig {
+    fn default() -> Self {
+        Self {
+            max_body_size: default_max_body_size(),
+            max_header_count: default_max_header_count(),
+            max_metadata_size: default_max_metadata_size(),
+            rate_limit_per_second: 0,
+            rate_limit_burst: 0,
+            rate_limit_per_ip_per_second: 0,
+            rate_limit_per_ip_burst: 0,
+            drain_timeout_seconds: default_drain_timeout(),
+        }
+    }
+}
+
+fn default_max_body_size() -> u64 {
+    5_000_000_000 // 5 GB (S3 single PutObject limit)
+}
+
+fn default_max_header_count() -> u32 {
+    100
+}
+
+fn default_max_metadata_size() -> u32 {
+    2048 // 2 KB (S3 user metadata limit)
+}
+
+fn default_drain_timeout() -> u32 {
+    30
+}
+
+/// In-memory metadata cache configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct CacheConfig {
+    /// Whether the metadata cache is enabled (default: true).
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Maximum number of cached bucket entries (default: 1000).
+    #[serde(default = "default_bucket_cache_size")]
+    pub bucket_cache_size: u64,
+    /// TTL for bucket cache entries in seconds (default: 60).
+    #[serde(default = "default_bucket_cache_ttl")]
+    pub bucket_cache_ttl_seconds: u64,
+    /// Maximum number of cached object entries (default: 10000).
+    #[serde(default = "default_object_cache_size")]
+    pub object_cache_size: u64,
+    /// TTL for object cache entries in seconds (default: 30).
+    #[serde(default = "default_object_cache_ttl")]
+    pub object_cache_ttl_seconds: u64,
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            bucket_cache_size: default_bucket_cache_size(),
+            bucket_cache_ttl_seconds: default_bucket_cache_ttl(),
+            object_cache_size: default_object_cache_size(),
+            object_cache_ttl_seconds: default_object_cache_ttl(),
+        }
+    }
+}
+
+fn default_bucket_cache_size() -> u64 {
+    1000
+}
+
+fn default_bucket_cache_ttl() -> u64 {
+    60
+}
+
+fn default_object_cache_size() -> u64 {
+    10_000
+}
+
+fn default_object_cache_ttl() -> u64 {
+    30
 }
 
 /// TLS configuration for native HTTPS support.
@@ -951,6 +1064,8 @@ data_dir = "/data"
                 domain: None,
                 region: None,
                 tls: None,
+                limits: None,
+                cache: None,
             },
             storage: StorageConfig {
                 data_dir: "/data".to_string(),
@@ -1027,5 +1142,141 @@ data_dir = "/data"
         assert_eq!(config.server.bind, "0.0.0.0");
         assert_eq!(config.server.port, 9000);
         assert_eq!(config.storage.data_dir, "/data");
+    }
+
+    #[test]
+    fn parse_config_without_limits() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.server.limits.is_none());
+        assert!(config.server.cache.is_none());
+    }
+
+    #[test]
+    fn parse_config_with_limits() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[server.limits]
+max_body_size = 1000000
+max_header_count = 50
+max_metadata_size = 1024
+rate_limit_per_second = 100
+rate_limit_burst = 200
+rate_limit_per_ip_per_second = 500
+rate_limit_per_ip_burst = 1000
+drain_timeout_seconds = 60
+
+[storage]
+data_dir = "/data"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let limits = config.server.limits.unwrap();
+        assert_eq!(limits.max_body_size, 1_000_000);
+        assert_eq!(limits.max_header_count, 50);
+        assert_eq!(limits.max_metadata_size, 1024);
+        assert_eq!(limits.rate_limit_per_second, 100);
+        assert_eq!(limits.rate_limit_burst, 200);
+        assert_eq!(limits.rate_limit_per_ip_per_second, 500);
+        assert_eq!(limits.rate_limit_per_ip_burst, 1000);
+        assert_eq!(limits.drain_timeout_seconds, 60);
+    }
+
+    #[test]
+    fn limits_defaults() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[server.limits]
+
+[storage]
+data_dir = "/data"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let limits = config.server.limits.unwrap();
+        assert_eq!(limits.max_body_size, 5_000_000_000);
+        assert_eq!(limits.max_header_count, 100);
+        assert_eq!(limits.max_metadata_size, 2048);
+        assert_eq!(limits.rate_limit_per_second, 0);
+        assert_eq!(limits.rate_limit_burst, 0);
+        assert_eq!(limits.rate_limit_per_ip_per_second, 0);
+        assert_eq!(limits.rate_limit_per_ip_burst, 0);
+        assert_eq!(limits.drain_timeout_seconds, 30);
+    }
+
+    #[test]
+    fn parse_config_with_cache() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[server.cache]
+enabled = true
+bucket_cache_size = 500
+bucket_cache_ttl_seconds = 120
+object_cache_size = 5000
+object_cache_ttl_seconds = 15
+
+[storage]
+data_dir = "/data"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let cache = config.server.cache.unwrap();
+        assert!(cache.enabled);
+        assert_eq!(cache.bucket_cache_size, 500);
+        assert_eq!(cache.bucket_cache_ttl_seconds, 120);
+        assert_eq!(cache.object_cache_size, 5000);
+        assert_eq!(cache.object_cache_ttl_seconds, 15);
+    }
+
+    #[test]
+    fn cache_defaults() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[server.cache]
+
+[storage]
+data_dir = "/data"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let cache = config.server.cache.unwrap();
+        assert!(cache.enabled);
+        assert_eq!(cache.bucket_cache_size, 1000);
+        assert_eq!(cache.bucket_cache_ttl_seconds, 60);
+        assert_eq!(cache.object_cache_size, 10_000);
+        assert_eq!(cache.object_cache_ttl_seconds, 30);
+    }
+
+    #[test]
+    fn cache_disabled() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[server.cache]
+enabled = false
+
+[storage]
+data_dir = "/data"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let cache = config.server.cache.unwrap();
+        assert!(!cache.enabled);
     }
 }

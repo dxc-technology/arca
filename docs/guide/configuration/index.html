@@ -597,6 +597,50 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#request-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Request Limits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rate-limiting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rate Limiting
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metadata-cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata Cache
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#example" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1295,6 +1339,50 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#request-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Request Limits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rate-limiting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rate Limiting
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#metadata-cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata Cache
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Monitoring
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#example" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1559,6 +1647,146 @@
 </tbody>
 </table>
 <p>When <code>[encryption.kms]</code> is present, the master key is fetched from Vault/OpenBAO at startup. See the <a href="../encryption/#kms-integration-vaultopenbao">Encryption guide</a> for details.</p>
+<h3 id="request-limits">Request Limits<a class="headerlink" href="#request-limits" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>server.limits.max_body_size</code></td>
+<td><code>5000000000</code> (5 GB)</td>
+<td>Maximum request body size in bytes. Set to <code>0</code> for unlimited. Requests exceeding this return <code>EntityTooLarge</code> (400).</td>
+</tr>
+<tr>
+<td><code>server.limits.max_header_count</code></td>
+<td><code>100</code></td>
+<td>Maximum number of HTTP headers per request.</td>
+</tr>
+<tr>
+<td><code>server.limits.max_metadata_size</code></td>
+<td><code>2048</code> (2 KB)</td>
+<td>Maximum total size of user metadata (<code>x-amz-meta-*</code> headers) in bytes. Matches S3's 2 KB limit.</td>
+</tr>
+<tr>
+<td><code>server.limits.drain_timeout_seconds</code></td>
+<td><code>30</code></td>
+<td>Seconds to wait during graceful shutdown before closing connections. During this window, <code>/admin/health</code> returns 503 so load balancers stop routing.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="rate-limiting">Rate Limiting<a class="headerlink" href="#rate-limiting" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>server.limits.rate_limit_per_second</code></td>
+<td><code>0</code> (disabled)</td>
+<td>Maximum S3 requests per second per credential. Uses GCRA algorithm. <code>0</code> disables per-credential rate limiting.</td>
+</tr>
+<tr>
+<td><code>server.limits.rate_limit_burst</code></td>
+<td><code>0</code></td>
+<td>Burst capacity per credential. Must be ≥ <code>rate_limit_per_second</code>.</td>
+</tr>
+<tr>
+<td><code>server.limits.rate_limit_per_ip_per_second</code></td>
+<td><code>0</code> (disabled)</td>
+<td>Maximum requests per second per client IP (or <code>X-Forwarded-For</code> first entry). <code>0</code> disables per-IP rate limiting.</td>
+</tr>
+<tr>
+<td><code>server.limits.rate_limit_per_ip_burst</code></td>
+<td><code>0</code></td>
+<td>Burst capacity per IP. Must be ≥ <code>rate_limit_per_ip_per_second</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>When a rate limit is exceeded, the server returns HTTP 503 with S3 error code <code>SlowDown</code> and a <code>Retry-After: 1</code> header. Rate limiting is disabled by default, enable it for production deployments exposed to the internet.</p>
+<h3 id="metadata-cache">Metadata Cache<a class="headerlink" href="#metadata-cache" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>server.cache.enabled</code></td>
+<td><code>true</code></td>
+<td>Enable the in-memory LRU metadata cache. Caches bucket existence and object HEAD results to reduce SQLite queries under load.</td>
+</tr>
+<tr>
+<td><code>server.cache.bucket_cache_size</code></td>
+<td><code>1000</code></td>
+<td>Maximum number of cached bucket entries.</td>
+</tr>
+<tr>
+<td><code>server.cache.bucket_cache_ttl_seconds</code></td>
+<td><code>60</code></td>
+<td>Time-to-live for bucket cache entries.</td>
+</tr>
+<tr>
+<td><code>server.cache.object_cache_size</code></td>
+<td><code>10000</code></td>
+<td>Maximum number of cached object metadata entries.</td>
+</tr>
+<tr>
+<td><code>server.cache.object_cache_ttl_seconds</code></td>
+<td><code>30</code></td>
+<td>Time-to-live for object cache entries.</td>
+</tr>
+</tbody>
+</table>
+<p>The cache is transparent to clients: write operations (create/delete bucket, put/delete object) invalidate the corresponding cache entry immediately. TTL provides an additional safety net for eventual consistency.</p>
+<h3 id="monitoring">Monitoring<a class="headerlink" href="#monitoring" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>monitoring.audit.enabled</code></td>
+<td><code>true</code></td>
+<td>Enable audit logging (every S3/admin operation is recorded).</td>
+</tr>
+<tr>
+<td><code>monitoring.audit.retention_days</code></td>
+<td><em>(console-managed)</em></td>
+<td>Days to retain audit entries. When set in TOML, the value is locked (read-only in console).</td>
+</tr>
+<tr>
+<td><code>monitoring.metrics.enabled</code></td>
+<td><code>true</code></td>
+<td>Enable Prometheus metrics collection.</td>
+</tr>
+<tr>
+<td><code>monitoring.metrics.retention_days</code></td>
+<td><em>(console-managed)</em></td>
+<td>Days to retain metrics snapshots. When set in TOML, the value is locked.</td>
+</tr>
+<tr>
+<td><code>monitoring.metrics.interval_seconds</code></td>
+<td><code>60</code></td>
+<td>How often to snapshot gauge metrics (seconds).</td>
+</tr>
+</tbody>
+</table>
 <h3 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">[server]</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">bind</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;0.0.0.0&quot;</span>
@@ -1570,19 +1798,30 @@
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="c1"># cert_file = &quot;arca-server.crt&quot;</span>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="c1"># key_file = &quot;arca-server.key&quot;</span>
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="k">[storage]</span>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="n">data_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/data&quot;</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="c1"># blob_prefix_depth = 2  # optional, default is 2</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="c1"># [encryption]               # optional, enables SSE-S3</span>
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="c1"># enabled = true</span>
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="c1"># master_key = &quot;base64...&quot;   # generate with: arca encryption generate-key</span>
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="c1"># Alternative: fetch master key from Vault/OpenBAO</span>
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="c1"># [encryption.kms]</span>
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="c1"># endpoint = &quot;http://vault:8200&quot;</span>
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="c1"># auth_method = &quot;token&quot;</span>
-<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="c1"># token = &quot;s.my-vault-token&quot;</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="c1"># [server.limits]             # optional, all have sane defaults</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="c1"># max_body_size = 5000000000  # 5 GB (S3 single PutObject limit)</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="c1"># rate_limit_per_second = 100 # per-credential, 0 = disabled</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="c1"># rate_limit_burst = 200</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="c1"># drain_timeout_seconds = 30</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="c1"># [server.cache]              # optional, enabled by default</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="c1"># enabled = true</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="c1"># bucket_cache_size = 1000</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="c1"># object_cache_size = 10000</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="k">[storage]</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="n">data_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/data&quot;</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="c1"># blob_prefix_depth = 2  # optional, default is 2</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="c1"># [encryption]               # optional, enables SSE-S3</span>
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="c1"># enabled = true</span>
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="c1"># master_key = &quot;base64...&quot;   # generate with: arca encryption generate-key</span>
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="c1"># Alternative: fetch master key from Vault/OpenBAO</span>
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="c1"># [encryption.kms]</span>
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="c1"># endpoint = &quot;http://vault:8200&quot;</span>
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a><span class="c1"># auth_method = &quot;token&quot;</span>
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a><span class="c1"># token = &quot;s.my-vault-token&quot;</span>
 </code></pre></div>
 <h3 id="blob-storage">Blob Storage<a class="headerlink" href="#blob-storage" title="Permanent link">&para;</a></h3>
 <p>Object data is stored as blob files under <code>{data_dir}/blobs/</code>, sharded into a hierarchy of 2-character prefix directories derived from the blob UUID. The <code>blob_prefix_depth</code> setting controls how many levels of prefix directories are used.</p>

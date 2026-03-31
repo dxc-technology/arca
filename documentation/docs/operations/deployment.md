@@ -95,10 +95,10 @@ Certificate rotation is supported via `docker compose kill --signal=HUP arca` wi
 
 ## Reverse Proxy
 
-If you prefer external TLS termination, or need features like rate limiting and caching, place a reverse proxy in front of Arca.
+If you prefer external TLS termination, or need additional proxy-level features, place a reverse proxy in front of Arca.
 
 !!! note
-    With [native TLS](#native-tls) available, a reverse proxy is optional. Use it when you need additional features beyond what Arca provides natively.
+    With [native TLS](#native-tls), [built-in rate limiting](#rate-limiting), and [metadata caching](#metadata-cache) available natively, a reverse proxy is optional. Use it when you need features like geographic load balancing or WAF integration.
 
 ### nginx Example
 
@@ -129,6 +129,58 @@ server {
 !!! tip
     Set `client_max_body_size 0` and `proxy_request_buffering off` to allow Arca's streaming I/O to work correctly with large objects.
 
+## Rate Limiting
+
+Arca has built-in rate limiting to protect against abuse and resource exhaustion. Both per-IP and per-credential limiters are available, using the GCRA (Generic Cell Rate Algorithm) for smooth rate enforcement.
+
+```toml
+[server.limits]
+rate_limit_per_ip_per_second = 500   # per client IP
+rate_limit_per_ip_burst = 1000
+rate_limit_per_second = 100          # per S3 credential
+rate_limit_burst = 200
+```
+
+When a limit is exceeded, the server returns HTTP 503 with S3 error code `SlowDown` and a `Retry-After: 1` header. AWS SDKs and most S3 clients handle this automatically with exponential backoff.
+
+Rate limiting is **disabled by default** (rate = 0). Enable it for any deployment exposed to the internet or shared by multiple tenants. See the [configuration reference](../guide/configuration.md#rate-limiting) for all settings.
+
+!!! tip
+    Behind a reverse proxy, per-IP limiting uses the `X-Forwarded-For` header (first entry) to identify clients. Make sure your proxy sets this header.
+
+## Graceful Shutdown
+
+On SIGTERM or SIGINT, Arca enters **drain mode**:
+
+1. The `/admin/health` endpoint immediately starts returning `503 {"status":"draining"}`
+2. Load balancers polling health stop routing new traffic to the instance
+3. In-flight requests are allowed to complete during the drain window
+4. After `drain_timeout_seconds` (default: 30), the server shuts down
+
+```toml
+[server.limits]
+drain_timeout_seconds = 30
+```
+
+This enables zero-downtime rolling upgrades in orchestrated environments (Kubernetes, Docker Swarm, etc.). Set the drain timeout to match or exceed your load balancer's health check interval.
+
+## Metadata Cache
+
+Arca caches frequently-accessed metadata (bucket existence, object HEAD results) in an in-memory LRU cache to reduce SQLite query pressure under load.
+
+```toml
+[server.cache]
+enabled = true
+bucket_cache_size = 1000
+bucket_cache_ttl_seconds = 60
+object_cache_size = 10000
+object_cache_ttl_seconds = 30
+```
+
+The cache is **enabled by default** and transparent to clients. Write operations invalidate the corresponding cache entry immediately. TTL provides a safety net for eventual expiry.
+
+For single-node deployments, the cache is purely a performance optimization. Disable it (`enabled = false`) if you need to minimize memory usage. See the [configuration reference](../guide/configuration.md#metadata-cache) for all settings.
+
 ## Storage Sizing
 
 ### Blob Prefix Depth
@@ -153,6 +205,17 @@ Arca stores each object as a blob file plus a small `.meta` sidecar (typically <
 - Temporary files during multipart uploads
 
 ## Security Hardening
+
+### Request Validation
+
+Arca validates incoming requests to reject malformed or oversized payloads early in the middleware stack:
+
+- **Body size limit** — requests exceeding `max_body_size` (default 5 GB) are rejected with `EntityTooLarge` before data is written to disk
+- **Header count limit** — requests with more than `max_header_count` (default 100) headers are rejected
+- **Metadata size limit** — total `x-amz-meta-*` header size is capped at `max_metadata_size` (default 2 KB), matching S3's limit
+- **URI validation** — null bytes in request URIs are rejected
+
+All limits are configurable via `[server.limits]`. See the [configuration reference](../guide/configuration.md#request-limits).
 
 ### Credential Management
 

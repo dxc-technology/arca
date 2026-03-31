@@ -53,7 +53,14 @@ ARCA_LOG=info,arca_storage=trace
 GET /admin/health
 ```
 
-Returns `200 OK` with `{"status": "ok"}`. No authentication required — designed for load balancer and container orchestrator probes.
+No authentication required, designed for load balancer and container orchestrator probes.
+
+| Status | Code | Body | Meaning |
+|--------|------|------|---------|
+| Healthy | 200 | `{"status":"ok"}` | Server is running and accepting requests |
+| Draining | 503 | `{"status":"draining"}` | Server received SIGTERM/SIGINT, draining in-flight connections before shutdown |
+
+During [graceful shutdown](deployment.md#graceful-shutdown), the health endpoint returns 503 for `drain_timeout_seconds` (default: 30), giving load balancers time to remove the instance from rotation before connections are closed.
 
 ### Docker HEALTHCHECK
 
@@ -78,9 +85,10 @@ services:
 Point your load balancer's health check at `/admin/health`:
 
 - **Path**: `/admin/health`
-- **Expected status**: `200`
-- **Expected body**: `{"status":"ok"}`
-- **Interval**: 10–30 seconds
+- **Expected healthy status**: `200`
+- **Expected healthy body**: `{"status":"ok"}`
+- **Drain status**: `503` with `{"status":"draining"}` — remove instance from rotation
+- **Interval**: 10–30 seconds (should be ≤ `drain_timeout_seconds`)
 
 ## Server Metrics
 

@@ -30,6 +30,7 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 async-compression = { workspace = true }
 futures-core = { workspace = true }
+governor = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

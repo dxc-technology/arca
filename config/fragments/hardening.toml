@@ -1,0 +1,16 @@
+[server.limits]
+max_body_size = 5000000000
+max_header_count = 100
+max_metadata_size = 2048
+rate_limit_per_second = 100
+rate_limit_burst = 200
+rate_limit_per_ip_per_second = 500
+rate_limit_per_ip_burst = 1000
+drain_timeout_seconds = 30
+
+[server.cache]
+enabled = true
+bucket_cache_size = 1000
+bucket_cache_ttl_seconds = 60
+object_cache_size = 10000
+object_cache_ttl_seconds = 30

@@ -160,8 +160,20 @@ pub(super) fn extract_metadata(headers: &http::HeaderMap) -> HashMap<String, Str
     metadata
 }
 
+use arca_core::error::ArcaError;
+
 use crate::state::AppState;
 use crate::xml::error_response::{internal_error_response, s3_error_response};
+
+/// Handles errors from blob put operations, translating `EntityTooLarge`
+/// stream errors into the proper S3 error response.
+fn handle_put_error(err: ArcaError, resource: &str) -> Response {
+    let msg = err.to_string();
+    if msg.contains("EntityTooLarge") {
+        return s3_error_response(S3Error::new(S3ErrorCode::EntityTooLarge, resource));
+    }
+    internal_error_response(err, resource)
+}
 
 /// Decodes a base64-encoded 4-byte nonce prefix stored in `encryption_key_id` for SSE-C objects.
 fn decode_ssec_nonce_prefix(encoded: Option<&str>) -> Option<[u8; 4]> {
@@ -464,9 +476,28 @@ pub async fn put_object(
         }
     }
 
+    // Fast-reject if Content-Length exceeds the configured body size limit.
+    let max_body = if state.max_body_size > 0 {
+        Some(state.max_body_size)
+    } else {
+        None
+    };
+    if let Some(limit) = max_body {
+        if let Some(cl) = request.headers().get(header::CONTENT_LENGTH) {
+            if let Ok(len) = cl.to_str().unwrap_or("").parse::<u64>() {
+                if len > limit {
+                    return s3_error_response(S3Error::new(
+                        S3ErrorCode::EntityTooLarge,
+                        &resource,
+                    ));
+                }
+            }
+        }
+    }
+
     let headers = request.headers().clone();
     let body = request.into_body();
-    let stream = super::body::body_to_byte_stream(body, &headers);
+    let stream = super::body::body_to_byte_stream(body, &headers, max_body);
 
     // Check for SSE-C headers.
     let ssec_key = match extract_ssec_key(&headers, &resource) {
@@ -490,14 +521,14 @@ pub async fn put_object(
         let (result, nonce_prefix) =
             match ssec_blob.put_with_key(&blob_id, stream, &ssec.key).await {
                 Ok(r) => r,
-                Err(e) => return internal_error_response(e, &resource),
+                Err(e) => return handle_put_error(e, &resource),
             };
         (result, Some(ssec_encryption_info(&nonce_prefix)))
     } else {
         let write_blob = state.blob_for_write(&bucket).await;
         let result = match write_blob.put(&blob_id, stream).await {
             Ok(r) => r,
-            Err(e) => return internal_error_response(e, &resource),
+            Err(e) => return handle_put_error(e, &resource),
         };
         let enc = result.encryption.clone();
         (result, enc)

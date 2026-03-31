@@ -37,12 +37,13 @@ continuing from the MVP phases (0–11).
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">20</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">21</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">22</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">23</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">23</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">24</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">25</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">26</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">27</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">28</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">29</div>
   </div>
 </div>
 <!-- /post-mvp-progress-bar -->
@@ -64,7 +65,9 @@ graph LR
     13 --> 23["23 Performance\n+ Hardening"]
     24["24 PostgreSQL\nBackend"] --> 26
     26 --> 27["27 Multi-Node\n+ Erasure Coding"]
-    18 --> 28["28 OpenTelemetry\nIntegration"]
+    27 --> 28["28 CLI Enhancements\n+ Migration"]
+    13 --> 28
+    18 --> 29["29 OpenTelemetry\nIntegration"]
 
     style 12 fill:#c62828,color:#fff
     style 13 fill:#c62828,color:#fff
@@ -83,6 +86,7 @@ graph LR
     style 26 fill:#1565c0,color:#fff
     style 27 fill:#1565c0,color:#fff
     style 28 fill:#1565c0,color:#fff
+    style 29 fill:#1565c0,color:#fff
 
     18["18 Monitoring\n+ Audit"]
     22["22 S3 API\nCompleteness"]
@@ -107,12 +111,13 @@ graph LR
 | 20 | [Lifecycle Rules](#phase-20-lifecycle-rules-p2) | P2 | 19, 18 | `v0.13.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 21 | [Object Lock (WORM Compliance)](#phase-21-object-lock-worm-compliance-p2) | P2 | 17 | `v0.13.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 22 | [S3 API Completeness](#phase-22-s3-api-completeness-p2) | P2 | — | `v0.14.0` | <span style="color:#4caf50">&#x2714;</span> |
-| 23 | [Performance and Hardening](#phase-23-performance-and-hardening-p2) | P2 | 13 | | |
+| 23 | [Performance and Hardening](#phase-23-performance-and-hardening-p2) | P2 | 13 | `v0.14.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 24 | [PostgreSQL Backend](#phase-24-postgresql-backend-p2) | P2 | — | | |
 | 25 | [Notifications and Event System](#phase-25-notifications-and-event-system-p3) | P3 | 20 | | |
 | 26 | [Replication](#phase-26-replication-p3) | P3 | 17, 24 | | |
 | 27 | [Multi-Node and Erasure Coding](#phase-27-multi-node-and-erasure-coding-p3) | P3 | All prior | | |
-| 28 | [OpenTelemetry Integration](#phase-28-opentelemetry-integration-p3) | P3 | 18 | | |
+| 28 | [CLI Enhancements and Migration Tools](#phase-28-cli-enhancements-and-migration-tools-p3) | P3 | 13, 27 | | |
+| 29 | [OpenTelemetry Integration](#phase-29-opentelemetry-integration-p3) | P3 | 18 | | |
 
 ---
 
@@ -327,13 +332,12 @@ Fill remaining gaps in the S3 API surface to maximize compatibility.
 
 Production-grade limits, caching, and graceful operations.
 
-- [ ] Request size limits: configurable max body size (default 5 GB for PutObject)
-- [ ] Rate limiting: per-credential and per-IP via Tower middleware
-- [ ] In-memory LRU cache for metadata lookups (bucket existence, HEAD). Invalidation on writes
-- [ ] Graceful rolling upgrades: drain connections, health endpoint reports "draining", configurable drain timeout
-- [ ] Performance benchmarking suite: automated benchmarks (concurrent uploads, large files, metadata ops/sec)
-- [ ] Security hardening: request validation, header size limits
-- [ ] `arca encrypt-existing` / `arca decrypt-existing` CLI tools for background encryption/decryption of existing objects in-place
+- [x] Request size limits: configurable max body size (default 5 GB for PutObject). `[server.limits]` TOML section with `max_body_size`, streaming `LimitedByteStream` wrapper, Content-Length fast-reject, `EntityTooLarge` S3 error
+- [x] Rate limiting: per-credential and per-IP via `governor` crate (GCRA algorithm). `SlowDown` (503) S3 error with `Retry-After` header. Configurable rates and burst in `[server.limits]`, disabled by default (rate = 0)
+- [x] In-memory LRU cache for metadata lookups (bucket existence, HEAD) via `moka` crate. `CachingMetadataStore` wrapper with configurable size and TTL in `[server.cache]`. Write-through invalidation on create/delete/put
+- [x] Graceful rolling upgrades: drain mode via `tokio::sync::watch` channel. Health endpoint returns 503 `{"status":"draining"}` during configurable drain window (`drain_timeout_seconds`). Load balancers stop routing traffic before connections are closed
+- [x] Performance benchmarking suite: HEAD and DELETE benchmarks, JSON output (`--json`), baseline comparison (`--baseline FILE`), p50/p95/p99 latency reporting
+- [x] Security hardening: request validation middleware (header count limit, null byte rejection, user metadata size limit). Configurable via `max_header_count` and `max_metadata_size` in `[server.limits]`
 
 **Depends on**: Phase 13 (encryption pipeline)
 
@@ -391,7 +395,21 @@ Distributed storage for horizontal scalability and data durability beyond single
 
 ---
 
-### Phase 28 — OpenTelemetry Integration [P3]
+### Phase 28 — CLI Enhancements and Migration Tools [P3]
+
+Comprehensive CLI tooling for administration, data migration, and remote S3 operations.
+
+- [ ] `arca encrypt-existing` / `arca decrypt-existing`: offline encryption/decryption of existing objects in-place. Atomic renames for crash safety, resumable (skips already-processed blobs), configurable concurrency, progress reporting
+- [ ] `arca migrate-topology`: migrate data between single-node and multi-node (HA) deployments. Resharding, metadata redistribution, rollback support
+- [ ] Remote S3 client mode: `arca` binary acts as an S3 client (like `mc` or `aws s3`), connecting to any S3-compatible endpoint. Subcommands: `arca s3 ls`, `arca s3 cp`, `arca s3 mv`, `arca s3 rm`, `arca s3 sync`, `arca s3 presign`
+- [ ] Profile management: `arca profile add/list/remove/use` for managing multiple endpoint/credential profiles (stored in `~/.arca/profiles.toml`)
+- [ ] Interactive shell mode: `arca shell` with tab completion, history, and prompt showing current profile/bucket
+
+**Depends on**: Phase 13 (encryption pipeline for encrypt/decrypt), Phase 27 (multi-node for topology migration)
+
+---
+
+### Phase 29 — OpenTelemetry Integration [P3]
 
 Export traces, metrics, and logs via the OpenTelemetry Protocol (OTLP) for integration
 with observability platforms (Grafana, Datadog, Jaeger, etc.).

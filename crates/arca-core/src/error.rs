@@ -28,6 +28,7 @@ pub enum S3ErrorCode {
     BucketAlreadyExists,
     BucketAlreadyOwnedByYou,
     BucketNotEmpty,
+    EntityTooLarge,
     EntityTooSmall,
     InternalError,
     InvalidAccessKeyId,
@@ -53,6 +54,7 @@ pub enum S3ErrorCode {
     InvalidTag,
     ServerSideEncryptionConfigurationNotFoundError,
     SignatureDoesNotMatch,
+    SlowDown,
 }
 
 impl S3ErrorCode {
@@ -64,6 +66,7 @@ impl S3ErrorCode {
             S3ErrorCode::BucketAlreadyExists => 409,
             S3ErrorCode::BucketAlreadyOwnedByYou => 200,
             S3ErrorCode::BucketNotEmpty => 409,
+            S3ErrorCode::EntityTooLarge => 400,
             S3ErrorCode::EntityTooSmall => 400,
             S3ErrorCode::InternalError => 500,
             S3ErrorCode::InvalidAccessKeyId => 403,
@@ -89,6 +92,7 @@ impl S3ErrorCode {
             S3ErrorCode::PreconditionFailed => 412,
             S3ErrorCode::ServerSideEncryptionConfigurationNotFoundError => 400,
             S3ErrorCode::SignatureDoesNotMatch => 403,
+            S3ErrorCode::SlowDown => 503,
         }
     }
 
@@ -100,6 +104,7 @@ impl S3ErrorCode {
             S3ErrorCode::BucketAlreadyExists => "BucketAlreadyExists",
             S3ErrorCode::BucketAlreadyOwnedByYou => "BucketAlreadyOwnedByYou",
             S3ErrorCode::BucketNotEmpty => "BucketNotEmpty",
+            S3ErrorCode::EntityTooLarge => "EntityTooLarge",
             S3ErrorCode::EntityTooSmall => "EntityTooSmall",
             S3ErrorCode::InternalError => "InternalError",
             S3ErrorCode::InvalidAccessKeyId => "InvalidAccessKeyId",
@@ -129,6 +134,7 @@ impl S3ErrorCode {
                 "ServerSideEncryptionConfigurationNotFoundError"
             }
             S3ErrorCode::SignatureDoesNotMatch => "SignatureDoesNotMatch",
+            S3ErrorCode::SlowDown => "SlowDown",
         }
     }
 
@@ -147,6 +153,9 @@ impl S3ErrorCode {
             }
             S3ErrorCode::BucketNotEmpty => {
                 "The bucket you tried to delete is not empty."
+            }
+            S3ErrorCode::EntityTooLarge => {
+                "Your proposed upload exceeds the maximum allowed object size."
             }
             S3ErrorCode::EntityTooSmall => {
                 "Your proposed upload is smaller than the minimum allowed object size."
@@ -204,6 +213,9 @@ impl S3ErrorCode {
             }
             S3ErrorCode::SignatureDoesNotMatch => {
                 "The request signature we calculated does not match the signature you provided."
+            }
+            S3ErrorCode::SlowDown => {
+                "Please reduce your request rate."
             }
         }
     }

@@ -127,8 +127,62 @@ async fn main() -> Result<()> {
 
             let metrics_registry = Arc::new(arca_proto::metrics::MetricsRegistry::new());
 
+            // Resolve limits config (with defaults when section is absent).
+            let limits = config
+                .server
+                .limits
+                .clone()
+                .unwrap_or_default();
+
+            // Create rate limiters (None when disabled).
+            let ip_rate_limiter = arca_proto::middleware::rate_limit::create_rate_limiter(
+                limits.rate_limit_per_ip_per_second,
+                limits.rate_limit_per_ip_burst,
+            );
+            let credential_rate_limiter = arca_proto::middleware::rate_limit::create_rate_limiter(
+                limits.rate_limit_per_second,
+                limits.rate_limit_burst,
+            );
+
+            if ip_rate_limiter.is_some() {
+                tracing::info!(
+                    per_second = limits.rate_limit_per_ip_per_second,
+                    burst = limits.rate_limit_per_ip_burst,
+                    "Per-IP rate limiting enabled"
+                );
+            }
+            if credential_rate_limiter.is_some() {
+                tracing::info!(
+                    per_second = limits.rate_limit_per_second,
+                    burst = limits.rate_limit_burst,
+                    "Per-credential rate limiting enabled"
+                );
+            }
+
+            // Drain mode watch channel (set to true on shutdown signal).
+            let (drain_tx, drain_rx) = tokio::sync::watch::channel(false);
+
+            // Optionally wrap metadata store with LRU cache.
+            let cache_config = config.server.cache.clone().unwrap_or_default();
+            let metadata: Arc<dyn arca_core::store::MetadataStore> = if cache_config.enabled {
+                tracing::info!(
+                    bucket_cache_size = cache_config.bucket_cache_size,
+                    object_cache_size = cache_config.object_cache_size,
+                    "Metadata cache enabled"
+                );
+                Arc::new(arca_storage::CachingMetadataStore::new(
+                    store.clone() as Arc<dyn arca_core::store::MetadataStore>,
+                    cache_config.bucket_cache_size,
+                    cache_config.bucket_cache_ttl_seconds,
+                    cache_config.object_cache_size,
+                    cache_config.object_cache_ttl_seconds,
+                ))
+            } else {
+                store.clone() as Arc<dyn arca_core::store::MetadataStore>
+            };
+
             let state = AppState {
-                metadata: store.clone() as Arc<dyn arca_core::store::MetadataStore>,
+                metadata,
                 blob,
                 plain_blob,
                 ssec_blob: Some(ssec_blob),
@@ -161,6 +215,12 @@ async fn main() -> Result<()> {
                     None
                 },
                 metrics_registry: Some(metrics_registry),
+                ip_rate_limiter,
+                credential_rate_limiter,
+                max_body_size: limits.max_body_size,
+                max_header_count: limits.max_header_count,
+                max_metadata_size: limits.max_metadata_size,
+                draining: drain_rx,
             };
 
             // Spawn background workers
@@ -192,10 +252,13 @@ async fn main() -> Result<()> {
                         app.into_make_service()
                     };
 
+                    let drain_timeout = std::time::Duration::from_secs(
+                        limits.drain_timeout_seconds as u64,
+                    );
                     let listener = TcpListener::bind(&addr).await?;
                     tracing::info!("Arca is ready (HTTP on {addr})");
                     axum::serve(listener, service)
-                        .with_graceful_shutdown(shutdown_signal())
+                        .with_graceful_shutdown(shutdown_signal(drain_tx, drain_timeout))
                         .await?;
                 }
                 Some(tls_config) => {
@@ -222,9 +285,12 @@ async fn main() -> Result<()> {
                         });
                     }
 
+                    let drain_timeout = std::time::Duration::from_secs(
+                        limits.drain_timeout_seconds as u64,
+                    );
                     let listener = TcpListener::bind(&addr).await?;
                     tracing::info!("Arca is ready (HTTPS on {addr})");
-                    tls::serve_tls(listener, reloader, app, shutdown_signal()).await?;
+                    tls::serve_tls(listener, reloader, app, shutdown_signal(drain_tx, drain_timeout)).await?;
                 }
             }
 
@@ -441,8 +507,12 @@ fn init_tracing(format: &LogFormat) {
     }
 }
 
-/// Waits for a shutdown signal (SIGINT or SIGTERM).
-async fn shutdown_signal() {
+/// Waits for a shutdown signal (SIGINT or SIGTERM), then enters drain mode
+/// for `drain_timeout` seconds before completing.
+async fn shutdown_signal(
+    drain_tx: tokio::sync::watch::Sender<bool>,
+    drain_timeout: std::time::Duration,
+) {
     let ctrl_c = tokio::signal::ctrl_c();
 
     #[cfg(unix)]
@@ -464,5 +534,12 @@ async fn shutdown_signal() {
         tracing::info!("Received Ctrl+C");
     }
 
-    tracing::info!("Shutting down gracefully...");
+    // Enter drain mode: health endpoint will return 503 "draining".
+    let _ = drain_tx.send(true);
+    tracing::info!(
+        drain_seconds = drain_timeout.as_secs(),
+        "Draining connections..."
+    );
+    tokio::time::sleep(drain_timeout).await;
+    tracing::info!("Shutting down...");
 }
