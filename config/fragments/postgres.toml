@@ -1,0 +1,6 @@
+# Adds to the [storage] section from base.toml (already in scope).
+metadata_backend = "postgres"
+
+[storage.postgres]
+connection_string = "postgresql://arca:arca@postgres:5432/arca"
+max_connections = 20

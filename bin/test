@@ -12,6 +12,7 @@ set -euo pipefail
 #   bin/test encryption   Run encryption integration tests
 #   bin/test per-bucket-encryption  Run per-bucket encryption tests
 #   bin/test kms          Run KMS integration tests
+#   bin/test postgres     Run PostgreSQL backend integration tests
 #   bin/test s3-compat    Run Ceph s3-tests compatibility suite
 
 cd "$(git rev-parse --show-toplevel)"
@@ -174,6 +175,41 @@ run_kms() {
     return $rc
 }
 
+run_postgres() {
+    echo "==> Running PostgreSQL backend integration tests..."
+
+    enable_postgres
+    build_config
+
+    local COMPOSE
+    COMPOSE="$(compose_cmd)"
+
+    cleanup_pg() {
+        echo "Cleaning up PostgreSQL test..."
+        $COMPOSE down -v 2>/dev/null || true
+    }
+    trap cleanup_pg EXIT
+
+    # Step 1: Build images
+    $COMPOSE build arca
+    # Step 2: Start PostgreSQL and wait for healthy
+    $COMPOSE up -d postgres
+    wait_for_postgres "$COMPOSE"
+    # Step 3: Start Arca with PostgreSQL config (migrations run at startup)
+    $COMPOSE up -d arca
+    # Step 4: Wait for server to be ready
+    wait_for_arca "$COMPOSE"
+    # Step 5: Run PostgreSQL-specific tests
+    $COMPOSE run --rm \
+        -e ARCA_POSTGRES_BACKEND=1 \
+        test integration/test_postgres.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_pg
+    return $rc
+}
+
 run_presigned() {
     echo "==> Running presigned URL integration tests..."
     local COMPOSE
@@ -218,6 +254,10 @@ case "${1:-all}" in
         shift
         run_kms "$@"
         ;;
+    postgres)
+        shift
+        run_postgres "$@"
+        ;;
     presigned)
         shift
         run_presigned "$@"
@@ -246,6 +286,7 @@ case "${1:-all}" in
         echo "  encryption           Run encryption integration tests"
         echo "  per-bucket-encryption  Run per-bucket encryption tests"
         echo "  kms                  Run KMS integration tests (with OpenBAO)"
+        echo "  postgres             Run PostgreSQL backend integration tests"
         echo "  presigned            Run presigned URL integration tests"
         echo "  ssec                 Run SSE-C integration tests"
         echo "  s3-compat            Run Ceph s3-tests compatibility suite"

@@ -1,0 +1,29 @@
+# PostgreSQL metadata backend overlay for development and testing.
+# Usage:
+#   bin/arca start -d --build --dev --postgres
+#   bin/test postgres
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: arca
+      POSTGRES_PASSWORD: arca
+      POSTGRES_DB: arca
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arca"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  arca:
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

@@ -19,7 +19,7 @@ use tokio::net::TcpListener;
 use tower::Layer;
 use tracing_subscriber::EnvFilter;
 
-use arca_core::store::{CredentialStore, UserStore};
+use arca_core::store::CredentialStore;
 use arca_proto::AppState;
 use arca_proto::middleware::normalize::NormalizeService;
 use cli::{Cli, Command, CredentialAction, EncryptionAction, LogFormat, TlsAction, UserAction};
@@ -41,10 +41,8 @@ async fn main() -> Result<()> {
 
             let config = config::load_config(&config_path)?;
 
-            let store = Arc::new(
-                arca_storage::SqliteStore::open(&config.storage.db_path()).await?,
-            );
-            credential::ensure_root_credential(store.as_ref()).await?;
+            let stores = open_stores(&config).await?;
+            credential::ensure_root_credential(stores.credentials.as_ref()).await?;
 
             let fs_blob_store = arca_storage::FsBlobStore::new(
                 config.storage.blobs_dir(),
@@ -171,26 +169,28 @@ async fn main() -> Result<()> {
                     "Metadata cache enabled"
                 );
                 Arc::new(arca_storage::CachingMetadataStore::new(
-                    store.clone() as Arc<dyn arca_core::store::MetadataStore>,
+                    stores.metadata,
                     cache_config.bucket_cache_size,
                     cache_config.bucket_cache_ttl_seconds,
                     cache_config.object_cache_size,
                     cache_config.object_cache_ttl_seconds,
                 ))
             } else {
-                store.clone() as Arc<dyn arca_core::store::MetadataStore>
+                stores.metadata
             };
+
+            let metadata_backend = config.storage.metadata_backend.clone();
 
             let state = AppState {
                 metadata,
                 blob,
                 plain_blob,
                 ssec_blob: Some(ssec_blob),
-                credentials: store.clone() as Arc<dyn CredentialStore>,
-                users: store.clone() as Arc<dyn arca_core::store::UserStore>,
-                teams: store.clone() as Arc<dyn arca_core::store::TeamStore>,
-                grants: store.clone() as Arc<dyn arca_core::store::GrantStore>,
-                server_config: store.clone() as Arc<dyn arca_core::store::ServerConfigStore>,
+                credentials: stores.credentials,
+                users: stores.users,
+                teams: stores.teams,
+                grants: stores.grants,
+                server_config: stores.server_config,
                 domain: config.server.domain.clone(),
                 config_region: config.server.region.clone(),
                 started_at: std::time::Instant::now(),
@@ -203,14 +203,15 @@ async fn main() -> Result<()> {
                 encryption_enabled,
                 kms_provider,
                 kms_endpoint,
+                metadata_backend,
                 data_dirs: vec![std::path::PathBuf::from(&config.storage.data_dir)],
                 audit_store: if audit_enabled {
-                    Some(store.clone() as Arc<dyn arca_core::store::AuditStore>)
+                    stores.audit
                 } else {
                     None
                 },
                 metrics_store: if metrics_enabled {
-                    Some(store as Arc<dyn arca_core::store::MetricsStore>)
+                    stores.metrics
                 } else {
                     None
                 },
@@ -304,7 +305,7 @@ async fn main() -> Result<()> {
             init_tracing(&LogFormat::Text);
 
             let config = config::load_config(&config_path)?;
-            let store = arca_storage::SqliteStore::open(&config.storage.db_path()).await?;
+            let stores = open_stores(&config).await?;
 
             match action {
                 CredentialAction::Add {
@@ -313,12 +314,12 @@ async fn main() -> Result<()> {
                     user,
                 } => {
                     // Verify the user exists.
-                    let user_exists = store.get_user(&user).await?.is_some();
+                    let user_exists = stores.users.get_user(&user).await?.is_some();
                     if !user_exists {
                         anyhow::bail!("User \"{user}\" not found. Create the user first with `arca user create`.");
                     }
                     let cred = credential::generate_credential(&description, admin, &user);
-                    store.put_credential(&cred).await?;
+                    stores.credentials.put_credential(&cred).await?;
 
                     println!("Credential created:");
                     println!("  Access Key: {}", cred.access_key_id);
@@ -330,7 +331,7 @@ async fn main() -> Result<()> {
                 }
 
                 CredentialAction::List => {
-                    let creds = store.list_credentials().await?;
+                    let creds = stores.credentials.list_credentials().await?;
                     if creds.is_empty() {
                         println!("No credentials found.");
                     } else {
@@ -352,7 +353,7 @@ async fn main() -> Result<()> {
                 }
 
                 CredentialAction::Remove { access_key_id } => {
-                    let deleted = store.delete_credential(&access_key_id).await?;
+                    let deleted = stores.credentials.delete_credential(&access_key_id).await?;
                     if deleted {
                         println!("Credential {access_key_id} removed.");
                     } else {
@@ -415,7 +416,7 @@ async fn main() -> Result<()> {
             init_tracing(&LogFormat::Text);
 
             let config = config::load_config(&config_path)?;
-            let store = arca_storage::SqliteStore::open(&config.storage.db_path()).await?;
+            let stores = open_stores(&config).await?;
 
             match action {
                 UserAction::Create {
@@ -423,7 +424,7 @@ async fn main() -> Result<()> {
                     description,
                 } => {
                     // Check for duplicate username.
-                    if store.get_user_by_username(&username).await?.is_some() {
+                    if stores.users.get_user_by_username(&username).await?.is_some() {
                         anyhow::bail!("Username \"{username}\" already exists.");
                     }
 
@@ -435,7 +436,7 @@ async fn main() -> Result<()> {
                         created_at: chrono::Utc::now(),
                     };
 
-                    store.put_user(&user).await?;
+                    stores.users.put_user(&user).await?;
 
                     println!("User created:");
                     println!("  User ID:  {}", user.user_id);
@@ -446,7 +447,7 @@ async fn main() -> Result<()> {
                 }
 
                 UserAction::List => {
-                    let users = store.list_users().await?;
+                    let users = stores.users.list_users().await?;
                     if users.is_empty() {
                         println!("No users found.");
                     } else {
@@ -467,7 +468,7 @@ async fn main() -> Result<()> {
                 }
 
                 UserAction::Delete { user_id } => {
-                    let user = store
+                    let user = stores.users
                         .get_user(&user_id)
                         .await?
                         .ok_or_else(|| anyhow::anyhow!("User \"{user_id}\" not found."))?;
@@ -476,7 +477,7 @@ async fn main() -> Result<()> {
                         anyhow::bail!("Cannot delete the root user.");
                     }
 
-                    store.delete_user(&user_id).await?;
+                    stores.users.delete_user(&user_id).await?;
                     println!("User {} ({}) deleted.", user_id, user.username);
                 }
             }
@@ -484,6 +485,69 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Holds all store trait objects, abstracting over the metadata backend.
+struct StoreSet {
+    metadata: Arc<dyn arca_core::store::MetadataStore>,
+    credentials: Arc<dyn CredentialStore>,
+    users: Arc<dyn arca_core::store::UserStore>,
+    teams: Arc<dyn arca_core::store::TeamStore>,
+    grants: Arc<dyn arca_core::store::GrantStore>,
+    server_config: Arc<dyn arca_core::store::ServerConfigStore>,
+    audit: Option<Arc<dyn arca_core::store::AuditStore>>,
+    metrics: Option<Arc<dyn arca_core::store::MetricsStore>>,
+}
+
+/// Helper to build a `StoreSet` from any type implementing all store traits.
+fn build_store_set<S>(store: Arc<S>) -> StoreSet
+where
+    S: arca_core::store::MetadataStore
+        + CredentialStore
+        + arca_core::store::UserStore
+        + arca_core::store::TeamStore
+        + arca_core::store::GrantStore
+        + arca_core::store::ServerConfigStore
+        + arca_core::store::AuditStore
+        + arca_core::store::MetricsStore
+        + 'static,
+{
+    StoreSet {
+        metadata: store.clone() as Arc<dyn arca_core::store::MetadataStore>,
+        credentials: store.clone() as Arc<dyn CredentialStore>,
+        users: store.clone() as Arc<dyn arca_core::store::UserStore>,
+        teams: store.clone() as Arc<dyn arca_core::store::TeamStore>,
+        grants: store.clone() as Arc<dyn arca_core::store::GrantStore>,
+        server_config: store.clone() as Arc<dyn arca_core::store::ServerConfigStore>,
+        audit: Some(store.clone() as Arc<dyn arca_core::store::AuditStore>),
+        metrics: Some(store as Arc<dyn arca_core::store::MetricsStore>),
+    }
+}
+
+/// Opens the appropriate metadata store based on the config.
+async fn open_stores(config: &config::Config) -> Result<StoreSet> {
+    match config.storage.metadata_backend.as_str() {
+        "sqlite" => {
+            let store = Arc::new(
+                arca_storage::SqliteStore::open(&config.storage.db_path()).await?,
+            );
+            tracing::info!(backend = "sqlite", "Metadata backend ready");
+            Ok(build_store_set(store))
+        }
+        "postgres" => {
+            let pg_config = config.storage.postgres.as_ref()
+                .ok_or_else(|| anyhow::anyhow!("[storage.postgres] section required when metadata_backend = \"postgres\""))?;
+            let store = Arc::new(
+                arca_storage::PgStore::open(
+                    &pg_config.connection_string,
+                    pg_config.max_connections,
+                ).await?,
+            );
+            tracing::info!(backend = "postgres", "Metadata backend ready");
+            Ok(build_store_set(store))
+        }
+        other => anyhow::bail!("Unknown metadata backend: \"{other}\""),
+    }
 }
 
 /// Initializes the tracing subscriber with the requested log format.

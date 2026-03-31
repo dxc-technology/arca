@@ -25,6 +25,7 @@ _FEATURES=()
 _HAS_TLS=false
 _HAS_ENCRYPTION=false
 _HAS_KMS=false
+_HAS_POSTGRES=false
 
 # --- Feature registration ---
 
@@ -74,6 +75,12 @@ enable_kms_per_bucket() {
     _check_encryption_conflict
     _HAS_KMS=true
     _FEATURES+=(kms-per-bucket)
+}
+
+enable_postgres() {
+    if $_HAS_POSTGRES; then return; fi
+    _HAS_POSTGRES=true
+    _FEATURES+=(postgres)
 }
 
 # --- Config generation ---
@@ -130,6 +137,17 @@ compose_cmd() {
                 done
                 if ! $already; then
                     files+=("$kms_file")
+                fi
+                ;;
+            postgres)
+                # PostgreSQL metadata backend
+                local pg_file="$REPO_ROOT/docker/docker-compose.postgres.yml"
+                local already=false
+                for f in "${files[@]}"; do
+                    [[ "$f" == "$pg_file" ]] && already=true
+                done
+                if ! $already; then
+                    files+=("$pg_file")
                 fi
                 ;;
         esac
@@ -192,6 +210,7 @@ load_env() {
             encryption-per-bucket)  enable_encryption_per_bucket ;;
             kms)                    enable_kms ;;
             kms-per-bucket)         enable_kms_per_bucket ;;
+            postgres)               enable_postgres ;;
             custom)                 _FEATURES+=(custom) ;;
         esac
     done
@@ -222,6 +241,18 @@ wait_for_openbao() {
     echo "Waiting for OpenBAO..."
     for i in $(seq 1 "$max_wait"); do
         if $compose exec -T openbao bao status >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
+}
+
+wait_for_postgres() {
+    local compose="$1"
+    local max_wait="${2:-30}"
+    echo "Waiting for PostgreSQL..."
+    for i in $(seq 1 "$max_wait"); do
+        if $compose exec -T postgres pg_isready -U arca >/dev/null 2>&1; then
             break
         fi
         sleep 1

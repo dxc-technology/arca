@@ -429,6 +429,8 @@ mod tests {
             storage: StorageConfig {
                 data_dir: dir.to_str().unwrap().to_string(),
                 blob_prefix_depth: 2,
+                metadata_backend: "sqlite".to_string(),
+                postgres: None,
             },
             encryption: None,
             monitoring: None,

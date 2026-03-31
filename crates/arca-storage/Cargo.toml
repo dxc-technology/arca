@@ -23,6 +23,12 @@ uuid = { workspace = true }
 ring = { workspace = true }
 base64 = { workspace = true }
 moka = { workspace = true }
+sqlx-core = { workspace = true, optional = true }
+sqlx-postgres = { workspace = true, optional = true }
+
+[features]
+default = []
+postgres = ["sqlx-core", "sqlx-postgres"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

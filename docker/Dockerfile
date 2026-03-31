@@ -23,6 +23,10 @@ RUN mkdir -p crates/arca-core/src && echo "" > crates/arca-core/src/lib.rs && \
 # Build dependencies only (cached layer)
 RUN cargo build --release --workspace 2>/dev/null || true
 
+# Pin transitive dependencies that exceed our Rust version.
+# home 0.5.12 requires Rust 1.88; pin to 0.5.11 for Rust 1.85.
+RUN cargo update -p home --precise 0.5.11 2>/dev/null || true
+
 # Copy real source code
 COPY crates/ crates/
 

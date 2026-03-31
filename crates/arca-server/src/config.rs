@@ -250,10 +250,33 @@ pub struct StorageConfig {
     /// Number of 2-char prefix directory levels for blob sharding (1–4, default 2).
     #[serde(default = "default_blob_prefix_depth")]
     pub blob_prefix_depth: u8,
+    /// Metadata backend: "sqlite" (default) or "postgres".
+    #[serde(default = "default_metadata_backend")]
+    pub metadata_backend: String,
+    /// PostgreSQL configuration (required when metadata_backend = "postgres").
+    pub postgres: Option<PostgresConfig>,
 }
 
 fn default_blob_prefix_depth() -> u8 {
     2
+}
+
+fn default_metadata_backend() -> String {
+    "sqlite".to_string()
+}
+
+/// PostgreSQL connection configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PostgresConfig {
+    /// PostgreSQL connection string (e.g. "postgresql://user:pass@host:5432/db").
+    pub connection_string: String,
+    /// Maximum number of connections in the pool (default: 20).
+    #[serde(default = "default_max_connections")]
+    pub max_connections: u32,
+}
+
+fn default_max_connections() -> u32 {
+    20
 }
 
 impl StorageConfig {
@@ -265,6 +288,24 @@ impl StorageConfig {
     /// Returns the path to the blob storage directory (`{data_dir}/blobs`).
     pub fn blobs_dir(&self) -> std::path::PathBuf {
         std::path::Path::new(&self.data_dir).join("blobs")
+    }
+
+    /// Validates the storage configuration.
+    pub fn validate(&self) -> Result<()> {
+        match self.metadata_backend.as_str() {
+            "sqlite" => Ok(()),
+            "postgres" => {
+                if self.postgres.is_none() {
+                    bail!("[storage.postgres] section is required when metadata_backend = \"postgres\"");
+                }
+                let pg = self.postgres.as_ref().unwrap();
+                if pg.connection_string.is_empty() {
+                    bail!("[storage.postgres] connection_string is required");
+                }
+                Ok(())
+            }
+            other => bail!("[storage] unknown metadata_backend: \"{other}\" (expected \"sqlite\" or \"postgres\")"),
+        }
     }
 }
 
@@ -475,6 +516,7 @@ pub fn load_config(path: &Path) -> Result<Config> {
     if let Some(enc) = &config.encryption {
         enc.validate()?;
     }
+    config.storage.validate()?;
     Ok(config)
 }
 
@@ -513,6 +555,8 @@ bind = "0.0.0.0"
         let storage = StorageConfig {
             data_dir: "/data".to_string(),
             blob_prefix_depth: 2,
+            metadata_backend: "sqlite".to_string(),
+            postgres: None,
         };
         assert_eq!(
             storage.db_path(),
@@ -525,6 +569,8 @@ bind = "0.0.0.0"
         let storage = StorageConfig {
             data_dir: "/data".to_string(),
             blob_prefix_depth: 2,
+            metadata_backend: "sqlite".to_string(),
+            postgres: None,
         };
         assert_eq!(
             storage.blobs_dir(),
@@ -1070,6 +1116,8 @@ data_dir = "/data"
             storage: StorageConfig {
                 data_dir: "/data".to_string(),
                 blob_prefix_depth: 2,
+                metadata_backend: "sqlite".to_string(),
+                postgres: None,
             },
             encryption: None,
             monitoring: None,

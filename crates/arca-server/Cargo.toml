@@ -11,7 +11,7 @@ path = "src/main.rs"
 [dependencies]
 arca-core = { workspace = true }
 arca-auth = { workspace = true }
-arca-storage = { workspace = true }
+arca-storage = { workspace = true, features = ["postgres"] }
 arca-proto = { workspace = true }
 anyhow = { workspace = true }
 axum = { workspace = true }

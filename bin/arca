@@ -13,6 +13,7 @@ set -euo pipefail
 #   bin/arca start -d --encryption --per-bucket  Encryption available per-bucket only
 #   bin/arca start -d --kms           Start with global encryption (KMS)
 #   bin/arca start -d --kms --per-bucket  KMS encryption available per-bucket only
+#   bin/arca start -d --postgres      Start with PostgreSQL metadata backend
 #   bin/arca start -d --config <path> Start with a custom config file
 #   bin/arca stop                     Stop the server (and all associated services)
 #   bin/arca status                   Show container status
@@ -36,7 +37,7 @@ usage() {
 }
 
 usage_start() {
-    echo "Usage: bin/arca start [-d] [--build] [--dev] [--tls] [--encryption|--kms] [--per-bucket] [--config <path>]"
+    echo "Usage: bin/arca start [-d] [--build] [--dev] [--tls] [--encryption|--kms] [--per-bucket] [--postgres] [--config <path>]"
     echo ""
     echo "Options:"
     echo "  -d              Run in background (detached)"
@@ -47,6 +48,7 @@ usage_start() {
     echo "  --kms           Enable server-side encryption with OpenBAO KMS"
     echo "  --per-bucket    Disable global encryption, enable per-bucket only"
     echo "                  (requires --encryption or --kms)"
+    echo "  --postgres      Use PostgreSQL as metadata backend"
     echo "  --config <path> Use a custom config file (overrides fragments)"
     exit "${1:-0}"
 }
@@ -67,6 +69,7 @@ cmd_start() {
     local want_encryption=false
     local want_kms=false
     local want_per_bucket=false
+    local want_postgres=false
 
     # Parse all flags first (order-independent)
     while [[ $# -gt 0 ]]; do
@@ -78,6 +81,7 @@ cmd_start() {
             --encryption) want_encryption=true; shift ;;
             --kms)        want_kms=true; shift ;;
             --per-bucket) want_per_bucket=true; shift ;;
+            --postgres)   want_postgres=true; shift ;;
             --config|-c)
                 if [[ -z "${2:-}" ]]; then
                     echo "Error: --config requires a file path" >&2
@@ -114,6 +118,7 @@ cmd_start() {
         if $want_per_bucket; then enable_kms_per_bucket
         else enable_kms; fi
     fi
+    if $want_postgres; then enable_postgres; fi
 
     # Handle custom config: copy to .generated.toml, skip fragment concatenation
     if [[ -n "$custom_config" ]]; then
@@ -134,6 +139,12 @@ cmd_start() {
             build_args+=(--dev)
         fi
         bin/build "${build_args[@]}"
+    fi
+
+    if $_HAS_POSTGRES; then
+        echo "Starting PostgreSQL..."
+        $COMPOSE up -d postgres
+        wait_for_postgres "$COMPOSE"
     fi
 
     if $_HAS_KMS; then

@@ -42,6 +42,8 @@ anyhow = "1"
 # Database
 tokio-rusqlite = "0.7"
 rusqlite = { version = "0.37", features = ["bundled"] }
+sqlx-core = { version = "0.8", features = ["chrono", "json", "_rt-tokio"] }
+sqlx-postgres = { version = "0.8", features = ["chrono", "json"] }
 
 # Streaming / bytes
 bytes = "1"

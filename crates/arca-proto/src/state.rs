@@ -45,6 +45,8 @@ pub struct AppState {
     pub kms_provider: Option<String>,
     /// KMS endpoint URL (only when kms_provider = "vault").
     pub kms_endpoint: Option<String>,
+    /// Metadata backend: "sqlite" or "postgres".
+    pub metadata_backend: String,
     /// Data directories (for filesystem stats). Multiple entries for multi-volume setups.
     pub data_dirs: Vec<PathBuf>,
     /// Audit log store (for writing audit entries).
