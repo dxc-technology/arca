@@ -2414,9 +2414,9 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <h2 id="0110-2026-03-24"><a href="https://github.com/dxc-technology/arca/compare/v0.10.0...v0.11.0">0.11.0</a> — 2026-03-24<a class="headerlink" href="#0110-2026-03-24" title="Permanent link">&para;</a></h2>
 <h3 id="added_4">Added<a class="headerlink" href="#added_4" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Console: search and filter</strong> — real-time debounced search bar on all list views (Buckets, Users, Teams, Grants, Credentials, Bucket Detail). Client-side filtering with 300ms debounce, magnifying glass icon, clear button, and "no results" empty state. Bucket Detail search filters both files and folders, updates treemap and select-all in sync</li>
-<li><strong>Console: audit operation filter</strong> — replaced text-search autocomplete with smart presets (S3 Read, S3 Write, All S3, All Admin, Data Changes) and category chips with drill-down. One-click presets for common scenarios, category-level toggling, and individual operation checkboxes. Active preset auto-detected from selection</li>
-<li><strong>Console: responsive mobile layout</strong> — full mobile support down to 375px (iPhone SE). Collapsible sidebar with hamburger menu, responsive dashboard grid, touch-friendly controls (no hover required), horizontal-scrolling audit table, viewport-safe popovers, full-width side panels on mobile, icon-only bucket detail buttons, vertically stacked shuttles, and centered toast notifications</li>
+<li><strong>Console: search and filter</strong> — real-time debounced search bar on all list views (Buckets, Users, Teams, Grants, Credentials, Bucket Detail), filters files and folders, updates treemap and select-all in sync</li>
+<li><strong>Console: audit operation filter</strong> — smart presets (S3 Read, S3 Write, All S3, All Admin, Data Changes) with category chips, drill-down, and individual operation checkboxes</li>
+<li><strong>Console: responsive mobile layout</strong> — full support down to 375px, collapsible sidebar, responsive grid, touch-friendly controls, horizontal-scrolling tables, viewport-safe popovers</li>
 </ul>
 <h3 id="fixed_1">Fixed<a class="headerlink" href="#fixed_1" title="Permanent link">&para;</a></h3>
 <ul>
@@ -2425,8 +2425,8 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <h2 id="0100-2026-03-23"><a href="https://github.com/dxc-technology/arca/compare/v0.9.1...v0.10.0">0.10.0</a> — 2026-03-23<a class="headerlink" href="#0100-2026-03-23" title="Permanent link">&para;</a></h2>
 <h3 id="added_5">Added<a class="headerlink" href="#added_5" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Console: object preview</strong> — collapsible preview panel in the object detail sidebar with fullscreen modal (expand button). Supports images (JPEG, PNG, GIF, WebP, SVG, AVIF), video (MP4, WebM, MOV, MKV, OGV, AVI with native controls, 100 MB limit), text/code with syntax highlighting via highlight.js (~40 extensions), Markdown rendered via marked.js with dark theme, HTML in sandboxed iframe, and PDF via browser viewer. JSON auto pretty-printed. Size limits: 100 MB video, 10 MB images/PDF/HTML, 1 MB text</li>
-<li><strong>Environment variable overrides</strong> — <code>ARCA_SERVER_BIND</code>, <code>ARCA_SERVER_PORT</code>, and <code>ARCA_STORAGE_DATA_DIR</code> environment variables can now override the corresponding config file values, useful for Docker/Kubernetes deployments</li>
+<li><strong>Console: object preview</strong> — collapsible preview panel with fullscreen modal. Supports images (JPEG, PNG, GIF, WebP, SVG, AVIF), video (MP4, WebM, MOV with native controls), text/code with syntax highlighting, Markdown, HTML in sandboxed iframe, and PDF</li>
+<li><strong>Environment variable overrides</strong> — <code>ARCA_SERVER_BIND</code>, <code>ARCA_SERVER_PORT</code>, <code>ARCA_STORAGE_DATA_DIR</code> override config file values</li>
 </ul>
 <h2 id="091-2026-03-22"><a href="https://github.com/dxc-technology/arca/compare/v0.9.0...v0.9.1">0.9.1</a> — 2026-03-22<a class="headerlink" href="#091-2026-03-22" title="Permanent link">&para;</a></h2>
 <h3 id="added_6">Added<a class="headerlink" href="#added_6" title="Permanent link">&para;</a></h3>
