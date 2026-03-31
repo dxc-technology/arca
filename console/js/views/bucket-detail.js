@@ -208,6 +208,16 @@ export function bucketDetailView() {
         this.encryptionEnabled = !!info.encryption_enabled;
         this.kmsProvider = info.kms_provider || null;
       } catch {}
+      // Load preview size limits from settings (best-effort)
+      try {
+        const settings = await api.adminGet('/settings');
+        const sizeMb = parseInt(settings.preview_max_size_mb?.value, 10);
+        const textMb = parseInt(settings.preview_max_text_mb?.value, 10);
+        const videoMb = parseInt(settings.preview_max_video_mb?.value, 10);
+        if (!isNaN(sizeMb)) this.PREVIEW_MAX_SIZE = sizeMb === 0 ? Infinity : sizeMb * 1024 * 1024;
+        if (!isNaN(textMb)) this.PREVIEW_MAX_TEXT = textMb === 0 ? Infinity : textMb * 1024 * 1024;
+        if (!isNaN(videoMb)) this.PREVIEW_MAX_VIDEO = videoMb === 0 ? Infinity : videoMb * 1024 * 1024;
+      } catch {}
       try {
         const enc = await api.s3GetBucketEncryption(this.bucketName);
         this.bucketEncrypted = this.encryptionEnabled || !!enc;
@@ -877,13 +887,13 @@ export function bucketDetailView() {
 
     // ==================== OBJECT PREVIEW ====================
 
-    /** Max size for preview (10 MB). */
+    /** Max size for preview in bytes (default 10 MB, loaded from settings). */
     PREVIEW_MAX_SIZE: 10 * 1024 * 1024,
 
-    /** Max size for text preview (1 MB). */
+    /** Max size for text preview in bytes (default 1 MB, loaded from settings). */
     PREVIEW_MAX_TEXT: 1 * 1024 * 1024,
 
-    /** Max size for video preview (100 MB). */
+    /** Max size for video preview in bytes (default 100 MB, loaded from settings). */
     PREVIEW_MAX_VIDEO: 100 * 1024 * 1024,
 
     previewCategory() {

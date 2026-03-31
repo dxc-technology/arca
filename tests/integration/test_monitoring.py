@@ -231,11 +231,19 @@ class TestSettings:
         assert "region" in data
         assert "audit_retention_days" in data
         assert "metrics_retention_days" in data
+        assert "preview_max_size_mb" in data
+        assert "preview_max_text_mb" in data
+        assert "preview_max_video_mb" in data
         # Each setting has value, source, readonly
-        for key in ("region", "audit_retention_days", "metrics_retention_days"):
+        for key in ("region", "audit_retention_days", "metrics_retention_days",
+                     "preview_max_size_mb", "preview_max_text_mb", "preview_max_video_mb"):
             assert "value" in data[key]
             assert "source" in data[key]
             assert "readonly" in data[key]
+        # Preview settings have correct defaults
+        assert data["preview_max_size_mb"]["value"] == "10"
+        assert data["preview_max_text_mb"]["value"] == "1"
+        assert data["preview_max_video_mb"]["value"] == "100"
 
     def test_settings_update_region(self, endpoint, creds):
         """PUT /admin/settings/region updates the region."""
@@ -339,6 +347,62 @@ class TestSettings:
                 f"{endpoint}/admin/settings/audit_retention_days",
                 creds,
             )
+
+    def test_settings_update_preview_limits(self, endpoint, creds):
+        """Can set, verify, and reset preview size limits."""
+        try:
+            # Set preview_max_size_mb
+            resp = signed_request(
+                "PUT",
+                f"{endpoint}/admin/settings/preview_max_size_mb",
+                creds,
+                {"value": "50"},
+            )
+            assert resp.status_code == 200
+            assert resp.json()["value"] == "50"
+
+            # Set preview_max_video_mb to 0 (unlimited)
+            resp = signed_request(
+                "PUT",
+                f"{endpoint}/admin/settings/preview_max_video_mb",
+                creds,
+                {"value": "0"},
+            )
+            assert resp.status_code == 200
+            assert resp.json()["value"] == "0"
+
+            # Verify
+            resp = signed_request("GET", f"{endpoint}/admin/settings", creds)
+            data = resp.json()
+            assert data["preview_max_size_mb"]["value"] == "50"
+            assert data["preview_max_size_mb"]["source"] == "database"
+            assert data["preview_max_video_mb"]["value"] == "0"
+            assert data["preview_max_text_mb"]["source"] == "default"
+        finally:
+            signed_request(
+                "DELETE", f"{endpoint}/admin/settings/preview_max_size_mb", creds
+            )
+            signed_request(
+                "DELETE", f"{endpoint}/admin/settings/preview_max_video_mb", creds
+            )
+
+    def test_settings_preview_rejects_invalid(self, endpoint, creds):
+        """Preview settings reject non-numeric and out-of-range values."""
+        resp = signed_request(
+            "PUT",
+            f"{endpoint}/admin/settings/preview_max_size_mb",
+            creds,
+            {"value": "abc"},
+        )
+        assert resp.status_code == 400
+
+        resp = signed_request(
+            "PUT",
+            f"{endpoint}/admin/settings/preview_max_text_mb",
+            creds,
+            {"value": "99999"},
+        )
+        assert resp.status_code == 400
 
     def test_settings_requires_auth(self, endpoint):
         """GET /admin/settings requires SigV4 authentication."""

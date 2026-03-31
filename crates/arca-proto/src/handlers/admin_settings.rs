@@ -24,12 +24,24 @@ const DEFAULT_METRICS_RETENTION_DAYS: u32 = 30;
 /// Default lifecycle evaluation interval in seconds (1 hour).
 const DEFAULT_LIFECYCLE_EVALUATION_INTERVAL: u64 = 3600;
 
+/// Default preview max size in MB for images/PDF/HTML (0 = unlimited).
+const DEFAULT_PREVIEW_MAX_SIZE_MB: u32 = 10;
+
+/// Default preview max size in MB for text/markdown (0 = unlimited).
+const DEFAULT_PREVIEW_MAX_TEXT_MB: u32 = 1;
+
+/// Default preview max size in MB for video (0 = unlimited).
+const DEFAULT_PREVIEW_MAX_VIDEO_MB: u32 = 100;
+
 /// Known setting keys.
 const KNOWN_SETTINGS: &[&str] = &[
     "region",
     "audit_retention_days",
     "metrics_retention_days",
     "lifecycle_evaluation_interval",
+    "preview_max_size_mb",
+    "preview_max_text_mb",
+    "preview_max_video_mb",
 ];
 
 /// A single setting with its effective value and source.
@@ -47,6 +59,9 @@ struct SettingsResponse {
     audit_retention_days: SettingValue,
     metrics_retention_days: SettingValue,
     lifecycle_evaluation_interval: SettingValue,
+    preview_max_size_mb: SettingValue,
+    preview_max_text_mb: SettingValue,
+    preview_max_video_mb: SettingValue,
 }
 
 /// Request body for PUT /admin/settings/{key}.
@@ -139,6 +154,51 @@ async fn resolve_setting(
                 })
             }
         }
+        "preview_max_size_mb" => {
+            if let Ok(Some(val)) = state.server_config.get_server_config("preview_max_size_mb").await {
+                Ok(SettingValue {
+                    value: val,
+                    source: "database",
+                    readonly: false,
+                })
+            } else {
+                Ok(SettingValue {
+                    value: DEFAULT_PREVIEW_MAX_SIZE_MB.to_string(),
+                    source: "default",
+                    readonly: false,
+                })
+            }
+        }
+        "preview_max_text_mb" => {
+            if let Ok(Some(val)) = state.server_config.get_server_config("preview_max_text_mb").await {
+                Ok(SettingValue {
+                    value: val,
+                    source: "database",
+                    readonly: false,
+                })
+            } else {
+                Ok(SettingValue {
+                    value: DEFAULT_PREVIEW_MAX_TEXT_MB.to_string(),
+                    source: "default",
+                    readonly: false,
+                })
+            }
+        }
+        "preview_max_video_mb" => {
+            if let Ok(Some(val)) = state.server_config.get_server_config("preview_max_video_mb").await {
+                Ok(SettingValue {
+                    value: val,
+                    source: "database",
+                    readonly: false,
+                })
+            } else {
+                Ok(SettingValue {
+                    value: DEFAULT_PREVIEW_MAX_VIDEO_MB.to_string(),
+                    source: "default",
+                    readonly: false,
+                })
+            }
+        }
         _ => Err(AdminError::not_found(format!("Unknown setting: {key}"))),
     }
 }
@@ -151,12 +211,18 @@ pub async fn list_settings(
     let audit_retention_days = resolve_setting(&state, "audit_retention_days").await?;
     let metrics_retention_days = resolve_setting(&state, "metrics_retention_days").await?;
     let lifecycle_evaluation_interval = resolve_setting(&state, "lifecycle_evaluation_interval").await?;
+    let preview_max_size_mb = resolve_setting(&state, "preview_max_size_mb").await?;
+    let preview_max_text_mb = resolve_setting(&state, "preview_max_text_mb").await?;
+    let preview_max_video_mb = resolve_setting(&state, "preview_max_video_mb").await?;
 
     Ok(Json(SettingsResponse {
         region,
         audit_retention_days,
         metrics_retention_days,
         lifecycle_evaluation_interval,
+        preview_max_size_mb,
+        preview_max_text_mb,
+        preview_max_video_mb,
     }))
 }
 
@@ -263,6 +329,17 @@ fn validate_setting_value(key: &str, value: &str) -> Result<(), AdminError> {
                 return Err(AdminError::bad_request(
                     "lifecycle_evaluation_interval cannot exceed 86400 seconds (24 hours)",
                 ));
+            }
+            Ok(())
+        }
+        "preview_max_size_mb" | "preview_max_text_mb" | "preview_max_video_mb" => {
+            let mb: u32 = value.parse().map_err(|_| {
+                AdminError::bad_request(format!("{key} must be a non-negative integer"))
+            })?;
+            if mb > 10240 {
+                return Err(AdminError::bad_request(format!(
+                    "{key} cannot exceed 10240 MB (10 GB)"
+                )));
             }
             Ok(())
         }

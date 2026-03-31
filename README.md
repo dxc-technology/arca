@@ -163,7 +163,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — boto3 | 146 | buckets, objects, list, multipart, copy, folders, auth, admin, credentials, conditional ops |
 | Integration — RBAC | 41 | user/team/grant CRUD, attachments, effective grants, E2E access control |
 | Integration — Versioning | 21 | versioning config, PUT/GET/HEAD/DELETE with versionId, delete markers, batch delete with VersionId, ListVersions, copy |
-| Integration — Monitoring | 27 | Prometheus metrics, audit log, metrics history, instance settings, region (TD-004) |
+| Integration — Monitoring | 29 | Prometheus metrics, audit log, metrics history, instance settings, preview limits, region (TD-004) |
 | Integration — Lifecycle | 17 | Put/Get/Delete lifecycle config, expiration rules, noncurrent version, abort upload, tag/and filters |
 | Integration — Object Lock | 16 | Put/Get config, retention, legal hold, COMPLIANCE/GOVERNANCE enforcement, bypass, delete markers |
 | Integration — API Completeness | 11 | ListParts, GetObjectAttributes, checksum SHA256/CRC32 roundtrip, storage class, pagination |
@@ -176,9 +176,9 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — TLS | 7 | HTTPS health/info/put/get/multipart, minio client, wrong CA rejection |
 | Integration — PostgreSQL | 20 | buckets, objects, multipart, versioning, tags, lifecycle, copy, range, admin health |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
-| **Arca tests** | **945** | **All tests written for this project** |
+| **Arca tests** | **947** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 830 | 352 pass, 387 fail, 91 skip — 0 unexpected failures |
-| **Total** | **1,775** | |
+| **Total** | **1,777** | |
 
 ## License
 

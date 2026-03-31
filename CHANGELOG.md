@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-03-31
+
+### Added
+
+- **Configurable preview size limits**: 3 new server-side settings (`preview_max_size_mb`, `preview_max_text_mb`, `preview_max_video_mb`) to control the maximum file size for object previews in the console
+- **(Console)**: New "Console" section in the Settings page to manage preview thresholds per file type (images/PDF/HTML, text/Markdown, video), with 0 = unlimited
+- **(Console)**: Preview logic reads limits from server settings instead of using hardcoded values
+- 2 new integration tests for preview settings CRUD and validation
+
 ## [0.15.0] — 2026-03-31
 
 ### Added
@@ -323,7 +332,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/dxc-technology/arca/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/dxc-technology/arca/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/dxc-technology/arca/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/dxc-technology/arca/compare/v0.12.0...v0.13.0
