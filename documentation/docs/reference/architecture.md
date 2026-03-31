@@ -13,6 +13,11 @@ graph LR
     C["S3 Client<br/>aws-cli · boto3 · mc · rclone"] -->|"HTTP :9000"| A["Arca Server"]
     A --> DB[("SQLite<br/>metadata + credentials")]
     A --> FS["Filesystem<br/>UUID blobs + .meta sidecars"]
+
+    style C fill:#4527a0,stroke:#7e57c2,stroke-width:2px,color:#fff
+    style A fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style DB fill:#00695c,stroke:#26a69a,stroke-width:2px,color:#fff
+    style FS fill:#00695c,stroke:#26a69a,stroke-width:2px,color:#fff
 ```
 
 The server is organized as a **five-crate Cargo workspace** with strict layered dependencies. Each crate has a single, well-defined responsibility and a minimal dependency surface.
@@ -105,6 +110,25 @@ flowchart TD
 
     FS --> DISK[("/data/blobs/")]
     SQLITE --> DB[("/data/arca.db")]
+
+    style REQ fill:#4527a0,stroke:#7e57c2,stroke-width:2px,color:#fff
+    style MW0 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style MW1 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style MW2 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style MW3 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style MW4 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style MW5 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style MW6 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style MW7 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style ROUTER fill:#00695c,stroke:#26a69a,stroke-width:2px,color:#fff
+    style UC fill:#2e7d32,stroke:#4caf50,stroke-width:2px,color:#fff
+    style CACHE fill:#ef6c00,stroke:#ff9800,stroke-width:2px,color:#fff
+    style BLOB fill:#ef6c00,stroke:#ff9800,stroke-width:2px,color:#fff
+    style META fill:#ef6c00,stroke:#ff9800,stroke-width:2px,color:#fff
+    style SQLITE fill:#bf360c,stroke:#ff7043,stroke-width:2px,color:#fff
+    style FS fill:#bf360c,stroke:#ff7043,stroke-width:2px,color:#fff
+    style DISK fill:#37474f,stroke:#78909c,stroke-width:2px,color:#fff
+    style DB fill:#37474f,stroke:#78909c,stroke-width:2px,color:#fff
 ```
 
 The middleware stack is built with [Tower](https://docs.rs/tower), the standard Rust middleware framework. Each layer is independently testable and can be reordered or replaced without affecting the others. Rate limiting and request validation layers are no-ops when disabled in configuration.
@@ -298,6 +322,10 @@ The write order for storing an object is deliberate:
 ```mermaid
 flowchart LR
     A[1. Write blob file] --> B[2. Write .meta sidecar] --> C[3. Insert into SQLite]
+
+    style A fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style B fill:#2e7d32,stroke:#4caf50,stroke-width:2px,color:#fff
+    style C fill:#00695c,stroke:#26a69a,stroke-width:2px,color:#fff
 ```
 
 If the server crashes at any point:

@@ -101,12 +101,18 @@ flowchart TD
     POLICY -->|"allowed"| ALLOW2(["Allowed"])
     POLICY -->|"denied / no match"| DENY4["403 AccessDenied"]
 
-    style DENY1 fill:#c62828,stroke:#ef5350,color:#fff
-    style DENY2 fill:#c62828,stroke:#ef5350,color:#fff
-    style DENY3 fill:#c62828,stroke:#ef5350,color:#fff
-    style DENY4 fill:#c62828,stroke:#ef5350,color:#fff
-    style ALLOW fill:#2e7d32,stroke:#4caf50,color:#fff
-    style ALLOW2 fill:#2e7d32,stroke:#4caf50,color:#fff
+    style REQ fill:#4527a0,stroke:#7e57c2,stroke-width:2px,color:#fff
+    style SIG fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style CRED fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style USER fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style ROOT fill:#ef6c00,stroke:#ff9800,stroke-width:2px,color:#fff
+    style POLICY fill:#00695c,stroke:#26a69a,stroke-width:2px,color:#fff
+    style DENY1 fill:#c62828,stroke:#ef5350,stroke-width:2px,color:#fff
+    style DENY2 fill:#c62828,stroke:#ef5350,stroke-width:2px,color:#fff
+    style DENY3 fill:#c62828,stroke:#ef5350,stroke-width:2px,color:#fff
+    style DENY4 fill:#c62828,stroke:#ef5350,stroke-width:2px,color:#fff
+    style ALLOW fill:#2e7d32,stroke:#4caf50,stroke-width:2px,color:#fff
+    style ALLOW2 fill:#2e7d32,stroke:#4caf50,stroke-width:2px,color:#fff
 ```
 
 The SigV4 signature is verified against the credential's secret key. If valid, the credential resolves to a user, and the user's effective permissions determine whether the request is allowed.
@@ -136,6 +142,12 @@ flowchart LR
     TEAM_A --> UNION
     TEAM_B --> UNION
     UNION["Union of all policies"] --> EVAL["Policy evaluation"]
+
+    style G1 fill:#bf360c,stroke:#ff7043,stroke-width:2px,color:#fff
+    style G2 fill:#bf360c,stroke:#ff7043,stroke-width:2px,color:#fff
+    style G3 fill:#bf360c,stroke:#ff7043,stroke-width:2px,color:#fff
+    style UNION fill:#4527a0,stroke:#7e57c2,stroke-width:2px,color:#fff
+    style EVAL fill:#2e7d32,stroke:#4caf50,stroke-width:2px,color:#fff
 ```
 
 Policy evaluation follows the standard IAM logic:

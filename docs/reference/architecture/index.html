@@ -53,6 +53,8 @@
       
     
     
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
     <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
@@ -1690,7 +1692,12 @@
 <pre class="mermaid"><code>graph LR
     C["S3 Client&lt;br/&gt;aws-cli · boto3 · mc · rclone"] --&gt;|"HTTP :9000"| A["Arca Server"]
     A --&gt; DB[("SQLite&lt;br/&gt;metadata + credentials")]
-    A --&gt; FS["Filesystem&lt;br/&gt;UUID blobs + .meta sidecars"]</code></pre>
+    A --&gt; FS["Filesystem&lt;br/&gt;UUID blobs + .meta sidecars"]
+
+    style C fill:#4527a0,stroke:#7e57c2,stroke-width:2px,color:#fff
+    style A fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style DB fill:#00695c,stroke:#26a69a,stroke-width:2px,color:#fff
+    style FS fill:#00695c,stroke:#26a69a,stroke-width:2px,color:#fff</code></pre>
 <p>The server is organized as a <strong>five-crate Cargo workspace</strong> with strict layered dependencies. Each crate has a single, well-defined responsibility and a minimal dependency surface.</p>
 <h2 id="crate-structure">Crate Structure<a class="headerlink" href="#crate-structure" title="Permanent link">&para;</a></h2>
 <table>
@@ -1818,7 +1825,26 @@
     BLOB --&gt; FS["FsBlobStore&lt;br/&gt;UUID + .meta sidecar"]
 
     FS --&gt; DISK[("/data/blobs/")]
-    SQLITE --&gt; DB[("/data/arca.db")]</code></pre>
+    SQLITE --&gt; DB[("/data/arca.db")]
+
+    style REQ fill:#4527a0,stroke:#7e57c2,stroke-width:2px,color:#fff
+    style MW0 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style MW1 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style MW2 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style MW3 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style MW4 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style MW5 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style MW6 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style MW7 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style ROUTER fill:#00695c,stroke:#26a69a,stroke-width:2px,color:#fff
+    style UC fill:#2e7d32,stroke:#4caf50,stroke-width:2px,color:#fff
+    style CACHE fill:#ef6c00,stroke:#ff9800,stroke-width:2px,color:#fff
+    style BLOB fill:#ef6c00,stroke:#ff9800,stroke-width:2px,color:#fff
+    style META fill:#ef6c00,stroke:#ff9800,stroke-width:2px,color:#fff
+    style SQLITE fill:#bf360c,stroke:#ff7043,stroke-width:2px,color:#fff
+    style FS fill:#bf360c,stroke:#ff7043,stroke-width:2px,color:#fff
+    style DISK fill:#37474f,stroke:#78909c,stroke-width:2px,color:#fff
+    style DB fill:#37474f,stroke:#78909c,stroke-width:2px,color:#fff</code></pre>
 <p>The middleware stack is built with <a href="https://docs.rs/tower">Tower</a>, the standard Rust middleware framework. Each layer is independently testable and can be reordered or replaced without affecting the others. Rate limiting and request validation layers are no-ops when disabled in configuration.</p>
 <h2 id="storage-architecture">Storage Architecture<a class="headerlink" href="#storage-architecture" title="Permanent link">&para;</a></h2>
 <h3 id="trait-based-abstraction">Trait-Based Abstraction<a class="headerlink" href="#trait-based-abstraction" title="Permanent link">&para;</a></h3>
@@ -1984,7 +2010,11 @@
 <h3 id="write-order-and-disaster-recovery">Write Order and Disaster Recovery<a class="headerlink" href="#write-order-and-disaster-recovery" title="Permanent link">&para;</a></h3>
 <p>The write order for storing an object is deliberate:</p>
 <pre class="mermaid"><code>flowchart LR
-    A[1. Write blob file] --&gt; B[2. Write .meta sidecar] --&gt; C[3. Insert into SQLite]</code></pre>
+    A[1. Write blob file] --&gt; B[2. Write .meta sidecar] --&gt; C[3. Insert into SQLite]
+
+    style A fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style B fill:#2e7d32,stroke:#4caf50,stroke-width:2px,color:#fff
+    style C fill:#00695c,stroke:#26a69a,stroke-width:2px,color:#fff</code></pre>
 <p>If the server crashes at any point:</p>
 <ul>
 <li><strong>After step 1 only</strong>: orphaned blob, no sidecar → <code>arca fsck</code> detects and cleans up</li>

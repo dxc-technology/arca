@@ -58,6 +58,11 @@ Each object is encrypted with a unique, randomly generated 256-bit DEK (data enc
 flowchart LR
     KEK["Master Key (KEK)<br/>from config.toml"] -- "AES-256-GCM wrap" --> WDEK["Wrapped DEK<br/>(stored in .meta)"]
     DEK["Per-Object DEK<br/>random 32 bytes"] -- "AES-256-GCM encrypt" --> DATA["Encrypted Object Data<br/>(64 KiB chunks)"]
+
+    style KEK fill:#4527a0,stroke:#7e57c2,stroke-width:2px,color:#fff
+    style WDEK fill:#00695c,stroke:#26a69a,stroke-width:2px,color:#fff
+    style DEK fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style DATA fill:#bf360c,stroke:#ff7043,stroke-width:2px,color:#fff
 ```
 
 ### Chunk-Based Streaming

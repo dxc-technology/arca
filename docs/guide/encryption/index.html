@@ -53,6 +53,8 @@
       
     
     
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
     <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
@@ -1827,7 +1829,12 @@
 <p>Each object is encrypted with a unique, randomly generated 256-bit DEK (data encryption key). The DEK is then wrapped (encrypted) using the master key encryption key (KEK) from the config file and stored alongside the object in the sidecar <code>.meta</code> file. The master key never touches the object data directly.</p>
 <pre class="mermaid"><code>flowchart LR
     KEK["Master Key (KEK)&lt;br/&gt;from config.toml"] -- "AES-256-GCM wrap" --&gt; WDEK["Wrapped DEK&lt;br/&gt;(stored in .meta)"]
-    DEK["Per-Object DEK&lt;br/&gt;random 32 bytes"] -- "AES-256-GCM encrypt" --&gt; DATA["Encrypted Object Data&lt;br/&gt;(64 KiB chunks)"]</code></pre>
+    DEK["Per-Object DEK&lt;br/&gt;random 32 bytes"] -- "AES-256-GCM encrypt" --&gt; DATA["Encrypted Object Data&lt;br/&gt;(64 KiB chunks)"]
+
+    style KEK fill:#4527a0,stroke:#7e57c2,stroke-width:2px,color:#fff
+    style WDEK fill:#00695c,stroke:#26a69a,stroke-width:2px,color:#fff
+    style DEK fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
+    style DATA fill:#bf360c,stroke:#ff7043,stroke-width:2px,color:#fff</code></pre>
 <h3 id="chunk-based-streaming">Chunk-Based Streaming<a class="headerlink" href="#chunk-based-streaming" title="Permanent link">&para;</a></h3>
 <p>Objects are encrypted in fixed-size 64 KiB chunks. Each chunk is independently encrypted and authenticated with its own GCM tag. This enables:</p>
 <ul>

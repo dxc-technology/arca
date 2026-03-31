@@ -93,7 +93,7 @@ graph LR
 ```
 
 <span style="font-size:.8em">
-**Legend**: <span style="color:#c62828">P0 Critical</span> · <span style="color:#e65100">P1 High</span> · <span style="color:#2e7d32">P2 Medium</span> · <span style="color:#1565c0">P3 Low</span> — Arrows indicate dependencies
+**Legend**: <span class="legend-p0">P0 Critical</span> · <span class="legend-p1">P1 High</span> · <span class="legend-p2">P2 Medium</span> · <span class="legend-p3">P3 Low</span> — Arrows indicate dependencies
 </span>
 
 ### Phase Summary

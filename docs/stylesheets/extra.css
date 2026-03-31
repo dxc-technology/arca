@@ -1,0 +1,10 @@
+/* Roadmap legend: use brighter colors in dark mode for readable contrast */
+[data-md-color-scheme="slate"] .legend-p0 { color: #ef5350 !important; }
+[data-md-color-scheme="slate"] .legend-p1 { color: #ffa726 !important; }
+[data-md-color-scheme="slate"] .legend-p2 { color: #66bb6a !important; }
+[data-md-color-scheme="slate"] .legend-p3 { color: #42a5f5 !important; }
+
+[data-md-color-scheme="default"] .legend-p0 { color: #c62828 !important; }
+[data-md-color-scheme="default"] .legend-p1 { color: #e65100 !important; }
+[data-md-color-scheme="default"] .legend-p2 { color: #2e7d32 !important; }
+[data-md-color-scheme="default"] .legend-p3 { color: #1565c0 !important; }
