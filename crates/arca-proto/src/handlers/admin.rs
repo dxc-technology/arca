@@ -87,6 +87,7 @@ struct InfoResponse {
     kms_provider: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     kms_endpoint: Option<String>,
+    metadata_backend: String,
 }
 
 #[derive(Serialize)]
@@ -155,6 +156,7 @@ pub async fn info(State(state): State<AppState>) -> impl IntoResponse {
         encryption_enabled: state.encryption_enabled,
         kms_provider: state.kms_provider.clone(),
         kms_endpoint: state.kms_endpoint.clone(),
+        metadata_backend: state.metadata_backend.clone(),
     })
 }
 
