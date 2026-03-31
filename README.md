@@ -174,10 +174,11 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — Per-bucket Encryption | 8 | per-bucket enable/disable, plain vs encrypted, ETag, head, revert |
 | Integration — KMS | 10 | Vault/OpenBAO key fetch, encrypted put/get, headers, ETag, multipart, copy, range, admin info |
 | Integration — TLS | 7 | HTTPS health/info/put/get/multipart, minio client, wrong CA rejection |
+| Integration — PostgreSQL | 20 | buckets, objects, multipart, versioning, tags, lifecycle, copy, range, admin health |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
-| **Arca tests** | **925** | **All tests written for this project** |
+| **Arca tests** | **945** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 830 | 352 pass, 387 fail, 91 skip — 0 unexpected failures |
-| **Total** | **1,755** | |
+| **Total** | **1,775** | |
 
 ## License
 

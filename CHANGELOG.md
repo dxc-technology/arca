@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Phase 24: PostgreSQL Backend**
+- **`PgStore`**: PostgreSQL metadata backend implementing all 8 store traits (MetadataStore, CredentialStore, UserStore, TeamStore, GrantStore, AuditStore, MetricsStore, ServerConfigStore) via `sqlx-core`/`sqlx-postgres`
+- **Config switch**: `[storage] metadata_backend = "sqlite" | "postgres"` with `[storage.postgres]` section for connection string and pool settings
+- **Docker overlay**: `docker-compose.postgres.yml` with PostgreSQL 17 Alpine, `--postgres` flag for `bin/arca start` and `bin/test postgres`
+- **Migration runner**: consolidated initial schema (equivalent to SQLite v1-v13) applied automatically at startup
+- **`/admin/info`**: returns `metadata_backend` field ("sqlite" or "postgres")
+- **(Console)**: Database indicator in server info panel showing current backend type
+- 20 PostgreSQL-specific integration tests covering buckets, objects, multipart, versioning, tags, lifecycle, copy, range reads
+
 ## [0.14.0] — 2026-03-31
 
 ### Added

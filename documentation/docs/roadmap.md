@@ -38,7 +38,7 @@ continuing from the MVP phases (0–11).
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">21</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">22</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">23</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">24</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">24</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">25</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">26</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">27</div>
@@ -112,7 +112,7 @@ graph LR
 | 21 | [Object Lock (WORM Compliance)](#phase-21-object-lock-worm-compliance-p2) | P2 | 17 | `v0.13.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 22 | [S3 API Completeness](#phase-22-s3-api-completeness-p2) | P2 | — | `v0.14.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 23 | [Performance and Hardening](#phase-23-performance-and-hardening-p2) | P2 | 13 | `v0.14.0` | <span style="color:#4caf50">&#x2714;</span> |
-| 24 | [PostgreSQL Backend](#phase-24-postgresql-backend-p2) | P2 | — | | |
+| 24 | [PostgreSQL Backend](#phase-24-postgresql-backend-p2) | P2 | — | `v0.14.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 25 | [Notifications and Event System](#phase-25-notifications-and-event-system-p3) | P3 | 20 | | |
 | 26 | [Replication](#phase-26-replication-p3) | P3 | 17, 24 | | |
 | 27 | [Multi-Node and Erasure Coding](#phase-27-multi-node-and-erasure-coding-p3) | P3 | All prior | | |
@@ -347,11 +347,14 @@ Production-grade limits, caching, and graceful operations.
 
 Alternative metadata backend for deployments requiring a shared database.
 
-- [ ] `PgMetadataStore` implementing the existing `MetadataStore` trait (`sqlx` or `tokio-postgres`)
-- [ ] `PgCredentialStore` implementation
-- [ ] Config switch: `[storage.metadata] type = "sqlite" | "postgres"` with connection string
+- [x] `PgStore` implementing all 8 store traits (MetadataStore, CredentialStore, UserStore, TeamStore, GrantStore, AuditStore, MetricsStore, ServerConfigStore) via `sqlx-core`/`sqlx-postgres`
+- [x] Config switch: `[storage] metadata_backend = "sqlite" | "postgres"` with `[storage.postgres]` connection settings
+- [x] Docker Compose overlay (`docker-compose.postgres.yml`) + `--postgres` flag for `bin/arca start` and `bin/test postgres`
+- [x] PostgreSQL schema migration runner with consolidated initial schema (equivalent to SQLite v1-v13)
+- [x] (Console) Server info panel shows database backend type, `/admin/info` returns `metadata_backend` field
 - [ ] Data migration tool: `arca migrate-db --from sqlite --to postgres`
-- [ ] (Console) Server info panel shows database backend type
+
+**Depends on**: Phase 13 (encryption pipeline)
 
 ---
 

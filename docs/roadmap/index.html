@@ -2037,7 +2037,7 @@ continuing from the MVP phases (0–11).</p>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">21</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">22</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">23</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">24</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">24</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">25</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">26</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">27</div>
@@ -2204,8 +2204,8 @@ continuing from the MVP phases (0–11).</p>
 <td><a href="#phase-24-postgresql-backend-p2">PostgreSQL Backend</a></td>
 <td style="text-align: center;">P2</td>
 <td style="text-align: center;">—</td>
-<td style="text-align: center;"></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><code>v0.14.0</code></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">25</td>
@@ -2442,12 +2442,14 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 <h3 id="phase-24-postgresql-backend-p2">Phase 24 — PostgreSQL Backend [P2]<a class="headerlink" href="#phase-24-postgresql-backend-p2" title="Permanent link">&para;</a></h3>
 <p>Alternative metadata backend for deployments requiring a shared database.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>PgMetadataStore</code> implementing the existing <code>MetadataStore</code> trait (<code>sqlx</code> or <code>tokio-postgres</code>)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>PgCredentialStore</code> implementation</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Config switch: <code>[storage.metadata] type = "sqlite" | "postgres"</code> with connection string</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>PgStore</code> implementing all 8 store traits (MetadataStore, CredentialStore, UserStore, TeamStore, GrantStore, AuditStore, MetricsStore, ServerConfigStore) via <code>sqlx-core</code>/<code>sqlx-postgres</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Config switch: <code>[storage] metadata_backend = "sqlite" | "postgres"</code> with <code>[storage.postgres]</code> connection settings</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Docker Compose overlay (<code>docker-compose.postgres.yml</code>) + <code>--postgres</code> flag for <code>bin/arca start</code> and <code>bin/test postgres</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> PostgreSQL schema migration runner with consolidated initial schema (equivalent to SQLite v1-v13)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> (Console) Server info panel shows database backend type, <code>/admin/info</code> returns <code>metadata_backend</code> field</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Data migration tool: <code>arca migrate-db --from sqlite --to postgres</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> (Console) Server info panel shows database backend type</li>
 </ul>
+<p><strong>Depends on</strong>: Phase 13 (encryption pipeline)</p>
 <hr />
 <h3 id="phase-25-notifications-and-event-system-p3">Phase 25 — Notifications and Event System [P3]<a class="headerlink" href="#phase-25-notifications-and-event-system-p3" title="Permanent link">&para;</a></h3>
 <p>S3-compatible bucket notifications for event-driven architectures.</p>
