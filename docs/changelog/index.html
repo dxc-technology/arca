@@ -2402,9 +2402,14 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <h2 id="0120-2026-03-24"><a href="https://github.com/dxc-technology/arca/compare/v0.11.0...v0.12.0">0.12.0</a> — 2026-03-24<a class="headerlink" href="#0120-2026-03-24" title="Permanent link">&para;</a></h2>
 <h3 id="added_3">Added<a class="headerlink" href="#added_3" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Phase 19: Object Tagging</strong> — S3-compatible object and bucket tagging with 6 new operations: <code>GetBucketTagging</code>, <code>PutBucketTagging</code>, <code>DeleteBucketTagging</code>, <code>GetObjectTagging</code>, <code>PutObjectTagging</code>, <code>DeleteObjectTagging</code>. Inline tags on <code>PutObject</code> via <code>x-amz-tagging</code> header and <code>CopyObject</code> with <code>x-amz-tagging-directive</code>. Max 10 tags per object/bucket, key max 128 chars, value max 256 chars. Version-aware: tags tied to specific object versions. Cascade deletes on object/bucket removal. New <code>object_tags</code> and <code>bucket_tags</code> tables (migration v11)</li>
+<li><strong>Phase 19: Object Tagging</strong></li>
+<li><strong>6 new S3 operations</strong>: <code>GetBucketTagging</code>, <code>PutBucketTagging</code>, <code>DeleteBucketTagging</code>, <code>GetObjectTagging</code>, <code>PutObjectTagging</code>, <code>DeleteObjectTagging</code></li>
+<li><strong>Inline tags</strong>: <code>x-amz-tagging</code> header on PutObject, <code>x-amz-tagging-directive</code> on CopyObject</li>
+<li><strong>Limits</strong>: max 10 tags per object/bucket, key max 128 chars, value max 256 chars</li>
+<li><strong>Version-aware</strong>: tags tied to specific object versions, cascade deletes on object/bucket removal</li>
+<li><strong>SQLite migration v11</strong>: new <code>object_tags</code> and <code>bucket_tags</code> tables</li>
 <li><strong>Console: tag editor</strong> — view, add, and remove object tags in the detail side panel</li>
-<li><strong>Roadmap restructured</strong> — Phase 19 split into Object Tagging (19) and Lifecycle Rules (20), all subsequent phases renumbered (20-27 became 21-28)</li>
+<li><strong>Roadmap restructured</strong> — Phase 19 split into Object Tagging (19) and Lifecycle Rules (20), subsequent phases renumbered</li>
 </ul>
 <h2 id="0110-2026-03-24"><a href="https://github.com/dxc-technology/arca/compare/v0.10.0...v0.11.0">0.11.0</a> — 2026-03-24<a class="headerlink" href="#0110-2026-03-24" title="Permanent link">&para;</a></h2>
 <h3 id="added_4">Added<a class="headerlink" href="#added_4" title="Permanent link">&para;</a></h3>

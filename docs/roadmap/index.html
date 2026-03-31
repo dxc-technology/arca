@@ -2446,10 +2446,9 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Config switch: <code>[storage] metadata_backend = "sqlite" | "postgres"</code> with <code>[storage.postgres]</code> connection settings</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Docker Compose overlay (<code>docker-compose.postgres.yml</code>) + <code>--postgres</code> flag for <code>bin/arca start</code> and <code>bin/test postgres</code></li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> PostgreSQL schema migration runner with consolidated initial schema (equivalent to SQLite v1-v13)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> (Console) Server info panel shows database backend type, <code>/admin/info</code> returns <code>metadata_backend</code> field</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Data migration tool: <code>arca migrate-db --from sqlite --to postgres</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> (Console) Server info panel shows database backend type, <code>/admin/info</code> returns <code>metadata_backend</code> field
+<strong>Depends on</strong>: Phase 13 (encryption pipeline)</li>
 </ul>
-<p><strong>Depends on</strong>: Phase 13 (encryption pipeline)</p>
 <hr />
 <h3 id="phase-25-notifications-and-event-system-p3">Phase 25 — Notifications and Event System [P3]<a class="headerlink" href="#phase-25-notifications-and-event-system-p3" title="Permanent link">&para;</a></h3>
 <p>S3-compatible bucket notifications for event-driven architectures.</p>
@@ -2485,13 +2484,14 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 <h3 id="phase-28-cli-enhancements-and-migration-tools-p3">Phase 28 — CLI Enhancements and Migration Tools [P3]<a class="headerlink" href="#phase-28-cli-enhancements-and-migration-tools-p3" title="Permanent link">&para;</a></h3>
 <p>Comprehensive CLI tooling for administration, data migration, and remote S3 operations.</p>
 <ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>arca migrate-db --from sqlite --to postgres</code>: bidirectional metadata migration between SQLite and PostgreSQL backends</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>arca encrypt-existing</code> / <code>arca decrypt-existing</code>: offline encryption/decryption of existing objects in-place. Atomic renames for crash safety, resumable (skips already-processed blobs), configurable concurrency, progress reporting</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>arca migrate-topology</code>: migrate data between single-node and multi-node (HA) deployments. Resharding, metadata redistribution, rollback support</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Remote S3 client mode: <code>arca</code> binary acts as an S3 client (like <code>mc</code> or <code>aws s3</code>), connecting to any S3-compatible endpoint. Subcommands: <code>arca s3 ls</code>, <code>arca s3 cp</code>, <code>arca s3 mv</code>, <code>arca s3 rm</code>, <code>arca s3 sync</code>, <code>arca s3 presign</code></li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Profile management: <code>arca profile add/list/remove/use</code> for managing multiple endpoint/credential profiles (stored in <code>~/.arca/profiles.toml</code>)</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Interactive shell mode: <code>arca shell</code> with tab completion, history, and prompt showing current profile/bucket</li>
 </ul>
-<p><strong>Depends on</strong>: Phase 13 (encryption pipeline for encrypt/decrypt), Phase 27 (multi-node for topology migration)</p>
+<p><strong>Depends on</strong>: Phase 13 (encryption pipeline for encrypt/decrypt), Phase 24 (PostgreSQL for migrate-db), Phase 27 (multi-node for topology migration)</p>
 <hr />
 <h3 id="phase-29-opentelemetry-integration-p3">Phase 29 — OpenTelemetry Integration [P3]<a class="headerlink" href="#phase-29-opentelemetry-integration-p3" title="Permanent link">&para;</a></h3>
 <p>Export traces, metrics, and logs via the OpenTelemetry Protocol (OTLP) for integration

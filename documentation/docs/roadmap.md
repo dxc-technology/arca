@@ -352,8 +352,6 @@ Alternative metadata backend for deployments requiring a shared database.
 - [x] Docker Compose overlay (`docker-compose.postgres.yml`) + `--postgres` flag for `bin/arca start` and `bin/test postgres`
 - [x] PostgreSQL schema migration runner with consolidated initial schema (equivalent to SQLite v1-v13)
 - [x] (Console) Server info panel shows database backend type, `/admin/info` returns `metadata_backend` field
-- [ ] Data migration tool: `arca migrate-db --from sqlite --to postgres`
-
 **Depends on**: Phase 13 (encryption pipeline)
 
 ---
@@ -402,13 +400,14 @@ Distributed storage for horizontal scalability and data durability beyond single
 
 Comprehensive CLI tooling for administration, data migration, and remote S3 operations.
 
+- [ ] `arca migrate-db --from sqlite --to postgres`: bidirectional metadata migration between SQLite and PostgreSQL backends
 - [ ] `arca encrypt-existing` / `arca decrypt-existing`: offline encryption/decryption of existing objects in-place. Atomic renames for crash safety, resumable (skips already-processed blobs), configurable concurrency, progress reporting
 - [ ] `arca migrate-topology`: migrate data between single-node and multi-node (HA) deployments. Resharding, metadata redistribution, rollback support
 - [ ] Remote S3 client mode: `arca` binary acts as an S3 client (like `mc` or `aws s3`), connecting to any S3-compatible endpoint. Subcommands: `arca s3 ls`, `arca s3 cp`, `arca s3 mv`, `arca s3 rm`, `arca s3 sync`, `arca s3 presign`
 - [ ] Profile management: `arca profile add/list/remove/use` for managing multiple endpoint/credential profiles (stored in `~/.arca/profiles.toml`)
 - [ ] Interactive shell mode: `arca shell` with tab completion, history, and prompt showing current profile/bucket
 
-**Depends on**: Phase 13 (encryption pipeline for encrypt/decrypt), Phase 27 (multi-node for topology migration)
+**Depends on**: Phase 13 (encryption pipeline for encrypt/decrypt), Phase 24 (PostgreSQL for migrate-db), Phase 27 (multi-node for topology migration)
 
 ---
 
