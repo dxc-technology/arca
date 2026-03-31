@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-03-31
+
 ### Added
 
 - **Phase 24: PostgreSQL Backend**
@@ -321,7 +323,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/dxc-technology/arca/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/dxc-technology/arca/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/dxc-technology/arca/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/dxc-technology/arca/compare/v0.11.0...v0.12.0
