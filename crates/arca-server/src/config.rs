@@ -510,6 +510,13 @@ pub fn load_config(path: &Path) -> Result<Config> {
     let mut config: Config =
         toml::from_str(&content).with_context(|| format!("parsing config: {}", path.display()))?;
     apply_env_overrides(&mut config)?;
+    // Auto-detect postgres backend when [storage.postgres] section is present
+    // but metadata_backend was not explicitly set (still at default "sqlite").
+    // This avoids TOML fragment concatenation issues where the bare key would
+    // land in the wrong section.
+    if config.storage.metadata_backend == "sqlite" && config.storage.postgres.is_some() {
+        config.storage.metadata_backend = "postgres".to_string();
+    }
     if let Some(tls) = &config.server.tls {
         tls.validate()?;
     }
@@ -1326,5 +1333,48 @@ data_dir = "/data"
         let config: Config = toml::from_str(toml_str).unwrap();
         let cache = config.server.cache.unwrap();
         assert!(!cache.enabled);
+    }
+
+    #[test]
+    fn postgres_auto_detect_from_section() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+
+[storage.postgres]
+connection_string = "postgresql://arca:arca@localhost:5432/arca"
+"#;
+        let mut config: Config = toml::from_str(toml_str).unwrap();
+        // Before auto-detect, metadata_backend defaults to "sqlite"
+        assert_eq!(config.storage.metadata_backend, "sqlite");
+        // Simulate what load_config does
+        if config.storage.metadata_backend == "sqlite" && config.storage.postgres.is_some() {
+            config.storage.metadata_backend = "postgres".to_string();
+        }
+        assert_eq!(config.storage.metadata_backend, "postgres");
+        assert!(config.storage.validate().is_ok());
+    }
+
+    #[test]
+    fn postgres_explicit_backend_preserved() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+metadata_backend = "postgres"
+
+[storage.postgres]
+connection_string = "postgresql://arca:arca@localhost:5432/arca"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.storage.metadata_backend, "postgres");
+        assert!(config.storage.validate().is_ok());
     }
 }
