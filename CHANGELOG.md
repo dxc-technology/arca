@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Phase 25: Notifications and Event System**
+- **`PutBucketNotificationConfiguration`** / **`GetBucketNotificationConfiguration`**: S3-compatible bucket notification configuration via `?notification` query parameter. Accepts all three S3 destination types (`TopicConfiguration`, `QueueConfiguration`, `CloudFunctionConfiguration`), treating all as webhook destinations
+- **Event emission**: `s3:ObjectCreated:Put`, `s3:ObjectCreated:Copy`, `s3:ObjectCreated:CompleteMultipartUpload`, `s3:ObjectRemoved:Delete`, `s3:ObjectRemoved:DeleteMarkerCreated` events emitted from handlers via non-blocking mpsc channel
+- **Webhook delivery worker**: background worker consumes events, matches per-bucket notification rules (event type + prefix/suffix filters), delivers HTTP POST to configured webhook URLs with exponential-backoff retry (configurable max retries, base delay, timeout)
+- **Notification event persistence**: `notification_events` table (SQLite migration v14, PostgreSQL schema update) stores delivery records with status tracking (`pending`/`delivered`/`failed`)
+- **`NotificationStore` trait**: CRUD + purge for notification event records, implemented for both SQLite and PostgreSQL backends
+- **Admin API**: `GET /admin/notifications/events` (list with filters), `GET /admin/notifications/events/count`, `POST /admin/notifications/test-webhook` (connectivity test)
+- **`[notifications]` config section** (optional): tuning parameters for channel size, retry behavior, webhook timeout, and event retention days (default: 7)
+- **Event retention**: notification events automatically purged by the retention worker based on `event_retention_days`
+- **Notification config caching**: in-memory cache with 60s TTL in the delivery worker to avoid per-event DB reads
+- **(Console)**: Notification event log viewer with filters (bucket, event type, delivery status), pagination, auto-refresh, and event detail modal
+- **(Console)**: Per-bucket notification rules editor in bucket settings (add/edit/remove webhook destinations, event type selection, prefix/suffix filters, test webhook button)
+- **(Console)**: Sidebar navigation link for Notifications page
+- Docker webhook receiver service (`docker/webhook-receiver/`) for integration testing
+- `bin/test notifications` mode with webhook receiver compose overlay
+- 31 unit tests (XML parsing, event matching, filter matching, roundtrip, validation)
+- 4 unit tests (SQLite NotificationStore: insert, list, update status, purge, pagination)
+- ~18 integration tests (configuration CRUD, webhook delivery, event format, filters, batch delete, admin API)
+
 ## [0.16.1] — 2026-04-01
 
 ### Fixed

@@ -498,6 +498,21 @@ pub async fn complete_multipart_upload(
         }
     }
 
+    // Emit notification event
+    state.emit_event(arca_core::s3::notification::S3Event {
+        event_name: "s3:ObjectCreated:CompleteMultipartUpload".to_string(),
+        bucket: bucket.clone(),
+        key: key.clone(),
+        size: record.size,
+        etag: composite_etag.clone(),
+        version_id: stored.as_ref().and_then(|r| r.version_id.clone()),
+        sequencer: uuid::Uuid::new_v4().simple().to_string(),
+        user_identity: None,
+        source_ip: None,
+        request_id: None,
+        timestamp: chrono::Utc::now(),
+    });
+
     let xml = xml_types::complete_multipart_upload_result(&bucket, &key, &composite_etag);
     let mut builder = Response::builder()
         .status(StatusCode::OK)

@@ -26,6 +26,7 @@ _HAS_TLS=false
 _HAS_ENCRYPTION=false
 _HAS_KMS=false
 _HAS_POSTGRES=false
+_HAS_NOTIFICATIONS=false
 
 # --- Feature registration ---
 
@@ -81,6 +82,12 @@ enable_postgres() {
     if $_HAS_POSTGRES; then return; fi
     _HAS_POSTGRES=true
     _FEATURES+=(postgres)
+}
+
+enable_notifications() {
+    if $_HAS_NOTIFICATIONS; then return; fi
+    _HAS_NOTIFICATIONS=true
+    _FEATURES+=(notifications)
 }
 
 # --- Config generation ---
@@ -148,6 +155,17 @@ compose_cmd() {
                 done
                 if ! $already; then
                     files+=("$pg_file")
+                fi
+                ;;
+            notifications)
+                # Webhook receiver for notification tests
+                local notif_file="$REPO_ROOT/docker/docker-compose.notifications.yml"
+                local already=false
+                for f in "${files[@]}"; do
+                    [[ "$f" == "$notif_file" ]] && already=true
+                done
+                if ! $already; then
+                    files+=("$notif_file")
                 fi
                 ;;
         esac

@@ -181,7 +181,7 @@ async fn main() -> Result<()> {
 
             let metadata_backend = config.storage.metadata_backend.clone();
 
-            let state = AppState {
+            let mut state = AppState {
                 metadata,
                 blob,
                 plain_blob,
@@ -222,7 +222,17 @@ async fn main() -> Result<()> {
                 max_header_count: limits.max_header_count,
                 max_metadata_size: limits.max_metadata_size,
                 draining: drain_rx,
+                notification_tx: None,
+                notification_store: stores.notification,
             };
+
+            // Create notification channel and update state
+            let notif_config = config
+                .notifications
+                .clone()
+                .unwrap_or_default();
+            let (notification_tx, notification_rx) = tokio::sync::mpsc::channel(notif_config.channel_size);
+            state.notification_tx = Some(notification_tx);
 
             // Spawn background workers
             let metrics_interval = config
@@ -232,8 +242,23 @@ async fn main() -> Result<()> {
                 .map(|m| m.interval_seconds)
                 .unwrap_or(60);
             let _metrics_worker = worker::spawn_metrics_worker(&state, metrics_interval);
-            let _retention_worker = worker::spawn_retention_worker(&state);
+            let _retention_worker = worker::spawn_retention_worker(
+                &state,
+                notif_config.event_retention_days,
+            );
             let _lifecycle_worker = worker::spawn_lifecycle_worker(&state, None);
+            let _notification_worker = if let Some(ref notif_store) = state.notification_store {
+                let region = state.config_region.clone().unwrap_or_else(|| "us-east-1".to_string());
+                Some(worker::spawn_notification_worker(
+                    notification_rx,
+                    state.metadata.clone(),
+                    notif_store.clone(),
+                    region,
+                    notif_config,
+                ))
+            } else {
+                None
+            };
 
             let addr = format!("{}:{}", config.server.bind, config.server.port);
             tracing::info!("Starting Arca on {addr}");
@@ -497,6 +522,7 @@ struct StoreSet {
     server_config: Arc<dyn arca_core::store::ServerConfigStore>,
     audit: Option<Arc<dyn arca_core::store::AuditStore>>,
     metrics: Option<Arc<dyn arca_core::store::MetricsStore>>,
+    notification: Option<Arc<dyn arca_core::store::NotificationStore>>,
 }
 
 /// Helper to build a `StoreSet` from any type implementing all store traits.
@@ -510,6 +536,7 @@ where
         + arca_core::store::ServerConfigStore
         + arca_core::store::AuditStore
         + arca_core::store::MetricsStore
+        + arca_core::store::NotificationStore
         + 'static,
 {
     StoreSet {
@@ -520,7 +547,8 @@ where
         grants: store.clone() as Arc<dyn arca_core::store::GrantStore>,
         server_config: store.clone() as Arc<dyn arca_core::store::ServerConfigStore>,
         audit: Some(store.clone() as Arc<dyn arca_core::store::AuditStore>),
-        metrics: Some(store as Arc<dyn arca_core::store::MetricsStore>),
+        metrics: Some(store.clone() as Arc<dyn arca_core::store::MetricsStore>),
+        notification: Some(store as Arc<dyn arca_core::store::NotificationStore>),
     }
 }
 

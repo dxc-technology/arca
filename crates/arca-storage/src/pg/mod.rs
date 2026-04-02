@@ -8,6 +8,7 @@ mod credential;
 mod grant;
 mod metadata;
 mod metrics;
+mod notification;
 mod server_config;
 mod team;
 pub(crate) mod user;

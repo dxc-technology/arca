@@ -242,9 +242,51 @@ pub async fn get_bucket(
         }
     }
 
+    // GetBucketNotificationConfiguration
+    if params.iter().any(|(k, _)| k == "notification") {
+        match state.metadata.head_bucket(&bucket).await {
+            Ok(Some(_)) => {}
+            Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
+            Err(e) => return internal_error_response(e, &resource),
+        }
+        match state.metadata.get_bucket_config(&bucket, "notification_configuration").await {
+            Ok(Some(json_str)) => {
+                match serde_json::from_str::<arca_core::s3::notification::NotificationConfiguration>(&json_str) {
+                    Ok(config) => {
+                        let xml = arca_core::s3::notification::notification_configuration_to_xml(&config);
+                        return Response::builder()
+                            .status(StatusCode::OK)
+                            .header("Content-Type", "application/xml")
+                            .body(Body::from(xml))
+                            .expect("build get_bucket_notification response");
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, bucket = %bucket, "corrupted notification config in DB");
+                        return internal_error_response(
+                            arca_core::error::ArcaError::Internal(e.to_string()),
+                            &resource,
+                        );
+                    }
+                }
+            }
+            Ok(None) => {
+                // S3 returns empty config (not 404) when no notification config exists.
+                let xml = arca_core::s3::notification::notification_configuration_to_xml(
+                    &arca_core::s3::notification::NotificationConfiguration::default(),
+                );
+                return Response::builder()
+                    .status(StatusCode::OK)
+                    .header("Content-Type", "application/xml")
+                    .body(Body::from(xml))
+                    .expect("build empty notification response");
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
+    }
+
     // TECHDEBT(TD-007): Unimplemented GET bucket operations return 501.
     let unimplemented_get_ops = [
-        "acl", "cors", "logging", "notification",
+        "acl", "cors", "logging",
         "policy", "replication", "website",
         "ownershipControls", "publicAccessBlock", "policyStatus",
         "accelerate", "requestPayment", "inventory", "analytics",
@@ -1294,10 +1336,54 @@ pub async fn create_bucket(
         }
     }
 
+    // PutBucketNotificationConfiguration
+    if query.starts_with("notification") || query.starts_with("notification=") || query.starts_with("notification&") {
+        match state.metadata.head_bucket(&bucket).await {
+            Ok(Some(_)) => {}
+            Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
+            Err(e) => return internal_error_response(e, &resource),
+        }
+        let body_bytes = match axum::body::to_bytes(request.into_body(), 64 * 1024).await {
+            Ok(b) => b,
+            Err(_) => return s3_error_response(S3Error::new(S3ErrorCode::InvalidRequest, &resource)),
+        };
+        let xml_str = String::from_utf8_lossy(&body_bytes);
+        let config = match arca_core::s3::notification::parse_notification_configuration_xml(&xml_str) {
+            Ok(c) => c,
+            Err(e) => return s3_error_response(e),
+        };
+        // Empty PUT removes the notification configuration (S3 has no Delete operation for this).
+        if config.is_empty() {
+            let _ = state.metadata.delete_bucket_config(&bucket, "notification_configuration").await;
+            return Response::builder()
+                .status(StatusCode::OK)
+                .body(Body::empty())
+                .expect("build put_bucket_notification response");
+        }
+        let json_str = match serde_json::to_string(&config) {
+            Ok(s) => s,
+            Err(e) => {
+                return internal_error_response(
+                    arca_core::error::ArcaError::Internal(e.to_string()),
+                    &resource,
+                );
+            }
+        };
+        match state.metadata.set_bucket_config(&bucket, "notification_configuration", &json_str).await {
+            Ok(()) => {
+                return Response::builder()
+                    .status(StatusCode::OK)
+                    .body(Body::empty())
+                    .expect("build put_bucket_notification response");
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
+    }
+
     // TECHDEBT(TD-007): Unimplemented bucket-level PUT operations return 501.
     let unimplemented_ops = [
         "acl", "cors", "logging",
-        "notification", "policy", "replication",
+        "policy", "replication",
         "website", "accelerate",
         "requestPayment", "inventory", "analytics", "metrics",
         "ownershipControls", "publicAccessBlock", "intelligenttiering",
@@ -1712,6 +1798,28 @@ async fn delete_objects(
                 }
             }
         }
+    }
+
+    // Emit notification events for each successfully deleted object
+    for entry in &deleted {
+        let event_name = if entry.delete_marker {
+            "s3:ObjectRemoved:DeleteMarkerCreated"
+        } else {
+            "s3:ObjectRemoved:Delete"
+        };
+        state.emit_event(arca_core::s3::notification::S3Event {
+            event_name: event_name.to_string(),
+            bucket: bucket.clone(),
+            key: entry.key.clone(),
+            size: 0,
+            etag: String::new(),
+            version_id: entry.version_id.clone(),
+            sequencer: uuid::Uuid::new_v4().simple().to_string(),
+            user_identity: None,
+            source_ip: None,
+            request_id: None,
+            timestamp: chrono::Utc::now(),
+        });
     }
 
     let xml = xml_types::delete_objects_result(&deleted, &errors, quiet);

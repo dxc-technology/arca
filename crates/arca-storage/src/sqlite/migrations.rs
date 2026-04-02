@@ -310,6 +310,29 @@ const MIGRATIONS: &[Migration] = &[
             ALTER TABLE multipart_uploads ADD COLUMN checksum_algorithm TEXT;
         ",
     },
+    Migration {
+        version: 14,
+        description: "Add notification_events table for event log and delivery tracking",
+        sql: "
+            CREATE TABLE IF NOT EXISTS notification_events (
+                id                TEXT PRIMARY KEY,
+                bucket            TEXT NOT NULL,
+                key               TEXT NOT NULL,
+                event_name        TEXT NOT NULL,
+                event_time        TEXT NOT NULL,
+                payload           TEXT NOT NULL,
+                destination_url   TEXT NOT NULL,
+                configuration_id  TEXT NOT NULL,
+                delivery_status   TEXT NOT NULL DEFAULT 'pending',
+                delivery_attempts INTEGER NOT NULL DEFAULT 0,
+                last_error        TEXT,
+                created_at        TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_notification_events_bucket ON notification_events(bucket);
+            CREATE INDEX IF NOT EXISTS idx_notification_events_status ON notification_events(delivery_status);
+            CREATE INDEX IF NOT EXISTS idx_notification_events_created ON notification_events(created_at);
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -383,7 +406,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 13);
+        assert_eq!(version, 14);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -416,6 +439,14 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM parts", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 0);
+
+        // Verify notification_events table exists
+        let count: u32 = conn
+            .query_row("SELECT COUNT(*) FROM notification_events", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 0);
     }
 
     #[test]
@@ -425,12 +456,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 13);
+        assert_eq!(version, 14);
 
         // Thirteen migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 13);
+        assert_eq!(count, 14);
     }
 }

@@ -107,9 +107,14 @@ pub fn spawn_metrics_worker(state: &AppState, interval_seconds: u64) -> Option<B
 ///
 /// Runs once per hour and deletes old audit log entries and metrics snapshots
 /// based on the effective retention settings (TOML > DB > default).
-pub fn spawn_retention_worker(state: &AppState) -> BackgroundWorker {
+pub fn spawn_retention_worker(
+    state: &AppState,
+    notification_retention_days: u32,
+) -> BackgroundWorker {
     let audit_store: Option<Arc<dyn AuditStore>> = state.audit_store.clone();
     let metrics_store: Option<Arc<dyn MetricsStore>> = state.metrics_store.clone();
+    let notification_store: Option<Arc<dyn arca_core::store::NotificationStore>> =
+        state.notification_store.clone();
     let server_config: Arc<dyn ServerConfigStore> = state.server_config.clone();
     let config_audit_ret = state.config_audit_retention_days;
     let config_metrics_ret = state.config_metrics_retention_days;
@@ -120,6 +125,7 @@ pub fn spawn_retention_worker(state: &AppState) -> BackgroundWorker {
         move || {
             let audit_store = audit_store.clone();
             let metrics_store = metrics_store.clone();
+            let notification_store = notification_store.clone();
             let server_config = server_config.clone();
             async move {
                 // Resolve effective audit retention
@@ -172,6 +178,29 @@ pub fn spawn_retention_worker(state: &AppState) -> BackgroundWorker {
                                 tracing::warn!(
                                     error = %e,
                                     "retention: failed to purge metrics snapshots"
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Purge old notification events
+                if notification_retention_days > 0 {
+                    if let Some(ref store) = notification_store {
+                        let cutoff = chrono::Utc::now()
+                            - chrono::Duration::days(notification_retention_days as i64);
+                        match store.purge_notification_events(cutoff).await {
+                            Ok(n) if n > 0 => {
+                                tracing::info!(
+                                    purged = n,
+                                    "retention: purged notification events"
+                                )
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                tracing::warn!(
+                                    error = %e,
+                                    "retention: failed to purge notification events"
                                 )
                             }
                         }
@@ -606,5 +635,217 @@ fn disk_stats(data_dirs: &[std::path::PathBuf]) -> (Option<u64>, Option<u64>) {
     {
         let _ = data_dirs;
         (None, None)
+    }
+}
+
+// ── Notification delivery worker ──
+
+use arca_core::s3::notification::{
+    matches_event, matches_filter, NotificationConfiguration, S3Event, S3EventMessage,
+};
+use arca_core::store::notification::{NotificationEventRecord, NotificationStore};
+use crate::config::NotificationsConfig;
+
+/// Spawn the notification delivery worker.
+///
+/// Reads S3 events from the mpsc channel, matches them against per-bucket
+/// notification configurations, persists records, and delivers webhooks.
+pub fn spawn_notification_worker(
+    mut rx: tokio::sync::mpsc::Receiver<S3Event>,
+    metadata: Arc<dyn MetadataStore>,
+    notification_store: Arc<dyn NotificationStore>,
+    region: String,
+    config: NotificationsConfig,
+) -> BackgroundWorker {
+    let handle = tokio::spawn(async move {
+        let http_client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(config.webhook_timeout_seconds))
+            .build()
+            .expect("build reqwest client");
+
+        // Simple in-memory cache for notification configs (bucket -> Option<config>).
+        let mut config_cache: std::collections::HashMap<
+            String,
+            (std::time::Instant, Option<NotificationConfiguration>),
+        > = std::collections::HashMap::new();
+        let cache_ttl = Duration::from_secs(60);
+
+        while let Some(event) = rx.recv().await {
+            // Look up notification config for this bucket (cached).
+            let notif_config = {
+                let now = std::time::Instant::now();
+                let cached = config_cache.get(&event.bucket);
+                if let Some((ts, cfg)) = cached {
+                    if now.duration_since(*ts) < cache_ttl {
+                        cfg.clone()
+                    } else {
+                        let cfg = fetch_notification_config(metadata.as_ref(), &event.bucket).await;
+                        config_cache.insert(event.bucket.clone(), (now, cfg.clone()));
+                        cfg
+                    }
+                } else {
+                    let cfg = fetch_notification_config(metadata.as_ref(), &event.bucket).await;
+                    config_cache.insert(event.bucket.clone(), (now, cfg.clone()));
+                    cfg
+                }
+            };
+
+            let notif_config = match notif_config {
+                Some(c) if !c.is_empty() => c,
+                _ => continue, // No notification config for this bucket
+            };
+
+            // Check each destination config for a match.
+            for dest in notif_config.all_configs() {
+                let event_matches = dest.events.iter().any(|pat| matches_event(&event.event_name, pat));
+                if !event_matches {
+                    continue;
+                }
+                if !matches_filter(&event.key, &dest.filter) {
+                    continue;
+                }
+
+                // Build the full event record
+                let record = event.to_record(&dest.id, &region);
+                let message = S3EventMessage {
+                    records: vec![record],
+                };
+                let payload = match serde_json::to_string(&message) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "notification: failed to serialize event");
+                        continue;
+                    }
+                };
+
+                let event_record = NotificationEventRecord {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    bucket: event.bucket.clone(),
+                    key: event.key.clone(),
+                    event_name: event.event_name.clone(),
+                    event_time: event.timestamp,
+                    payload: payload.clone(),
+                    destination_url: dest.arn.clone(),
+                    configuration_id: dest.id.clone(),
+                    delivery_status: "pending".to_string(),
+                    delivery_attempts: 0,
+                    last_error: None,
+                    created_at: chrono::Utc::now(),
+                };
+
+                // Persist the event record
+                if let Err(e) = notification_store.insert_notification_event(&event_record).await {
+                    tracing::warn!(error = %e, "notification: failed to persist event record");
+                    continue;
+                }
+
+                // Deliver webhook asynchronously
+                let client = http_client.clone();
+                let url = dest.arn.clone();
+                let store = notification_store.clone();
+                let event_id = event_record.id.clone();
+                let max_retries = config.max_retries;
+                let retry_base = config.retry_base_seconds;
+
+                tokio::spawn(async move {
+                    deliver_webhook(&client, &url, &payload, &store, &event_id, max_retries, retry_base).await;
+                });
+            }
+        }
+
+        tracing::info!("notification worker: channel closed, shutting down");
+    });
+
+    BackgroundWorker { handle }
+}
+
+/// Fetch and deserialize the notification configuration for a bucket.
+async fn fetch_notification_config(
+    metadata: &dyn MetadataStore,
+    bucket: &str,
+) -> Option<NotificationConfiguration> {
+    match metadata.get_bucket_config(bucket, "notification_configuration").await {
+        Ok(Some(json_str)) => match serde_json::from_str(&json_str) {
+            Ok(config) => Some(config),
+            Err(e) => {
+                tracing::warn!(error = %e, bucket = %bucket, "notification: corrupted config");
+                None
+            }
+        },
+        Ok(None) => None,
+        Err(e) => {
+            tracing::warn!(error = %e, bucket = %bucket, "notification: failed to read config");
+            None
+        }
+    }
+}
+
+/// Deliver a webhook POST with retry logic.
+async fn deliver_webhook(
+    client: &reqwest::Client,
+    url: &str,
+    payload: &str,
+    store: &Arc<dyn NotificationStore>,
+    event_id: &str,
+    max_retries: u32,
+    retry_base_seconds: u64,
+) {
+    let mut attempts = 0u32;
+
+    loop {
+        attempts += 1;
+        let result = client
+            .post(url)
+            .header("Content-Type", "application/json")
+            .body(payload.to_string())
+            .send()
+            .await;
+
+        match result {
+            Ok(resp) if resp.status().is_success() => {
+                let _ = store
+                    .update_notification_event_status(event_id, "delivered", attempts, None)
+                    .await;
+                tracing::debug!(url = %url, attempts, "notification: delivered");
+                return;
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                let error_msg = format!("HTTP {status}");
+                if attempts >= max_retries {
+                    let _ = store
+                        .update_notification_event_status(
+                            event_id,
+                            "failed",
+                            attempts,
+                            Some(&error_msg),
+                        )
+                        .await;
+                    tracing::warn!(url = %url, attempts, error = %error_msg, "notification: delivery failed permanently");
+                    return;
+                }
+                tracing::debug!(url = %url, attempts, error = %error_msg, "notification: retrying");
+            }
+            Err(e) => {
+                let error_msg = e.to_string();
+                if attempts >= max_retries {
+                    let _ = store
+                        .update_notification_event_status(
+                            event_id,
+                            "failed",
+                            attempts,
+                            Some(&error_msg),
+                        )
+                        .await;
+                    tracing::warn!(url = %url, attempts, error = %error_msg, "notification: delivery failed permanently");
+                    return;
+                }
+                tracing::debug!(url = %url, attempts, error = %error_msg, "notification: retrying");
+            }
+        }
+
+        // Exponential backoff
+        let delay = Duration::from_secs(retry_base_seconds * (1 << (attempts - 1)));
+        tokio::time::sleep(delay).await;
     }
 }

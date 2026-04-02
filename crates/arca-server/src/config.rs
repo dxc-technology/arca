@@ -11,6 +11,7 @@ pub struct Config {
     pub storage: StorageConfig,
     pub encryption: Option<EncryptionConfig>,
     pub monitoring: Option<MonitoringConfig>,
+    pub notifications: Option<NotificationsConfig>,
 }
 
 /// Server configuration.
@@ -468,6 +469,57 @@ pub struct MetricsConfig {
     /// How often to snapshot gauge metrics, in seconds.
     #[serde(default = "default_metrics_interval")]
     pub interval_seconds: u64,
+}
+
+/// Notifications configuration (optional tuning parameters).
+///
+/// Notifications are always enabled. This section is only needed to override
+/// operational defaults (channel size, retry behavior, webhook timeout, retention).
+#[derive(Debug, Clone, Deserialize)]
+pub struct NotificationsConfig {
+    /// In-memory event channel buffer size.
+    #[serde(default = "default_channel_size")]
+    pub channel_size: usize,
+    /// Maximum webhook delivery retries.
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+    /// Base retry backoff in seconds (exponential: base * 2^attempt).
+    #[serde(default = "default_retry_base_seconds")]
+    pub retry_base_seconds: u64,
+    /// Webhook HTTP POST timeout in seconds.
+    #[serde(default = "default_webhook_timeout_seconds")]
+    pub webhook_timeout_seconds: u64,
+    /// Number of days to retain notification events. 0 = keep forever.
+    #[serde(default = "default_event_retention_days")]
+    pub event_retention_days: u32,
+}
+
+impl Default for NotificationsConfig {
+    fn default() -> Self {
+        Self {
+            channel_size: default_channel_size(),
+            max_retries: default_max_retries(),
+            retry_base_seconds: default_retry_base_seconds(),
+            webhook_timeout_seconds: default_webhook_timeout_seconds(),
+            event_retention_days: default_event_retention_days(),
+        }
+    }
+}
+
+fn default_channel_size() -> usize {
+    10_000
+}
+fn default_max_retries() -> u32 {
+    3
+}
+fn default_retry_base_seconds() -> u64 {
+    1
+}
+fn default_webhook_timeout_seconds() -> u64 {
+    30
+}
+fn default_event_retention_days() -> u32 {
+    7
 }
 
 fn default_true() -> bool {

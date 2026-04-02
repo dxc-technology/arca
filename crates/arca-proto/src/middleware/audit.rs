@@ -176,6 +176,13 @@ pub fn classify_operation(method: &str, path: &str, query: Option<&str>) -> &'st
             _ => "Unknown",
         };
     }
+    if query.contains("notification") {
+        return match method {
+            "GET" => "GetBucketNotificationConfiguration",
+            "PUT" => "PutBucketNotificationConfiguration",
+            _ => "Unknown",
+        };
+    }
     if query.contains("delete") {
         return "DeleteObjects";
     }

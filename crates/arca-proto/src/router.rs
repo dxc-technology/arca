@@ -10,7 +10,7 @@ use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, OnRequest, OnResponse, TraceLayer};
 use tracing::Level;
 
-use crate::handlers::{admin, admin_grants, admin_monitoring, admin_settings, admin_teams, admin_users, archive, bucket, object};
+use crate::handlers::{admin, admin_grants, admin_monitoring, admin_notifications, admin_settings, admin_teams, admin_users, archive, bucket, object};
 use crate::middleware;
 use crate::state::AppState;
 
@@ -149,6 +149,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/audit", get(admin_monitoring::list_audit).delete(admin_monitoring::clear_audit))
         .route("/audit/stats", get(admin_monitoring::audit_stats))
         .route("/metrics/history", get(admin_monitoring::metrics_history))
+        // Notification events
+        .route("/notifications/events", get(admin_notifications::list_notification_events))
+        .route("/notifications/events/count", get(admin_notifications::count_notification_events))
+        .route("/notifications/test-webhook", post(admin_notifications::test_webhook))
         // Grant management
         .route("/grants", get(admin_grants::list_grants).post(admin_grants::create_grant))
         .route(

@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use arca_core::store::{AuditStore, BlobStore, CredentialStore, GrantStore, MetadataStore, MetricsStore, ServerConfigStore, SsecBlobOps, TeamStore, UserStore};
+use arca_core::store::{AuditStore, BlobStore, CredentialStore, GrantStore, MetadataStore, MetricsStore, NotificationStore, ServerConfigStore, SsecBlobOps, TeamStore, UserStore};
 
 use crate::metrics::MetricsRegistry;
 
@@ -67,9 +67,21 @@ pub struct AppState {
     pub max_metadata_size: u32,
     /// Drain mode receiver — when true, health endpoint returns 503.
     pub draining: tokio::sync::watch::Receiver<bool>,
+    /// Notification event channel sender (None = notifications disabled).
+    pub notification_tx: Option<tokio::sync::mpsc::Sender<arca_core::s3::notification::S3Event>>,
+    /// Notification event store (for persisting events and console log viewer).
+    pub notification_store: Option<Arc<dyn NotificationStore>>,
 }
 
 impl AppState {
+    /// Emit an S3 event to the notification channel (non-blocking, fire-and-forget).
+    /// If the channel is full, the event is silently dropped (S3 best-effort semantics).
+    pub fn emit_event(&self, event: arca_core::s3::notification::S3Event) {
+        if let Some(ref tx) = self.notification_tx {
+            let _ = tx.try_send(event);
+        }
+    }
+
     /// Returns the appropriate blob store for writing to a specific bucket.
     ///
     /// Checks per-bucket encryption config and the global default to decide

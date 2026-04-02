@@ -39,7 +39,7 @@ continuing from the MVP phases (0–11).
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">22</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">23</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">24</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">25</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">25</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">26</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">27</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">28</div>
@@ -82,7 +82,7 @@ graph LR
     style 22 fill:#2e7d32,color:#fff
     style 23 fill:#2e7d32,color:#fff
     style 24 fill:#2e7d32,color:#fff
-    style 25 fill:#1565c0,color:#fff
+    style 25 fill:#2e7d32,color:#fff
     style 26 fill:#1565c0,color:#fff
     style 27 fill:#1565c0,color:#fff
     style 28 fill:#1565c0,color:#fff
@@ -113,7 +113,7 @@ graph LR
 | 22 | [S3 API Completeness](#phase-22-s3-api-completeness-p2) | P2 | — | `v0.14.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 23 | [Performance and Hardening](#phase-23-performance-and-hardening-p2) | P2 | 13 | `v0.14.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 24 | [PostgreSQL Backend](#phase-24-postgresql-backend-p2) | P2 | — | `v0.16.1` | <span style="color:#4caf50">&#x2714;</span> |
-| 25 | [Notifications and Event System](#phase-25-notifications-and-event-system-p3) | P3 | 20 | | |
+| 25 | [Notifications and Event System](#phase-25-notifications-and-event-system-p3) | P3 | 20 | | <span style="color:#4caf50">&#x2714;</span> |
 | 26 | [Replication](#phase-26-replication-p3) | P3 | 17, 24 | | |
 | 27 | [Multi-Node and Erasure Coding](#phase-27-multi-node-and-erasure-coding-p3) | P3 | All prior | | |
 | 28 | [CLI Enhancements and Migration Tools](#phase-28-cli-enhancements-and-migration-tools-p3) | P3 | 13, 27 | | |
@@ -360,11 +360,17 @@ Alternative metadata backend for deployments requiring a shared database.
 
 S3-compatible bucket notifications for event-driven architectures.
 
-- [ ] Bucket notifications: `PutBucketNotificationConfiguration` / `GetBucketNotificationConfiguration`
-- [ ] Events: `s3:ObjectCreated:*`, `s3:ObjectRemoved:*`
-- [ ] Webhook destination (HTTP POST). Optional: AMQP, Redis Streams, NATS
-- [ ] S3-compatible JSON event format (`Records[].s3.bucket/object/eventName`)
-- [ ] (Console) Notification rules editor, event log viewer
+- [x] Bucket notifications: `PutBucketNotificationConfiguration` / `GetBucketNotificationConfiguration` — accepts TopicConfiguration, QueueConfiguration, CloudFunctionConfiguration, all treated as webhook destinations
+- [x] Events: `s3:ObjectCreated:Put`, `s3:ObjectCreated:Copy`, `s3:ObjectCreated:CompleteMultipartUpload`, `s3:ObjectRemoved:Delete`, `s3:ObjectRemoved:DeleteMarkerCreated`
+- [x] Webhook destination (HTTP POST) with exponential-backoff retry, configurable timeout and max retries
+- [x] S3-compatible JSON event format (`Records[].s3.bucket/object/eventName`) with event version 2.1
+- [x] Notification event persistence (`notification_events` table, SQLite migration v14, PostgreSQL schema) with delivery tracking and auto-purge
+- [x] Admin API: event log listing, count, test-webhook endpoint
+- [x] `[notifications]` config section: channel_size, max_retries, retry_base_seconds, webhook_timeout_seconds, event_retention_days
+- [x] (Console) Per-bucket notification rules editor with add/edit/remove webhooks, event type selection, prefix/suffix filters, test button
+- [x] (Console) Global notification event log viewer with filters, pagination, auto-refresh, and event detail modal
+- [x] Docker webhook receiver and `bin/test notifications` mode
+- [x] 35 unit tests + ~18 integration tests
 
 **Benefits from**: Phase 20 (lifecycle worker framework)
 

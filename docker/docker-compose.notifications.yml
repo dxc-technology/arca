@@ -1,0 +1,11 @@
+services:
+  webhook-receiver:
+    build:
+      context: ./webhook-receiver
+    ports:
+      - "8765:8765"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8765/health"]
+      interval: 2s
+      timeout: 5s
+      retries: 10

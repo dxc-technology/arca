@@ -224,6 +224,47 @@ run_ssec() {
     $COMPOSE run --rm test integration/test_ssec.py "$@"
 }
 
+run_notifications() {
+    echo "==> Running notification integration tests..."
+
+    enable_notifications
+    build_config
+
+    local COMPOSE
+    COMPOSE="$(compose_cmd)"
+
+    cleanup_notif() {
+        echo "Cleaning up notification test..."
+        $COMPOSE down -v 2>/dev/null || true
+    }
+    trap cleanup_notif EXIT
+
+    # Step 1: Build images
+    $COMPOSE build arca webhook-receiver
+    # Step 2: Start webhook receiver and Arca
+    $COMPOSE up -d webhook-receiver
+    $COMPOSE up -d arca
+    # Step 3: Wait for services to be ready
+    wait_for_arca "$COMPOSE"
+    echo "Waiting for webhook receiver..."
+    for i in $(seq 1 30); do
+        if $COMPOSE exec -T webhook-receiver wget -q --spider http://localhost:8765/health 2>/dev/null; then
+            echo "Webhook receiver ready"
+            break
+        fi
+        sleep 1
+    done
+    # Step 4: Run notification tests
+    $COMPOSE run --rm \
+        -e WEBHOOK_RECEIVER_URL=http://webhook-receiver:8765 \
+        test integration/test_notifications.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_notif
+    return $rc
+}
+
 run_s3_compat() {
     echo "==> Running s3-tests compatibility suite..."
     exec "$(git rev-parse --show-toplevel)/bin/s3-tests" "$@"
@@ -265,6 +306,10 @@ case "${1:-all}" in
     ssec)
         shift
         run_ssec "$@"
+        ;;
+    notifications)
+        shift
+        run_notifications "$@"
         ;;
     s3-compat)
         shift

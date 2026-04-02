@@ -501,6 +501,20 @@ export function apiClient() {
       entries.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
       return entries;
     },
+
+    // ── Notification Configuration ──
+
+    async s3GetBucketNotification(bucket) {
+      return await this.request('GET', '/' + encodeURIComponent(bucket), { queryParams: { notification: '' } });
+    },
+
+    async s3PutBucketNotification(bucket, xml) {
+      return await this.request('PUT', '/' + encodeURIComponent(bucket), {
+        body: xml,
+        contentType: 'application/xml',
+        queryParams: { notification: '' },
+      });
+    },
   };
 }
 

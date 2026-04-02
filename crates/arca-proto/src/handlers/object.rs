@@ -640,6 +640,21 @@ pub async fn put_object(
         }
     }
 
+    // Emit notification event
+    state.emit_event(arca_core::s3::notification::S3Event {
+        event_name: "s3:ObjectCreated:Put".to_string(),
+        bucket: record.bucket.clone(),
+        key: record.key.clone(),
+        size: record.size,
+        etag: put_result.etag.clone(),
+        version_id: stored.as_ref().and_then(|r| r.version_id.clone()),
+        sequencer: uuid::Uuid::new_v4().simple().to_string(),
+        user_identity: None,
+        source_ip: None,
+        request_id: None,
+        timestamp: chrono::Utc::now(),
+    });
+
     let etag = format!("\"{}\"", put_result.etag);
     let mut builder = Response::builder()
         .status(StatusCode::OK)
@@ -1004,6 +1019,21 @@ async fn copy_object(
             }
         }
     }
+
+    // Emit notification event
+    state.emit_event(arca_core::s3::notification::S3Event {
+        event_name: "s3:ObjectCreated:Copy".to_string(),
+        bucket: record.bucket.clone(),
+        key: record.key.clone(),
+        size: record.size,
+        etag: put_result.etag.clone(),
+        version_id: stored.as_ref().and_then(|r| r.version_id.clone()),
+        sequencer: uuid::Uuid::new_v4().simple().to_string(),
+        user_identity: None,
+        source_ip: None,
+        request_id: None,
+        timestamp: chrono::Utc::now(),
+    });
 
     // CopyObject returns XML body (not just headers like PutObject).
     let xml = xml_types::copy_object_result(&put_result.etag, &now);
@@ -1923,6 +1953,28 @@ pub async fn delete_object(
                 tracing::warn!(error = %e, "Failed to delete blob for deleted object");
             }
         }
+    }
+
+    // Emit notification event (for actual deletes and delete markers)
+    if old.is_some() {
+        let event_name = if old.as_ref().is_some_and(|r| r.is_delete_marker) {
+            "s3:ObjectRemoved:DeleteMarkerCreated"
+        } else {
+            "s3:ObjectRemoved:Delete"
+        };
+        state.emit_event(arca_core::s3::notification::S3Event {
+            event_name: event_name.to_string(),
+            bucket: bucket.clone(),
+            key: key.clone(),
+            size: 0,
+            etag: String::new(),
+            version_id: old.as_ref().and_then(|r| r.version_id.clone()),
+            sequencer: uuid::Uuid::new_v4().simple().to_string(),
+            user_identity: None,
+            source_ip: None,
+            request_id: None,
+            timestamp: chrono::Utc::now(),
+        });
     }
 
     // S3 returns 204 regardless of whether the object existed.

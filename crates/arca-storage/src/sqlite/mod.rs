@@ -10,6 +10,7 @@ mod grant;
 mod metadata;
 mod metrics;
 mod migrations;
+mod notification;
 mod server_config;
 mod team;
 pub(crate) mod user;

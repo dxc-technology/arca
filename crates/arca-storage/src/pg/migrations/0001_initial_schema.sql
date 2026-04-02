@@ -216,3 +216,22 @@ CREATE TABLE bucket_tags (
     tag_value TEXT NOT NULL,
     PRIMARY KEY (bucket, tag_key)
 );
+
+-- Notification events (v14)
+CREATE TABLE notification_events (
+    id                TEXT PRIMARY KEY,
+    bucket            TEXT NOT NULL,
+    key               TEXT NOT NULL,
+    event_name        TEXT NOT NULL,
+    event_time        TIMESTAMPTZ NOT NULL,
+    payload           TEXT NOT NULL,
+    destination_url   TEXT NOT NULL,
+    configuration_id  TEXT NOT NULL,
+    delivery_status   TEXT NOT NULL DEFAULT 'pending',
+    delivery_attempts INTEGER NOT NULL DEFAULT 0,
+    last_error        TEXT,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_notification_events_bucket ON notification_events(bucket);
+CREATE INDEX idx_notification_events_status ON notification_events(delivery_status);
+CREATE INDEX idx_notification_events_created ON notification_events(created_at);
