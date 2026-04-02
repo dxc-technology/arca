@@ -6,7 +6,7 @@
 
 <p align="center">
   Open source S3-compatible object storage server written in Rust.<br>
-  <a href="https://dxc-technology.github.io/arca/">Documentation</a> · <a href="CHANGELOG.md">Changelog</a>
+  <a href="https://dxc-technology.github.io/arca/">Documentation</a> · <a href="CHANGELOG.md">Changelog</a> · <a href="https://dxc-technology.github.io/arca/report.html">Project Report</a>
 </p>
 
 <p align="center">
