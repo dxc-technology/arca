@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-04-02
+
 ### Added
 
 - **Phase 25: Notifications and Event System**
@@ -14,18 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Event emission**: `s3:ObjectCreated:Put`, `s3:ObjectCreated:Copy`, `s3:ObjectCreated:CompleteMultipartUpload`, `s3:ObjectRemoved:Delete`, `s3:ObjectRemoved:DeleteMarkerCreated` events emitted from handlers via non-blocking mpsc channel
 - **Webhook delivery worker**: background worker consumes events, matches per-bucket notification rules (event type + prefix/suffix filters), delivers HTTP POST to configured webhook URLs with exponential-backoff retry (configurable max retries, base delay, timeout)
 - **Notification event persistence**: `notification_events` table (SQLite migration v14, PostgreSQL schema update) stores delivery records with status tracking (`pending`/`delivered`/`failed`)
+- **Per-webhook Enabled/Disabled toggle**: Arca extension persisted via `<Enabled>` XML element, allowing temporary webhook suspension without removal
 - **`NotificationStore` trait**: CRUD + purge for notification event records, implemented for both SQLite and PostgreSQL backends
-- **Admin API**: `GET /admin/notifications/events` (list with filters), `GET /admin/notifications/events/count`, `POST /admin/notifications/test-webhook` (connectivity test)
+- **Admin API**: `GET /admin/notifications/events` (list with filters), `GET /admin/notifications/events/count`, `DELETE /admin/notifications/events` (clear with confirmation), `POST /admin/notifications/test-webhook` (connectivity test)
 - **`[notifications]` config section** (optional): tuning parameters for channel size, retry behavior, webhook timeout, and event retention days (default: 7)
 - **Event retention**: notification events automatically purged by the retention worker based on `event_retention_days`
 - **Notification config caching**: in-memory cache with 60s TTL in the delivery worker to avoid per-event DB reads
-- **(Console)**: Notification event log viewer with filters (bucket, event type, delivery status), pagination, auto-refresh, and event detail modal
-- **(Console)**: Per-bucket notification rules editor in bucket settings (add/edit/remove webhook destinations, event type selection, prefix/suffix filters, test webhook button)
-- **(Console)**: Sidebar navigation link for Notifications page
+- **(Console)**: Notification event log viewer with audit-style inline column header filters (Time, Event, Bucket, Key, Destination, Status), pagination, side panel detail, clear-all with confirmation
+- **(Console)**: Per-bucket notification rules editor in bucket settings (lifecycle-style inline forms, Enabled/Disabled toggle, prefix/suffix filters, test webhook button)
+- **(Console)**: Sidebar navigation link for Notifications (between Audit Log and Monitoring)
 - Docker webhook receiver service (`docker/webhook-receiver/`) for integration testing
 - `bin/test notifications` mode with webhook receiver compose overlay
-- 31 unit tests (XML parsing, event matching, filter matching, roundtrip, validation)
-- 4 unit tests (SQLite NotificationStore: insert, list, update status, purge, pagination)
+- 35 unit tests (XML parsing/roundtrip, event matching, filter matching, validation, NotificationStore CRUD)
 - ~18 integration tests (configuration CRUD, webhook delivery, event format, filters, batch delete, admin API)
 
 ## [0.16.1] — 2026-04-01
@@ -360,7 +362,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.16.1...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/dxc-technology/arca/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/dxc-technology/arca/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/dxc-technology/arca/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/dxc-technology/arca/compare/v0.14.0...v0.15.0

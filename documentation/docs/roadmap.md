@@ -113,7 +113,7 @@ graph LR
 | 22 | [S3 API Completeness](#phase-22-s3-api-completeness-p2) | P2 | — | `v0.14.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 23 | [Performance and Hardening](#phase-23-performance-and-hardening-p2) | P2 | 13 | `v0.14.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 24 | [PostgreSQL Backend](#phase-24-postgresql-backend-p2) | P2 | — | `v0.16.1` | <span style="color:#4caf50">&#x2714;</span> |
-| 25 | [Notifications and Event System](#phase-25-notifications-and-event-system-p3) | P3 | 20 | | <span style="color:#4caf50">&#x2714;</span> |
+| 25 | [Notifications and Event System](#phase-25-notifications-and-event-system-p3) | P3 | 20 | `v0.17.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 26 | [Replication](#phase-26-replication-p3) | P3 | 17, 24 | | |
 | 27 | [Multi-Node and Erasure Coding](#phase-27-multi-node-and-erasure-coding-p3) | P3 | All prior | | |
 | 28 | [CLI Enhancements and Migration Tools](#phase-28-cli-enhancements-and-migration-tools-p3) | P3 | 13, 27 | | |

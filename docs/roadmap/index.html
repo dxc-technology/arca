@@ -2040,7 +2040,7 @@ continuing from the MVP phases (0–11).</p>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">22</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">23</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">24</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">25</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">25</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">26</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">27</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">28</div>
@@ -2081,7 +2081,7 @@ continuing from the MVP phases (0–11).</p>
     style 22 fill:#2e7d32,color:#fff
     style 23 fill:#2e7d32,color:#fff
     style 24 fill:#2e7d32,color:#fff
-    style 25 fill:#1565c0,color:#fff
+    style 25 fill:#2e7d32,color:#fff
     style 26 fill:#1565c0,color:#fff
     style 27 fill:#1565c0,color:#fff
     style 28 fill:#1565c0,color:#fff
@@ -2214,8 +2214,8 @@ continuing from the MVP phases (0–11).</p>
 <td><a href="#phase-25-notifications-and-event-system-p3">Notifications and Event System</a></td>
 <td style="text-align: center;">P3</td>
 <td style="text-align: center;">20</td>
-<td style="text-align: center;"></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><code>v0.17.0</code></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">26</td>
@@ -2455,11 +2455,17 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 <h3 id="phase-25-notifications-and-event-system-p3">Phase 25 — Notifications and Event System [P3]<a class="headerlink" href="#phase-25-notifications-and-event-system-p3" title="Permanent link">&para;</a></h3>
 <p>S3-compatible bucket notifications for event-driven architectures.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Bucket notifications: <code>PutBucketNotificationConfiguration</code> / <code>GetBucketNotificationConfiguration</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Events: <code>s3:ObjectCreated:*</code>, <code>s3:ObjectRemoved:*</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Webhook destination (HTTP POST). Optional: AMQP, Redis Streams, NATS</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> S3-compatible JSON event format (<code>Records[].s3.bucket/object/eventName</code>)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> (Console) Notification rules editor, event log viewer</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Bucket notifications: <code>PutBucketNotificationConfiguration</code> / <code>GetBucketNotificationConfiguration</code> — accepts TopicConfiguration, QueueConfiguration, CloudFunctionConfiguration, all treated as webhook destinations</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Events: <code>s3:ObjectCreated:Put</code>, <code>s3:ObjectCreated:Copy</code>, <code>s3:ObjectCreated:CompleteMultipartUpload</code>, <code>s3:ObjectRemoved:Delete</code>, <code>s3:ObjectRemoved:DeleteMarkerCreated</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Webhook destination (HTTP POST) with exponential-backoff retry, configurable timeout and max retries</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> S3-compatible JSON event format (<code>Records[].s3.bucket/object/eventName</code>) with event version 2.1</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Notification event persistence (<code>notification_events</code> table, SQLite migration v14, PostgreSQL schema) with delivery tracking and auto-purge</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Admin API: event log listing, count, test-webhook endpoint</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>[notifications]</code> config section: channel_size, max_retries, retry_base_seconds, webhook_timeout_seconds, event_retention_days</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> (Console) Per-bucket notification rules editor with add/edit/remove webhooks, event type selection, prefix/suffix filters, test button</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> (Console) Global notification event log viewer with filters, pagination, auto-refresh, and event detail modal</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Docker webhook receiver and <code>bin/test notifications</code> mode</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> 35 unit tests + ~18 integration tests</li>
 </ul>
 <p><strong>Benefits from</strong>: Phase 20 (lifecycle worker framework)</p>
 <hr />
