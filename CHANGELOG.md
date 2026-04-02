@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **(Console)**: Settings page reorganized: "Monitoring" section renamed to "Data Retention" with all retention policies grouped together (Audit Log, Notification Events, Metrics Snapshots), ordered by sidebar position
 - **Notification event retention** is now a server setting (`notification_retention_days`) manageable from the console, following the same TOML > DB > default precedence as audit and metrics retention (default: 7 days)
 
+### Fixed
+
+- **(Console)**: Monitoring chart line clipping at maximum values: Y-axis scale now always extends above the data maximum, preventing the line from being drawn outside the SVG viewBox
+
 ## [0.17.0] — 2026-04-02
 
 ### Added
