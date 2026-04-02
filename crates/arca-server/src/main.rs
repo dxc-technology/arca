@@ -200,6 +200,7 @@ async fn main() -> Result<()> {
                 config_audit_retention_days,
                 metrics_enabled,
                 config_metrics_retention_days,
+                config_notification_retention_days: config.notifications.as_ref().and_then(|n| n.event_retention_days),
                 encryption_enabled,
                 kms_provider,
                 kms_endpoint,
@@ -242,10 +243,7 @@ async fn main() -> Result<()> {
                 .map(|m| m.interval_seconds)
                 .unwrap_or(60);
             let _metrics_worker = worker::spawn_metrics_worker(&state, metrics_interval);
-            let _retention_worker = worker::spawn_retention_worker(
-                &state,
-                notif_config.event_retention_days,
-            );
+            let _retention_worker = worker::spawn_retention_worker(&state);
             let _lifecycle_worker = worker::spawn_lifecycle_worker(&state, None);
             let _notification_worker = if let Some(ref notif_store) = state.notification_store {
                 let region = state.config_region.clone().unwrap_or_else(|| "us-east-1".to_string());

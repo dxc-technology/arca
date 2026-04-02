@@ -107,10 +107,7 @@ pub fn spawn_metrics_worker(state: &AppState, interval_seconds: u64) -> Option<B
 ///
 /// Runs once per hour and deletes old audit log entries and metrics snapshots
 /// based on the effective retention settings (TOML > DB > default).
-pub fn spawn_retention_worker(
-    state: &AppState,
-    notification_retention_days: u32,
-) -> BackgroundWorker {
+pub fn spawn_retention_worker(state: &AppState) -> BackgroundWorker {
     let audit_store: Option<Arc<dyn AuditStore>> = state.audit_store.clone();
     let metrics_store: Option<Arc<dyn MetricsStore>> = state.metrics_store.clone();
     let notification_store: Option<Arc<dyn arca_core::store::NotificationStore>> =
@@ -118,6 +115,7 @@ pub fn spawn_retention_worker(
     let server_config: Arc<dyn ServerConfigStore> = state.server_config.clone();
     let config_audit_ret = state.config_audit_retention_days;
     let config_metrics_ret = state.config_metrics_retention_days;
+    let config_notif_ret = state.config_notification_retention_days;
 
     BackgroundWorker::spawn_periodic(
         "retention-purge",
@@ -184,11 +182,19 @@ pub fn spawn_retention_worker(
                     }
                 }
 
-                // Purge old notification events
-                if notification_retention_days > 0 {
+                // Resolve effective notification retention
+                let notif_days = resolve_retention(
+                    config_notif_ret,
+                    server_config.as_ref(),
+                    "notification_retention_days",
+                    7,
+                )
+                .await;
+
+                if notif_days > 0 {
                     if let Some(ref store) = notification_store {
                         let cutoff = chrono::Utc::now()
-                            - chrono::Duration::days(notification_retention_days as i64);
+                            - chrono::Duration::days(notif_days as i64);
                         match store.purge_notification_events(cutoff).await {
                             Ok(n) if n > 0 => {
                                 tracing::info!(

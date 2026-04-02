@@ -21,6 +21,9 @@ const DEFAULT_AUDIT_RETENTION_DAYS: u32 = 90;
 /// Default metrics retention in days.
 const DEFAULT_METRICS_RETENTION_DAYS: u32 = 30;
 
+/// Default notification event retention in days.
+const DEFAULT_NOTIFICATION_RETENTION_DAYS: u32 = 7;
+
 /// Default lifecycle evaluation interval in seconds (1 hour).
 const DEFAULT_LIFECYCLE_EVALUATION_INTERVAL: u64 = 3600;
 
@@ -37,6 +40,7 @@ const DEFAULT_PREVIEW_MAX_VIDEO_MB: u32 = 100;
 const KNOWN_SETTINGS: &[&str] = &[
     "region",
     "audit_retention_days",
+    "notification_retention_days",
     "metrics_retention_days",
     "lifecycle_evaluation_interval",
     "preview_max_size_mb",
@@ -57,6 +61,7 @@ struct SettingValue {
 struct SettingsResponse {
     region: SettingValue,
     audit_retention_days: SettingValue,
+    notification_retention_days: SettingValue,
     metrics_retention_days: SettingValue,
     lifecycle_evaluation_interval: SettingValue,
     preview_max_size_mb: SettingValue,
@@ -139,6 +144,27 @@ async fn resolve_setting(
                 })
             }
         }
+        "notification_retention_days" => {
+            if let Some(days) = state.config_notification_retention_days {
+                Ok(SettingValue {
+                    value: days.to_string(),
+                    source: "config_file",
+                    readonly: true,
+                })
+            } else if let Ok(Some(val)) = state.server_config.get_server_config("notification_retention_days").await {
+                Ok(SettingValue {
+                    value: val,
+                    source: "database",
+                    readonly: false,
+                })
+            } else {
+                Ok(SettingValue {
+                    value: DEFAULT_NOTIFICATION_RETENTION_DAYS.to_string(),
+                    source: "default",
+                    readonly: false,
+                })
+            }
+        }
         "lifecycle_evaluation_interval" => {
             if let Ok(Some(val)) = state.server_config.get_server_config("lifecycle_evaluation_interval").await {
                 Ok(SettingValue {
@@ -209,6 +235,7 @@ pub async fn list_settings(
 ) -> Result<impl IntoResponse, AdminError> {
     let region = resolve_setting(&state, "region").await?;
     let audit_retention_days = resolve_setting(&state, "audit_retention_days").await?;
+    let notification_retention_days = resolve_setting(&state, "notification_retention_days").await?;
     let metrics_retention_days = resolve_setting(&state, "metrics_retention_days").await?;
     let lifecycle_evaluation_interval = resolve_setting(&state, "lifecycle_evaluation_interval").await?;
     let preview_max_size_mb = resolve_setting(&state, "preview_max_size_mb").await?;
@@ -218,6 +245,7 @@ pub async fn list_settings(
     Ok(Json(SettingsResponse {
         region,
         audit_retention_days,
+        notification_retention_days,
         metrics_retention_days,
         lifecycle_evaluation_interval,
         preview_max_size_mb,

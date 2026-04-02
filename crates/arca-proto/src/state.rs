@@ -39,6 +39,8 @@ pub struct AppState {
     pub metrics_enabled: bool,
     /// Metrics retention days from config file (None = console can set it).
     pub config_metrics_retention_days: Option<u32>,
+    /// Notification event retention days from config file (None = console can set it).
+    pub config_notification_retention_days: Option<u32>,
     /// Whether server-side encryption is enabled by default for new objects.
     pub encryption_enabled: bool,
     /// KMS provider: "local" (config file), "vault" (Vault/OpenBAO), or None.
