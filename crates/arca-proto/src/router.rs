@@ -150,7 +150,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/audit/stats", get(admin_monitoring::audit_stats))
         .route("/metrics/history", get(admin_monitoring::metrics_history))
         // Notification events
-        .route("/notifications/events", get(admin_notifications::list_notification_events))
+        .route("/notifications/events", get(admin_notifications::list_notification_events).delete(admin_notifications::clear_notification_events))
         .route("/notifications/events/count", get(admin_notifications::count_notification_events))
         .route("/notifications/test-webhook", post(admin_notifications::test_webhook))
         // Grant management

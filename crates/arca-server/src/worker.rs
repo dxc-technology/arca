@@ -697,6 +697,9 @@ pub fn spawn_notification_worker(
 
             // Check each destination config for a match.
             for dest in notif_config.all_configs() {
+                if !dest.enabled {
+                    continue;
+                }
                 let event_matches = dest.events.iter().any(|pat| matches_event(&event.event_name, pat));
                 if !event_matches {
                     continue;

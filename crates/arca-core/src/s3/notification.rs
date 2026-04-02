@@ -61,6 +61,15 @@ pub struct DestinationConfig {
     /// Optional key filter (prefix and/or suffix).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter: Option<NotificationFilter>,
+    /// Whether this destination is active (Arca extension, not part of S3 spec).
+    /// Preserved in JSON storage, ignored in XML serialization.
+    /// Allows temporarily disabling a webhook without removing it.
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+fn default_enabled() -> bool {
+    true
 }
 
 /// S3 key-name notification filter.
@@ -317,6 +326,9 @@ pub fn parse_notification_configuration_xml(
         events: Vec<String>,
         #[serde(rename = "Filter")]
         filter: Option<XmlFilter>,
+        // Arca extension: enabled/disabled state (defaults to true when absent)
+        #[serde(rename = "Enabled")]
+        enabled: Option<String>,
     }
 
     #[derive(Deserialize)]
@@ -422,12 +434,15 @@ pub fn parse_notification_configuration_xml(
 
             let id = cfg.id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
+            let enabled = cfg.enabled.as_deref() != Some("false");
+
             result.push(DestinationConfig {
                 id,
                 destination_type: dest_type,
                 arn,
                 events,
                 filter,
+                enabled,
             });
         }
         Ok(result)
@@ -548,6 +563,11 @@ fn write_destination_config_xml(
         writer
             .write_event(Event::End(BytesEnd::new("Filter")))
             .expect("write Filter end");
+    }
+
+    // Arca extension: persist enabled/disabled state in XML
+    if !cfg.enabled {
+        write_xml_element(writer, "Enabled", "false");
     }
 
     writer
@@ -867,6 +887,7 @@ mod tests {
                         }],
                     },
                 }),
+                enabled: true,
             }],
             queue_configurations: vec![],
             cloud_function_configurations: vec![],
@@ -886,6 +907,7 @@ mod tests {
                 arn: "http://example.com/topic".to_string(),
                 events: vec!["s3:ObjectCreated:Put".to_string()],
                 filter: None,
+                enabled: true,
             }],
             queue_configurations: vec![DestinationConfig {
                 id: "q1".to_string(),
@@ -893,6 +915,7 @@ mod tests {
                 arn: "http://example.com/queue".to_string(),
                 events: vec!["s3:ObjectRemoved:Delete".to_string()],
                 filter: None,
+                enabled: true,
             }],
             cloud_function_configurations: vec![DestinationConfig {
                 id: "cf1".to_string(),
@@ -913,6 +936,7 @@ mod tests {
                         ],
                     },
                 }),
+                enabled: true,
             }],
         };
 
@@ -938,6 +962,7 @@ mod tests {
                 arn: "http://example.com/webhook".to_string(),
                 events: vec!["s3:ObjectCreated:*".to_string()],
                 filter: None,
+                enabled: true,
             }],
             queue_configurations: vec![],
             cloud_function_configurations: vec![],
@@ -1101,6 +1126,7 @@ mod tests {
                 arn: "http://a.com".to_string(),
                 events: vec!["s3:ObjectCreated:*".to_string()],
                 filter: None,
+                enabled: true,
             }],
             queue_configurations: vec![DestinationConfig {
                 id: "q1".to_string(),
@@ -1108,6 +1134,7 @@ mod tests {
                 arn: "http://b.com".to_string(),
                 events: vec!["s3:ObjectRemoved:*".to_string()],
                 filter: None,
+                enabled: true,
             }],
             cloud_function_configurations: vec![],
         };
@@ -1129,6 +1156,7 @@ mod tests {
                 arn: "http://a.com".to_string(),
                 events: vec!["s3:ObjectCreated:*".to_string()],
                 filter: None,
+                enabled: true,
             }],
             ..Default::default()
         };

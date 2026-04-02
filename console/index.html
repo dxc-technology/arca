@@ -146,9 +146,13 @@
     .col-filter:hover .fi { opacity: 0.5; }
     .col-filter.active .fi { opacity: 1; color: #00d4ff; }
     .col-filter.active::after {
-      content: ''; position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%);
+      content: ''; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
       width: 16px; height: 2px; background: #00d4ff; border-radius: 1px;
+      pointer-events: none;
     }
+    /* In fixed-layout tables, <th> stretches full height so ::after leaks to table bottom.
+       Clip it by making the <th> itself the containing block with bounded height. */
+    table[style*="table-layout"] th { position: relative; overflow: hidden; }
     .filter-badge {
       display: inline-flex; align-items: center; gap: 3px;
       font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #00d4ff;
@@ -208,11 +212,13 @@
     .key-inline {
       background: rgba(15,23,42,0.8); border: 1px solid rgba(0,212,255,0.3);
       border-radius: 4px; color: #e2e8f0; font-family: 'JetBrains Mono', monospace;
-      font-size: 10px; padding: 2px 6px; width: 100%; outline: none;
-      position: absolute; top: 50%; left: 8px; right: 8px; transform: translateY(-50%);
+      font-size: 10px; padding: 2px 6px; outline: none;
+      width: 100%; min-width: 80px; box-sizing: border-box;
     }
     .key-inline:focus { border-color: rgba(0,212,255,0.6); }
     .key-inline::placeholder { color: #475569; }
+    /* Hide the blue underline when a text input is focused inside the filter */
+    .col-filter:has(.key-inline:focus)::after { display: none; }
 
     /* Operation filter: presets */
     .op-presets { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 10px; }
@@ -401,15 +407,15 @@
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25Z"/></svg>
             Audit Log
           </a>
-          <!-- Monitoring (admin only) -->
-          <a x-show="isAdmin" @click="navigate('monitoring')" :class="view === 'monitoring' ? 'text-vault-accent bg-vault-accent/10 border-r-2 border-vault-accent' : 'text-vault-muted hover:text-vault-text hover:bg-white/5'" class="flex items-center gap-3 px-4 py-2.5 text-sm cursor-pointer transition-all duration-150">
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"/></svg>
-            Monitoring
-          </a>
           <!-- Notifications (admin only) -->
           <a x-show="isAdmin" @click="navigate('notifications')" :class="view === 'notifications' ? 'text-vault-accent bg-vault-accent/10 border-r-2 border-vault-accent' : 'text-vault-muted hover:text-vault-text hover:bg-white/5'" class="flex items-center gap-3 px-4 py-2.5 text-sm cursor-pointer transition-all duration-150">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0"/></svg>
             Notifications
+          </a>
+          <!-- Monitoring (admin only) -->
+          <a x-show="isAdmin" @click="navigate('monitoring')" :class="view === 'monitoring' ? 'text-vault-accent bg-vault-accent/10 border-r-2 border-vault-accent' : 'text-vault-muted hover:text-vault-text hover:bg-white/5'" class="flex items-center gap-3 px-4 py-2.5 text-sm cursor-pointer transition-all duration-150">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"/></svg>
+            Monitoring
           </a>
           <!-- Settings (admin only) -->
           <a x-show="isAdmin" @click="navigate('settings')" :class="view === 'settings' ? 'text-vault-accent bg-vault-accent/10 border-r-2 border-vault-accent' : 'text-vault-muted hover:text-vault-text hover:bg-white/5'" class="flex items-center gap-3 px-4 py-2.5 text-sm cursor-pointer transition-all duration-150">
@@ -1005,105 +1011,177 @@
                 <p x-show="lifecycleError" x-text="lifecycleError" class="text-red-400 text-xs mt-2"></p>
               </div>
 
-              <!-- Notification Configuration card -->
+              <!-- Notification Webhooks card (lifecycle-style inline editor) -->
               <div class="glass rounded-xl p-5" x-data="bucketNotificationEditor" x-init="loadNotifications(bucketName)">
-                <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center justify-between mb-3">
                   <div class="flex items-center gap-2">
                     <svg class="w-4 h-4 text-vault-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0"/></svg>
-                    <span class="text-sm font-semibold uppercase tracking-wider text-vault-text">Notifications</span>
+                    <span class="text-sm font-semibold uppercase tracking-wider text-vault-text">Notification Webhooks</span>
+                    <svg x-show="saving" class="animate-spin h-3.5 w-3.5 text-vault-accent ml-1" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                   </div>
-                  <button @click="openAdd()" class="text-xs text-vault-accent hover:text-vault-accent/80">+ Add webhook</button>
+                  <button @click="initNewWebhook()" :disabled="saving || showAddForm"
+                    class="px-2.5 py-1 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/30 text-xs font-medium hover:bg-vault-accent/20 transition disabled:opacity-40">
+                    + Add Webhook
+                  </button>
                 </div>
 
-                <div x-show="loading" class="flex justify-center py-4">
-                  <div class="w-5 h-5 border-2 border-vault-accent border-t-transparent rounded-full animate-spin"></div>
-                </div>
+                <template x-if="loading">
+                  <div class="flex justify-center py-4">
+                    <svg class="animate-spin h-5 w-5 text-vault-accent" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                  </div>
+                </template>
 
-                <div x-show="!loading && configs.length === 0 && !showAddModal" class="text-sm text-vault-muted py-2">
-                  No notification webhooks configured.
-                </div>
+                <template x-if="!loading && configs.length === 0 && !showAddForm">
+                  <p class="text-xs text-vault-muted py-2">No notification webhooks configured. Events will not be delivered.</p>
+                </template>
 
-                <!-- Webhook list -->
-                <div x-show="!loading && configs.length > 0" class="space-y-2">
-                  <template x-for="(cfg, idx) in configs" :key="cfg.id">
-                    <div class="flex items-center justify-between bg-black/20 rounded-lg px-3 py-2">
-                      <div class="flex-1 min-w-0">
-                        <div class="text-sm font-medium truncate" x-text="cfg.arn"></div>
-                        <div class="text-xs text-vault-muted mt-0.5">
-                          <span x-text="cfg.events.join(', ')"></span>
-                          <span x-show="cfg.prefix" class="ml-2 text-vault-accent" x-text="'prefix: ' + cfg.prefix"></span>
-                          <span x-show="cfg.suffix" class="ml-2 text-vault-accent" x-text="'suffix: ' + cfg.suffix"></span>
+                <!-- Existing webhooks list (lifecycle-style: display + inline edit) -->
+                <template x-for="(cfg, index) in configs" :key="index">
+                  <div class="py-2.5 border-b border-vault-border/30 last:border-0">
+                    <!-- Display mode -->
+                    <template x-if="editingIndex !== index">
+                      <div class="flex items-center gap-3">
+                        <div class="flex-1 min-w-0 cursor-pointer group" @click="startEditWebhook(index)">
+                          <div class="flex items-center gap-2">
+                            <span class="text-sm font-medium text-vault-text truncate group-hover:text-vault-accent transition" x-text="cfg.arn"></span>
+                            <button @click.stop="toggleWebhookEnabled(index, bucketName)" :disabled="saving"
+                              class="text-[10px] px-1.5 py-0.5 rounded-full font-medium cursor-pointer transition"
+                              :class="cfg.enabled ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25' : 'bg-vault-border/30 text-vault-muted hover:bg-vault-border/50'"
+                              x-text="cfg.enabled ? 'Enabled' : 'Disabled'"></button>
+                            <button @click.stop="testWebhook(cfg.arn)" class="text-[10px] px-1.5 py-0.5 rounded-full font-medium cursor-pointer transition bg-vault-border/30 text-vault-muted hover:bg-vault-accent/15 hover:text-vault-accent" title="Test webhook">test</button>
+                            <svg class="w-3 h-3 text-vault-muted opacity-0 group-hover:opacity-100 transition" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Z"/></svg>
+                          </div>
+                          <div class="text-[11px] text-vault-muted mt-0.5 flex flex-wrap gap-x-2">
+                            <span x-text="cfg.events.map(e => shortEvent(e)).join(', ')"></span>
+                            <span x-show="cfg.prefix" class="inline-flex items-center gap-0.5"><span class="text-vault-muted/60">prefix:</span> <span x-text="cfg.prefix"></span></span>
+                            <span x-show="cfg.suffix" class="inline-flex items-center gap-0.5"><span class="text-vault-muted/60">suffix:</span> <span x-text="cfg.suffix"></span></span>
+                          </div>
                         </div>
+                        <button @click="removeWebhook(index, bucketName)" :disabled="saving" class="text-vault-muted hover:text-red-400 transition p-1 flex-shrink-0" title="Remove webhook">
+                          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+                        </button>
                       </div>
-                      <div class="flex items-center gap-1 ml-2 flex-shrink-0">
-                        <button @click="testWebhook(cfg.arn)" class="p-1.5 rounded-lg hover:bg-vault-accent/10 text-vault-muted hover:text-vault-accent transition" title="Test webhook">
-                          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z"/></svg>
-                        </button>
-                        <button @click="openEdit(idx)" class="p-1.5 rounded-lg hover:bg-vault-accent/10 text-vault-muted hover:text-vault-accent transition" title="Edit">
-                          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125"/></svg>
-                        </button>
-                        <button @click="removeConfig(idx, bucketName)" class="p-1.5 rounded-lg hover:bg-red-500/10 text-vault-muted hover:text-red-400 transition" title="Remove">
-                          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"/></svg>
-                        </button>
-                      </div>
-                    </div>
-                  </template>
-                </div>
-
-                <p x-show="saving" class="text-xs text-vault-muted mt-2">Saving...</p>
-                <p x-show="error" x-text="error" class="text-red-400 text-xs mt-2"></p>
-
-                <!-- Add/Edit modal (teleported to body to escape stacking contexts) -->
-                <template x-teleport="body">
-                <div x-show="showAddModal" x-cloak class="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999] p-4" @click.self="closeModal()">
-                    <div class="bg-vault-card border border-vault-border rounded-xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
-                      <h3 class="text-lg font-semibold mb-4" x-text="editIndex >= 0 ? 'Edit Webhook' : 'Add Webhook'"></h3>
-                      <div class="space-y-4">
-                        <div>
-                          <label class="block text-xs text-vault-muted mb-1">Destination URL</label>
-                          <input x-model="form.arn" placeholder="http://example.com/webhook"
-                            class="w-full bg-black/30 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text placeholder-vault-muted focus:outline-none focus:border-vault-accent">
+                    </template>
+                    <!-- Edit mode (inline, like lifecycle) -->
+                    <template x-if="editingIndex === index">
+                      <div class="p-3 rounded-lg bg-vault-bg/50 border border-vault-accent/30 space-y-2">
+                        <div class="grid grid-cols-2 gap-2">
+                          <div>
+                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Destination URL</label>
+                            <input type="text" x-model="editForm.arn" placeholder="http://example.com/webhook"
+                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                          </div>
+                          <div>
+                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Type</label>
+                            <select x-model="editForm.type"
+                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-xs focus:outline-none focus:border-vault-accent/50">
+                              <option value="TopicConfiguration">Topic</option>
+                              <option value="QueueConfiguration">Queue</option>
+                              <option value="CloudFunctionConfiguration">CloudFunction</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                          <div>
+                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Prefix filter</label>
+                            <input type="text" x-model="editForm.prefix" placeholder="e.g. images/"
+                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                          </div>
+                          <div>
+                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Suffix filter</label>
+                            <input type="text" x-model="editForm.suffix" placeholder="e.g. .jpg"
+                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                          </div>
                         </div>
                         <div>
-                          <label class="block text-xs text-vault-muted mb-1">Configuration Type</label>
-                          <select x-model="form.type" class="w-full bg-black/30 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent">
-                            <option value="TopicConfiguration">Topic</option>
-                            <option value="QueueConfiguration">Queue</option>
-                            <option value="CloudFunctionConfiguration">CloudFunction</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label class="block text-xs text-vault-muted mb-1">Events</label>
-                          <div class="grid grid-cols-2 gap-1">
+                          <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Events</label>
+                          <div class="grid grid-cols-2 gap-1 mt-1">
                             <template x-for="ev in eventOptions" :key="ev">
-                              <label class="flex items-center gap-2 text-xs py-1 cursor-pointer">
-                                <input type="checkbox" :checked="form.events.includes(ev)" @change="toggleEvent(ev)"
-                                  class="rounded border-vault-border text-vault-accent focus:ring-vault-accent">
-                                <span class="font-mono" x-text="ev.replace('s3:', '')"></span>
+                              <label class="flex items-center gap-1.5 text-[11px] py-0.5 cursor-pointer">
+                                <input type="checkbox" :checked="editForm.events.includes(ev)" @change="toggleEvent(ev)"
+                                  class="rounded border-vault-border text-vault-accent focus:ring-vault-accent w-3 h-3">
+                                <span class="font-mono" x-text="shortEvent(ev)"></span>
                               </label>
                             </template>
                           </div>
                         </div>
-                        <div class="grid grid-cols-2 gap-3">
-                          <div>
-                            <label class="block text-xs text-vault-muted mb-1">Key Prefix (optional)</label>
-                            <input x-model="form.prefix" placeholder="images/"
-                              class="w-full bg-black/30 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text placeholder-vault-muted focus:outline-none focus:border-vault-accent">
-                          </div>
-                          <div>
-                            <label class="block text-xs text-vault-muted mb-1">Key Suffix (optional)</label>
-                            <input x-model="form.suffix" placeholder=".jpg"
-                              class="w-full bg-black/30 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text placeholder-vault-muted focus:outline-none focus:border-vault-accent">
-                          </div>
+                        <div class="flex justify-end gap-2 pt-1">
+                          <button @click="cancelEdit()" class="px-3 py-1 rounded-lg text-xs text-vault-muted hover:text-vault-text transition">Cancel</button>
+                          <button @click="saveEditWebhook(bucketName)"
+                            :disabled="!editForm.arn || editForm.events.length === 0"
+                            class="px-3 py-1 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/30 text-xs font-medium hover:bg-vault-accent/20 transition disabled:opacity-40">
+                            Save
+                          </button>
                         </div>
                       </div>
-                      <div class="flex justify-end gap-2 mt-6">
-                        <button @click="closeModal()" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text bg-vault-card border border-vault-border">Cancel</button>
-                        <button @click="saveForm(bucketName)" class="px-4 py-2 rounded-lg text-sm text-white bg-vault-accent hover:bg-vault-accent/90">Save</button>
+                    </template>
+                  </div>
+                </template>
+
+                <!-- Add webhook form (inline, like lifecycle add rule) -->
+                <template x-if="showAddForm">
+                  <div class="mt-3 p-3 rounded-lg bg-vault-bg/50 border border-vault-accent/30 space-y-2">
+                    <div class="grid grid-cols-2 gap-2">
+                      <div>
+                        <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Destination URL</label>
+                        <input type="text" x-model="editForm.arn" placeholder="http://example.com/webhook"
+                          class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
                       </div>
+                      <div>
+                        <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Type</label>
+                        <select x-model="editForm.type"
+                          class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-xs focus:outline-none focus:border-vault-accent/50">
+                          <option value="TopicConfiguration">Topic</option>
+                          <option value="QueueConfiguration">Queue</option>
+                          <option value="CloudFunctionConfiguration">CloudFunction</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                      <div>
+                        <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Prefix filter</label>
+                        <input type="text" x-model="editForm.prefix" placeholder="e.g. images/"
+                          class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                      </div>
+                      <div>
+                        <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Suffix filter</label>
+                        <input type="text" x-model="editForm.suffix" placeholder="e.g. .jpg"
+                          class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                      </div>
+                    </div>
+                    <div>
+                      <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Events</label>
+                      <div class="grid grid-cols-2 gap-1 mt-1">
+                        <template x-for="ev in eventOptions" :key="ev">
+                          <label class="flex items-center gap-1.5 text-[11px] py-0.5 cursor-pointer">
+                            <input type="checkbox" :checked="editForm.events.includes(ev)" @change="toggleEvent(ev)"
+                              class="rounded border-vault-border text-vault-accent focus:ring-vault-accent w-3 h-3">
+                            <span class="font-mono" x-text="shortEvent(ev)"></span>
+                          </label>
+                        </template>
+                      </div>
+                    </div>
+                    <div class="flex justify-end gap-2 pt-1">
+                      <button @click="cancelEdit()" class="px-3 py-1 rounded-lg text-xs text-vault-muted hover:text-vault-text transition">Cancel</button>
+                      <button @click="saveEditWebhook(bucketName)"
+                        :disabled="!editForm.arn || editForm.events.length === 0"
+                        class="px-3 py-1 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/30 text-xs font-medium hover:bg-vault-accent/20 transition disabled:opacity-40">
+                        Add
+                      </button>
                     </div>
                   </div>
                 </template>
+
+                <template x-if="configs.length > 0 && !showAddForm && editingIndex < 0">
+                  <div class="flex justify-end mt-3">
+                    <button @click="deleteAllWebhooks(bucketName)" :disabled="saving"
+                      class="text-[11px] text-red-400/70 hover:text-red-400 transition">
+                      Delete all webhooks
+                    </button>
+                  </div>
+                </template>
+
+                <p x-show="error" x-text="error" class="text-red-400 text-xs mt-2"></p>
               </div>
 
               <!-- Danger zone -->
@@ -3007,115 +3085,273 @@
 
         <!-- ==================== NOTIFICATIONS ==================== -->
         <template x-if="view === 'notifications'">
-          <div class="p-6 max-w-6xl" x-data="notificationsView" x-init="load()" @destroy="destroy()">
-            <div class="flex items-center justify-between mb-6">
+          <div class="p-6 max-w-7xl" x-data="notificationsView" x-init="init()" @destroy="destroy()">
+            <!-- Header: title, entry count, clear filters, clear all -->
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
               <h2 class="text-xl font-semibold tracking-tight">Notification Events</h2>
-              <button @click="toggleAutoRefresh()"
-                :class="autoRefresh ? 'bg-vault-accent text-white' : 'bg-vault-card text-vault-muted hover:text-vault-text'"
-                class="px-3 py-1.5 rounded-lg text-xs font-medium transition border border-vault-border">
-                <span x-text="autoRefresh ? 'Auto-refresh ON' : 'Auto-refresh'"></span>
-              </button>
+              <div class="flex items-center gap-3">
+                <span class="text-xs text-vault-muted" x-text="total + ' entries'"></span>
+                <button x-show="hasAnyFilter" @click="clearAllFilters()" class="text-xs text-vault-muted hover:text-vault-text transition">Clear filters</button>
+                <button @click="showClearModal = true; clearConfirmText = ''" class="px-2.5 py-1 rounded-lg text-xs border border-red-500/30 text-red-400 hover:bg-red-500/10 transition">Clear All</button>
+              </div>
             </div>
 
-            <!-- Filters -->
-            <div class="flex flex-wrap gap-3 mb-4">
-              <input x-model="filterBucket" @change="applyFilter()" placeholder="Filter by bucket"
-                class="bg-vault-card border border-vault-border rounded-lg px-3 py-1.5 text-sm text-vault-text placeholder-vault-muted focus:outline-none focus:border-vault-accent">
-              <select x-model="filterEventName" @change="applyFilter()"
-                class="bg-vault-card border border-vault-border rounded-lg px-3 py-1.5 text-sm text-vault-text focus:outline-none focus:border-vault-accent">
-                <option value="">All events</option>
-                <option value="s3:ObjectCreated:Put">ObjectCreated:Put</option>
-                <option value="s3:ObjectCreated:Copy">ObjectCreated:Copy</option>
-                <option value="s3:ObjectCreated:CompleteMultipartUpload">ObjectCreated:CompleteMultipartUpload</option>
-                <option value="s3:ObjectRemoved:Delete">ObjectRemoved:Delete</option>
-                <option value="s3:ObjectRemoved:DeleteMarkerCreated">ObjectRemoved:DeleteMarkerCreated</option>
-              </select>
-              <select x-model="filterStatus" @change="applyFilter()"
-                class="bg-vault-card border border-vault-border rounded-lg px-3 py-1.5 text-sm text-vault-text focus:outline-none focus:border-vault-accent">
-                <option value="">All statuses</option>
-                <option value="pending">Pending</option>
-                <option value="delivered">Delivered</option>
-                <option value="failed">Failed</option>
-              </select>
-              <button @click="clearFilters()" class="px-3 py-1.5 rounded-lg text-xs text-vault-muted hover:text-vault-text bg-vault-card border border-vault-border">Clear</button>
+            <!-- Pagination bar -->
+            <div class="flex flex-wrap items-center justify-end gap-3 mb-4">
+              <div class="flex items-center gap-3 flex-shrink-0">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-[11px] text-vault-muted">Show</span>
+                  <select x-model="limit" @change="limit = Number($event.target.value) || 50; page = 0; sessionStorage.setItem('notif_page_size', limit)" class="setting-number px-2 py-1 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-xs focus:outline-none focus:border-vault-accent/50 transition">
+                    <option value="10">10</option>
+                    <option value="15">15</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                  </select>
+                </div>
+                <span class="text-xs text-vault-muted" x-text="'Page ' + currentPage + ' of ' + totalPages"></span>
+                <div class="flex gap-0.5">
+                  <button @click="firstPage()" :disabled="page === 0" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="First page"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5"/></svg></button>
+                  <button @click="prevPage()" :disabled="page === 0" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Previous page"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg></button>
+                  <button @click="nextPage()" :disabled="currentPage >= totalPages" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Next page"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg></button>
+                  <button @click="lastPage()" :disabled="currentPage >= totalPages" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Last page"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 4.5l7.5 7.5-7.5 7.5m6-15l7.5 7.5-7.5 7.5"/></svg></button>
+                </div>
+              </div>
             </div>
 
             <!-- Loading -->
             <div x-show="loading" class="flex justify-center py-16">
-              <div class="w-6 h-6 border-2 border-vault-accent border-t-transparent rounded-full animate-spin"></div>
+              <svg class="animate-spin h-6 w-6 text-vault-accent" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
             </div>
 
             <!-- Table -->
-            <div x-show="!loading" class="bg-vault-card border border-vault-border rounded-xl overflow-hidden">
-              <div x-show="events.length === 0" class="p-8 text-center text-vault-muted text-sm">
-                No notification events found
-              </div>
-              <table x-show="events.length > 0" class="w-full text-sm">
+            <div x-show="!loading" class="glass rounded-xl overflow-x-auto">
+              <table class="w-full text-sm" style="min-width:900px;table-layout:fixed">
+                <colgroup>
+                  <col style="width:160px">
+                  <col style="width:160px">
+                  <col style="width:100px">
+                  <col style="width:auto;min-width:120px">
+                  <col style="width:auto;min-width:120px">
+                  <col style="width:90px">
+                  <col style="width:85px">
+                </colgroup>
                 <thead>
-                  <tr class="border-b border-vault-border text-vault-muted text-xs uppercase tracking-wider">
-                    <th class="px-4 py-3 text-left">Time</th>
-                    <th class="px-4 py-3 text-left">Bucket</th>
-                    <th class="px-4 py-3 text-left">Key</th>
-                    <th class="px-4 py-3 text-left">Event</th>
-                    <th class="px-4 py-3 text-left">Destination</th>
-                    <th class="px-4 py-3 text-left">Status</th>
-                    <th class="px-4 py-3 text-left">Attempts</th>
+                  <tr class="text-left text-[11px] uppercase tracking-wider text-vault-muted border-b border-vault-border/30">
+                    <!-- TIME header (date range popover, same as audit) -->
+                    <th class="px-4 py-3 w-[180px]">
+                      <div class="col-filter" :class="{ active: filterFrom || filterTo }" @click.outside="timeOpen = false">
+                        <div class="col-label" @click="timeOpen = !timeOpen" x-show="!filterFrom && !filterTo">
+                          Time <svg class="fi" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/></svg>
+                        </div>
+                        <div x-show="filterFrom || filterTo" class="filter-badge" @click="timeOpen = !timeOpen">
+                          <span class="val" x-text="timeLabel()"></span>
+                          <span class="fbx" @click.stop="filterFrom = ''; filterTo = ''; timeOpen = false; load()"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                        </div>
+                        <div class="time-pop" x-show="timeOpen" x-cloak>
+                          <div class="mb-2"><label>From</label><input type="datetime-local" x-model="filterFrom" @change="page = 0; load()"></div>
+                          <div><label>To</label><input type="datetime-local" x-model="filterTo" @change="page = 0; load()"></div>
+                        </div>
+                      </div>
+                    </th>
+                    <!-- EVENT header (value list dropdown, same as audit Operation) -->
+                    <th class="px-4 py-3">
+                      <div class="col-filter" :class="{ active: selectedEvents.size > 0 }" @click.outside="eventOpen = false">
+                        <div class="col-label" @click="eventOpen = !eventOpen" x-show="selectedEvents.size === 0">
+                          Event <svg class="fi" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/></svg>
+                        </div>
+                        <div x-show="selectedEvents.size > 0" class="filter-badge" @click="eventOpen = !eventOpen">
+                          <span class="val" x-text="selectedEvents.size + ' events'"></span>
+                          <span class="fbx" @click.stop="selectedEvents = new Set(); eventOpen = false; page = 0"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                        </div>
+                        <div class="col-popover" x-show="eventOpen" x-cloak style="min-width:min(240px, calc(100vw - 2rem))">
+                          <div class="pop-list">
+                            <template x-for="item in eventValues" :key="item.name">
+                              <div class="pop-item" :class="{ selected: selectedEvents.has(item.name) }"
+                                @click="toggleSet(selectedEvents, item.name); selectedEvents = new Set(selectedEvents); page = 0">
+                                <div class="check"><svg fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="white"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg></div>
+                                <span class="font-mono text-[10px]" x-text="item.name.replace('s3:','')"></span>
+                                <span class="cnt" x-text="item.count"></span>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </div>
+                    </th>
+                    <!-- BUCKET header (value list dropdown with search, same as audit Bucket) -->
+                    <th class="px-4 py-3">
+                      <div class="col-filter" :class="{ active: selectedBuckets.size > 0 }" @click.outside="bucketOpen = false">
+                        <div class="col-label" @click="bucketOpen = !bucketOpen" x-show="selectedBuckets.size === 0">
+                          Bucket <svg class="fi" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/></svg>
+                        </div>
+                        <div x-show="selectedBuckets.size > 0" class="filter-badge" @click="bucketOpen = !bucketOpen">
+                          <span class="val" x-text="[...selectedBuckets].join(', ')"></span>
+                          <span class="fbx" @click.stop="selectedBuckets = new Set(); bucketOpen = false; page = 0"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                        </div>
+                        <div class="col-popover" x-show="bucketOpen" x-cloak style="min-width:min(180px, calc(100vw - 2rem))">
+                          <div class="pop-search"><input type="text" x-model="bucketSearch" placeholder="Search..."></div>
+                          <div class="pop-list">
+                            <template x-for="item in bucketValues" :key="item.name">
+                              <div class="pop-item" :class="{ selected: selectedBuckets.has(item.name) }"
+                                x-show="!bucketSearch || item.name.toLowerCase().includes(bucketSearch.toLowerCase())"
+                                @click="toggleSet(selectedBuckets, item.name); selectedBuckets = new Set(selectedBuckets); page = 0">
+                                <div class="check"><svg fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="white"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg></div>
+                                <span x-text="item.name"></span>
+                                <span class="cnt" x-text="item.count"></span>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </div>
+                    </th>
+                    <!-- KEY header (inline text filter, same as audit Key) -->
+                    <th class="px-4 py-3">
+                      <div class="col-filter" :class="{ active: filterKey }">
+                        <div class="col-label" @click="keyEditing = true; $nextTick(() => $refs.nKeyInput.focus())" x-show="!keyEditing && !filterKey">
+                          Key <svg class="fi" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/></svg>
+                        </div>
+                        <div x-show="filterKey && !keyEditing" class="filter-badge" @click="keyEditing = true; $nextTick(() => $refs.nKeyInput.focus())">
+                          <span class="val" x-text="filterKey"></span>
+                          <span class="fbx" @click.stop="filterKey = ''; page = 0"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                        </div>
+                        <input type="text" x-ref="nKeyInput" x-model="filterKey" x-show="keyEditing" class="key-inline"
+                          @focus="keyEditing = true" @blur="keyEditing = false"
+                          @keydown.enter="keyEditing = false; $refs.nKeyInput.blur(); page = 0"
+                          @keydown.escape="filterKey = ''; keyEditing = false; $refs.nKeyInput.blur(); page = 0"
+                          placeholder="filter key...">
+                      </div>
+                    </th>
+                    <!-- DESTINATION header (inline text filter) -->
+                    <th class="px-4 py-3">
+                      <div class="col-filter" :class="{ active: filterDestination }">
+                        <div class="col-label" @click="destEditing = true; $nextTick(() => $refs.nDestInput.focus())" x-show="!destEditing && !filterDestination">
+                          Destination <svg class="fi" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/></svg>
+                        </div>
+                        <div x-show="filterDestination && !destEditing" class="filter-badge" @click="destEditing = true; $nextTick(() => $refs.nDestInput.focus())">
+                          <span class="val" x-text="filterDestination"></span>
+                          <span class="fbx" @click.stop="filterDestination = ''; page = 0"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                        </div>
+                        <input type="text" x-ref="nDestInput" x-model="filterDestination" x-show="destEditing" class="key-inline"
+                          @focus="destEditing = true" @blur="destEditing = false"
+                          @keydown.enter="destEditing = false; $refs.nDestInput.blur(); page = 0"
+                          @keydown.escape="filterDestination = ''; destEditing = false; $refs.nDestInput.blur(); page = 0"
+                          placeholder="filter url...">
+                      </div>
+                    </th>
+                    <!-- STATUS header (value list dropdown, same as audit Status) -->
+                    <th class="px-4 py-3 text-right">
+                      <div class="col-filter" :class="{ active: selectedStatuses.size > 0 }" @click.outside="statusOpen = false" style="display:flex;justify-content:flex-end">
+                        <div class="col-label" @click="statusOpen = !statusOpen" x-show="selectedStatuses.size === 0">
+                          Status <svg class="fi" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/></svg>
+                        </div>
+                        <div x-show="selectedStatuses.size > 0" class="filter-badge" @click="statusOpen = !statusOpen">
+                          <span class="val" x-text="[...selectedStatuses].join(', ')"></span>
+                          <span class="fbx" @click.stop="selectedStatuses = new Set(); statusOpen = false; page = 0"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                        </div>
+                        <div class="col-popover" x-show="statusOpen" x-cloak style="min-width:min(120px, calc(100vw - 2rem));right:-8px;left:auto">
+                          <div class="pop-list">
+                            <template x-for="item in statusValues" :key="item.name">
+                              <div class="pop-item" :class="{ selected: selectedStatuses.has(item.name) }"
+                                @click="toggleSet(selectedStatuses, item.name); selectedStatuses = new Set(selectedStatuses); page = 0">
+                                <div class="check"><svg fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="white"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg></div>
+                                <span :class="statusClass(item.name)" x-text="item.name"></span>
+                                <span class="cnt" x-text="item.count"></span>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </div>
+                    </th>
+                    <th class="px-4 py-3 text-right">Attempts</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <template x-for="ev in events" :key="ev.id">
-                    <tr @click="selectEvent(ev)" class="border-b border-vault-border/50 hover:bg-white/[0.02] cursor-pointer transition">
-                      <td class="px-4 py-2.5 text-vault-muted whitespace-nowrap" x-text="formatTime(ev.event_time)"></td>
-                      <td class="px-4 py-2.5 font-medium" x-text="ev.bucket"></td>
-                      <td class="px-4 py-2.5 text-vault-muted" x-text="truncate(ev.key)"></td>
-                      <td class="px-4 py-2.5 text-xs font-mono" x-text="ev.event_name.replace('s3:','')"></td>
-                      <td class="px-4 py-2.5 text-vault-muted text-xs" x-text="truncate(ev.destination_url, 30)"></td>
+                  <template x-for="entry in pagedEntries" :key="entry.id">
+                    <tr @click="selectEntry(entry)" class="border-b border-vault-border/10 hover:bg-white/[0.02] cursor-pointer transition"
+                      :class="selectedEntry?.id === entry.id ? 'bg-vault-accent/5' : ''">
+                      <td class="px-4 py-2.5 text-xs text-vault-muted whitespace-nowrap" x-text="formatTime(entry.event_time)"></td>
                       <td class="px-4 py-2.5">
-                        <span :class="statusBadgeClass(ev.delivery_status)" class="px-2 py-0.5 rounded-full text-xs font-medium" x-text="ev.delivery_status"></span>
+                        <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-vault-border/20" x-text="entry.event_name.replace('s3:','')"></span>
                       </td>
-                      <td class="px-4 py-2.5 text-vault-muted" x-text="ev.delivery_attempts"></td>
+                      <td class="px-4 py-2.5 text-xs text-vault-text" x-text="entry.bucket || '\u2014'"></td>
+                      <td class="px-4 py-2.5 text-xs text-vault-muted max-w-[200px] truncate" :title="entry.key" x-text="entry.key || '\u2014'"></td>
+                      <td class="px-4 py-2.5 text-xs text-vault-muted max-w-[200px] truncate" :title="entry.destination_url" x-text="entry.destination_url || '\u2014'"></td>
+                      <td class="px-4 py-2.5 text-xs text-right">
+                        <span :class="statusBadgeClass(entry.delivery_status)" class="px-2 py-0.5 rounded-full text-xs font-medium" x-text="entry.delivery_status"></span>
+                      </td>
+                      <td class="px-4 py-2.5 text-xs text-right text-vault-muted" x-text="entry.delivery_attempts"></td>
                     </tr>
                   </template>
                 </tbody>
               </table>
-            </div>
-
-            <!-- Pagination -->
-            <div x-show="!loading && total > 0" class="flex items-center justify-between mt-4 text-sm text-vault-muted">
-              <span x-text="'Showing ' + (page * limit + 1) + '-' + Math.min((page + 1) * limit, total) + ' of ' + total"></span>
-              <div class="flex gap-2">
-                <button @click="prevPage()" :disabled="page === 0" class="px-3 py-1 rounded bg-vault-card border border-vault-border disabled:opacity-30">Prev</button>
-                <button @click="nextPage()" :disabled="(page + 1) * limit >= total" class="px-3 py-1 rounded bg-vault-card border border-vault-border disabled:opacity-30">Next</button>
+              <!-- Empty state -->
+              <div x-show="pagedEntries.length === 0" class="py-12 text-center text-vault-muted text-sm">
+                No notification events found
               </div>
             </div>
 
-            <!-- Detail modal -->
-            <template x-if="selectedEvent">
-              <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" @click.self="closeDetail()">
-                <div class="bg-vault-card border border-vault-border rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-auto">
-                  <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-semibold">Event Details</h3>
-                    <button @click="closeDetail()" class="text-vault-muted hover:text-vault-text">&times;</button>
-                  </div>
-                  <div class="space-y-3 text-sm">
-                    <div><span class="text-vault-muted">ID:</span> <span class="font-mono" x-text="selectedEvent.id"></span></div>
-                    <div><span class="text-vault-muted">Bucket:</span> <span x-text="selectedEvent.bucket"></span></div>
-                    <div><span class="text-vault-muted">Key:</span> <span class="font-mono" x-text="selectedEvent.key"></span></div>
-                    <div><span class="text-vault-muted">Event:</span> <span x-text="selectedEvent.event_name"></span></div>
-                    <div><span class="text-vault-muted">Time:</span> <span x-text="formatTime(selectedEvent.event_time)"></span></div>
-                    <div><span class="text-vault-muted">Destination:</span> <span class="font-mono text-xs break-all" x-text="selectedEvent.destination_url"></span></div>
-                    <div><span class="text-vault-muted">Config ID:</span> <span x-text="selectedEvent.configuration_id"></span></div>
-                    <div><span class="text-vault-muted">Status:</span> <span :class="statusBadgeClass(selectedEvent.delivery_status)" class="px-2 py-0.5 rounded-full text-xs font-medium" x-text="selectedEvent.delivery_status"></span></div>
-                    <div><span class="text-vault-muted">Attempts:</span> <span x-text="selectedEvent.delivery_attempts"></span></div>
-                    <div x-show="selectedEvent.last_error"><span class="text-vault-muted">Error:</span> <span class="text-red-400" x-text="selectedEvent.last_error"></span></div>
-                    <div>
-                      <span class="text-vault-muted">Payload:</span>
-                      <pre class="mt-1 p-3 bg-black/30 rounded-lg text-xs overflow-auto max-h-64 font-mono text-vault-text" x-text="JSON.stringify(JSON.parse(selectedEvent.payload || '{}'), null, 2)"></pre>
-                    </div>
-                  </div>
+            <!-- Bottom pagination bar (same as top) -->
+            <div x-show="!loading && total > 0" class="flex flex-wrap items-center justify-end gap-3 mt-4">
+              <div class="flex items-center gap-3 flex-shrink-0">
+                <span class="text-xs text-vault-muted" x-text="'Page ' + currentPage + ' of ' + totalPages"></span>
+                <div class="flex gap-0.5">
+                  <button @click="firstPage()" :disabled="page === 0" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="First page"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5"/></svg></button>
+                  <button @click="prevPage()" :disabled="page === 0" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Previous page"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg></button>
+                  <button @click="nextPage()" :disabled="currentPage >= totalPages" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Next page"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg></button>
+                  <button @click="lastPage()" :disabled="currentPage >= totalPages" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Last page"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 4.5l7.5 7.5-7.5 7.5m6-15l7.5 7.5-7.5 7.5"/></svg></button>
                 </div>
               </div>
-            </template>
+            </div>
+
+            <!-- Clear events modal -->
+            <div x-show="showClearModal" x-transition.opacity class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="showClearModal = false">
+              <div class="glass rounded-xl p-6 w-full max-w-sm mx-4" @click.stop>
+                <h3 class="text-lg font-semibold mb-2 text-red-400">Clear Notification Events</h3>
+                <p class="text-sm text-vault-muted mb-3">This will permanently delete all notification event records. This cannot be undone.</p>
+                <p class="text-sm text-vault-muted mb-3">Type <strong class="text-vault-text">CLEAR EVENTS</strong> to confirm:</p>
+                <input type="text" x-model="clearConfirmText" class="w-full px-3.5 py-2.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/30 transition text-sm mb-4" placeholder="CLEAR EVENTS">
+                <div class="flex gap-3 justify-end">
+                  <button @click="showClearModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                  <button @click="clearAllEvents()" :disabled="clearConfirmText !== 'CLEAR EVENTS' || clearing"
+                    class="px-4 py-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 text-sm font-medium hover:bg-red-500/30 transition disabled:opacity-30"
+                    x-text="clearing ? 'Clearing...' : 'Clear All'"></button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Detail backdrop (mobile) -->
+            <div x-show="selectedEntry" @click="selectedEntry = null" class="fixed inset-0 bg-black/40 z-30 md:hidden"></div>
+            <!-- Side panel (matches audit) -->
+            <div x-show="selectedEntry" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0"
+              class="fixed right-0 top-12 md:top-0 h-[calc(100%-3rem)] md:h-full w-full md:w-80 glass border-l border-vault-border/50 z-40 slide-panel overflow-y-auto">
+              <div class="p-5">
+                <div class="flex items-center justify-between mb-5">
+                  <h3 class="text-sm font-semibold uppercase tracking-wider text-vault-accent">Event Details</h3>
+                  <button @click="selectedEntry = null" class="text-vault-muted hover:text-vault-text p-1 rounded-lg hover:bg-white/5 transition">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                  </button>
+                </div>
+                <template x-if="selectedEntry">
+                  <div class="space-y-4 text-sm">
+                    <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Event</span><span class="font-mono text-xs" x-text="selectedEntry.event_name"></span></div>
+                    <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Time</span><span x-text="formatTime(selectedEntry.event_time)"></span></div>
+                    <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Bucket</span><span x-text="selectedEntry.bucket"></span></div>
+                    <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Key</span><span class="font-mono text-xs break-all" x-text="selectedEntry.key"></span></div>
+                    <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Destination</span><span class="font-mono text-xs break-all" x-text="selectedEntry.destination_url"></span></div>
+                    <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Config ID</span><span class="font-mono text-xs" x-text="selectedEntry.configuration_id"></span></div>
+                    <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Status</span><span :class="statusBadgeClass(selectedEntry.delivery_status)" class="px-2 py-0.5 rounded-full text-xs font-medium" x-text="selectedEntry.delivery_status"></span></div>
+                    <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Attempts</span><span x-text="selectedEntry.delivery_attempts"></span></div>
+                    <div x-show="selectedEntry.last_error"><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Error</span><span class="text-red-400 text-xs" x-text="selectedEntry.last_error"></span></div>
+                    <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">ID</span><span class="font-mono text-[10px] text-vault-muted break-all" x-text="selectedEntry.id"></span></div>
+                    <div>
+                      <span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-1">Payload</span>
+                      <pre class="p-3 bg-black/30 rounded-lg text-[10px] overflow-auto max-h-64 font-mono text-vault-text" x-text="JSON.stringify(JSON.parse(selectedEntry.payload || '{}'), null, 2)"></pre>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
           </div>
         </template>
 

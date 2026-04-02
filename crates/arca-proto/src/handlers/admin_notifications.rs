@@ -82,6 +82,40 @@ pub async fn count_notification_events(
     Ok(Json(serde_json::json!({ "count": total })))
 }
 
+/// Request body for DELETE /admin/notifications/events.
+#[derive(Debug, Deserialize)]
+pub struct ClearEventsRequest {
+    pub confirm: String,
+}
+
+/// DELETE /admin/notifications/events — delete all notification events.
+pub async fn clear_notification_events(
+    State(state): State<AppState>,
+    Json(body): Json<ClearEventsRequest>,
+) -> Result<impl IntoResponse, AdminError> {
+    if body.confirm != "CLEAR EVENTS" {
+        return Err(AdminError::bad_request(
+            "Confirmation required: send {\"confirm\": \"CLEAR EVENTS\"}",
+        ));
+    }
+
+    let store = state
+        .notification_store
+        .as_ref()
+        .ok_or_else(|| AdminError::bad_request("Notification store is not available"))?;
+
+    // Purge everything (use a far-future cutoff)
+    let cutoff = chrono::Utc::now() + chrono::Duration::days(1);
+    let deleted = store
+        .purge_notification_events(cutoff)
+        .await
+        .map_err(|e| AdminError::internal(e.to_string()))?;
+
+    Ok(Json(serde_json::json!({
+        "deleted": deleted,
+    })))
+}
+
 /// Request body for POST /admin/notifications/test-webhook.
 #[derive(Debug, Deserialize)]
 pub struct TestWebhookRequest {
