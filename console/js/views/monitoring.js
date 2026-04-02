@@ -78,6 +78,10 @@ export function monitoringView() {
       for (let v = 0; v <= max + step * 0.01; v += step) {
         ticks.push(v);
       }
+      // Ensure the last tick is >= max so the line stays inside the chart area
+      if (ticks[ticks.length - 1] < max) {
+        ticks.push(ticks[ticks.length - 1] + step);
+      }
       // Ensure we don't have too many ticks
       return ticks.length > 6 ? ticks.filter((_, i) => i % 2 === 0) : ticks;
     },
