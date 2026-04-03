@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.1] — 2026-04-03
+
 ### Added
 
 - **Modular notification connector architecture**: trait-based `NotificationConnector` in `arca-core` with `ConnectorRegistry` for pluggable delivery backends. Webhook is the first implementation; 9 additional connectors (Kafka, AMQP, Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Elasticsearch) planned for Phase 26
@@ -386,7 +388,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.17.1...HEAD
+[0.17.1]: https://github.com/dxc-technology/arca/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/dxc-technology/arca/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/dxc-technology/arca/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/dxc-technology/arca/compare/v0.15.0...v0.16.0
