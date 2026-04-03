@@ -783,6 +783,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#event-notifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Event Notifications
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#danger-zone" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1139,6 +1150,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#notification-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notification Events
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Notification Events">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#filtering_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filtering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#detail-panel_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Detail Panel
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#clear-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clear Events
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#settings" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1162,10 +1223,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#monitoring_1" class="md-nav__link">
+  <a href="#data-retention" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Monitoring
+        Data Retention
       
     </span>
   </a>
@@ -1815,6 +1876,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#event-notifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Event Notifications
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#danger-zone" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2171,6 +2243,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#notification-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notification Events
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Notification Events">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#filtering_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filtering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#detail-panel_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Detail Panel
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#clear-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clear Events
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#settings" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2194,10 +2316,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#monitoring_1" class="md-nav__link">
+  <a href="#data-retention" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Monitoring
+        Data Retention
       
     </span>
   </a>
@@ -2422,6 +2544,21 @@
 <p class="admonition-title">Note</p>
 <p>Versioning cannot be disabled once it has been enabled, only suspended. This matches the S3 specification.</p>
 </div>
+<h3 id="event-notifications">Event Notifications<a class="headerlink" href="#event-notifications" title="Permanent link">&para;</a></h3>
+<p><img alt="Event notifications" src="../../assets/screenshots/console-event-notifications.png" /></p>
+<p>The Event Notifications card lets you configure where S3 events (object creates, deletes, etc.) are delivered. Each notification destination has:</p>
+<ul>
+<li><strong>Connector type</strong> — which delivery backend to use (currently Webhook, with Kafka, AMQP, Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, and Elasticsearch planned)</li>
+<li><strong>Destination URL</strong> — the endpoint address</li>
+<li><strong>Auth Token</strong> — optional Bearer token for webhook authentication</li>
+<li><strong>Event types</strong> — which S3 events to deliver (e.g., <code>s3:ObjectCreated:*</code>, <code>s3:ObjectRemoved:Delete</code>)</li>
+<li><strong>Prefix/Suffix filters</strong> — optional key filters to narrow which objects trigger events</li>
+<li><strong>Enabled/Disabled toggle</strong> — temporarily suspend delivery without removing the configuration</li>
+</ul>
+<p>Click <strong>"+ Add Notification"</strong> to open the notification modal:</p>
+<p><img alt="Notification modal" src="../../assets/screenshots/console-notification-modal.png" /></p>
+<p>The modal has a connector type selector at the top, showing all available connectors grouped by category (Functions, Queue, Database). Only the Webhook connector is currently active; others are shown as "coming soon" and will be implemented in a future release. Below the type selector, connector-specific fields appear (URL and auth token for webhooks), followed by common S3 event type checkboxes and prefix/suffix filter inputs.</p>
+<p>Click an existing notification in the list to edit it in the same modal. Use the <strong>Test connection</strong> button to verify webhook connectivity before saving.</p>
 <h3 id="danger-zone">Danger Zone<a class="headerlink" href="#danger-zone" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Delete this bucket</strong> — permanently removes the bucket. Requires typing the bucket name to confirm. The bucket must be empty.</li>
@@ -2608,6 +2745,24 @@
 </ul>
 <p>A time range selector at the top right offers: <strong>1h</strong>, <strong>6h</strong>, <strong>24h</strong>, <strong>7d</strong>, <strong>30d</strong>. Each chart shows the current value in the header and the trend line with labeled Y-axis ticks and X-axis time labels.</p>
 <p>Metrics snapshots are recorded periodically (default: every 60 seconds) and stored in the database. The retention period is configurable in the Settings page.</p>
+<h2 id="notification-events">Notification Events<a class="headerlink" href="#notification-events" title="Permanent link">&para;</a></h2>
+<p><img alt="Notification events" src="../../assets/screenshots/console-notification-events.png" /></p>
+<p>The Notification Events view is available to <strong>admin credentials only</strong>. It shows a chronological log of all notification delivery attempts, with details about the destination, event type, delivery status, and error messages.</p>
+<p>The table shows: timestamp, event name, bucket, key, destination URL, and delivery status (color-coded: green for delivered, amber for pending, red for failed).</p>
+<h3 id="filtering_1">Filtering<a class="headerlink" href="#filtering_1" title="Permanent link">&para;</a></h3>
+<p>Filters are built into the column headers, following the same pattern as the Audit Log:</p>
+<ul>
+<li><strong>Time</strong> — date range popover with From/To datetime pickers</li>
+<li><strong>Event</strong> — dropdown with all distinct event names as checkboxes with occurrence counts</li>
+<li><strong>Bucket</strong> — dropdown with all distinct bucket names as checkboxes</li>
+<li><strong>Key</strong> — inline text input for substring search</li>
+<li><strong>Destination</strong> — inline text input for substring search</li>
+<li><strong>Status</strong> — dropdown with delivered/pending/failed checkboxes</li>
+</ul>
+<h3 id="detail-panel_1">Detail Panel<a class="headerlink" href="#detail-panel_1" title="Permanent link">&para;</a></h3>
+<p>Click any row to open a slide-in detail panel on the right showing all fields: event name, timestamp, bucket, key, destination URL, configuration ID, delivery status, delivery attempts, last error, and the full event payload (JSON).</p>
+<h3 id="clear-events">Clear Events<a class="headerlink" href="#clear-events" title="Permanent link">&para;</a></h3>
+<p>The <strong>Clear All</strong> button opens a confirmation modal requiring you to type "CLEAR EVENTS" to delete all notification event records. This is useful for cleaning up test data or resetting the event log.</p>
 <h2 id="settings">Settings<a class="headerlink" href="#settings" title="Permanent link">&para;</a></h2>
 <p><img alt="Settings" src="../../assets/screenshots/console-settings.png" /></p>
 <p>The Settings view is available to <strong>admin credentials only</strong>. It manages instance-wide configuration with a TOML &gt; database &gt; default precedence chain:</p>
@@ -2620,9 +2775,10 @@
 <ul>
 <li><strong>S3 Region</strong> — default region for HeadBucket, GetBucketLocation, and presigned URL generation. Can also be set per-bucket.</li>
 </ul>
-<h3 id="monitoring_1">Monitoring<a class="headerlink" href="#monitoring_1" title="Permanent link">&para;</a></h3>
+<h3 id="data-retention">Data Retention<a class="headerlink" href="#data-retention" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Audit Log Retention</strong> — days to keep audit log entries (0 = keep forever, default: 90 days)</li>
+<li><strong>Notification Event Retention</strong> — days to keep notification event records (0 = keep forever, default: 7 days)</li>
 <li><strong>Metrics Retention</strong> — days to keep metrics snapshots (0 = keep forever, default: 30 days)</li>
 </ul>
 <h2 id="custom-deployment">Custom Deployment<a class="headerlink" href="#custom-deployment" title="Permanent link">&para;</a></h2>

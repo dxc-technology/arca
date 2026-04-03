@@ -35,6 +35,11 @@ const MIGRATIONS: &[Migration] = &[
         description: "Initial schema (equivalent to SQLite v1-v13)",
         sql: include_str!("migrations/0001_initial_schema.sql"),
     },
+    Migration {
+        version: 2,
+        description: "Add connector_type column to notification_events",
+        sql: include_str!("migrations/0002_notification_connector_type.sql"),
+    },
 ];
 
 impl PgStore {

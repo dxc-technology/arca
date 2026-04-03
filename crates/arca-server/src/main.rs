@@ -2,6 +2,7 @@
 
 mod cli;
 mod config;
+mod connector;
 mod credential;
 mod fsck;
 mod recover;
@@ -225,6 +226,7 @@ async fn main() -> Result<()> {
                 draining: drain_rx,
                 notification_tx: None,
                 notification_store: stores.notification,
+                connector_registry: None, // Set after building the registry below.
             };
 
             // Create notification channel and update state
@@ -234,6 +236,19 @@ async fn main() -> Result<()> {
                 .unwrap_or_default();
             let (notification_tx, notification_rx) = tokio::sync::mpsc::channel(notif_config.channel_size);
             state.notification_tx = Some(notification_tx);
+
+            // Build the connector registry (webhook is the only connector for now).
+            let connector_registry = {
+                use arca_core::s3::notification::ConnectorType;
+                use arca_core::store::ConnectorRegistry;
+                let mut registry = ConnectorRegistry::new();
+                let webhook = connector::WebhookConnector::new(
+                    std::time::Duration::from_secs(notif_config.webhook_timeout_seconds),
+                );
+                registry.register(ConnectorType::Webhook, Arc::new(webhook));
+                Arc::new(registry)
+            };
+            state.connector_registry = Some(connector_registry.clone());
 
             // Spawn background workers
             let metrics_interval = config
@@ -251,6 +266,7 @@ async fn main() -> Result<()> {
                     notification_rx,
                     state.metadata.clone(),
                     notif_store.clone(),
+                    connector_registry,
                     region,
                     notif_config,
                 ))

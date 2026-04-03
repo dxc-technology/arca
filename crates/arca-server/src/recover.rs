@@ -315,6 +315,7 @@ mod tests {
             },
             encryption: None,
             monitoring: None,
+            notifications: None,
         }
     }
 

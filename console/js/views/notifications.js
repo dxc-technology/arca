@@ -203,17 +203,60 @@ export function notificationsView() {
   };
 }
 
+// ==================== CONNECTOR TYPES ====================
+// Connector type definitions for notification destinations.
+// Only 'webhook' is currently active; others are shown as "coming soon".
+const CONNECTOR_TYPES = [
+  { id: 'webhook', name: 'Webhook', category: 'Functions', active: true,
+    icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5a17.92 17.92 0 0 1-8.716-2.247m0 0A9 9 0 0 1 3 12c0-1.47.353-2.856.978-4.082"/></svg>` },
+  { id: 'kafka', name: 'Kafka', category: 'Queue', active: false,
+    icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12"/></svg>` },
+  { id: 'amqp', name: 'AMQP', category: 'Queue', active: false,
+    icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></svg>` },
+  { id: 'redis', name: 'Redis', category: 'Queue', active: false,
+    icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/></svg>` },
+  { id: 'nats', name: 'NATS', category: 'Queue', active: false,
+    icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z"/></svg>` },
+  { id: 'mqtt', name: 'MQTT', category: 'Queue', active: false,
+    icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.348 14.652a3.75 3.75 0 0 1 0-5.304m5.304 0a3.75 3.75 0 0 1 0 5.304m-7.425 2.121a6.75 6.75 0 0 1 0-9.546m9.546 0a6.75 6.75 0 0 1 0 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"/></svg>` },
+  { id: 'postgresql', name: 'PostgreSQL', category: 'Database', active: false,
+    icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><circle cx="12" cy="12" r="9" /><path d="M8 12h8M8 8h8M8 16h5"/></svg>` },
+  { id: 'mysql', name: 'MySQL', category: 'Database', active: false,
+    icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375"/></svg>` },
+  { id: 'mongodb', name: 'MongoDB', category: 'Database', active: false,
+    icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15 11.25c0 3.314-1.343 6-3 6s-3-2.686-3-6c0-3.314 1.343-6 3-6s3 2.686 3 6Z"/><path stroke-linecap="round" d="M12 17.25v3"/></svg>` },
+  { id: 'elasticsearch', name: 'Elasticsearch', category: 'Database', active: false,
+    icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/></svg>` },
+];
+
+// Group connectors by category for the modal grid.
+function connectorsByCategory() {
+  const groups = {};
+  for (const c of CONNECTOR_TYPES) {
+    if (!groups[c.category]) groups[c.category] = [];
+    groups[c.category].push(c);
+  }
+  return groups;
+}
+
 // ==================== BUCKET NOTIFICATION SETTINGS ====================
-// Per-bucket notification configuration editor (lifecycle-style inline forms).
+// Per-bucket notification configuration editor with modal dialog.
 export function bucketNotificationEditor() {
   return {
     configs: [],
     loading: false,
     saving: false,
     error: '',
-    showAddForm: false,
+    showModal: false,
+    modalMode: 'add',   // 'add' or 'edit'
     editingIndex: -1,
-    editForm: { id: '', arn: '', events: ['s3:ObjectCreated:*'], type: 'TopicConfiguration', prefix: '', suffix: '' },
+    editForm: {
+      id: '', arn: '', events: ['s3:ObjectCreated:*'], type: 'TopicConfiguration',
+      prefix: '', suffix: '', connector_type: 'webhook', auth_token: '',
+    },
+
+    connectorTypes: CONNECTOR_TYPES,
+    connectorGroups: connectorsByCategory(),
 
     eventOptions: [
       's3:ObjectCreated:*',
@@ -269,7 +312,22 @@ export function bucketNotificationEditor() {
           }
           const enabledEl = el.getElementsByTagName('Enabled')[0]?.textContent;
           const enabled = enabledEl !== 'false';
-          configs.push({ id, arn, events, type: t.type, prefix, suffix, enabled });
+
+          // Arca extensions: connector type and properties
+          const connectorTypeEl = el.getElementsByTagName('ConnectorType')[0]?.textContent;
+          const connector_type = connectorTypeEl || 'webhook';
+          const properties = {};
+          const propEls = el.getElementsByTagName('Property');
+          for (const prop of propEls) {
+            const pName = prop.getElementsByTagName('Name')[0]?.textContent || '';
+            const pValue = prop.getElementsByTagName('Value')[0]?.textContent || '';
+            if (pName) properties[pName] = pValue;
+          }
+
+          configs.push({
+            id, arn, events, type: t.type, prefix, suffix, enabled,
+            connector_type, properties,
+          });
         }
       }
       return configs;
@@ -290,6 +348,14 @@ export function bucketNotificationEditor() {
           xml += '    </S3Key></Filter>\n';
         }
         if (!cfg.enabled) xml += '    <Enabled>false</Enabled>\n';
+        // Arca extensions
+        if (cfg.connector_type && cfg.connector_type !== 'webhook') {
+          xml += `    <ConnectorType>${this.escapeXml(cfg.connector_type)}</ConnectorType>\n`;
+        }
+        const props = cfg.properties || {};
+        for (const [k, v] of Object.entries(props)) {
+          if (v) xml += `    <Property><Name>${this.escapeXml(k)}</Name><Value>${this.escapeXml(v)}</Value></Property>\n`;
+        }
         xml += `  </${wrapTag}>\n`;
       }
       xml += '</NotificationConfiguration>';
@@ -298,48 +364,95 @@ export function bucketNotificationEditor() {
 
     escapeXml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); },
 
-    initNewWebhook() {
+    // Modal management
+    openAddModal() {
       this.editingIndex = -1;
-      this.editForm = { id: '', arn: '', events: ['s3:ObjectCreated:*'], type: 'TopicConfiguration', prefix: '', suffix: '' };
-      this.showAddForm = true;
+      this.modalMode = 'add';
+      this.editForm = {
+        id: '', arn: '', events: ['s3:ObjectCreated:*'], type: 'TopicConfiguration',
+        prefix: '', suffix: '', connector_type: 'webhook', auth_token: '',
+      };
+      this.error = '';
+      this.showModal = true;
     },
 
-    startEditWebhook(idx) {
+    openEditModal(idx) {
       const cfg = this.configs[idx];
       this.editingIndex = idx;
-      this.editForm = { id: cfg.id, arn: cfg.arn, events: [...cfg.events], type: cfg.type, prefix: cfg.prefix, suffix: cfg.suffix };
-      this.showAddForm = false;
+      this.modalMode = 'edit';
+      this.editForm = {
+        id: cfg.id, arn: cfg.arn, events: [...cfg.events], type: cfg.type,
+        prefix: cfg.prefix, suffix: cfg.suffix,
+        connector_type: cfg.connector_type || 'webhook',
+        auth_token: (cfg.properties || {}).auth_token || '',
+      };
+      this.error = '';
+      this.showModal = true;
     },
 
-    cancelEdit() { this.editingIndex = -1; this.showAddForm = false; },
+    closeModal() {
+      this.showModal = false;
+      this.editingIndex = -1;
+      this.error = '';
+    },
+
+    selectConnectorType(id) {
+      const ct = CONNECTOR_TYPES.find(c => c.id === id);
+      if (ct && ct.active) {
+        this.editForm.connector_type = id;
+      }
+    },
 
     toggleEvent(ev) {
       const idx = this.editForm.events.indexOf(ev);
       if (idx >= 0) this.editForm.events.splice(idx, 1); else this.editForm.events.push(ev);
     },
 
-    async toggleWebhookEnabled(idx, bucket) {
+    async toggleEnabled(idx, bucket) {
       this.configs[idx].enabled = !this.configs[idx].enabled;
       await this.saveNotifications(bucket);
     },
 
-    async saveEditWebhook(bucket) {
+    async saveFromModal(bucket) {
       if (!this.editForm.arn) { this.error = 'Destination URL is required'; return; }
       if (this.editForm.events.length === 0) { this.error = 'At least one event is required'; return; }
       this.error = '';
+
+      const properties = {};
+      if (this.editForm.auth_token) properties.auth_token = this.editForm.auth_token;
+
       const cfg = {
-        id: this.editForm.id || crypto.randomUUID(), arn: this.editForm.arn,
-        events: [...this.editForm.events], type: this.editForm.type,
-        prefix: this.editForm.prefix, suffix: this.editForm.suffix, enabled: true,
+        id: this.editForm.id || crypto.randomUUID(),
+        arn: this.editForm.arn,
+        events: [...this.editForm.events],
+        type: this.editForm.type,
+        prefix: this.editForm.prefix,
+        suffix: this.editForm.suffix,
+        enabled: true,
+        connector_type: this.editForm.connector_type,
+        properties,
       };
-      if (this.editingIndex >= 0) { cfg.enabled = this.configs[this.editingIndex].enabled; this.configs[this.editingIndex] = cfg; }
-      else this.configs.push(cfg);
-      this.editingIndex = -1; this.showAddForm = false;
+
+      if (this.editingIndex >= 0) {
+        cfg.enabled = this.configs[this.editingIndex].enabled;
+        this.configs[this.editingIndex] = cfg;
+      } else {
+        this.configs.push(cfg);
+      }
+
+      this.closeModal();
       await this.saveNotifications(bucket);
     },
 
-    async removeWebhook(idx, bucket) { this.configs.splice(idx, 1); await this.saveNotifications(bucket); },
-    async deleteAllWebhooks(bucket) { this.configs = []; await this.saveNotifications(bucket); },
+    async removeNotification(idx, bucket) {
+      this.configs.splice(idx, 1);
+      await this.saveNotifications(bucket);
+    },
+
+    async deleteAllNotifications(bucket) {
+      this.configs = [];
+      await this.saveNotifications(bucket);
+    },
 
     async saveNotifications(bucket) {
       this.saving = true; this.error = '';
@@ -351,13 +464,27 @@ export function bucketNotificationEditor() {
       this.saving = false;
     },
 
-    async testWebhook(url) {
+    async testConnector(url, connectorType, properties) {
       if (!url) return;
       try {
-        const data = await api.adminPost('/notifications/test-webhook', { url });
-        if (data.success) alert('Webhook test successful (HTTP ' + data.status + ')');
-        else alert('Webhook test failed: ' + (data.error || 'HTTP ' + data.status));
-      } catch (e) { alert('Webhook test failed: ' + e.message); }
+        const data = await api.adminPost('/notifications/test-connector', {
+          connector_type: connectorType || 'webhook',
+          url,
+          properties: properties || {},
+        });
+        if (data.success) alert('Test successful (' + data.status + ')');
+        else alert('Test failed: ' + (data.error || data.status));
+      } catch (e) { alert('Test failed: ' + e.message); }
+    },
+
+    connectorIcon(typeId) {
+      const ct = CONNECTOR_TYPES.find(c => c.id === typeId);
+      return ct ? ct.icon : '';
+    },
+
+    connectorName(typeId) {
+      const ct = CONNECTOR_TYPES.find(c => c.id === typeId);
+      return ct ? ct.name : typeId;
     },
 
     shortEvent(ev) { return ev.replace('s3:', ''); },

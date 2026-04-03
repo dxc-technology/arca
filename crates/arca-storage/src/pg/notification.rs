@@ -24,6 +24,9 @@ fn row_to_notification_event(row: &sqlx_postgres::PgRow) -> NotificationEventRec
         delivery_attempts: row.get::<i32, _>("delivery_attempts") as u32,
         last_error: row.get("last_error"),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
+        connector_type: row
+            .try_get::<String, _>("connector_type")
+            .unwrap_or_else(|_| "webhook".to_string()),
     }
 }
 
@@ -37,8 +40,8 @@ impl NotificationStore for PgStore {
             "INSERT INTO notification_events
                 (id, bucket, key, event_name, event_time, payload,
                  destination_url, configuration_id, delivery_status,
-                 delivery_attempts, last_error, created_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+                 delivery_attempts, last_error, created_at, connector_type)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
         )
         .bind(&event.id)
         .bind(&event.bucket)
@@ -52,6 +55,7 @@ impl NotificationStore for PgStore {
         .bind(event.delivery_attempts as i32)
         .bind(&event.last_error)
         .bind(event.created_at)
+        .bind(&event.connector_type)
         .execute(&self.pool)
         .await
         .map_err(|e| ArcaError::Internal(format!("insert_notification_event: {e}")))?;

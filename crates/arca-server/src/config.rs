@@ -1176,6 +1176,7 @@ data_dir = "/data"
             },
             encryption: None,
             monitoring: None,
+            notifications: None,
         }
     }
 

@@ -2,6 +2,7 @@
 
 pub mod audit;
 pub mod blob;
+pub mod connector;
 pub mod credential;
 pub mod grant;
 pub mod metadata;
@@ -13,6 +14,7 @@ pub mod user;
 
 pub use audit::{AuditEntry, AuditFilter, AuditStore};
 pub use blob::{BlobEncryptionInfo, BlobGetResult, BlobPutResult, BlobStore, ByteRange, ByteStream, SidecarMeta, SsecBlobOps};
+pub use connector::{ConnectorRegistry, DeliveryResult, NotificationConnector, TestResult};
 pub use credential::CredentialStore;
 pub use grant::GrantStore;
 pub use metadata::MetadataStore;

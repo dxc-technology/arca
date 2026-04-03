@@ -333,6 +333,13 @@ const MIGRATIONS: &[Migration] = &[
             CREATE INDEX IF NOT EXISTS idx_notification_events_created ON notification_events(created_at);
         ",
     },
+    Migration {
+        version: 15,
+        description: "Add connector_type column to notification_events for modular connector support",
+        sql: "
+            ALTER TABLE notification_events ADD COLUMN connector_type TEXT NOT NULL DEFAULT 'webhook';
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -406,7 +413,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 14);
+        assert_eq!(version, 15);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -456,12 +463,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 14);
+        assert_eq!(version, 15);
 
-        // Thirteen migration records
+        // Fifteen migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 14);
+        assert_eq!(count, 15);
     }
 }

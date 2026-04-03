@@ -4,19 +4,39 @@ Accepts POST on /webhook and stores events in memory.
 GET /events returns all captured events as JSON.
 DELETE /events clears the event list.
 GET /health returns 200.
+
+When the AUTH_TOKEN environment variable is set, the receiver validates
+the Authorization header on POST /webhook requests. Requests with a
+missing or incorrect Bearer token receive a 401 Unauthorized response.
+When AUTH_TOKEN is not set, all requests are accepted (backward compat).
 """
 
 import json
+import os
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 events = []
 events_lock = threading.Lock()
 
+# Optional auth token validation (set AUTH_TOKEN env var to enable).
+EXPECTED_TOKEN = os.environ.get("AUTH_TOKEN", "")
+
 
 class WebhookHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/webhook":
+            # Validate Bearer token when AUTH_TOKEN is configured.
+            if EXPECTED_TOKEN:
+                auth_header = self.headers.get("Authorization", "")
+                expected = f"Bearer {EXPECTED_TOKEN}"
+                if auth_header != expected:
+                    self.send_response(401)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(b'{"error":"unauthorized"}')
+                    return
+
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length).decode("utf-8") if content_length > 0 else ""
             try:
@@ -24,10 +44,14 @@ class WebhookHandler(BaseHTTPRequestHandler):
             except json.JSONDecodeError:
                 payload = body
 
+            # Capture the Authorization header for test verification.
+            auth_header = self.headers.get("Authorization", "")
+
             with events_lock:
                 events.append({
                     "timestamp": self.date_time_string(),
                     "payload": payload,
+                    "authorization": auth_header,
                 })
 
             self.send_response(200)
@@ -73,6 +97,9 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    if EXPECTED_TOKEN:
+        print(f"Webhook receiver listening on :8765 (auth token validation enabled)", flush=True)
+    else:
+        print("Webhook receiver listening on :8765", flush=True)
     server = HTTPServer(("0.0.0.0", 8765), WebhookHandler)
-    print("Webhook receiver listening on :8765", flush=True)
     server.serve_forever()

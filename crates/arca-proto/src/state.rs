@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use arca_core::store::{AuditStore, BlobStore, CredentialStore, GrantStore, MetadataStore, MetricsStore, NotificationStore, ServerConfigStore, SsecBlobOps, TeamStore, UserStore};
+use arca_core::store::{AuditStore, BlobStore, ConnectorRegistry, CredentialStore, GrantStore, MetadataStore, MetricsStore, NotificationStore, ServerConfigStore, SsecBlobOps, TeamStore, UserStore};
 
 use crate::metrics::MetricsRegistry;
 
@@ -73,6 +73,8 @@ pub struct AppState {
     pub notification_tx: Option<tokio::sync::mpsc::Sender<arca_core::s3::notification::S3Event>>,
     /// Notification event store (for persisting events and console log viewer).
     pub notification_store: Option<Arc<dyn NotificationStore>>,
+    /// Connector registry for testing notification destinations from admin API.
+    pub connector_registry: Option<Arc<ConnectorRegistry>>,
 }
 
 impl AppState {

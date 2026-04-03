@@ -44,6 +44,7 @@ continuing from the MVP phases (0–11).
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">27</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">28</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">29</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">30</div>
   </div>
 </div>
 <!-- /post-mvp-progress-bar -->
@@ -61,13 +62,14 @@ graph LR
     16 --> 17["17 Object\nVersioning"]
     17 --> 21["21 Object Lock\nWORM"]
     20 --> 25["25 Notifications\n+ Events"]
-    17 --> 26["26 Replication"]
+    25 --> 26["26 Notification\nConnectors"]
+    17 --> 27["27 Replication"]
     13 --> 23["23 Performance\n+ Hardening"]
-    24["24 PostgreSQL\nBackend"] --> 26
-    26 --> 27["27 Multi-Node\n+ Erasure Coding"]
-    27 --> 28["28 CLI Enhancements\n+ Migration"]
-    13 --> 28
-    18 --> 29["29 OpenTelemetry\nIntegration"]
+    24["24 PostgreSQL\nBackend"] --> 27
+    27 --> 28["28 Multi-Node\n+ Erasure Coding"]
+    28 --> 29["29 CLI Enhancements\n+ Migration"]
+    13 --> 29
+    18 --> 30["30 OpenTelemetry\nIntegration"]
 
     style 12 fill:#c62828,color:#fff
     style 13 fill:#c62828,color:#fff
@@ -87,6 +89,7 @@ graph LR
     style 27 fill:#1565c0,color:#fff
     style 28 fill:#1565c0,color:#fff
     style 29 fill:#1565c0,color:#fff
+    style 30 fill:#1565c0,color:#fff
 
     18["18 Monitoring\n+ Audit"]
     22["22 S3 API\nCompleteness"]
@@ -114,10 +117,11 @@ graph LR
 | 23 | [Performance and Hardening](#phase-23-performance-and-hardening-p2) | P2 | 13 | `v0.14.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 24 | [PostgreSQL Backend](#phase-24-postgresql-backend-p2) | P2 | — | `v0.16.1` | <span style="color:#4caf50">&#x2714;</span> |
 | 25 | [Notifications and Event System](#phase-25-notifications-and-event-system-p3) | P3 | 20 | `v0.17.0` | <span style="color:#4caf50">&#x2714;</span> |
-| 26 | [Replication](#phase-26-replication-p3) | P3 | 17, 24 | | |
-| 27 | [Multi-Node and Erasure Coding](#phase-27-multi-node-and-erasure-coding-p3) | P3 | All prior | | |
-| 28 | [CLI Enhancements and Migration Tools](#phase-28-cli-enhancements-and-migration-tools-p3) | P3 | 13, 27 | | |
-| 29 | [OpenTelemetry Integration](#phase-29-opentelemetry-integration-p3) | P3 | 18 | | |
+| 26 | [Notification Connectors](#phase-26-notification-connectors-p3) | P3 | 25 | | |
+| 27 | [Replication](#phase-27-replication-p3) | P3 | 17, 24 | | |
+| 28 | [Multi-Node and Erasure Coding](#phase-28-multi-node-and-erasure-coding-p3) | P3 | All prior | | |
+| 29 | [CLI Enhancements and Migration Tools](#phase-29-cli-enhancements-and-migration-tools-p3) | P3 | 13, 28 | | |
+| 30 | [OpenTelemetry Integration](#phase-30-opentelemetry-integration-p3) | P3 | 18 | | |
 
 ---
 
@@ -376,7 +380,36 @@ S3-compatible bucket notifications for event-driven architectures.
 
 ---
 
-### Phase 26 — Replication [P3]
+### Phase 26 — Notification Connectors [P3]
+
+Modular delivery connectors for the notification system. Phase 25 established a trait-based
+connector architecture with webhook as the first implementation. This phase adds 9 additional
+connectors across three categories.
+
+**Queue connectors**: Kafka (`rdkafka`), AMQP/RabbitMQ (`lapin`), Redis Pub/Sub (`redis`), NATS (`async-nats`), MQTT (`rumqttc`)
+
+**Database connectors**: PostgreSQL (`sqlx-postgres`, zero new deps), MySQL/MariaDB (`sqlx-mysql`), MongoDB (`mongodb`), Elasticsearch (`elasticsearch`)
+
+- [ ] Kafka connector + integration tests
+- [ ] AMQP connector + integration tests
+- [ ] Redis Pub/Sub connector + integration tests
+- [ ] NATS connector + integration tests
+- [ ] MQTT connector + integration tests
+- [ ] PostgreSQL connector + integration tests
+- [ ] MySQL/MariaDB connector + integration tests
+- [ ] MongoDB connector + integration tests
+- [ ] Elasticsearch connector + integration tests
+- [ ] Modular test infrastructure: per-connector ephemeral Docker containers (`bin/test connector <type>`)
+- [ ] (Console) Connector-specific form fields for each type
+- [ ] Documentation: connector configuration guide
+
+**Testing architecture**: Each connector's tests run against a real backend in a temporary Docker container, started one at a time (not all at once). `bin/test connector <type>` and `bin/test connector all` subcommands.
+
+**Depends on**: Phase 25 (notification system and connector trait)
+
+---
+
+### Phase 27 — Replication [P3]
 
 Asynchronous cross-instance replication for disaster recovery and geographic distribution.
 
@@ -389,7 +422,7 @@ Asynchronous cross-instance replication for disaster recovery and geographic dis
 
 ---
 
-### Phase 27 — Multi-Node and Erasure Coding [P3]
+### Phase 28 — Multi-Node and Erasure Coding [P3]
 
 Distributed storage for horizontal scalability and data durability beyond single-node.
 
@@ -402,7 +435,7 @@ Distributed storage for horizontal scalability and data durability beyond single
 
 ---
 
-### Phase 28 — CLI Enhancements and Migration Tools [P3]
+### Phase 29 — CLI Enhancements and Migration Tools [P3]
 
 Comprehensive CLI tooling for administration, data migration, and remote S3 operations.
 
@@ -413,11 +446,11 @@ Comprehensive CLI tooling for administration, data migration, and remote S3 oper
 - [ ] Profile management: `arca profile add/list/remove/use` for managing multiple endpoint/credential profiles (stored in `~/.arca/profiles.toml`)
 - [ ] Interactive shell mode: `arca shell` with tab completion, history, and prompt showing current profile/bucket
 
-**Depends on**: Phase 13 (encryption pipeline for encrypt/decrypt), Phase 24 (PostgreSQL for migrate-db), Phase 27 (multi-node for topology migration)
+**Depends on**: Phase 13 (encryption pipeline for encrypt/decrypt), Phase 24 (PostgreSQL for migrate-db), Phase 28 (multi-node for topology migration)
 
 ---
 
-### Phase 29 — OpenTelemetry Integration [P3]
+### Phase 30 — OpenTelemetry Integration [P3]
 
 Export traces, metrics, and logs via the OpenTelemetry Protocol (OTLP) for integration
 with observability platforms (Grafana, Datadog, Jaeger, etc.).

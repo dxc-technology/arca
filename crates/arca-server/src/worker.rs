@@ -649,26 +649,24 @@ fn disk_stats(data_dirs: &[std::path::PathBuf]) -> (Option<u64>, Option<u64>) {
 use arca_core::s3::notification::{
     matches_event, matches_filter, NotificationConfiguration, S3Event, S3EventMessage,
 };
+use arca_core::store::connector::{ConnectorRegistry, NotificationConnector};
 use arca_core::store::notification::{NotificationEventRecord, NotificationStore};
 use crate::config::NotificationsConfig;
 
 /// Spawn the notification delivery worker.
 ///
 /// Reads S3 events from the mpsc channel, matches them against per-bucket
-/// notification configurations, persists records, and delivers webhooks.
+/// notification configurations, persists records, and delivers events via
+/// the appropriate connector from the registry.
 pub fn spawn_notification_worker(
     mut rx: tokio::sync::mpsc::Receiver<S3Event>,
     metadata: Arc<dyn MetadataStore>,
     notification_store: Arc<dyn NotificationStore>,
+    connector_registry: Arc<ConnectorRegistry>,
     region: String,
     config: NotificationsConfig,
 ) -> BackgroundWorker {
     let handle = tokio::spawn(async move {
-        let http_client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(config.webhook_timeout_seconds))
-            .build()
-            .expect("build reqwest client");
-
         // Simple in-memory cache for notification configs (bucket -> Option<config>).
         let mut config_cache: std::collections::HashMap<
             String,
@@ -714,6 +712,18 @@ pub fn spawn_notification_worker(
                     continue;
                 }
 
+                // Look up the connector for this destination type.
+                let connector = match connector_registry.get(&dest.connector_type) {
+                    Some(c) => Arc::clone(c),
+                    None => {
+                        tracing::warn!(
+                            connector_type = %dest.connector_type,
+                            "notification: connector not available, skipping delivery"
+                        );
+                        continue;
+                    }
+                };
+
                 // Build the full event record
                 let record = event.to_record(&dest.id, &region);
                 let message = S3EventMessage {
@@ -740,6 +750,7 @@ pub fn spawn_notification_worker(
                     delivery_attempts: 0,
                     last_error: None,
                     created_at: chrono::Utc::now(),
+                    connector_type: dest.connector_type.to_string(),
                 };
 
                 // Persist the event record
@@ -748,16 +759,26 @@ pub fn spawn_notification_worker(
                     continue;
                 }
 
-                // Deliver webhook asynchronously
-                let client = http_client.clone();
-                let url = dest.arn.clone();
+                // Deliver asynchronously via the connector with retry logic
+                let dest_url = dest.arn.clone();
+                let properties = dest.properties.clone();
                 let store = notification_store.clone();
                 let event_id = event_record.id.clone();
                 let max_retries = config.max_retries;
                 let retry_base = config.retry_base_seconds;
 
                 tokio::spawn(async move {
-                    deliver_webhook(&client, &url, &payload, &store, &event_id, max_retries, retry_base).await;
+                    deliver_with_retry(
+                        connector.as_ref(),
+                        &dest_url,
+                        &payload,
+                        &properties,
+                        &store,
+                        &event_id,
+                        max_retries,
+                        retry_base,
+                    )
+                    .await;
                 });
             }
         }
@@ -789,11 +810,12 @@ async fn fetch_notification_config(
     }
 }
 
-/// Deliver a webhook POST with retry logic.
-async fn deliver_webhook(
-    client: &reqwest::Client,
-    url: &str,
+/// Deliver a notification event via a connector with retry logic.
+async fn deliver_with_retry(
+    connector: &dyn NotificationConnector,
+    destination: &str,
     payload: &str,
+    properties: &std::collections::HashMap<String, String>,
     store: &Arc<dyn NotificationStore>,
     event_id: &str,
     max_retries: u32,
@@ -803,55 +825,45 @@ async fn deliver_webhook(
 
     loop {
         attempts += 1;
-        let result = client
-            .post(url)
-            .header("Content-Type", "application/json")
-            .body(payload.to_string())
-            .send()
-            .await;
+        let result = connector.deliver(destination, payload, properties).await;
 
-        match result {
-            Ok(resp) if resp.status().is_success() => {
-                let _ = store
-                    .update_notification_event_status(event_id, "delivered", attempts, None)
-                    .await;
-                tracing::debug!(url = %url, attempts, "notification: delivered");
-                return;
-            }
-            Ok(resp) => {
-                let status = resp.status();
-                let error_msg = format!("HTTP {status}");
-                if attempts >= max_retries {
-                    let _ = store
-                        .update_notification_event_status(
-                            event_id,
-                            "failed",
-                            attempts,
-                            Some(&error_msg),
-                        )
-                        .await;
-                    tracing::warn!(url = %url, attempts, error = %error_msg, "notification: delivery failed permanently");
-                    return;
-                }
-                tracing::debug!(url = %url, attempts, error = %error_msg, "notification: retrying");
-            }
-            Err(e) => {
-                let error_msg = e.to_string();
-                if attempts >= max_retries {
-                    let _ = store
-                        .update_notification_event_status(
-                            event_id,
-                            "failed",
-                            attempts,
-                            Some(&error_msg),
-                        )
-                        .await;
-                    tracing::warn!(url = %url, attempts, error = %error_msg, "notification: delivery failed permanently");
-                    return;
-                }
-                tracing::debug!(url = %url, attempts, error = %error_msg, "notification: retrying");
-            }
+        if result.success {
+            let _ = store
+                .update_notification_event_status(event_id, "delivered", attempts, None)
+                .await;
+            tracing::debug!(
+                destination = %destination,
+                connector = connector.name(),
+                attempts,
+                status = %result.status_info,
+                "notification: delivered"
+            );
+            return;
         }
+
+        let error_msg = result.error.unwrap_or_else(|| result.status_info.clone());
+
+        if attempts >= max_retries {
+            let _ = store
+                .update_notification_event_status(event_id, "failed", attempts, Some(&error_msg))
+                .await;
+            tracing::warn!(
+                destination = %destination,
+                connector = connector.name(),
+                attempts,
+                error = %error_msg,
+                "notification: delivery failed permanently"
+            );
+            return;
+        }
+
+        tracing::debug!(
+            destination = %destination,
+            connector = connector.name(),
+            attempts,
+            error = %error_msg,
+            "notification: retrying"
+        );
 
         // Exponential backoff
         let delay = Duration::from_secs(retry_base_seconds * (1 << (attempts - 1)));

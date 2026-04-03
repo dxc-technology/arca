@@ -209,6 +209,46 @@ def create_extra_credential():
         print(f"  Warning: credential creation returned {resp.status_code}: {resp.text}")
 
 
+def seed_notification_data(s3):
+    """Configure a webhook notification on the 'logs' bucket for screenshots."""
+    print("\n  Seeding notification data...")
+
+    # Configure a webhook on the logs bucket via raw XML (to include Arca extensions)
+    import hashlib
+    from botocore.auth import S3SigV4Auth
+    from botocore.credentials import Credentials
+    from botocore.awsrequest import AWSRequest
+
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<NotificationConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <TopicConfiguration>
+    <Id>screenshot-webhook</Id>
+    <Topic>http://example.com/webhook</Topic>
+    <Event>s3:ObjectCreated:*</Event>
+    <Event>s3:ObjectRemoved:*</Event>
+    <Filter><S3Key>
+      <FilterRule><Name>prefix</Name><Value>incoming/</Value></FilterRule>
+    </S3Key></Filter>
+  </TopicConfiguration>
+</NotificationConfiguration>"""
+
+    creds = Credentials(ACCESS_KEY, SECRET_KEY)
+    url = f"{ARCA_ENDPOINT}/logs?notification"
+    content_sha = hashlib.sha256(xml.encode()).hexdigest()
+    aws_req = AWSRequest(method="PUT", url=url, data=xml, headers={
+        "Content-Type": "application/xml",
+        "x-amz-content-sha256": content_sha,
+    })
+    S3SigV4Auth(creds, "s3", "us-east-1").add_auth(aws_req)
+    resp = requests.put(url, data=xml, headers=dict(aws_req.headers))
+    if resp.status_code in (200, 204):
+        print("  Configured webhook notification on logs bucket")
+    else:
+        print(f"  Warning: notification config returned {resp.status_code}: {resp.text}")
+
+    print("  Notification seeding complete.")
+
+
 def seed_rbac_data():
     """Seed RBAC data (users, teams, grants) via Admin API. Returns IDs for screenshots."""
     print("\n  Seeding RBAC data...")
@@ -305,7 +345,7 @@ def take_screenshots(rbac_ids):
     """Capture screenshots of the web console using Playwright."""
     print("\n=== Phase B: Taking screenshots ===")
 
-    total = 26
+    total = 29
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     with sync_playwright() as p:
@@ -564,6 +604,32 @@ def take_screenshots(rbac_ids):
         page.wait_for_timeout(1500)
         screenshot(page, "console-settings.png")
 
+        # ----- 27. Bucket settings — event notifications card (with configured webhook) -----
+        print(f"  27/{total} console-event-notifications.png")
+        page.goto(f"{CONSOLE_URL}#/buckets/logs/settings")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_selector('text=Event Notifications', timeout=10000)
+        page.wait_for_timeout(1000)
+        screenshot(page, "console-event-notifications.png")
+
+        # ----- 28. Add notification modal (connector type selector) -----
+        print(f"  28/{total} console-notification-modal.png")
+        page.click('button:has-text("Add Notification")')
+        page.wait_for_selector('h3:has-text("Add Event Notification")', timeout=10000)
+        page.wait_for_timeout(500)
+        screenshot(page, "console-notification-modal.png")
+        # Close the modal
+        page.mouse.click(50, 50)
+        page.wait_for_timeout(300)
+
+        # ----- 29. Notification event log -----
+        print(f"  29/{total} console-notification-events.png")
+        page.goto(f"{CONSOLE_URL}#/notifications")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_selector('h2:has-text("Notification Events")', timeout=10000)
+        page.wait_for_timeout(2000)
+        screenshot(page, "console-notification-events.png")
+
         browser.close()
 
     print("\n  All screenshots saved to", OUTPUT_DIR)
@@ -576,6 +642,7 @@ def main():
     s3 = create_s3_client()
     seed_data(s3)
     seed_versioning_data(s3)
+    seed_notification_data(s3)
     create_extra_credential()
     rbac_ids = seed_rbac_data()
     take_screenshots(rbac_ids)

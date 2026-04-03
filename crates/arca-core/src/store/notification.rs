@@ -21,7 +21,7 @@ pub struct NotificationEventRecord {
     pub event_time: DateTime<Utc>,
     /// Full JSON payload (S3EventMessage serialized).
     pub payload: String,
-    /// Webhook destination URL.
+    /// Destination URL / address.
     pub destination_url: String,
     /// ID of the notification configuration that matched.
     pub configuration_id: String,
@@ -35,6 +35,13 @@ pub struct NotificationEventRecord {
     pub last_error: Option<String>,
     /// When the record was created.
     pub created_at: DateTime<Utc>,
+    /// Connector type used for delivery (e.g. "webhook", "kafka").
+    #[serde(default = "default_connector_type")]
+    pub connector_type: String,
+}
+
+fn default_connector_type() -> String {
+    "webhook".to_string()
 }
 
 /// Filter criteria for querying notification events.

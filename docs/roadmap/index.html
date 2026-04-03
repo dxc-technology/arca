@@ -1201,10 +1201,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-26-replication-p3" class="md-nav__link">
+  <a href="#phase-26-notification-connectors-p3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 26 — Replication [P3]
+        Phase 26 — Notification Connectors [P3]
       
     </span>
   </a>
@@ -1212,10 +1212,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-27-multi-node-and-erasure-coding-p3" class="md-nav__link">
+  <a href="#phase-27-replication-p3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 27 — Multi-Node and Erasure Coding [P3]
+        Phase 27 — Replication [P3]
       
     </span>
   </a>
@@ -1223,10 +1223,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-28-cli-enhancements-and-migration-tools-p3" class="md-nav__link">
+  <a href="#phase-28-multi-node-and-erasure-coding-p3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 28 — CLI Enhancements and Migration Tools [P3]
+        Phase 28 — Multi-Node and Erasure Coding [P3]
       
     </span>
   </a>
@@ -1234,10 +1234,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-29-opentelemetry-integration-p3" class="md-nav__link">
+  <a href="#phase-29-cli-enhancements-and-migration-tools-p3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 29 — OpenTelemetry Integration [P3]
+        Phase 29 — CLI Enhancements and Migration Tools [P3]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-30-opentelemetry-integration-p3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 30 — OpenTelemetry Integration [P3]
       
     </span>
   </a>
@@ -1741,10 +1752,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-26-replication-p3" class="md-nav__link">
+  <a href="#phase-26-notification-connectors-p3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 26 — Replication [P3]
+        Phase 26 — Notification Connectors [P3]
       
     </span>
   </a>
@@ -1752,10 +1763,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-27-multi-node-and-erasure-coding-p3" class="md-nav__link">
+  <a href="#phase-27-replication-p3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 27 — Multi-Node and Erasure Coding [P3]
+        Phase 27 — Replication [P3]
       
     </span>
   </a>
@@ -1763,10 +1774,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-28-cli-enhancements-and-migration-tools-p3" class="md-nav__link">
+  <a href="#phase-28-multi-node-and-erasure-coding-p3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 28 — CLI Enhancements and Migration Tools [P3]
+        Phase 28 — Multi-Node and Erasure Coding [P3]
       
     </span>
   </a>
@@ -1774,10 +1785,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-29-opentelemetry-integration-p3" class="md-nav__link">
+  <a href="#phase-29-cli-enhancements-and-migration-tools-p3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 29 — OpenTelemetry Integration [P3]
+        Phase 29 — CLI Enhancements and Migration Tools [P3]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-30-opentelemetry-integration-p3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 30 — OpenTelemetry Integration [P3]
       
     </span>
   </a>
@@ -2045,6 +2067,7 @@ continuing from the MVP phases (0–11).</p>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">27</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">28</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">29</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">30</div>
   </div>
 </div>
 <!-- /post-mvp-progress-bar -->
@@ -2060,13 +2083,14 @@ continuing from the MVP phases (0–11).</p>
     16 --&gt; 17["17 Object\nVersioning"]
     17 --&gt; 21["21 Object Lock\nWORM"]
     20 --&gt; 25["25 Notifications\n+ Events"]
-    17 --&gt; 26["26 Replication"]
+    25 --&gt; 26["26 Notification\nConnectors"]
+    17 --&gt; 27["27 Replication"]
     13 --&gt; 23["23 Performance\n+ Hardening"]
-    24["24 PostgreSQL\nBackend"] --&gt; 26
-    26 --&gt; 27["27 Multi-Node\n+ Erasure Coding"]
-    27 --&gt; 28["28 CLI Enhancements\n+ Migration"]
-    13 --&gt; 28
-    18 --&gt; 29["29 OpenTelemetry\nIntegration"]
+    24["24 PostgreSQL\nBackend"] --&gt; 27
+    27 --&gt; 28["28 Multi-Node\n+ Erasure Coding"]
+    28 --&gt; 29["29 CLI Enhancements\n+ Migration"]
+    13 --&gt; 29
+    18 --&gt; 30["30 OpenTelemetry\nIntegration"]
 
     style 12 fill:#c62828,color:#fff
     style 13 fill:#c62828,color:#fff
@@ -2086,6 +2110,7 @@ continuing from the MVP phases (0–11).</p>
     style 27 fill:#1565c0,color:#fff
     style 28 fill:#1565c0,color:#fff
     style 29 fill:#1565c0,color:#fff
+    style 30 fill:#1565c0,color:#fff
 
     18["18 Monitoring\n+ Audit"]
     22["22 S3 API\nCompleteness"]</code></pre>
@@ -2219,31 +2244,39 @@ continuing from the MVP phases (0–11).</p>
 </tr>
 <tr>
 <td style="text-align: center;">26</td>
-<td><a href="#phase-26-replication-p3">Replication</a></td>
+<td><a href="#phase-26-notification-connectors-p3">Notification Connectors</a></td>
+<td style="text-align: center;">P3</td>
+<td style="text-align: center;">25</td>
+<td style="text-align: center;"></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr>
+<td style="text-align: center;">27</td>
+<td><a href="#phase-27-replication-p3">Replication</a></td>
 <td style="text-align: center;">P3</td>
 <td style="text-align: center;">17, 24</td>
 <td style="text-align: center;"></td>
 <td style="text-align: center;"></td>
 </tr>
 <tr>
-<td style="text-align: center;">27</td>
-<td><a href="#phase-27-multi-node-and-erasure-coding-p3">Multi-Node and Erasure Coding</a></td>
+<td style="text-align: center;">28</td>
+<td><a href="#phase-28-multi-node-and-erasure-coding-p3">Multi-Node and Erasure Coding</a></td>
 <td style="text-align: center;">P3</td>
 <td style="text-align: center;">All prior</td>
 <td style="text-align: center;"></td>
 <td style="text-align: center;"></td>
 </tr>
 <tr>
-<td style="text-align: center;">28</td>
-<td><a href="#phase-28-cli-enhancements-and-migration-tools-p3">CLI Enhancements and Migration Tools</a></td>
+<td style="text-align: center;">29</td>
+<td><a href="#phase-29-cli-enhancements-and-migration-tools-p3">CLI Enhancements and Migration Tools</a></td>
 <td style="text-align: center;">P3</td>
-<td style="text-align: center;">13, 27</td>
+<td style="text-align: center;">13, 28</td>
 <td style="text-align: center;"></td>
 <td style="text-align: center;"></td>
 </tr>
 <tr>
-<td style="text-align: center;">29</td>
-<td><a href="#phase-29-opentelemetry-integration-p3">OpenTelemetry Integration</a></td>
+<td style="text-align: center;">30</td>
+<td><a href="#phase-30-opentelemetry-integration-p3">OpenTelemetry Integration</a></td>
 <td style="text-align: center;">P3</td>
 <td style="text-align: center;">18</td>
 <td style="text-align: center;"></td>
@@ -2469,7 +2502,30 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 </ul>
 <p><strong>Benefits from</strong>: Phase 20 (lifecycle worker framework)</p>
 <hr />
-<h3 id="phase-26-replication-p3">Phase 26 — Replication [P3]<a class="headerlink" href="#phase-26-replication-p3" title="Permanent link">&para;</a></h3>
+<h3 id="phase-26-notification-connectors-p3">Phase 26 — Notification Connectors [P3]<a class="headerlink" href="#phase-26-notification-connectors-p3" title="Permanent link">&para;</a></h3>
+<p>Modular delivery connectors for the notification system. Phase 25 established a trait-based
+connector architecture with webhook as the first implementation. This phase adds 9 additional
+connectors across three categories.</p>
+<p><strong>Queue connectors</strong>: Kafka (<code>rdkafka</code>), AMQP/RabbitMQ (<code>lapin</code>), Redis Pub/Sub (<code>redis</code>), NATS (<code>async-nats</code>), MQTT (<code>rumqttc</code>)</p>
+<p><strong>Database connectors</strong>: PostgreSQL (<code>sqlx-postgres</code>, zero new deps), MySQL/MariaDB (<code>sqlx-mysql</code>), MongoDB (<code>mongodb</code>), Elasticsearch (<code>elasticsearch</code>)</p>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Kafka connector + integration tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> AMQP connector + integration tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Redis Pub/Sub connector + integration tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> NATS connector + integration tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> MQTT connector + integration tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> PostgreSQL connector + integration tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> MySQL/MariaDB connector + integration tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> MongoDB connector + integration tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Elasticsearch connector + integration tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Modular test infrastructure: per-connector ephemeral Docker containers (<code>bin/test connector &lt;type&gt;</code>)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> (Console) Connector-specific form fields for each type</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Documentation: connector configuration guide</li>
+</ul>
+<p><strong>Testing architecture</strong>: Each connector's tests run against a real backend in a temporary Docker container, started one at a time (not all at once). <code>bin/test connector &lt;type&gt;</code> and <code>bin/test connector all</code> subcommands.</p>
+<p><strong>Depends on</strong>: Phase 25 (notification system and connector trait)</p>
+<hr />
+<h3 id="phase-27-replication-p3">Phase 27 — Replication [P3]<a class="headerlink" href="#phase-27-replication-p3" title="Permanent link">&para;</a></h3>
 <p>Asynchronous cross-instance replication for disaster recovery and geographic distribution.</p>
 <ul class="task-list">
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Change journal in metadata DB, replication worker forwards objects to destination Arca instance</li>
@@ -2479,7 +2535,7 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 </ul>
 <p><strong>Depends on</strong>: Phase 17 (versioning), Phase 24 (PostgreSQL for production)</p>
 <hr />
-<h3 id="phase-27-multi-node-and-erasure-coding-p3">Phase 27 — Multi-Node and Erasure Coding [P3]<a class="headerlink" href="#phase-27-multi-node-and-erasure-coding-p3" title="Permanent link">&para;</a></h3>
+<h3 id="phase-28-multi-node-and-erasure-coding-p3">Phase 28 — Multi-Node and Erasure Coding [P3]<a class="headerlink" href="#phase-28-multi-node-and-erasure-coding-p3" title="Permanent link">&para;</a></h3>
 <p>Distributed storage for horizontal scalability and data durability beyond single-node.</p>
 <ul class="task-list">
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Erasure coding: data + parity shards across storage volumes (e.g., EC:4+2)</li>
@@ -2489,7 +2545,7 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 </ul>
 <p><strong>Depends on</strong>: All prior phases. Major architecture evolution.</p>
 <hr />
-<h3 id="phase-28-cli-enhancements-and-migration-tools-p3">Phase 28 — CLI Enhancements and Migration Tools [P3]<a class="headerlink" href="#phase-28-cli-enhancements-and-migration-tools-p3" title="Permanent link">&para;</a></h3>
+<h3 id="phase-29-cli-enhancements-and-migration-tools-p3">Phase 29 — CLI Enhancements and Migration Tools [P3]<a class="headerlink" href="#phase-29-cli-enhancements-and-migration-tools-p3" title="Permanent link">&para;</a></h3>
 <p>Comprehensive CLI tooling for administration, data migration, and remote S3 operations.</p>
 <ul class="task-list">
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>arca migrate-db --from sqlite --to postgres</code>: bidirectional metadata migration between SQLite and PostgreSQL backends</li>
@@ -2499,9 +2555,9 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Profile management: <code>arca profile add/list/remove/use</code> for managing multiple endpoint/credential profiles (stored in <code>~/.arca/profiles.toml</code>)</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Interactive shell mode: <code>arca shell</code> with tab completion, history, and prompt showing current profile/bucket</li>
 </ul>
-<p><strong>Depends on</strong>: Phase 13 (encryption pipeline for encrypt/decrypt), Phase 24 (PostgreSQL for migrate-db), Phase 27 (multi-node for topology migration)</p>
+<p><strong>Depends on</strong>: Phase 13 (encryption pipeline for encrypt/decrypt), Phase 24 (PostgreSQL for migrate-db), Phase 28 (multi-node for topology migration)</p>
 <hr />
-<h3 id="phase-29-opentelemetry-integration-p3">Phase 29 — OpenTelemetry Integration [P3]<a class="headerlink" href="#phase-29-opentelemetry-integration-p3" title="Permanent link">&para;</a></h3>
+<h3 id="phase-30-opentelemetry-integration-p3">Phase 30 — OpenTelemetry Integration [P3]<a class="headerlink" href="#phase-30-opentelemetry-integration-p3" title="Permanent link">&para;</a></h3>
 <p>Export traces, metrics, and logs via the OpenTelemetry Protocol (OTLP) for integration
 with observability platforms (Grafana, Datadog, Jaeger, etc.).</p>
 <ul class="task-list">

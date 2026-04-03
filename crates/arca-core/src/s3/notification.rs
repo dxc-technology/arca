@@ -1,13 +1,113 @@
 //! S3 Bucket Notification Configuration types, XML parsing, and serialization.
 //!
 //! Supports all three S3 destination types (TopicConfiguration, QueueConfiguration,
-//! CloudFunctionConfiguration), treating them uniformly as webhook destinations.
+//! CloudFunctionConfiguration) with a pluggable connector architecture. Each destination
+//! has a `connector_type` that determines which delivery backend is used (webhook, Kafka,
+//! Redis, etc.) and connector-specific `properties` (e.g. auth tokens, topic names).
+
+use std::collections::HashMap;
+use std::fmt;
 
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, Event};
 use quick_xml::Writer;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{write_xml_element, S3Error, S3ErrorCode};
+
+// ── Connector type (Arca extension — determines which delivery backend is used) ──
+
+/// The notification connector type. Determines which delivery backend handles
+/// event delivery for a destination. Only `Webhook` is currently implemented;
+/// other variants are defined for forward compatibility and console display.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectorType {
+    Webhook,
+    Kafka,
+    Amqp,
+    Redis,
+    Nats,
+    Mqtt,
+    Postgresql,
+    Mysql,
+    Mongodb,
+    Elasticsearch,
+}
+
+impl Default for ConnectorType {
+    fn default() -> Self {
+        ConnectorType::Webhook
+    }
+}
+
+impl ConnectorType {
+    /// Human-readable display name for the UI.
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            ConnectorType::Webhook => "Webhook",
+            ConnectorType::Kafka => "Kafka",
+            ConnectorType::Amqp => "AMQP (RabbitMQ)",
+            ConnectorType::Redis => "Redis",
+            ConnectorType::Nats => "NATS",
+            ConnectorType::Mqtt => "MQTT",
+            ConnectorType::Postgresql => "PostgreSQL",
+            ConnectorType::Mysql => "MySQL",
+            ConnectorType::Mongodb => "MongoDB",
+            ConnectorType::Elasticsearch => "Elasticsearch",
+        }
+    }
+
+    /// Category for grouping in the UI.
+    pub fn category(&self) -> &'static str {
+        match self {
+            ConnectorType::Webhook => "Functions",
+            ConnectorType::Kafka
+            | ConnectorType::Amqp
+            | ConnectorType::Redis
+            | ConnectorType::Nats
+            | ConnectorType::Mqtt => "Queue",
+            ConnectorType::Postgresql
+            | ConnectorType::Mysql
+            | ConnectorType::Mongodb
+            | ConnectorType::Elasticsearch => "Database",
+        }
+    }
+
+    /// All known connector types (for UI enumeration).
+    pub fn all() -> &'static [ConnectorType] {
+        &[
+            ConnectorType::Webhook,
+            ConnectorType::Kafka,
+            ConnectorType::Amqp,
+            ConnectorType::Redis,
+            ConnectorType::Nats,
+            ConnectorType::Mqtt,
+            ConnectorType::Postgresql,
+            ConnectorType::Mysql,
+            ConnectorType::Mongodb,
+            ConnectorType::Elasticsearch,
+        ]
+    }
+}
+
+impl fmt::Display for ConnectorType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Use the serde snake_case representation for Display.
+        let s = match self {
+            ConnectorType::Webhook => "webhook",
+            ConnectorType::Kafka => "kafka",
+            ConnectorType::Amqp => "amqp",
+            ConnectorType::Redis => "redis",
+            ConnectorType::Nats => "nats",
+            ConnectorType::Mqtt => "mqtt",
+            ConnectorType::Postgresql => "postgresql",
+            ConnectorType::Mysql => "mysql",
+            ConnectorType::Mongodb => "mongodb",
+            ConnectorType::Elasticsearch => "elasticsearch",
+        };
+        f.write_str(s)
+    }
+}
 
 // ── Configuration types (serde-serializable for JSON storage in bucket_config) ──
 
@@ -53,8 +153,8 @@ pub struct DestinationConfig {
     pub id: String,
     /// Destination type — determines which XML element to use on serialization.
     pub destination_type: DestinationType,
-    /// Destination URL (where webhook POSTs will be sent).
-    /// In S3 this would be an ARN; we accept URLs directly.
+    /// Destination URL / address (where events will be delivered).
+    /// In S3 this would be an ARN; Arca accepts URLs or connector-specific addresses.
     pub arn: String,
     /// Event types to match (e.g. `["s3:ObjectCreated:*"]`).
     pub events: Vec<String>,
@@ -62,10 +162,18 @@ pub struct DestinationConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter: Option<NotificationFilter>,
     /// Whether this destination is active (Arca extension, not part of S3 spec).
-    /// Preserved in JSON storage, ignored in XML serialization.
-    /// Allows temporarily disabling a webhook without removing it.
+    /// Preserved in JSON storage. Allows temporarily disabling without removing.
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+    /// Connector type — which delivery backend to use (Arca extension).
+    /// Defaults to Webhook for backward compatibility with existing configs.
+    #[serde(default)]
+    pub connector_type: ConnectorType,
+    /// Connector-specific key-value properties (Arca extension).
+    /// For webhooks: `auth_token` (Bearer token sent in Authorization header).
+    /// For future connectors: topic, client_id, credentials, etc.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub properties: HashMap<String, String>,
 }
 
 fn default_enabled() -> bool {
@@ -329,6 +437,20 @@ pub fn parse_notification_configuration_xml(
         // Arca extension: enabled/disabled state (defaults to true when absent)
         #[serde(rename = "Enabled")]
         enabled: Option<String>,
+        // Arca extension: connector type (defaults to "webhook" when absent)
+        #[serde(rename = "ConnectorType")]
+        connector_type: Option<String>,
+        // Arca extension: connector-specific properties
+        #[serde(rename = "Property", default)]
+        properties: Vec<XmlProperty>,
+    }
+
+    #[derive(Deserialize)]
+    struct XmlProperty {
+        #[serde(rename = "Name")]
+        name: String,
+        #[serde(rename = "Value")]
+        value: String,
     }
 
     #[derive(Deserialize)]
@@ -436,6 +558,25 @@ pub fn parse_notification_configuration_xml(
 
             let enabled = cfg.enabled.as_deref() != Some("false");
 
+            // Arca extension: connector type (defaults to Webhook)
+            let connector_type = cfg
+                .connector_type
+                .as_deref()
+                .and_then(|s| {
+                    serde_json::from_value::<ConnectorType>(serde_json::Value::String(
+                        s.to_string(),
+                    ))
+                    .ok()
+                })
+                .unwrap_or_default();
+
+            // Arca extension: connector-specific properties
+            let properties: HashMap<String, String> = cfg
+                .properties
+                .into_iter()
+                .map(|p| (p.name, p.value))
+                .collect();
+
             result.push(DestinationConfig {
                 id,
                 destination_type: dest_type,
@@ -443,6 +584,8 @@ pub fn parse_notification_configuration_xml(
                 events,
                 filter,
                 enabled,
+                connector_type,
+                properties,
             });
         }
         Ok(result)
@@ -568,6 +711,23 @@ fn write_destination_config_xml(
     // Arca extension: persist enabled/disabled state in XML
     if !cfg.enabled {
         write_xml_element(writer, "Enabled", "false");
+    }
+
+    // Arca extension: connector type (omit if webhook, since that's the default)
+    if cfg.connector_type != ConnectorType::Webhook {
+        write_xml_element(writer, "ConnectorType", &cfg.connector_type.to_string());
+    }
+
+    // Arca extension: connector-specific properties
+    for (name, value) in &cfg.properties {
+        writer
+            .write_event(Event::Start(BytesStart::new("Property")))
+            .expect("write Property start");
+        write_xml_element(writer, "Name", name);
+        write_xml_element(writer, "Value", value);
+        writer
+            .write_event(Event::End(BytesEnd::new("Property")))
+            .expect("write Property end");
     }
 
     writer
@@ -888,6 +1048,8 @@ mod tests {
                     },
                 }),
                 enabled: true,
+                connector_type: ConnectorType::default(),
+                properties: HashMap::new(),
             }],
             queue_configurations: vec![],
             cloud_function_configurations: vec![],
@@ -908,6 +1070,8 @@ mod tests {
                 events: vec!["s3:ObjectCreated:Put".to_string()],
                 filter: None,
                 enabled: true,
+                connector_type: ConnectorType::default(),
+                properties: HashMap::new(),
             }],
             queue_configurations: vec![DestinationConfig {
                 id: "q1".to_string(),
@@ -916,6 +1080,8 @@ mod tests {
                 events: vec!["s3:ObjectRemoved:Delete".to_string()],
                 filter: None,
                 enabled: true,
+                connector_type: ConnectorType::default(),
+                properties: HashMap::new(),
             }],
             cloud_function_configurations: vec![DestinationConfig {
                 id: "cf1".to_string(),
@@ -937,6 +1103,8 @@ mod tests {
                     },
                 }),
                 enabled: true,
+                connector_type: ConnectorType::default(),
+                properties: HashMap::new(),
             }],
         };
 
@@ -963,6 +1131,8 @@ mod tests {
                 events: vec!["s3:ObjectCreated:*".to_string()],
                 filter: None,
                 enabled: true,
+                connector_type: ConnectorType::default(),
+                properties: HashMap::new(),
             }],
             queue_configurations: vec![],
             cloud_function_configurations: vec![],
@@ -1127,6 +1297,8 @@ mod tests {
                 events: vec!["s3:ObjectCreated:*".to_string()],
                 filter: None,
                 enabled: true,
+                connector_type: ConnectorType::default(),
+                properties: HashMap::new(),
             }],
             queue_configurations: vec![DestinationConfig {
                 id: "q1".to_string(),
@@ -1135,6 +1307,8 @@ mod tests {
                 events: vec!["s3:ObjectRemoved:*".to_string()],
                 filter: None,
                 enabled: true,
+                connector_type: ConnectorType::default(),
+                properties: HashMap::new(),
             }],
             cloud_function_configurations: vec![],
         };
@@ -1157,6 +1331,8 @@ mod tests {
                 events: vec!["s3:ObjectCreated:*".to_string()],
                 filter: None,
                 enabled: true,
+                connector_type: ConnectorType::default(),
+                properties: HashMap::new(),
             }],
             ..Default::default()
         };

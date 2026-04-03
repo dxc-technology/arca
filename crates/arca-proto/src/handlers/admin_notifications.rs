@@ -116,62 +116,97 @@ pub async fn clear_notification_events(
     })))
 }
 
-/// Request body for POST /admin/notifications/test-webhook.
+/// Request body for POST /admin/notifications/test-webhook (backward-compatible alias).
 #[derive(Debug, Deserialize)]
 pub struct TestWebhookRequest {
     pub url: String,
+    /// Optional auth token for webhook Bearer authentication.
+    pub auth_token: Option<String>,
 }
 
-/// POST /admin/notifications/test-webhook — send a test event to verify connectivity.
+/// POST /admin/notifications/test-webhook — send a test event to verify webhook connectivity.
+/// Backward-compatible alias that delegates to the connector registry.
 pub async fn test_webhook(
+    State(state): State<AppState>,
     Json(body): Json<TestWebhookRequest>,
 ) -> Result<impl IntoResponse, AdminError> {
     if body.url.is_empty() {
         return Err(AdminError::bad_request("URL must not be empty"));
     }
 
-    let test_event = serde_json::json!({
-        "Records": [{
-            "eventVersion": "2.1",
-            "eventSource": "arca:s3",
-            "awsRegion": "test",
-            "eventTime": chrono::Utc::now().to_rfc3339(),
-            "eventName": "s3:TestEvent",
-            "userIdentity": { "principalId": "test" },
-            "requestParameters": { "sourceIPAddress": "127.0.0.1" },
-            "responseElements": { "x-amz-request-id": "test", "x-amz-id-2": "" },
-            "s3": {
-                "s3SchemaVersion": "1.0",
-                "configurationId": "test",
-                "bucket": { "name": "test-bucket", "ownerIdentity": { "principalId": "test" }, "arn": "arn:arca:s3:::test-bucket" },
-                "object": { "key": "test-key", "size": 0, "eTag": "", "sequencer": "000" }
-            }
-        }]
-    });
+    let registry = state
+        .connector_registry
+        .as_ref()
+        .ok_or_else(|| AdminError::bad_request("Connector registry is not available"))?;
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| AdminError::internal(format!("Failed to create HTTP client: {e}")))?;
+    let connector = registry
+        .get(&arca_core::s3::notification::ConnectorType::Webhook)
+        .ok_or_else(|| AdminError::internal("Webhook connector not registered".to_string()))?;
 
-    match client
-        .post(&body.url)
-        .header("Content-Type", "application/json")
-        .json(&test_event)
-        .send()
-        .await
-    {
-        Ok(resp) => {
-            let status = resp.status().as_u16();
-            let success = resp.status().is_success();
-            Ok(Json(serde_json::json!({
-                "success": success,
-                "status": status,
-            })))
+    let mut properties = std::collections::HashMap::new();
+    if let Some(token) = body.auth_token {
+        if !token.is_empty() {
+            properties.insert("auth_token".to_string(), token);
         }
-        Err(e) => Ok(Json(serde_json::json!({
-            "success": false,
-            "error": e.to_string(),
-        }))),
     }
+
+    let result = connector.test(&body.url, &properties).await;
+
+    Ok(Json(serde_json::json!({
+        "success": result.success,
+        "status": result.status_info,
+        "error": result.error,
+    })))
+}
+
+/// Request body for POST /admin/notifications/test-connector.
+#[derive(Debug, Deserialize)]
+pub struct TestConnectorRequest {
+    /// Connector type (e.g. "webhook", "kafka").
+    pub connector_type: String,
+    /// Destination address (URL, broker, etc.).
+    pub url: String,
+    /// Connector-specific properties (auth_token, topic, etc.).
+    #[serde(default)]
+    pub properties: std::collections::HashMap<String, String>,
+}
+
+/// POST /admin/notifications/test-connector — test any registered connector.
+pub async fn test_connector(
+    State(state): State<AppState>,
+    Json(body): Json<TestConnectorRequest>,
+) -> Result<impl IntoResponse, AdminError> {
+    if body.url.is_empty() {
+        return Err(AdminError::bad_request("URL must not be empty"));
+    }
+
+    let ct: arca_core::s3::notification::ConnectorType =
+        serde_json::from_value(serde_json::Value::String(body.connector_type.clone()))
+            .map_err(|_| {
+                AdminError::bad_request(&format!(
+                    "Unknown connector type: {}",
+                    body.connector_type
+                ))
+            })?;
+
+    let registry = state
+        .connector_registry
+        .as_ref()
+        .ok_or_else(|| AdminError::bad_request("Connector registry is not available"))?;
+
+    let connector = registry.get(&ct).ok_or_else(|| {
+        AdminError::bad_request(&format!(
+            "Connector '{}' is not available (not implemented yet)",
+            body.connector_type
+        ))
+    })?;
+
+    let result = connector.test(&body.url, &body.properties).await;
+
+    Ok(Json(serde_json::json!({
+        "success": result.success,
+        "connector_type": body.connector_type,
+        "status": result.status_info,
+        "error": result.error,
+    })))
 }

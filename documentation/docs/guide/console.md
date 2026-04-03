@@ -157,6 +157,27 @@ The versioning card lets you control object versioning for the bucket. The toggl
 !!! note
     Versioning cannot be disabled once it has been enabled, only suspended. This matches the S3 specification.
 
+### Event Notifications
+
+![Event notifications](../assets/screenshots/console-event-notifications.png)
+
+The Event Notifications card lets you configure where S3 events (object creates, deletes, etc.) are delivered. Each notification destination has:
+
+- **Connector type** — which delivery backend to use (currently Webhook, with Kafka, AMQP, Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, and Elasticsearch planned)
+- **Destination URL** — the endpoint address
+- **Auth Token** — optional Bearer token for webhook authentication
+- **Event types** — which S3 events to deliver (e.g., `s3:ObjectCreated:*`, `s3:ObjectRemoved:Delete`)
+- **Prefix/Suffix filters** — optional key filters to narrow which objects trigger events
+- **Enabled/Disabled toggle** — temporarily suspend delivery without removing the configuration
+
+Click **"+ Add Notification"** to open the notification modal:
+
+![Notification modal](../assets/screenshots/console-notification-modal.png)
+
+The modal has a connector type selector at the top, showing all available connectors grouped by category (Functions, Queue, Database). Only the Webhook connector is currently active; others are shown as "coming soon" and will be implemented in a future release. Below the type selector, connector-specific fields appear (URL and auth token for webhooks), followed by common S3 event type checkboxes and prefix/suffix filter inputs.
+
+Click an existing notification in the list to edit it in the same modal. Use the **Test connection** button to verify webhook connectivity before saving.
+
 ### Danger Zone
 
 - **Delete this bucket** — permanently removes the bucket. Requires typing the bucket name to confirm. The bucket must be empty.
@@ -391,6 +412,33 @@ A time range selector at the top right offers: **1h**, **6h**, **24h**, **7d**, 
 
 Metrics snapshots are recorded periodically (default: every 60 seconds) and stored in the database. The retention period is configurable in the Settings page.
 
+## Notification Events
+
+![Notification events](../assets/screenshots/console-notification-events.png)
+
+The Notification Events view is available to **admin credentials only**. It shows a chronological log of all notification delivery attempts, with details about the destination, event type, delivery status, and error messages.
+
+The table shows: timestamp, event name, bucket, key, destination URL, and delivery status (color-coded: green for delivered, amber for pending, red for failed).
+
+### Filtering
+
+Filters are built into the column headers, following the same pattern as the Audit Log:
+
+- **Time** — date range popover with From/To datetime pickers
+- **Event** — dropdown with all distinct event names as checkboxes with occurrence counts
+- **Bucket** — dropdown with all distinct bucket names as checkboxes
+- **Key** — inline text input for substring search
+- **Destination** — inline text input for substring search
+- **Status** — dropdown with delivered/pending/failed checkboxes
+
+### Detail Panel
+
+Click any row to open a slide-in detail panel on the right showing all fields: event name, timestamp, bucket, key, destination URL, configuration ID, delivery status, delivery attempts, last error, and the full event payload (JSON).
+
+### Clear Events
+
+The **Clear All** button opens a confirmation modal requiring you to type "CLEAR EVENTS" to delete all notification event records. This is useful for cleaning up test data or resetting the event log.
+
 ## Settings
 
 ![Settings](../assets/screenshots/console-settings.png)
@@ -405,9 +453,10 @@ The Settings view is available to **admin credentials only**. It manages instanc
 
 - **S3 Region** — default region for HeadBucket, GetBucketLocation, and presigned URL generation. Can also be set per-bucket.
 
-### Monitoring
+### Data Retention
 
 - **Audit Log Retention** — days to keep audit log entries (0 = keep forever, default: 90 days)
+- **Notification Event Retention** — days to keep notification event records (0 = keep forever, default: 7 days)
 - **Metrics Retention** — days to keep metrics snapshots (0 = keep forever, default: 30 days)
 
 ## Custom Deployment

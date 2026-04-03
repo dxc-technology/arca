@@ -60,6 +60,9 @@ fn row_to_notification_event(row: &rusqlite::Row<'_>) -> rusqlite::Result<Notifi
             .get::<_, String>("created_at")?
             .parse::<DateTime<Utc>>()
             .unwrap_or_default(),
+        connector_type: row
+            .get::<_, String>("connector_type")
+            .unwrap_or_else(|_| "webhook".to_string()),
     })
 }
 
@@ -76,8 +79,8 @@ impl NotificationStore for SqliteStore {
                     "INSERT INTO notification_events
                         (id, bucket, key, event_name, event_time, payload,
                          destination_url, configuration_id, delivery_status,
-                         delivery_attempts, last_error, created_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                         delivery_attempts, last_error, created_at, connector_type)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                     params![
                         event.id,
                         event.bucket,
@@ -91,6 +94,7 @@ impl NotificationStore for SqliteStore {
                         event.delivery_attempts,
                         event.last_error,
                         event.created_at.to_rfc3339(),
+                        event.connector_type,
                     ],
                 )?;
                 Ok(())
@@ -221,6 +225,7 @@ mod tests {
             delivery_attempts: 0,
             last_error: None,
             created_at: Utc::now(),
+            connector_type: "webhook".to_string(),
         }
     }
 

@@ -7,10 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Modular notification connector architecture**: trait-based `NotificationConnector` in `arca-core` with `ConnectorRegistry` for pluggable delivery backends. Webhook is the first implementation; 9 additional connectors (Kafka, AMQP, Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Elasticsearch) planned for Phase 26
+- **`ConnectorType` enum**: all 10 connector types defined with `display_name()`, `category()`, `all()` helpers for UI enumeration
+- **`WebhookConnector`**: extracted webhook delivery logic into a standalone connector implementing the `NotificationConnector` trait, with Bearer token authentication support via `auth_token` property
+- **Webhook auth token**: `DestinationConfig` now supports `properties` map (Arca extension) for connector-specific settings. Webhook connector reads `auth_token` and sends `Authorization: Bearer <token>` header
+- **`POST /admin/notifications/test-connector`**: generalized admin endpoint for testing any registered connector type; existing `test-webhook` endpoint preserved as backward-compatible alias with auth_token support
+- **(Console)**: Notification editor redesigned as a modal dialog (replacing inline lifecycle-style forms) with connector type selector grid showing all 10 types grouped by category (Functions, Queue, Database), SVG icons, and "coming soon" badges for unimplemented connectors
+- **Roadmap Phase 26**: Notification Connectors phase added (9 connectors, modular per-connector Docker test infrastructure)
+
 ### Changed
 
 - **(Console)**: Settings page reorganized: "Monitoring" section renamed to "Data Retention" with all retention policies grouped together (Audit Log, Notification Events, Metrics Snapshots), ordered by sidebar position
 - **Notification event retention** is now a server setting (`notification_retention_days`) manageable from the console, following the same TOML > DB > default precedence as audit and metrics retention (default: 7 days)
+- **Notification worker** refactored to dispatch via `ConnectorRegistry` instead of hardcoded webhook delivery. Retry logic (exponential backoff) is now generic across all connector types
+- **`DestinationConfig`** extended with `connector_type` (default: Webhook) and `properties` (HashMap) fields, both Arca extensions preserved in JSON storage and XML serialization
+- **`NotificationEventRecord`** extended with `connector_type` field (SQLite migration v15, PostgreSQL migration v2)
+- **(Console)**: Section title changed from "Notification Webhooks" to "Event Notifications"; notifications list shows connector type badge and icon
+- **Webhook test receiver** (`docker/webhook-receiver/server.py`) now supports `AUTH_TOKEN` env var for Bearer token validation (returns 401 on mismatch)
 
 ### Fixed
 

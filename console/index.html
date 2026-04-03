@@ -670,9 +670,10 @@
             <div x-show="showCreateModal" x-transition.opacity x-effect="if (showCreateModal) $nextTick(() => $refs.bucketNameInput?.focus())" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="showCreateModal = false">
               <div class="glass rounded-xl p-6 w-full max-w-sm mx-4" @click.stop>
                 <h3 class="text-lg font-semibold mb-4">Create Bucket</h3>
-                <form @submit.prevent="createBucket()">
+                <form @submit.prevent="createBucket()" autocomplete="off">
                   <input type="text" x-model="newBucketName" x-ref="bucketNameInput" required
-                    placeholder="my-bucket-name" pattern="[a-z0-9][a-z0-9.\-]{1,61}[a-z0-9]"
+                    name="bucket-id-x" autocomplete="nope"
+                    placeholder="my-bucket" pattern="[a-z0-9][a-z0-9.\-]{1,61}[a-z0-9]"
                     class="w-full px-3.5 py-2.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition text-sm font-mono mb-1">
                   <p class="text-[10px] text-vault-muted mb-4">Lowercase letters, numbers, hyphens, dots. 3-63 characters.</p>
                   <div class="flex gap-3 justify-end">
@@ -1011,17 +1012,17 @@
                 <p x-show="lifecycleError" x-text="lifecycleError" class="text-red-400 text-xs mt-2"></p>
               </div>
 
-              <!-- Notification Webhooks card (lifecycle-style inline editor) -->
+              <!-- Event Notifications card (modal-based editor) -->
               <div class="glass rounded-xl p-5" x-data="bucketNotificationEditor" x-init="loadNotifications(bucketName)">
                 <div class="flex items-center justify-between mb-3">
                   <div class="flex items-center gap-2">
                     <svg class="w-4 h-4 text-vault-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0"/></svg>
-                    <span class="text-sm font-semibold uppercase tracking-wider text-vault-text">Notification Webhooks</span>
+                    <span class="text-sm font-semibold uppercase tracking-wider text-vault-text">Event Notifications</span>
                     <svg x-show="saving" class="animate-spin h-3.5 w-3.5 text-vault-accent ml-1" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                   </div>
-                  <button @click="initNewWebhook()" :disabled="saving || showAddForm"
+                  <button @click="openAddModal()" :disabled="saving"
                     class="px-2.5 py-1 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/30 text-xs font-medium hover:bg-vault-accent/20 transition disabled:opacity-40">
-                    + Add Webhook
+                    + Add Notification
                   </button>
                 </div>
 
@@ -1031,56 +1032,114 @@
                   </div>
                 </template>
 
-                <template x-if="!loading && configs.length === 0 && !showAddForm">
-                  <p class="text-xs text-vault-muted py-2">No notification webhooks configured. Events will not be delivered.</p>
+                <template x-if="!loading && configs.length === 0 && !showModal">
+                  <p class="text-xs text-vault-muted py-2">No event notifications configured. Events will not be delivered.</p>
                 </template>
 
-                <!-- Existing webhooks list (lifecycle-style: display + inline edit) -->
+                <!-- Configured notifications list (read-only, click to edit) -->
                 <template x-for="(cfg, index) in configs" :key="index">
                   <div class="py-2.5 border-b border-vault-border/30 last:border-0">
-                    <!-- Display mode -->
-                    <template x-if="editingIndex !== index">
-                      <div class="flex items-center gap-3">
-                        <div class="flex-1 min-w-0 cursor-pointer group" @click="startEditWebhook(index)">
-                          <div class="flex items-center gap-2">
-                            <span class="text-sm font-medium text-vault-text truncate group-hover:text-vault-accent transition" x-text="cfg.arn"></span>
-                            <button @click.stop="toggleWebhookEnabled(index, bucketName)" :disabled="saving"
-                              class="text-[10px] px-1.5 py-0.5 rounded-full font-medium cursor-pointer transition"
-                              :class="cfg.enabled ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25' : 'bg-vault-border/30 text-vault-muted hover:bg-vault-border/50'"
-                              x-text="cfg.enabled ? 'Enabled' : 'Disabled'"></button>
-                            <button @click.stop="testWebhook(cfg.arn)" class="text-[10px] px-1.5 py-0.5 rounded-full font-medium cursor-pointer transition bg-vault-border/30 text-vault-muted hover:bg-vault-accent/15 hover:text-vault-accent" title="Test webhook">test</button>
-                            <svg class="w-3 h-3 text-vault-muted opacity-0 group-hover:opacity-100 transition" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Z"/></svg>
-                          </div>
-                          <div class="text-[11px] text-vault-muted mt-0.5 flex flex-wrap gap-x-2">
-                            <span x-text="cfg.events.map(e => shortEvent(e)).join(', ')"></span>
-                            <span x-show="cfg.prefix" class="inline-flex items-center gap-0.5"><span class="text-vault-muted/60">prefix:</span> <span x-text="cfg.prefix"></span></span>
-                            <span x-show="cfg.suffix" class="inline-flex items-center gap-0.5"><span class="text-vault-muted/60">suffix:</span> <span x-text="cfg.suffix"></span></span>
+                    <div class="flex items-center gap-3">
+                      <div class="flex-1 min-w-0 cursor-pointer group" @click="openEditModal(index)">
+                        <div class="flex items-center gap-2">
+                          <span class="text-vault-accent/70 flex-shrink-0" x-html="connectorIcon(cfg.connector_type || 'webhook')"></span>
+                          <span class="text-sm font-medium text-vault-text truncate group-hover:text-vault-accent transition" x-text="cfg.arn"></span>
+                          <span class="text-[9px] px-1.5 py-0.5 rounded bg-vault-border/30 text-vault-muted font-medium uppercase" x-text="connectorName(cfg.connector_type || 'webhook')"></span>
+                          <button @click.stop="toggleEnabled(index, bucketName)" :disabled="saving"
+                            class="text-[10px] px-1.5 py-0.5 rounded-full font-medium cursor-pointer transition"
+                            :class="cfg.enabled ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25' : 'bg-vault-border/30 text-vault-muted hover:bg-vault-border/50'"
+                            x-text="cfg.enabled ? 'Enabled' : 'Disabled'"></button>
+                          <svg class="w-3 h-3 text-vault-muted opacity-0 group-hover:opacity-100 transition" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Z"/></svg>
+                        </div>
+                        <div class="text-[11px] text-vault-muted mt-0.5 flex flex-wrap gap-x-2">
+                          <span x-text="cfg.events.map(e => shortEvent(e)).join(', ')"></span>
+                          <span x-show="cfg.prefix" class="inline-flex items-center gap-0.5"><span class="text-vault-muted/60">prefix:</span> <span x-text="cfg.prefix"></span></span>
+                          <span x-show="cfg.suffix" class="inline-flex items-center gap-0.5"><span class="text-vault-muted/60">suffix:</span> <span x-text="cfg.suffix"></span></span>
+                        </div>
+                      </div>
+                      <button @click="removeNotification(index, bucketName)" :disabled="saving" class="text-vault-muted hover:text-red-400 transition p-1 flex-shrink-0" title="Remove notification">
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </template>
+
+                <template x-if="configs.length > 0">
+                  <div class="flex justify-end mt-3">
+                    <button @click="deleteAllNotifications(bucketName)" :disabled="saving"
+                      class="text-[11px] text-red-400/70 hover:text-red-400 transition">
+                      Delete all notifications
+                    </button>
+                  </div>
+                </template>
+
+                <p x-show="error" x-text="error" class="text-red-400 text-xs mt-2"></p>
+
+                <!-- Notification editor modal (teleported to body to escape stacking contexts) -->
+                <template x-teleport="body">
+                <div x-show="showModal" x-transition.opacity class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="closeModal()" @keydown.escape.window="closeModal()">
+                  <div class="glass rounded-xl p-6 w-full max-w-2xl mx-4 max-h-[85vh] overflow-y-auto" @click.stop>
+                    <h3 class="text-lg font-semibold mb-4" x-text="modalMode === 'add' ? 'Add Event Notification' : 'Edit Event Notification'"></h3>
+
+                    <!-- Connector type selector -->
+                    <div class="mb-4">
+                      <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium mb-2 block">Connector Type</label>
+                      <template x-for="[category, types] in Object.entries(connectorGroups)" :key="category">
+                        <div class="mb-2">
+                          <span class="text-[9px] uppercase tracking-widest text-vault-muted/60 font-semibold" x-text="category"></span>
+                          <div class="grid grid-cols-5 gap-1.5 mt-1">
+                            <template x-for="ct in types" :key="ct.id">
+                              <button @click="selectConnectorType(ct.id)" :disabled="!ct.active"
+                                class="flex flex-col items-center gap-1 py-2 px-1 rounded-lg border text-[10px] font-medium transition"
+                                :class="editForm.connector_type === ct.id
+                                  ? 'border-vault-accent bg-vault-accent/10 text-vault-accent'
+                                  : ct.active
+                                    ? 'border-vault-border/50 text-vault-muted hover:border-vault-accent/30 hover:text-vault-text'
+                                    : 'border-vault-border/20 text-vault-muted/30 cursor-not-allowed opacity-50'">
+                                <span x-html="ct.icon" class="[&>svg]:w-4 [&>svg]:h-4"></span>
+                                <span x-text="ct.name"></span>
+                                <span x-show="!ct.active" class="text-[8px] text-vault-muted/40 -mt-0.5">soon</span>
+                              </button>
+                            </template>
                           </div>
                         </div>
-                        <button @click="removeWebhook(index, bucketName)" :disabled="saving" class="text-vault-muted hover:text-red-400 transition p-1 flex-shrink-0" title="Remove webhook">
-                          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
-                        </button>
+                      </template>
+                    </div>
+
+                    <!-- Connector-specific fields -->
+                    <template x-if="editForm.connector_type === 'webhook'">
+                      <div class="space-y-2 mb-4">
+                        <div>
+                          <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Destination URL</label>
+                          <input type="url" x-model="editForm.arn" placeholder="http://example.com/webhook" autocomplete="off"
+                            class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                        </div>
+                        <div>
+                          <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Auth Token <span class="normal-case text-vault-muted/50">(optional, sent as Bearer token)</span></label>
+                          <input type="password" x-model="editForm.auth_token" placeholder="Bearer authentication token" autocomplete="new-password"
+                            class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                        </div>
+                        <div>
+                          <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">S3 Destination Type</label>
+                          <select x-model="editForm.type"
+                            class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-xs focus:outline-none focus:border-vault-accent/50">
+                            <option value="TopicConfiguration">Topic</option>
+                            <option value="QueueConfiguration">Queue</option>
+                            <option value="CloudFunctionConfiguration">CloudFunction</option>
+                          </select>
+                        </div>
                       </div>
                     </template>
-                    <!-- Edit mode (inline, like lifecycle) -->
-                    <template x-if="editingIndex === index">
-                      <div class="p-3 rounded-lg bg-vault-bg/50 border border-vault-accent/30 space-y-2">
-                        <div class="grid grid-cols-2 gap-2">
-                          <div>
-                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Destination URL</label>
-                            <input type="text" x-model="editForm.arn" placeholder="http://example.com/webhook"
-                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
-                          </div>
-                          <div>
-                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Type</label>
-                            <select x-model="editForm.type"
-                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-xs focus:outline-none focus:border-vault-accent/50">
-                              <option value="TopicConfiguration">Topic</option>
-                              <option value="QueueConfiguration">Queue</option>
-                              <option value="CloudFunctionConfiguration">CloudFunction</option>
-                            </select>
-                          </div>
-                        </div>
+
+                    <template x-if="editForm.connector_type !== 'webhook'">
+                      <div class="mb-4 p-4 rounded-lg bg-vault-bg/50 border border-vault-border/30 text-center">
+                        <p class="text-xs text-vault-muted">This connector is not yet available. Coming soon.</p>
+                      </div>
+                    </template>
+
+                    <!-- Common fields: filters and events -->
+                    <template x-if="editForm.connector_type === 'webhook'">
+                      <div class="space-y-3">
                         <div class="grid grid-cols-2 gap-2">
                           <div>
                             <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Prefix filter</label>
@@ -1095,7 +1154,7 @@
                         </div>
                         <div>
                           <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Events</label>
-                          <div class="grid grid-cols-2 gap-1 mt-1">
+                          <div class="grid grid-cols-2 gap-x-4 gap-y-1 mt-1">
                             <template x-for="ev in eventOptions" :key="ev">
                               <label class="flex items-center gap-1.5 text-[11px] py-0.5 cursor-pointer">
                                 <input type="checkbox" :checked="editForm.events.includes(ev)" @change="toggleEvent(ev)"
@@ -1105,83 +1164,36 @@
                             </template>
                           </div>
                         </div>
-                        <div class="flex justify-end gap-2 pt-1">
-                          <button @click="cancelEdit()" class="px-3 py-1 rounded-lg text-xs text-vault-muted hover:text-vault-text transition">Cancel</button>
-                          <button @click="saveEditWebhook(bucketName)"
-                            :disabled="!editForm.arn || editForm.events.length === 0"
-                            class="px-3 py-1 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/30 text-xs font-medium hover:bg-vault-accent/20 transition disabled:opacity-40">
-                            Save
+
+                        <!-- Footer: actions -->
+                        <div class="flex justify-between items-center pt-2">
+                          <button x-show="editForm.connector_type === 'webhook' && editForm.arn"
+                            @click="testConnector(editForm.arn, editForm.connector_type, editForm.auth_token ? {auth_token: editForm.auth_token} : {})"
+                            class="text-[11px] text-vault-muted hover:text-vault-accent transition">
+                            Test connection
                           </button>
+                          <div x-show="!editForm.arn || editForm.connector_type !== 'webhook'"></div>
+                          <div class="flex gap-2">
+                            <button @click="closeModal()" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                            <button @click="saveFromModal(bucketName)"
+                              :disabled="!editForm.arn || editForm.events.length === 0"
+                              class="px-4 py-2 rounded-lg bg-vault-accent text-vault-bg text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+                              x-text="modalMode === 'add' ? 'Add' : 'Save'"></button>
+                          </div>
                         </div>
                       </div>
                     </template>
-                  </div>
-                </template>
 
-                <!-- Add webhook form (inline, like lifecycle add rule) -->
-                <template x-if="showAddForm">
-                  <div class="mt-3 p-3 rounded-lg bg-vault-bg/50 border border-vault-accent/30 space-y-2">
-                    <div class="grid grid-cols-2 gap-2">
-                      <div>
-                        <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Destination URL</label>
-                        <input type="text" x-model="editForm.arn" placeholder="http://example.com/webhook"
-                          class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                    <template x-if="editForm.connector_type !== 'webhook'">
+                      <div class="flex justify-end pt-2">
+                        <button @click="closeModal()" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Close</button>
                       </div>
-                      <div>
-                        <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Type</label>
-                        <select x-model="editForm.type"
-                          class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-xs focus:outline-none focus:border-vault-accent/50">
-                          <option value="TopicConfiguration">Topic</option>
-                          <option value="QueueConfiguration">Queue</option>
-                          <option value="CloudFunctionConfiguration">CloudFunction</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div class="grid grid-cols-2 gap-2">
-                      <div>
-                        <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Prefix filter</label>
-                        <input type="text" x-model="editForm.prefix" placeholder="e.g. images/"
-                          class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
-                      </div>
-                      <div>
-                        <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Suffix filter</label>
-                        <input type="text" x-model="editForm.suffix" placeholder="e.g. .jpg"
-                          class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
-                      </div>
-                    </div>
-                    <div>
-                      <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Events</label>
-                      <div class="grid grid-cols-2 gap-1 mt-1">
-                        <template x-for="ev in eventOptions" :key="ev">
-                          <label class="flex items-center gap-1.5 text-[11px] py-0.5 cursor-pointer">
-                            <input type="checkbox" :checked="editForm.events.includes(ev)" @change="toggleEvent(ev)"
-                              class="rounded border-vault-border text-vault-accent focus:ring-vault-accent w-3 h-3">
-                            <span class="font-mono" x-text="shortEvent(ev)"></span>
-                          </label>
-                        </template>
-                      </div>
-                    </div>
-                    <div class="flex justify-end gap-2 pt-1">
-                      <button @click="cancelEdit()" class="px-3 py-1 rounded-lg text-xs text-vault-muted hover:text-vault-text transition">Cancel</button>
-                      <button @click="saveEditWebhook(bucketName)"
-                        :disabled="!editForm.arn || editForm.events.length === 0"
-                        class="px-3 py-1 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/30 text-xs font-medium hover:bg-vault-accent/20 transition disabled:opacity-40">
-                        Add
-                      </button>
-                    </div>
-                  </div>
-                </template>
+                    </template>
 
-                <template x-if="configs.length > 0 && !showAddForm && editingIndex < 0">
-                  <div class="flex justify-end mt-3">
-                    <button @click="deleteAllWebhooks(bucketName)" :disabled="saving"
-                      class="text-[11px] text-red-400/70 hover:text-red-400 transition">
-                      Delete all webhooks
-                    </button>
+                    <p x-show="error" x-text="error" class="text-red-400 text-xs mt-2"></p>
                   </div>
+                </div>
                 </template>
-
-                <p x-show="error" x-text="error" class="text-red-400 text-xs mt-2"></p>
               </div>
 
               <!-- Danger zone -->

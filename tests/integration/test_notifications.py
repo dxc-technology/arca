@@ -437,3 +437,116 @@ class TestNotificationAdminApi:
         # Verify at least one entry for our bucket
         buckets = [e["bucket"] for e in data["entries"]]
         assert unique_bucket in buckets
+
+
+# ── Connector architecture tests ──
+
+class TestConnectorArchitecture:
+    def test_webhook_auth_token_delivered(self, s3_client, unique_bucket):
+        """Webhook with auth_token sends Authorization: Bearer header."""
+        # Configure webhook with auth_token via Arca extension XML elements
+        xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<NotificationConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <TopicConfiguration>
+    <Id>auth-test</Id>
+    <Topic>{WEBHOOK_RECEIVER_URL}/webhook</Topic>
+    <Event>s3:ObjectCreated:*</Event>
+    <Property><Name>auth_token</Name><Value>test-secret-token-123</Value></Property>
+  </TopicConfiguration>
+</NotificationConfiguration>"""
+
+        import hashlib
+        import botocore.auth
+        import botocore.credentials
+        from botocore.awsrequest import AWSRequest
+        endpoint = os.environ.get("S3_ENDPOINT", "http://arca:9000")
+        url = f"{endpoint}/{unique_bucket}?notification"
+        access_key = os.environ.get("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
+        secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+        credentials = botocore.credentials.Credentials(access_key, secret_key)
+        content_sha = hashlib.sha256(xml.encode()).hexdigest()
+        aws_req = AWSRequest(method="PUT", url=url, data=xml, headers={
+            "Content-Type": "application/xml",
+            "x-amz-content-sha256": content_sha,
+        })
+        botocore.auth.SigV4Auth(credentials, "s3", "us-east-1").add_auth(aws_req)
+        resp = requests.put(url, data=xml, headers=dict(aws_req.headers), timeout=10)
+
+        assert resp.status_code in (200, 204), f"PUT notification config failed: {resp.status_code} {resp.text}"
+
+        # Trigger event
+        s3_client.put_object(Bucket=unique_bucket, Key="auth-test.txt", Body=b"hello")
+
+        # Check webhook receiver captured the Authorization header
+        events = get_webhook_events(timeout=10, min_count=1)
+        assert len(events) >= 1
+        auth_header = events[0].get("authorization", "")
+        assert auth_header == "Bearer test-secret-token-123", f"Expected Bearer token, got: {auth_header}"
+
+    def test_connector_type_defaults_to_webhook(self, s3_client, unique_bucket):
+        """Configs without ConnectorType default to webhook and still work."""
+        # Standard S3 notification config (no ConnectorType element)
+        s3_client.put_bucket_notification_configuration(
+            Bucket=unique_bucket,
+            NotificationConfiguration={
+                "TopicConfigurations": [{
+                    "Id": "default-connector",
+                    "TopicArn": f"{WEBHOOK_RECEIVER_URL}/webhook",
+                    "Events": ["s3:ObjectCreated:*"],
+                }]
+            },
+        )
+
+        # Trigger event
+        s3_client.put_object(Bucket=unique_bucket, Key="default.txt", Body=b"test")
+
+        # Verify delivery worked (connector defaulted to webhook)
+        events = get_webhook_events(timeout=10, min_count=1)
+        assert len(events) >= 1
+        records = events[0]["payload"].get("Records", [])
+        assert len(records) >= 1
+        assert records[0]["eventName"] == "s3:ObjectCreated:Put"
+
+    def test_connector_type_roundtrip_xml(self, s3_client, unique_bucket):
+        """ConnectorType and Property elements survive PUT/GET roundtrip."""
+        xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<NotificationConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <TopicConfiguration>
+    <Id>roundtrip-test</Id>
+    <Topic>{WEBHOOK_RECEIVER_URL}/webhook</Topic>
+    <Event>s3:ObjectCreated:*</Event>
+    <Property><Name>auth_token</Name><Value>my-secret</Value></Property>
+  </TopicConfiguration>
+</NotificationConfiguration>"""
+
+        # PUT with SigV4 (include content hash for S3 auth)
+        import hashlib
+        import botocore.auth
+        import botocore.credentials
+        from botocore.awsrequest import AWSRequest
+        endpoint = os.environ.get("S3_ENDPOINT", "http://arca:9000")
+        url = f"{endpoint}/{unique_bucket}?notification"
+        access_key = os.environ.get("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
+        secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+        credentials = botocore.credentials.Credentials(access_key, secret_key)
+        content_sha = hashlib.sha256(xml.encode()).hexdigest()
+        aws_req = AWSRequest(method="PUT", url=url, data=xml, headers={
+            "Content-Type": "application/xml",
+            "x-amz-content-sha256": content_sha,
+        })
+        botocore.auth.SigV4Auth(credentials, "s3", "us-east-1").add_auth(aws_req)
+        resp = requests.put(url, data=xml, headers=dict(aws_req.headers), timeout=10)
+        assert resp.status_code in (200, 204), f"PUT failed: {resp.status_code}"
+
+        # GET the config back
+        aws_req = AWSRequest(method="GET", url=url, headers={
+            "x-amz-content-sha256": hashlib.sha256(b"").hexdigest(),
+        })
+        botocore.auth.SigV4Auth(credentials, "s3", "us-east-1").add_auth(aws_req)
+        resp = requests.get(url, headers=dict(aws_req.headers), timeout=10)
+        assert resp.status_code == 200
+
+        # Verify Property element is present in response XML
+        response_xml = resp.text
+        assert "auth_token" in response_xml
+        assert "my-secret" in response_xml
