@@ -388,12 +388,14 @@ S3-compatible bucket notifications for event-driven architectures.
 ### Phase 26 — Notification Connectors [P3]
 
 Modular delivery connectors for the notification system. Phase 25 established a trait-based
-connector architecture with webhook as the first implementation. This phase adds 9 additional
-connectors across three categories.
+connector architecture with webhook as the first implementation. This phase adds 13 additional
+connectors across four categories.
 
 **Queue connectors**: Kafka (`rdkafka`), AMQP/RabbitMQ (`lapin`), Redis Pub/Sub (`redis`), NATS (`async-nats`), MQTT (`rumqttc`)
 
 **Database connectors**: PostgreSQL (`sqlx-postgres`, zero new deps), MySQL/MariaDB (`sqlx-mysql`), MongoDB (`mongodb`), Elasticsearch (`elasticsearch`)
+
+**Protocol connectors**: ONVIF (IP camera / surveillance event integration), gRPC (`tonic`), SMTP (email notifications), Syslog RFC 5424 (`syslog`)
 
 - [ ] Kafka connector + integration tests
 - [ ] AMQP connector + integration tests
@@ -404,6 +406,10 @@ connectors across three categories.
 - [ ] MySQL/MariaDB connector + integration tests
 - [ ] MongoDB connector + integration tests
 - [ ] Elasticsearch connector + integration tests
+- [ ] ONVIF connector + integration tests
+- [ ] gRPC connector + integration tests
+- [ ] SMTP connector + integration tests
+- [ ] Syslog (RFC 5424) connector + integration tests
 - [ ] Modular test infrastructure: per-connector ephemeral Docker containers (`bin/test connector <type>`)
 - [ ] (Console) Connector-specific form fields for each type
 - [ ] Documentation: connector configuration guide
