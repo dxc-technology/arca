@@ -1212,10 +1212,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-27-replication-p3" class="md-nav__link">
+  <a href="#phase-27-transparent-compression-p2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 27 — Replication [P3]
+        Phase 27 — Transparent Compression [P2]
       
     </span>
   </a>
@@ -1223,10 +1223,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-28-multi-node-and-erasure-coding-p3" class="md-nav__link">
+  <a href="#phase-28-replication-p3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 28 — Multi-Node and Erasure Coding [P3]
+        Phase 28 — Replication [P3]
       
     </span>
   </a>
@@ -1234,10 +1234,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-29-cli-enhancements-and-migration-tools-p3" class="md-nav__link">
+  <a href="#phase-29-multi-node-and-erasure-coding-p3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 29 — CLI Enhancements and Migration Tools [P3]
+        Phase 29 — Multi-Node and Erasure Coding [P3]
       
     </span>
   </a>
@@ -1245,10 +1245,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-30-opentelemetry-integration-p3" class="md-nav__link">
+  <a href="#phase-30-cli-enhancements-and-migration-tools-p3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 30 — OpenTelemetry Integration [P3]
+        Phase 30 — CLI Enhancements and Migration Tools [P3]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-31-opentelemetry-integration-p3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 31 — OpenTelemetry Integration [P3]
       
     </span>
   </a>
@@ -1763,10 +1774,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-27-replication-p3" class="md-nav__link">
+  <a href="#phase-27-transparent-compression-p2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 27 — Replication [P3]
+        Phase 27 — Transparent Compression [P2]
       
     </span>
   </a>
@@ -1774,10 +1785,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-28-multi-node-and-erasure-coding-p3" class="md-nav__link">
+  <a href="#phase-28-replication-p3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 28 — Multi-Node and Erasure Coding [P3]
+        Phase 28 — Replication [P3]
       
     </span>
   </a>
@@ -1785,10 +1796,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-29-cli-enhancements-and-migration-tools-p3" class="md-nav__link">
+  <a href="#phase-29-multi-node-and-erasure-coding-p3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 29 — CLI Enhancements and Migration Tools [P3]
+        Phase 29 — Multi-Node and Erasure Coding [P3]
       
     </span>
   </a>
@@ -1796,10 +1807,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-30-opentelemetry-integration-p3" class="md-nav__link">
+  <a href="#phase-30-cli-enhancements-and-migration-tools-p3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 30 — OpenTelemetry Integration [P3]
+        Phase 30 — CLI Enhancements and Migration Tools [P3]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-31-opentelemetry-integration-p3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 31 — OpenTelemetry Integration [P3]
       
     </span>
   </a>
@@ -2068,6 +2090,7 @@ continuing from the MVP phases (0–11).</p>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">28</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">29</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">30</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">31</div>
   </div>
 </div>
 <!-- /post-mvp-progress-bar -->
@@ -2084,13 +2107,15 @@ continuing from the MVP phases (0–11).</p>
     17 --&gt; 21["21 Object Lock\nWORM"]
     20 --&gt; 25["25 Notifications\n+ Events"]
     25 --&gt; 26["26 Notification\nConnectors"]
-    17 --&gt; 27["27 Replication"]
+    13 --&gt; 27["27 Transparent\nCompression"]
+    17 --&gt; 28["28 Replication"]
     13 --&gt; 23["23 Performance\n+ Hardening"]
-    24["24 PostgreSQL\nBackend"] --&gt; 27
-    27 --&gt; 28["28 Multi-Node\n+ Erasure Coding"]
-    28 --&gt; 29["29 CLI Enhancements\n+ Migration"]
-    13 --&gt; 29
-    18 --&gt; 30["30 OpenTelemetry\nIntegration"]
+    24["24 PostgreSQL\nBackend"] --&gt; 28
+    28 --&gt; 29["29 Multi-Node\n+ Erasure Coding"]
+    29 --&gt; 30["30 CLI Enhancements\n+ Migration"]
+    13 --&gt; 30
+    24 --&gt; 30
+    18 --&gt; 31["31 OpenTelemetry\nIntegration"]
 
     style 12 fill:#c62828,color:#fff
     style 13 fill:#c62828,color:#fff
@@ -2111,6 +2136,7 @@ continuing from the MVP phases (0–11).</p>
     style 28 fill:#1565c0,color:#fff
     style 29 fill:#1565c0,color:#fff
     style 30 fill:#1565c0,color:#fff
+    style 31 fill:#1565c0,color:#fff
 
     18["18 Monitoring\n+ Audit"]
     22["22 S3 API\nCompleteness"]</code></pre>
@@ -2252,31 +2278,39 @@ continuing from the MVP phases (0–11).</p>
 </tr>
 <tr>
 <td style="text-align: center;">27</td>
-<td><a href="#phase-27-replication-p3">Replication</a></td>
+<td><a href="#phase-27-transparent-compression-p2">Transparent Compression</a></td>
+<td style="text-align: center;">P2</td>
+<td style="text-align: center;">13</td>
+<td style="text-align: center;"></td>
+<td style="text-align: center;"></td>
+</tr>
+<tr>
+<td style="text-align: center;">28</td>
+<td><a href="#phase-28-replication-p3">Replication</a></td>
 <td style="text-align: center;">P3</td>
 <td style="text-align: center;">17, 24</td>
 <td style="text-align: center;"></td>
 <td style="text-align: center;"></td>
 </tr>
 <tr>
-<td style="text-align: center;">28</td>
-<td><a href="#phase-28-multi-node-and-erasure-coding-p3">Multi-Node and Erasure Coding</a></td>
+<td style="text-align: center;">29</td>
+<td><a href="#phase-29-multi-node-and-erasure-coding-p3">Multi-Node and Erasure Coding</a></td>
 <td style="text-align: center;">P3</td>
 <td style="text-align: center;">All prior</td>
 <td style="text-align: center;"></td>
 <td style="text-align: center;"></td>
 </tr>
 <tr>
-<td style="text-align: center;">29</td>
-<td><a href="#phase-29-cli-enhancements-and-migration-tools-p3">CLI Enhancements and Migration Tools</a></td>
+<td style="text-align: center;">30</td>
+<td><a href="#phase-30-cli-enhancements-and-migration-tools-p3">CLI Enhancements and Migration Tools</a></td>
 <td style="text-align: center;">P3</td>
-<td style="text-align: center;">13, 28</td>
+<td style="text-align: center;">13, 24, 29</td>
 <td style="text-align: center;"></td>
 <td style="text-align: center;"></td>
 </tr>
 <tr>
-<td style="text-align: center;">30</td>
-<td><a href="#phase-30-opentelemetry-integration-p3">OpenTelemetry Integration</a></td>
+<td style="text-align: center;">31</td>
+<td><a href="#phase-31-opentelemetry-integration-p3">OpenTelemetry Integration</a></td>
 <td style="text-align: center;">P3</td>
 <td style="text-align: center;">18</td>
 <td style="text-align: center;"></td>
@@ -2525,7 +2559,40 @@ connectors across three categories.</p>
 <p><strong>Testing architecture</strong>: Each connector's tests run against a real backend in a temporary Docker container, started one at a time (not all at once). <code>bin/test connector &lt;type&gt;</code> and <code>bin/test connector all</code> subcommands.</p>
 <p><strong>Depends on</strong>: Phase 25 (notification system and connector trait)</p>
 <hr />
-<h3 id="phase-27-replication-p3">Phase 27 — Replication [P3]<a class="headerlink" href="#phase-27-replication-p3" title="Permanent link">&para;</a></h3>
+<h3 id="phase-27-transparent-compression-p2">Phase 27 — Transparent Compression [P2]<a class="headerlink" href="#phase-27-transparent-compression-p2" title="Permanent link">&para;</a></h3>
+<p>Server-side transparent object compression with pluggable algorithms, per-bucket configuration,
+and offline migration tools. <code>CompressingBlobStore</code> follows the <code>EncryptingBlobStore</code> wrapper
+pattern: compress, then encrypt, then store. ETag computed on original data, Content-Length
+reports original size. Mixed-mode coexistence allows compressed and uncompressed objects to
+coexist transparently.</p>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>CompressingBlobStore</code> wrapper implementing <code>BlobStore</code> trait</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> zstd compression (default)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> lz4 compression</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> gzip compression</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> snappy compression</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> brotli compression</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> xz (LZMA2) compression</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>[compression]</code> TOML config section + config fragment</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Per-bucket compression configuration (bucket_config table)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> MIME type filtering (skip already-compressed formats)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Size thresholds (min_size and max_size)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Sidecar metadata for compression info</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Mixed-mode coexistence</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Correct stacking with encryption: compress then encrypt then store</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>arca compress-existing</code> CLI command (offline, in-place, with --dry-run)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>arca decompress-existing</code> CLI command (offline, in-place)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Compression ratio metrics in monitoring dashboard</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Console: per-bucket compression settings card</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Console: algorithm help popup with comparison table</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Console: compression ratio indicator on dashboard</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Unit tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Integration tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Documentation: compression configuration guide</li>
+</ul>
+<p><strong>Depends on</strong>: Phase 13 (encryption pipeline for correct stacking order)</p>
+<hr />
+<h3 id="phase-28-replication-p3">Phase 28 — Replication [P3]<a class="headerlink" href="#phase-28-replication-p3" title="Permanent link">&para;</a></h3>
 <p>Asynchronous cross-instance replication for disaster recovery and geographic distribution.</p>
 <ul class="task-list">
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Change journal in metadata DB, replication worker forwards objects to destination Arca instance</li>
@@ -2535,7 +2602,7 @@ connectors across three categories.</p>
 </ul>
 <p><strong>Depends on</strong>: Phase 17 (versioning), Phase 24 (PostgreSQL for production)</p>
 <hr />
-<h3 id="phase-28-multi-node-and-erasure-coding-p3">Phase 28 — Multi-Node and Erasure Coding [P3]<a class="headerlink" href="#phase-28-multi-node-and-erasure-coding-p3" title="Permanent link">&para;</a></h3>
+<h3 id="phase-29-multi-node-and-erasure-coding-p3">Phase 29 — Multi-Node and Erasure Coding [P3]<a class="headerlink" href="#phase-29-multi-node-and-erasure-coding-p3" title="Permanent link">&para;</a></h3>
 <p>Distributed storage for horizontal scalability and data durability beyond single-node.</p>
 <ul class="task-list">
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Erasure coding: data + parity shards across storage volumes (e.g., EC:4+2)</li>
@@ -2545,7 +2612,7 @@ connectors across three categories.</p>
 </ul>
 <p><strong>Depends on</strong>: All prior phases. Major architecture evolution.</p>
 <hr />
-<h3 id="phase-29-cli-enhancements-and-migration-tools-p3">Phase 29 — CLI Enhancements and Migration Tools [P3]<a class="headerlink" href="#phase-29-cli-enhancements-and-migration-tools-p3" title="Permanent link">&para;</a></h3>
+<h3 id="phase-30-cli-enhancements-and-migration-tools-p3">Phase 30 — CLI Enhancements and Migration Tools [P3]<a class="headerlink" href="#phase-30-cli-enhancements-and-migration-tools-p3" title="Permanent link">&para;</a></h3>
 <p>Comprehensive CLI tooling for administration, data migration, and remote S3 operations.</p>
 <ul class="task-list">
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>arca migrate-db --from sqlite --to postgres</code>: bidirectional metadata migration between SQLite and PostgreSQL backends</li>
@@ -2555,9 +2622,9 @@ connectors across three categories.</p>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Profile management: <code>arca profile add/list/remove/use</code> for managing multiple endpoint/credential profiles (stored in <code>~/.arca/profiles.toml</code>)</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Interactive shell mode: <code>arca shell</code> with tab completion, history, and prompt showing current profile/bucket</li>
 </ul>
-<p><strong>Depends on</strong>: Phase 13 (encryption pipeline for encrypt/decrypt), Phase 24 (PostgreSQL for migrate-db), Phase 28 (multi-node for topology migration)</p>
+<p><strong>Depends on</strong>: Phase 13 (encryption pipeline for encrypt/decrypt), Phase 24 (PostgreSQL for migrate-db), Phase 29 (multi-node for topology migration)</p>
 <hr />
-<h3 id="phase-30-opentelemetry-integration-p3">Phase 30 — OpenTelemetry Integration [P3]<a class="headerlink" href="#phase-30-opentelemetry-integration-p3" title="Permanent link">&para;</a></h3>
+<h3 id="phase-31-opentelemetry-integration-p3">Phase 31 — OpenTelemetry Integration [P3]<a class="headerlink" href="#phase-31-opentelemetry-integration-p3" title="Permanent link">&para;</a></h3>
 <p>Export traces, metrics, and logs via the OpenTelemetry Protocol (OTLP) for integration
 with observability platforms (Grafana, Datadog, Jaeger, etc.).</p>
 <ul class="task-list">

@@ -45,6 +45,7 @@ continuing from the MVP phases (0–11).
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">28</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">29</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">30</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">31</div>
   </div>
 </div>
 <!-- /post-mvp-progress-bar -->
@@ -63,13 +64,15 @@ graph LR
     17 --> 21["21 Object Lock\nWORM"]
     20 --> 25["25 Notifications\n+ Events"]
     25 --> 26["26 Notification\nConnectors"]
-    17 --> 27["27 Replication"]
+    13 --> 27["27 Transparent\nCompression"]
+    17 --> 28["28 Replication"]
     13 --> 23["23 Performance\n+ Hardening"]
-    24["24 PostgreSQL\nBackend"] --> 27
-    27 --> 28["28 Multi-Node\n+ Erasure Coding"]
-    28 --> 29["29 CLI Enhancements\n+ Migration"]
-    13 --> 29
-    18 --> 30["30 OpenTelemetry\nIntegration"]
+    24["24 PostgreSQL\nBackend"] --> 28
+    28 --> 29["29 Multi-Node\n+ Erasure Coding"]
+    29 --> 30["30 CLI Enhancements\n+ Migration"]
+    13 --> 30
+    24 --> 30
+    18 --> 31["31 OpenTelemetry\nIntegration"]
 
     style 12 fill:#c62828,color:#fff
     style 13 fill:#c62828,color:#fff
@@ -90,6 +93,7 @@ graph LR
     style 28 fill:#1565c0,color:#fff
     style 29 fill:#1565c0,color:#fff
     style 30 fill:#1565c0,color:#fff
+    style 31 fill:#1565c0,color:#fff
 
     18["18 Monitoring\n+ Audit"]
     22["22 S3 API\nCompleteness"]
@@ -118,10 +122,11 @@ graph LR
 | 24 | [PostgreSQL Backend](#phase-24-postgresql-backend-p2) | P2 | — | `v0.16.1` | <span style="color:#4caf50">&#x2714;</span> |
 | 25 | [Notifications and Event System](#phase-25-notifications-and-event-system-p3) | P3 | 20 | `v0.17.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 26 | [Notification Connectors](#phase-26-notification-connectors-p3) | P3 | 25 | | |
-| 27 | [Replication](#phase-27-replication-p3) | P3 | 17, 24 | | |
-| 28 | [Multi-Node and Erasure Coding](#phase-28-multi-node-and-erasure-coding-p3) | P3 | All prior | | |
-| 29 | [CLI Enhancements and Migration Tools](#phase-29-cli-enhancements-and-migration-tools-p3) | P3 | 13, 28 | | |
-| 30 | [OpenTelemetry Integration](#phase-30-opentelemetry-integration-p3) | P3 | 18 | | |
+| 27 | [Transparent Compression](#phase-27-transparent-compression-p2) | P2 | 13 | | |
+| 28 | [Replication](#phase-28-replication-p3) | P3 | 17, 24 | | |
+| 29 | [Multi-Node and Erasure Coding](#phase-29-multi-node-and-erasure-coding-p3) | P3 | All prior | | |
+| 30 | [CLI Enhancements and Migration Tools](#phase-30-cli-enhancements-and-migration-tools-p3) | P3 | 13, 24, 29 | | |
+| 31 | [OpenTelemetry Integration](#phase-31-opentelemetry-integration-p3) | P3 | 18 | | |
 
 ---
 
@@ -409,7 +414,43 @@ connectors across three categories.
 
 ---
 
-### Phase 27 — Replication [P3]
+### Phase 27 — Transparent Compression [P2]
+
+Server-side transparent object compression with pluggable algorithms, per-bucket configuration,
+and offline migration tools. `CompressingBlobStore` follows the `EncryptingBlobStore` wrapper
+pattern: compress, then encrypt, then store. ETag computed on original data, Content-Length
+reports original size. Mixed-mode coexistence allows compressed and uncompressed objects to
+coexist transparently.
+
+- [ ] `CompressingBlobStore` wrapper implementing `BlobStore` trait
+- [ ] zstd compression (default)
+- [ ] lz4 compression
+- [ ] gzip compression
+- [ ] snappy compression
+- [ ] brotli compression
+- [ ] xz (LZMA2) compression
+- [ ] `[compression]` TOML config section + config fragment
+- [ ] Per-bucket compression configuration (bucket_config table)
+- [ ] MIME type filtering (skip already-compressed formats)
+- [ ] Size thresholds (min_size and max_size)
+- [ ] Sidecar metadata for compression info
+- [ ] Mixed-mode coexistence
+- [ ] Correct stacking with encryption: compress then encrypt then store
+- [ ] `arca compress-existing` CLI command (offline, in-place, with --dry-run)
+- [ ] `arca decompress-existing` CLI command (offline, in-place)
+- [ ] Compression ratio metrics in monitoring dashboard
+- [ ] Console: per-bucket compression settings card
+- [ ] Console: algorithm help popup with comparison table
+- [ ] Console: compression ratio indicator on dashboard
+- [ ] Unit tests
+- [ ] Integration tests
+- [ ] Documentation: compression configuration guide
+
+**Depends on**: Phase 13 (encryption pipeline for correct stacking order)
+
+---
+
+### Phase 28 — Replication [P3]
 
 Asynchronous cross-instance replication for disaster recovery and geographic distribution.
 
@@ -422,7 +463,7 @@ Asynchronous cross-instance replication for disaster recovery and geographic dis
 
 ---
 
-### Phase 28 — Multi-Node and Erasure Coding [P3]
+### Phase 29 — Multi-Node and Erasure Coding [P3]
 
 Distributed storage for horizontal scalability and data durability beyond single-node.
 
@@ -435,7 +476,7 @@ Distributed storage for horizontal scalability and data durability beyond single
 
 ---
 
-### Phase 29 — CLI Enhancements and Migration Tools [P3]
+### Phase 30 — CLI Enhancements and Migration Tools [P3]
 
 Comprehensive CLI tooling for administration, data migration, and remote S3 operations.
 
@@ -446,11 +487,11 @@ Comprehensive CLI tooling for administration, data migration, and remote S3 oper
 - [ ] Profile management: `arca profile add/list/remove/use` for managing multiple endpoint/credential profiles (stored in `~/.arca/profiles.toml`)
 - [ ] Interactive shell mode: `arca shell` with tab completion, history, and prompt showing current profile/bucket
 
-**Depends on**: Phase 13 (encryption pipeline for encrypt/decrypt), Phase 24 (PostgreSQL for migrate-db), Phase 28 (multi-node for topology migration)
+**Depends on**: Phase 13 (encryption pipeline for encrypt/decrypt), Phase 24 (PostgreSQL for migrate-db), Phase 29 (multi-node for topology migration)
 
 ---
 
-### Phase 30 — OpenTelemetry Integration [P3]
+### Phase 31 — OpenTelemetry Integration [P3]
 
 Export traces, metrics, and logs via the OpenTelemetry Protocol (OTLP) for integration
 with observability platforms (Grafana, Datadog, Jaeger, etc.).
