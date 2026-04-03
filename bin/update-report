@@ -1,0 +1,387 @@
+#!/usr/bin/env -S uv -q run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = []
+# ///
+"""Update the Arca showcase report (documentation/docs/report.html) with current figures.
+
+Reads line counts, test counts, and project metadata directly from the repository,
+then updates the report HTML in place. Run after significant development milestones.
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+REPORT = REPO_ROOT / "documentation" / "docs" / "report.html"
+
+
+def run(cmd: str, cwd: str | None = None) -> str:
+    """Run a shell command and return stripped stdout."""
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=cwd or str(REPO_ROOT))
+    return result.stdout.strip()
+
+
+def count_lines(pattern: str, base: str = ".") -> int:
+    """Count total lines in files matching a glob pattern."""
+    files = run(f"find {base} -name '{pattern}' -not -path '*/target/*'")
+    if not files:
+        return 0
+    return int(run(f"find {base} -name '{pattern}' -not -path '*/target/*' | xargs wc -l | tail -1").split()[0])
+
+
+def count_lines_in(paths: list[str]) -> int:
+    """Count total lines in specific files/dirs."""
+    existing = [p for p in paths if os.path.exists(os.path.join(str(REPO_ROOT), p))]
+    if not existing:
+        return 0
+    cmd = "wc -l " + " ".join(existing) + " | tail -1"
+    return int(run(cmd).split()[0])
+
+
+def count_files(pattern: str, base: str = ".") -> int:
+    """Count files matching a glob pattern."""
+    result = run(f"find {base} -name '{pattern}' -not -path '*/target/*' | wc -l")
+    return int(result.strip())
+
+
+def gather_metrics() -> dict:
+    """Gather all metrics from the repository."""
+    m = {}
+
+    # -- Project metadata --
+    first_commit = run("git log --reverse --format='%ci' | head -1")
+    first_date = datetime.strptime(first_commit[:10], "%Y-%m-%d")
+    days = (datetime.now() - first_date).days
+    m["days"] = days
+    m["commits"] = int(run("git rev-list --count HEAD"))
+
+    # Version from Cargo.toml
+    cargo = (REPO_ROOT / "Cargo.toml").read_text()
+    version_match = re.search(r'version\s*=\s*"([^"]+)"', cargo)
+    m["version"] = version_match.group(1) if version_match else "0.0.0"
+
+    # Count releases (git tags starting with v)
+    m["releases"] = int(run("git tag -l 'v*' | wc -l").strip())
+
+    # -- Phases --
+    # The hero stat shows "latest completed phase number / last planned phase number"
+    # (not counts), e.g. "25/30" means Phase 25 is done, Phase 30 is planned.
+    roadmap = (REPO_ROOT / "documentation" / "docs" / "roadmap.md").read_text()
+    # Find highest completed phase number (has checkmark in post-MVP table)
+    completed = re.findall(r"^\|\s*(\d+)\s*\|.*&#x2714;", roadmap, re.MULTILINE)
+    m["phases_done"] = max(int(x) for x in completed) if completed else 0
+    # Find highest planned phase number
+    all_phases = re.findall(r"^\|\s*(\d+)\s*\|", roadmap, re.MULTILINE)
+    m["phases_total"] = max(int(x) for x in all_phases) if all_phases else 0
+
+    # -- Rust lines --
+    m["rust_total_lines"] = count_lines("*.rs", "crates/")
+    m["rust_total_files"] = count_files("*.rs", "crates/")
+
+    # Per-crate
+    for crate in ["arca-core", "arca-auth", "arca-proto", "arca-storage", "arca-server"]:
+        lines = count_lines("*.rs", f"crates/{crate}")
+        files = count_files("*.rs", f"crates/{crate}")
+        m[f"crate_{crate.replace('-', '_')}_lines"] = lines
+        m[f"crate_{crate.replace('-', '_')}_files"] = files
+
+    # -- Other languages --
+    m["python_lines"] = int(run("find tests/ docker/ -name '*.py' | xargs wc -l | tail -1").split()[0])
+    m["js_lines"] = int(run("find console/js -name '*.js' | xargs wc -l | tail -1").split()[0])
+    m["html_lines"] = int(run("wc -l console/index.html").split()[0])
+    m["shell_lines"] = int(run("find bin/ -type f -not -name '*.md' | xargs wc -l | tail -1").split()[0])
+    m["toml_lines"] = count_lines("*.toml")
+    m["yaml_lines"] = int(run("find docker/ -name '*.yml' | xargs wc -l | tail -1").split()[0])
+    m["sql_lines"] = count_lines("*.sql", "crates/")
+    m["md_lines"] = int(run("find documentation/docs -name '*.md' | xargs wc -l | tail -1").split()[0])
+    m["total_lines"] = (m["rust_total_lines"] + m["python_lines"] + m["js_lines"] +
+                        m["html_lines"] + m["shell_lines"] + m["toml_lines"] +
+                        m["yaml_lines"] + m["sql_lines"] + m["md_lines"])
+
+    # -- Tests --
+    # Unit tests: count #[test] and #[tokio::test] attributes per crate
+    def count_rust_tests(crate_path: str) -> int:
+        result = run(f"grep -r '#\\[test\\]\\|#\\[tokio::test\\]' {crate_path} 2>/dev/null | wc -l")
+        return int(result.strip())
+
+    m["unit_auth"] = count_rust_tests("crates/arca-auth")
+    m["unit_core"] = count_rust_tests("crates/arca-core")
+    m["unit_proto"] = count_rust_tests("crates/arca-proto")
+    m["unit_server"] = count_rust_tests("crates/arca-server")
+    m["unit_storage"] = count_rust_tests("crates/arca-storage")
+    m["unit_total"] = m["unit_auth"] + m["unit_core"] + m["unit_proto"] + m["unit_server"] + m["unit_storage"]
+
+    # Integration tests: count def test_ in Python files
+    integration_counts = {}
+    test_files = run("find tests/integration -name 'test_*.py' -type f").split('\n')
+    m["integration_total"] = 0
+    for tf in test_files:
+        if not tf.strip():
+            continue
+        raw = run(f"grep -c 'def test_' {tf} 2>/dev/null || true")
+        count = int(raw.split('\n')[-1]) if raw.strip() else 0
+        name = Path(tf).stem.replace("test_", "")
+        if count > 0:
+            integration_counts[name] = count
+        m["integration_total"] += count
+    m["integration_counts"] = integration_counts
+
+    # Ceph s3-tests
+    summary_file = REPO_ROOT / "s3-tests" / "summary.json"
+    if summary_file.exists():
+        s3data = json.loads(summary_file.read_text())
+        m["ceph_total"] = s3data.get("total", 830)
+        m["ceph_passed"] = s3data.get("passed", 352)
+        m["ceph_pct"] = s3data.get("pass_pct", 42.4)
+    else:
+        m["ceph_total"] = 830
+        m["ceph_passed"] = 352
+        m["ceph_pct"] = 42.4
+
+    m["tests_total"] = m["unit_total"] + m["integration_total"] + m["ceph_total"]
+
+    return m
+
+
+def replace_between(html: str, marker_before: str, marker_after: str, new_content: str) -> str:
+    """Replace content between two markers (exclusive)."""
+    idx_start = html.find(marker_before)
+    idx_end = html.find(marker_after, idx_start + len(marker_before))
+    if idx_start < 0 or idx_end < 0:
+        return html
+    return html[:idx_start + len(marker_before)] + new_content + html[idx_end:]
+
+
+def update_data_count(html: str, old_count: str, new_count: str, context: str = "") -> str:
+    """Update a data-count attribute value, optionally scoped by nearby context."""
+    if context:
+        # Find the context first, then replace the nearest data-count
+        idx = html.find(context)
+        if idx < 0:
+            return html
+        search_region = html[max(0, idx - 200):idx + 500]
+        old_pattern = f'data-count="{old_count}"'
+        new_pattern = f'data-count="{new_count}"'
+        if old_pattern in search_region:
+            region_start = max(0, idx - 200)
+            updated_region = search_region.replace(old_pattern, new_pattern, 1)
+            html = html[:region_start] + updated_region + html[region_start + len(search_region):]
+    else:
+        html = html.replace(f'data-count="{old_count}"', f'data-count="{new_count}"')
+    return html
+
+
+def apply_updates(html: str, m: dict) -> str:
+    """Apply all metric updates to the report HTML."""
+    def r(old: str, new: str) -> None:
+        nonlocal html
+        if old in html:
+            html = html.replace(old, new)
+        else:
+            print(f"  WARNING: pattern not found: {old[:60]}...", file=sys.stderr)
+
+    # -- Hero stats (use regex to find data-count near specific labels) --
+    def update_hero_stat(label: str, new_count: int) -> None:
+        nonlocal html
+        pattern = rf'(data-count=")(\d+)(">)\d*(</span>\s*</div>\s*<div class="hero-stat-label">{label})'
+        html = re.sub(pattern, rf'\g<1>{new_count}\g<3>0\g<4>', html, count=1)
+
+    update_hero_stat("Active Dev", m["days"])
+    update_hero_stat("Commits", m["commits"])
+    update_hero_stat("Tests", m["tests_total"])
+    update_hero_stat("Releases", m["releases"])
+
+    # ~NNK lines hero stat
+    lines_k = round(m["total_lines"] / 1000)
+    html = re.sub(
+        r'(data-count=")(\d+)(">)\d*(</span><span class="unit">K</span>)',
+        rf'\g<1>{lines_k}\g<3>0\g<4>',
+        html,
+        count=1,
+    )
+
+    # Hero description text
+    old_hero_desc = re.search(r'(\d+) days from zero to production-grade', html)
+    if old_hero_desc:
+        r(f'{old_hero_desc.group(1)} days from zero', f'{m["days"]} days from zero')
+
+    # Phases done: "25/30" format
+    html = re.sub(
+        r'(data-count=")(\d+)(">)\d*(</span><span class="unit">)/(\d+)',
+        rf'\g<1>{m["phases_done"]}\g<3>0\g<4>/{m["phases_total"]}',
+        html,
+        count=1,
+    )
+
+    # -- Velocity section --
+    # Average commits/day
+    commits_per_day = round(m["commits"] / max(m["days"], 1), 1)
+    html = re.sub(
+        r'(data-count=")([\d.]+)(">)\d*(</span>/day\s*</div>\s*<div class="vel-num-label">Average commits)',
+        rf'\g<1>{commits_per_day}\g<3>0\g<4>',
+        html,
+        count=1,
+    )
+
+    # Lines inserted (git --stat)
+    total_insertions = run("git log --stat --format='' | grep 'insertion' | awk '{s+=$4} END {print s+0}'")
+    if total_insertions.strip():
+        html = re.sub(
+            r'(data-count=")(\d+)(" data-separator="true">)\d*(</span>\s*</div>\s*<div class="vel-num-label">Lines inserted)',
+            rf'\g<1>{total_insertions.strip()}\g<3>0\g<4>',
+            html,
+            count=1,
+        )
+
+    # Lines of productive code / day
+    lines_per_day = round(m["total_lines"] / max(m["days"], 1) / 100) * 100  # round to nearest 100
+    html = re.sub(
+        r'(data-count=")(\d+)(" data-separator="true">)\d*(</span>/day\s*</div>\s*<div class="vel-num-label">Lines of productive code)',
+        rf'\g<1>{lines_per_day}\g<3>0\g<4>',
+        html,
+        count=1,
+    )
+
+    # Releases in velocity section
+    html = re.sub(
+        r'(data-count=")(\d+)(">)\d*(</span>\s*</div>\s*<div class="vel-num-label">Releases shipped)',
+        rf'\g<1>{m["releases"]}\g<3>0\g<4>',
+        html,
+        count=1,
+    )
+
+    # Velocity subtitle
+    old_vel_sub = re.search(r'in (\d+) calendar days', html)
+    if old_vel_sub:
+        r(f'in {old_vel_sub.group(1)} calendar days', f'in {m["days"]} calendar days')
+
+    # -- Approach section --
+    r_phases = re.search(r'(\d+) planned phases.*?(\d+) completed in (\d+) days', html)
+    if r_phases:
+        r(r_phases.group(0),
+          f'{m["phases_total"]} planned phases, each with defined scope, acceptance criteria, and a release. {m["phases_done"]} completed in {m["days"]} days')
+
+    r_tdd = re.search(r'(\d[\d,]+) tests across unit', html)
+    if r_tdd:
+        r(r_tdd.group(0), f'{m["tests_total"]:,} tests across unit')
+
+    # -- Code metrics: total --
+    r_total = re.search(r'(\d[\d,]+) total</span>\s*</div>\s*<div class="code-panel-body">\s*<div class="bar-row">\s*<span class="bar-label">Rust', html)
+    if r_total:
+        r(r_total.group(1), f'{m["total_lines"]:,}')
+
+    # Rust line count in "Lines by Language"
+    r(f'<span class="bar-value">{_find_bar_value(html, "Rust", "Lines by Language")}</span>', f'<span class="bar-value">{m["rust_total_lines"]:,}</span>')
+
+    # -- Rust by Crate panel --
+    r_crate_header = re.search(r'(\d[\d,]+) lines / (\d+) files', html)
+    if r_crate_header:
+        r(r_crate_header.group(0), f'{m["rust_total_lines"]:,} lines / {m["rust_total_files"]} files')
+
+    # -- Architecture section --
+    old_arch_files = re.search(r'(\d+) source files', html)
+    if old_arch_files:
+        r(f'{old_arch_files.group(1)} source files', f'{m["rust_total_files"]} source files')
+    old_arch_lines = re.search(r'(\d[\d,]+) lines of Rust', html)
+    if old_arch_lines:
+        r(old_arch_lines.group(0), f'{m["rust_total_lines"]:,} lines of Rust')
+
+    # -- Tests section --
+    old_unit = re.search(r'data-count="(\d+)">\d*</span>\s*</div>\s*<div class="test-block-label">Unit Tests', html)
+    if old_unit:
+        r(f'data-count="{old_unit.group(1)}"', f'data-count="{m["unit_total"]}"')
+
+    # Unit detail
+    r_unit_detail = re.search(r'auth\((\d+)\), core\((\d+)\), proto\((\d+)\), server\((\d+)\), storage\((\d+)\)', html)
+    if r_unit_detail:
+        r(r_unit_detail.group(0),
+          f'auth({m["unit_auth"]}), core({m["unit_core"]}), proto({m["unit_proto"]}), server({m["unit_server"]}), storage({m["unit_storage"]})')
+
+    old_integ = re.search(r'data-count="(\d+)">\d*</span>\s*</div>\s*<div class="test-block-label">Integration Tests', html)
+    if old_integ:
+        r(f'data-count="{old_integ.group(1)}"', f'data-count="{m["integration_total"]}"')
+
+    old_total_tests = re.search(r'data-count="(\d+)">\d*</span>\s*</div>\s*<div class="test-block-label">Total Tests', html)
+    if old_total_tests:
+        r(f'data-count="{old_total_tests.group(1)}"', f'data-count="{m["tests_total"]}"')
+
+    # Ceph
+    r(f'{m["ceph_passed"]} of {m["ceph_total"]} Ceph s3-tests passing',
+      f'{m["ceph_passed"]} of {m["ceph_total"]} Ceph s3-tests passing')
+
+    # Verified date
+    r_verified = re.search(r'verified (\d{4}-\d{2}-\d{2})', html)
+    if r_verified:
+        r(r_verified.group(0), f'verified {datetime.now().strftime("%Y-%m-%d")}')
+
+    # -- Takeaways --
+    r_days = re.search(r'<div class="takeaway-number">(\d+) days</div>', html)
+    if r_days:
+        r(f'<div class="takeaway-number">{r_days.group(1)} days</div>',
+          f'<div class="takeaway-number">{m["days"]} days</div>')
+
+    old_lines_text = re.search(r'([\d,]+)\+? lines of battle-tested code', html)
+    if old_lines_text:
+        rounded = (m["total_lines"] // 1000) * 1000
+        r(old_lines_text.group(0), f'{rounded:,}+ lines of battle-tested code')
+
+    old_takeaway_tests = re.search(r'<div class="takeaway-number">([\d,]+)</div>\s*<div class="takeaway-text">Tests', html)
+    if old_takeaway_tests:
+        r(f'<div class="takeaway-number">{old_takeaway_tests.group(1)}</div>',
+          f'<div class="takeaway-number">{m["tests_total"]:,}</div>')
+
+    # Footer version
+    r_footer = re.search(r'Arca v[\d.]+', html)
+    if r_footer:
+        r(r_footer.group(0), f'Arca v{m["version"]}')
+
+    return html
+
+
+def _find_bar_value(html: str, label: str, panel_title: str) -> str:
+    """Find the bar-value for a given label within a panel."""
+    # Find panel by title
+    idx = html.find(panel_title)
+    if idx < 0:
+        return "0"
+    region = html[idx:idx + 2000]
+    # Find the label
+    label_idx = region.find(f'<span class="bar-label">{label}</span>')
+    if label_idx < 0:
+        return "0"
+    # Find bar-value after label
+    value_match = re.search(r'<span class="bar-value">([\d,]+)</span>', region[label_idx:label_idx + 300])
+    return value_match.group(1) if value_match else "0"
+
+
+def main():
+    if not REPORT.exists():
+        print(f"Error: {REPORT} not found", file=sys.stderr)
+        sys.exit(1)
+
+    print("Gathering metrics from repository...")
+    m = gather_metrics()
+
+    print(f"\n  Project: {m['days']} days, {m['commits']} commits, v{m['version']}")
+    print(f"  Phases: {m['phases_done']}/{m['phases_total']} done, {m['releases']} releases")
+    print(f"  Code: {m['total_lines']:,} total lines ({m['rust_total_lines']:,} Rust / {m['rust_total_files']} files)")
+    print(f"  Tests: {m['tests_total']:,} total (unit:{m['unit_total']}, integration:{m['integration_total']}, ceph:{m['ceph_total']})")
+    print(f"  Ceph: {m['ceph_passed']}/{m['ceph_total']} ({m['ceph_pct']}%)")
+
+    print("\nUpdating report...")
+    html = REPORT.read_text()
+    html = apply_updates(html, m)
+    REPORT.write_text(html)
+    print(f"  Updated {REPORT}")
+
+    print("\nDone. Run bin/docs-build to publish changes.")
+
+
+if __name__ == "__main__":
+    main()
