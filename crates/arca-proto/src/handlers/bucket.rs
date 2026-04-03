@@ -1124,7 +1124,7 @@ async fn put_bucket_versioning(
             if status.as_deref() == Some("Suspended") {
                 if let Ok(Some(_)) = state.metadata.get_bucket_config(bucket, "object_lock").await {
                     return s3_error_response(S3Error::with_message(
-                        S3ErrorCode::InvalidArgument,
+                        S3ErrorCode::InvalidBucketState,
                         "Cannot suspend versioning on a bucket with Object Lock enabled",
                         resource,
                     ));
@@ -1298,6 +1298,17 @@ pub async fn create_bucket(
             Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
             Err(e) => return internal_error_response(e, &resource),
         }
+        // Object Lock can only be enabled at bucket creation time.
+        // If it wasn't enabled then, PutObjectLockConfiguration is rejected.
+        let existing_lock = state.metadata.get_bucket_config(&bucket, "object_lock").await.unwrap_or(None);
+        if existing_lock.is_none() {
+            return s3_error_response(S3Error::with_message(
+                S3ErrorCode::InvalidBucketState,
+                "Object Lock configuration cannot be enabled on existing buckets",
+                &resource,
+            ));
+        }
+
         let body_bytes = match axum::body::to_bytes(request.into_body(), 64 * 1024).await {
             Ok(b) => b,
             Err(_) => return s3_error_response(S3Error::new(S3ErrorCode::InvalidRequest, &resource)),

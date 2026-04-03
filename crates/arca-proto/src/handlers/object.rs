@@ -505,6 +505,19 @@ pub async fn put_object(
         Err(e) => return s3_error_response(e),
     };
 
+    // SSE conflict detection: reject SSE-C combined with SSE-S3/SSE-KMS.
+    let has_sse_header = headers
+        .get("x-amz-server-side-encryption")
+        .and_then(|v| v.to_str().ok())
+        .is_some();
+    if ssec_key.is_some() && has_sse_header {
+        return s3_error_response(S3Error::with_message(
+            S3ErrorCode::InvalidArgument,
+            "Requests specifying Server Side Encryption with Customer provided keys must not specify a server side encryption algorithm",
+            &resource,
+        ));
+    }
+
     // Write blob: SSE-C uses customer key, otherwise route through encrypting/plain store.
     let blob_id = BlobId::new();
     let (put_result, encryption_info) = if let Some(ref ssec) = ssec_key {
@@ -1448,6 +1461,11 @@ pub async fn get_object(
         ));
     }
 
+    let checksum_requested = request.headers()
+        .get("x-amz-checksum-mode")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.eq_ignore_ascii_case("ENABLED"));
+
     let range = parse_range_header(request.headers(), record.size);
 
     let byte_range = match range {
@@ -1597,8 +1615,10 @@ pub async fn get_object(
         builder = builder.header("x-amz-object-lock-legal-hold-status", "ON");
     }
 
-    // Checksum header (skip on range/partial responses: stored checksum is for full object)
-    if status != StatusCode::PARTIAL_CONTENT {
+    // Checksum header: only return when client sends x-amz-checksum-mode: ENABLED
+    // (skip on range/partial responses: stored checksum is for full object)
+    let checksum_mode_enabled = checksum_requested;
+    if checksum_mode_enabled && status != StatusCode::PARTIAL_CONTENT {
         if let (Some(ref algo), Some(ref val)) = (&record.checksum_algorithm, &record.checksum_value) {
             let header_name = format!("x-amz-checksum-{}", algo.to_lowercase());
             builder = builder.header(header_name, val.as_str());
@@ -1768,10 +1788,16 @@ pub async fn head_object(
         builder = builder.header("x-amz-object-lock-legal-hold-status", "ON");
     }
 
-    // Checksum header
-    if let (Some(ref algo), Some(ref val)) = (&record.checksum_algorithm, &record.checksum_value) {
-        let header_name = format!("x-amz-checksum-{}", algo.to_lowercase());
-        builder = builder.header(header_name, val.as_str());
+    // Checksum header: only return when client sends x-amz-checksum-mode: ENABLED
+    let head_checksum_mode = request.headers()
+        .get("x-amz-checksum-mode")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.eq_ignore_ascii_case("ENABLED"));
+    if head_checksum_mode {
+        if let (Some(ref algo), Some(ref val)) = (&record.checksum_algorithm, &record.checksum_value) {
+            let header_name = format!("x-amz-checksum-{}", algo.to_lowercase());
+            builder = builder.header(header_name, val.as_str());
+        }
     }
 
     // Storage class (only if not STANDARD, per S3 convention)
@@ -1851,6 +1877,34 @@ pub async fn delete_object(
             if !lock_record.is_delete_marker {
                 if let Err(e) = check_object_lock_allows_delete(&lock_record, &headers) {
                     return s3_error_response(e);
+                }
+                // Conditional headers for version-specific delete
+                if let Some(val) = headers.get("if-match").and_then(|v| v.to_str().ok()) {
+                    let quoted_etag = format!("\"{}\"", lock_record.etag);
+                    if !etag_matches(val, &quoted_etag) {
+                        return precondition_failed_response(&resource);
+                    }
+                }
+                if let Some(val) = headers
+                    .get("x-amz-if-match-last-modified-time")
+                    .and_then(|v| v.to_str().ok())
+                {
+                    if let Ok(expected) = httpdate::parse_http_date(val) {
+                        let expected_dt: chrono::DateTime<chrono::Utc> = expected.into();
+                        if lock_record.last_modified.timestamp() != expected_dt.timestamp() {
+                            return precondition_failed_response(&resource);
+                        }
+                    }
+                }
+                if let Some(val) = headers
+                    .get("x-amz-if-match-size")
+                    .and_then(|v| v.to_str().ok())
+                {
+                    if let Ok(expected_size) = val.parse::<u64>() {
+                        if lock_record.size != expected_size {
+                            return precondition_failed_response(&resource);
+                        }
+                    }
                 }
             }
         }
@@ -2315,6 +2369,19 @@ async fn put_object_retention(
     match state.metadata.head_bucket(bucket).await {
         Ok(Some(_)) => {}
         Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, resource)),
+        Err(e) => return internal_error_response(e, resource),
+    }
+
+    // Verify Object Lock is enabled on the bucket
+    match state.metadata.get_bucket_config(bucket, "object_lock").await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return s3_error_response(S3Error::with_message(
+                S3ErrorCode::InvalidRequest,
+                "Bucket is missing Object Lock Configuration",
+                resource,
+            ));
+        }
         Err(e) => return internal_error_response(e, resource),
     }
 

@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-03-27T11:28:50Z",
+  "timestamp": "2026-04-03T15:29:58Z",
   "total": 830,
-  "passed": 352,
-  "failed": 387,
+  "passed": 370,
+  "failed": 369,
   "skipped": 91,
   "unexpected_failures": 0,
-  "pass_pct": 42.4,
+  "pass_pct": 44.6,
   "categories": {
     "ACL/Policy": {
       "total": 119,
@@ -51,8 +51,8 @@
     },
     "Encryption": {
       "total": 136,
-      "passed": 46,
-      "failed": 89,
+      "passed": 48,
+      "failed": 87,
       "skipped": 1
     },
     "Headers": {
@@ -63,8 +63,8 @@
     },
     "Lifecycle": {
       "total": 36,
-      "passed": 9,
-      "failed": 19,
+      "passed": 12,
+      "failed": 16,
       "skipped": 8
     },
     "Logging": {
@@ -93,8 +93,8 @@
     },
     "Object Lock": {
       "total": 39,
-      "passed": 5,
-      "failed": 34,
+      "passed": 14,
+      "failed": 25,
       "skipped": 0
     },
     "Other": {
@@ -123,8 +123,8 @@
     },
     "Versioning": {
       "total": 65,
-      "passed": 41,
-      "failed": 22,
+      "passed": 45,
+      "failed": 18,
       "skipped": 2
     }
   }

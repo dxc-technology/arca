@@ -55,6 +55,8 @@ pub enum S3ErrorCode {
     ServerSideEncryptionConfigurationNotFoundError,
     SignatureDoesNotMatch,
     SlowDown,
+    InvalidRetentionPeriod,
+    InvalidBucketState,
 }
 
 impl S3ErrorCode {
@@ -93,6 +95,8 @@ impl S3ErrorCode {
             S3ErrorCode::ServerSideEncryptionConfigurationNotFoundError => 400,
             S3ErrorCode::SignatureDoesNotMatch => 403,
             S3ErrorCode::SlowDown => 503,
+            S3ErrorCode::InvalidRetentionPeriod => 400,
+            S3ErrorCode::InvalidBucketState => 409,
         }
     }
 
@@ -135,6 +139,8 @@ impl S3ErrorCode {
             }
             S3ErrorCode::SignatureDoesNotMatch => "SignatureDoesNotMatch",
             S3ErrorCode::SlowDown => "SlowDown",
+            S3ErrorCode::InvalidRetentionPeriod => "InvalidRetentionPeriod",
+            S3ErrorCode::InvalidBucketState => "InvalidBucketState",
         }
     }
 
@@ -216,6 +222,12 @@ impl S3ErrorCode {
             }
             S3ErrorCode::SlowDown => {
                 "Please reduce your request rate."
+            }
+            S3ErrorCode::InvalidRetentionPeriod => {
+                "The retention period specified is not valid."
+            }
+            S3ErrorCode::InvalidBucketState => {
+                "The request is not valid for the current state of the bucket."
             }
         }
     }

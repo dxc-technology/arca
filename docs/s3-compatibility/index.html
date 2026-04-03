@@ -93,19 +93,19 @@
 <body>
 
 <h1>Arca S3 Compatibility Report</h1>
-<p class="meta">2026-03-27 11:28:50 UTC</p>
+<p class="meta">2026-04-03 15:29:58 UTC</p>
 
 <div class="cards">
   <div class="card"><div class="value">830</div><div class="label">Total</div></div>
-  <div class="card passed"><div class="value">352</div><div class="label">Passed</div></div>
-  <div class="card failed"><div class="value">387</div><div class="label">Failed</div></div>
+  <div class="card passed"><div class="value">370</div><div class="label">Passed</div></div>
+  <div class="card failed"><div class="value">369</div><div class="label">Failed</div></div>
   <div class="card skipped"><div class="value">91</div><div class="label">Skipped</div></div>
-  <div class="card expected"><div class="value">387</div><div class="label">Expected Fail</div></div>
-  <div class="card rate"><div class="value">42.4%</div><div class="label">Pass Rate</div></div>
+  <div class="card expected"><div class="value">369</div><div class="label">Expected Fail</div></div>
+  <div class="card rate"><div class="value">44.6%</div><div class="label">Pass Rate</div></div>
 </div>
 
 <div class="progress-bar">
-  <div class="progress-fill" style="width: 42.40963855421687%"></div>
+  <div class="progress-fill" style="width: 44.57831325301205%"></div>
 </div>
 
 <h2>Category Breakdown</h2>
@@ -172,10 +172,10 @@
         <tr>
           <td>Encryption</td>
           <td class="num">136</td>
-          <td class="num passed">46</td>
-          <td class="num failed">89</td>
+          <td class="num passed">48</td>
+          <td class="num failed">87</td>
           <td class="num skipped">1</td>
-          <td class="num bad">34%</td>
+          <td class="num bad">35%</td>
         </tr>
         <tr>
           <td>Headers</td>
@@ -188,10 +188,10 @@
         <tr>
           <td>Lifecycle</td>
           <td class="num">36</td>
-          <td class="num passed">9</td>
-          <td class="num failed">19</td>
+          <td class="num passed">12</td>
+          <td class="num failed">16</td>
           <td class="num skipped">8</td>
-          <td class="num bad">25%</td>
+          <td class="num bad">33%</td>
         </tr>
         <tr>
           <td>Logging</td>
@@ -228,10 +228,10 @@
         <tr>
           <td>Object Lock</td>
           <td class="num">39</td>
-          <td class="num passed">5</td>
-          <td class="num failed">34</td>
+          <td class="num passed">14</td>
+          <td class="num failed">25</td>
           <td class="num skipped">0</td>
-          <td class="num bad">13%</td>
+          <td class="num bad">36%</td>
         </tr>
         <tr>
           <td>Other</td>
@@ -268,24 +268,16 @@
         <tr>
           <td>Versioning</td>
           <td class="num">65</td>
-          <td class="num passed">41</td>
-          <td class="num failed">22</td>
+          <td class="num passed">45</td>
+          <td class="num failed">18</td>
           <td class="num skipped">2</td>
-          <td class="num warn">63%</td>
+          <td class="num warn">69%</td>
         </tr>
 </table>
 
 
         <h2>Passlist Diff</h2>
-        <div class="diff-box"><div class="diff-new">+ test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-1024]</div>
-<div class="diff-new">+ test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-1048576]</div>
-<div class="diff-new">+ test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-1]</div>
-<div class="diff-new">+ test_copy_enc[sse-c-sse-c-STANDARD-STANDARD-8388608]</div>
-<div class="diff-new">+ test_copy_enc[sse-c-unencrypted-STANDARD-STANDARD-1024]</div>
-<div class="diff-new">+ test_copy_enc[sse-c-unencrypted-STANDARD-STANDARD-1048576]</div>
-<div class="diff-new">+ test_copy_enc[sse-c-unencrypted-STANDARD-STANDARD-1]</div>
-<div class="diff-new">+ test_copy_enc[sse-c-unencrypted-STANDARD-STANDARD-8388608]</div>
-<div class="diff-new">+ test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-1024]</div>
+        <div class="diff-box"><div class="diff-new">+ test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-1024]</div>
 <div class="diff-new">+ test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-1048576]</div>
 <div class="diff-new">+ test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-1]</div>
 <div class="diff-new">+ test_copy_enc[sse-kms-sse-c-STANDARD-STANDARD-8388608]</div>
@@ -293,49 +285,16 @@
 <div class="diff-new">+ test_copy_enc[sse-kms-unencrypted-STANDARD-STANDARD-1048576]</div>
 <div class="diff-new">+ test_copy_enc[sse-kms-unencrypted-STANDARD-STANDARD-1]</div>
 <div class="diff-new">+ test_copy_enc[sse-kms-unencrypted-STANDARD-STANDARD-8388608]</div>
-<div class="diff-new">+ test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-1024]</div>
-<div class="diff-new">+ test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-1048576]</div>
-<div class="diff-new">+ test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-1]</div>
-<div class="diff-new">+ test_copy_enc[unencrypted-sse-c-STANDARD-STANDARD-8388608]</div>
-<div class="diff-new">+ test_copy_enc[unencrypted-unencrypted-STANDARD-STANDARD-1024]</div>
-<div class="diff-new">+ test_copy_enc[unencrypted-unencrypted-STANDARD-STANDARD-1048576]</div>
-<div class="diff-new">+ test_copy_enc[unencrypted-unencrypted-STANDARD-STANDARD-1]</div>
-<div class="diff-new">+ test_copy_enc[unencrypted-unencrypted-STANDARD-STANDARD-8388608]</div>
-<div class="diff-new">+ test_copy_object_ifmatch_failed</div>
-<div class="diff-new">+ test_copy_object_ifmatch_good</div>
-<div class="diff-new">+ test_copy_object_ifnonematch_failed</div>
-<div class="diff-new">+ test_copy_object_ifnonematch_good</div>
 <div class="diff-new">+ test_copy_part_enc[sse-kms-unencrypted-STANDARD-STANDARD-8388608]</div>
-<div class="diff-new">+ test_copy_part_enc[unencrypted-unencrypted-STANDARD-STANDARD-8388608]</div>
-<div class="diff-new">+ test_delete_marker_suspended</div>
-<div class="diff-new">+ test_delete_marker_versioned</div>
-<div class="diff-new">+ test_delete_object_current_if_match_last_modified_time</div>
-<div class="diff-new">+ test_delete_object_current_if_match_size</div>
-<div class="diff-new">+ test_delete_object_if_match</div>
-<div class="diff-new">+ test_delete_object_if_match_last_modified_time</div>
-<div class="diff-new">+ test_delete_object_if_match_size</div>
-<div class="diff-new">+ test_delete_objects_current_if_match</div>
-<div class="diff-new">+ test_delete_objects_current_if_match_last_modified_time</div>
-<div class="diff-new">+ test_delete_objects_current_if_match_size</div>
-<div class="diff-new">+ test_delete_objects_if_match</div>
-<div class="diff-new">+ test_delete_objects_if_match_last_modified_time</div>
-<div class="diff-new">+ test_delete_objects_if_match_size</div>
-<div class="diff-new">+ test_delete_objects_version_if_match</div>
-<div class="diff-new">+ test_delete_objects_version_if_match_last_modified_time</div>
-<div class="diff-new">+ test_delete_objects_version_if_match_size</div>
-<div class="diff-new">+ test_get_checksum_object_attributes</div>
-<div class="diff-new">+ test_get_object_attributes</div>
-<div class="diff-new">+ test_multipart_put_current_object_if_match</div>
-<div class="diff-new">+ test_multipart_put_current_object_if_none_match</div>
-<div class="diff-new">+ test_multipart_put_object_if_match</div>
-<div class="diff-new">+ test_put_current_object_if_match</div>
-<div class="diff-new">+ test_put_current_object_if_none_match</div>
-<div class="diff-new">+ test_put_object_current_if_match</div>
-<div class="diff-new">+ test_put_object_if_match</div>
-<div class="diff-new">+ test_upload_part_copy_percent_encoded_key</div>
+<div class="diff-new">+ test_sse_kms_present</div>
+<div class="diff-new">+ test_sse_kms_transfer_13b</div>
+<div class="diff-new">+ test_sse_kms_transfer_1MB</div>
+<div class="diff-new">+ test_sse_kms_transfer_1b</div>
+<div class="diff-new">+ test_sse_kms_transfer_1kb</div>
+<div class="diff-lost">- test_sse_kms_no_key</div>
 </div>
 
-<h2>Failures (387)</h2>
+<h2>Failures (369)</h2>
 
         <details class="fail-item">
           <summary>
@@ -1752,7 +1711,7 @@
             <span class="cat-tag">Versioning</span>
             <code>test_delete_marker_expiration</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (MalformedXML) when calling the PutBucketLifecycleConfiguration operation: Expiration element must contain Days</pre>
+          <pre>Failed: Timeout (&gt;30.0s) from pytest-timeout.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1769,30 +1728,6 @@
             <code>test_delete_object_current_if_match</code>
           </summary>
           <pre>botocore.exceptions.ClientError: An error occurred (PreconditionFailed) when calling the DeleteObject operation: At least one of the pre-conditions you specified did not hold.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_object_version_if_match</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_object_version_if_match_last_modified_time</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_delete_object_version_if_match_size</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2036,7 +1971,7 @@
             <span class="cat-tag">Lifecycle</span>
             <code>test_lifecycle_deletemarker_expiration</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (MalformedXML) when calling the PutBucketLifecycleConfiguration operation: Expiration element must contain Days</pre>
+          <pre>Failed: Timeout (&gt;30.0s) from pytest-timeout.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2045,7 +1980,7 @@
             <code>test_lifecycle_deletemarker_expiration_with_days_tag</code>
           </summary>
           <pre>assert 1 == 0
- +  where 1 = len([{'ETag': '&quot;8e689ba88b92e4020c6508e8a73e4ec1&quot;', 'IsLatest': False, 'Key': 'test1/a', 'LastModified': datetime.datetime(2026, 3, 27, 11, 26, 1, 96000, tzinfo=tzlocal()),</pre>
+ +  where 1 = len([{'ETag': '&quot;8e689ba88b92e4020c6508e8a73e4ec1&quot;', 'IsLatest': False, 'Key': 'test1/a', 'LastModified': datetime.datetime(2026, 4, 3, 15, 26, 25, 623000, tzinfo=tzlocal())</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2061,7 +1996,7 @@
             <span class="cat-tag">Lifecycle</span>
             <code>test_lifecycle_expiration_date</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (MalformedXML) when calling the PutBucketLifecycleConfiguration operation: Expiration element must contain Days</pre>
+          <pre>Failed: Timeout (&gt;30.0s) from pytest-timeout.</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2069,8 +2004,8 @@
             <span class="cat-tag">Lifecycle</span>
             <code>test_lifecycle_expiration_header_head</code>
           </summary>
-          <pre>AssertionError: assert False
- +  where False = check_lifecycle_expiration_header({'AcceptRanges': 'bytes', 'ChecksumCRC32': 'dv+Mqg==', 'ContentLength': 3, 'ContentType': 'application/octet-stream', .</pre>
+          <pre>assert False
+ +  where False = check_lifecycle_expiration_header({'AcceptRanges': 'bytes', 'ContentLength': 3, 'ContentType': 'application/octet-stream', 'ETag': '&quot;37b51d194a7513e45b56f6524f2d51f2&quot;', </pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2087,8 +2022,8 @@
             <span class="cat-tag">Tagging</span>
             <code>test_lifecycle_expiration_header_tags_head</code>
           </summary>
-          <pre>AssertionError: assert False
- +  where False = check_lifecycle_expiration_header({'AcceptRanges': 'bytes', 'ChecksumCRC32': 'qL7U5Q==', 'ContentLength': 13, 'ContentType': 'application/octet-stream', </pre>
+          <pre>assert False
+ +  where False = check_lifecycle_expiration_header({'AcceptRanges': 'bytes', 'ContentLength': 13, 'ContentType': 'application/octet-stream', 'ETag': '&quot;16420ea3cce6785e28147281232fcd05&quot;',</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2121,7 +2056,7 @@
             <code>test_lifecycle_expiration_size_lt</code>
           </summary>
           <pre>assert 2 == 1
- +  where 2 = len([{'ETag': '&quot;62495ddaf6daa2d10ac0fac67fbb43bf&quot;', 'Key': 'myobject_big', 'LastModified': datetime.datetime(2026, 3, 27, 11, 25, 8, 367000, tzinfo=tzlocal()), 'Size': 3000</pre>
+ +  where 2 = len([{'ETag': '&quot;62495ddaf6daa2d10ac0fac67fbb43bf&quot;', 'Key': 'myobject_big', 'LastModified': datetime.datetime(2026, 4, 3, 15, 24, 33, 280000, tzinfo=tzlocal()), 'Size': 3000</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2177,14 +2112,6 @@
           <summary>
             <span class="badge expected">Expected</span>
             <span class="cat-tag">Lifecycle</span>
-            <code>test_lifecycle_id_too_long</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Lifecycle</span>
             <code>test_lifecycle_multipart_expiration</code>
           </summary>
           <pre>Failed: Timeout (&gt;30.0s) from pytest-timeout.</pre>
@@ -2201,33 +2128,17 @@
           <summary>
             <span class="badge expected">Expected</span>
             <span class="cat-tag">Lifecycle</span>
-            <code>test_lifecycle_set_date</code>
+            <code>test_lifecycle_set_invalid_date</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (MalformedXML) when calling the PutBucketLifecycleConfiguration operation: Expiration element must contain Days</pre>
+          <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="fail-item">
           <summary>
             <span class="badge expected">Expected</span>
             <span class="cat-tag">Lifecycle</span>
-            <code>test_lifecycle_set_deletemarker</code>
+            <code>test_lifecycle_transition_set_invalid_date</code>
           </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (MalformedXML) when calling the PutBucketLifecycleConfiguration operation: Expiration element must contain Days</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Lifecycle</span>
-            <code>test_lifecycle_set_empty_filter</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (MalformedXML) when calling the PutBucketLifecycleConfiguration operation: Expiration element must contain Days</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Lifecycle</span>
-            <code>test_lifecycle_set_filter</code>
-          </summary>
-          <pre>botocore.exceptions.ClientError: An error occurred (MalformedXML) when calling the PutBucketLifecycleConfiguration operation: Expiration element must contain Days</pre>
+          <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2252,7 +2163,7 @@
             <code>test_list_buckets_paginated</code>
           </summary>
           <pre>AssertionError: assert 2 == 1
- +  where 2 = len([{'CreationDate': datetime.datetime(2026, 3, 27, 11, 19, 40, 784000, tzinfo=tzlocal()), 'Name': 'arca-test-yhjo1sayhkgc52rulpe-259'}, {'CreationDate': d</pre>
+ +  where 2 = len([{'CreationDate': datetime.datetime(2026, 4, 3, 15, 18, 58, 882000, tzinfo=tzlocal()), 'Name': 'arca-test-lvao8mpr2n42yxsqwqn-259'}, {'CreationDate': da</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2476,7 +2387,7 @@
             <span class="cat-tag">Checksums</span>
             <code>test_object_checksum_crc64nvme</code>
           </summary>
-          <pre>AssertionError: assert 'ChecksumCRC64NVME' not in {'AcceptRanges': 'bytes', 'ChecksumCRC64NVME': 'Qeh8oXvGiSo=', 'ContentLength': 1024, 'ContentType': 'application/octet-stream', ...}</pre>
+          <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2484,7 +2395,7 @@
             <span class="cat-tag">Checksums</span>
             <code>test_object_checksum_sha256</code>
           </summary>
-          <pre>AssertionError: assert 'ChecksumSHA256' not in {'AcceptRanges': 'bytes', 'ChecksumSHA256': 'arcu6553sHVAiX4MjW0j7I7vD4w6R+Gz9Ok0Q9lTa+0=', 'ContentLength': 1024, 'ContentType': 'application/octet-stre</pre>
+          <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2524,7 +2435,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_changing_mode_from_compliance</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.467753 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.221748 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2532,7 +2443,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_changing_mode_from_governance_with_bypass</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.535348 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.280995 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2540,7 +2451,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_changing_mode_from_governance_without_bypass</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.509288 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.252545 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2548,7 +2459,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_delete_multipart_object_with_legal_hold_on</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.648431 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.39123 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2556,7 +2467,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_delete_multipart_object_with_retention</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.896651 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.662832 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2564,7 +2475,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_delete_object_with_legal_hold_off</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.62258 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.362588 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2572,7 +2483,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_delete_object_with_legal_hold_on</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.676775 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.420056 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2580,7 +2491,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_delete_object_with_retention</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.925875 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.690785 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2588,7 +2499,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_delete_object_with_retention_and_marker</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.871515 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.632969 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2596,7 +2507,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_get_legal_hold</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.727255 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.474863 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2604,7 +2515,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_get_legal_hold_invalid_bucket</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.702076 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.448264 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2612,15 +2523,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_get_obj_metadata</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.595799 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Object Lock</span>
-            <code>test_object_lock_get_obj_retention</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845071.146575 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.335034 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2628,15 +2531,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_get_obj_retention_invalid_bucket</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845071.080952 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Object Lock</span>
-            <code>test_object_lock_get_obj_retention_iso8601</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845071.124067 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>assert 404 == 400</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2644,7 +2539,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_multi_delete_object_with_retention</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.845908 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.604752 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2652,7 +2547,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_legal_hold</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.820943 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.577251 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2660,7 +2555,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_legal_hold_invalid_bucket</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.779136 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.550873 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2668,7 +2563,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_legal_hold_invalid_status</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.753264 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.523272 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2676,34 +2571,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_obj_lock_enable_after_create</code>
           </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Object Lock</span>
-            <code>test_object_lock_put_obj_lock_invalid_bucket</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Object Lock</span>
-            <code>test_object_lock_put_obj_lock_invalid_days</code>
-          </summary>
-          <pre>AssertionError: assert 'InvalidArgument' == 'InvalidRetentionPeriod'
-  
-  - InvalidRetentionPeriod
-  + InvalidArgument</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Object Lock</span>
-            <code>test_object_lock_put_obj_lock_invalid_status</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
+          <pre>botocore.exceptions.ClientError: An error occurred (InvalidBucketState) when calling the PutObjectLockConfiguration operation: Object Lock configuration cannot be enabled on existing buckets</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2720,44 +2588,9 @@
           <summary>
             <span class="badge expected">Expected</span>
             <span class="cat-tag">Object Lock</span>
-            <code>test_object_lock_put_obj_lock_with_days_and_years</code>
-          </summary>
-          <pre>AssertionError: assert 'InvalidArgument' == 'MalformedXML'
-  
-  - MalformedXML
-  + InvalidArgument</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_obj_retention_increase_period</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845071.002543 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Object Lock</span>
-            <code>test_object_lock_put_obj_retention_invalid_bucket</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Object Lock</span>
-            <code>test_object_lock_put_obj_retention_invalid_bucket</code>
-          </summary>
-          <pre>failed on teardown with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845071.195504 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Object Lock</span>
-            <code>test_object_lock_put_obj_retention_invalid_mode</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845071.172971 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.772947 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2765,7 +2598,15 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_obj_retention_override_default_retention</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845071.027963 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>botocore.errorfactory.AccessDenied: An error occurred (AccessDenied) when calling the PutObjectRetention operation: Object is under GOVERNANCE retention. Use x-amz-bypass-governance-retention: true to</pre>
+        </details>
+        <details class="fail-item">
+          <summary>
+            <span class="badge expected">Expected</span>
+            <span class="cat-tag">Object Lock</span>
+            <code>test_object_lock_put_obj_retention_override_default_retention</code>
+          </summary>
+          <pre>failed on teardown with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.80152 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2773,7 +2614,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_obj_retention_shorten_period</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.976393 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.745814 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2781,23 +2622,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_obj_retention_shorten_period_bypass</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.950594 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Object Lock</span>
-            <code>test_object_lock_put_obj_retention_versionid</code>
-          </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845071.055863 more seconds, not waiting for bucket cleanup&quot;</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Versioning</span>
-            <code>test_object_lock_suspend_versioning</code>
-          </summary>
-          <pre>assert 400 == 409</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.71757 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2805,7 +2630,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_uploading_obj</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-f7g028ktradj5qcmk42-13 still has objects locked for 118845070.570614 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.307537 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2813,7 +2638,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_object_put_acl_mtime</code>
           </summary>
-          <pre>assert datetime.datetime(2026, 3, 27, 11, 18, 6, tzinfo=tzutc()) == datetime.datetime(2026, 3, 27, 11, 18, 8, tzinfo=tzutc())</pre>
+          <pre>assert datetime.datetime(2026, 4, 3, 15, 17, 11, tzinfo=tzutc()) == datetime.datetime(2026, 4, 3, 15, 17, 13, tzinfo=tzutc())</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -3246,22 +3071,6 @@
             <span class="badge expected">Expected</span>
             <span class="cat-tag">Encryption</span>
             <code>test_put_obj_enc_conflict_bad_enc_kms</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_put_obj_enc_conflict_c_kms</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_put_obj_enc_conflict_c_s3</code>
           </summary>
           <pre>AssertionError: ClientError not raised</pre>
         </details>

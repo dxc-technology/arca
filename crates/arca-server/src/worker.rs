@@ -347,7 +347,26 @@ async fn evaluate_lifecycle_rules(
 
             // Expiration: delete current objects older than N days
             if let Some(ref exp) = rule.expiration {
-                let cutoff = now - chrono::Duration::days(exp.days as i64);
+                let days = match exp {
+                    arca_core::s3::lifecycle::Expiration::Days { days } => *days as i64,
+                    arca_core::s3::lifecycle::Expiration::Date { date } => {
+                        // Calculate days from now to the target date
+                        if let Ok(target) = chrono::DateTime::parse_from_rfc3339(date) {
+                            let diff = target.signed_duration_since(now);
+                            if diff.num_seconds() > 0 {
+                                continue; // Date is in the future, skip
+                            }
+                            0 // Date has passed, expire immediately
+                        } else {
+                            continue; // Invalid date format, skip rule
+                        }
+                    }
+                    arca_core::s3::lifecycle::Expiration::ExpiredObjectDeleteMarker { .. } => {
+                        // Delete marker cleanup is a separate operation, skip normal expiration
+                        continue;
+                    }
+                };
+                let cutoff = now - chrono::Duration::days(days);
                 match metadata
                     .list_expired_objects(bucket, prefix, &tags, cutoff, None, LIFECYCLE_BATCH_SIZE)
                     .await

@@ -51,16 +51,34 @@ pub enum LifecycleFilter {
     Empty,
 }
 
-/// Expire current versions after N days.
+/// Expiration action: expire current versions by days, date, or delete-marker cleanup.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Expiration {
-    pub days: u32,
+#[serde(untagged)]
+pub enum Expiration {
+    /// Expire objects after N days.
+    Days { days: u32 },
+    /// Expire objects on a specific ISO 8601 date.
+    Date { date: String },
+    /// Remove expired object delete markers (versioned buckets only).
+    ExpiredObjectDeleteMarker { expired_object_delete_marker: bool },
+}
+
+impl Expiration {
+    /// Returns the number of days if this is a Days variant.
+    pub fn days(&self) -> Option<u32> {
+        match self {
+            Expiration::Days { days } => Some(*days),
+            _ => None,
+        }
+    }
 }
 
 /// Hard-delete noncurrent versions after N days.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NoncurrentVersionExpiration {
     pub noncurrent_days: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub newer_noncurrent_versions: Option<u32>,
 }
 
 /// Abort incomplete multipart uploads after N days.
@@ -153,12 +171,18 @@ pub fn parse_lifecycle_configuration_xml(xml: &str) -> Result<LifecycleConfigura
     struct XmlExpiration {
         #[serde(rename = "Days")]
         days: Option<u32>,
+        #[serde(rename = "Date")]
+        date: Option<String>,
+        #[serde(rename = "ExpiredObjectDeleteMarker")]
+        expired_object_delete_marker: Option<String>,
     }
 
     #[derive(Deserialize)]
     struct XmlNoncurrentVersionExpiration {
         #[serde(rename = "NoncurrentDays")]
         noncurrent_days: Option<u32>,
+        #[serde(rename = "NewerNoncurrentVersions")]
+        newer_noncurrent_versions: Option<u32>,
     }
 
     #[derive(Deserialize)]
@@ -217,11 +241,21 @@ pub fn parse_lifecycle_configuration_xml(xml: &str) -> Result<LifecycleConfigura
         };
 
         let expiration = match xml_rule.expiration {
-            Some(XmlExpiration { days: Some(d) }) => Some(Expiration { days: d }),
-            Some(XmlExpiration { days: None }) => {
+            Some(ref xe) if xe.days.is_some() => {
+                Some(Expiration::Days { days: xe.days.unwrap() })
+            }
+            Some(ref xe) if xe.date.is_some() => {
+                Some(Expiration::Date { date: xe.date.clone().unwrap() })
+            }
+            Some(ref xe) if xe.expired_object_delete_marker.is_some() => {
+                let val = xe.expired_object_delete_marker.as_ref().unwrap();
+                let b = val.eq_ignore_ascii_case("true");
+                Some(Expiration::ExpiredObjectDeleteMarker { expired_object_delete_marker: b })
+            }
+            Some(_) => {
                 return Err(S3Error::with_message(
                     S3ErrorCode::MalformedXML,
-                    "Expiration element must contain Days",
+                    "Expiration element must contain Days, Date, or ExpiredObjectDeleteMarker",
                     "",
                 ));
             }
@@ -229,15 +263,16 @@ pub fn parse_lifecycle_configuration_xml(xml: &str) -> Result<LifecycleConfigura
         };
 
         let noncurrent_version_expiration = match xml_rule.noncurrent_version_expiration {
-            Some(XmlNoncurrentVersionExpiration {
-                noncurrent_days: Some(d),
-            }) => Some(NoncurrentVersionExpiration { noncurrent_days: d }),
-            Some(XmlNoncurrentVersionExpiration {
-                noncurrent_days: None,
-            }) => {
+            Some(ref nve) if nve.noncurrent_days.is_some() || nve.newer_noncurrent_versions.is_some() => {
+                Some(NoncurrentVersionExpiration {
+                    noncurrent_days: nve.noncurrent_days.unwrap_or(0),
+                    newer_noncurrent_versions: nve.newer_noncurrent_versions,
+                })
+            }
+            Some(_) => {
                 return Err(S3Error::with_message(
                     S3ErrorCode::MalformedXML,
-                    "NoncurrentVersionExpiration must contain NoncurrentDays",
+                    "NoncurrentVersionExpiration must contain NoncurrentDays or NewerNoncurrentVersions",
                     "",
                 ));
             }
@@ -314,14 +349,17 @@ fn validate_lifecycle_configuration(config: &LifecycleConfiguration) -> Result<(
             ));
         }
 
-        // Validate Days > 0
+        // Validate Expiration values
         if let Some(ref exp) = rule.expiration {
-            if exp.days == 0 {
-                return Err(S3Error::with_message(
-                    S3ErrorCode::InvalidArgument,
-                    "'Days' in Expiration must be a positive integer",
-                    "",
-                ));
+            match exp {
+                Expiration::Days { days } if *days == 0 => {
+                    return Err(S3Error::with_message(
+                        S3ErrorCode::InvalidArgument,
+                        "'Days' in Expiration must be a positive integer",
+                        "",
+                    ));
+                }
+                _ => {}
             }
         }
         if let Some(ref nve) = rule.noncurrent_version_expiration {
@@ -341,6 +379,15 @@ fn validate_lifecycle_configuration(config: &LifecycleConfiguration) -> Result<(
                     "",
                 ));
             }
+        }
+
+        // Rule ID length limit (255 chars max per S3 spec)
+        if rule.id.len() > 255 {
+            return Err(S3Error::with_message(
+                S3ErrorCode::InvalidArgument,
+                format!("Rule ID '{}...' exceeds maximum length of 255 characters", &rule.id[..50]),
+                "",
+            ));
         }
 
         // Rule IDs must be unique (empty IDs are allowed but still must be unique)
@@ -394,7 +441,21 @@ pub fn lifecycle_configuration_to_xml(config: &LifecycleConfiguration) -> String
             writer
                 .write_event(Event::Start(BytesStart::new("Expiration")))
                 .expect("write Expiration start");
-            write_xml_element(&mut writer, "Days", &exp.days.to_string());
+            match exp {
+                Expiration::Days { days } => {
+                    write_xml_element(&mut writer, "Days", &days.to_string());
+                }
+                Expiration::Date { date } => {
+                    write_xml_element(&mut writer, "Date", date);
+                }
+                Expiration::ExpiredObjectDeleteMarker { expired_object_delete_marker } => {
+                    write_xml_element(
+                        &mut writer,
+                        "ExpiredObjectDeleteMarker",
+                        if *expired_object_delete_marker { "true" } else { "false" },
+                    );
+                }
+            }
             writer
                 .write_event(Event::End(BytesEnd::new("Expiration")))
                 .expect("write Expiration end");
@@ -405,7 +466,12 @@ pub fn lifecycle_configuration_to_xml(config: &LifecycleConfiguration) -> String
             writer
                 .write_event(Event::Start(BytesStart::new("NoncurrentVersionExpiration")))
                 .expect("write NoncurrentVersionExpiration start");
-            write_xml_element(&mut writer, "NoncurrentDays", &nve.noncurrent_days.to_string());
+            if nve.noncurrent_days > 0 {
+                write_xml_element(&mut writer, "NoncurrentDays", &nve.noncurrent_days.to_string());
+            }
+            if let Some(n) = nve.newer_noncurrent_versions {
+                write_xml_element(&mut writer, "NewerNoncurrentVersions", &n.to_string());
+            }
             writer
                 .write_event(Event::End(BytesEnd::new("NoncurrentVersionExpiration")))
                 .expect("write NoncurrentVersionExpiration end");
@@ -519,7 +585,7 @@ mod tests {
         assert_eq!(rule.id, "expire-old-logs");
         assert_eq!(rule.status, RuleStatus::Enabled);
         assert_eq!(rule.filter, LifecycleFilter::Prefix("logs/".to_string()));
-        assert_eq!(rule.expiration, Some(Expiration { days: 90 }));
+        assert_eq!(rule.expiration, Some(Expiration::Days { days: 90 }));
         assert!(rule.noncurrent_version_expiration.is_none());
         assert!(rule.abort_incomplete_multipart_upload.is_none());
     }
@@ -568,7 +634,8 @@ mod tests {
         assert_eq!(
             rule.noncurrent_version_expiration,
             Some(NoncurrentVersionExpiration {
-                noncurrent_days: 30
+                noncurrent_days: 30,
+                newer_noncurrent_versions: None,
             })
         );
     }
@@ -806,7 +873,7 @@ mod tests {
                     id: "expire-logs".to_string(),
                     status: RuleStatus::Enabled,
                     filter: LifecycleFilter::Prefix("logs/".to_string()),
-                    expiration: Some(Expiration { days: 90 }),
+                    expiration: Some(Expiration::Days { days: 90 }),
                     noncurrent_version_expiration: None,
                     abort_incomplete_multipart_upload: None,
                 },
@@ -827,9 +894,10 @@ mod tests {
                         prefix: Some("data/".to_string()),
                         tags: vec![("env".to_string(), "staging".to_string())],
                     },
-                    expiration: Some(Expiration { days: 30 }),
+                    expiration: Some(Expiration::Days { days: 30 }),
                     noncurrent_version_expiration: Some(NoncurrentVersionExpiration {
                         noncurrent_days: 60,
+                        newer_noncurrent_versions: None,
                     }),
                     abort_incomplete_multipart_upload: None,
                 },
@@ -851,7 +919,7 @@ mod tests {
                     key: "status".to_string(),
                     value: "temp".to_string(),
                 },
-                expiration: Some(Expiration { days: 1 }),
+                expiration: Some(Expiration::Days { days: 1 }),
                 noncurrent_version_expiration: None,
                 abort_incomplete_multipart_upload: None,
             }],
@@ -869,7 +937,7 @@ mod tests {
                 id: "rule-1".to_string(),
                 status: RuleStatus::Enabled,
                 filter: LifecycleFilter::Prefix("logs/".to_string()),
-                expiration: Some(Expiration { days: 30 }),
+                expiration: Some(Expiration::Days { days: 30 }),
                 noncurrent_version_expiration: None,
                 abort_incomplete_multipart_upload: None,
             }],

@@ -73,6 +73,17 @@ pub fn parse_object_lock_configuration_xml(
         )
     })?;
 
+    // Validate ObjectLockEnabled value: must be "Enabled" (or absent).
+    if let Some(ref enabled) = parsed.enabled {
+        if enabled != "Enabled" {
+            return Err(S3Error::with_message(
+                S3ErrorCode::MalformedXML,
+                "ObjectLockEnabled must be 'Enabled'",
+                "",
+            ));
+        }
+    }
+
     let default_retention = if let Some(rule) = parsed.rule {
         if let Some(dr) = rule.default_retention {
             let mode = dr.mode.ok_or_else(|| {
@@ -283,7 +294,7 @@ fn validate_retention_period(days: Option<u32>, years: Option<u32>) -> Result<()
         (Some(d), None) => {
             if d == 0 {
                 return Err(S3Error::with_message(
-                    S3ErrorCode::InvalidArgument,
+                    S3ErrorCode::InvalidRetentionPeriod,
                     "Retention days must be a positive integer",
                     "",
                 ));
@@ -293,7 +304,7 @@ fn validate_retention_period(days: Option<u32>, years: Option<u32>) -> Result<()
         (None, Some(y)) => {
             if y == 0 {
                 return Err(S3Error::with_message(
-                    S3ErrorCode::InvalidArgument,
+                    S3ErrorCode::InvalidRetentionPeriod,
                     "Retention years must be a positive integer",
                     "",
                 ));
@@ -301,12 +312,12 @@ fn validate_retention_period(days: Option<u32>, years: Option<u32>) -> Result<()
             Ok(())
         }
         (Some(_), Some(_)) => Err(S3Error::with_message(
-            S3ErrorCode::InvalidArgument,
+            S3ErrorCode::MalformedXML,
             "DefaultRetention must specify either Days or Years, not both",
             "",
         )),
         (None, None) => Err(S3Error::with_message(
-            S3ErrorCode::InvalidArgument,
+            S3ErrorCode::MalformedXML,
             "DefaultRetention must specify either Days or Years",
             "",
         )),
@@ -394,7 +405,7 @@ mod tests {
 </ObjectLockConfiguration>"#;
 
         let err = parse_object_lock_configuration_xml(xml).unwrap_err();
-        assert_eq!(err.code, S3ErrorCode::InvalidArgument);
+        assert_eq!(err.code, S3ErrorCode::MalformedXML);
     }
 
     #[test]
@@ -426,7 +437,7 @@ mod tests {
 </ObjectLockConfiguration>"#;
 
         let err = parse_object_lock_configuration_xml(xml).unwrap_err();
-        assert_eq!(err.code, S3ErrorCode::InvalidArgument);
+        assert_eq!(err.code, S3ErrorCode::InvalidRetentionPeriod);
     }
 
     #[test]

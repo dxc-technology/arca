@@ -178,7 +178,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — Notifications | 21 | Put/Get config (Topic/Queue/Lambda), filters, webhook delivery, event format, batch delete, admin API, auth token, connector type roundtrip |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
 | **Arca tests** | **1,005** | **All tests written for this project** |
-| [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 830 | 352 pass, 387 fail, 91 skip — 0 unexpected failures |
+| [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 830 | 370 pass, 369 fail, 91 skip — 0 unexpected failures |
 | **Total** | **1,835** | |
 
 ## License

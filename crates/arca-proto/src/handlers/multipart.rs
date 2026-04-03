@@ -520,6 +520,9 @@ pub async fn complete_multipart_upload(
     if let Some(ref vid) = stored.as_ref().and_then(|r| r.version_id.as_ref()) {
         builder = builder.header("x-amz-version-id", vid.as_str());
     }
+    if record.encryption_algorithm.is_some() {
+        builder = builder.header("x-amz-server-side-encryption", "AES256");
+    }
     builder
         .body(Body::from(xml))
         .expect("build complete_multipart_upload response")
