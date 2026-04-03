@@ -312,8 +312,10 @@ def apply_updates(html: str, m: dict) -> str:
         r(f'data-count="{old_total_tests.group(1)}"', f'data-count="{m["tests_total"]}"')
 
     # Ceph
-    r(f'{m["ceph_passed"]} of {m["ceph_total"]} Ceph s3-tests passing',
-      f'{m["ceph_passed"]} of {m["ceph_total"]} Ceph s3-tests passing')
+    old_ceph = re.search(r'(\d+) of (\d+) Ceph s3-tests passing', html)
+    if old_ceph:
+        r(old_ceph.group(0),
+          f'{m["ceph_passed"]} of {m["ceph_total"]} Ceph s3-tests passing')
 
     # Verified date
     r_verified = re.search(r'verified (\d{4}-\d{2}-\d{2})', html)
