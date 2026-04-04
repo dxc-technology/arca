@@ -27,6 +27,7 @@ _HAS_ENCRYPTION=false
 _HAS_KMS=false
 _HAS_POSTGRES=false
 _HAS_NOTIFICATIONS=false
+_HAS_CONNECTOR_REDIS=false
 
 # --- Feature registration ---
 
@@ -88,6 +89,13 @@ enable_notifications() {
     if $_HAS_NOTIFICATIONS; then return; fi
     _HAS_NOTIFICATIONS=true
     _FEATURES+=(notifications)
+}
+
+enable_connector_redis() {
+    if $_HAS_CONNECTOR_REDIS; then return; fi
+    _HAS_CONNECTOR_REDIS=true
+    enable_notifications
+    _FEATURES+=(connector-redis)
 }
 
 # --- Config generation ---
@@ -168,6 +176,17 @@ compose_cmd() {
                     files+=("$notif_file")
                 fi
                 ;;
+            connector-redis)
+                # Redis receiver for connector tests
+                local redis_file="$REPO_ROOT/docker/docker-compose.connector-redis.yml"
+                local already=false
+                for f in "${files[@]}"; do
+                    [[ "$f" == "$redis_file" ]] && already=true
+                done
+                if ! $already; then
+                    files+=("$redis_file")
+                fi
+                ;;
         esac
     done
 
@@ -229,6 +248,8 @@ load_env() {
             kms)                    enable_kms ;;
             kms-per-bucket)         enable_kms_per_bucket ;;
             postgres)               enable_postgres ;;
+            notifications)          enable_notifications ;;
+            connector-redis)        enable_connector_redis ;;
             custom)                 _FEATURES+=(custom) ;;
         esac
     done
@@ -271,6 +292,18 @@ wait_for_postgres() {
     echo "Waiting for PostgreSQL..."
     for i in $(seq 1 "$max_wait"); do
         if $compose exec -T postgres pg_isready -U arca >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
+}
+
+wait_for_redis() {
+    local compose="$1"
+    local max_wait="${2:-30}"
+    echo "Waiting for Redis..."
+    for i in $(seq 1 "$max_wait"); do
+        if $compose exec -T redis-receiver redis-cli ping 2>/dev/null | grep -q PONG; then
             break
         fi
         sleep 1

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Redis Pub/Sub notification connector**: delivers S3 event notifications by publishing JSON payloads to a Redis Pub/Sub channel. Supports custom channel names via `channel` property, optional password authentication, and configurable connection timeout (`redis_timeout_seconds`). Includes admin API connectivity test via `POST /admin/notifications/test-connector` with `connector_type=redis`
+- **Dedicated connector test stream**: `bin/test connectors redis` (and future `bin/test connectors all`) runs connector integration tests against real Docker-based receivers, separate from the normal development test flow
+
 ## [0.17.1] — 2026-04-03
 
 ### Added

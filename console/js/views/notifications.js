@@ -213,7 +213,7 @@ const CONNECTOR_TYPES = [
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12"/></svg>` },
   { id: 'amqp', name: 'AMQP', category: 'Queue', active: false,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></svg>` },
-  { id: 'redis', name: 'Redis', category: 'Queue', active: false,
+  { id: 'redis', name: 'Redis', category: 'Queue', active: true,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/></svg>` },
   { id: 'nats', name: 'NATS', category: 'Queue', active: false,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z"/></svg>` },
@@ -261,6 +261,7 @@ export function bucketNotificationEditor() {
     editForm: {
       id: '', arn: '', events: ['s3:ObjectCreated:*'], type: 'TopicConfiguration',
       prefix: '', suffix: '', connector_type: 'webhook', auth_token: '',
+      channel: '', password: '',
     },
 
     connectorTypes: CONNECTOR_TYPES,
@@ -388,11 +389,14 @@ export function bucketNotificationEditor() {
       const cfg = this.configs[idx];
       this.editingIndex = idx;
       this.modalMode = 'edit';
+      const props = cfg.properties || {};
       this.editForm = {
         id: cfg.id, arn: cfg.arn, events: [...cfg.events], type: cfg.type,
         prefix: cfg.prefix, suffix: cfg.suffix,
         connector_type: cfg.connector_type || 'webhook',
-        auth_token: (cfg.properties || {}).auth_token || '',
+        auth_token: props.auth_token || '',
+        channel: props.channel || '',
+        password: props.password || '',
       };
       this.error = '';
       this.showModal = true;
@@ -408,6 +412,11 @@ export function bucketNotificationEditor() {
       const ct = CONNECTOR_TYPES.find(c => c.id === id);
       if (ct && ct.active) {
         this.editForm.connector_type = id;
+        // Set S3 destination type to match the connector's category
+        if (ct.category === 'Queue') this.editForm.type = 'QueueConfiguration';
+        else if (ct.category === 'Functions') this.editForm.type = 'TopicConfiguration';
+        else if (ct.category === 'Database') this.editForm.type = 'TopicConfiguration';
+        else if (ct.category === 'Protocol') this.editForm.type = 'CloudFunctionConfiguration';
       }
     },
 
@@ -428,6 +437,8 @@ export function bucketNotificationEditor() {
 
       const properties = {};
       if (this.editForm.auth_token) properties.auth_token = this.editForm.auth_token;
+      if (this.editForm.channel) properties.channel = this.editForm.channel;
+      if (this.editForm.password) properties.password = this.editForm.password;
 
       const cfg = {
         id: this.editForm.id || crypto.randomUUID(),

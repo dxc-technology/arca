@@ -159,7 +159,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 
 | Suite | Tests | Details |
 |-------|------:|---------|
-| Unit tests (Rust) | 502 | arca-auth: 37, arca-core: 179, arca-proto: 37, arca-server: 77, arca-storage: 172 |
+| Unit tests (Rust) | 507 | arca-auth: 37, arca-core: 179, arca-proto: 37, arca-server: 82, arca-storage: 172 |
 | Integration — boto3 | 146 | buckets, objects, list, multipart, copy, folders, auth, admin, credentials, conditional ops |
 | Integration — RBAC | 41 | user/team/grant CRUD, attachments, effective grants, E2E access control |
 | Integration — Versioning | 21 | versioning config, PUT/GET/HEAD/DELETE with versionId, delete markers, batch delete with VersionId, ListVersions, copy |
@@ -177,9 +177,10 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — PostgreSQL | 20 | buckets, objects, multipart, versioning, tags, lifecycle, copy, range, admin health |
 | Integration — Notifications | 21 | Put/Get config (Topic/Queue/Lambda), filters, webhook delivery, event format, batch delete, admin API, auth token, connector type roundtrip |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
-| **Arca tests** | **1,005** | **All tests written for this project** |
+| Connector — Redis | 7 | Pub/Sub delivery, custom channel, delete event, multiple events, payload format, connectivity test |
+| **Arca tests** | **1,012** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 830 | 370 pass, 369 fail, 91 skip — 0 unexpected failures |
-| **Total** | **1,835** | |
+| **Total** | **1,842** | |
 
 ## License
 

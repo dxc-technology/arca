@@ -3,3 +3,4 @@ channel_size = 10000
 max_retries = 3
 retry_base_seconds = 1
 webhook_timeout_seconds = 10
+redis_timeout_seconds = 5

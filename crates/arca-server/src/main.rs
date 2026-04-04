@@ -237,15 +237,22 @@ async fn main() -> Result<()> {
             let (notification_tx, notification_rx) = tokio::sync::mpsc::channel(notif_config.channel_size);
             state.notification_tx = Some(notification_tx);
 
-            // Build the connector registry (webhook is the only connector for now).
+            // Build the connector registry.
             let connector_registry = {
                 use arca_core::s3::notification::ConnectorType;
                 use arca_core::store::ConnectorRegistry;
                 let mut registry = ConnectorRegistry::new();
+
                 let webhook = connector::WebhookConnector::new(
                     std::time::Duration::from_secs(notif_config.webhook_timeout_seconds),
                 );
                 registry.register(ConnectorType::Webhook, Arc::new(webhook));
+
+                let redis = connector::RedisConnector::new(
+                    std::time::Duration::from_secs(notif_config.redis_timeout_seconds),
+                );
+                registry.register(ConnectorType::Redis, Arc::new(redis));
+
                 Arc::new(registry)
             };
             state.connector_registry = Some(connector_registry.clone());

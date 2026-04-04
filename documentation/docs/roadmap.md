@@ -399,7 +399,7 @@ connectors across four categories.
 
 - [ ] Kafka connector + integration tests
 - [ ] AMQP connector + integration tests
-- [ ] Redis Pub/Sub connector + integration tests
+- [x] Redis Pub/Sub connector + integration tests
 - [ ] NATS connector + integration tests
 - [ ] MQTT connector + integration tests
 - [ ] PostgreSQL connector + integration tests
@@ -410,11 +410,11 @@ connectors across four categories.
 - [ ] gRPC connector + integration tests
 - [ ] SMTP connector + integration tests
 - [ ] Syslog (RFC 5424) connector + integration tests
-- [ ] Modular test infrastructure: per-connector ephemeral Docker containers (`bin/test connector <type>`)
+- [x] Modular test infrastructure: per-connector ephemeral Docker containers (`bin/test connectors <type>`)
 - [ ] (Console) Connector-specific form fields for each type
 - [ ] Documentation: connector configuration guide
 
-**Testing architecture**: Each connector's tests run against a real backend in a temporary Docker container, started one at a time (not all at once). `bin/test connector <type>` and `bin/test connector all` subcommands.
+**Testing architecture**: Each connector's tests run against a real backend in a temporary Docker container, started one at a time (not all at once). `bin/test connectors <type>` and `bin/test connectors all` subcommands. Connector tests are a separate test stream, not included in `bin/test` or `bin/test all`.
 
 **Depends on**: Phase 25 (notification system and connector trait)
 

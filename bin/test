@@ -14,6 +14,8 @@ set -euo pipefail
 #   bin/test kms          Run KMS integration tests
 #   bin/test postgres     Run PostgreSQL backend integration tests
 #   bin/test s3-compat    Run Ceph s3-tests compatibility suite
+#   bin/test connectors redis   Run Redis connector integration tests
+#   bin/test connectors all     Run all connector integration tests
 
 cd "$(git rev-parse --show-toplevel)"
 source bin/lib/compose.sh
@@ -265,6 +267,69 @@ run_notifications() {
     return $rc
 }
 
+# --- Connector tests (dedicated stream, not part of bin/test all) ---
+
+run_connector_redis() {
+    echo "==> Running Redis connector integration tests..."
+
+    enable_connector_redis
+    build_config
+
+    _CONNECTOR_COMPOSE="$(compose_cmd)"
+
+    cleanup_connector_redis() {
+        echo "Cleaning up Redis connector test..."
+        $_CONNECTOR_COMPOSE down -v 2>/dev/null || true
+    }
+    trap cleanup_connector_redis EXIT
+
+    # Step 1: Build images
+    $_CONNECTOR_COMPOSE build arca
+    # Step 2: Start Redis receiver and wait for healthy
+    $_CONNECTOR_COMPOSE up -d redis-receiver
+    wait_for_redis "$_CONNECTOR_COMPOSE"
+    # Step 3: Start Arca with notifications config
+    $_CONNECTOR_COMPOSE up -d arca
+    wait_for_arca "$_CONNECTOR_COMPOSE"
+    # Step 4: Run Redis connector tests
+    $_CONNECTOR_COMPOSE run --rm \
+        -e REDIS_URL=redis://redis-receiver:6379 \
+        test connectors/test_redis.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_connector_redis
+    return $rc
+}
+
+run_connectors() {
+    local connector="${1:-}"
+    if [[ -z "$connector" ]]; then
+        echo "Error: specify a connector name or 'all'" >&2
+        echo "Usage: bin/test connectors <redis|all>" >&2
+        exit 1
+    fi
+    shift
+
+    case "$connector" in
+        redis)
+            run_connector_redis "$@"
+            ;;
+        all)
+            run_connector_redis "$@"
+            # Future connectors will be added here:
+            # run_connector_nats "$@"
+            # run_connector_postgresql "$@"
+            # etc.
+            ;;
+        *)
+            echo "Error: unknown connector '$connector'" >&2
+            echo "Available connectors: redis, all" >&2
+            exit 1
+            ;;
+    esac
+}
+
 run_s3_compat() {
     echo "==> Running s3-tests compatibility suite..."
     exec "$(git rev-parse --show-toplevel)/bin/s3-tests" "$@"
@@ -311,6 +376,10 @@ case "${1:-all}" in
         shift
         run_notifications "$@"
         ;;
+    connectors)
+        shift
+        run_connectors "$@"
+        ;;
     s3-compat)
         shift
         run_s3_compat "$@"
@@ -334,6 +403,7 @@ case "${1:-all}" in
         echo "  postgres             Run PostgreSQL backend integration tests"
         echo "  presigned            Run presigned URL integration tests"
         echo "  ssec                 Run SSE-C integration tests"
+        echo "  connectors <type>    Run connector integration tests (redis, all)"
         echo "  s3-compat            Run Ceph s3-tests compatibility suite"
         echo ""
         echo "Extra args are passed to the test runner (cargo test or pytest)."

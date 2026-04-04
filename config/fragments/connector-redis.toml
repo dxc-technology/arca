@@ -1,0 +1,2 @@
+# Redis connector -- no additional config needed.
+# The redis_timeout_seconds is in the [notifications] section.
