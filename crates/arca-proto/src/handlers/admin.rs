@@ -446,6 +446,7 @@ fn default_expires() -> u64 {
 struct PresignResponse {
     url: String,
     expires_at: String,
+    id: String,
 }
 
 /// Percent-encode a single URI path segment (RFC 3986).
@@ -561,8 +562,27 @@ pub async fn presign(
 
     let url = format!("{scheme}://{host}{uri_path}?{query_string}");
 
+    // Track the presigned URL (metadata only, not the URL itself).
+    let record_id = uuid::Uuid::new_v4().to_string();
+    if let Some(ref store) = state.presigned_url_store {
+        let record = arca_core::store::presigned_url::PresignedUrlRecord {
+            id: record_id.clone(),
+            bucket: body.bucket.clone(),
+            key: body.key.clone(),
+            method: method.clone(),
+            expires_seconds: body.expires,
+            created_at: now,
+            expires_at,
+            access_key_id: credential.access_key_id.clone(),
+        };
+        if let Err(e) = store.insert_presigned_url(&record).await {
+            tracing::warn!(error = %e, "failed to track presigned URL");
+        }
+    }
+
     Ok(Json(PresignResponse {
         url,
         expires_at: expires_at.to_rfc3339(),
+        id: record_id,
     }))
 }

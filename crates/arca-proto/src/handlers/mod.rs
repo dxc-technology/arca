@@ -4,6 +4,7 @@ pub mod admin;
 pub mod admin_grants;
 pub mod admin_monitoring;
 pub mod admin_notifications;
+pub mod admin_presigned_urls;
 pub mod admin_settings;
 pub mod admin_teams;
 pub mod admin_users;

@@ -227,6 +227,7 @@ async fn main() -> Result<()> {
                 notification_tx: None,
                 notification_store: stores.notification,
                 connector_registry: None, // Set after building the registry below.
+                presigned_url_store: stores.presigned_url,
             };
 
             // Create notification channel and update state
@@ -544,6 +545,7 @@ struct StoreSet {
     audit: Option<Arc<dyn arca_core::store::AuditStore>>,
     metrics: Option<Arc<dyn arca_core::store::MetricsStore>>,
     notification: Option<Arc<dyn arca_core::store::NotificationStore>>,
+    presigned_url: Option<Arc<dyn arca_core::store::PresignedUrlStore>>,
 }
 
 /// Helper to build a `StoreSet` from any type implementing all store traits.
@@ -558,6 +560,7 @@ where
         + arca_core::store::AuditStore
         + arca_core::store::MetricsStore
         + arca_core::store::NotificationStore
+        + arca_core::store::PresignedUrlStore
         + 'static,
 {
     StoreSet {
@@ -569,7 +572,8 @@ where
         server_config: store.clone() as Arc<dyn arca_core::store::ServerConfigStore>,
         audit: Some(store.clone() as Arc<dyn arca_core::store::AuditStore>),
         metrics: Some(store.clone() as Arc<dyn arca_core::store::MetricsStore>),
-        notification: Some(store as Arc<dyn arca_core::store::NotificationStore>),
+        notification: Some(store.clone() as Arc<dyn arca_core::store::NotificationStore>),
+        presigned_url: Some(store as Arc<dyn arca_core::store::PresignedUrlStore>),
     }
 }
 

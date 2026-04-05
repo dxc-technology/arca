@@ -340,6 +340,25 @@ const MIGRATIONS: &[Migration] = &[
             ALTER TABLE notification_events ADD COLUMN connector_type TEXT NOT NULL DEFAULT 'webhook';
         ",
     },
+    Migration {
+        version: 16,
+        description: "Create presigned_urls table for tracking generated presigned URLs",
+        sql: "
+            CREATE TABLE presigned_urls (
+                id               TEXT PRIMARY KEY NOT NULL,
+                bucket           TEXT NOT NULL,
+                key              TEXT NOT NULL,
+                method           TEXT NOT NULL DEFAULT 'GET',
+                expires_seconds  INTEGER NOT NULL,
+                created_at       TEXT NOT NULL,
+                expires_at       TEXT NOT NULL,
+                access_key_id    TEXT NOT NULL
+            );
+            CREATE INDEX idx_presigned_urls_bucket ON presigned_urls(bucket);
+            CREATE INDEX idx_presigned_urls_expires ON presigned_urls(expires_at);
+            CREATE INDEX idx_presigned_urls_bucket_key ON presigned_urls(bucket, key);
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.

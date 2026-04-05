@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use arca_core::store::{AuditStore, BlobStore, ConnectorRegistry, CredentialStore, GrantStore, MetadataStore, MetricsStore, NotificationStore, ServerConfigStore, SsecBlobOps, TeamStore, UserStore};
+use arca_core::store::{AuditStore, BlobStore, ConnectorRegistry, CredentialStore, GrantStore, MetadataStore, MetricsStore, NotificationStore, PresignedUrlStore, ServerConfigStore, SsecBlobOps, TeamStore, UserStore};
 
 use crate::metrics::MetricsRegistry;
 
@@ -75,6 +75,8 @@ pub struct AppState {
     pub notification_store: Option<Arc<dyn NotificationStore>>,
     /// Connector registry for testing notification destinations from admin API.
     pub connector_registry: Option<Arc<ConnectorRegistry>>,
+    /// Presigned URL tracking store (for visibility in console).
+    pub presigned_url_store: Option<Arc<dyn PresignedUrlStore>>,
 }
 
 impl AppState {

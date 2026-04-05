@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Redis Pub/Sub notification connector**: delivers S3 event notifications by publishing JSON payloads to a Redis Pub/Sub channel. Supports custom channel names via `channel` property, optional password authentication, and configurable connection timeout (`redis_timeout_seconds`). Includes admin API connectivity test via `POST /admin/notifications/test-connector` with `connector_type=redis`
 - **Dedicated connector test stream**: `bin/test connectors redis` (and future `bin/test connectors all`) runs connector integration tests against real Docker-based receivers, separate from the normal development test flow
+- **Presigned URL tracking**: generated presigned URLs are now tracked in the database (metadata only, not the URL itself, for security). Active shares are visible in the console with a permanent blue share icon next to shared files. Clicking the icon shows a detail modal with method, duration, remaining time, creator, and a button to remove the record. Expired records are purged automatically by the retention worker
+- **`GET /admin/presigned-urls?bucket=X`**: lists active (non-expired) presigned URL records for a bucket
+- **`DELETE /admin/presigned-urls/:id`**: removes a presigned URL tracking record (the URL itself remains valid until expiry)
+- **`POST /admin/presign` response** now includes an `id` field for tracking reference (SQLite migration v16, PostgreSQL migration v3)
 
 ## [0.17.1] — 2026-04-03
 

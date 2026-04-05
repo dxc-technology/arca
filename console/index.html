@@ -1431,8 +1431,14 @@
                     <span class="text-sm flex-1 truncate" x-text="fileName(obj.key)"></span>
                     <span class="text-xs text-vault-muted font-mono" x-text="formatBytes(obj.size)"></span>
                     <span class="text-xs text-vault-muted hidden sm:inline" x-text="new Date(obj.lastModified).toLocaleDateString()"></span>
+                    <!-- Always-visible blue share icon when active presigned URLs exist -->
+                    <button x-show="hasActivePresignedUrl(obj.key)" @click.stop="openPresignedDetail(obj.key)"
+                      class="p-1 rounded hover:bg-blue-500/10 text-blue-400 transition" title="Active shared link">
+                      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z"/></svg>
+                    </button>
+                    <!-- Hover-only actions -->
                     <div class="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition">
-                      <button @click.stop="openShareModal(obj.key)" class="p-1 rounded hover:bg-vault-accent/10 text-vault-muted hover:text-vault-accent transition" title="Share">
+                      <button x-show="!hasActivePresignedUrl(obj.key)" @click.stop="openShareModal(obj.key)" class="p-1 rounded hover:bg-vault-accent/10 text-vault-muted hover:text-vault-accent transition" title="Share">
                         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z"/></svg>
                       </button>
                       <button @click.stop="downloadObject(obj.key)" class="p-1 rounded hover:bg-vault-accent/10 text-vault-muted hover:text-vault-accent transition" title="Download">
@@ -1830,6 +1836,45 @@
                 </div>
 
                 <p x-show="shareError" x-text="shareError" class="text-red-400 text-xs mt-2"></p>
+              </div>
+            </div>
+
+            <!-- Presigned URL detail modal -->
+            <div x-show="showPresignedDetail" x-transition.opacity class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="showPresignedDetail = false">
+              <div class="glass rounded-xl p-6 w-full max-w-lg mx-4" @click.stop>
+                <h3 class="text-lg font-semibold mb-1">Active Shared Links</h3>
+                <p class="text-sm text-vault-muted mb-4 font-mono break-all" x-text="fileName(presignedDetailKey)"></p>
+
+                <div class="space-y-3 max-h-80 overflow-y-auto">
+                  <template x-for="record in presignedDetailRecords" :key="record.id">
+                    <div class="p-3 rounded-lg bg-vault-border/20 border border-vault-border/30">
+                      <div class="flex items-center gap-2 mb-2">
+                        <span class="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 font-medium uppercase" x-text="record.method"></span>
+                        <span class="text-xs text-vault-muted">Created <span x-text="new Date(record.created_at).toLocaleString()"></span></span>
+                      </div>
+                      <div class="flex items-center justify-between text-xs text-vault-muted mb-2">
+                        <span>Duration: <span class="text-vault-text" x-text="formatDuration(record.expires_seconds)"></span></span>
+                        <span>Remaining: <span class="text-blue-400 font-medium" x-text="remainingTime(record.expires_at)"></span></span>
+                      </div>
+                      <div class="flex items-center justify-between text-xs text-vault-muted mb-3">
+                        <span>Expires: <span x-text="new Date(record.expires_at).toLocaleString()"></span></span>
+                        <span>By: <span class="font-mono text-vault-text" x-text="record.access_key_id.slice(0,8) + '...'"></span></span>
+                      </div>
+                      <button @click="deletePresignedUrl(record.id)"
+                        class="w-full py-1.5 rounded-lg bg-red-500/10 text-red-400 text-xs font-medium hover:bg-red-500/20 transition border border-red-500/20">
+                        Remove from tracking
+                      </button>
+                      <p class="text-[10px] text-vault-muted mt-1 italic">The link itself remains valid until expiry. This only removes it from the list.</p>
+                    </div>
+                  </template>
+                </div>
+
+                <div class="flex gap-3 justify-end mt-4">
+                  <button @click="openShareModal(presignedDetailKey); showPresignedDetail = false"
+                    class="px-4 py-2 rounded-lg bg-vault-accent/10 text-vault-accent text-sm font-medium hover:bg-vault-accent/20 transition">New Link</button>
+                  <button @click="showPresignedDetail = false"
+                    class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Close</button>
+                </div>
               </div>
             </div>
 

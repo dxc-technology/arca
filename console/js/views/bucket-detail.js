@@ -143,6 +143,11 @@ export function bucketDetailView() {
     shareError: '',
     shareGenerating: false,
     shareCopied: false,
+    presignedUrls: [],
+    presignedUrlMap: {},
+    showPresignedDetail: false,
+    presignedDetailKey: '',
+    presignedDetailRecords: [],
     previewExpanded: false,
     previewLoading: false,
     previewError: '',
@@ -252,6 +257,8 @@ export function bucketDetailView() {
         this.deletedObjects = [];
         this.deletedDirectories = [];
       }
+      // Load active presigned URLs for this bucket (best-effort)
+      await this.loadPresignedUrls();
       this.loading = false;
       // Auto-scroll breadcrumbs to show the deepest level.
       setTimeout(() => {
@@ -833,6 +840,67 @@ export function bucketDetailView() {
       return `<svg viewBox="0 0 800 400" class="w-full" style="height:350px">${rects}</svg>`;
     },
 
+    // ==================== PRESIGNED URL TRACKING ====================
+
+    hasActivePresignedUrl(key) {
+      return !!(this.presignedUrlMap[key] && this.presignedUrlMap[key].length > 0);
+    },
+
+    remainingTime(expiresAt) {
+      const ms = new Date(expiresAt) - Date.now();
+      if (ms <= 0) return 'Expired';
+      const hours = Math.floor(ms / 3600000);
+      const minutes = Math.floor((ms % 3600000) / 60000);
+      if (hours >= 24) return Math.floor(hours / 24) + 'd ' + (hours % 24) + 'h';
+      if (hours > 0) return hours + 'h ' + minutes + 'm';
+      return minutes + 'm';
+    },
+
+    formatDuration(seconds) {
+      if (seconds >= 86400) return Math.floor(seconds / 86400) + 'd';
+      if (seconds >= 3600) return Math.floor(seconds / 3600) + 'h';
+      return Math.floor(seconds / 60) + 'm';
+    },
+
+    async loadPresignedUrls() {
+      try {
+        const records = await api.adminGet('/presigned-urls?bucket=' + encodeURIComponent(this.bucketName));
+        this.presignedUrls = records;
+        const map = {};
+        for (const pu of records) {
+          if (!map[pu.key]) map[pu.key] = [];
+          map[pu.key].push(pu);
+        }
+        this.presignedUrlMap = map;
+      } catch { this.presignedUrls = []; this.presignedUrlMap = {}; }
+    },
+
+    openPresignedDetail(key) {
+      this.presignedDetailKey = key;
+      this.presignedDetailRecords = this.presignedUrlMap[key] || [];
+      this.showPresignedDetail = true;
+    },
+
+    async deletePresignedUrl(id) {
+      try {
+        const resp = await api.adminDelete('/presigned-urls/' + id);
+        if (!resp.ok) throw new Error('Failed');
+        this.presignedUrls = this.presignedUrls.filter(p => p.id !== id);
+        const map = {};
+        for (const pu of this.presignedUrls) {
+          if (!map[pu.key]) map[pu.key] = [];
+          map[pu.key].push(pu);
+        }
+        this.presignedUrlMap = map;
+        this.presignedDetailRecords = this.presignedUrlMap[this.presignedDetailKey] || [];
+        if (this.presignedDetailRecords.length === 0) this.showPresignedDetail = false;
+      } catch (e) {
+        console.error('Failed to delete presigned URL record:', e);
+      }
+    },
+
+    // ==================== SHARING ====================
+
     openShareModal(key) {
       this.shareKey = key;
       this.shareUrl = '';
@@ -861,6 +929,7 @@ export function bucketDetailView() {
         const body = await resp.json();
         this.shareUrl = body.url;
         this.shareExpiresAt = body.expires_at ? new Date(body.expires_at).toLocaleString() : '';
+        await this.loadPresignedUrls();
       } catch (e) {
         this.shareError = 'Failed to generate link: ' + e.message;
       }

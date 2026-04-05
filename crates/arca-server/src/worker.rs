@@ -112,6 +112,8 @@ pub fn spawn_retention_worker(state: &AppState) -> BackgroundWorker {
     let metrics_store: Option<Arc<dyn MetricsStore>> = state.metrics_store.clone();
     let notification_store: Option<Arc<dyn arca_core::store::NotificationStore>> =
         state.notification_store.clone();
+    let presigned_url_store: Option<Arc<dyn arca_core::store::PresignedUrlStore>> =
+        state.presigned_url_store.clone();
     let server_config: Arc<dyn ServerConfigStore> = state.server_config.clone();
     let config_audit_ret = state.config_audit_retention_days;
     let config_metrics_ret = state.config_metrics_retention_days;
@@ -124,6 +126,7 @@ pub fn spawn_retention_worker(state: &AppState) -> BackgroundWorker {
             let audit_store = audit_store.clone();
             let metrics_store = metrics_store.clone();
             let notification_store = notification_store.clone();
+            let presigned_url_store = presigned_url_store.clone();
             let server_config = server_config.clone();
             async move {
                 // Resolve effective audit retention
@@ -209,6 +212,25 @@ pub fn spawn_retention_worker(state: &AppState) -> BackgroundWorker {
                                     "retention: failed to purge notification events"
                                 )
                             }
+                        }
+                    }
+                }
+
+                // Purge expired presigned URL tracking records
+                if let Some(ref store) = presigned_url_store {
+                    match store.purge_expired_presigned_urls().await {
+                        Ok(n) if n > 0 => {
+                            tracing::info!(
+                                purged = n,
+                                "retention: purged expired presigned URL records"
+                            )
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            tracing::warn!(
+                                error = %e,
+                                "retention: failed to purge presigned URL records"
+                            )
                         }
                     }
                 }

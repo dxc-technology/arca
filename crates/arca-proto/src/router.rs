@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use axum::routing::{get, post, put};
+use axum::routing::{delete, get, post, put};
 use axum::Router;
 use http::header::{AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE, ETAG};
 use http::{HeaderName, Method};
@@ -10,7 +10,7 @@ use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, OnRequest, OnResponse, TraceLayer};
 use tracing::Level;
 
-use crate::handlers::{admin, admin_grants, admin_monitoring, admin_notifications, admin_settings, admin_teams, admin_users, archive, bucket, object};
+use crate::handlers::{admin, admin_grants, admin_monitoring, admin_notifications, admin_presigned_urls, admin_settings, admin_teams, admin_users, archive, bucket, object};
 use crate::middleware;
 use crate::state::AppState;
 
@@ -154,6 +154,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/notifications/events/count", get(admin_notifications::count_notification_events))
         .route("/notifications/test-webhook", post(admin_notifications::test_webhook))
         .route("/notifications/test-connector", post(admin_notifications::test_connector))
+        // Presigned URL tracking
+        .route("/presigned-urls", get(admin_presigned_urls::list_presigned_urls))
+        .route("/presigned-urls/{id}", delete(admin_presigned_urls::delete_presigned_url))
         // Grant management
         .route("/grants", get(admin_grants::list_grants).post(admin_grants::create_grant))
         .route(

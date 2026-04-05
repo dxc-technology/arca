@@ -11,6 +11,7 @@ mod metadata;
 mod metrics;
 mod migrations;
 mod notification;
+mod presigned_url;
 mod server_config;
 mod team;
 pub(crate) mod user;
