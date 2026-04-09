@@ -3108,11 +3108,28 @@
           <div class="p-6 max-w-6xl" x-data="monitoringView" x-init="load()">
             <div class="flex items-center justify-between mb-6">
               <h2 class="text-xl font-semibold tracking-tight">Monitoring</h2>
-              <div class="flex gap-1">
-                <template x-for="r in ['1h','6h','24h','7d','30d']">
+              <div class="flex items-center gap-1 relative">
+                <template x-for="r in ['1h','6h','24h','7d','30d','6m','1y']">
                   <button @click="setRange(r)" :class="timeRange === r ? 'bg-vault-accent/20 text-vault-accent border-vault-accent/30' : 'text-vault-muted border-vault-border hover:text-vault-text'"
                     class="px-2.5 py-1 rounded-lg text-xs border transition" x-text="r"></button>
                 </template>
+                <!-- Custom date range button -->
+                <div class="relative" @click.outside="datePickerOpen = false">
+                  <button @click="openDatePicker()" :class="timeRange === 'custom' ? 'bg-vault-accent/20 text-vault-accent border-vault-accent/30' : 'text-vault-muted border-vault-border hover:text-vault-text'"
+                    class="px-2.5 py-1 rounded-lg text-xs border transition flex items-center gap-1">
+                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"/></svg>
+                    <span x-text="timeRange === 'custom' && (customFrom || customTo) ? 'Custom' : 'Range'"></span>
+                    <span x-show="timeRange === 'custom' && (customFrom || customTo)" @click.stop="clearCustomRange()" class="ml-0.5 hover:text-red-400">
+                      <svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </span>
+                  </button>
+                  <!-- Date picker popup -->
+                  <div x-show="datePickerOpen" x-cloak class="time-pop" style="right: 0; left: auto;">
+                    <div class="mb-2"><label>From</label><input type="datetime-local" x-model="customFrom"></div>
+                    <div class="mb-3"><label>To</label><input type="datetime-local" x-model="customTo"></div>
+                    <button @click="applyCustomRange()" class="w-full px-2 py-1 rounded text-xs bg-vault-accent/20 text-vault-accent border border-vault-accent/30 hover:bg-vault-accent/30 transition">Apply</button>
+                  </div>
+                </div>
               </div>
             </div>
 

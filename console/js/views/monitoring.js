@@ -7,15 +7,19 @@ export function monitoringView() {
     snapshots: [],
     loading: true,
     timeRange: '24h',
+    customFrom: '',
+    customTo: '',
+    datePickerOpen: false,
     formatBytes,
 
     async load() {
       this.loading = true;
       try {
-        const from = this.fromDate();
+        const { from, to } = this.dateRange();
         const params = new URLSearchParams();
         if (from) params.set('from', from);
-        params.set('limit', '500');
+        if (to) params.set('to', to);
+        params.set('limit', '600');
         const data = await api.adminGet('/metrics/history?' + params.toString());
         // Reverse so oldest is first (for charting)
         this.snapshots = (data.snapshots || []).reverse();
@@ -25,21 +29,64 @@ export function monitoringView() {
       this.loading = false;
     },
 
-    fromDate() {
-      const now = new Date();
-      switch (this.timeRange) {
-        case '1h': return new Date(now - 3600000).toISOString();
-        case '6h': return new Date(now - 6 * 3600000).toISOString();
-        case '24h': return new Date(now - 24 * 3600000).toISOString();
-        case '7d': return new Date(now - 7 * 86400000).toISOString();
-        case '30d': return new Date(now - 30 * 86400000).toISOString();
-        default: return null;
+    dateRange() {
+      if (this.timeRange === 'custom') {
+        return {
+          from: this.customFrom ? new Date(this.customFrom).toISOString() : null,
+          to: this.customTo ? new Date(this.customTo).toISOString() : null,
+        };
       }
+      const now = new Date();
+      const ms = {
+        '1h': 3600000,
+        '6h': 6 * 3600000,
+        '24h': 24 * 3600000,
+        '7d': 7 * 86400000,
+        '30d': 30 * 86400000,
+        '6m': 180 * 86400000,
+        '1y': 365 * 86400000,
+      };
+      const offset = ms[this.timeRange];
+      return {
+        from: offset ? new Date(now - offset).toISOString() : null,
+        to: null,
+      };
     },
 
     setRange(range) {
       this.timeRange = range;
+      if (range !== 'custom') {
+        this.customFrom = '';
+        this.customTo = '';
+        this.datePickerOpen = false;
+      }
       this.load();
+    },
+
+    openDatePicker() {
+      this.datePickerOpen = !this.datePickerOpen;
+      if (this.datePickerOpen) this.timeRange = 'custom';
+    },
+
+    applyCustomRange() {
+      this.timeRange = 'custom';
+      this.datePickerOpen = false;
+      this.load();
+    },
+
+    clearCustomRange() {
+      this.customFrom = '';
+      this.customTo = '';
+      this.datePickerOpen = false;
+      this.setRange('24h');
+    },
+
+    // Compute the time span in hours for x-axis formatting
+    _rangeHours() {
+      if (this.snapshots.length < 2) return 1;
+      const first = new Date(this.snapshots[0].timestamp).getTime();
+      const last = new Date(this.snapshots[this.snapshots.length - 1].timestamp).getTime();
+      return Math.max(1, (last - first) / 3600000);
     },
 
     // Format a value for Y-axis tick labels
@@ -50,16 +97,25 @@ export function monitoringView() {
       return String(Math.round(value));
     },
 
-    // Format a timestamp for X-axis tick labels
+    // Format a timestamp for X-axis tick labels, adapting to range span
     _formatXTick(ts) {
       const d = new Date(ts);
-      if (this.timeRange === '1h' || this.timeRange === '6h') {
+      const hours = this._rangeHours();
+      if (hours <= 12) {
+        // Short range: show time only
         return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       }
-      if (this.timeRange === '24h') {
-        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      if (hours <= 72) {
+        // Up to 3 days: show day + time
+        return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) +
+          ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       }
-      return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      if (hours <= 24 * 90) {
+        // Up to 3 months: show month + day
+        return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      }
+      // Over 3 months: show month + year
+      return d.toLocaleDateString([], { month: 'short', year: '2-digit' });
     },
 
     // Choose nice Y-axis tick values

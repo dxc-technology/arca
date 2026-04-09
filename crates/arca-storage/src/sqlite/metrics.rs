@@ -63,7 +63,7 @@ impl MetricsStore for SqliteStore {
         to: Option<DateTime<Utc>>,
         limit: u32,
     ) -> Result<Vec<MetricsSnapshot>, ArcaError> {
-        let limit = if limit == 0 { 1000 } else { limit };
+        let limit = if limit == 0 { 500 } else { limit };
 
         self.conn
             .call(move |conn| {
@@ -79,7 +79,7 @@ impl MetricsStore for SqliteStore {
                 if let Some(ref to) = to {
                     conditions.push(format!("timestamp <= ?{idx}"));
                     params_vec.push(Box::new(to.to_rfc3339()));
-                    // idx += 1;
+                    let _ = idx;
                 }
 
                 let where_clause = if conditions.is_empty() {
@@ -88,12 +88,39 @@ impl MetricsStore for SqliteStore {
                     format!("WHERE {}", conditions.join(" AND "))
                 };
 
-                let sql = format!(
-                    "SELECT * FROM metrics_snapshot {where_clause} ORDER BY timestamp DESC LIMIT {limit}"
-                );
-                let mut stmt = conn.prepare(&sql)?;
                 let params_refs: Vec<&dyn rusqlite::types::ToSql> =
                     params_vec.iter().map(|p| p.as_ref()).collect();
+
+                // Count total matching rows to decide if downsampling is needed
+                let count_sql =
+                    format!("SELECT COUNT(*) FROM metrics_snapshot {where_clause}");
+                let total: u64 =
+                    conn.query_row(&count_sql, params_refs.as_slice(), |row| row.get(0))?;
+
+                let limit_u64 = limit as u64;
+
+                let sql = if total <= limit_u64 {
+                    // Few enough rows: return all, no sampling needed
+                    format!(
+                        "SELECT * FROM metrics_snapshot {where_clause} ORDER BY timestamp DESC"
+                    )
+                } else {
+                    // Downsample: use ROW_NUMBER to pick evenly spaced points
+                    let step = total / limit_u64;
+                    format!(
+                        "WITH ranked AS (\
+                           SELECT *, ROW_NUMBER() OVER (ORDER BY timestamp ASC) AS rn \
+                           FROM metrics_snapshot {where_clause}\
+                         ) \
+                         SELECT id, timestamp, bucket_count, object_count, total_size_bytes, \
+                                disk_total_bytes, disk_available_bytes, active_connections \
+                         FROM ranked \
+                         WHERE (rn - 1) % {step} = 0 \
+                         ORDER BY timestamp DESC"
+                    )
+                };
+
+                let mut stmt = conn.prepare(&sql)?;
                 let rows = stmt.query_map(params_refs.as_slice(), row_to_metrics_snapshot)?;
                 let mut snapshots = Vec::new();
                 for row in rows {

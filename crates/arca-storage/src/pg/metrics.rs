@@ -53,7 +53,7 @@ impl MetricsStore for PgStore {
         to: Option<DateTime<Utc>>,
         limit: u32,
     ) -> Result<Vec<MetricsSnapshot>, ArcaError> {
-        let limit = if limit == 0 { 1000 } else { limit };
+        let limit = if limit == 0 { 500 } else { limit };
 
         let mut conditions: Vec<String> = Vec::new();
         let mut param_idx = 1u32;
@@ -64,7 +64,7 @@ impl MetricsStore for PgStore {
         }
         if to.is_some() {
             conditions.push(format!("timestamp <= ${param_idx}"));
-            param_idx += 1;
+            let _ = param_idx;
         }
 
         let where_clause = if conditions.is_empty() {
@@ -73,9 +73,42 @@ impl MetricsStore for PgStore {
             format!("WHERE {}", conditions.join(" AND "))
         };
 
-        let sql = format!(
-            "SELECT * FROM metrics_snapshot {where_clause} ORDER BY timestamp DESC LIMIT ${param_idx}"
-        );
+        // Count total matching rows to decide if downsampling is needed
+        let count_sql =
+            format!("SELECT COUNT(*)::bigint FROM metrics_snapshot {where_clause}");
+        let mut count_query = sqlx_core::query::query(&count_sql);
+        if let Some(f) = from {
+            count_query = count_query.bind(f);
+        }
+        if let Some(t) = to {
+            count_query = count_query.bind(t);
+        }
+        let count_row = count_query
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("list_metrics_snapshots count: {e}")))?;
+        let total: i64 = count_row.get(0);
+
+        let limit_i64 = limit as i64;
+
+        let sql = if total <= limit_i64 {
+            format!(
+                "SELECT * FROM metrics_snapshot {where_clause} ORDER BY timestamp DESC"
+            )
+        } else {
+            let step = total / limit_i64;
+            format!(
+                "WITH ranked AS (\
+                   SELECT *, ROW_NUMBER() OVER (ORDER BY timestamp ASC) AS rn \
+                   FROM metrics_snapshot {where_clause}\
+                 ) \
+                 SELECT id, timestamp, bucket_count, object_count, total_size_bytes, \
+                        disk_total_bytes, disk_available_bytes, active_connections \
+                 FROM ranked \
+                 WHERE (rn - 1) % {step} = 0 \
+                 ORDER BY timestamp DESC"
+            )
+        };
 
         let mut query = sqlx_core::query::query(&sql);
         if let Some(f) = from {
@@ -84,7 +117,6 @@ impl MetricsStore for PgStore {
         if let Some(t) = to {
             query = query.bind(t);
         }
-        query = query.bind(limit as i64);
 
         let rows = query
             .fetch_all(&self.pool)

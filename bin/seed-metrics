@@ -1,0 +1,145 @@
+#!/usr/bin/env -S uv -q run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = []
+# ///
+"""
+Generate 1 year of fake metrics_snapshot data for the Arca monitoring console.
+Inserts directly into the SQLite database inside the running container.
+
+Uses variable intervals: 5min for >60d ago, 2min for 7-60d ago, 1min for recent.
+"""
+
+import subprocess
+import sys
+import math
+import random
+from datetime import datetime, timedelta, timezone
+
+
+def generate_sql() -> str:
+    """Generate INSERT statements for 1 year of metrics snapshots."""
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(days=365)
+
+    # Simulate a realistic growth pattern
+    base_buckets = 3
+    base_objects = 120
+    base_size = 50 * 1024 * 1024  # 50 MB initial
+    disk_total = 100 * 1024 * 1024 * 1024  # 100 GB disk
+
+    total_seconds = int((now - start).total_seconds())
+
+    lines = ["BEGIN TRANSACTION;"]
+
+    # Delete existing fake data
+    lines.append("DELETE FROM metrics_snapshot;")
+
+    # Generate snapshots with variable intervals
+    current = start
+    while current < now:
+        age_days = (now - current).days
+        # Older data: coarser intervals to keep total manageable
+        if age_days > 60:
+            interval = timedelta(minutes=5)
+        elif age_days > 7:
+            interval = timedelta(minutes=2)
+        else:
+            interval = timedelta(minutes=1)
+
+        progress = (current - start).total_seconds() / total_seconds  # 0.0 -> 1.0
+
+        # Buckets: grow from 3 to ~15 over the year
+        bucket_count = base_buckets + int(progress * 12)
+        if progress > 0.3:
+            bucket_count += 1
+        if progress > 0.7:
+            bucket_count += 2
+
+        # Objects: grow from 120 to ~8500 with daily fluctuations
+        growth = base_objects + int(progress ** 1.3 * 8000)
+        daily_wave = int(80 * math.sin(2 * math.pi * (current.hour / 24.0)))
+        weekday_boost = 50 if current.weekday() < 5 else -30
+        noise = random.randint(-20, 20)
+        object_count = max(base_objects, growth + daily_wave + weekday_boost + noise)
+
+        # Storage size: correlates with object count
+        avg_obj_size = 500 * 1024 + int(progress * 200 * 1024)
+        total_size = object_count * avg_obj_size + random.randint(-1024 * 1024, 1024 * 1024)
+        total_size = max(base_size, total_size)
+
+        # Disk available
+        system_overhead = 5 * 1024 * 1024 * 1024
+        disk_available = max(0, disk_total - total_size - system_overhead)
+
+        # Active connections: follows time-of-day pattern
+        hour = current.hour
+        if 9 <= hour <= 17:
+            base_conn = 8 + int(progress * 15)
+        elif 6 <= hour <= 22:
+            base_conn = 3 + int(progress * 5)
+        else:
+            base_conn = 1 + int(progress * 2)
+        if random.random() < 0.02:
+            base_conn += random.randint(10, 30)
+        active_connections = max(0, base_conn + random.randint(-2, 2))
+
+        timestamp_str = current.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        lines.append(
+            f"INSERT INTO metrics_snapshot "
+            f"(timestamp, bucket_count, object_count, total_size_bytes, "
+            f"disk_total_bytes, disk_available_bytes, active_connections) "
+            f"VALUES ('{timestamp_str}', {bucket_count}, {object_count}, "
+            f"{total_size}, {disk_total}, {disk_available}, {active_connections});"
+        )
+
+        current += interval
+
+    lines.append("COMMIT;")
+    return "\n".join(lines)
+
+
+def main():
+    print("Generating 1 year of fake metrics data...")
+    sql = generate_sql()
+
+    total_inserts = sql.count("INSERT INTO")
+    print(f"Generated {total_inserts:,} snapshots")
+
+    # Pipe the SQL into sqlite3 inside a temporary container
+    print("Injecting into database...")
+    result = subprocess.run(
+        ["docker", "run", "--rm", "-i",
+         "--volumes-from", "docker-arca-1",
+         "alpine:latest",
+         "sh", "-c", "apk add --no-cache sqlite > /dev/null 2>&1 && sqlite3 /data/arca.db"],
+        input=sql,
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        print(f"Error: {result.stderr}")
+        sys.exit(1)
+
+    print("Done! Fake metrics data injected successfully.")
+
+    # Verify
+    verify_result = subprocess.run(
+        ["docker", "run", "--rm",
+         "--volumes-from", "docker-arca-1",
+         "alpine:latest",
+         "sh", "-c",
+         "apk add --no-cache sqlite > /dev/null 2>&1 && "
+         "sqlite3 /data/arca.db "
+         "\"SELECT COUNT(*), MIN(timestamp), MAX(timestamp) FROM metrics_snapshot;\""],
+        capture_output=True, text=True,
+    )
+    if verify_result.returncode == 0:
+        print(f"Verification: {verify_result.stdout.strip()}")
+
+
+if __name__ == "__main__":
+    random.seed(42)  # reproducible
+    main()
