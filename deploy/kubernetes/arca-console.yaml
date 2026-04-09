@@ -1,0 +1,119 @@
+# Arca Console — Kubernetes Deployment
+#
+# Minimal manifest to deploy the Arca web console (nginx + SPA).
+# Replace NAMESPACE placeholders or apply with:
+#   kubectl apply -f arca-console.yaml -n <your-namespace>
+#
+# Prerequisites:
+#   - Arca server reachable from the cluster (set ARCA_ENDPOINT below)
+#   - Container image built from console/Dockerfile and pushed to your registry
+#
+# Customization:
+#   - Adjust ARCA_ENDPOINT to point to your Arca server (internal service or external URL)
+#   - Update the image registry/tag to match your CI pipeline
+#   - For TLS on the console itself, mount certs and use nginx-tls.conf (see console docs)
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arca-console
+  namespace: NAMESPACE
+  labels:
+    app.kubernetes.io/name: arca-console
+    app.kubernetes.io/component: console
+    app.kubernetes.io/part-of: arca
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: arca-console
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: arca-console
+        app.kubernetes.io/component: console
+        app.kubernetes.io/part-of: arca
+    spec:
+      containers:
+        - name: console
+          image: arca-console:latest    # <-- replace with your registry/tag
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          env:
+            - name: ARCA_ENDPOINT
+              value: "http://arca:9000"  # <-- adjust to your Arca service URL
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: arca-console
+  namespace: NAMESPACE
+  labels:
+    app.kubernetes.io/name: arca-console
+    app.kubernetes.io/component: console
+    app.kubernetes.io/part-of: arca
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: arca-console
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: arca-console
+  namespace: NAMESPACE
+  labels:
+    app.kubernetes.io/name: arca-console
+    app.kubernetes.io/component: console
+    app.kubernetes.io/part-of: arca
+  annotations:
+    # Uncomment and adjust for your ingress controller:
+    # nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  # ingressClassName: nginx           # <-- uncomment and set your ingress class
+  rules:
+    - host: console.example.com       # <-- replace with your domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: arca-console
+                port:
+                  name: http
+  # Uncomment for TLS termination at the ingress:
+  # tls:
+  #   - hosts:
+  #       - console.example.com
+  #     secretName: arca-console-tls

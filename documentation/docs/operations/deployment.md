@@ -93,6 +93,128 @@ The `--tls` flag adds the TLS compose overlay which bind-mounts `certs/` into th
 
 Certificate rotation is supported via `docker compose kill --signal=HUP arca` without downtime.
 
+## Native Binary (systemd)
+
+Arca can run directly on a Linux host without Docker. The binary is statically linked (musl), so it has no runtime dependencies.
+
+### 1. Install the Binary
+
+Build for your target architecture and copy to the host:
+
+```bash
+# Build from source (requires Docker on the build machine)
+bin/build --binary                  # native arch
+bin/build --binary --arch amd64     # cross-compile for x86_64
+
+# Copy to the server
+scp build/arca-* server:/usr/local/bin/arca
+chmod +x /usr/local/bin/arca
+```
+
+### 2. Create User and Directories
+
+```bash
+useradd --system --home-dir /var/lib/arca --shell /usr/sbin/nologin arca
+mkdir -p /var/lib/arca /etc/arca
+chown arca:arca /var/lib/arca
+```
+
+### 3. Configuration
+
+Copy the sample config and adjust it:
+
+```bash
+cp deploy/config/arca.toml /etc/arca/config.toml
+```
+
+At minimum, review `[server]` bind/port and `[storage] data_dir` (set to `/var/lib/arca` for systemd deployments). See the [configuration reference](../guide/configuration.md) for all options.
+
+### 4. Install the systemd Unit
+
+```bash
+cp deploy/systemd/arca.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now arca
+```
+
+Check startup and first-run credentials:
+
+```bash
+journalctl -u arca -f
+```
+
+!!! tip
+    The systemd unit includes security hardening (sandboxed filesystem, no new privileges, private /tmp). It also sets `TimeoutStopSec=45` to allow in-flight requests to complete during graceful shutdown.
+
+### 5. TLS with systemd
+
+To enable native TLS:
+
+```bash
+mkdir -p /etc/arca/certs
+# Place your cert and key files in /etc/arca/certs/
+```
+
+Uncomment the `[server.tls]` section in `/etc/arca/config.toml` and set the paths. To rotate certificates without downtime:
+
+```bash
+# Replace cert files, then signal Arca to reload
+systemctl kill --signal=HUP arca
+```
+
+## Kubernetes
+
+### Arca Server
+
+Arca runs well in Kubernetes as a `Deployment` (stateless, with a PersistentVolumeClaim for data) or as a `StatefulSet`. Key considerations:
+
+- Mount a PVC at the `data_dir` path (default `/data`)
+- Use a `ConfigMap` or mounted `Secret` for `/etc/arca/config.toml`
+- The `/admin/health` endpoint returns `200` when healthy and `503` when draining, use it for both liveness and readiness probes
+- Set `drain_timeout_seconds` to match or exceed your pod termination grace period
+- For PostgreSQL metadata backend, use an external database (RDS, CloudNative-PG, etc.)
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /admin/health
+    port: 9000
+  initialDelaySeconds: 5
+  periodSeconds: 30
+readinessProbe:
+  httpGet:
+    path: /admin/health
+    port: 9000
+  initialDelaySeconds: 2
+  periodSeconds: 10
+```
+
+### Arca Console
+
+A ready-to-use Kubernetes manifest is provided at `deploy/kubernetes/arca-console.yaml` with Deployment, Service, and Ingress resources.
+
+```bash
+# Replace the namespace placeholder and apply
+sed 's/NAMESPACE/arca/g' deploy/kubernetes/arca-console.yaml | kubectl apply -f -
+
+# Or apply to a specific namespace directly
+kubectl apply -f deploy/kubernetes/arca-console.yaml -n arca
+```
+
+Customize before applying:
+
+| Placeholder / Setting | Description |
+|----------------------|-------------|
+| `NAMESPACE` | Target Kubernetes namespace |
+| `image: arca-console:latest` | Your container registry and tag |
+| `ARCA_ENDPOINT` | URL of the Arca server (e.g. `http://arca:9000` for in-cluster) |
+| `host: console.example.com` | Ingress hostname for the console |
+| `ingressClassName` | Your ingress controller class (uncomment) |
+| `tls` | TLS termination at the ingress (uncomment and configure) |
+
+!!! note
+    The console is a lightweight nginx SPA, resource requests are minimal (50m CPU, 32Mi RAM). Scale replicas as needed for availability.
+
 ## Reverse Proxy
 
 If you prefer external TLS termination, or need additional proxy-level features, place a reverse proxy in front of Arca.

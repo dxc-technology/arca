@@ -1,0 +1,61 @@
+# Arca — systemd service unit
+#
+# Install:
+#   1. Copy the arca binary to /usr/local/bin/arca
+#   2. Copy your config to /etc/arca/config.toml
+#   3. Create a dedicated user:  useradd --system --home-dir /var/lib/arca --shell /usr/sbin/nologin arca
+#   4. Create the data directory: mkdir -p /var/lib/arca && chown arca:arca /var/lib/arca
+#   5. Copy this file to /etc/systemd/system/arca.service
+#   6. Reload and start:
+#        systemctl daemon-reload
+#        systemctl enable --now arca
+#
+# Logs:
+#   journalctl -u arca -f
+#
+# First-run credentials are printed to the journal on first startup.
+
+[Unit]
+Description=Arca S3-compatible object storage server
+Documentation=https://dxc-technology.github.io/arca/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=arca
+Group=arca
+
+ExecStart=/usr/local/bin/arca serve --config-path /etc/arca/config.toml
+Restart=on-failure
+RestartSec=5
+
+# Graceful shutdown — matches drain_timeout_seconds (default 30) + margin
+TimeoutStopSec=45
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+
+# Allow writing to the data directory and reading the config/certs
+ReadWritePaths=/var/lib/arca
+ReadOnlyPaths=/etc/arca
+
+# Environment (override config file values if needed)
+# Environment=ARCA_LOG=info
+# Environment=ARCA_SERVER_PORT=9000
+# Environment=ARCA_STORAGE_DATA_DIR=/var/lib/arca
+
+# File descriptor limit — raise for large deployments
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,155 @@
+# =============================================================================
+# Arca — Sample Configuration File
+# =============================================================================
+#
+# Copy this file to /etc/arca/config.toml and adjust to your needs.
+# Only [server] and [storage] are required, everything else is optional.
+#
+# Environment variable overrides:
+#   ARCA_SERVER_BIND       -> server.bind
+#   ARCA_SERVER_PORT       -> server.port
+#   ARCA_STORAGE_DATA_DIR  -> storage.data_dir
+#   ARCA_LOG               -> log level (e.g. "info", "debug", "info,arca_auth=debug")
+
+# -----------------------------------------------------------------------------
+# Server
+# -----------------------------------------------------------------------------
+
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+# Base domain for virtual-hosted-style requests (e.g. bucket.s3.example.com).
+# Leave commented for path-style only.
+# domain = "s3.example.com"
+
+# S3 region returned in LocationConstraint responses.
+# When set in config, it is locked (read-only in console).
+# region = "us-east-1"
+
+# -----------------------------------------------------------------------------
+# TLS — uncomment to enable native HTTPS (no reverse proxy needed)
+# -----------------------------------------------------------------------------
+# Three modes:
+#   1. cert_dir only             -> auto-detect .pem/.crt/.key files
+#   2. cert_dir + cert/key_file  -> resolve filenames relative to cert_dir
+#   3. cert_file + key_file      -> absolute paths (no cert_dir needed)
+#
+# Certificate hot-reload: send SIGHUP to rotate certs without downtime.
+
+# [server.tls]
+# cert_dir = "/etc/arca/certs"
+# cert_file = "server.crt"          # relative to cert_dir, or absolute path
+# key_file = "server.key"           # relative to cert_dir, or absolute path
+# ca_file = "ca.crt"                # client CA for mTLS (optional)
+
+# -----------------------------------------------------------------------------
+# Request Limits
+# -----------------------------------------------------------------------------
+
+# [server.limits]
+# max_body_size = 5000000000         # 5 GB — max request body (0 = unlimited)
+# max_header_count = 100             # max HTTP headers per request
+# max_metadata_size = 2048           # max x-amz-meta-* total bytes (matches S3)
+# drain_timeout_seconds = 30         # graceful shutdown window (seconds)
+
+# Rate limiting (GCRA algorithm). Disabled by default (0 = off).
+# Enable for internet-facing or multi-tenant deployments.
+# rate_limit_per_second = 100        # per S3 credential
+# rate_limit_burst = 200
+# rate_limit_per_ip_per_second = 500 # per client IP (or X-Forwarded-For)
+# rate_limit_per_ip_burst = 1000
+
+# -----------------------------------------------------------------------------
+# Metadata Cache
+# -----------------------------------------------------------------------------
+# In-memory LRU cache for bucket/object metadata. Enabled by default.
+# Write operations invalidate entries immediately; TTL is a safety net.
+
+# [server.cache]
+# enabled = true
+# bucket_cache_size = 1000
+# bucket_cache_ttl_seconds = 60
+# object_cache_size = 10000
+# object_cache_ttl_seconds = 30
+
+# -----------------------------------------------------------------------------
+# Storage
+# -----------------------------------------------------------------------------
+
+[storage]
+data_dir = "/var/lib/arca"           # for systemd; use "/data" inside Docker
+
+# Blob sharding depth (1-4). Higher = more subdirectories, fewer files each.
+#   1 = 256 dirs     (< 100K objects)
+#   2 = 65,536 dirs  (most deployments, default)
+#   3 = 16.7M dirs   (> 10M objects)
+# blob_prefix_depth = 2
+
+# Metadata backend: "sqlite" (default, embedded) or "postgres".
+# metadata_backend = "sqlite"
+
+# -----------------------------------------------------------------------------
+# PostgreSQL — required when metadata_backend = "postgres"
+# -----------------------------------------------------------------------------
+
+# [storage.postgres]
+# connection_string = "postgresql://arca:secret@localhost:5432/arca"
+# max_connections = 20
+
+# -----------------------------------------------------------------------------
+# Encryption (SSE-S3) — server-side AES-256-GCM encryption at rest
+# -----------------------------------------------------------------------------
+# When enabled = true, all new objects are encrypted by default.
+# When enabled = false but the section is present, per-bucket encryption
+# is still available via the console or API.
+
+# [encryption]
+# enabled = true
+# master_key = ""                    # base64 256-bit key (generate: arca encryption generate-key)
+# previous_master_key = ""           # previous key for rotation (optional)
+
+# -----------------------------------------------------------------------------
+# KMS (Vault / OpenBAO) — fetch master key from a KMS at startup
+# -----------------------------------------------------------------------------
+# Mutually exclusive with master_key above. Use one or the other.
+
+# [encryption.kms]
+# endpoint = "https://vault.example.com:8200"
+# auth_method = "token"              # "token" or "approle"
+# token = "s.my-vault-token"         # required for "token" auth
+# role_id = ""                       # required for "approle" auth
+# secret_id = ""                     # required for "approle" auth
+# secret_path = "secret/arca/master-key"   # KV v2 path
+# secret_field = "key"              # field containing base64 key
+# tls_skip_verify = false            # skip TLS verification (dev only!)
+# ca_file = "/etc/ssl/vault-ca.pem"  # CA cert for Vault TLS (optional)
+
+# -----------------------------------------------------------------------------
+# Monitoring
+# -----------------------------------------------------------------------------
+# When retention_days is set here, it is locked (read-only in console).
+# When omitted, retention can be managed from the console.
+
+# [monitoring.audit]
+# enabled = true
+# retention_days = 30                # 0 = keep forever
+
+# [monitoring.metrics]
+# enabled = true
+# retention_days = 90                # 0 = keep forever
+# interval_seconds = 60              # metrics snapshot interval
+
+# -----------------------------------------------------------------------------
+# Notifications
+# -----------------------------------------------------------------------------
+# Tune the event delivery system. Defaults are sensible for most deployments.
+
+# [notifications]
+# channel_size = 10000               # in-memory event queue capacity
+# max_retries = 3                    # webhook delivery retry attempts
+# retry_base_seconds = 1             # exponential backoff base
+# webhook_timeout_seconds = 10       # HTTP POST timeout
+# redis_timeout_seconds = 5          # Redis connection timeout
+# nats_timeout_seconds = 5           # NATS connection timeout
+# event_retention_days = 30          # 0 = keep forever
