@@ -400,7 +400,7 @@ connectors across four categories.
 - [ ] Kafka connector + integration tests
 - [ ] AMQP connector + integration tests
 - [x] Redis Pub/Sub connector + integration tests
-- [ ] NATS connector + integration tests
+- [x] NATS connector + integration tests
 - [ ] MQTT connector + integration tests
 - [ ] PostgreSQL connector + integration tests
 - [ ] MySQL/MariaDB connector + integration tests

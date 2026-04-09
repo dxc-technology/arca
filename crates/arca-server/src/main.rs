@@ -254,6 +254,11 @@ async fn main() -> Result<()> {
                 );
                 registry.register(ConnectorType::Redis, Arc::new(redis));
 
+                let nats = connector::NatsConnector::new(
+                    std::time::Duration::from_secs(notif_config.nats_timeout_seconds),
+                );
+                registry.register(ConnectorType::Nats, Arc::new(nats));
+
                 Arc::new(registry)
             };
             state.connector_registry = Some(connector_registry.clone());

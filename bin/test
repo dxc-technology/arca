@@ -15,6 +15,7 @@ set -euo pipefail
 #   bin/test postgres     Run PostgreSQL backend integration tests
 #   bin/test s3-compat    Run Ceph s3-tests compatibility suite
 #   bin/test connectors redis   Run Redis connector integration tests
+#   bin/test connectors nats    Run NATS connector integration tests
 #   bin/test connectors all     Run all connector integration tests
 
 cd "$(git rev-parse --show-toplevel)"
@@ -302,11 +303,44 @@ run_connector_redis() {
     return $rc
 }
 
+run_connector_nats() {
+    echo "==> Running NATS connector integration tests..."
+
+    enable_connector_nats
+    build_config
+
+    _CONNECTOR_COMPOSE="$(compose_cmd)"
+
+    cleanup_connector_nats() {
+        echo "Cleaning up NATS connector test..."
+        $_CONNECTOR_COMPOSE down -v 2>/dev/null || true
+    }
+    trap cleanup_connector_nats EXIT
+
+    # Step 1: Build images
+    $_CONNECTOR_COMPOSE build arca
+    # Step 2: Start NATS receiver and wait for healthy
+    $_CONNECTOR_COMPOSE up -d nats-receiver
+    wait_for_nats "$_CONNECTOR_COMPOSE"
+    # Step 3: Start Arca with notifications config
+    $_CONNECTOR_COMPOSE up -d arca
+    wait_for_arca "$_CONNECTOR_COMPOSE"
+    # Step 4: Run NATS connector tests
+    $_CONNECTOR_COMPOSE run --rm \
+        -e NATS_URL=nats://nats-receiver:4222 \
+        test connectors/test_nats.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_connector_nats
+    return $rc
+}
+
 run_connectors() {
     local connector="${1:-}"
     if [[ -z "$connector" ]]; then
         echo "Error: specify a connector name or 'all'" >&2
-        echo "Usage: bin/test connectors <redis|all>" >&2
+        echo "Usage: bin/test connectors <redis|nats|all>" >&2
         exit 1
     fi
     shift
@@ -315,16 +349,19 @@ run_connectors() {
         redis)
             run_connector_redis "$@"
             ;;
+        nats)
+            run_connector_nats "$@"
+            ;;
         all)
             run_connector_redis "$@"
+            run_connector_nats "$@"
             # Future connectors will be added here:
-            # run_connector_nats "$@"
             # run_connector_postgresql "$@"
             # etc.
             ;;
         *)
             echo "Error: unknown connector '$connector'" >&2
-            echo "Available connectors: redis, all" >&2
+            echo "Available connectors: redis, nats, all" >&2
             exit 1
             ;;
     esac

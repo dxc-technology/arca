@@ -1,0 +1,2 @@
+# NATS connector -- no additional config needed.
+# The nats_timeout_seconds is in the [notifications] section.

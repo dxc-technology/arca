@@ -3,3 +3,4 @@ minio>=7.2.0
 pytest>=8.0.0
 requests>=2.32.4
 redis>=5.0.0
+nats-py>=2.9.0

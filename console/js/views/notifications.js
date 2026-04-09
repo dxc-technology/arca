@@ -205,7 +205,7 @@ export function notificationsView() {
 
 // ==================== CONNECTOR TYPES ====================
 // Connector type definitions for notification destinations.
-// Only 'webhook' is currently active; others are shown as "coming soon".
+// Active connectors: webhook, redis, nats. Others are shown as "coming soon".
 const CONNECTOR_TYPES = [
   { id: 'webhook', name: 'Webhook', category: 'Functions', active: true,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5a17.92 17.92 0 0 1-8.716-2.247m0 0A9 9 0 0 1 3 12c0-1.47.353-2.856.978-4.082"/></svg>` },
@@ -215,7 +215,7 @@ const CONNECTOR_TYPES = [
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></svg>` },
   { id: 'redis', name: 'Redis', category: 'Queue', active: true,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/></svg>` },
-  { id: 'nats', name: 'NATS', category: 'Queue', active: false,
+  { id: 'nats', name: 'NATS', category: 'Queue', active: true,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z"/></svg>` },
   { id: 'mqtt', name: 'MQTT', category: 'Queue', active: false,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.348 14.652a3.75 3.75 0 0 1 0-5.304m5.304 0a3.75 3.75 0 0 1 0 5.304m-7.425 2.121a6.75 6.75 0 0 1 0-9.546m9.546 0a6.75 6.75 0 0 1 0 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"/></svg>` },
@@ -261,7 +261,7 @@ export function bucketNotificationEditor() {
     editForm: {
       id: '', arn: '', events: ['s3:ObjectCreated:*'], type: 'TopicConfiguration',
       prefix: '', suffix: '', connector_type: 'webhook', auth_token: '',
-      channel: '', password: '',
+      channel: '', password: '', subject: '', token: '', user: '',
     },
 
     connectorTypes: CONNECTOR_TYPES,
@@ -380,6 +380,7 @@ export function bucketNotificationEditor() {
       this.editForm = {
         id: '', arn: '', events: ['s3:ObjectCreated:*'], type: 'TopicConfiguration',
         prefix: '', suffix: '', connector_type: 'webhook', auth_token: '',
+        channel: '', password: '', subject: '', token: '', user: '',
       };
       this.error = '';
       this.showModal = true;
@@ -397,6 +398,9 @@ export function bucketNotificationEditor() {
         auth_token: props.auth_token || '',
         channel: props.channel || '',
         password: props.password || '',
+        subject: props.subject || '',
+        token: props.token || '',
+        user: props.user || '',
       };
       this.error = '';
       this.showModal = true;
@@ -439,6 +443,9 @@ export function bucketNotificationEditor() {
       if (this.editForm.auth_token) properties.auth_token = this.editForm.auth_token;
       if (this.editForm.channel) properties.channel = this.editForm.channel;
       if (this.editForm.password) properties.password = this.editForm.password;
+      if (this.editForm.subject) properties.subject = this.editForm.subject;
+      if (this.editForm.token) properties.token = this.editForm.token;
+      if (this.editForm.user) properties.user = this.editForm.user;
 
       const cfg = {
         id: this.editForm.id || crypto.randomUUID(),

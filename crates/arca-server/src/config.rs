@@ -492,6 +492,9 @@ pub struct NotificationsConfig {
     /// Redis connector connection timeout in seconds.
     #[serde(default = "default_redis_timeout_seconds")]
     pub redis_timeout_seconds: u64,
+    /// NATS connector connection timeout in seconds.
+    #[serde(default = "default_nats_timeout_seconds")]
+    pub nats_timeout_seconds: u64,
     /// Number of days to retain notification events. 0 = keep forever.
     /// When set in TOML, locked (read-only in console). When absent, console can set it.
     pub event_retention_days: Option<u32>,
@@ -505,6 +508,7 @@ impl Default for NotificationsConfig {
             retry_base_seconds: default_retry_base_seconds(),
             webhook_timeout_seconds: default_webhook_timeout_seconds(),
             redis_timeout_seconds: default_redis_timeout_seconds(),
+            nats_timeout_seconds: default_nats_timeout_seconds(),
             event_retention_days: None,
         }
     }
@@ -523,6 +527,9 @@ fn default_webhook_timeout_seconds() -> u64 {
     30
 }
 fn default_redis_timeout_seconds() -> u64 {
+    5
+}
+fn default_nats_timeout_seconds() -> u64 {
     5
 }
 fn default_true() -> bool {

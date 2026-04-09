@@ -41,6 +41,8 @@ reqwest = { workspace = true }
 uuid = { workspace = true }
 libc = { workspace = true }
 redis = { workspace = true }
+async-nats = { workspace = true }
+bytes = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

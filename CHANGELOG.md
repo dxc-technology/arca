@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **NATS notification connector**: delivers S3 event notifications by publishing JSON payloads to a NATS subject. Supports custom subject names via `subject` property (default `arca.notifications`), optional token or user/password authentication, and configurable connection timeout (`nats_timeout_seconds`). Includes admin API connectivity test via `POST /admin/notifications/test-connector` with `connector_type=nats`
+- **(Console)** NATS connector enabled in notification editor with subject, token, and user/password configuration fields
+
+### Fixed
+
+- **(Console)** STORAGE SIZE chart Y-axis showed "undefined" labels when all values were 0 (fractional tick values caused negative index in `formatBytes`)
+
 ## [0.18.0] — 2026-04-09
 
 ### Added

@@ -1,0 +1,8 @@
+services:
+  nats-receiver:
+    image: nats:alpine
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z localhost 4222"]
+      interval: 2s
+      timeout: 5s
+      retries: 10

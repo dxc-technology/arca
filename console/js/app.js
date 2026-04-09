@@ -24,10 +24,11 @@ export const icons = {
 export const ringColors = ['#00d4ff', '#6366f1', '#06b6d4', '#818cf8', '#22d3ee', '#a78bfa', '#67e8f9', '#c4b5fd'];
 
 export function formatBytes(bytes) {
-  if (bytes === 0) return '0 B';
+  if (bytes == null || bytes <= 0) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
+  if (i < 0 || i >= sizes.length) return bytes + ' B';
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 

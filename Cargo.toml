@@ -95,6 +95,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 
 # Notification connectors
 redis = { version = "0.27", features = ["tokio-comp", "aio"] }
+async-nats = "0.38"
 
 # TLS
 rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "std", "tls12"] }

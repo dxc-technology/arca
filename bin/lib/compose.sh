@@ -28,6 +28,7 @@ _HAS_KMS=false
 _HAS_POSTGRES=false
 _HAS_NOTIFICATIONS=false
 _HAS_CONNECTOR_REDIS=false
+_HAS_CONNECTOR_NATS=false
 
 # --- Feature registration ---
 
@@ -96,6 +97,13 @@ enable_connector_redis() {
     _HAS_CONNECTOR_REDIS=true
     enable_notifications
     _FEATURES+=(connector-redis)
+}
+
+enable_connector_nats() {
+    if $_HAS_CONNECTOR_NATS; then return; fi
+    _HAS_CONNECTOR_NATS=true
+    enable_notifications
+    _FEATURES+=(connector-nats)
 }
 
 # --- Config generation ---
@@ -187,6 +195,17 @@ compose_cmd() {
                     files+=("$redis_file")
                 fi
                 ;;
+            connector-nats)
+                # NATS receiver for connector tests
+                local nats_file="$REPO_ROOT/docker/docker-compose.connector-nats.yml"
+                local already=false
+                for f in "${files[@]}"; do
+                    [[ "$f" == "$nats_file" ]] && already=true
+                done
+                if ! $already; then
+                    files+=("$nats_file")
+                fi
+                ;;
         esac
     done
 
@@ -250,6 +269,7 @@ load_env() {
             postgres)               enable_postgres ;;
             notifications)          enable_notifications ;;
             connector-redis)        enable_connector_redis ;;
+            connector-nats)         enable_connector_nats ;;
             custom)                 _FEATURES+=(custom) ;;
         esac
     done
@@ -304,6 +324,18 @@ wait_for_redis() {
     echo "Waiting for Redis..."
     for i in $(seq 1 "$max_wait"); do
         if $compose exec -T redis-receiver redis-cli ping 2>/dev/null | grep -q PONG; then
+            break
+        fi
+        sleep 1
+    done
+}
+
+wait_for_nats() {
+    local compose="$1"
+    local max_wait="${2:-30}"
+    echo "Waiting for NATS..."
+    for i in $(seq 1 "$max_wait"); do
+        if $compose exec -T nats-receiver sh -c 'nc -z localhost 4222' 2>/dev/null; then
             break
         fi
         sleep 1
