@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] — 2026-04-09
+
 ### Added
 
 - **Redis Pub/Sub notification connector**: delivers S3 event notifications by publishing JSON payloads to a Redis Pub/Sub channel. Supports custom channel names via `channel` property, optional password authentication, and configurable connection timeout (`redis_timeout_seconds`). Includes admin API connectivity test via `POST /admin/notifications/test-connector` with `connector_type=redis`
@@ -15,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`GET /admin/presigned-urls?bucket=X`**: lists active (non-expired) presigned URL records for a bucket
 - **`DELETE /admin/presigned-urls/:id`**: removes a presigned URL tracking record (the URL itself remains valid until expiry)
 - **`POST /admin/presign` response** now includes an `id` field for tracking reference (SQLite migration v16, PostgreSQL migration v3)
+- **(Console)**: Monitoring chart time range buttons expanded with 6m and 1y presets, plus a custom date range picker (From/To datetime inputs)
+- **`bin/seed-metrics`**: development utility to generate fake metrics data for testing monitoring charts
+
+### Fixed
+
+- **Monitoring chart time ranges**: 24h, 7d, and 30d views only showed ~8 hours of data because the API returned `LIMIT 500` most-recent rows. Fixed with server-side downsampling using `ROW_NUMBER()` CTE to return evenly spaced points across the full range (both SQLite and PostgreSQL)
+- **(Console)**: X-axis labels now adapt to actual data span (time-only for short ranges, date+time for days, month+day for weeks, month+year for long ranges) instead of being hardcoded per button
+- **Ceph s3-tests**: 18 additional tests now pass (lifecycle, object lock, versioning, encryption)
 
 ## [0.17.1] — 2026-04-03
 
@@ -397,7 +407,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.17.1...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/dxc-technology/arca/compare/v0.17.1...v0.18.0
 [0.17.1]: https://github.com/dxc-technology/arca/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/dxc-technology/arca/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/dxc-technology/arca/compare/v0.16.0...v0.16.1

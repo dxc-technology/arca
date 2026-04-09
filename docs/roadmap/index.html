@@ -2265,7 +2265,7 @@ continuing from the MVP phases (0–11).</p>
 <td><a href="#phase-25-notifications-and-event-system-p3">Notifications and Event System</a></td>
 <td style="text-align: center;">P3</td>
 <td style="text-align: center;">20</td>
-<td style="text-align: center;"><code>v0.17.0</code></td>
+<td style="text-align: center;"><code>v0.18.0</code></td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
@@ -2546,7 +2546,7 @@ connectors across four categories.</p>
 <ul class="task-list">
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Kafka connector + integration tests</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> AMQP connector + integration tests</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Redis Pub/Sub connector + integration tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Redis Pub/Sub connector + integration tests</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> NATS connector + integration tests</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> MQTT connector + integration tests</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> PostgreSQL connector + integration tests</li>
@@ -2557,11 +2557,11 @@ connectors across four categories.</p>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> gRPC connector + integration tests</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> SMTP connector + integration tests</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Syslog (RFC 5424) connector + integration tests</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Modular test infrastructure: per-connector ephemeral Docker containers (<code>bin/test connector &lt;type&gt;</code>)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Modular test infrastructure: per-connector ephemeral Docker containers (<code>bin/test connectors &lt;type&gt;</code>)</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> (Console) Connector-specific form fields for each type</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Documentation: connector configuration guide</li>
 </ul>
-<p><strong>Testing architecture</strong>: Each connector's tests run against a real backend in a temporary Docker container, started one at a time (not all at once). <code>bin/test connector &lt;type&gt;</code> and <code>bin/test connector all</code> subcommands.</p>
+<p><strong>Testing architecture</strong>: Each connector's tests run against a real backend in a temporary Docker container, started one at a time (not all at once). <code>bin/test connectors &lt;type&gt;</code> and <code>bin/test connectors all</code> subcommands. Connector tests are a separate test stream, not included in <code>bin/test</code> or <code>bin/test all</code>.</p>
 <p><strong>Depends on</strong>: Phase 25 (notification system and connector trait)</p>
 <hr />
 <h3 id="phase-27-transparent-compression-p2">Phase 27 — Transparent Compression [P2]<a class="headerlink" href="#phase-27-transparent-compression-p2" title="Permanent link">&para;</a></h3>

@@ -120,7 +120,7 @@ graph LR
 | 22 | [S3 API Completeness](#phase-22-s3-api-completeness-p2) | P2 | — | `v0.14.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 23 | [Performance and Hardening](#phase-23-performance-and-hardening-p2) | P2 | 13 | `v0.14.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 24 | [PostgreSQL Backend](#phase-24-postgresql-backend-p2) | P2 | — | `v0.16.1` | <span style="color:#4caf50">&#x2714;</span> |
-| 25 | [Notifications and Event System](#phase-25-notifications-and-event-system-p3) | P3 | 20 | `v0.17.0` | <span style="color:#4caf50">&#x2714;</span> |
+| 25 | [Notifications and Event System](#phase-25-notifications-and-event-system-p3) | P3 | 20 | `v0.18.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 26 | [Notification Connectors](#phase-26-notification-connectors-p3) | P3 | 25 | | |
 | 27 | [Transparent Compression](#phase-27-transparent-compression-p2) | P2 | 13 | | |
 | 28 | [Replication](#phase-28-replication-p3) | P3 | 17, 24 | | |
