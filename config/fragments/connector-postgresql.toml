@@ -1,0 +1,2 @@
+# PostgreSQL connector -- no additional config needed.
+# The postgresql_timeout_seconds is in the [notifications] section.

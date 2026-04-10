@@ -23,9 +23,15 @@ RUN mkdir -p crates/arca-core/src && echo "" > crates/arca-core/src/lib.rs && \
 # Build dependencies only (cached layer)
 RUN cargo build --release --workspace 2>/dev/null || true
 
-# Pin transitive dependencies that exceed our Rust version.
-# home 0.5.12 requires Rust 1.88; pin to 0.5.11 for Rust 1.85.
+# Pin transitive dependencies that exceed our Rust version (1.85).
+# home 0.5.12 requires Rust 1.88; pin to 0.5.11.
 RUN cargo update -p home --precise 0.5.11 2>/dev/null || true
+# serde_with 3.13+ requires Rust 1.88 (pulled by mongodb); pin to 3.12.0.
+RUN cargo update -p serde_with --precise 3.12.0 2>/dev/null || true
+# darling 0.21+ requires Rust 1.88 (pulled by serde_with); pin to 0.20.10.
+RUN cargo update -p darling --precise 0.20.10 2>/dev/null || true
+RUN cargo update -p darling_core --precise 0.20.10 2>/dev/null || true
+RUN cargo update -p darling_macro --precise 0.20.10 2>/dev/null || true
 
 # Copy real source code
 COPY crates/ crates/

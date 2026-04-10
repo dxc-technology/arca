@@ -402,9 +402,9 @@ connectors across four categories.
 - [x] Redis Pub/Sub connector + integration tests
 - [x] NATS connector + integration tests
 - [x] MQTT connector + integration tests
-- [ ] PostgreSQL connector + integration tests
-- [ ] MySQL/MariaDB connector + integration tests
-- [ ] MongoDB connector + integration tests
+- [x] PostgreSQL connector + integration tests
+- [x] MySQL/MariaDB connector + integration tests
+- [x] MongoDB connector + integration tests
 - [ ] Elasticsearch connector + integration tests
 - [ ] ONVIF connector + integration tests
 - [ ] gRPC connector + integration tests

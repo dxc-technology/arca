@@ -2797,6 +2797,11 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>(Console)</strong> NATS connector enabled in notification editor with subject, token, and user/password configuration fields</li>
 <li><strong>MQTT notification connector</strong>: delivers S3 event notifications by publishing JSON payloads to an MQTT topic. Supports custom topic names via <code>topic</code> property (default <code>arca/notifications</code>), configurable QoS level (0/1/2, default 1), optional username/password authentication, and configurable connection timeout (<code>mqtt_timeout_seconds</code>). Includes admin API connectivity test via <code>POST /admin/notifications/test-connector</code> with <code>connector_type=mqtt</code></li>
 <li><strong>(Console)</strong> MQTT connector enabled in notification editor with topic, username, and password configuration fields</li>
+<li><strong>Database notification connectors</strong> (PostgreSQL, MySQL, MongoDB): delivers S3 event notifications by inserting rows/documents into a database table or collection. Shared <code>db_common</code> module provides DDL generation and event field extraction. Tables/collections are auto-created on first delivery</li>
+<li><strong>PostgreSQL connector</strong>: <code>sqlx-postgres</code> driver, <code>TIMESTAMPTZ</code> columns, supports <code>table</code> and <code>schema</code> properties (default: <code>arca_notifications</code>)</li>
+<li><strong>MySQL connector</strong>: <code>sqlx-mysql</code> driver, <code>DATETIME(6)</code> columns, supports <code>table</code> property (default: <code>arca_notifications</code>)</li>
+<li><strong>MongoDB connector</strong>: <code>mongodb</code> driver, BSON documents, supports <code>database</code> (default: <code>arca</code>) and <code>collection</code> (default: <code>arca_notifications</code>) properties</li>
+<li><strong>(Console)</strong> PostgreSQL, MySQL, and MongoDB connectors enabled in notification editor with database-specific configuration fields</li>
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>

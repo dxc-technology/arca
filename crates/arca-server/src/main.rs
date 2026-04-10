@@ -264,6 +264,21 @@ async fn main() -> Result<()> {
                 );
                 registry.register(ConnectorType::Mqtt, Arc::new(mqtt));
 
+                let postgresql = connector::PostgresqlConnector::new(
+                    std::time::Duration::from_secs(notif_config.postgresql_timeout_seconds),
+                );
+                registry.register(ConnectorType::Postgresql, Arc::new(postgresql));
+
+                let mysql = connector::MysqlConnector::new(
+                    std::time::Duration::from_secs(notif_config.mysql_timeout_seconds),
+                );
+                registry.register(ConnectorType::Mysql, Arc::new(mysql));
+
+                let mongodb = connector::MongodbConnector::new(
+                    std::time::Duration::from_secs(notif_config.mongodb_timeout_seconds),
+                );
+                registry.register(ConnectorType::Mongodb, Arc::new(mongodb));
+
                 Arc::new(registry)
             };
             state.connector_registry = Some(connector_registry.clone());

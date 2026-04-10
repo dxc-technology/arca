@@ -205,7 +205,7 @@ export function notificationsView() {
 
 // ==================== CONNECTOR TYPES ====================
 // Connector type definitions for notification destinations.
-// Active connectors: webhook, redis, nats, mqtt. Others are shown as "coming soon".
+// Active connectors: webhook, redis, nats, mqtt, postgresql, mysql, mongodb. Others are shown as "coming soon".
 const CONNECTOR_TYPES = [
   { id: 'webhook', name: 'Webhook', category: 'Functions', active: true,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5a17.92 17.92 0 0 1-8.716-2.247m0 0A9 9 0 0 1 3 12c0-1.47.353-2.856.978-4.082"/></svg>` },
@@ -219,11 +219,11 @@ const CONNECTOR_TYPES = [
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z"/></svg>` },
   { id: 'mqtt', name: 'MQTT', category: 'Queue', active: true,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.348 14.652a3.75 3.75 0 0 1 0-5.304m5.304 0a3.75 3.75 0 0 1 0 5.304m-7.425 2.121a6.75 6.75 0 0 1 0-9.546m9.546 0a6.75 6.75 0 0 1 0 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"/></svg>` },
-  { id: 'postgresql', name: 'PostgreSQL', category: 'Database', active: false,
+  { id: 'postgresql', name: 'PostgreSQL', category: 'Database', active: true,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><circle cx="12" cy="12" r="9" /><path d="M8 12h8M8 8h8M8 16h5"/></svg>` },
-  { id: 'mysql', name: 'MySQL', category: 'Database', active: false,
+  { id: 'mysql', name: 'MySQL', category: 'Database', active: true,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375"/></svg>` },
-  { id: 'mongodb', name: 'MongoDB', category: 'Database', active: false,
+  { id: 'mongodb', name: 'MongoDB', category: 'Database', active: true,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15 11.25c0 3.314-1.343 6-3 6s-3-2.686-3-6c0-3.314 1.343-6 3-6s3 2.686 3 6Z"/><path stroke-linecap="round" d="M12 17.25v3"/></svg>` },
   { id: 'elasticsearch', name: 'Elasticsearch', category: 'Database', active: false,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/></svg>` },
@@ -262,6 +262,7 @@ export function bucketNotificationEditor() {
       id: '', arn: '', events: ['s3:ObjectCreated:*'], type: 'TopicConfiguration',
       prefix: '', suffix: '', connector_type: 'webhook', auth_token: '',
       channel: '', password: '', subject: '', token: '', user: '', topic: '',
+      table: '', schema: '', database: '', collection: '',
     },
 
     connectorTypes: CONNECTOR_TYPES,
@@ -381,6 +382,7 @@ export function bucketNotificationEditor() {
         id: '', arn: '', events: ['s3:ObjectCreated:*'], type: 'TopicConfiguration',
         prefix: '', suffix: '', connector_type: 'webhook', auth_token: '',
         channel: '', password: '', subject: '', token: '', user: '', topic: '',
+        table: '', schema: '', database: '', collection: '',
       };
       this.error = '';
       this.showModal = true;
@@ -402,6 +404,10 @@ export function bucketNotificationEditor() {
         token: props.token || '',
         user: props.user || '',
         topic: props.topic || '',
+        table: props.table || '',
+        schema: props.schema || '',
+        database: props.database || '',
+        collection: props.collection || '',
       };
       this.error = '';
       this.showModal = true;
@@ -448,6 +454,10 @@ export function bucketNotificationEditor() {
       if (this.editForm.token) properties.token = this.editForm.token;
       if (this.editForm.user) properties.user = this.editForm.user;
       if (this.editForm.topic) properties.topic = this.editForm.topic;
+      if (this.editForm.table) properties.table = this.editForm.table;
+      if (this.editForm.schema) properties.schema = this.editForm.schema;
+      if (this.editForm.database) properties.database = this.editForm.database;
+      if (this.editForm.collection) properties.collection = this.editForm.collection;
 
       const cfg = {
         id: this.editForm.id || crypto.randomUUID(),

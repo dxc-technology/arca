@@ -6,3 +6,6 @@ webhook_timeout_seconds = 10
 redis_timeout_seconds = 5
 nats_timeout_seconds = 5
 mqtt_timeout_seconds = 5
+postgresql_timeout_seconds = 5
+mysql_timeout_seconds = 5
+mongodb_timeout_seconds = 5

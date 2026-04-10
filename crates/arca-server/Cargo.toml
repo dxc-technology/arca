@@ -43,6 +43,10 @@ libc = { workspace = true }
 redis = { workspace = true }
 async-nats = { workspace = true }
 rumqttc = { workspace = true }
+sqlx-core = { workspace = true }
+sqlx-postgres = { workspace = true }
+sqlx-mysql = { workspace = true }
+mongodb = { workspace = true }
 bytes = { workspace = true }
 
 [dev-dependencies]

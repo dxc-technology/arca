@@ -1,0 +1,13 @@
+services:
+  mysql-receiver:
+    image: mysql:latest
+    environment:
+      MYSQL_ROOT_PASSWORD: arca
+      MYSQL_DATABASE: arca_test
+      MYSQL_USER: arca
+      MYSQL_PASSWORD: arca
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 2s
+      timeout: 5s
+      retries: 10

@@ -1,0 +1,2 @@
+# MongoDB connector -- no additional config needed.
+# The mongodb_timeout_seconds is in the [notifications] section.

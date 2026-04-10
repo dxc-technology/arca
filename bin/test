@@ -14,10 +14,13 @@ set -euo pipefail
 #   bin/test kms          Run KMS integration tests
 #   bin/test postgres     Run PostgreSQL backend integration tests
 #   bin/test s3-compat    Run Ceph s3-tests compatibility suite
-#   bin/test connectors redis   Run Redis connector integration tests
-#   bin/test connectors nats    Run NATS connector integration tests
-#   bin/test connectors mqtt    Run MQTT connector integration tests
-#   bin/test connectors all     Run all connector integration tests
+#   bin/test connectors redis        Run Redis connector integration tests
+#   bin/test connectors nats         Run NATS connector integration tests
+#   bin/test connectors mqtt         Run MQTT connector integration tests
+#   bin/test connectors postgresql   Run PostgreSQL connector integration tests
+#   bin/test connectors mysql        Run MySQL connector integration tests
+#   bin/test connectors mongodb      Run MongoDB connector integration tests
+#   bin/test connectors all          Run all connector integration tests
 
 cd "$(git rev-parse --show-toplevel)"
 source bin/lib/compose.sh
@@ -370,11 +373,98 @@ run_connector_mqtt() {
     return $rc
 }
 
+run_connector_postgresql() {
+    echo "==> Running PostgreSQL connector integration tests..."
+
+    enable_connector_postgresql
+    build_config
+
+    _CONNECTOR_COMPOSE="$(compose_cmd)"
+
+    cleanup_connector_postgresql() {
+        echo "Cleaning up PostgreSQL connector test..."
+        $_CONNECTOR_COMPOSE down -v 2>/dev/null || true
+    }
+    trap cleanup_connector_postgresql EXIT
+
+    $_CONNECTOR_COMPOSE build arca
+    $_CONNECTOR_COMPOSE up -d postgresql-receiver
+    wait_for_postgresql_receiver "$_CONNECTOR_COMPOSE"
+    $_CONNECTOR_COMPOSE up -d arca
+    wait_for_arca "$_CONNECTOR_COMPOSE"
+    $_CONNECTOR_COMPOSE run --rm \
+        -e POSTGRESQL_URL=postgresql://arca:arca@postgresql-receiver:5432/arca_test \
+        test connectors/test_postgresql_connector.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_connector_postgresql
+    return $rc
+}
+
+run_connector_mysql() {
+    echo "==> Running MySQL connector integration tests..."
+
+    enable_connector_mysql
+    build_config
+
+    _CONNECTOR_COMPOSE="$(compose_cmd)"
+
+    cleanup_connector_mysql() {
+        echo "Cleaning up MySQL connector test..."
+        $_CONNECTOR_COMPOSE down -v 2>/dev/null || true
+    }
+    trap cleanup_connector_mysql EXIT
+
+    $_CONNECTOR_COMPOSE build arca
+    $_CONNECTOR_COMPOSE up -d mysql-receiver
+    wait_for_mysql_receiver "$_CONNECTOR_COMPOSE"
+    $_CONNECTOR_COMPOSE up -d arca
+    wait_for_arca "$_CONNECTOR_COMPOSE"
+    $_CONNECTOR_COMPOSE run --rm \
+        -e MYSQL_URL=mysql://arca:arca@mysql-receiver:3306/arca_test \
+        test connectors/test_mysql.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_connector_mysql
+    return $rc
+}
+
+run_connector_mongodb() {
+    echo "==> Running MongoDB connector integration tests..."
+
+    enable_connector_mongodb
+    build_config
+
+    _CONNECTOR_COMPOSE="$(compose_cmd)"
+
+    cleanup_connector_mongodb() {
+        echo "Cleaning up MongoDB connector test..."
+        $_CONNECTOR_COMPOSE down -v 2>/dev/null || true
+    }
+    trap cleanup_connector_mongodb EXIT
+
+    $_CONNECTOR_COMPOSE build arca
+    $_CONNECTOR_COMPOSE up -d mongodb-receiver
+    wait_for_mongodb_receiver "$_CONNECTOR_COMPOSE"
+    $_CONNECTOR_COMPOSE up -d arca
+    wait_for_arca "$_CONNECTOR_COMPOSE"
+    $_CONNECTOR_COMPOSE run --rm \
+        -e MONGODB_URL=mongodb://mongodb-receiver:27017 \
+        test connectors/test_mongodb.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_connector_mongodb
+    return $rc
+}
+
 run_connectors() {
     local connector="${1:-}"
     if [[ -z "$connector" ]]; then
         echo "Error: specify a connector name or 'all'" >&2
-        echo "Usage: bin/test connectors <redis|nats|mqtt|all>" >&2
+        echo "Usage: bin/test connectors <redis|nats|mqtt|postgresql|mysql|mongodb|all>" >&2
         exit 1
     fi
     shift
@@ -389,17 +479,26 @@ run_connectors() {
         mqtt)
             run_connector_mqtt "$@"
             ;;
+        postgresql)
+            run_connector_postgresql "$@"
+            ;;
+        mysql)
+            run_connector_mysql "$@"
+            ;;
+        mongodb)
+            run_connector_mongodb "$@"
+            ;;
         all)
             run_connector_redis "$@"
             run_connector_nats "$@"
             run_connector_mqtt "$@"
-            # Future connectors will be added here:
-            # run_connector_postgresql "$@"
-            # etc.
+            run_connector_postgresql "$@"
+            run_connector_mysql "$@"
+            run_connector_mongodb "$@"
             ;;
         *)
             echo "Error: unknown connector '$connector'" >&2
-            echo "Available connectors: redis, nats, mqtt, all" >&2
+            echo "Available connectors: redis, nats, mqtt, postgresql, mysql, mongodb, all" >&2
             exit 1
             ;;
     esac
@@ -478,7 +577,7 @@ case "${1:-all}" in
         echo "  postgres             Run PostgreSQL backend integration tests"
         echo "  presigned            Run presigned URL integration tests"
         echo "  ssec                 Run SSE-C integration tests"
-        echo "  connectors <type>    Run connector integration tests (redis, nats, mqtt, all)"
+        echo "  connectors <type>    Run connector integration tests (redis, nats, mqtt, postgresql, mysql, mongodb, all)"
         echo "  s3-compat            Run Ceph s3-tests compatibility suite"
         echo ""
         echo "Extra args are passed to the test runner (cargo test or pytest)."

@@ -1,0 +1,2 @@
+# MySQL connector -- no additional config needed.
+# The mysql_timeout_seconds is in the [notifications] section.

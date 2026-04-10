@@ -30,6 +30,9 @@ _HAS_NOTIFICATIONS=false
 _HAS_CONNECTOR_REDIS=false
 _HAS_CONNECTOR_NATS=false
 _HAS_CONNECTOR_MQTT=false
+_HAS_CONNECTOR_POSTGRESQL=false
+_HAS_CONNECTOR_MYSQL=false
+_HAS_CONNECTOR_MONGODB=false
 
 # --- Feature registration ---
 
@@ -112,6 +115,27 @@ enable_connector_mqtt() {
     _HAS_CONNECTOR_MQTT=true
     enable_notifications
     _FEATURES+=(connector-mqtt)
+}
+
+enable_connector_postgresql() {
+    if $_HAS_CONNECTOR_POSTGRESQL; then return; fi
+    _HAS_CONNECTOR_POSTGRESQL=true
+    enable_notifications
+    _FEATURES+=(connector-postgresql)
+}
+
+enable_connector_mysql() {
+    if $_HAS_CONNECTOR_MYSQL; then return; fi
+    _HAS_CONNECTOR_MYSQL=true
+    enable_notifications
+    _FEATURES+=(connector-mysql)
+}
+
+enable_connector_mongodb() {
+    if $_HAS_CONNECTOR_MONGODB; then return; fi
+    _HAS_CONNECTOR_MONGODB=true
+    enable_notifications
+    _FEATURES+=(connector-mongodb)
 }
 
 # --- Config generation ---
@@ -225,6 +249,39 @@ compose_cmd() {
                     files+=("$mqtt_file")
                 fi
                 ;;
+            connector-postgresql)
+                # PostgreSQL receiver for connector tests
+                local pg_file="$REPO_ROOT/docker/docker-compose.connector-postgresql.yml"
+                local already=false
+                for f in "${files[@]}"; do
+                    [[ "$f" == "$pg_file" ]] && already=true
+                done
+                if ! $already; then
+                    files+=("$pg_file")
+                fi
+                ;;
+            connector-mysql)
+                # MySQL receiver for connector tests
+                local mysql_file="$REPO_ROOT/docker/docker-compose.connector-mysql.yml"
+                local already=false
+                for f in "${files[@]}"; do
+                    [[ "$f" == "$mysql_file" ]] && already=true
+                done
+                if ! $already; then
+                    files+=("$mysql_file")
+                fi
+                ;;
+            connector-mongodb)
+                # MongoDB receiver for connector tests
+                local mongodb_file="$REPO_ROOT/docker/docker-compose.connector-mongodb.yml"
+                local already=false
+                for f in "${files[@]}"; do
+                    [[ "$f" == "$mongodb_file" ]] && already=true
+                done
+                if ! $already; then
+                    files+=("$mongodb_file")
+                fi
+                ;;
         esac
     done
 
@@ -290,6 +347,9 @@ load_env() {
             connector-redis)        enable_connector_redis ;;
             connector-nats)         enable_connector_nats ;;
             connector-mqtt)         enable_connector_mqtt ;;
+            connector-postgresql)   enable_connector_postgresql ;;
+            connector-mysql)        enable_connector_mysql ;;
+            connector-mongodb)      enable_connector_mongodb ;;
             custom)                 _FEATURES+=(custom) ;;
         esac
     done
@@ -368,6 +428,42 @@ wait_for_mqtt() {
     echo "Waiting for MQTT broker..."
     for i in $(seq 1 "$max_wait"); do
         if $compose exec -T mqtt-receiver sh -c 'nc -z localhost 1883' 2>/dev/null; then
+            break
+        fi
+        sleep 1
+    done
+}
+
+wait_for_postgresql_receiver() {
+    local compose="$1"
+    local max_wait="${2:-30}"
+    echo "Waiting for PostgreSQL receiver..."
+    for i in $(seq 1 "$max_wait"); do
+        if $compose exec -T postgresql-receiver pg_isready -U arca 2>/dev/null | grep -q "accepting"; then
+            break
+        fi
+        sleep 1
+    done
+}
+
+wait_for_mysql_receiver() {
+    local compose="$1"
+    local max_wait="${2:-60}"
+    echo "Waiting for MySQL receiver..."
+    for i in $(seq 1 "$max_wait"); do
+        if $compose exec -T mysql-receiver mysqladmin ping -h localhost --silent 2>/dev/null; then
+            break
+        fi
+        sleep 1
+    done
+}
+
+wait_for_mongodb_receiver() {
+    local compose="$1"
+    local max_wait="${2:-30}"
+    echo "Waiting for MongoDB receiver..."
+    for i in $(seq 1 "$max_wait"); do
+        if $compose exec -T mongodb-receiver mongosh --eval 'db.adminCommand("ping")' --quiet 2>/dev/null | grep -q "ok"; then
             break
         fi
         sleep 1

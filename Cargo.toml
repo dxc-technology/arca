@@ -97,6 +97,8 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 redis = { version = "0.27", features = ["tokio-comp", "aio"] }
 async-nats = "0.38"
 rumqttc = "0.24"
+sqlx-mysql = { version = "0.8", features = ["chrono"] }
+mongodb = "3.1"
 
 # TLS
 rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "std", "tls12"] }

@@ -498,6 +498,15 @@ pub struct NotificationsConfig {
     /// MQTT connector connection timeout in seconds.
     #[serde(default = "default_mqtt_timeout_seconds")]
     pub mqtt_timeout_seconds: u64,
+    /// PostgreSQL connector connection timeout in seconds.
+    #[serde(default = "default_postgresql_timeout_seconds")]
+    pub postgresql_timeout_seconds: u64,
+    /// MySQL connector connection timeout in seconds.
+    #[serde(default = "default_mysql_timeout_seconds")]
+    pub mysql_timeout_seconds: u64,
+    /// MongoDB connector connection timeout in seconds.
+    #[serde(default = "default_mongodb_timeout_seconds")]
+    pub mongodb_timeout_seconds: u64,
     /// Number of days to retain notification events. 0 = keep forever.
     /// When set in TOML, locked (read-only in console). When absent, console can set it.
     pub event_retention_days: Option<u32>,
@@ -513,6 +522,9 @@ impl Default for NotificationsConfig {
             redis_timeout_seconds: default_redis_timeout_seconds(),
             nats_timeout_seconds: default_nats_timeout_seconds(),
             mqtt_timeout_seconds: default_mqtt_timeout_seconds(),
+            postgresql_timeout_seconds: default_postgresql_timeout_seconds(),
+            mysql_timeout_seconds: default_mysql_timeout_seconds(),
+            mongodb_timeout_seconds: default_mongodb_timeout_seconds(),
             event_retention_days: None,
         }
     }
@@ -537,6 +549,15 @@ fn default_nats_timeout_seconds() -> u64 {
     5
 }
 fn default_mqtt_timeout_seconds() -> u64 {
+    5
+}
+fn default_postgresql_timeout_seconds() -> u64 {
+    5
+}
+fn default_mysql_timeout_seconds() -> u64 {
+    5
+}
+fn default_mongodb_timeout_seconds() -> u64 {
     5
 }
 fn default_true() -> bool {
