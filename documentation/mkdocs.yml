@@ -59,6 +59,7 @@ nav:
     - Disaster Recovery: operations/recovery.md
     - Monitoring & Logging: operations/monitoring.md
     - Production Deployment: operations/deployment.md
+    - Troubleshooting: operations/troubleshooting.md
   - Roadmap: roadmap.md
   - Changelog: changelog.md
   - Technical Debt: tech-debt.md
