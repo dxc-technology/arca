@@ -305,6 +305,21 @@ async fn main() -> Result<()> {
                         app.into_make_service()
                     };
 
+                    // Ignore SIGHUP when TLS is not enabled (default would kill the process).
+                    #[cfg(unix)]
+                    {
+                        tokio::spawn(async {
+                            let mut sighup = tokio::signal::unix::signal(
+                                tokio::signal::unix::SignalKind::hangup(),
+                            )
+                            .expect("install SIGHUP handler");
+                            loop {
+                                sighup.recv().await;
+                                tracing::warn!("Received SIGHUP but TLS is not enabled, ignoring (certificate reload requires TLS)");
+                            }
+                        });
+                    }
+
                     let drain_timeout = std::time::Duration::from_secs(
                         limits.drain_timeout_seconds as u64,
                     );
