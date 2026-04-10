@@ -5,10 +5,12 @@
 //! (Redis, NATS, Kafka, AMQP, MQTT, PostgreSQL, MySQL, MongoDB, Elasticsearch,
 //! Syslog, SMTP, gRPC, ONVIF).
 
+pub mod mqtt;
 pub mod nats;
 pub mod redis;
 pub mod webhook;
 
+pub use mqtt::MqttConnector;
 pub use nats::NatsConnector;
 pub use redis::RedisConnector;
 pub use webhook::WebhookConnector;

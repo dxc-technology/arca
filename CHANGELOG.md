@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **NATS notification connector**: delivers S3 event notifications by publishing JSON payloads to a NATS subject. Supports custom subject names via `subject` property (default `arca.notifications`), optional token or user/password authentication, and configurable connection timeout (`nats_timeout_seconds`). Includes admin API connectivity test via `POST /admin/notifications/test-connector` with `connector_type=nats`
 - **(Console)** NATS connector enabled in notification editor with subject, token, and user/password configuration fields
+- **MQTT notification connector**: delivers S3 event notifications by publishing JSON payloads to an MQTT topic. Supports custom topic names via `topic` property (default `arca/notifications`), configurable QoS level (0/1/2, default 1), optional username/password authentication, and configurable connection timeout (`mqtt_timeout_seconds`). Includes admin API connectivity test via `POST /admin/notifications/test-connector` with `connector_type=mqtt`
+- **(Console)** MQTT connector enabled in notification editor with topic, username, and password configuration fields
 
 ### Fixed
 

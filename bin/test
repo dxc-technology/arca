@@ -16,6 +16,7 @@ set -euo pipefail
 #   bin/test s3-compat    Run Ceph s3-tests compatibility suite
 #   bin/test connectors redis   Run Redis connector integration tests
 #   bin/test connectors nats    Run NATS connector integration tests
+#   bin/test connectors mqtt    Run MQTT connector integration tests
 #   bin/test connectors all     Run all connector integration tests
 
 cd "$(git rev-parse --show-toplevel)"
@@ -336,11 +337,44 @@ run_connector_nats() {
     return $rc
 }
 
+run_connector_mqtt() {
+    echo "==> Running MQTT connector integration tests..."
+
+    enable_connector_mqtt
+    build_config
+
+    _CONNECTOR_COMPOSE="$(compose_cmd)"
+
+    cleanup_connector_mqtt() {
+        echo "Cleaning up MQTT connector test..."
+        $_CONNECTOR_COMPOSE down -v 2>/dev/null || true
+    }
+    trap cleanup_connector_mqtt EXIT
+
+    # Step 1: Build images
+    $_CONNECTOR_COMPOSE build arca
+    # Step 2: Start MQTT broker and wait for healthy
+    $_CONNECTOR_COMPOSE up -d mqtt-receiver
+    wait_for_mqtt "$_CONNECTOR_COMPOSE"
+    # Step 3: Start Arca with notifications config
+    $_CONNECTOR_COMPOSE up -d arca
+    wait_for_arca "$_CONNECTOR_COMPOSE"
+    # Step 4: Run MQTT connector tests
+    $_CONNECTOR_COMPOSE run --rm \
+        -e MQTT_URL=mqtt://mqtt-receiver:1883 \
+        test connectors/test_mqtt.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_connector_mqtt
+    return $rc
+}
+
 run_connectors() {
     local connector="${1:-}"
     if [[ -z "$connector" ]]; then
         echo "Error: specify a connector name or 'all'" >&2
-        echo "Usage: bin/test connectors <redis|nats|all>" >&2
+        echo "Usage: bin/test connectors <redis|nats|mqtt|all>" >&2
         exit 1
     fi
     shift
@@ -352,16 +386,20 @@ run_connectors() {
         nats)
             run_connector_nats "$@"
             ;;
+        mqtt)
+            run_connector_mqtt "$@"
+            ;;
         all)
             run_connector_redis "$@"
             run_connector_nats "$@"
+            run_connector_mqtt "$@"
             # Future connectors will be added here:
             # run_connector_postgresql "$@"
             # etc.
             ;;
         *)
             echo "Error: unknown connector '$connector'" >&2
-            echo "Available connectors: redis, nats, all" >&2
+            echo "Available connectors: redis, nats, mqtt, all" >&2
             exit 1
             ;;
     esac
@@ -440,7 +478,7 @@ case "${1:-all}" in
         echo "  postgres             Run PostgreSQL backend integration tests"
         echo "  presigned            Run presigned URL integration tests"
         echo "  ssec                 Run SSE-C integration tests"
-        echo "  connectors <type>    Run connector integration tests (redis, all)"
+        echo "  connectors <type>    Run connector integration tests (redis, nats, mqtt, all)"
         echo "  s3-compat            Run Ceph s3-tests compatibility suite"
         echo ""
         echo "Extra args are passed to the test runner (cargo test or pytest)."

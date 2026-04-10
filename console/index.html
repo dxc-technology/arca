@@ -1183,15 +1183,42 @@
                       </div>
                     </template>
 
+                    <template x-if="editForm.connector_type === 'mqtt'">
+                      <div class="space-y-2 mb-4">
+                        <div>
+                          <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">MQTT URL</label>
+                          <input type="url" x-model="editForm.arn" placeholder="mqtt://hostname:1883" autocomplete="off"
+                            class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                        </div>
+                        <div>
+                          <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Topic <span class="normal-case text-vault-muted/50">(optional, default: arca/notifications)</span></label>
+                          <input type="text" x-model="editForm.topic" placeholder="arca/notifications" autocomplete="off"
+                            class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                          <div>
+                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Username <span class="normal-case text-vault-muted/50">(optional)</span></label>
+                            <input type="text" x-model="editForm.user" placeholder="Username" autocomplete="off"
+                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                          </div>
+                          <div>
+                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Password <span class="normal-case text-vault-muted/50">(optional)</span></label>
+                            <input type="password" x-model="editForm.password" placeholder="Password" autocomplete="new-password"
+                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+
                     <!-- Coming soon for unimplemented connectors -->
-                    <template x-if="editForm.connector_type !== 'webhook' && editForm.connector_type !== 'redis' && editForm.connector_type !== 'nats'">
+                    <template x-if="editForm.connector_type !== 'webhook' && editForm.connector_type !== 'redis' && editForm.connector_type !== 'nats' && editForm.connector_type !== 'mqtt'">
                       <div class="mb-4 p-4 rounded-lg bg-vault-bg/50 border border-vault-border/30 text-center">
                         <p class="text-xs text-vault-muted">This connector is not yet available. Coming soon.</p>
                       </div>
                     </template>
 
                     <!-- Common fields: filters and events -->
-                    <template x-if="editForm.connector_type === 'webhook' || editForm.connector_type === 'redis' || editForm.connector_type === 'nats'">
+                    <template x-if="editForm.connector_type === 'webhook' || editForm.connector_type === 'redis' || editForm.connector_type === 'nats' || editForm.connector_type === 'mqtt'">
                       <div class="space-y-3">
                         <div class="grid grid-cols-2 gap-2">
                           <div>
@@ -1220,7 +1247,7 @@
 
                         <!-- Footer: actions -->
                         <div class="flex justify-between items-center pt-2">
-                          <button x-show="(editForm.connector_type === 'webhook' || editForm.connector_type === 'redis' || editForm.connector_type === 'nats') && editForm.arn"
+                          <button x-show="(editForm.connector_type === 'webhook' || editForm.connector_type === 'redis' || editForm.connector_type === 'nats' || editForm.connector_type === 'mqtt') && editForm.arn"
                             @click="testConnector(editForm.arn, editForm.connector_type, Object.assign(
                               {},
                               editForm.auth_token ? {auth_token: editForm.auth_token} : {},
@@ -1228,12 +1255,13 @@
                               editForm.password ? {password: editForm.password} : {},
                               editForm.subject ? {subject: editForm.subject} : {},
                               editForm.token ? {token: editForm.token} : {},
-                              editForm.user ? {user: editForm.user} : {}
+                              editForm.user ? {user: editForm.user} : {},
+                              editForm.topic ? {topic: editForm.topic} : {}
                             ))"
                             class="text-[11px] text-vault-muted hover:text-vault-accent transition">
                             Test connection
                           </button>
-                          <div x-show="!editForm.arn || (editForm.connector_type !== 'webhook' && editForm.connector_type !== 'redis' && editForm.connector_type !== 'nats')"></div>
+                          <div x-show="!editForm.arn || (editForm.connector_type !== 'webhook' && editForm.connector_type !== 'redis' && editForm.connector_type !== 'nats' && editForm.connector_type !== 'mqtt')"></div>
                           <div class="flex gap-2">
                             <button @click="closeModal()" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
                             <button @click="saveFromModal(bucketName)"
@@ -1245,7 +1273,7 @@
                       </div>
                     </template>
 
-                    <template x-if="editForm.connector_type !== 'webhook' && editForm.connector_type !== 'redis' && editForm.connector_type !== 'nats'">
+                    <template x-if="editForm.connector_type !== 'webhook' && editForm.connector_type !== 'redis' && editForm.connector_type !== 'nats' && editForm.connector_type !== 'mqtt'">
                       <div class="flex justify-end pt-2">
                         <button @click="closeModal()" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Close</button>
                       </div>

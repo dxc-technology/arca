@@ -259,6 +259,11 @@ async fn main() -> Result<()> {
                 );
                 registry.register(ConnectorType::Nats, Arc::new(nats));
 
+                let mqtt = connector::MqttConnector::new(
+                    std::time::Duration::from_secs(notif_config.mqtt_timeout_seconds),
+                );
+                registry.register(ConnectorType::Mqtt, Arc::new(mqtt));
+
                 Arc::new(registry)
             };
             state.connector_registry = Some(connector_registry.clone());

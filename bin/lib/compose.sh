@@ -29,6 +29,7 @@ _HAS_POSTGRES=false
 _HAS_NOTIFICATIONS=false
 _HAS_CONNECTOR_REDIS=false
 _HAS_CONNECTOR_NATS=false
+_HAS_CONNECTOR_MQTT=false
 
 # --- Feature registration ---
 
@@ -104,6 +105,13 @@ enable_connector_nats() {
     _HAS_CONNECTOR_NATS=true
     enable_notifications
     _FEATURES+=(connector-nats)
+}
+
+enable_connector_mqtt() {
+    if $_HAS_CONNECTOR_MQTT; then return; fi
+    _HAS_CONNECTOR_MQTT=true
+    enable_notifications
+    _FEATURES+=(connector-mqtt)
 }
 
 # --- Config generation ---
@@ -206,6 +214,17 @@ compose_cmd() {
                     files+=("$nats_file")
                 fi
                 ;;
+            connector-mqtt)
+                # MQTT broker for connector tests
+                local mqtt_file="$REPO_ROOT/docker/docker-compose.connector-mqtt.yml"
+                local already=false
+                for f in "${files[@]}"; do
+                    [[ "$f" == "$mqtt_file" ]] && already=true
+                done
+                if ! $already; then
+                    files+=("$mqtt_file")
+                fi
+                ;;
         esac
     done
 
@@ -270,6 +289,7 @@ load_env() {
             notifications)          enable_notifications ;;
             connector-redis)        enable_connector_redis ;;
             connector-nats)         enable_connector_nats ;;
+            connector-mqtt)         enable_connector_mqtt ;;
             custom)                 _FEATURES+=(custom) ;;
         esac
     done
@@ -336,6 +356,18 @@ wait_for_nats() {
     echo "Waiting for NATS..."
     for i in $(seq 1 "$max_wait"); do
         if $compose exec -T nats-receiver sh -c 'nc -z localhost 4222' 2>/dev/null; then
+            break
+        fi
+        sleep 1
+    done
+}
+
+wait_for_mqtt() {
+    local compose="$1"
+    local max_wait="${2:-30}"
+    echo "Waiting for MQTT broker..."
+    for i in $(seq 1 "$max_wait"); do
+        if $compose exec -T mqtt-receiver sh -c 'nc -z localhost 1883' 2>/dev/null; then
             break
         fi
         sleep 1

@@ -401,7 +401,7 @@ connectors across four categories.
 - [ ] AMQP connector + integration tests
 - [x] Redis Pub/Sub connector + integration tests
 - [x] NATS connector + integration tests
-- [ ] MQTT connector + integration tests
+- [x] MQTT connector + integration tests
 - [ ] PostgreSQL connector + integration tests
 - [ ] MySQL/MariaDB connector + integration tests
 - [ ] MongoDB connector + integration tests

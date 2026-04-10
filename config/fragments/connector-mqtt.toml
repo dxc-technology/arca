@@ -1,0 +1,2 @@
+# MQTT connector -- no additional config needed.
+# The mqtt_timeout_seconds is in the [notifications] section.

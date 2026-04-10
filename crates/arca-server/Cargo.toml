@@ -42,6 +42,7 @@ uuid = { workspace = true }
 libc = { workspace = true }
 redis = { workspace = true }
 async-nats = { workspace = true }
+rumqttc = { workspace = true }
 bytes = { workspace = true }
 
 [dev-dependencies]

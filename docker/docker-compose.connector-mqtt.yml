@@ -1,0 +1,15 @@
+services:
+  mqtt-receiver:
+    image: eclipse-mosquitto:latest
+    command:
+      - sh
+      - -c
+      - |
+        echo 'listener 1883' > /tmp/mosquitto.conf
+        echo 'allow_anonymous true' >> /tmp/mosquitto.conf
+        exec mosquitto -c /tmp/mosquitto.conf -v
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z localhost 1883"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
