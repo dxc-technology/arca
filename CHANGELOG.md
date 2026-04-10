@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.1] — 2026-04-10
+
 ### Added
 
 - **NATS notification connector**: delivers S3 event notifications by publishing JSON payloads to a NATS subject. Supports custom subject names via `subject` property (default `arca.notifications`), optional token or user/password authentication, and configurable connection timeout (`nats_timeout_seconds`). Includes admin API connectivity test via `POST /admin/notifications/test-connector` with `connector_type=nats`
@@ -18,9 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **MySQL connector**: `sqlx-mysql` driver, `DATETIME(6)` columns, supports `table` property (default: `arca_notifications`)
   - **MongoDB connector**: `mongodb` driver, BSON documents, supports `database` (default: `arca`) and `collection` (default: `arca_notifications`) properties
 - **(Console)** PostgreSQL, MySQL, and MongoDB connectors enabled in notification editor with database-specific configuration fields
+- **Deployment files**: Kubernetes manifests (Deployment, Service, PVC, ConfigMap), systemd unit file, and sample configuration file for production deployments
+- **Troubleshooting guide**: documentation page with common issues, diagnostic steps, and solutions
 
 ### Fixed
 
+- **SIGHUP killing the process when TLS is not enabled**: signal handler crashed on `unwrap()` of the TLS reloader when TLS was not configured
 - **(Console)** STORAGE SIZE chart Y-axis showed "undefined" labels when all values were 0 (fractional tick values caused negative index in `formatBytes`)
 
 ## [0.18.0] — 2026-04-09
@@ -423,7 +428,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.18.1...HEAD
+[0.18.1]: https://github.com/dxc-technology/arca/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/dxc-technology/arca/compare/v0.17.1...v0.18.0
 [0.17.1]: https://github.com/dxc-technology/arca/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/dxc-technology/arca/compare/v0.16.1...v0.17.0

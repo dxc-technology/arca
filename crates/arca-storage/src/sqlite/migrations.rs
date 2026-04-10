@@ -432,7 +432,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 15);
+        assert_eq!(version, 16);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -482,12 +482,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 15);
+        assert_eq!(version, 16);
 
-        // Fifteen migration records
+        // Sixteen migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 15);
+        assert_eq!(count, 16);
     }
 }
