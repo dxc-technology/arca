@@ -16,9 +16,9 @@ Usage:
 
 import argparse
 import json
+import math
 import os
 import statistics
-import string
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -30,6 +30,14 @@ from botocore.config import Config
 
 def create_client(endpoint: str) -> boto3.client:
     """Create an S3 client configured for Arca."""
+    # TLS verification: explicit CA bundle path, no verification, or default.
+    verify: bool | str = True
+    if os.environ.get("ARCA_TLS_NO_VERIFY"):
+        verify = False
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    elif os.environ.get("AWS_CA_BUNDLE"):
+        verify = os.environ["AWS_CA_BUNDLE"]
     return boto3.client(
         "s3",
         endpoint_url=endpoint,
@@ -40,6 +48,7 @@ def create_client(endpoint: str) -> boto3.client:
             "AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
         ),
         region_name="us-east-1",
+        verify=verify,
         config=Config(
             signature_version="s3v4",
             retries={"max_attempts": 0},
@@ -72,7 +81,7 @@ def report_latencies(name: str, latencies: list[float], errors: int = 0) -> dict
     """Print a formatted latency report and return structured data."""
     if not latencies:
         print(f"  {name}: no successful operations")
-        return {"name": name, "ops": 0, "errors": errors}
+        return {"name": name, "ops": 0, "errors": errors, "throughput": 0, "throughput_unit": "ops/s"}
 
     total = len(latencies)
     total_time = sum(latencies)
@@ -83,6 +92,8 @@ def report_latencies(name: str, latencies: list[float], errors: int = 0) -> dict
         "ops": total,
         "errors": errors,
         "ops_per_sec": round(ops_sec, 1),
+        "throughput": round(ops_sec, 1),
+        "throughput_unit": "ops/s",
         "p50_ms": round(percentile(latencies, 50) * 1000, 1),
         "p95_ms": round(percentile(latencies, 95) * 1000, 1),
         "p99_ms": round(percentile(latencies, 99) * 1000, 1),
@@ -146,8 +157,7 @@ def test_small_object_put(client, bucket: str, threads: int, count: int, size: i
             except Exception:
                 errors += 1
 
-    report_latencies("PUT", latencies, errors)
-    return latencies
+    return report_latencies("Small PUT", latencies, errors)
 
 
 def test_small_object_get(client, bucket: str, threads: int, count: int):
@@ -170,8 +180,7 @@ def test_small_object_get(client, bucket: str, threads: int, count: int):
             except Exception:
                 errors += 1
 
-    report_latencies("GET", latencies, errors)
-    return latencies
+    return report_latencies("Small GET", latencies, errors)
 
 
 def test_head_object(client, bucket: str, threads: int, count: int):
@@ -269,6 +278,14 @@ def test_large_multipart(client, bucket: str, size_mb: int):
     print(f"  Throughput: {throughput_mb:.1f} MB/s")
     print(f"  Parts: {part_num}")
 
+    return {
+        "name": "Multipart Upload",
+        "throughput": round(throughput_mb, 1),
+        "throughput_unit": "MB/s",
+        "elapsed_s": round(elapsed, 2),
+        "parts": part_num,
+    }
+
 
 def test_mixed_workload(client, bucket: str, threads: int, ops: int):
     """Mixed workload: 70% GET, 20% PUT, 10% DELETE."""
@@ -334,6 +351,24 @@ def test_mixed_workload(client, bucket: str, threads: int, ops: int):
     report_latencies("DELETE (10%)", del_lats)
     print(f"  Total errors: {errors}")
 
+    all_lats = get_lats + put_lats + del_lats
+    total_ops = len(all_lats)
+    total_time = sum(all_lats) if all_lats else 0
+    combined_ops_sec = total_ops / total_time if total_time > 0 else 0
+    result = {
+        "name": "Mixed Workload",
+        "ops": total_ops,
+        "errors": errors,
+        "ops_per_sec": round(combined_ops_sec, 1),
+        "throughput": round(combined_ops_sec, 1),
+        "throughput_unit": "ops/s",
+    }
+    if all_lats:
+        result["p50_ms"] = round(percentile(all_lats, 50) * 1000, 1)
+        result["p95_ms"] = round(percentile(all_lats, 95) * 1000, 1)
+        result["p99_ms"] = round(percentile(all_lats, 99) * 1000, 1)
+    return result
+
 
 def test_listing(client, bucket: str, object_count: int):
     """List performance with many objects."""
@@ -360,6 +395,62 @@ def test_listing(client, bucket: str, object_count: int):
     print(f"  Objects listed: {object_count}")
     print(f"  Time (avg of 3): {avg:.3f}s")
     print(f"  Objects/sec: {object_count/avg:.0f}")
+
+    return {
+        "name": "Listing",
+        "throughput": round(object_count / avg, 1) if avg > 0 else 0,
+        "throughput_unit": "obj/s",
+        "avg_s": round(avg, 3),
+        "objects": object_count,
+    }
+
+
+def compute_global_score(results: list[dict]) -> float:
+    """Weighted geometric mean of throughput values across all tests.
+
+    The score is a composite metric for comparing performance across runs.
+    Higher is better. The absolute value depends on the workload parameters.
+    """
+    weights = {
+        "Small PUT": 0.20,
+        "Small GET": 0.25,
+        "HEAD": 0.10,
+        "DELETE": 0.10,
+        "Multipart Upload": 0.10,
+        "Mixed Workload": 0.15,
+        "Listing": 0.10,
+    }
+    log_sum = 0.0
+    weight_sum = 0.0
+    for r in results:
+        w = weights.get(r.get("name", ""), 0)
+        t = r.get("throughput", 0)
+        if w > 0 and t > 0:
+            log_sum += w * math.log(t)
+            weight_sum += w
+    if weight_sum == 0:
+        return 0.0
+    return math.exp(log_sum / weight_sum)
+
+
+def print_summary_table(results: list[dict]) -> float:
+    """Print a summary table and return the global performance score."""
+    print("\n" + "=" * 72)
+    print("  PERFORMANCE SUMMARY")
+    print("=" * 72)
+    print(f"  {'Test':<22s}  {'Throughput':>14s}  {'p50 ms':>8s}  {'p95 ms':>8s}  {'p99 ms':>8s}")
+    print("  " + "-" * 68)
+    for r in results:
+        tput = f"{r.get('throughput', 0):>8.1f} {r.get('throughput_unit', ''):5s}"
+        p50 = f"{r['p50_ms']:8.1f}" if "p50_ms" in r else "       -"
+        p95 = f"{r['p95_ms']:8.1f}" if "p95_ms" in r else "       -"
+        p99 = f"{r['p99_ms']:8.1f}" if "p99_ms" in r else "       -"
+        print(f"  {r.get('name', '?'):<22s}  {tput}  {p50}  {p95}  {p99}")
+    print("  " + "-" * 68)
+    score = compute_global_score(results)
+    print(f"\n  Global Performance Index: {score:.1f}")
+    print("=" * 72)
+    return score
 
 
 def compare_with_baseline(current: dict, baseline_path: str):
@@ -408,10 +499,17 @@ def main():
     parser.add_argument("--mixed-ops", type=int, default=500)
     parser.add_argument("--json", action="store_true", help="Output JSON results")
     parser.add_argument("--baseline", help="Baseline JSON file for comparison")
+    parser.add_argument("-q", "--quiet", action="store_true",
+                        help="Show only the summary table, suppress per-test details")
     args = parser.parse_args()
 
     client = create_client(args.endpoint)
     bucket = "arca-perf-test"
+
+    # In quiet mode, suppress all per-test output by redirecting stdout.
+    saved_stdout = sys.stdout
+    if args.quiet:
+        sys.stdout = open(os.devnull, "w")
 
     print("=" * 60)
     print("  Arca S3 Performance Test Suite")
@@ -423,23 +521,35 @@ def main():
     all_results = []
 
     try:
-        test_small_object_put(client, bucket, args.threads, args.objects, 1024)
-        r = test_small_object_get(client, bucket, args.threads, args.objects)
-        if isinstance(r, dict):
-            all_results.append(r)
-        r = test_head_object(client, bucket, args.threads, args.objects)
-        if isinstance(r, dict):
-            all_results.append(r)
-        r = test_delete_object(client, bucket, args.threads, args.objects)
-        if isinstance(r, dict):
-            all_results.append(r)
-        test_large_multipart(client, bucket, args.large_mb)
-        test_mixed_workload(client, bucket, args.threads, args.mixed_ops)
-        test_listing(client, bucket, args.list_objects)
+        all_results.append(
+            test_small_object_put(client, bucket, args.threads, args.objects, 1024)
+        )
+        all_results.append(
+            test_small_object_get(client, bucket, args.threads, args.objects)
+        )
+        all_results.append(
+            test_head_object(client, bucket, args.threads, args.objects)
+        )
+        all_results.append(
+            test_delete_object(client, bucket, args.threads, args.objects)
+        )
+        all_results.append(
+            test_large_multipart(client, bucket, args.large_mb)
+        )
+        all_results.append(
+            test_mixed_workload(client, bucket, args.threads, args.mixed_ops)
+        )
+        all_results.append(
+            test_listing(client, bucket, args.list_objects)
+        )
     finally:
         print("\n--- Cleanup ---")
         cleanup_bucket(client, bucket)
         print("  Done.")
+        # Restore stdout before summary table.
+        sys.stdout = saved_stdout
+
+    score = print_summary_table(all_results)
 
     output = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -447,6 +557,7 @@ def main():
         "threads": args.threads,
         "objects": args.objects,
         "results": all_results,
+        "score": score,
     }
 
     if args.json:

@@ -1,17 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run performance tests against a running Arca instance.
+# Run performance tests against Arca.
+#
+# Without --tls / --encryption the script runs the perf-test container against
+# an already-running Arca instance (same as before).
+#
+# With --tls and/or --encryption the script is self-contained: it builds the
+# config, starts Arca with the requested features, runs the tests, and tears
+# everything down.
 #
 # Usage:
-#   bin/perf-test                    Run with defaults
-#   bin/perf-test --threads 20       Override thread count
-#   bin/perf-test --build            Rebuild the perf image first
+#   bin/perf-test                         Run against already-running Arca
+#   bin/perf-test --build                 Rebuild the perf image first
+#   bin/perf-test --threads 20            Override thread count
+#   bin/perf-test --tls                        Start with TLS (self-signed, no verify)
+#   bin/perf-test --tls --tls-fqdn myhost.com  TLS with existing certs + FQDN verify
+#   bin/perf-test --encryption                 Start Arca with encryption
+#   bin/perf-test --tls --encryption           Combine features
 
 cd "$(git rev-parse --show-toplevel)"
+source bin/lib/compose.sh
 
-COMPOSE="docker compose -f docker/docker-compose.yml --profile perf"
 BUILD=false
+WANT_TLS=false
+WANT_ENCRYPTION=false
+TLS_FQDN=""
 EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -20,13 +34,36 @@ while [[ $# -gt 0 ]]; do
             BUILD=true
             shift
             ;;
+        --tls)
+            WANT_TLS=true
+            shift
+            ;;
+        --tls-fqdn)
+            if [[ -z "${2:-}" ]]; then
+                echo "Error: --tls-fqdn requires a hostname" >&2
+                exit 1
+            fi
+            WANT_TLS=true
+            TLS_FQDN="$2"
+            shift 2
+            ;;
+        --encryption)
+            WANT_ENCRYPTION=true
+            shift
+            ;;
         -h|--help)
-            echo "Usage: bin/perf-test [--build] [<args>]"
+            echo "Usage: bin/perf-test [--build] [--tls] [--tls-fqdn FQDN] [--encryption] [<args>]"
             echo ""
             echo "Options:"
-            echo "  --build        Rebuild the perf-test image first"
-            echo "  --threads N    Override thread count (passed to perf tool)"
+            echo "  --build          Rebuild the perf-test image first"
+            echo "  --tls            Start Arca with TLS (self-signed certs, no verification)"
+            echo "  --tls-fqdn FQDN Start Arca with TLS, use existing certs from ./certs/ if"
+            echo "                  available (falls back to self-signed), connect via FQDN"
+            echo "  --encryption     Start Arca with server-side encryption"
+            echo "  --threads N      Override thread count (passed to perf tool)"
+            echo "  -q, --quiet      Show only the summary table"
             echo ""
+            echo "Without --tls or --encryption, runs against an already-running Arca."
             echo "Extra arguments are passed to the performance test tool."
             exit 0
             ;;
@@ -37,10 +74,134 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+SELF_CONTAINED=false
+if $WANT_TLS || $WANT_ENCRYPTION; then
+    SELF_CONTAINED=true
+fi
+
+# --- Self-contained mode: start Arca, run tests, clean up ---
+
+if $SELF_CONTAINED; then
+    # Determine TLS mode: existing certs vs self-signed
+    USE_EXISTING_CERTS=false
+    if $WANT_TLS; then
+        if [[ -n "$TLS_FQDN" ]] && [[ -d certs ]] && [[ -n "$(ls -A certs/ 2>/dev/null)" ]]; then
+            USE_EXISTING_CERTS=true
+        fi
+        # Always use tls-explicit (explicit cert filenames in config)
+        enable_tls_explicit
+    fi
+    if $WANT_ENCRYPTION; then enable_encryption; fi
+    build_config
+
+    COMPOSE="$(compose_cmd)"
+
+    generated_certs=()
+    PERF_OVERRIDE=""
+    cleanup_perf() {
+        echo "Cleaning up perf test..."
+        $COMPOSE --profile perf --profile tls-init down -v 2>/dev/null || true
+        for f in "${generated_certs[@]}"; do
+            rm -f "$f"
+        done
+        rm -f "$PERF_OVERRIDE"
+    }
+    trap cleanup_perf EXIT
+
+    # Build images
+    if $BUILD; then
+        echo "==> Building perf-test image..."
+        $COMPOSE --profile perf build perf-test
+    fi
+    $COMPOSE build arca
+
+    # Set up TLS certificates
+    if $WANT_TLS; then
+        if $USE_EXISTING_CERTS; then
+            # Symlink existing certs to the names expected by tls-explicit fragment
+            for f in certs/*; do
+                [[ -f "$f" ]] || continue
+                if grep -q "BEGIN CERTIFICATE" "$f" 2>/dev/null; then
+                    ln -sf "$(basename "$f")" certs/arca-server.crt
+                elif grep -q "BEGIN.*PRIVATE KEY" "$f" 2>/dev/null; then
+                    ln -sf "$(basename "$f")" certs/arca-server.key
+                fi
+            done
+            generated_certs=(certs/arca-server.crt certs/arca-server.key)
+        else
+            # Generate self-signed certificates
+            mkdir -p certs
+            sans="arca,localhost,127.0.0.1,::1"
+            if [[ -n "$TLS_FQDN" ]]; then
+                sans="$sans,$TLS_FQDN"
+            fi
+            echo "==> Generating self-signed certificates (SANs: $sans)..."
+            $COMPOSE --profile tls-init run --rm --entrypoint "" tls-init \
+                /usr/local/bin/arca tls generate --output-dir /etc/arca/certs --sans "$sans"
+            generated_certs=(certs/arca-ca.crt certs/arca-ca.key certs/arca-server.crt certs/arca-server.key)
+        fi
+    fi
+
+    # Start Arca
+    echo "==> Starting Arca..."
+    $COMPOSE up -d arca
+    wait_for_arca "$COMPOSE"
+
+    # Build env vars for the perf-test container
+    run_args=()
+    PERF_COMPOSE="$COMPOSE"
+    if $WANT_TLS; then
+        if [[ -n "$TLS_FQDN" ]]; then
+            # Map FQDN to the arca container IP via compose override
+            ARCA_CONTAINER=$($COMPOSE ps -q arca)
+            ARCA_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$ARCA_CONTAINER")
+            PERF_OVERRIDE="$REPO_ROOT/docker/.perf-fqdn-override.yml"
+            cat > "$PERF_OVERRIDE" <<EOF
+services:
+  perf-test:
+    extra_hosts:
+      - "$TLS_FQDN:$ARCA_IP"
+EOF
+            PERF_COMPOSE="$COMPOSE -f $PERF_OVERRIDE"
+            # Connect via the FQDN
+            run_args+=(-e "ARCA_ENDPOINT=https://$TLS_FQDN:9000")
+            if $USE_EXISTING_CERTS; then
+                # Real certs: trust system CAs (verify=True by default)
+                :
+            else
+                # Self-signed: trust our generated CA
+                run_args+=(-e "AWS_CA_BUNDLE=/etc/arca/certs/arca-ca.crt")
+            fi
+        else
+            # No FQDN: connect to docker service name, skip verification
+            run_args+=(-e "ARCA_ENDPOINT=https://arca:9000")
+            run_args+=(-e "ARCA_TLS_NO_VERIFY=1")
+        fi
+        # Mount certs into perf-test container (needed for self-signed CA bundle)
+        run_args+=(-v "$REPO_ROOT/certs:/etc/arca/certs:ro")
+    fi
+
+    echo "==> Running performance tests..."
+    $PERF_COMPOSE --profile perf run --rm "${run_args[@]+"${run_args[@]}"}" perf-test "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
+    rc=$?
+
+    trap - EXIT
+    cleanup_perf
+    exit $rc
+fi
+
+# --- Simple mode: run against already-running Arca ---
+
+COMPOSE="$(compose_cmd)"
+
+# Try to inherit features from running Arca
+load_env
+COMPOSE="$(compose_cmd)"
+
 if $BUILD; then
     echo "==> Building perf-test image..."
-    $COMPOSE build perf-test
+    $COMPOSE --profile perf build perf-test
 fi
 
 echo "==> Running performance tests..."
-$COMPOSE run --rm perf-test "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
+$COMPOSE --profile perf run --rm perf-test "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
