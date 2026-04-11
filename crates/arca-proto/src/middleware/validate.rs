@@ -9,7 +9,6 @@
 use axum::extract::State;
 use axum::middleware::Next;
 use axum::response::Response;
-use http::StatusCode;
 
 use arca_core::{S3Error, S3ErrorCode};
 

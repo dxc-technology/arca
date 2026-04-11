@@ -3,7 +3,6 @@
 //! Provides per-IP and per-credential rate limiting using the GCRA algorithm
 //! via the `governor` crate. Disabled when rate = 0 in config.
 
-use std::net::IpAddr;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
@@ -13,7 +12,6 @@ use axum::response::Response;
 use governor::clock::DefaultClock;
 use governor::state::keyed::DashMapStateStore;
 use governor::{Quota, RateLimiter};
-use http::StatusCode;
 
 use arca_core::{S3Error, S3ErrorCode};
 
