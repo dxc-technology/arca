@@ -115,3 +115,9 @@ arca-auth = { path = "crates/arca-auth" }
 arca-storage = { path = "crates/arca-storage" }
 arca-proto = { path = "crates/arca-proto" }
 arca-server = { path = "crates/arca-server" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true

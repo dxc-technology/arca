@@ -161,6 +161,9 @@ pub fn load_rustls_config(paths: &ResolvedPaths) -> Result<Arc<RustlsServerConfi
 
     config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
+    // Enable TLS session resumption to avoid full handshakes on reconnect.
+    config.session_storage = rustls::server::ServerSessionMemoryCache::new(256);
+
     Ok(Arc::new(config))
 }
 
@@ -228,6 +231,8 @@ pub async fn serve_tls(
                         continue;
                     }
                 };
+
+                tcp_stream.set_nodelay(true).ok();
 
                 let tls_config = reloader.current();
                 let acceptor = tokio_rustls::TlsAcceptor::from(tls_config);

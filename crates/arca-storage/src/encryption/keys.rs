@@ -144,10 +144,12 @@ pub fn decrypt_chunk(
 ) -> Result<Vec<u8>, String> {
     let nonce = Nonce::assume_unique_for_key(*nonce_bytes);
     let mut in_out = ciphertext_and_tag.to_vec();
-    let plaintext = key
+    let plaintext_len = key
         .open_in_place(nonce, Aad::empty(), &mut in_out)
-        .map_err(|_| "chunk decryption failed (corrupted or wrong key)")?;
-    Ok(plaintext.to_vec())
+        .map_err(|_| "chunk decryption failed (corrupted or wrong key)")?
+        .len();
+    in_out.truncate(plaintext_len);
+    Ok(in_out)
 }
 
 /// Creates an AES-256-GCM LessSafeKey from raw key bytes.

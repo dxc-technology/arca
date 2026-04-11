@@ -38,7 +38,14 @@ impl SqliteStore {
             .map_err(|e| ArcaError::Internal(format!("opening database: {e}")))?;
 
         conn.call(|conn| {
-            conn.execute_batch("PRAGMA journal_mode=WAL")?;
+            conn.execute_batch(
+                "PRAGMA journal_mode=WAL;\
+                 PRAGMA synchronous=NORMAL;\
+                 PRAGMA cache_size=-64000;\
+                 PRAGMA mmap_size=268435456;\
+                 PRAGMA temp_store=MEMORY;\
+                 PRAGMA busy_timeout=5000;"
+            )?;
             migrations::run_migrations(conn)?;
             Ok(())
         })

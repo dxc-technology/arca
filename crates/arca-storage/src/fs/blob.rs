@@ -172,7 +172,7 @@ impl BlobStore for FsBlobStore {
             None => Box::new(file),
         };
 
-        let stream = ReaderStream::new(reader);
+        let stream = ReaderStream::with_capacity(reader, 65536);
         let byte_stream: ByteStream = Box::pin(map_reader_stream(stream));
 
         Ok(BlobGetResult {
@@ -208,7 +208,7 @@ impl BlobStore for FsBlobStore {
         meta: &SidecarMeta,
     ) -> Result<(), ArcaError> {
         let sidecar_path = self.sidecar_path(blob_id);
-        let json = serde_json::to_string_pretty(meta)
+        let json = serde_json::to_string(meta)
             .map_err(|e| ArcaError::Internal(format!("serialize sidecar: {e}")))?;
         fs::write(&sidecar_path, json.as_bytes())
             .await
