@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.2] — 2026-04-11
+
+### Changed
+
+- **Performance: release profile optimization** — enable `opt-level = 3`, thin LTO, `codegen-units = 1`, and symbol stripping for significantly faster crypto, hashing, and XML parsing
+- **Performance: TLS session resumption** — enable server-side session cache (256 entries) to avoid full handshakes on client reconnections
+- **Performance: TCP_NODELAY on TLS connections** — reduce latency on small responses (HEAD, DELETE, errors)
+- **Performance: SQLite tuning** — set `synchronous=NORMAL` (safe with WAL), 64 MB page cache, 256 MB mmap, `temp_store=MEMORY`, 5 s busy timeout
+- **Performance: 64 KB ReaderStream chunks** — increase from 8 KB default, reducing syscalls by ~8x on large object downloads
+- **Performance: eliminate double allocation in decryption** — reuse the in-place decryption buffer instead of copying plaintext
+- **Performance: compact sidecar JSON** — drop pretty-printing for smaller sidecar files and faster I/O
+
+### Fixed
+
+- Unused imports in `arca-proto` middleware (`std::net::IpAddr`, `http::StatusCode`)
+
+### Added
+
+- **Perf-test summary table**: all test results in a single table with throughput and latency percentiles
+- **Global Performance Index**: weighted geometric mean score for run-to-run comparison
+- **Perf-test `--tls` flag**: self-contained TLS testing with self-signed certificates
+- **Perf-test `--tls-fqdn` flag**: TLS with existing certificates and FQDN verification
+- **Perf-test `--encryption` flag**: self-contained encryption testing
+- **Perf-test `-q`/`--quiet` flag**: show only the summary table
+
 ## [0.18.1] — 2026-04-10
 
 ### Added
@@ -428,7 +453,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.18.1...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.18.2...HEAD
+[0.18.2]: https://github.com/dxc-technology/arca/compare/v0.18.1...v0.18.2
 [0.18.1]: https://github.com/dxc-technology/arca/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/dxc-technology/arca/compare/v0.17.1...v0.18.0
 [0.17.1]: https://github.com/dxc-technology/arca/compare/v0.17.0...v0.17.1
