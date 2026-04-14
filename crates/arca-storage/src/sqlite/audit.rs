@@ -111,6 +111,47 @@ impl AuditStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("insert_audit_entry: {e}")))
     }
 
+    async fn insert_audit_entries_batch(&self, entries: &[AuditEntry]) -> Result<(), ArcaError> {
+        let entries: Vec<AuditEntry> = entries.to_vec();
+        self.conn
+            .call(move |conn| {
+                let tx = conn.transaction()?;
+                {
+                    let mut stmt = tx.prepare_cached(
+                        "INSERT INTO audit_log (timestamp, request_id, operation, bucket, key,
+                            version_id, user_id, access_key_id, source_ip, http_method,
+                            http_status, error_code, bytes_sent, bytes_received, duration_ms,
+                            user_agent)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)"
+                    )?;
+                    for entry in &entries {
+                        stmt.execute(params![
+                            entry.timestamp.to_rfc3339(),
+                            entry.request_id,
+                            entry.operation,
+                            entry.bucket,
+                            entry.key,
+                            entry.version_id,
+                            entry.user_id,
+                            entry.access_key_id,
+                            entry.source_ip,
+                            entry.http_method,
+                            entry.http_status as u32,
+                            entry.error_code,
+                            entry.bytes_sent as i64,
+                            entry.bytes_received as i64,
+                            entry.duration_ms as i64,
+                            entry.user_agent,
+                        ])?;
+                    }
+                }
+                tx.commit()?;
+                Ok(())
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("insert_audit_entries_batch: {e}")))
+    }
+
     async fn list_audit_entries(
         &self,
         filter: &AuditFilter,

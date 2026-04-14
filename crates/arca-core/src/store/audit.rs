@@ -84,6 +84,12 @@ pub trait AuditStore: Send + Sync {
         entry: &AuditEntry,
     ) -> Result<(), crate::error::ArcaError>;
 
+    /// Insert multiple audit log entries in a single transaction.
+    async fn insert_audit_entries_batch(
+        &self,
+        entries: &[AuditEntry],
+    ) -> Result<(), crate::error::ArcaError>;
+
     /// Query audit log entries matching the given filter.
     async fn list_audit_entries(
         &self,

@@ -105,7 +105,7 @@ impl MetadataStore for CachingMetadataStore {
     async fn put_object(
         &self,
         record: &ObjectRecord,
-    ) -> Result<Option<ObjectRecord>, ArcaError> {
+    ) -> Result<(Option<ObjectRecord>, Option<String>), ArcaError> {
         let result = self.inner.put_object(record).await;
         if result.is_ok() {
             let key = Self::object_key(&record.bucket, &record.key);

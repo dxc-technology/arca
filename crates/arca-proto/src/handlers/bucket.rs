@@ -1067,10 +1067,13 @@ async fn put_bucket_encryption(
         .set_bucket_config(bucket, "encryption_algorithm", &algorithm)
         .await
     {
-        Ok(()) => Response::builder()
-            .status(StatusCode::OK)
-            .body(Body::empty())
-            .expect("build put_bucket_encryption response"),
+        Ok(()) => {
+            state.invalidate_bucket_encryption_cache(bucket);
+            Response::builder()
+                .status(StatusCode::OK)
+                .body(Body::empty())
+                .expect("build put_bucket_encryption response")
+        }
         Err(e) => internal_error_response(e, resource),
     }
 }
@@ -1487,6 +1490,7 @@ pub async fn delete_bucket(
         }
         match state.metadata.delete_bucket_config(&bucket, "encryption_algorithm").await {
             Ok(_) => {
+                state.invalidate_bucket_encryption_cache(&bucket);
                 return Response::builder()
                     .status(StatusCode::NO_CONTENT)
                     .body(Body::empty())

@@ -30,12 +30,13 @@ pub trait MetadataStore: Send + Sync {
 
     // -- Object operations --
 
-    /// Inserts or replaces an object record. Returns the old record if one was overwritten
-    /// (so the caller can delete the orphaned blob).
+    /// Inserts or replaces an object record. Returns `(old_record, version_id)`:
+    /// - `old_record`: the overwritten record (if any), so the caller can delete the orphaned blob.
+    /// - `version_id`: the version ID assigned to the new record (None for unversioned).
     async fn put_object(
         &self,
         record: &ObjectRecord,
-    ) -> Result<Option<ObjectRecord>, crate::error::ArcaError>;
+    ) -> Result<(Option<ObjectRecord>, Option<String>), crate::error::ArcaError>;
 
     /// Returns the object record for the given bucket/key, or None if not found.
     /// Filters out delete markers (use `get_latest_object` to include them).

@@ -2,10 +2,20 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::RwLock;
+use std::collections::HashMap;
+use std::time::Instant;
 
 use arca_core::store::{AuditStore, BlobStore, ConnectorRegistry, CredentialStore, GrantStore, MetadataStore, MetricsStore, NotificationStore, PresignedUrlStore, ServerConfigStore, SsecBlobOps, TeamStore, UserStore};
+use arca_core::store::audit::AuditEntry;
 
 use crate::metrics::MetricsRegistry;
+
+/// Data sent through the audit channel for batched writing.
+#[derive(Clone)]
+pub struct AuditData {
+    pub entry: AuditEntry,
+}
 
 /// Application state shared across all handlers.
 #[derive(Clone)]
@@ -77,6 +87,11 @@ pub struct AppState {
     pub connector_registry: Option<Arc<ConnectorRegistry>>,
     /// Presigned URL tracking store (for visibility in console).
     pub presigned_url_store: Option<Arc<dyn PresignedUrlStore>>,
+    /// Cache for per-bucket encryption config lookups (bucket -> (has_encryption, expires_at)).
+    /// Avoids a DB query on every PUT/UploadPart when global encryption is disabled.
+    pub bucket_encryption_cache: Arc<RwLock<HashMap<String, (bool, Instant)>>>,
+    /// Audit log channel sender for batched writes (None = audit disabled or using legacy per-request inserts).
+    pub audit_tx: Option<tokio::sync::mpsc::Sender<AuditData>>,
 }
 
 impl AppState {
@@ -92,24 +107,106 @@ impl AppState {
     ///
     /// Checks per-bucket encryption config and the global default to decide
     /// whether to write through the encrypting store or the plain store.
+    /// Results are cached for 30 seconds to avoid a DB query on every write.
     pub async fn blob_for_write(&self, bucket: &str) -> Arc<dyn BlobStore> {
         let should_encrypt = if self.encryption_enabled {
-            // Global encryption is on — all buckets are encrypted
             true
+        } else if self.plain_blob.is_none() {
+            // No master key configured — per-bucket encryption is impossible.
+            false
         } else {
-            // Global encryption is off — check per-bucket config
-            matches!(
-                self.metadata.get_bucket_config(bucket, "encryption_algorithm").await,
-                Ok(Some(_))
-            )
+            // Check cache first.
+            let now = Instant::now();
+            let cached = self.bucket_encryption_cache.read().ok()
+                .and_then(|cache| cache.get(bucket).copied())
+                .filter(|(_, expires)| *expires > now)
+                .map(|(val, _)| val);
+
+            if let Some(val) = cached {
+                val
+            } else {
+                let val = matches!(
+                    self.metadata.get_bucket_config(bucket, "encryption_algorithm").await,
+                    Ok(Some(_))
+                );
+                if let Ok(mut cache) = self.bucket_encryption_cache.write() {
+                    cache.insert(bucket.to_string(), (val, now + std::time::Duration::from_secs(30)));
+                }
+                val
+            }
         };
 
         if should_encrypt {
-            // state.blob is EncryptingBlobStore when key is available
             self.blob.clone()
         } else {
-            // Use plain store if available, otherwise state.blob (which is FsBlobStore)
             self.plain_blob.clone().unwrap_or_else(|| self.blob.clone())
         }
     }
+
+    /// Invalidate the per-bucket encryption cache entry (called when bucket
+    /// encryption config changes).
+    pub fn invalidate_bucket_encryption_cache(&self, bucket: &str) {
+        if let Ok(mut cache) = self.bucket_encryption_cache.write() {
+            cache.remove(bucket);
+        }
+    }
+
+    /// Send an audit entry through the batched channel (non-blocking).
+    /// Falls back to direct insert if channel is not available.
+    pub fn send_audit(&self, entry: AuditEntry) {
+        if let Some(ref tx) = self.audit_tx {
+            let _ = tx.try_send(AuditData { entry });
+        } else if let Some(ref audit_store) = self.audit_store {
+            // Legacy fallback: direct insert via tokio::spawn.
+            let audit = audit_store.clone();
+            tokio::spawn(async move {
+                if let Err(e) = audit.insert_audit_entry(&entry).await {
+                    tracing::warn!(error = %e, "Failed to write audit log entry");
+                }
+            });
+        }
+    }
+}
+
+/// Spawn the dedicated audit batch writer task.
+/// Returns the sender end of the channel for AppState.
+pub fn spawn_audit_writer(
+    audit_store: Arc<dyn AuditStore>,
+) -> tokio::sync::mpsc::Sender<AuditData> {
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<AuditData>(10_000);
+
+    tokio::spawn(async move {
+        let mut batch: Vec<AuditEntry> = Vec::with_capacity(128);
+
+        loop {
+            // Wait for the first entry or channel close.
+            match rx.recv().await {
+                Some(data) => batch.push(data.entry),
+                None => break, // channel closed, shut down
+            }
+
+            // Drain up to 127 more entries without waiting.
+            while batch.len() < 128 {
+                match rx.try_recv() {
+                    Ok(data) => batch.push(data.entry),
+                    Err(_) => break,
+                }
+            }
+
+            // Flush the batch.
+            if !batch.is_empty() {
+                if let Err(e) = audit_store.insert_audit_entries_batch(&batch).await {
+                    tracing::warn!(error = %e, count = batch.len(), "Failed to write audit batch");
+                }
+                batch.clear();
+            }
+        }
+
+        // Flush remaining on shutdown.
+        if !batch.is_empty() {
+            let _ = audit_store.insert_audit_entries_batch(&batch).await;
+        }
+    });
+
+    tx
 }

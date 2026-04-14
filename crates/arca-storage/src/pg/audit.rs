@@ -63,6 +63,45 @@ impl AuditStore for PgStore {
         Ok(())
     }
 
+    async fn insert_audit_entries_batch(&self, entries: &[AuditEntry]) -> Result<(), ArcaError> {
+        let mut tx = self.pool.begin().await
+            .map_err(|e| ArcaError::Internal(format!("insert_audit_entries_batch: {e}")))?;
+
+        for entry in entries {
+            sqlx_core::query::query(
+                "INSERT INTO audit_log (timestamp, request_id, operation, bucket, key,
+                    version_id, user_id, access_key_id, source_ip, http_method,
+                    http_status, error_code, bytes_sent, bytes_received, duration_ms,
+                    user_agent)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
+            )
+            .bind(entry.timestamp)
+            .bind(&entry.request_id)
+            .bind(&entry.operation)
+            .bind(&entry.bucket)
+            .bind(&entry.key)
+            .bind(&entry.version_id)
+            .bind(&entry.user_id)
+            .bind(&entry.access_key_id)
+            .bind(&entry.source_ip)
+            .bind(&entry.http_method)
+            .bind(entry.http_status as i32)
+            .bind(&entry.error_code)
+            .bind(entry.bytes_sent as i64)
+            .bind(entry.bytes_received as i64)
+            .bind(entry.duration_ms as i64)
+            .bind(&entry.user_agent)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("insert_audit_entries_batch: {e}")))?;
+        }
+
+        tx.commit().await
+            .map_err(|e| ArcaError::Internal(format!("insert_audit_entries_batch: {e}")))?;
+
+        Ok(())
+    }
+
     async fn list_audit_entries(
         &self,
         filter: &AuditFilter,

@@ -151,7 +151,7 @@ impl MetadataStore for SqliteStore {
     async fn put_object(
         &self,
         record: &ObjectRecord,
-    ) -> Result<Option<ObjectRecord>, ArcaError> {
+    ) -> Result<(Option<ObjectRecord>, Option<String>), ArcaError> {
         let mut record = record.clone();
         self.conn
             .call(move |conn| {
@@ -222,7 +222,7 @@ impl MetadataStore for SqliteStore {
                     }
                 };
 
-                Ok(old)
+                Ok((old, record.version_id.clone()))
             })
             .await
             .map_err(|e: TrError| ArcaError::Internal(format!("put_object: {e}")))
@@ -1758,7 +1758,7 @@ mod tests {
         store.create_bucket("b").await.unwrap();
         let record = make_record("b", "key1");
 
-        let old = store.put_object(&record).await.unwrap();
+        let (old, _vid) = store.put_object(&record).await.unwrap();
         assert!(old.is_none());
 
         let got = store.get_object("b", "key1").await.unwrap().unwrap();
@@ -1779,7 +1779,8 @@ mod tests {
         let mut r2 = make_record("b", "key1");
         r2.blob_id = BlobId("blob-2".to_string());
         r2.size = 200;
-        let old = store.put_object(&r2).await.unwrap().unwrap();
+        let (old, _vid) = store.put_object(&r2).await.unwrap();
+        let old = old.unwrap();
 
         assert_eq!(old.blob_id.0, "blob-1");
         assert_eq!(old.size, 100);
@@ -2097,7 +2098,7 @@ mod tests {
         enable_versioning(&store, "b").await;
 
         let r = make_record("b", "key1");
-        let old = store.put_object(&r).await.unwrap();
+        let (old, _vid) = store.put_object(&r).await.unwrap();
         assert!(old.is_none()); // No blob to clean up
 
         let got = store.get_object("b", "key1").await.unwrap().unwrap();
@@ -2120,7 +2121,7 @@ mod tests {
         let mut r2 = make_record("b", "key1");
         r2.blob_id = BlobId("blob-2".to_string());
         r2.size = 200;
-        let old = store.put_object(&r2).await.unwrap();
+        let (old, _vid) = store.put_object(&r2).await.unwrap();
         assert!(old.is_none()); // Old version preserved, no cleanup
 
         // Latest should be r2.
@@ -2382,13 +2383,13 @@ mod tests {
         let mut r1 = make_record("b", "key1");
         r1.blob_id = BlobId("blob-1".to_string());
         r1.size = 100;
-        let old = store.put_object(&r1).await.unwrap();
+        let (old, _vid) = store.put_object(&r1).await.unwrap();
         assert!(old.is_none());
 
         let mut r2 = make_record("b", "key1");
         r2.blob_id = BlobId("blob-2".to_string());
         r2.size = 200;
-        let old = store.put_object(&r2).await.unwrap();
+        let (old, _vid) = store.put_object(&r2).await.unwrap();
         // Should return old record for cleanup.
         assert!(old.is_some());
         assert_eq!(old.unwrap().blob_id.0, "blob-1");
@@ -2429,13 +2430,13 @@ mod tests {
         // Put again — should create a null version, keep the real version.
         let mut r2 = make_record("b", "key1");
         r2.blob_id = BlobId("blob-2".to_string());
-        let old = store.put_object(&r2).await.unwrap();
+        let (old, _vid) = store.put_object(&r2).await.unwrap();
         assert!(old.is_none()); // No previous null version to clean up
 
         // Put a third time — should overwrite the null version.
         let mut r3 = make_record("b", "key1");
         r3.blob_id = BlobId("blob-3".to_string());
-        let old = store.put_object(&r3).await.unwrap();
+        let (old, _vid) = store.put_object(&r3).await.unwrap();
         // Should return the old null version for cleanup.
         assert!(old.is_some());
         assert_eq!(old.unwrap().blob_id.0, "blob-2");

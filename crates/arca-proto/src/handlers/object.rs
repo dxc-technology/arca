@@ -611,25 +611,20 @@ pub async fn put_object(
         checksum_algorithm,
         checksum_value,
     };
-    let old = match state.metadata.put_object(&record).await {
-        Ok(old) => old,
+    let (old, version_id) = match state.metadata.put_object(&record).await {
+        Ok(r) => r,
         Err(e) => return internal_error_response(e, &resource),
     };
 
-    // Clean up old blob if overwriting.
+    // Clean up old blob in background (don't block the response).
     if let Some(old_record) = old {
-        if let Err(e) = state.blob.delete(&old_record.blob_id).await {
-            tracing::warn!(error = %e, "Failed to delete old blob during overwrite");
-        }
+        let blob = state.blob.clone();
+        tokio::spawn(async move {
+            if let Err(e) = blob.delete(&old_record.blob_id).await {
+                tracing::warn!(error = %e, "Failed to delete old blob during overwrite");
+            }
+        });
     }
-
-    // Re-read the stored record to get the version_id assigned by the metadata store.
-    let stored = state
-        .metadata
-        .get_object(&record.bucket, &record.key)
-        .await
-        .ok()
-        .flatten();
 
     // Store inline tags from x-amz-tagging header (already validated above).
     if let Some(ref th) = tagging_header {
@@ -637,11 +632,7 @@ pub async fn put_object(
         // so Err here is unreachable, but handle defensively.
         if let Ok(tags) = xml_types::parse_tagging_header(th) {
             if !tags.is_empty() {
-                let tag_vid = stored
-                    .as_ref()
-                    .and_then(|r| r.version_id.as_ref())
-                    .cloned()
-                    .unwrap_or_default();
+                let tag_vid = version_id.clone().unwrap_or_default();
                 if let Err(e) = state
                     .metadata
                     .put_object_tags(&record.bucket, &record.key, &tag_vid, &tags)
@@ -660,7 +651,7 @@ pub async fn put_object(
         key: record.key.clone(),
         size: record.size,
         etag: put_result.etag.clone(),
-        version_id: stored.as_ref().and_then(|r| r.version_id.clone()),
+        version_id: version_id.clone(),
         sequencer: uuid::Uuid::new_v4().simple().to_string(),
         user_identity: None,
         source_ip: None,
@@ -672,7 +663,7 @@ pub async fn put_object(
     let mut builder = Response::builder()
         .status(StatusCode::OK)
         .header("ETag", &etag);
-    if let Some(ref vid) = stored.as_ref().and_then(|r| r.version_id.as_ref()) {
+    if let Some(ref vid) = version_id {
         builder = builder.header("x-amz-version-id", vid.as_str());
     }
     if let Some(ref ssec) = ssec_key {
@@ -978,32 +969,23 @@ async fn copy_object(
         checksum_algorithm: src_record.checksum_algorithm.clone(),
         checksum_value: src_record.checksum_value.clone(),
     };
-    let old = match state.metadata.put_object(&record).await {
-        Ok(old) => old,
+    let (old, version_id) = match state.metadata.put_object(&record).await {
+        Ok(r) => r,
         Err(e) => return internal_error_response(e, &resource),
     };
 
-    // Clean up old blob if overwriting.
+    // Clean up old blob in background (don't block the response).
     if let Some(old_record) = old {
-        if let Err(e) = state.blob.delete(&old_record.blob_id).await {
-            tracing::warn!(error = %e, "Failed to delete old blob during copy overwrite");
-        }
+        let blob = state.blob.clone();
+        tokio::spawn(async move {
+            if let Err(e) = blob.delete(&old_record.blob_id).await {
+                tracing::warn!(error = %e, "Failed to delete old blob during copy overwrite");
+            }
+        });
     }
 
-    // Re-read the stored record to get the version_id assigned by the metadata store.
-    let stored = state
-        .metadata
-        .get_object(&record.bucket, &record.key)
-        .await
-        .ok()
-        .flatten();
-
     // Handle tagging directive: COPY source tags or REPLACE with x-amz-tagging header.
-    let dest_tag_vid = stored
-        .as_ref()
-        .and_then(|r| r.version_id.as_ref())
-        .cloned()
-        .unwrap_or_default();
+    let dest_tag_vid = version_id.clone().unwrap_or_default();
     if tagging_directive.eq_ignore_ascii_case("REPLACE") {
         // REPLACE: use x-amz-tagging header from copy request.
         if let Some(ref th) = tagging_header {
@@ -1040,7 +1022,7 @@ async fn copy_object(
         key: record.key.clone(),
         size: record.size,
         etag: put_result.etag.clone(),
-        version_id: stored.as_ref().and_then(|r| r.version_id.clone()),
+        version_id: version_id.clone(),
         sequencer: uuid::Uuid::new_v4().simple().to_string(),
         user_identity: None,
         source_ip: None,
@@ -1058,7 +1040,7 @@ async fn copy_object(
         builder = builder.header("x-amz-copy-source-version-id", vid.as_str());
     }
     // Add x-amz-version-id for the new destination version.
-    if let Some(ref vid) = stored.as_ref().and_then(|r| r.version_id.as_ref()) {
+    if let Some(ref vid) = version_id {
         builder = builder.header("x-amz-version-id", vid.as_str());
     }
     if let Some(ref ssec) = dest_ssec {

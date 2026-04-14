@@ -208,7 +208,7 @@ async fn main() -> Result<()> {
                 metadata_backend,
                 data_dirs: vec![std::path::PathBuf::from(&config.storage.data_dir)],
                 audit_store: if audit_enabled {
-                    stores.audit
+                    stores.audit.clone()
                 } else {
                     None
                 },
@@ -228,6 +228,12 @@ async fn main() -> Result<()> {
                 notification_store: stores.notification,
                 connector_registry: None, // Set after building the registry below.
                 presigned_url_store: stores.presigned_url,
+                bucket_encryption_cache: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+                audit_tx: if audit_enabled {
+                    stores.audit.as_ref().map(|a| arca_proto::state::spawn_audit_writer(a.clone()))
+                } else {
+                    None
+                },
             };
 
             // Create notification channel and update state

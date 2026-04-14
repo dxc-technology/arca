@@ -1,11 +1,9 @@
 //! Audit logging middleware.
 //!
 //! Captures operation name, status code, latency, identity, and bytes for
-//! every request. Writes audit entries asynchronously via `tokio::spawn`
-//! so it never blocks the response. Also feeds in-memory metrics.
-//!
-//! TECHDEBT(TD-009): Per-request inserts. Under heavy load, consider batching
-//! via an mpsc channel with a dedicated writer task.
+//! every request. Audit entries are sent through a bounded mpsc channel to
+//! a dedicated writer task that batches inserts for efficiency.
+//! Also feeds in-memory metrics.
 
 use std::sync::atomic::Ordering;
 use std::time::Instant;
@@ -320,60 +318,54 @@ pub async fn audit_middleware(
         | "Admin::MetricsHistory" | "Admin::ListSettings"
     );
 
-    // Write audit entry asynchronously (if enabled)
+    // Write audit entry via batched channel (if enabled)
     if state.audit_enabled && !skip_audit {
-        if let Some(ref audit_store) = state.audit_store {
-            let (bucket, key) = if path.starts_with("/admin/") {
-                (None, None)
+        let (bucket, key) = if path.starts_with("/admin/") {
+            (None, None)
+        } else {
+            parse_bucket_key(&path)
+        };
+
+        let request_id = response
+            .headers()
+            .get("x-amz-request-id")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+
+        // Resolve user_id from access key in a background task, then send to audit channel.
+        let credentials = state.credentials.clone();
+        let state2 = state.clone();
+        tokio::spawn(async move {
+            let user_id = if let Some(ref ak) = access_key_id {
+                match credentials.get_credential(ak).await {
+                    Ok(Some(cred)) => Some(cred.user_id),
+                    _ => None,
+                }
             } else {
-                parse_bucket_key(&path)
+                None
             };
 
-            let audit = audit_store.clone();
-            let credentials = state.credentials.clone();
-            let request_id = response
-                .headers()
-                .get("x-amz-request-id")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("")
-                .to_string();
-
-            // TECHDEBT(TD-009): per-request insert + credential lookup
-            tokio::spawn(async move {
-                // Look up user_id from access key
-                let user_id = if let Some(ref ak) = access_key_id {
-                    match credentials.get_credential(ak).await {
-                        Ok(Some(cred)) => Some(cred.user_id),
-                        _ => None,
-                    }
-                } else {
-                    None
-                };
-
-                let entry = AuditEntry {
-                    id: 0,
-                    timestamp: chrono::Utc::now(),
-                    request_id,
-                    operation: operation.to_string(),
-                    bucket,
-                    key,
-                    version_id: None,
-                    user_id,
-                    access_key_id,
-                    source_ip,
-                    http_method: method,
-                    http_status: status,
-                    error_code: None,
-                    bytes_sent: 0, // would need response body interception for accuracy
-                    bytes_received: content_length,
-                    duration_ms,
-                    user_agent,
-                };
-                if let Err(e) = audit.insert_audit_entry(&entry).await {
-                    tracing::warn!(error = %e, "Failed to write audit log entry");
-                }
+            state2.send_audit(AuditEntry {
+                id: 0,
+                timestamp: chrono::Utc::now(),
+                request_id,
+                operation: operation.to_string(),
+                bucket,
+                key,
+                version_id: None,
+                user_id,
+                access_key_id,
+                source_ip,
+                http_method: method,
+                http_status: status,
+                error_code: None,
+                bytes_sent: 0,
+                bytes_received: content_length,
+                duration_ms,
+                user_agent,
             });
-        }
+        });
     }
 
     response

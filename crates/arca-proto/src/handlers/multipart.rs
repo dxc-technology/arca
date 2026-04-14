@@ -444,35 +444,26 @@ pub async fn complete_multipart_upload(
         checksum_algorithm: None,
         checksum_value: None,
     };
-    let old = match state.metadata.put_object(&record).await {
-        Ok(old) => old,
+    let (old, version_id) = match state.metadata.put_object(&record).await {
+        Ok(r) => r,
         Err(e) => return internal_error_response(e, &resource),
     };
 
-    // Clean up old blob if overwriting.
+    // Clean up old blob in background (don't block the response).
     if let Some(old_record) = old {
-        if let Err(e) = state.blob.delete(&old_record.blob_id).await {
-            tracing::warn!(error = %e, "Failed to delete old blob during multipart complete");
-        }
+        let blob = state.blob.clone();
+        tokio::spawn(async move {
+            if let Err(e) = blob.delete(&old_record.blob_id).await {
+                tracing::warn!(error = %e, "Failed to delete old blob during multipart complete");
+            }
+        });
     }
-
-    // Re-read the stored record to get the version_id assigned by the metadata store.
-    let stored = state
-        .metadata
-        .get_object(&bucket, &key)
-        .await
-        .ok()
-        .flatten();
 
     // Store inline tags from CreateMultipartUpload x-amz-tagging header.
     if let Some(ref th) = inline_tagging {
         if let Ok(tags) = xml_types::parse_tagging_header(th) {
             if !tags.is_empty() {
-                let tag_vid = stored
-                    .as_ref()
-                    .and_then(|r| r.version_id.as_ref())
-                    .cloned()
-                    .unwrap_or_default();
+                let tag_vid = version_id.clone().unwrap_or_default();
                 if let Err(e) = state
                     .metadata
                     .put_object_tags(&bucket, &key, &tag_vid, &tags)
@@ -484,7 +475,7 @@ pub async fn complete_multipart_upload(
         }
     }
 
-    // Delete upload + parts from DB and clean up part blobs.
+    // Delete upload + parts from DB, then clean up part blobs in background.
     let old_parts = match state.metadata.delete_multipart_upload(&upload_id).await {
         Ok(p) => p,
         Err(e) => {
@@ -492,10 +483,15 @@ pub async fn complete_multipart_upload(
             Vec::new()
         }
     };
-    for part in &old_parts {
-        if let Err(e) = state.blob.delete(&part.blob_id).await {
-            tracing::warn!(error = %e, part_number = part.part_number, "Failed to delete part blob");
-        }
+    if !old_parts.is_empty() {
+        let blob = state.blob.clone();
+        tokio::spawn(async move {
+            for part in &old_parts {
+                if let Err(e) = blob.delete(&part.blob_id).await {
+                    tracing::warn!(error = %e, part_number = part.part_number, "Failed to delete part blob");
+                }
+            }
+        });
     }
 
     // Emit notification event
@@ -505,7 +501,7 @@ pub async fn complete_multipart_upload(
         key: key.clone(),
         size: record.size,
         etag: composite_etag.clone(),
-        version_id: stored.as_ref().and_then(|r| r.version_id.clone()),
+        version_id: version_id.clone(),
         sequencer: uuid::Uuid::new_v4().simple().to_string(),
         user_identity: None,
         source_ip: None,
@@ -517,7 +513,7 @@ pub async fn complete_multipart_upload(
     let mut builder = Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/xml");
-    if let Some(ref vid) = stored.as_ref().and_then(|r| r.version_id.as_ref()) {
+    if let Some(ref vid) = version_id {
         builder = builder.header("x-amz-version-id", vid.as_str());
     }
     if record.encryption_algorithm.is_some() {

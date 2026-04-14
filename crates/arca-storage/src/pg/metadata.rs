@@ -315,7 +315,7 @@ impl MetadataStore for PgStore {
     async fn put_object(
         &self,
         record: &ObjectRecord,
-    ) -> Result<Option<ObjectRecord>, ArcaError> {
+    ) -> Result<(Option<ObjectRecord>, Option<String>), ArcaError> {
         let mut record = record.clone();
         let mut tx = self
             .pool
@@ -428,7 +428,7 @@ impl MetadataStore for PgStore {
             .await
             .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
 
-        Ok(old)
+        Ok((old, record.version_id.clone()))
     }
 
     async fn get_object(
