@@ -10,7 +10,7 @@ use super::{SqliteStore, TrError};
 impl ServerConfigStore for SqliteStore {
     async fn get_server_config(&self, key: &str) -> Result<Option<String>, ArcaError> {
         let key = key.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT config_value FROM server_config WHERE config_key = ?1",
@@ -58,7 +58,7 @@ impl ServerConfigStore for SqliteStore {
     }
 
     async fn list_server_config(&self) -> Result<Vec<(String, String)>, ArcaError> {
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT config_key, config_value FROM server_config ORDER BY config_key",

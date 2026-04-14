@@ -160,7 +160,7 @@ impl AuditStore for SqliteStore {
         let limit = if filter.limit == 0 { 100 } else { filter.limit };
         let offset = filter.offset;
 
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let sql = format!(
                     "SELECT * FROM audit_log {where_clause} ORDER BY timestamp DESC LIMIT {limit} OFFSET {offset}"
@@ -182,7 +182,7 @@ impl AuditStore for SqliteStore {
     async fn count_audit_entries(&self, filter: &AuditFilter) -> Result<u64, ArcaError> {
         let (where_clause, params_vec) = build_filter_clause(filter);
 
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let sql = format!("SELECT COUNT(*) FROM audit_log {where_clause}");
                 let mut stmt = conn.prepare(&sql)?;

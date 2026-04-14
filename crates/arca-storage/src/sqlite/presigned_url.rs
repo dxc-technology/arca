@@ -65,7 +65,7 @@ impl PresignedUrlStore for SqliteStore {
     ) -> Result<Vec<PresignedUrlRecord>, ArcaError> {
         let bucket = bucket.to_string();
         let now = Utc::now().to_rfc3339();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT * FROM presigned_urls

@@ -32,7 +32,7 @@ const OBJECT_COLUMNS: &str = "bucket, key, blob_id, size, etag, content_type, la
 #[async_trait::async_trait]
 impl MetadataStore for SqliteStore {
     async fn get_stats(&self) -> Result<StorageStats, ArcaError> {
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let stats = conn.query_row(
                     "SELECT
@@ -57,7 +57,7 @@ impl MetadataStore for SqliteStore {
     // -- Bucket operations --
 
     async fn list_buckets(&self) -> Result<Vec<BucketInfo>, ArcaError> {
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT name, created_at, owner FROM buckets ORDER BY name",
@@ -100,7 +100,7 @@ impl MetadataStore for SqliteStore {
 
     async fn head_bucket(&self, name: &str) -> Result<Option<BucketInfo>, ArcaError> {
         let name = name.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT name, created_at, owner FROM buckets WHERE name = ?1",
@@ -133,7 +133,7 @@ impl MetadataStore for SqliteStore {
 
     async fn bucket_is_empty(&self, name: &str) -> Result<bool, ArcaError> {
         let name = name.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let count: u32 = conn.query_row(
                     "SELECT COUNT(*) FROM objects WHERE bucket = ?1 LIMIT 1",
@@ -235,7 +235,7 @@ impl MetadataStore for SqliteStore {
     ) -> Result<Option<ObjectRecord>, ArcaError> {
         let bucket = bucket.to_string();
         let key = key.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let sql = format!(
                     "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND is_latest = 1 AND is_delete_marker = 0"
@@ -262,7 +262,7 @@ impl MetadataStore for SqliteStore {
     ) -> Result<Option<ObjectRecord>, ArcaError> {
         let bucket = bucket.to_string();
         let key = key.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let sql = format!(
                     "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND is_latest = 1"
@@ -292,7 +292,7 @@ impl MetadataStore for SqliteStore {
         let bucket = bucket.to_string();
         let prefix = prefix.map(|s| s.to_string());
         let start_after = start_after.map(|s| s.to_string());
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 // Build dynamic SQL — only latest non-delete-marker objects.
                 let mut sql = format!(
@@ -461,7 +461,7 @@ impl MetadataStore for SqliteStore {
         let bucket = bucket.to_string();
         let key = key.to_string();
         let version_id = version_id.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let sql = if version_id == "null" {
                     format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL")
@@ -573,7 +573,7 @@ impl MetadataStore for SqliteStore {
         let prefix = prefix.map(|s| s.to_string());
         let key_marker = key_marker.map(|s| s.to_string());
         let _version_id_marker = version_id_marker.map(|s| s.to_string());
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut sql = format!(
                     "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1"
@@ -638,7 +638,7 @@ impl MetadataStore for SqliteStore {
     ) -> Result<Option<String>, ArcaError> {
         let bucket = bucket.to_string();
         let config_key = config_key.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT config_value FROM bucket_config WHERE bucket = ?1 AND config_key = ?2",
@@ -703,7 +703,7 @@ impl MetadataStore for SqliteStore {
         bucket: &str,
     ) -> Result<Vec<(String, String)>, ArcaError> {
         let bucket = bucket.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT tag_key, tag_value FROM bucket_tags WHERE bucket = ?1 ORDER BY tag_key",
@@ -769,7 +769,7 @@ impl MetadataStore for SqliteStore {
         let bucket = bucket.to_string();
         let key = key.to_string();
         let version_id = version_id.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT tag_key, tag_value FROM object_tags
@@ -875,7 +875,7 @@ impl MetadataStore for SqliteStore {
         upload_id: &str,
     ) -> Result<Option<MultipartUploadRecord>, ArcaError> {
         let upload_id = upload_id.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm
@@ -946,7 +946,7 @@ impl MetadataStore for SqliteStore {
 
     async fn list_parts(&self, upload_id: &str) -> Result<Vec<PartRecord>, ArcaError> {
         let upload_id = upload_id.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT upload_id, part_number, blob_id, size, etag, checksum_value, last_modified
@@ -1019,7 +1019,7 @@ impl MetadataStore for SqliteStore {
         let prefix = prefix.map(|s| s.to_string());
         let key_marker = key_marker.map(|s| s.to_string());
         let upload_id_marker = upload_id_marker.map(|s| s.to_string());
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut sql = String::from(
                     "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm
@@ -1184,7 +1184,7 @@ impl MetadataStore for SqliteStore {
         let cutoff_str = cutoff.to_rfc3339();
         let start_after = start_after.map(|s| s.to_string());
 
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut sql = format!(
                     "SELECT {OBJECT_COLUMNS} FROM objects \
@@ -1273,7 +1273,7 @@ impl MetadataStore for SqliteStore {
         let cutoff_str = cutoff.to_rfc3339();
         let start_after = start_after.map(|s| s.to_string());
 
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut sql = format!(
                     "SELECT {OBJECT_COLUMNS} FROM objects \
@@ -1336,7 +1336,7 @@ impl MetadataStore for SqliteStore {
         let bucket = bucket.to_string();
         let cutoff_str = cutoff.to_rfc3339();
 
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let sql = format!(
                     "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm \

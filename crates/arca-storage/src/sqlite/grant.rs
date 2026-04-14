@@ -37,7 +37,7 @@ impl GrantStore for SqliteStore {
 
     async fn get_grant(&self, grant_id: &str) -> Result<Option<Grant>, ArcaError> {
         let id = grant_id.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT grant_id, name, description, document, created_at, updated_at
@@ -56,7 +56,7 @@ impl GrantStore for SqliteStore {
 
     async fn get_grant_by_name(&self, name: &str) -> Result<Option<Grant>, ArcaError> {
         let n = name.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT grant_id, name, description, document, created_at, updated_at
@@ -74,7 +74,7 @@ impl GrantStore for SqliteStore {
     }
 
     async fn list_grants(&self) -> Result<Vec<Grant>, ArcaError> {
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT grant_id, name, description, document, created_at, updated_at
@@ -249,7 +249,7 @@ impl GrantStore for SqliteStore {
 
     async fn list_user_grants(&self, user_id: &str) -> Result<Vec<Grant>, ArcaError> {
         let uid = user_id.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT g.grant_id, g.name, g.description, g.document, g.created_at, g.updated_at
@@ -271,7 +271,7 @@ impl GrantStore for SqliteStore {
 
     async fn list_team_grants(&self, team_id: &str) -> Result<Vec<Grant>, ArcaError> {
         let tid = team_id.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT g.grant_id, g.name, g.description, g.document, g.created_at, g.updated_at
@@ -296,7 +296,7 @@ impl GrantStore for SqliteStore {
         user_id: &str,
     ) -> Result<Vec<PolicyDocument>, ArcaError> {
         let uid = user_id.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT g.document

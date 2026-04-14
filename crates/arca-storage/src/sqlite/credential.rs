@@ -38,7 +38,7 @@ impl CredentialStore for SqliteStore {
         access_key_id: &str,
     ) -> Result<Option<Credential>, ArcaError> {
         let key = access_key_id.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT access_key_id, secret_access_key, description, created_at, active, admin, user_id
@@ -58,7 +58,7 @@ impl CredentialStore for SqliteStore {
     }
 
     async fn list_credentials(&self) -> Result<Vec<Credential>, ArcaError> {
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT access_key_id, secret_access_key, description, created_at, active, admin, user_id
@@ -133,7 +133,7 @@ impl CredentialStore for SqliteStore {
     }
 
     async fn count_active_credentials(&self) -> Result<u64, ArcaError> {
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let count: u64 = conn.query_row(
                     "SELECT COUNT(*) FROM credentials WHERE active = 1",

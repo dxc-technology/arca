@@ -139,7 +139,7 @@ impl NotificationStore for SqliteStore {
         let limit = if filter.limit == 0 { 100 } else { filter.limit };
         let offset = filter.offset;
 
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let sql = format!(
                     "SELECT * FROM notification_events {where_clause} ORDER BY created_at DESC LIMIT {limit} OFFSET {offset}"
@@ -166,7 +166,7 @@ impl NotificationStore for SqliteStore {
     ) -> Result<u64, ArcaError> {
         let (where_clause, params_vec) = build_filter_clause(filter);
 
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let sql =
                     format!("SELECT COUNT(*) FROM notification_events {where_clause}");

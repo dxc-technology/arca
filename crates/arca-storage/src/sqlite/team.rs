@@ -27,7 +27,7 @@ impl TeamStore for SqliteStore {
 
     async fn get_team(&self, team_id: &str) -> Result<Option<Team>, ArcaError> {
         let id = team_id.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT team_id, name, description, created_at
@@ -45,7 +45,7 @@ impl TeamStore for SqliteStore {
     }
 
     async fn list_teams(&self) -> Result<Vec<Team>, ArcaError> {
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT team_id, name, description, created_at
@@ -160,7 +160,7 @@ impl TeamStore for SqliteStore {
 
     async fn list_members(&self, team_id: &str) -> Result<Vec<User>, ArcaError> {
         let tid = team_id.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT u.user_id, u.username, u.description, u.is_root, u.created_at
@@ -184,7 +184,7 @@ impl TeamStore for SqliteStore {
 
     async fn list_user_teams(&self, user_id: &str) -> Result<Vec<Team>, ArcaError> {
         let uid = user_id.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT t.team_id, t.name, t.description, t.created_at

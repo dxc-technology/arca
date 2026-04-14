@@ -65,7 +65,7 @@ impl MetricsStore for SqliteStore {
     ) -> Result<Vec<MetricsSnapshot>, ArcaError> {
         let limit = if limit == 0 { 500 } else { limit };
 
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut conditions: Vec<String> = Vec::new();
                 let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();

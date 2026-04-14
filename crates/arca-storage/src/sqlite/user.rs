@@ -33,7 +33,7 @@ impl UserStore for SqliteStore {
 
     async fn get_user(&self, user_id: &str) -> Result<Option<User>, ArcaError> {
         let id = user_id.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT user_id, username, description, is_root, created_at
@@ -52,7 +52,7 @@ impl UserStore for SqliteStore {
 
     async fn get_user_by_username(&self, username: &str) -> Result<Option<User>, ArcaError> {
         let name = username.to_string();
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT user_id, username, description, is_root, created_at
@@ -70,7 +70,7 @@ impl UserStore for SqliteStore {
     }
 
     async fn list_users(&self) -> Result<Vec<User>, ArcaError> {
-        self.conn
+        self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT user_id, username, description, is_root, created_at
