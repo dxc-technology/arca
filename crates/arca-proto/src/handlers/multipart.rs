@@ -361,22 +361,11 @@ pub async fn complete_multipart_upload(
         }
     }
 
-    // Chain part streams into a final blob.
+    // Assemble parts into a final blob via filesystem-level concatenation.
     let final_blob_id = BlobId::new();
-    let mut combined_stream: ByteStream = Box::pin(tokio_stream::empty());
-    for part in &matched_parts {
-        let get_result = match state.blob.get(&part.blob_id, None).await {
-            Ok(r) => r,
-            Err(e) => return internal_error_response(e, &resource),
-        };
-        combined_stream = Box::pin(tokio_stream::StreamExt::chain(
-            combined_stream,
-            get_result.stream,
-        ));
-    }
-
+    let part_blob_ids: Vec<BlobId> = matched_parts.iter().map(|p| p.blob_id.clone()).collect();
     let write_blob = state.blob_for_write(&bucket).await;
-    let put_result = match write_blob.put(&final_blob_id, combined_stream).await {
+    let put_result = match write_blob.concat(&part_blob_ids, &final_blob_id).await {
         Ok(r) => r,
         Err(e) => return internal_error_response(e, &resource),
     };

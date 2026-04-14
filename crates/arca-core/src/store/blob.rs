@@ -109,6 +109,24 @@ pub trait BlobStore: Send + Sync {
         blob_id: &BlobId,
         meta: &SidecarMeta,
     ) -> Result<(), crate::error::ArcaError>;
+
+    /// Concatenates multiple blobs into a single output blob, computing MD5.
+    ///
+    /// Default implementation reads each blob via `get()` and writes via `put()`.
+    /// `FsBlobStore` overrides this with direct file-level concatenation
+    /// (no intermediate streams, fewer syscalls).
+    async fn concat(
+        &self,
+        part_blob_ids: &[BlobId],
+        output_blob_id: &BlobId,
+    ) -> Result<BlobPutResult, crate::error::ArcaError> {
+        let mut combined: ByteStream = Box::pin(tokio_stream::empty());
+        for blob_id in part_blob_ids {
+            let result = self.get(blob_id, None).await?;
+            combined = Box::pin(tokio_stream::StreamExt::chain(combined, result.stream));
+        }
+        self.put(output_blob_id, combined).await
+    }
 }
 
 /// Trait for SSE-C (Server-Side Encryption with Customer-provided keys) blob operations.

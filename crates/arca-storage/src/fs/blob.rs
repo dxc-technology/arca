@@ -202,6 +202,68 @@ impl BlobStore for FsBlobStore {
         Ok(())
     }
 
+    /// Optimized concatenation: copies part files directly to a single output
+    /// file without intermediate streams, computing MD5 as it goes.
+    async fn concat(
+        &self,
+        part_blob_ids: &[BlobId],
+        output_blob_id: &BlobId,
+    ) -> Result<BlobPutResult, ArcaError> {
+        let output_path = self.blob_path(output_blob_id);
+        let tmp_path = self.tmp_path(output_blob_id);
+
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent)
+                .await
+                .map_err(|e| ArcaError::Internal(format!("create blob dir: {e}")))?;
+        }
+
+        let mut out_file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp_path)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("create tmp file: {e}")))?;
+
+        let mut hasher = Md5::new();
+        let mut total_size: u64 = 0;
+        let mut buf = vec![0u8; 65536];
+
+        for part_id in part_blob_ids {
+            let part_path = self.blob_path(part_id);
+            let mut part_file = fs::File::open(&part_path)
+                .await
+                .map_err(|e| ArcaError::Internal(format!("open part blob: {e}")))?;
+
+            loop {
+                let n = part_file.read(&mut buf)
+                    .await
+                    .map_err(|e| ArcaError::Internal(format!("read part blob: {e}")))?;
+                if n == 0 {
+                    break;
+                }
+                hasher.update(&buf[..n]);
+                total_size += n as u64;
+                out_file.write_all(&buf[..n])
+                    .await
+                    .map_err(|e| ArcaError::Internal(format!("write concat blob: {e}")))?;
+            }
+        }
+
+        out_file.flush()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("flush concat blob: {e}")))?;
+        drop(out_file);
+
+        fs::rename(&tmp_path, &output_path)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("rename concat blob: {e}")))?;
+
+        let etag = hex::encode(hasher.finalize());
+
+        Ok(BlobPutResult { size: total_size, etag, encryption: None })
+    }
+
     async fn write_sidecar(
         &self,
         blob_id: &BlobId,
