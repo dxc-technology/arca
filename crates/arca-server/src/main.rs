@@ -40,6 +40,12 @@ async fn main() -> Result<()> {
             // Initialize tracing with the requested format.
             init_tracing(&log_format);
 
+            tracing::info!(
+                version = env!("CARGO_PKG_VERSION"),
+                commit = env!("ARCA_GIT_COMMIT"),
+                "Starting Arca"
+            );
+
             let config = config::load_config(&config_path)?;
 
             let stores = open_stores(&config).await?;

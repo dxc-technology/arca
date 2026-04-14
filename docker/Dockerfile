@@ -39,6 +39,10 @@ COPY crates/ crates/
 # Touch source files to invalidate the cached build for our crates only
 RUN touch crates/*/src/*.rs
 
+# Git commit hash, passed from bin/build, baked into the binary via env!()
+ARG ARCA_GIT_COMMIT=unknown
+ENV ARCA_GIT_COMMIT=${ARCA_GIT_COMMIT}
+
 # Build the actual binary
 RUN cargo build --release --workspace
 

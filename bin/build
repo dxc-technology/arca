@@ -77,6 +77,9 @@ if $CONSOLE && [[ "${BUILD_TARGET:-}" == "development" ]]; then
     unset BUILD_TARGET
 fi
 
+# Grab git commit hash for embedding in the image.
+GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+
 if $BINARY; then
     # Determine target platform
     if [[ -z "$ARCH" ]]; then
@@ -94,6 +97,7 @@ if $BINARY; then
     docker buildx build \
         --platform "$PLATFORM" \
         --target production \
+        --build-arg "ARCA_GIT_COMMIT=$GIT_COMMIT" \
         --load \
         -t "$IMAGE_TAG" \
         -f docker/Dockerfile .
@@ -111,5 +115,5 @@ elif $CONSOLE; then
     docker compose -f docker/docker-compose.yml --profile console build console
 else
     echo "==> Building ${BUILD_TARGET:-production} image..."
-    docker compose -f docker/docker-compose.yml build arca
+    ARCA_GIT_COMMIT="$GIT_COMMIT" docker compose -f docker/docker-compose.yml build --build-arg "ARCA_GIT_COMMIT=$GIT_COMMIT" arca
 fi
