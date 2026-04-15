@@ -73,8 +73,6 @@ pub async fn validate_middleware(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn null_byte_detected() {
         let path = "/bucket/key\0evil";
