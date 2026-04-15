@@ -1295,6 +1295,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#admin-server-enhancements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin &amp; Server Enhancements
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#console-enhancements" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1850,6 +1861,17 @@
     <span class="md-ellipsis">
       
         Phase 31 — OpenTelemetry Integration [P3]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#admin-server-enhancements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin &amp; Server Enhancements
       
     </span>
   </a>
@@ -2670,6 +2692,12 @@ with observability platforms (Grafana, Datadog, Jaeger, etc.).</p>
 </ul>
 <p><strong>Depends on</strong>: Phase 18 (monitoring and audit infrastructure)</p>
 <hr />
+<h3 id="admin-server-enhancements">Admin &amp; Server Enhancements<a class="headerlink" href="#admin-server-enhancements" title="Permanent link">&para;</a></h3>
+<p>Independent of numbered phases — general improvements to the admin API and server capabilities.</p>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Configuration export/import API: <code>GET /admin/export</code> and <code>POST /admin/import</code> for full instance config (settings, users, teams, grants, credentials, buckets, bucket configs). Supports section filtering, secret masking, skip/overwrite/dry_run modes (P2)</li>
+</ul>
+<hr />
 <h3 id="console-enhancements">Console Enhancements<a class="headerlink" href="#console-enhancements" title="Permanent link">&para;</a></h3>
 <p>Independent of server phases — can ship at any time.</p>
 <ul class="task-list">
@@ -2682,6 +2710,7 @@ with observability platforms (Grafana, Datadog, Jaeger, etc.).</p>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Object preview: images, text, JSON, PDF (P2)</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Search and filter within buckets (P2)</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Responsive mobile layout (P3)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Configuration export/import modals: section checkboxes, secrets toggle, drag-and-drop file import, conflict mode selection, per-section result display (P2)</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Deep search: recursive object search across all prefixes with server-side API, tag-based search (<code>tag:key=value</code> syntax with autocompletion), dedicated search results view showing full key paths (P2)</li>
 </ul>
 <hr />

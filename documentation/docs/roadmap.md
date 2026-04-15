@@ -513,6 +513,14 @@ with observability platforms (Grafana, Datadog, Jaeger, etc.).
 
 ---
 
+### Admin & Server Enhancements
+
+Independent of numbered phases — general improvements to the admin API and server capabilities.
+
+- [x] Configuration export/import API: `GET /admin/export` and `POST /admin/import` for full instance config (settings, users, teams, grants, credentials, buckets, bucket configs). Supports section filtering, secret masking, skip/overwrite/dry_run modes (P2)
+
+---
+
 ### Console Enhancements
 
 Independent of server phases — can ship at any time.
@@ -526,6 +534,7 @@ Independent of server phases — can ship at any time.
 - [x] Object preview: images, text, JSON, PDF (P2)
 - [x] Search and filter within buckets (P2)
 - [x] Responsive mobile layout (P3)
+- [x] Configuration export/import modals: section checkboxes, secrets toggle, drag-and-drop file import, conflict mode selection, per-section result display (P2)
 - [ ] Deep search: recursive object search across all prefixes with server-side API, tag-based search (`tag:key=value` syntax with autocompletion), dedicated search results view showing full key paths (P2)
 
 ---

@@ -1227,11 +1227,11 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 </tr>
 <tr>
 <td>TD-009</td>
-<td>Audit write contention</td>
-<td>Every S3/admin request inserts one row into <code>audit_log</code> synchronously via <code>tokio::spawn</code>. Under heavy load, SQLite write contention may become a bottleneck</td>
-<td>Batch audit writes using a bounded <code>tokio::sync::mpsc</code> channel with a dedicated writer task doing bulk inserts</td>
-<td>None currently failing</td>
-<td><code>middleware/audit.rs</code></td>
+<td>~~Audit write contention~~</td>
+<td><strong>RESOLVED</strong>: Audit writes now batched via bounded mpsc channel (capacity 10,000) with dedicated writer task doing bulk inserts in a single transaction</td>
+<td>—</td>
+<td>—</td>
+<td><code>middleware/audit.rs</code>, <code>state.rs</code></td>
 </tr>
 <tr>
 <td>TD-010</td>
