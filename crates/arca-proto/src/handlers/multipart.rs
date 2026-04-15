@@ -7,7 +7,7 @@ use http::StatusCode;
 use md5::{Digest, Md5};
 
 use arca_core::s3::xml_types;
-use arca_core::store::{ByteStream, SidecarMeta};
+use arca_core::store::SidecarMeta;
 use arca_core::types::{BlobId, MultipartUploadRecord, ObjectRecord, PartRecord};
 use arca_core::{S3Error, S3ErrorCode};
 
