@@ -175,6 +175,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — KMS | 10 | Vault/OpenBAO key fetch, encrypted put/get, headers, ETag, multipart, copy, range, admin info |
 | Integration — TLS | 7 | HTTPS health/info/put/get/multipart, minio client, wrong CA rejection |
 | Integration — PostgreSQL | 20 | buckets, objects, multipart, versioning, tags, lifecycle, copy, range, admin health |
+| Integration — Export/Import | 19 | export all/single/multiple sections, secret masking, import dry_run/skip/overwrite, masked credentials, bucket create/skip, round-trip |
 | Integration — Notifications | 21 | Put/Get config (Topic/Queue/Lambda), filters, webhook delivery, event format, batch delete, admin API, auth token, connector type roundtrip |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
 | Connector — Redis | 7 | Pub/Sub delivery, custom channel, delete event, multiple events, payload format, connectivity test |
@@ -183,9 +184,9 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Connector — PostgreSQL | 7 | table insert, custom table/schema, delete event, multiple events, payload format, connectivity test |
 | Connector — MySQL | 7 | table insert, custom table, delete event, multiple events, payload format, connectivity test |
 | Connector — MongoDB | 7 | collection insert, custom database/collection, delete event, multiple events, payload format, connectivity test |
-| **Arca tests** | **1,089** | **All tests written for this project** |
+| **Arca tests** | **1,108** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 830 | 370 pass, 369 fail, 91 skip — 0 unexpected failures |
-| **Total** | **1,919** | |
+| **Total** | **1,938** | |
 
 ## License
 

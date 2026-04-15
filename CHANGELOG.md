@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] — 2026-04-15
+
+### Added
+
+- **Configuration export API**: `GET /admin/export` returns full instance configuration as JSON (settings, users, teams, grants, credentials, buckets, bucket configs). Supports `sections` query parameter for selective export and `include_secrets` for secret key visibility (masked by default)
+- **Configuration import API**: `POST /admin/import` applies exported JSON to a running instance. Three conflict modes: `skip` (default), `overwrite`, and `dry_run`. Processes sections in dependency order, automatically skips masked credentials
+- **(Console)** Export/Import buttons in Settings page with polished modals: section checkboxes with aligned labels, secrets toggle with warning, drag-and-drop file upload, conflict mode selection, per-section result display
+- **Configurable log level with runtime reload**: log level can be changed via `PUT /admin/settings/log_level` and takes effect immediately without restart
+- **Git commit hash at startup**: compile-time embedded git hash logged on server start for traceability
+- **SQLite read connection pool**: separate read-only connection pool for concurrent query execution
+- **`BlobStore::concat`**: efficient multipart assembly without intermediate copies
+- **Batched audit writes**: dedicated writer task with channel-based batching to reduce per-request overhead
+- **Admin & Server Enhancements section** in roadmap for tracking features outside numbered phases
+
+### Changed
+
+- Request logging moved from INFO to DEBUG level to reduce noise
+
+### Fixed
+
+- Unused imports in multipart.rs and validate.rs tests
+- Timeline divider label in project report (changed from "MVP" to "NOW")
+
 ## [0.18.2] — 2026-04-11
 
 ### Changed
@@ -453,7 +476,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.18.2...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/dxc-technology/arca/compare/v0.18.2...v0.19.0
 [0.18.2]: https://github.com/dxc-technology/arca/compare/v0.18.1...v0.18.2
 [0.18.1]: https://github.com/dxc-technology/arca/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/dxc-technology/arca/compare/v0.17.1...v0.18.0
