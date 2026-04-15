@@ -10,7 +10,7 @@ use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, OnRequest, OnResponse, TraceLayer};
 use tracing::Level;
 
-use crate::handlers::{admin, admin_grants, admin_monitoring, admin_notifications, admin_presigned_urls, admin_settings, admin_teams, admin_users, archive, bucket, object};
+use crate::handlers::{admin, admin_export, admin_grants, admin_import, admin_monitoring, admin_notifications, admin_presigned_urls, admin_settings, admin_teams, admin_users, archive, bucket, object};
 use crate::middleware;
 use crate::state::AppState;
 
@@ -165,6 +165,9 @@ pub fn build_router(state: AppState) -> Router {
                 .put(admin_grants::update_grant)
                 .delete(admin_grants::delete_grant),
         )
+        // Configuration export/import
+        .route("/export", get(admin_export::export))
+        .route("/import", post(admin_import::import_config))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::admin_auth::admin_auth_middleware,
