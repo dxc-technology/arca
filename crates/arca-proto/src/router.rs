@@ -246,7 +246,7 @@ pub fn build_router(state: AppState) -> Router {
         .layer(cors)
         .layer(
             TraceLayer::new_for_http()
-                .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+                .make_span_with(DefaultMakeSpan::new().level(Level::DEBUG))
                 .on_request(RequestLogger)
                 .on_response(ResponseLogger),
         )
@@ -273,7 +273,7 @@ struct RequestLogger;
 
 impl<B> OnRequest<B> for RequestLogger {
     fn on_request(&mut self, request: &http::Request<B>, _span: &tracing::Span) {
-        tracing::info!(
+        tracing::debug!(
             method = %request.method(),
             uri = %request.uri(),
             "request",
@@ -291,7 +291,7 @@ impl<B> OnResponse<B> for ResponseLogger {
         latency: Duration,
         _span: &tracing::Span,
     ) {
-        tracing::info!(
+        tracing::debug!(
             status = response.status().as_u16(),
             latency_ms = latency.as_millis(),
             "response",

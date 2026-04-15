@@ -3625,6 +3625,32 @@
                     </template>
                   </div>
                 </div>
+
+                <!-- Log Level -->
+                <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div class="flex-1">
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm font-medium text-vault-text">Log Level</span>
+                      <span x-show="settings.log_level" :class="sourceClass(settings.log_level.source)" class="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase" x-text="sourceLabel(settings.log_level.source)"></span>
+                    </div>
+                    <div class="text-xs text-vault-muted mt-0.5">Server log verbosity (applied immediately)</div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <div class="w-7 flex justify-center">
+                      <button x-show="settings.log_level?.source === 'database'" x-cloak @click="resetSetting('log_level')" class="p-1.5 rounded-lg hover:bg-red-500/10 text-vault-muted hover:text-red-400 transition" title="Reset to default">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182"/></svg>
+                      </button>
+                    </div>
+                    <select :value="settings.log_level?.value" @change="saveSetting('log_level', $event.target.value)"
+                      class="w-40 px-3 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm font-mono focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition">
+                      <option value="error">error</option>
+                      <option value="warn">warn</option>
+                      <option value="info">info</option>
+                      <option value="debug">debug</option>
+                      <option value="trace">trace</option>
+                    </select>
+                  </div>
+                </div>
               </div>
 
               <!-- Data Retention -->

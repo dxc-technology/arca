@@ -26,6 +26,11 @@ pub struct ServerConfig {
     /// be changed from the console. When absent, the region can be set via the
     /// Admin API / console (stored in `server_config` table), defaulting to "us-east-1".
     pub region: Option<String>,
+    /// Log level filter (default: "info"). Supports tracing-subscriber syntax
+    /// (e.g. "debug", "info", "warn", "arca=debug,tower=warn").
+    /// When set, this is the startup default and is shown as "config_file" source
+    /// in the console. Can be overridden at runtime via the settings API.
+    pub log_level: Option<String>,
     /// Optional TLS configuration. When set, the server serves HTTPS.
     pub tls: Option<TlsConfig>,
     /// Request limits and rate limiting configuration.
@@ -1206,6 +1211,7 @@ data_dir = "/data"
                 port: 9000,
                 domain: None,
                 region: None,
+                log_level: None,
                 tls: None,
                 limits: None,
                 cache: None,

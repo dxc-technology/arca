@@ -36,9 +36,13 @@ const DEFAULT_PREVIEW_MAX_TEXT_MB: u32 = 1;
 /// Default preview max size in MB for video (0 = unlimited).
 const DEFAULT_PREVIEW_MAX_VIDEO_MB: u32 = 100;
 
+/// Default log level filter.
+const DEFAULT_LOG_LEVEL: &str = "info";
+
 /// Known setting keys.
 const KNOWN_SETTINGS: &[&str] = &[
     "region",
+    "log_level",
     "audit_retention_days",
     "notification_retention_days",
     "metrics_retention_days",
@@ -60,6 +64,7 @@ struct SettingValue {
 #[derive(Serialize)]
 struct SettingsResponse {
     region: SettingValue,
+    log_level: SettingValue,
     audit_retention_days: SettingValue,
     notification_retention_days: SettingValue,
     metrics_retention_days: SettingValue,
@@ -97,6 +102,28 @@ async fn resolve_setting(
             } else {
                 Ok(SettingValue {
                     value: DEFAULT_REGION.to_string(),
+                    source: "default",
+                    readonly: false,
+                })
+            }
+        }
+        "log_level" => {
+            // Console DB value takes precedence over config file (unlike other settings).
+            if let Ok(Some(val)) = state.server_config.get_server_config("log_level").await {
+                Ok(SettingValue {
+                    value: val,
+                    source: "database",
+                    readonly: false,
+                })
+            } else if let Some(ref level) = state.config_log_level {
+                Ok(SettingValue {
+                    value: level.clone(),
+                    source: "config_file",
+                    readonly: false, // not readonly: console can always override
+                })
+            } else {
+                Ok(SettingValue {
+                    value: DEFAULT_LOG_LEVEL.to_string(),
                     source: "default",
                     readonly: false,
                 })
@@ -234,6 +261,7 @@ pub async fn list_settings(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, AdminError> {
     let region = resolve_setting(&state, "region").await?;
+    let log_level = resolve_setting(&state, "log_level").await?;
     let audit_retention_days = resolve_setting(&state, "audit_retention_days").await?;
     let notification_retention_days = resolve_setting(&state, "notification_retention_days").await?;
     let metrics_retention_days = resolve_setting(&state, "metrics_retention_days").await?;
@@ -244,6 +272,7 @@ pub async fn list_settings(
 
     Ok(Json(SettingsResponse {
         region,
+        log_level,
         audit_retention_days,
         notification_retention_days,
         metrics_retention_days,
@@ -283,6 +312,19 @@ pub async fn update_setting(
         .await
         .map_err(|e| AdminError::internal(format!("Failed to save setting: {e}")))?;
 
+    // Apply log level change immediately.
+    if key == "log_level" {
+        if let Some(ref reloader) = state.log_reloader {
+            if let Err(e) = reloader(&body.value) {
+                tracing::warn!(error = %e, level = &body.value, "Failed to apply log level");
+                return Err(AdminError::bad_request(format!(
+                    "Invalid log level filter \"{}\": {e}", body.value
+                )));
+            }
+            tracing::info!(level = &body.value, "Log level changed");
+        }
+    }
+
     // Return the updated setting
     let updated = resolve_setting(&state, &key).await?;
     Ok(Json(serde_json::json!({
@@ -315,6 +357,18 @@ pub async fn delete_setting(
         .await
         .map_err(|e| AdminError::internal(format!("Failed to delete setting: {e}")))?;
 
+    // Revert log level to config file value or default.
+    if key == "log_level" {
+        if let Some(ref reloader) = state.log_reloader {
+            let fallback = state.config_log_level.as_deref().unwrap_or(DEFAULT_LOG_LEVEL);
+            if let Err(e) = reloader(fallback) {
+                tracing::warn!(error = %e, "Failed to revert log level");
+            } else {
+                tracing::info!(level = fallback, "Log level reverted");
+            }
+        }
+    }
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -331,6 +385,14 @@ fn validate_setting_value(key: &str, value: &str) -> Result<(), AdminError> {
                     "Region must contain only lowercase letters, digits, and hyphens",
                 ));
             }
+            Ok(())
+        }
+        "log_level" => {
+            if value.is_empty() {
+                return Err(AdminError::bad_request("Log level cannot be empty"));
+            }
+            // Accept standard levels and tracing filter expressions (e.g. "arca=debug,tower=warn").
+            // Full validation happens when the reloader applies it.
             Ok(())
         }
         "audit_retention_days" | "metrics_retention_days" => {

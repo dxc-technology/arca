@@ -92,6 +92,10 @@ pub struct AppState {
     pub bucket_encryption_cache: Arc<RwLock<HashMap<String, (bool, Instant)>>>,
     /// Audit log channel sender for batched writes (None = audit disabled or using legacy per-request inserts).
     pub audit_tx: Option<tokio::sync::mpsc::Sender<AuditData>>,
+    /// Log level from config file (None = console can change it freely).
+    pub config_log_level: Option<String>,
+    /// Reloader closure for changing the tracing filter at runtime.
+    pub log_reloader: Option<Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>>,
 }
 
 impl AppState {

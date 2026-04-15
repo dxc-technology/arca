@@ -422,6 +422,7 @@ mod tests {
                 port: 9000,
                 domain: None,
                 region: None,
+                log_level: None,
                 tls: None,
                 limits: None,
                 cache: None,

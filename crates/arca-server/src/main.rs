@@ -37,8 +37,11 @@ async fn main() -> Result<()> {
             config_path,
             log_format,
         } => {
-            // Initialize tracing with the requested format.
-            init_tracing(&log_format);
+            // Load config first to get log_level, then initialize tracing.
+            let config = config::load_config(&config_path)?;
+            let initial_log_level = config.server.log_level.clone()
+                .unwrap_or_else(|| "info".to_string());
+            let log_reloader = init_tracing(&log_format, &initial_log_level);
 
             tracing::info!(
                 version = env!("CARGO_PKG_VERSION"),
@@ -46,10 +49,17 @@ async fn main() -> Result<()> {
                 "Starting Arca"
             );
 
-            let config = config::load_config(&config_path)?;
-
             let stores = open_stores(&config).await?;
             credential::ensure_root_credential(stores.credentials.as_ref()).await?;
+
+            // Apply DB-stored log level if set (console setting has precedence over config file).
+            if let Ok(Some(db_level)) = stores.server_config.get_server_config("log_level").await {
+                if let Err(e) = log_reloader(&db_level) {
+                    tracing::warn!(error = %e, level = db_level, "Failed to apply stored log level");
+                } else {
+                    tracing::info!(level = db_level, "Applied log level from settings");
+                }
+            }
 
             let fs_blob_store = arca_storage::FsBlobStore::new(
                 config.storage.blobs_dir(),
@@ -240,6 +250,8 @@ async fn main() -> Result<()> {
                 } else {
                     None
                 },
+                config_log_level: config.server.log_level.clone(),
+                log_reloader: Some(log_reloader),
             };
 
             // Create notification channel and update state
@@ -401,7 +413,7 @@ async fn main() -> Result<()> {
             config_path,
             action,
         } => {
-            init_tracing(&LogFormat::Text);
+            let _ = init_tracing(&LogFormat::Text, "info");
 
             let config = config::load_config(&config_path)?;
             let stores = open_stores(&config).await?;
@@ -467,7 +479,7 @@ async fn main() -> Result<()> {
             dry_run,
             skip_verify,
         } => {
-            init_tracing(&LogFormat::Text);
+            let _ = init_tracing(&LogFormat::Text, "info");
 
             let config = config::load_config(&config_path)?;
             recover::run_recover(&config, dry_run, skip_verify).await?;
@@ -477,7 +489,7 @@ async fn main() -> Result<()> {
             config_path,
             verify_checksums,
         } => {
-            init_tracing(&LogFormat::Text);
+            let _ = init_tracing(&LogFormat::Text, "info");
 
             let config = config::load_config(&config_path)?;
             let exit_code = fsck::run_fsck(&config, verify_checksums).await?;
@@ -512,7 +524,7 @@ async fn main() -> Result<()> {
             config_path,
             action,
         } => {
-            init_tracing(&LogFormat::Text);
+            let _ = init_tracing(&LogFormat::Text, "info");
 
             let config = config::load_config(&config_path)?;
             let stores = open_stores(&config).await?;
@@ -655,25 +667,41 @@ async fn open_stores(config: &config::Config) -> Result<StoreSet> {
     }
 }
 
-/// Initializes the tracing subscriber with the requested log format.
-fn init_tracing(format: &LogFormat) {
+/// A type-erased handle for reloading the log level filter at runtime.
+pub type LogLevelReloader = std::sync::Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
+
+/// Initializes the tracing subscriber with a reloadable filter.
+/// Returns a closure that can be called to change the log level at runtime.
+fn init_tracing(format: &LogFormat, initial_level: &str) -> LogLevelReloader {
     let filter = std::env::var("ARCA_LOG")
         .ok()
         .and_then(|v| EnvFilter::try_new(v).ok())
-        .unwrap_or_else(|| EnvFilter::new("info"));
+        .unwrap_or_else(|| EnvFilter::new(initial_level));
+
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+
+    let (filter_layer, reload_handle) = tracing_subscriber::reload::Layer::new(filter);
+
     match format {
         LogFormat::Text => {
-            tracing_subscriber::fmt()
-                .with_env_filter(filter)
+            tracing_subscriber::registry()
+                .with(filter_layer)
+                .with(tracing_subscriber::fmt::layer())
                 .init();
         }
         LogFormat::Json => {
-            tracing_subscriber::fmt()
-                .json()
-                .with_env_filter(filter)
+            tracing_subscriber::registry()
+                .with(filter_layer)
+                .with(tracing_subscriber::fmt::layer().json())
                 .init();
         }
     }
+
+    std::sync::Arc::new(move |new_filter: &str| {
+        let filter = EnvFilter::try_new(new_filter).map_err(|e| e.to_string())?;
+        reload_handle.reload(filter).map_err(|e| e.to_string())
+    })
 }
 
 /// Waits for a shutdown signal (SIGINT or SIGTERM), then enters drain mode
