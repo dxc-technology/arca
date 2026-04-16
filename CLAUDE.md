@@ -63,7 +63,7 @@ bin/docs-publish         # build + commit + push docs to update GitHub Pages
 ### Build constraints
 
 - **Rust 1.85** in Docker builder (Alpine). `getrandom 0.4` requires edition 2024 which needs >= 1.85.
-- `ring` crate needs `perl` in Alpine (`apk add --no-cache musl-dev perl`).
+- `ring` crate needs `perl` in Alpine; `rdkafka` (Kafka connector) needs `cmake make g++ curl-dev linux-headers zlib-dev zlib-static` for librdkafka static build.
 - `time` crate pinned to 0.3.41 (0.3.47+ requires Rust 1.88).
 - `Cargo.lock*` glob in Dockerfile allows building with or without committed lockfile.
 - `bin/build` only rebuilds the `arca` service image, NOT `unit-test` or `test`. After code changes, run `docker compose -f docker/docker-compose.yml build unit-test test` or test images will be stale.

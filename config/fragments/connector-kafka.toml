@@ -1,0 +1,2 @@
+# Kafka connector -- no additional config needed.
+# The kafka_timeout_seconds is in the [notifications] section.

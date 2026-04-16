@@ -1,0 +1,20 @@
+services:
+  syslog-receiver:
+    image: alpine:latest
+    command:
+      - sh
+      - -c
+      - |
+        # Simple syslog receiver: listen on UDP 514 and TCP 1514, log to files
+        mkdir -p /var/log/syslog-test
+        # UDP listener (backgrounded)
+        nc -luk -p 514 > /var/log/syslog-test/udp.log 2>&1 &
+        # TCP listener (backgrounded)
+        while true; do nc -lk -p 1514 >> /var/log/syslog-test/tcp.log 2>&1; done &
+        # Keep container alive
+        tail -f /dev/null
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -zu localhost 514"]
+      interval: 2s
+      timeout: 5s
+      retries: 10

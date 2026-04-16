@@ -393,25 +393,25 @@ connectors across four categories.
 
 **Queue connectors**: Kafka (`rdkafka`), AMQP/RabbitMQ (`lapin`), Redis Pub/Sub (`redis`), NATS (`async-nats`), MQTT (`rumqttc`)
 
-**Database connectors**: PostgreSQL (`sqlx-postgres`, zero new deps), MySQL/MariaDB (`sqlx-mysql`), MongoDB (`mongodb`), Elasticsearch (`elasticsearch`)
+**Database connectors**: PostgreSQL (`sqlx-postgres`, zero new deps), MySQL/MariaDB (`sqlx-mysql`), MongoDB (`mongodb`), Elasticsearch (`reqwest`, zero new deps)
 
 **Protocol connectors**: ONVIF (IP camera / surveillance event integration), gRPC (`tonic`), SMTP (email notifications), Syslog RFC 5424 (`syslog`)
 
-- [ ] Kafka connector + integration tests
-- [ ] AMQP connector + integration tests
+- [x] Kafka connector + integration tests
+- [x] AMQP connector + integration tests
 - [x] Redis Pub/Sub connector + integration tests
 - [x] NATS connector + integration tests
 - [x] MQTT connector + integration tests
 - [x] PostgreSQL connector + integration tests
 - [x] MySQL/MariaDB connector + integration tests
 - [x] MongoDB connector + integration tests
-- [ ] Elasticsearch connector + integration tests
+- [x] Elasticsearch connector + integration tests
 - [ ] ONVIF connector + integration tests
 - [ ] gRPC connector + integration tests
 - [ ] SMTP connector + integration tests
-- [ ] Syslog (RFC 5424) connector + integration tests
+- [x] Syslog (RFC 5424) connector + integration tests
 - [x] Modular test infrastructure: per-connector ephemeral Docker containers (`bin/test connectors <type>`)
-- [ ] (Console) Connector-specific form fields for each type
+- [x] (Console) Connector-specific form fields for each type
 - [ ] Documentation: connector configuration guide
 
 **Testing architecture**: Each connector's tests run against a real backend in a temporary Docker container, started one at a time (not all at once). `bin/test connectors <type>` and `bin/test connectors all` subcommands. Connector tests are a separate test stream, not included in `bin/test` or `bin/test all`.

@@ -99,6 +99,10 @@ async-nats = "0.38"
 rumqttc = "0.24"
 sqlx-mysql = { version = "0.8", features = ["chrono"] }
 mongodb = "3.1"
+lapin = "2.5"
+tokio-executor-trait = "2.2"
+tokio-reactor-trait = "1.1"
+rdkafka = { version = "0.36", features = ["cmake-build"] }
 
 # TLS
 rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "std", "tls12"] }

@@ -33,6 +33,10 @@ _HAS_CONNECTOR_MQTT=false
 _HAS_CONNECTOR_POSTGRESQL=false
 _HAS_CONNECTOR_MYSQL=false
 _HAS_CONNECTOR_MONGODB=false
+_HAS_CONNECTOR_KAFKA=false
+_HAS_CONNECTOR_AMQP=false
+_HAS_CONNECTOR_ELASTICSEARCH=false
+_HAS_CONNECTOR_SYSLOG=false
 
 # --- Feature registration ---
 
@@ -136,6 +140,34 @@ enable_connector_mongodb() {
     _HAS_CONNECTOR_MONGODB=true
     enable_notifications
     _FEATURES+=(connector-mongodb)
+}
+
+enable_connector_kafka() {
+    if $_HAS_CONNECTOR_KAFKA; then return; fi
+    _HAS_CONNECTOR_KAFKA=true
+    enable_notifications
+    _FEATURES+=(connector-kafka)
+}
+
+enable_connector_amqp() {
+    if $_HAS_CONNECTOR_AMQP; then return; fi
+    _HAS_CONNECTOR_AMQP=true
+    enable_notifications
+    _FEATURES+=(connector-amqp)
+}
+
+enable_connector_elasticsearch() {
+    if $_HAS_CONNECTOR_ELASTICSEARCH; then return; fi
+    _HAS_CONNECTOR_ELASTICSEARCH=true
+    enable_notifications
+    _FEATURES+=(connector-elasticsearch)
+}
+
+enable_connector_syslog() {
+    if $_HAS_CONNECTOR_SYSLOG; then return; fi
+    _HAS_CONNECTOR_SYSLOG=true
+    enable_notifications
+    _FEATURES+=(connector-syslog)
 }
 
 # --- Config generation ---
@@ -282,6 +314,50 @@ compose_cmd() {
                     files+=("$mongodb_file")
                 fi
                 ;;
+            connector-kafka)
+                # Kafka broker for connector tests
+                local kafka_file="$REPO_ROOT/docker/docker-compose.connector-kafka.yml"
+                local already=false
+                for f in "${files[@]}"; do
+                    [[ "$f" == "$kafka_file" ]] && already=true
+                done
+                if ! $already; then
+                    files+=("$kafka_file")
+                fi
+                ;;
+            connector-amqp)
+                # RabbitMQ broker for connector tests
+                local amqp_file="$REPO_ROOT/docker/docker-compose.connector-amqp.yml"
+                local already=false
+                for f in "${files[@]}"; do
+                    [[ "$f" == "$amqp_file" ]] && already=true
+                done
+                if ! $already; then
+                    files+=("$amqp_file")
+                fi
+                ;;
+            connector-elasticsearch)
+                # Elasticsearch for connector tests
+                local es_file="$REPO_ROOT/docker/docker-compose.connector-elasticsearch.yml"
+                local already=false
+                for f in "${files[@]}"; do
+                    [[ "$f" == "$es_file" ]] && already=true
+                done
+                if ! $already; then
+                    files+=("$es_file")
+                fi
+                ;;
+            connector-syslog)
+                # Syslog receiver for connector tests
+                local syslog_file="$REPO_ROOT/docker/docker-compose.connector-syslog.yml"
+                local already=false
+                for f in "${files[@]}"; do
+                    [[ "$f" == "$syslog_file" ]] && already=true
+                done
+                if ! $already; then
+                    files+=("$syslog_file")
+                fi
+                ;;
         esac
     done
 
@@ -350,6 +426,10 @@ load_env() {
             connector-postgresql)   enable_connector_postgresql ;;
             connector-mysql)        enable_connector_mysql ;;
             connector-mongodb)      enable_connector_mongodb ;;
+            connector-kafka)        enable_connector_kafka ;;
+            connector-amqp)         enable_connector_amqp ;;
+            connector-elasticsearch) enable_connector_elasticsearch ;;
+            connector-syslog)       enable_connector_syslog ;;
             custom)                 _FEATURES+=(custom) ;;
         esac
     done
@@ -464,6 +544,54 @@ wait_for_mongodb_receiver() {
     echo "Waiting for MongoDB receiver..."
     for i in $(seq 1 "$max_wait"); do
         if $compose exec -T mongodb-receiver mongosh --eval 'db.adminCommand("ping")' --quiet 2>/dev/null | grep -q "ok"; then
+            break
+        fi
+        sleep 1
+    done
+}
+
+wait_for_kafka_receiver() {
+    local compose="$1"
+    local max_wait="${2:-60}"
+    echo "Waiting for Kafka broker..."
+    for i in $(seq 1 "$max_wait"); do
+        if $compose exec -T kafka-receiver kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
+}
+
+wait_for_amqp_receiver() {
+    local compose="$1"
+    local max_wait="${2:-45}"
+    echo "Waiting for RabbitMQ..."
+    for i in $(seq 1 "$max_wait"); do
+        if $compose exec -T amqp-receiver rabbitmq-diagnostics -q ping >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
+}
+
+wait_for_elasticsearch_receiver() {
+    local compose="$1"
+    local max_wait="${2:-60}"
+    echo "Waiting for Elasticsearch..."
+    for i in $(seq 1 "$max_wait"); do
+        if $compose exec -T elasticsearch-receiver sh -c 'curl -s http://localhost:9200/_cluster/health' 2>/dev/null | grep -q '"status"'; then
+            break
+        fi
+        sleep 1
+    done
+}
+
+wait_for_syslog_receiver() {
+    local compose="$1"
+    local max_wait="${2:-15}"
+    echo "Waiting for syslog receiver..."
+    for i in $(seq 1 "$max_wait"); do
+        if $compose exec -T syslog-receiver sh -c 'nc -zu localhost 514' 2>/dev/null; then
             break
         fi
         sleep 1

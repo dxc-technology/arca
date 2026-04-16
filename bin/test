@@ -460,11 +460,128 @@ run_connector_mongodb() {
     return $rc
 }
 
+run_connector_kafka() {
+    echo "==> Running Kafka connector integration tests..."
+
+    enable_connector_kafka
+    build_config
+
+    _CONNECTOR_COMPOSE="$(compose_cmd)"
+
+    cleanup_connector_kafka() {
+        echo "Cleaning up Kafka connector test..."
+        $_CONNECTOR_COMPOSE down -v 2>/dev/null || true
+    }
+    trap cleanup_connector_kafka EXIT
+
+    $_CONNECTOR_COMPOSE build arca
+    $_CONNECTOR_COMPOSE up -d kafka-receiver
+    wait_for_kafka_receiver "$_CONNECTOR_COMPOSE"
+    $_CONNECTOR_COMPOSE up -d arca
+    wait_for_arca "$_CONNECTOR_COMPOSE"
+    $_CONNECTOR_COMPOSE run --rm \
+        -e KAFKA_URL=kafka-receiver:9092 \
+        test connectors/test_kafka.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_connector_kafka
+    return $rc
+}
+
+run_connector_amqp() {
+    echo "==> Running AMQP connector integration tests..."
+
+    enable_connector_amqp
+    build_config
+
+    _CONNECTOR_COMPOSE="$(compose_cmd)"
+
+    cleanup_connector_amqp() {
+        echo "Cleaning up AMQP connector test..."
+        $_CONNECTOR_COMPOSE down -v 2>/dev/null || true
+    }
+    trap cleanup_connector_amqp EXIT
+
+    $_CONNECTOR_COMPOSE build arca
+    $_CONNECTOR_COMPOSE up -d amqp-receiver
+    wait_for_amqp_receiver "$_CONNECTOR_COMPOSE"
+    $_CONNECTOR_COMPOSE up -d arca
+    wait_for_arca "$_CONNECTOR_COMPOSE"
+    $_CONNECTOR_COMPOSE run --rm \
+        -e AMQP_URL=amqp://amqp-receiver:5672 \
+        test connectors/test_amqp.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_connector_amqp
+    return $rc
+}
+
+run_connector_elasticsearch() {
+    echo "==> Running Elasticsearch connector integration tests..."
+
+    enable_connector_elasticsearch
+    build_config
+
+    _CONNECTOR_COMPOSE="$(compose_cmd)"
+
+    cleanup_connector_elasticsearch() {
+        echo "Cleaning up Elasticsearch connector test..."
+        $_CONNECTOR_COMPOSE down -v 2>/dev/null || true
+    }
+    trap cleanup_connector_elasticsearch EXIT
+
+    $_CONNECTOR_COMPOSE build arca
+    $_CONNECTOR_COMPOSE up -d elasticsearch-receiver
+    wait_for_elasticsearch_receiver "$_CONNECTOR_COMPOSE"
+    $_CONNECTOR_COMPOSE up -d arca
+    wait_for_arca "$_CONNECTOR_COMPOSE"
+    $_CONNECTOR_COMPOSE run --rm \
+        -e ELASTICSEARCH_URL=http://elasticsearch-receiver:9200 \
+        test connectors/test_elasticsearch.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_connector_elasticsearch
+    return $rc
+}
+
+run_connector_syslog() {
+    echo "==> Running Syslog connector integration tests..."
+
+    enable_connector_syslog
+    build_config
+
+    _CONNECTOR_COMPOSE="$(compose_cmd)"
+
+    cleanup_connector_syslog() {
+        echo "Cleaning up Syslog connector test..."
+        $_CONNECTOR_COMPOSE down -v 2>/dev/null || true
+    }
+    trap cleanup_connector_syslog EXIT
+
+    $_CONNECTOR_COMPOSE build arca
+    $_CONNECTOR_COMPOSE up -d syslog-receiver
+    wait_for_syslog_receiver "$_CONNECTOR_COMPOSE"
+    $_CONNECTOR_COMPOSE up -d arca
+    wait_for_arca "$_CONNECTOR_COMPOSE"
+    $_CONNECTOR_COMPOSE run --rm \
+        -e SYSLOG_UDP_URL=udp://syslog-receiver:514 \
+        -e SYSLOG_TCP_URL=tcp://syslog-receiver:1514 \
+        test connectors/test_syslog.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_connector_syslog
+    return $rc
+}
+
 run_connectors() {
     local connector="${1:-}"
     if [[ -z "$connector" ]]; then
         echo "Error: specify a connector name or 'all'" >&2
-        echo "Usage: bin/test connectors <redis|nats|mqtt|postgresql|mysql|mongodb|all>" >&2
+        echo "Usage: bin/test connectors <redis|nats|mqtt|postgresql|mysql|mongodb|kafka|amqp|elasticsearch|syslog|all>" >&2
         exit 1
     fi
     shift
@@ -488,6 +605,18 @@ run_connectors() {
         mongodb)
             run_connector_mongodb "$@"
             ;;
+        kafka)
+            run_connector_kafka "$@"
+            ;;
+        amqp)
+            run_connector_amqp "$@"
+            ;;
+        elasticsearch)
+            run_connector_elasticsearch "$@"
+            ;;
+        syslog)
+            run_connector_syslog "$@"
+            ;;
         all)
             run_connector_redis "$@"
             run_connector_nats "$@"
@@ -495,10 +624,14 @@ run_connectors() {
             run_connector_postgresql "$@"
             run_connector_mysql "$@"
             run_connector_mongodb "$@"
+            run_connector_kafka "$@"
+            run_connector_amqp "$@"
+            run_connector_elasticsearch "$@"
+            run_connector_syslog "$@"
             ;;
         *)
             echo "Error: unknown connector '$connector'" >&2
-            echo "Available connectors: redis, nats, mqtt, postgresql, mysql, mongodb, all" >&2
+            echo "Available connectors: redis, nats, mqtt, postgresql, mysql, mongodb, kafka, amqp, elasticsearch, syslog, all" >&2
             exit 1
             ;;
     esac
@@ -577,7 +710,7 @@ case "${1:-all}" in
         echo "  postgres             Run PostgreSQL backend integration tests"
         echo "  presigned            Run presigned URL integration tests"
         echo "  ssec                 Run SSE-C integration tests"
-        echo "  connectors <type>    Run connector integration tests (redis, nats, mqtt, postgresql, mysql, mongodb, all)"
+        echo "  connectors <type>    Run connector integration tests (redis, nats, mqtt, postgresql, mysql, mongodb, kafka, amqp, elasticsearch, syslog, all)"
         echo "  s3-compat            Run Ceph s3-tests compatibility suite"
         echo ""
         echo "Extra args are passed to the test runner (cargo test or pytest)."

@@ -512,6 +512,18 @@ pub struct NotificationsConfig {
     /// MongoDB connector connection timeout in seconds.
     #[serde(default = "default_mongodb_timeout_seconds")]
     pub mongodb_timeout_seconds: u64,
+    /// Kafka connector connection timeout in seconds.
+    #[serde(default = "default_kafka_timeout_seconds")]
+    pub kafka_timeout_seconds: u64,
+    /// AMQP connector connection timeout in seconds.
+    #[serde(default = "default_amqp_timeout_seconds")]
+    pub amqp_timeout_seconds: u64,
+    /// Elasticsearch connector connection timeout in seconds.
+    #[serde(default = "default_elasticsearch_timeout_seconds")]
+    pub elasticsearch_timeout_seconds: u64,
+    /// Syslog connector connection timeout in seconds.
+    #[serde(default = "default_syslog_timeout_seconds")]
+    pub syslog_timeout_seconds: u64,
     /// Number of days to retain notification events. 0 = keep forever.
     /// When set in TOML, locked (read-only in console). When absent, console can set it.
     pub event_retention_days: Option<u32>,
@@ -530,6 +542,10 @@ impl Default for NotificationsConfig {
             postgresql_timeout_seconds: default_postgresql_timeout_seconds(),
             mysql_timeout_seconds: default_mysql_timeout_seconds(),
             mongodb_timeout_seconds: default_mongodb_timeout_seconds(),
+            kafka_timeout_seconds: default_kafka_timeout_seconds(),
+            amqp_timeout_seconds: default_amqp_timeout_seconds(),
+            elasticsearch_timeout_seconds: default_elasticsearch_timeout_seconds(),
+            syslog_timeout_seconds: default_syslog_timeout_seconds(),
             event_retention_days: None,
         }
     }
@@ -563,6 +579,18 @@ fn default_mysql_timeout_seconds() -> u64 {
     5
 }
 fn default_mongodb_timeout_seconds() -> u64 {
+    5
+}
+fn default_kafka_timeout_seconds() -> u64 {
+    10
+}
+fn default_amqp_timeout_seconds() -> u64 {
+    5
+}
+fn default_elasticsearch_timeout_seconds() -> u64 {
+    5
+}
+fn default_syslog_timeout_seconds() -> u64 {
     5
 }
 fn default_true() -> bool {

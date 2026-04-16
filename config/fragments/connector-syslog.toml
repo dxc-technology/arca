@@ -1,0 +1,2 @@
+# Syslog connector -- no additional config needed.
+# The syslog_timeout_seconds is in the [notifications] section.

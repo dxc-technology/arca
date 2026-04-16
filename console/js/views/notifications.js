@@ -209,9 +209,9 @@ export function notificationsView() {
 const CONNECTOR_TYPES = [
   { id: 'webhook', name: 'Webhook', category: 'Functions', active: true,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5a17.92 17.92 0 0 1-8.716-2.247m0 0A9 9 0 0 1 3 12c0-1.47.353-2.856.978-4.082"/></svg>` },
-  { id: 'kafka', name: 'Kafka', category: 'Queue', active: false,
+  { id: 'kafka', name: 'Kafka', category: 'Queue', active: true,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12"/></svg>` },
-  { id: 'amqp', name: 'AMQP', category: 'Queue', active: false,
+  { id: 'amqp', name: 'AMQP', category: 'Queue', active: true,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></svg>` },
   { id: 'redis', name: 'Redis', category: 'Queue', active: true,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/></svg>` },
@@ -225,7 +225,7 @@ const CONNECTOR_TYPES = [
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375"/></svg>` },
   { id: 'mongodb', name: 'MongoDB', category: 'Database', active: true,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15 11.25c0 3.314-1.343 6-3 6s-3-2.686-3-6c0-3.314 1.343-6 3-6s3 2.686 3 6Z"/><path stroke-linecap="round" d="M12 17.25v3"/></svg>` },
-  { id: 'elasticsearch', name: 'Elasticsearch', category: 'Database', active: false,
+  { id: 'elasticsearch', name: 'Elasticsearch', category: 'Database', active: true,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/></svg>` },
   { id: 'onvif', name: 'ONVIF', category: 'Protocol', active: false,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z"/></svg>` },
@@ -233,7 +233,7 @@ const CONNECTOR_TYPES = [
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5"/></svg>` },
   { id: 'smtp', name: 'SMTP', category: 'Protocol', active: false,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75"/></svg>` },
-  { id: 'syslog', name: 'Syslog', category: 'Protocol', active: false,
+  { id: 'syslog', name: 'Syslog', category: 'Protocol', active: true,
     icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 0 1-2.25 2.25M16.5 7.5V18a2.25 2.25 0 0 0 2.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 0 0 2.25 2.25h13.5M6 7.5h3v3H6v-3Z"/></svg>` },
 ];
 
@@ -383,6 +383,9 @@ export function bucketNotificationEditor() {
         prefix: '', suffix: '', connector_type: 'webhook', auth_token: '',
         channel: '', password: '', subject: '', token: '', user: '', topic: '',
         table: '', schema: '', database: '', collection: '',
+        exchange: '', routing_key: '', durable: '', index: '',
+        facility: '', severity: '', app_name: '',
+        sasl_username: '', sasl_password: '', security_protocol: '',
       };
       this.error = '';
       this.showModal = true;
@@ -408,6 +411,16 @@ export function bucketNotificationEditor() {
         schema: props.schema || '',
         database: props.database || '',
         collection: props.collection || '',
+        exchange: props.exchange || '',
+        routing_key: props.routing_key || '',
+        durable: props.durable || '',
+        index: props.index || '',
+        facility: props.facility || '',
+        severity: props.severity || '',
+        app_name: props.app_name || '',
+        sasl_username: props.sasl_username || '',
+        sasl_password: props.sasl_password || '',
+        security_protocol: props.security_protocol || '',
       };
       this.error = '';
       this.showModal = true;
@@ -458,6 +471,16 @@ export function bucketNotificationEditor() {
       if (this.editForm.schema) properties.schema = this.editForm.schema;
       if (this.editForm.database) properties.database = this.editForm.database;
       if (this.editForm.collection) properties.collection = this.editForm.collection;
+      if (this.editForm.exchange) properties.exchange = this.editForm.exchange;
+      if (this.editForm.routing_key) properties.routing_key = this.editForm.routing_key;
+      if (this.editForm.durable) properties.durable = this.editForm.durable;
+      if (this.editForm.index) properties.index = this.editForm.index;
+      if (this.editForm.facility) properties.facility = this.editForm.facility;
+      if (this.editForm.severity) properties.severity = this.editForm.severity;
+      if (this.editForm.app_name) properties.app_name = this.editForm.app_name;
+      if (this.editForm.sasl_username) properties.sasl_username = this.editForm.sasl_username;
+      if (this.editForm.sasl_password) properties.sasl_password = this.editForm.sasl_password;
+      if (this.editForm.security_protocol) properties.security_protocol = this.editForm.security_protocol;
 
       const cfg = {
         id: this.editForm.id || crypto.randomUUID(),

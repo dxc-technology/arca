@@ -303,6 +303,26 @@ async fn main() -> Result<()> {
                 );
                 registry.register(ConnectorType::Mongodb, Arc::new(mongodb));
 
+                let syslog = connector::SyslogConnector::new(
+                    std::time::Duration::from_secs(notif_config.syslog_timeout_seconds),
+                );
+                registry.register(ConnectorType::Syslog, Arc::new(syslog));
+
+                let elasticsearch = connector::ElasticsearchConnector::new(
+                    std::time::Duration::from_secs(notif_config.elasticsearch_timeout_seconds),
+                );
+                registry.register(ConnectorType::Elasticsearch, Arc::new(elasticsearch));
+
+                let amqp = connector::AmqpConnector::new(
+                    std::time::Duration::from_secs(notif_config.amqp_timeout_seconds),
+                );
+                registry.register(ConnectorType::Amqp, Arc::new(amqp));
+
+                let kafka = connector::KafkaConnector::new(
+                    std::time::Duration::from_secs(notif_config.kafka_timeout_seconds),
+                );
+                registry.register(ConnectorType::Kafka, Arc::new(kafka));
+
                 Arc::new(registry)
             };
             state.connector_registry = Some(connector_registry.clone());

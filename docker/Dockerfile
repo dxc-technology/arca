@@ -1,7 +1,7 @@
 # Stage 1: Build (Alpine for static musl linking — binary runs in scratch)
 FROM rust:1.85-alpine AS builder
 
-RUN apk add --no-cache musl-dev perl
+RUN apk add --no-cache musl-dev perl cmake make g++ curl-dev linux-headers zlib-dev zlib-static
 
 WORKDIR /build
 

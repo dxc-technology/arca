@@ -47,6 +47,10 @@ sqlx-core = { workspace = true }
 sqlx-postgres = { workspace = true }
 sqlx-mysql = { workspace = true }
 mongodb = { workspace = true }
+lapin = { workspace = true }
+tokio-executor-trait = { workspace = true }
+tokio-reactor-trait = { workspace = true }
+rdkafka = { workspace = true }
 bytes = { workspace = true }
 
 [dev-dependencies]

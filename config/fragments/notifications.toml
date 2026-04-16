@@ -9,3 +9,7 @@ mqtt_timeout_seconds = 5
 postgresql_timeout_seconds = 5
 mysql_timeout_seconds = 5
 mongodb_timeout_seconds = 5
+kafka_timeout_seconds = 10
+amqp_timeout_seconds = 5
+elasticsearch_timeout_seconds = 5
+syslog_timeout_seconds = 5

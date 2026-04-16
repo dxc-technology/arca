@@ -1,0 +1,8 @@
+services:
+  amqp-receiver:
+    image: rabbitmq:management-alpine
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 15

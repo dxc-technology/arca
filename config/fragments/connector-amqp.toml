@@ -1,0 +1,2 @@
+# AMQP connector -- no additional config needed.
+# The amqp_timeout_seconds is in the [notifications] section.

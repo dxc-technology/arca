@@ -2591,24 +2591,24 @@ dependency. Encryption pipeline (EncryptingBlobStore, DEK wrap/unwrap, streaming
 connector architecture with webhook as the first implementation. This phase adds 13 additional
 connectors across four categories.</p>
 <p><strong>Queue connectors</strong>: Kafka (<code>rdkafka</code>), AMQP/RabbitMQ (<code>lapin</code>), Redis Pub/Sub (<code>redis</code>), NATS (<code>async-nats</code>), MQTT (<code>rumqttc</code>)</p>
-<p><strong>Database connectors</strong>: PostgreSQL (<code>sqlx-postgres</code>, zero new deps), MySQL/MariaDB (<code>sqlx-mysql</code>), MongoDB (<code>mongodb</code>), Elasticsearch (<code>elasticsearch</code>)</p>
+<p><strong>Database connectors</strong>: PostgreSQL (<code>sqlx-postgres</code>, zero new deps), MySQL/MariaDB (<code>sqlx-mysql</code>), MongoDB (<code>mongodb</code>), Elasticsearch (<code>reqwest</code>, zero new deps)</p>
 <p><strong>Protocol connectors</strong>: ONVIF (IP camera / surveillance event integration), gRPC (<code>tonic</code>), SMTP (email notifications), Syslog RFC 5424 (<code>syslog</code>)</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Kafka connector + integration tests</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> AMQP connector + integration tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Kafka connector + integration tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> AMQP connector + integration tests</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Redis Pub/Sub connector + integration tests</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> NATS connector + integration tests</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> MQTT connector + integration tests</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> PostgreSQL connector + integration tests</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> MySQL/MariaDB connector + integration tests</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> MongoDB connector + integration tests</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Elasticsearch connector + integration tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Elasticsearch connector + integration tests</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> ONVIF connector + integration tests</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> gRPC connector + integration tests</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> SMTP connector + integration tests</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Syslog (RFC 5424) connector + integration tests</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Syslog (RFC 5424) connector + integration tests</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Modular test infrastructure: per-connector ephemeral Docker containers (<code>bin/test connectors &lt;type&gt;</code>)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> (Console) Connector-specific form fields for each type</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> (Console) Connector-specific form fields for each type</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Documentation: connector configuration guide</li>
 </ul>
 <p><strong>Testing architecture</strong>: Each connector's tests run against a real backend in a temporary Docker container, started one at a time (not all at once). <code>bin/test connectors &lt;type&gt;</code> and <code>bin/test connectors all</code> subcommands. Connector tests are a separate test stream, not included in <code>bin/test</code> or <code>bin/test all</code>.</p>

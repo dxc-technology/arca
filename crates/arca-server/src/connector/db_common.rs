@@ -16,6 +16,9 @@ pub const DEFAULT_DATABASE_NAME: &str = "arca";
 /// Default MongoDB collection name.
 pub const DEFAULT_COLLECTION_NAME: &str = "arca_notifications";
 
+/// Default Elasticsearch index name.
+pub const DEFAULT_INDEX_NAME: &str = "arca-notifications";
+
 /// Extract the table name from properties, defaulting to [`DEFAULT_TABLE_NAME`].
 pub fn table_name(properties: &HashMap<String, String>) -> &str {
     properties
@@ -41,6 +44,15 @@ pub fn collection_name(properties: &HashMap<String, String>) -> &str {
         .map(|s| s.as_str())
         .filter(|s| !s.is_empty())
         .unwrap_or(DEFAULT_COLLECTION_NAME)
+}
+
+/// Extract the Elasticsearch index name from properties, defaulting to [`DEFAULT_INDEX_NAME`].
+pub fn index_name(properties: &HashMap<String, String>) -> &str {
+    properties
+        .get("index")
+        .map(|s| s.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or(DEFAULT_INDEX_NAME)
 }
 
 /// Build a `CREATE TABLE IF NOT EXISTS` statement for PostgreSQL.
@@ -162,6 +174,26 @@ mod tests {
     fn test_collection_name_default() {
         let props = HashMap::new();
         assert_eq!(collection_name(&props), DEFAULT_COLLECTION_NAME);
+    }
+
+    #[test]
+    fn test_index_name_default() {
+        let props = HashMap::new();
+        assert_eq!(index_name(&props), DEFAULT_INDEX_NAME);
+    }
+
+    #[test]
+    fn test_index_name_custom() {
+        let mut props = HashMap::new();
+        props.insert("index".to_string(), "my-index".to_string());
+        assert_eq!(index_name(&props), "my-index");
+    }
+
+    #[test]
+    fn test_index_name_empty_falls_back() {
+        let mut props = HashMap::new();
+        props.insert("index".to_string(), "".to_string());
+        assert_eq!(index_name(&props), DEFAULT_INDEX_NAME);
     }
 
     #[test]

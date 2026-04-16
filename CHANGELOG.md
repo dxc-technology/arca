@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Kafka notification connector**: produce S3 events to Kafka topics via `rdkafka` (librdkafka). Supports SASL authentication, configurable security protocol, and custom topics
+- **AMQP notification connector**: publish S3 events to RabbitMQ via `lapin` (pure Rust AMQP 0-9-1). Supports custom exchanges, routing keys, durable queues, and publisher confirms
+- **Elasticsearch notification connector**: index S3 events as documents via REST API (`reqwest`). Supports custom indices and basic auth. Zero new dependencies
+- **Syslog (RFC 5424) notification connector**: send S3 events as syslog messages over UDP or TCP. Configurable facility, severity, and app name. Zero new dependencies
+- **(Console)** Connector-specific form fields for Kafka, AMQP, Elasticsearch, and Syslog (all four now active in the connector picker)
+
 ## [0.19.0] — 2026-04-15
 
 ### Added
