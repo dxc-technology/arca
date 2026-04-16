@@ -1094,7 +1094,7 @@
                                   : ct.active
                                     ? 'border-vault-border/50 text-vault-muted hover:border-vault-accent/30 hover:text-vault-text'
                                     : 'border-vault-border/20 text-vault-muted/30 cursor-not-allowed opacity-50'">
-                                <span x-html="ct.icon" class="[&>svg]:w-4 [&>svg]:h-4"></span>
+                                <span x-html="ct.icon" class="[&>svg]:w-4 [&>svg]:h-4" :style="ct.active ? 'color:' + ct.color : ''"></span>
                                 <span x-text="ct.name"></span>
                                 <span x-show="!ct.active" class="text-[8px] text-vault-muted/40 -mt-0.5">soon</span>
                               </button>
