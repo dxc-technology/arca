@@ -50,53 +50,13 @@ impl AmqpConnector {
             .unwrap_or(true)
     }
 
-    /// Pre-resolve the hostname in an AMQP URI using tokio's DNS resolver,
-    /// then replace the host with the resolved IP. This works around
-    /// `tcp-stream`'s DNS resolution not using Docker's embedded DNS in
-    /// scratch containers.
-    async fn resolve_uri(uri: &str) -> Result<String, String> {
-        let parsed: lapin::uri::AMQPUri = uri
-            .parse()
-            .map_err(|e| format!("invalid AMQP URI: {e}"))?;
-
-        let authority = &parsed.authority;
-        let host = &authority.host;
-        let port = authority.port;
-
-        // Try tokio DNS resolution
-        let addr = tokio::net::lookup_host(format!("{host}:{port}"))
-            .await
-            .map_err(|e| format!("DNS resolution failed for {host}:{port}: {e}"))?
-            .next()
-            .ok_or_else(|| format!("no addresses found for {host}:{port}"))?;
-
-        // Rebuild the URI with the resolved IP
-        let ip = addr.ip();
-        let userinfo = if authority.userinfo.username.is_empty() {
-            String::new()
-        } else if authority.userinfo.password.is_empty() {
-            format!("{}@", authority.userinfo.username)
-        } else {
-            format!("{}:{}@", authority.userinfo.username, authority.userinfo.password)
-        };
-        let scheme = if parsed.scheme == lapin::uri::AMQPScheme::AMQP {
-            "amqp"
-        } else {
-            "amqps"
-        };
-        let vhost = parsed.vhost.replace('/', "%2f");
-        Ok(format!("{scheme}://{userinfo}{ip}:{port}/{vhost}"))
-    }
-
     /// Connect to the AMQP broker with timeout.
     async fn connect(&self, destination: &str) -> Result<Connection, String> {
-        let resolved = Self::resolve_uri(destination).await?;
-
         let conn_props = ConnectionProperties::default()
             .with_executor(tokio_executor_trait::Tokio::current())
             .with_reactor(tokio_reactor_trait::Tokio);
 
-        tokio::time::timeout(self.timeout, Connection::connect(&resolved, conn_props))
+        tokio::time::timeout(self.timeout, Connection::connect(destination, conn_props))
             .await
             .map_err(|_| "connection timeout".to_string())?
             .map_err(|e| e.to_string())

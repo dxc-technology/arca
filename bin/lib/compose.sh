@@ -550,28 +550,50 @@ wait_for_mongodb_receiver() {
     done
 }
 
+_wait_for_container_healthy() {
+    # Poll the Docker-reported health of a compose service without execing
+    # into the container. Some services (notably RabbitMQ) crash if we exec
+    # as root while their own startup is still initializing the Erlang cookie
+    # file — using inspect avoids the race entirely.
+    local compose="$1"
+    local service="$2"
+    local max_wait="${3:-60}"
+    local cid
+    cid=$($compose ps -q "$service" 2>/dev/null | head -n 1)
+    if [[ -z "$cid" ]]; then
+        echo "ERROR: service '$service' has no container; is it running?" >&2
+        return 1
+    fi
+    for _ in $(seq 1 "$max_wait"); do
+        local status
+        status=$(docker inspect "$cid" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' 2>/dev/null || echo "gone")
+        case "$status" in
+            healthy|no-healthcheck) return 0 ;;
+            gone)
+                echo "ERROR: container for '$service' disappeared" >&2
+                docker logs "$cid" 2>&1 | tail -30 >&2 || true
+                return 1
+                ;;
+        esac
+        sleep 1
+    done
+    echo "ERROR: service '$service' did not become healthy within ${max_wait}s" >&2
+    docker logs "$cid" 2>&1 | tail -30 >&2 || true
+    return 1
+}
+
 wait_for_kafka_receiver() {
     local compose="$1"
     local max_wait="${2:-60}"
     echo "Waiting for Kafka broker..."
-    for i in $(seq 1 "$max_wait"); do
-        if $compose exec -T kafka-receiver /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1; then
-            break
-        fi
-        sleep 1
-    done
+    _wait_for_container_healthy "$compose" kafka-receiver "$max_wait"
 }
 
 wait_for_amqp_receiver() {
     local compose="$1"
-    local max_wait="${2:-45}"
+    local max_wait="${2:-60}"
     echo "Waiting for RabbitMQ..."
-    for i in $(seq 1 "$max_wait"); do
-        if $compose exec -T amqp-receiver rabbitmq-diagnostics -q ping >/dev/null 2>&1; then
-            break
-        fi
-        sleep 1
-    done
+    _wait_for_container_healthy "$compose" amqp-receiver "$max_wait"
 }
 
 wait_for_elasticsearch_receiver() {

@@ -38,19 +38,40 @@ class KafkaSubscriber:
         self._thread.join(timeout=10)
 
     def _run(self):
+        # Manual partition assignment skips consumer-group coordination and
+        # the associated multi-second join/rebalance delays. We ensure the
+        # topic exists first (auto-creating it via the admin client) so the
+        # assign() + seek_to_end() call has a real partition to bind to.
+        from kafka.admin import KafkaAdminClient, NewTopic
+        from kafka import TopicPartition
+
+        try:
+            admin = KafkaAdminClient(bootstrap_servers=self.bootstrap_servers)
+            try:
+                admin.create_topics([NewTopic(self.topic, num_partitions=1, replication_factor=1)])
+            except Exception:
+                pass  # topic already exists
+            admin.close()
+        except Exception:
+            pass
+
         consumer = KafkaConsumer(
-            self.topic,
             bootstrap_servers=self.bootstrap_servers,
-            auto_offset_reset="earliest",
             consumer_timeout_ms=1000,
             value_deserializer=lambda m: json.loads(m.decode("utf-8")),
-            group_id=f"test-{self.topic}-{int(time.time())}",
+            enable_auto_commit=False,
         )
+        tp = TopicPartition(self.topic, 0)
+        consumer.assign([tp])
+        consumer.seek_to_end(tp)
+        # Poll once to materialize the assignment and fetch the current offset
+        # before we let the test produce messages.
+        consumer.poll(timeout_ms=500)
         self._ready.set()
 
         while not self._stop.is_set():
             records = consumer.poll(timeout_ms=500)
-            for tp, msgs in records.items():
+            for _tp, msgs in records.items():
                 for msg in msgs:
                     self.messages.put(msg.value)
 

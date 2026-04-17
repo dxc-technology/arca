@@ -184,9 +184,13 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Connector — PostgreSQL | 7 | table insert, custom table/schema, delete event, multiple events, payload format, connectivity test |
 | Connector — MySQL | 7 | table insert, custom table, delete event, multiple events, payload format, connectivity test |
 | Connector — MongoDB | 7 | collection insert, custom database/collection, delete event, multiple events, payload format, connectivity test |
-| **Arca tests** | **1,108** | **All tests written for this project** |
+| Connector — Kafka | 7 | topic produce, custom topic, delete event, multiple events, payload format, connectivity test |
+| Connector — AMQP | 7 | routing-key delivery, custom routing-key, delete event, multiple events, payload format, connectivity test |
+| Connector — Elasticsearch | 7 | index delivery, custom index, delete event, multiple events, payload format, connectivity test |
+| Connector — Syslog | 7 | UDP/TCP delivery, custom format, delete event, multiple events, payload format, connectivity test |
+| **Arca tests** | **1,136** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 830 | 370 pass, 369 fail, 91 skip — 0 unexpected failures |
-| **Total** | **1,938** | |
+| **Total** | **1,966** | |
 
 ## License
 

@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Syslog (RFC 5424) notification connector**: send S3 events as syslog messages over UDP or TCP. Configurable facility, severity, and app name. Zero new dependencies
 - **(Console)** Connector-specific form fields for Kafka, AMQP, Elasticsearch, and Syslog (all four now active in the connector picker)
 
+### Fixed
+
+- **Kafka/AMQP connector integration tests**: resolved TD-013. The AMQP tests used to fail because `wait_for_amqp_receiver` ran `docker exec rabbitmq-diagnostics` as root in a tight loop, racing with RabbitMQ's `.erlang.cookie` initialization and crashing the container (EACCES). Switched the AMQP and Kafka readiness helpers to `docker inspect`-based health polling so they never exec into the receiver. Also fixed the Kafka test subscriber (manual partition assignment + `seek_to_end` avoids consumer-group coordination races) and raised the SigV4 admin-API default timeout so the `test-connector` failure path for Kafka's unreachable host does not time out the HTTP client before Arca can respond
+
+### Removed
+
+- **AMQP DNS pre-resolution workaround**: the `resolve_uri` helper that rewrote AMQP URIs to use a tokio-resolved IP was added under the false TD-013 diagnosis. With the real fix in place, `lapin`/`tcp-stream` resolves hostnames correctly from the Alpine/musl `arca` binary, so the workaround is gone and the connector passes the URI straight to `Connection::connect`
+
 ## [0.19.0] — 2026-04-15
 
 ### Added

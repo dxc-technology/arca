@@ -45,8 +45,13 @@ def unique_bucket(s3_client):
         pass
 
 
-def sigv4_request(method, url, data=None, headers=None):
-    """Build a SigV4-signed HTTP request for admin API calls."""
+def sigv4_request(method, url, data=None, headers=None, timeout=30):
+    """Build a SigV4-signed HTTP request for admin API calls.
+
+    Default timeout is 30s because some connector test endpoints (notably
+    Kafka) wait for broker-side connection timeouts which can be 10-15s on
+    unreachable hosts.
+    """
     import hashlib
     import requests as req_lib
     import botocore.auth
@@ -72,7 +77,7 @@ def sigv4_request(method, url, data=None, headers=None):
     botocore.auth.SigV4Auth(credentials, "s3", "us-east-1").add_auth(aws_req)
 
     fn = getattr(req_lib, method.lower())
-    kwargs = {"headers": dict(aws_req.headers), "timeout": 10}
+    kwargs = {"headers": dict(aws_req.headers), "timeout": timeout}
     if data is not None:
         kwargs["data"] = body
     return fn(url, **kwargs)
