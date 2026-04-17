@@ -555,7 +555,7 @@ wait_for_kafka_receiver() {
     local max_wait="${2:-60}"
     echo "Waiting for Kafka broker..."
     for i in $(seq 1 "$max_wait"); do
-        if $compose exec -T kafka-receiver kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1; then
+        if $compose exec -T kafka-receiver /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1; then
             break
         fi
         sleep 1

@@ -2,7 +2,6 @@
 
 import json
 import os
-import subprocess
 import time
 
 import pytest
@@ -39,21 +38,13 @@ def put_notification_config_xml(bucket, syslog_url, events=None, properties=None
     assert resp.status_code in (200, 204), f"PUT notification config failed: {resp.status_code} {resp.text}"
 
 
-def read_syslog_log(compose_cmd, log_file, timeout=10):
-    """Read syslog messages from the receiver container's log file."""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            result = subprocess.run(
-                compose_cmd.split() + ["exec", "-T", "syslog-receiver", "cat", log_file],
-                capture_output=True, text=True, timeout=5,
-            )
-            if result.stdout.strip():
-                return result.stdout.strip().splitlines()
-        except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
-            pass
-        time.sleep(1)
-    return []
+def get_delivered_events(bucket, limit=20):
+    """Fetch delivered notification events for a bucket from the admin API."""
+    url = f"{ARCA_ENDPOINT}/admin/notifications/events?bucket={bucket}&limit={limit}"
+    resp = sigv4_request("GET", url)
+    assert resp.status_code == 200
+    entries = resp.json().get("entries", [])
+    return [e for e in entries if e.get("delivery_status") == "delivered"]
 
 
 class TestSyslogDelivery:
@@ -63,30 +54,18 @@ class TestSyslogDelivery:
         """PutObject should send a syslog message via UDP."""
         put_notification_config_xml(unique_bucket, SYSLOG_UDP_URL)
         s3_client.put_object(Bucket=unique_bucket, Key="hello.txt", Body=b"world")
-        # Give the notification worker time to deliver
-        time.sleep(3)
+        time.sleep(5)
 
-        # Verify the event was delivered by checking admin API event log
-        url = f"{ARCA_ENDPOINT}/admin/notifications/events?bucket={unique_bucket}&limit=10"
-        resp = sigv4_request("GET", url)
-        assert resp.status_code == 200
-        data = resp.json()
-        events = data.get("events", [])
-        delivered = [e for e in events if e.get("status") == "delivered"]
-        assert len(delivered) >= 1, f"Expected at least 1 delivered event, got {len(delivered)}"
+        delivered = get_delivered_events(unique_bucket)
+        assert len(delivered) >= 1
 
     def test_put_object_sends_syslog_tcp(self, s3_client, unique_bucket):
         """PutObject should send a syslog message via TCP."""
         put_notification_config_xml(unique_bucket, SYSLOG_TCP_URL)
         s3_client.put_object(Bucket=unique_bucket, Key="tcp-test.txt", Body=b"data")
-        time.sleep(3)
+        time.sleep(5)
 
-        url = f"{ARCA_ENDPOINT}/admin/notifications/events?bucket={unique_bucket}&limit=10"
-        resp = sigv4_request("GET", url)
-        assert resp.status_code == 200
-        data = resp.json()
-        events = data.get("events", [])
-        delivered = [e for e in events if e.get("status") == "delivered"]
+        delivered = get_delivered_events(unique_bucket)
         assert len(delivered) >= 1
 
     def test_custom_facility_and_severity(self, s3_client, unique_bucket):
@@ -96,13 +75,9 @@ class TestSyslogDelivery:
             properties={"facility": "daemon", "severity": "warning"},
         )
         s3_client.put_object(Bucket=unique_bucket, Key="custom.txt", Body=b"data")
-        time.sleep(3)
+        time.sleep(5)
 
-        url = f"{ARCA_ENDPOINT}/admin/notifications/events?bucket={unique_bucket}&limit=10"
-        resp = sigv4_request("GET", url)
-        assert resp.status_code == 200
-        events = resp.json().get("events", [])
-        delivered = [e for e in events if e.get("status") == "delivered"]
+        delivered = get_delivered_events(unique_bucket)
         assert len(delivered) >= 1
 
     def test_delete_object_sends_syslog(self, s3_client, unique_bucket):
@@ -112,18 +87,12 @@ class TestSyslogDelivery:
             events=["s3:ObjectCreated:*", "s3:ObjectRemoved:*"],
         )
         s3_client.put_object(Bucket=unique_bucket, Key="to-delete.txt", Body=b"bye")
-        time.sleep(2)
-        s3_client.delete_object(Bucket=unique_bucket, Key="to-delete.txt")
         time.sleep(3)
+        s3_client.delete_object(Bucket=unique_bucket, Key="to-delete.txt")
+        time.sleep(5)
 
-        url = f"{ARCA_ENDPOINT}/admin/notifications/events?bucket={unique_bucket}&limit=20"
-        resp = sigv4_request("GET", url)
-        assert resp.status_code == 200
-        events = resp.json().get("events", [])
-        remove_events = [
-            e for e in events
-            if e.get("status") == "delivered" and "ObjectRemoved" in e.get("event_name", "")
-        ]
+        delivered = get_delivered_events(unique_bucket)
+        remove_events = [e for e in delivered if "ObjectRemoved" in e.get("event_name", "")]
         assert len(remove_events) >= 1
 
     def test_multiple_events(self, s3_client, unique_bucket):
@@ -133,11 +102,7 @@ class TestSyslogDelivery:
             s3_client.put_object(Bucket=unique_bucket, Key=f"multi-{i}.txt", Body=f"data-{i}".encode())
         time.sleep(5)
 
-        url = f"{ARCA_ENDPOINT}/admin/notifications/events?bucket={unique_bucket}&limit=20"
-        resp = sigv4_request("GET", url)
-        assert resp.status_code == 200
-        events = resp.json().get("events", [])
-        delivered = [e for e in events if e.get("status") == "delivered"]
+        delivered = get_delivered_events(unique_bucket)
         assert len(delivered) >= 3
 
 
