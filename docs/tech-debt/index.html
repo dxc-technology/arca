@@ -569,6 +569,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../guide/connectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Notification Connectors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../guide/console/" class="md-nav__link">
         
   
@@ -1325,6 +1353,12 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>TD-008</td>
 <td>Content-Type source</td>
 <td>Verified: Content-Type captured from CreateMultipartUpload matches AWS behavior. Clients set it at init time. Phase 22</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-013</td>
+<td>AMQP/Kafka connector tests</td>
+<td>Root cause was NOT DNS: the AMQP receiver crashed on startup because <code>docker exec rabbitmq-diagnostics</code> (run as root in a tight <code>wait_for_amqp_receiver</code> loop) raced with RabbitMQ's cookie initialization, producing an EACCES error that killed the container. Fix: replace the <code>exec</code>-based wait for AMQP/Kafka with a <code>docker inspect</code> health poll (<code>_wait_for_container_healthy</code>), so the receiver is probed by the container's own healthcheck only. Kafka tests also had two unrelated test-side issues: consumer-group coordination raced with the first produce (fixed by switching to manual partition assign + <code>seek_to_end</code>), and the connectivity-failure test timed out because Arca's Kafka <code>test()</code> can take ~10s on unreachable hosts while the test HTTP timeout was also 10s (fixed by raising the conftest SigV4 default to 30s).</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 </tbody>

@@ -1,0 +1,32 @@
+// Arca S3 notification delivery service.
+//
+// A minimal gRPC service any external system can implement to receive S3 event
+// notifications from Arca. The service is deliberately small and stable: a
+// single unary RPC, three messages, no streaming. Clients that need richer
+// semantics can layer them on top of the `metadata` map.
+
+syntax = "proto3";
+
+package arca.notifications.v1;
+
+service NotificationService {
+  // Deliver a single S3 event notification.
+  rpc Notify(NotificationRequest) returns (NotificationResponse);
+}
+
+message NotificationRequest {
+  // Serialized S3EventMessage JSON (same string the webhook connector posts).
+  string event_payload = 1;
+  // Destination configuration id from the bucket notification config.
+  string connector_id = 2;
+  // User-supplied properties forwarded from the bucket notification config,
+  // excluding the auth_token (which is sent via gRPC metadata instead).
+  map<string, string> metadata = 3;
+}
+
+message NotificationResponse {
+  // Whether the server accepted the event for processing.
+  bool success = 1;
+  // Optional human-readable status message.
+  string message = 2;
+}

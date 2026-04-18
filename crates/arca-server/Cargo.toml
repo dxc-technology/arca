@@ -51,7 +51,13 @@ lapin = { workspace = true }
 tokio-executor-trait = { workspace = true }
 tokio-reactor-trait = { workspace = true }
 rdkafka = { workspace = true }
+lettre = { workspace = true }
+tonic = { workspace = true }
+prost = { workspace = true }
 bytes = { workspace = true }
+
+[build-dependencies]
+tonic-build = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -1087,16 +1087,13 @@
                           <span class="text-[9px] uppercase tracking-widest text-vault-muted/60 font-semibold" x-text="category"></span>
                           <div class="grid grid-cols-5 gap-1.5 mt-1">
                             <template x-for="ct in types" :key="ct.id">
-                              <button @click="selectConnectorType(ct.id)" :disabled="!ct.active"
+                              <button @click="selectConnectorType(ct.id)"
                                 class="flex flex-col items-center gap-1 py-2 px-1 rounded-lg border text-[10px] font-medium transition"
                                 :class="editForm.connector_type === ct.id
                                   ? 'border-vault-accent bg-vault-accent/10 text-vault-accent'
-                                  : ct.active
-                                    ? 'border-vault-border/50 text-vault-muted hover:border-vault-accent/30 hover:text-vault-text'
-                                    : 'border-vault-border/20 text-vault-muted/30 cursor-not-allowed opacity-50'">
-                                <span x-html="ct.icon" class="[&>svg]:w-4 [&>svg]:h-4" :style="ct.active ? 'color:' + ct.color : ''"></span>
+                                  : 'border-vault-border/50 text-vault-muted hover:border-vault-accent/30 hover:text-vault-text'">
+                                <span x-html="ct.icon" class="[&>svg]:w-4 [&>svg]:h-4" :style="'color:' + ct.color"></span>
                                 <span x-text="ct.name"></span>
-                                <span x-show="!ct.active" class="text-[8px] text-vault-muted/40 -mt-0.5">soon</span>
                               </button>
                             </template>
                           </div>
@@ -1364,6 +1361,88 @@
                       </div>
                     </template>
 
+                    <template x-if="editForm.connector_type === 'smtp'">
+                      <div class="space-y-2 mb-4">
+                        <div>
+                          <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">SMTP Destination</label>
+                          <input type="text" x-model="editForm.arn" placeholder="smtp://hostname:25 or smtps://hostname:465" autocomplete="off"
+                            class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                          <div>
+                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Recipient <span class="normal-case text-red-400/70">(required)</span></label>
+                            <input type="email" x-model="editForm.smtp_to" placeholder="ops@example.com" autocomplete="off"
+                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                          </div>
+                          <div>
+                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Sender <span class="normal-case text-vault-muted/50">(optional, default: arca@localhost)</span></label>
+                            <input type="email" x-model="editForm.smtp_from" placeholder="arca-notify@example.com" autocomplete="off"
+                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                          </div>
+                        </div>
+                        <div>
+                          <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Subject <span class="normal-case text-vault-muted/50">(optional)</span></label>
+                          <input type="text" x-model="editForm.subject" placeholder="Arca S3 Notification: {event}" autocomplete="off"
+                            class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                          <div>
+                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Username <span class="normal-case text-vault-muted/50">(PLAIN auth)</span></label>
+                            <input type="text" x-model="editForm.user" placeholder="Username" autocomplete="off"
+                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                          </div>
+                          <div>
+                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Password</label>
+                            <input type="password" x-model="editForm.password" placeholder="Password" autocomplete="new-password"
+                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                          </div>
+                        </div>
+                        <div>
+                          <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">STARTTLS <span class="normal-case text-vault-muted/50">(for smtp:// only)</span></label>
+                          <select x-model="editForm.smtp_starttls"
+                            class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text focus:outline-none focus:border-vault-accent/50 text-xs">
+                            <option value="">no (default)</option>
+                            <option value="true">yes</option>
+                          </select>
+                        </div>
+                      </div>
+                    </template>
+
+                    <template x-if="editForm.connector_type === 'grpc'">
+                      <div class="space-y-2 mb-4">
+                        <div>
+                          <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">gRPC Destination</label>
+                          <input type="text" x-model="editForm.arn" placeholder="http://hostname:50051 or https://hostname:50051" autocomplete="off"
+                            class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                        </div>
+                        <div>
+                          <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Bearer auth token <span class="normal-case text-vault-muted/50">(optional)</span></label>
+                          <input type="password" x-model="editForm.auth_token" placeholder="Bearer authentication token" autocomplete="new-password"
+                            class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                          <div>
+                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Domain name <span class="normal-case text-vault-muted/50">(TLS SNI override)</span></label>
+                            <input type="text" x-model="editForm.grpc_domain_name" placeholder="example.com" autocomplete="off"
+                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                          </div>
+                          <div>
+                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Insecure <span class="normal-case text-vault-muted/50">(skip TLS verify)</span></label>
+                            <select x-model="editForm.grpc_insecure"
+                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text focus:outline-none focus:border-vault-accent/50 text-xs">
+                              <option value="">no (default)</option>
+                              <option value="true">yes</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">CA certificate <span class="normal-case text-vault-muted/50">(optional, PEM for self-signed)</span></label>
+                          <textarea x-model="editForm.grpc_ca_certificate" rows="3" placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----" autocomplete="off"
+                            class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs font-mono"></textarea>
+                        </div>
+                      </div>
+                    </template>
+
                     <template x-if="editForm.connector_type === 'syslog'">
                       <div class="space-y-2 mb-4">
                         <div>
@@ -1416,52 +1495,44 @@
                       </div>
                     </template>
 
-                    <!-- Coming soon for unimplemented connectors -->
-                    <template x-if="editForm.connector_type !== 'webhook' && editForm.connector_type !== 'redis' && editForm.connector_type !== 'nats' && editForm.connector_type !== 'mqtt' && editForm.connector_type !== 'postgresql' && editForm.connector_type !== 'mysql' && editForm.connector_type !== 'mongodb' && editForm.connector_type !== 'kafka' && editForm.connector_type !== 'amqp' && editForm.connector_type !== 'elasticsearch' && editForm.connector_type !== 'syslog'">
-                      <div class="mb-4 p-4 rounded-lg bg-vault-bg/50 border border-vault-border/30 text-center">
-                        <p class="text-xs text-vault-muted">This connector is not yet available. Coming soon.</p>
-                      </div>
-                    </template>
-
-                    <!-- Common fields: filters and events -->
-                    <template x-if="editForm.connector_type === 'webhook' || editForm.connector_type === 'redis' || editForm.connector_type === 'nats' || editForm.connector_type === 'mqtt' || editForm.connector_type === 'postgresql' || editForm.connector_type === 'mysql' || editForm.connector_type === 'mongodb' || editForm.connector_type === 'kafka' || editForm.connector_type === 'amqp' || editForm.connector_type === 'elasticsearch' || editForm.connector_type === 'syslog'">
-                      <div class="space-y-3">
-                        <div class="grid grid-cols-2 gap-2">
-                          <div>
-                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Prefix filter</label>
-                            <input type="text" x-model="editForm.prefix" placeholder="e.g. images/"
-                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
-                          </div>
-                          <div>
-                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Suffix filter</label>
-                            <input type="text" x-model="editForm.suffix" placeholder="e.g. .jpg"
-                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
-                          </div>
+                    <!-- Common fields: filters and events (all connectors are active) -->
+                    <div class="space-y-3">
+                      <div class="grid grid-cols-2 gap-2">
+                        <div>
+                          <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Prefix filter</label>
+                          <input type="text" x-model="editForm.prefix" placeholder="e.g. images/"
+                            class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
                         </div>
                         <div>
-                          <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Events</label>
-                          <div class="grid grid-cols-2 gap-x-4 gap-y-1 mt-1">
-                            <template x-for="ev in eventOptions" :key="ev">
-                              <label class="flex items-center gap-1.5 text-[11px] py-0.5 cursor-pointer">
-                                <input type="checkbox" :checked="editForm.events.includes(ev)" @change="toggleEvent(ev)"
-                                  class="rounded border-vault-border text-vault-accent focus:ring-vault-accent w-3 h-3">
-                                <span class="font-mono" x-text="shortEvent(ev)"></span>
-                              </label>
-                            </template>
-                          </div>
+                          <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Suffix filter</label>
+                          <input type="text" x-model="editForm.suffix" placeholder="e.g. .jpg"
+                            class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
                         </div>
+                      </div>
+                      <div>
+                        <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Events</label>
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-1 mt-1">
+                          <template x-for="ev in eventOptions" :key="ev">
+                            <label class="flex items-center gap-1.5 text-[11px] py-0.5 cursor-pointer">
+                              <input type="checkbox" :checked="editForm.events.includes(ev)" @change="toggleEvent(ev)"
+                                class="rounded border-vault-border text-vault-accent focus:ring-vault-accent w-3 h-3">
+                              <span class="font-mono" x-text="shortEvent(ev)"></span>
+                            </label>
+                          </template>
+                        </div>
+                      </div>
 
-                        <!-- Footer: actions -->
-                        <div class="flex justify-between items-center pt-2">
-                          <button x-show="(editForm.connector_type === 'webhook' || editForm.connector_type === 'redis' || editForm.connector_type === 'nats' || editForm.connector_type === 'mqtt' || editForm.connector_type === 'postgresql' || editForm.connector_type === 'mysql' || editForm.connector_type === 'mongodb' || editForm.connector_type === 'kafka' || editForm.connector_type === 'amqp' || editForm.connector_type === 'elasticsearch' || editForm.connector_type === 'syslog') && editForm.arn"
-                            @click="testConnector(editForm.arn, editForm.connector_type, Object.assign(
+                      <!-- Footer: actions -->
+                      <div class="flex justify-between items-center pt-2">
+                        <button x-show="editForm.arn"
+                          @click="testConnector(editForm.arn, editForm.connector_type, Object.assign(
                               {},
                               editForm.auth_token ? {auth_token: editForm.auth_token} : {},
                               editForm.channel ? {channel: editForm.channel} : {},
                               editForm.password ? {password: editForm.password} : {},
                               editForm.subject ? {subject: editForm.subject} : {},
                               editForm.token ? {token: editForm.token} : {},
-                              editForm.user ? {user: editForm.user} : {},
+                              editForm.user ? (editForm.connector_type === 'smtp' ? {username: editForm.user} : {user: editForm.user}) : {},
                               editForm.topic ? {topic: editForm.topic} : {},
                               editForm.table ? {table: editForm.table} : {},
                               editForm.schema ? {schema: editForm.schema} : {},
@@ -1476,28 +1547,26 @@
                               editForm.app_name ? {app_name: editForm.app_name} : {},
                               editForm.sasl_username ? {sasl_username: editForm.sasl_username} : {},
                               editForm.sasl_password ? {sasl_password: editForm.sasl_password} : {},
-                              editForm.security_protocol ? {security_protocol: editForm.security_protocol} : {}
+                              editForm.security_protocol ? {security_protocol: editForm.security_protocol} : {},
+                              editForm.smtp_to ? {to: editForm.smtp_to} : {},
+                              editForm.smtp_from ? {from: editForm.smtp_from} : {},
+                              editForm.smtp_starttls ? {starttls: editForm.smtp_starttls} : {},
+                              editForm.grpc_ca_certificate ? {ca_certificate: editForm.grpc_ca_certificate} : {},
+                              editForm.grpc_domain_name ? {domain_name: editForm.grpc_domain_name} : {},
+                              editForm.grpc_insecure ? {insecure: editForm.grpc_insecure} : {}
                             ))"
                             class="text-[11px] text-vault-muted hover:text-vault-accent transition">
-                            Test connection
-                          </button>
-                          <div x-show="!editForm.arn || (editForm.connector_type !== 'webhook' && editForm.connector_type !== 'redis' && editForm.connector_type !== 'nats' && editForm.connector_type !== 'mqtt' && editForm.connector_type !== 'postgresql' && editForm.connector_type !== 'mysql' && editForm.connector_type !== 'mongodb' && editForm.connector_type !== 'kafka' && editForm.connector_type !== 'amqp' && editForm.connector_type !== 'elasticsearch' && editForm.connector_type !== 'syslog')"></div>
-                          <div class="flex gap-2">
-                            <button @click="closeModal()" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
-                            <button @click="saveFromModal(bucketName)"
-                              :disabled="!editForm.arn || editForm.events.length === 0"
-                              class="px-4 py-2 rounded-lg bg-vault-accent text-vault-bg text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
-                              x-text="modalMode === 'add' ? 'Add' : 'Save'"></button>
-                          </div>
+                          Test connection
+                        </button>
+                        <div class="flex gap-2">
+                          <button @click="closeModal()" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                          <button @click="saveFromModal(bucketName)"
+                            :disabled="!editForm.arn || editForm.events.length === 0"
+                            class="px-4 py-2 rounded-lg bg-vault-accent text-vault-bg text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+                            x-text="modalMode === 'add' ? 'Add' : 'Save'"></button>
                         </div>
                       </div>
-                    </template>
-
-                    <template x-if="editForm.connector_type !== 'webhook' && editForm.connector_type !== 'redis' && editForm.connector_type !== 'nats' && editForm.connector_type !== 'mqtt' && editForm.connector_type !== 'postgresql' && editForm.connector_type !== 'mysql' && editForm.connector_type !== 'mongodb' && editForm.connector_type !== 'kafka' && editForm.connector_type !== 'amqp' && editForm.connector_type !== 'elasticsearch' && editForm.connector_type !== 'syslog'">
-                      <div class="flex justify-end pt-2">
-                        <button @click="closeModal()" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Close</button>
-                      </div>
-                    </template>
+                    </div>
 
                     <p x-show="error" x-text="error" class="text-red-400 text-xs mt-2"></p>
                   </div>

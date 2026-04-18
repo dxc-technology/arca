@@ -1,0 +1,11 @@
+services:
+  smtp-receiver:
+    image: axllent/mailpit
+    environment:
+      - MP_SMTP_AUTH_ACCEPT_ANY=1
+      - MP_SMTP_AUTH_ALLOW_INSECURE=1
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8025/api/v1/info"]
+      interval: 2s
+      timeout: 5s
+      retries: 15

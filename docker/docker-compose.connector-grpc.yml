@@ -1,0 +1,11 @@
+services:
+  grpc-receiver:
+    image: arca-grpc-receiver
+    build:
+      context: grpc-receiver
+      dockerfile: Dockerfile
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z localhost 50051"]
+      interval: 2s
+      timeout: 5s
+      retries: 15

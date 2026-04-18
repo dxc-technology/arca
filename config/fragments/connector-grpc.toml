@@ -1,0 +1,2 @@
+# gRPC connector -- no additional config needed.
+# The grpc_timeout_seconds is in the [notifications] section.

@@ -37,6 +37,8 @@ _HAS_CONNECTOR_KAFKA=false
 _HAS_CONNECTOR_AMQP=false
 _HAS_CONNECTOR_ELASTICSEARCH=false
 _HAS_CONNECTOR_SYSLOG=false
+_HAS_CONNECTOR_SMTP=false
+_HAS_CONNECTOR_GRPC=false
 
 # --- Feature registration ---
 
@@ -168,6 +170,20 @@ enable_connector_syslog() {
     _HAS_CONNECTOR_SYSLOG=true
     enable_notifications
     _FEATURES+=(connector-syslog)
+}
+
+enable_connector_smtp() {
+    if $_HAS_CONNECTOR_SMTP; then return; fi
+    _HAS_CONNECTOR_SMTP=true
+    enable_notifications
+    _FEATURES+=(connector-smtp)
+}
+
+enable_connector_grpc() {
+    if $_HAS_CONNECTOR_GRPC; then return; fi
+    _HAS_CONNECTOR_GRPC=true
+    enable_notifications
+    _FEATURES+=(connector-grpc)
 }
 
 # --- Config generation ---
@@ -358,6 +374,28 @@ compose_cmd() {
                     files+=("$syslog_file")
                 fi
                 ;;
+            connector-smtp)
+                # Mailpit SMTP receiver for connector tests
+                local smtp_file="$REPO_ROOT/docker/docker-compose.connector-smtp.yml"
+                local already=false
+                for f in "${files[@]}"; do
+                    [[ "$f" == "$smtp_file" ]] && already=true
+                done
+                if ! $already; then
+                    files+=("$smtp_file")
+                fi
+                ;;
+            connector-grpc)
+                # Python gRPC receiver for connector tests
+                local grpc_file="$REPO_ROOT/docker/docker-compose.connector-grpc.yml"
+                local already=false
+                for f in "${files[@]}"; do
+                    [[ "$f" == "$grpc_file" ]] && already=true
+                done
+                if ! $already; then
+                    files+=("$grpc_file")
+                fi
+                ;;
         esac
     done
 
@@ -430,6 +468,8 @@ load_env() {
             connector-amqp)         enable_connector_amqp ;;
             connector-elasticsearch) enable_connector_elasticsearch ;;
             connector-syslog)       enable_connector_syslog ;;
+            connector-smtp)         enable_connector_smtp ;;
+            connector-grpc)         enable_connector_grpc ;;
             custom)                 _FEATURES+=(custom) ;;
         esac
     done
@@ -618,4 +658,18 @@ wait_for_syslog_receiver() {
         fi
         sleep 1
     done
+}
+
+wait_for_smtp_receiver() {
+    local compose="$1"
+    local max_wait="${2:-30}"
+    echo "Waiting for SMTP (mailpit) receiver..."
+    _wait_for_container_healthy "$compose" smtp-receiver "$max_wait"
+}
+
+wait_for_grpc_receiver() {
+    local compose="$1"
+    local max_wait="${2:-30}"
+    echo "Waiting for gRPC receiver..."
+    _wait_for_container_healthy "$compose" grpc-receiver "$max_wait"
 }

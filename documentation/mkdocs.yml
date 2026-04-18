@@ -49,6 +49,7 @@ nav:
     - Access Control: guide/access-control.md
     - TLS: guide/tls.md
     - Encryption: guide/encryption.md
+    - Notification Connectors: guide/connectors.md
     - Web Console: guide/console.md
     - CLI Reference: guide/cli.md
   - Reference:

@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package arca.notifications.v1;
+
+service NotificationService {
+  rpc Notify(NotificationRequest) returns (NotificationResponse);
+}
+
+message NotificationRequest {
+  string event_payload = 1;
+  string connector_id = 2;
+  map<string, string> metadata = 3;
+}
+
+message NotificationResponse {
+  bool success = 1;
+  string message = 2;
+}

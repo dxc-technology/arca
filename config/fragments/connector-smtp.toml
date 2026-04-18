@@ -1,0 +1,2 @@
+# SMTP connector -- no additional config needed.
+# The smtp_timeout_seconds is in the [notifications] section.

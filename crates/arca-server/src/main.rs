@@ -30,6 +30,12 @@ pub type NormalizedApp = NormalizeService<Router>;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Install the `ring` rustls crypto provider as the process-wide default.
+    // tonic (gRPC connector) and lettre (SMTP connector) both pull in `rustls`
+    // without forcing a crypto backend, so we install one explicitly. Ignore
+    // errors if it has already been set (e.g. by a dependency).
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -322,6 +328,16 @@ async fn main() -> Result<()> {
                     std::time::Duration::from_secs(notif_config.kafka_timeout_seconds),
                 );
                 registry.register(ConnectorType::Kafka, Arc::new(kafka));
+
+                let smtp = connector::SmtpConnector::new(
+                    std::time::Duration::from_secs(notif_config.smtp_timeout_seconds),
+                );
+                registry.register(ConnectorType::Smtp, Arc::new(smtp));
+
+                let grpc = connector::GrpcConnector::new(
+                    std::time::Duration::from_secs(notif_config.grpc_timeout_seconds),
+                );
+                registry.register(ConnectorType::Grpc, Arc::new(grpc));
 
                 Arc::new(registry)
             };

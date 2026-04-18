@@ -20,6 +20,8 @@ set -euo pipefail
 #   bin/test connectors postgresql   Run PostgreSQL connector integration tests
 #   bin/test connectors mysql        Run MySQL connector integration tests
 #   bin/test connectors mongodb      Run MongoDB connector integration tests
+#   bin/test connectors smtp         Run SMTP connector integration tests
+#   bin/test connectors grpc         Run gRPC connector integration tests
 #   bin/test connectors all          Run all connector integration tests
 
 cd "$(git rev-parse --show-toplevel)"
@@ -577,11 +579,71 @@ run_connector_syslog() {
     return $rc
 }
 
+run_connector_smtp() {
+    echo "==> Running SMTP connector integration tests..."
+
+    enable_connector_smtp
+    build_config
+
+    _CONNECTOR_COMPOSE="$(compose_cmd)"
+
+    cleanup_connector_smtp() {
+        echo "Cleaning up SMTP connector test..."
+        $_CONNECTOR_COMPOSE down -v 2>/dev/null || true
+    }
+    trap cleanup_connector_smtp EXIT
+
+    $_CONNECTOR_COMPOSE build arca test
+    $_CONNECTOR_COMPOSE up -d smtp-receiver
+    wait_for_smtp_receiver "$_CONNECTOR_COMPOSE"
+    $_CONNECTOR_COMPOSE up -d arca
+    wait_for_arca "$_CONNECTOR_COMPOSE"
+    $_CONNECTOR_COMPOSE run --rm \
+        -e SMTP_URL=smtp://smtp-receiver:1025 \
+        -e SMTP_ADMIN_URL=http://smtp-receiver:8025 \
+        test connectors/test_smtp.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_connector_smtp
+    return $rc
+}
+
+run_connector_grpc() {
+    echo "==> Running gRPC connector integration tests..."
+
+    enable_connector_grpc
+    build_config
+
+    _CONNECTOR_COMPOSE="$(compose_cmd)"
+
+    cleanup_connector_grpc() {
+        echo "Cleaning up gRPC connector test..."
+        $_CONNECTOR_COMPOSE down -v 2>/dev/null || true
+    }
+    trap cleanup_connector_grpc EXIT
+
+    $_CONNECTOR_COMPOSE build arca test grpc-receiver
+    $_CONNECTOR_COMPOSE up -d grpc-receiver
+    wait_for_grpc_receiver "$_CONNECTOR_COMPOSE"
+    $_CONNECTOR_COMPOSE up -d arca
+    wait_for_arca "$_CONNECTOR_COMPOSE"
+    $_CONNECTOR_COMPOSE run --rm \
+        -e GRPC_URL=http://grpc-receiver:50051 \
+        -e GRPC_ADMIN_URL=http://grpc-receiver:8080 \
+        test connectors/test_grpc.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_connector_grpc
+    return $rc
+}
+
 run_connectors() {
     local connector="${1:-}"
     if [[ -z "$connector" ]]; then
         echo "Error: specify a connector name or 'all'" >&2
-        echo "Usage: bin/test connectors <redis|nats|mqtt|postgresql|mysql|mongodb|kafka|amqp|elasticsearch|syslog|all>" >&2
+        echo "Usage: bin/test connectors <redis|nats|mqtt|postgresql|mysql|mongodb|kafka|amqp|elasticsearch|syslog|smtp|grpc|all>" >&2
         exit 1
     fi
     shift
@@ -617,6 +679,12 @@ run_connectors() {
         syslog)
             run_connector_syslog "$@"
             ;;
+        smtp)
+            run_connector_smtp "$@"
+            ;;
+        grpc)
+            run_connector_grpc "$@"
+            ;;
         all)
             run_connector_redis "$@"
             run_connector_nats "$@"
@@ -628,10 +696,12 @@ run_connectors() {
             run_connector_amqp "$@"
             run_connector_elasticsearch "$@"
             run_connector_syslog "$@"
+            run_connector_smtp "$@"
+            run_connector_grpc "$@"
             ;;
         *)
             echo "Error: unknown connector '$connector'" >&2
-            echo "Available connectors: redis, nats, mqtt, postgresql, mysql, mongodb, kafka, amqp, elasticsearch, syslog, all" >&2
+            echo "Available connectors: redis, nats, mqtt, postgresql, mysql, mongodb, kafka, amqp, elasticsearch, syslog, smtp, grpc, all" >&2
             exit 1
             ;;
     esac
@@ -710,7 +780,7 @@ case "${1:-all}" in
         echo "  postgres             Run PostgreSQL backend integration tests"
         echo "  presigned            Run presigned URL integration tests"
         echo "  ssec                 Run SSE-C integration tests"
-        echo "  connectors <type>    Run connector integration tests (redis, nats, mqtt, postgresql, mysql, mongodb, kafka, amqp, elasticsearch, syslog, all)"
+        echo "  connectors <type>    Run connector integration tests (redis, nats, mqtt, postgresql, mysql, mongodb, kafka, amqp, elasticsearch, syslog, smtp, grpc, all)"
         echo "  s3-compat            Run Ceph s3-tests compatibility suite"
         echo ""
         echo "Extra args are passed to the test runner (cargo test or pytest)."

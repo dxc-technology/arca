@@ -13,3 +13,5 @@ kafka_timeout_seconds = 10
 amqp_timeout_seconds = 5
 elasticsearch_timeout_seconds = 5
 syslog_timeout_seconds = 5
+smtp_timeout_seconds = 15
+grpc_timeout_seconds = 10

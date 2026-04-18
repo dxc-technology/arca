@@ -13,7 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **AMQP notification connector**: publish S3 events to RabbitMQ via `lapin` (pure Rust AMQP 0-9-1). Supports custom exchanges, routing keys, durable queues, and publisher confirms
 - **Elasticsearch notification connector**: index S3 events as documents via REST API (`reqwest`). Supports custom indices and basic auth. Zero new dependencies
 - **Syslog (RFC 5424) notification connector**: send S3 events as syslog messages over UDP or TCP. Configurable facility, severity, and app name. Zero new dependencies
-- **(Console)** Connector-specific form fields for Kafka, AMQP, Elasticsearch, and Syslog (all four now active in the connector picker)
+- **SMTP notification connector**: deliver S3 events as e-mail via `lettre` over SMTP or SMTPS. Supports STARTTLS, PLAIN authentication, custom subject/sender, and configurable timeout (`smtp_timeout_seconds`, default 15 s). Body is the same S3 event JSON the webhook connector posts
+- **gRPC notification connector**: deliver S3 events as a unary `arca.notifications.v1.NotificationService/Notify` RPC via `tonic` + `prost`. Supports h2c and TLS, Bearer token via gRPC metadata, custom CA certificates for self-signed servers, and arbitrary user metadata forwarded through the proto map. Configurable timeout (`grpc_timeout_seconds`, default 10 s)
+- **Connector configuration guide** (`guide/connectors.md`): single-page reference for all 13 connectors with destination URL formats, properties, XML examples, and timeout tuning
+- **(Console)** Connector-specific form fields for Kafka, AMQP, Elasticsearch, Syslog, SMTP, and gRPC (all now active in the connector picker)
 
 ### Fixed
 
@@ -22,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - **AMQP DNS pre-resolution workaround**: the `resolve_uri` helper that rewrote AMQP URIs to use a tokio-resolved IP was added under the false TD-013 diagnosis. With the real fix in place, `lapin`/`tcp-stream` resolves hostnames correctly from the Alpine/musl `arca` binary, so the workaround is gone and the connector passes the URI straight to `Connection::connect`
+- **ONVIF connector**: dropped from Phase 26 before any implementation shipped. The `ConnectorType::Onvif` enum variant, the console picker entry, and the roadmap checklist item have been removed. ONVIF integration was judged too niche to justify its maintenance cost; an external adapter can bridge ONVIF events into Arca via the webhook or gRPC connector when needed
 
 ## [0.19.0] — 2026-04-15
 

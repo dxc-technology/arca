@@ -121,7 +121,7 @@ graph LR
 | 23 | [Performance and Hardening](#phase-23-performance-and-hardening-p2) | P2 | 13 | `v0.14.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 24 | [PostgreSQL Backend](#phase-24-postgresql-backend-p2) | P2 | — | `v0.16.1` | <span style="color:#4caf50">&#x2714;</span> |
 | 25 | [Notifications and Event System](#phase-25-notifications-and-event-system-p3) | P3 | 20 | `v0.18.0` | <span style="color:#4caf50">&#x2714;</span> |
-| 26 | [Notification Connectors](#phase-26-notification-connectors-p3) | P3 | 25 | | |
+| 26 | [Notification Connectors](#phase-26-notification-connectors-p3) | P3 | 25 | `v0.20.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 27 | [Transparent Compression](#phase-27-transparent-compression-p2) | P2 | 13 | | |
 | 28 | [Replication](#phase-28-replication-p3) | P3 | 17, 24 | | |
 | 29 | [Multi-Node and Erasure Coding](#phase-29-multi-node-and-erasure-coding-p3) | P3 | All prior | | |
@@ -395,7 +395,7 @@ connectors across four categories.
 
 **Database connectors**: PostgreSQL (`sqlx-postgres`, zero new deps), MySQL/MariaDB (`sqlx-mysql`), MongoDB (`mongodb`), Elasticsearch (`reqwest`, zero new deps)
 
-**Protocol connectors**: ONVIF (IP camera / surveillance event integration), gRPC (`tonic`), SMTP (email notifications), Syslog RFC 5424 (`syslog`)
+**Protocol connectors**: gRPC (`tonic`), SMTP (email notifications), Syslog RFC 5424 (`syslog`)
 
 - [x] Kafka connector + integration tests
 - [x] AMQP connector + integration tests
@@ -406,13 +406,12 @@ connectors across four categories.
 - [x] MySQL/MariaDB connector + integration tests
 - [x] MongoDB connector + integration tests
 - [x] Elasticsearch connector + integration tests
-- [ ] ONVIF connector + integration tests
-- [ ] gRPC connector + integration tests
-- [ ] SMTP connector + integration tests
+- [x] gRPC connector + integration tests
+- [x] SMTP connector + integration tests
 - [x] Syslog (RFC 5424) connector + integration tests
 - [x] Modular test infrastructure: per-connector ephemeral Docker containers (`bin/test connectors <type>`)
 - [x] (Console) Connector-specific form fields for each type
-- [ ] Documentation: connector configuration guide
+- [x] Documentation: connector configuration guide
 
 **Testing architecture**: Each connector's tests run against a real backend in a temporary Docker container, started one at a time (not all at once). `bin/test connectors <type>` and `bin/test connectors all` subcommands. Connector tests are a separate test stream, not included in `bin/test` or `bin/test all`.
 

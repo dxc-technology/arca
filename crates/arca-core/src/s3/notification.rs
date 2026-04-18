@@ -32,7 +32,6 @@ pub enum ConnectorType {
     Mysql,
     Mongodb,
     Elasticsearch,
-    Onvif,
     Grpc,
     Smtp,
     Syslog,
@@ -58,7 +57,6 @@ impl ConnectorType {
             ConnectorType::Mysql => "MySQL",
             ConnectorType::Mongodb => "MongoDB",
             ConnectorType::Elasticsearch => "Elasticsearch",
-            ConnectorType::Onvif => "ONVIF",
             ConnectorType::Grpc => "gRPC",
             ConnectorType::Smtp => "SMTP",
             ConnectorType::Syslog => "Syslog",
@@ -78,9 +76,7 @@ impl ConnectorType {
             | ConnectorType::Mysql
             | ConnectorType::Mongodb
             | ConnectorType::Elasticsearch => "Database",
-            ConnectorType::Onvif
-            | ConnectorType::Smtp
-            | ConnectorType::Syslog => "Protocol",
+            ConnectorType::Smtp | ConnectorType::Syslog => "Protocol",
         }
     }
 
@@ -97,7 +93,6 @@ impl ConnectorType {
             ConnectorType::Mysql,
             ConnectorType::Mongodb,
             ConnectorType::Elasticsearch,
-            ConnectorType::Onvif,
             ConnectorType::Grpc,
             ConnectorType::Smtp,
             ConnectorType::Syslog,
@@ -119,7 +114,6 @@ impl fmt::Display for ConnectorType {
             ConnectorType::Mysql => "mysql",
             ConnectorType::Mongodb => "mongodb",
             ConnectorType::Elasticsearch => "elasticsearch",
-            ConnectorType::Onvif => "onvif",
             ConnectorType::Grpc => "grpc",
             ConnectorType::Smtp => "smtp",
             ConnectorType::Syslog => "syslog",

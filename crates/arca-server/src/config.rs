@@ -524,6 +524,12 @@ pub struct NotificationsConfig {
     /// Syslog connector connection timeout in seconds.
     #[serde(default = "default_syslog_timeout_seconds")]
     pub syslog_timeout_seconds: u64,
+    /// SMTP connector operation timeout in seconds.
+    #[serde(default = "default_smtp_timeout_seconds")]
+    pub smtp_timeout_seconds: u64,
+    /// gRPC connector operation timeout in seconds.
+    #[serde(default = "default_grpc_timeout_seconds")]
+    pub grpc_timeout_seconds: u64,
     /// Number of days to retain notification events. 0 = keep forever.
     /// When set in TOML, locked (read-only in console). When absent, console can set it.
     pub event_retention_days: Option<u32>,
@@ -546,6 +552,8 @@ impl Default for NotificationsConfig {
             amqp_timeout_seconds: default_amqp_timeout_seconds(),
             elasticsearch_timeout_seconds: default_elasticsearch_timeout_seconds(),
             syslog_timeout_seconds: default_syslog_timeout_seconds(),
+            smtp_timeout_seconds: default_smtp_timeout_seconds(),
+            grpc_timeout_seconds: default_grpc_timeout_seconds(),
             event_retention_days: None,
         }
     }
@@ -592,6 +600,12 @@ fn default_elasticsearch_timeout_seconds() -> u64 {
 }
 fn default_syslog_timeout_seconds() -> u64 {
     5
+}
+fn default_smtp_timeout_seconds() -> u64 {
+    15
+}
+fn default_grpc_timeout_seconds() -> u64 {
+    10
 }
 fn default_true() -> bool {
     true
