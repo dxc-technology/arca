@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] — 2026-04-18
+
 ### Added
 
 - **Kafka notification connector**: produce S3 events to Kafka topics via `rdkafka` (librdkafka). Supports SASL authentication, configurable security protocol, and custom topics
@@ -17,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **gRPC notification connector**: deliver S3 events as a unary `arca.notifications.v1.NotificationService/Notify` RPC via `tonic` + `prost`. Supports h2c and TLS, Bearer token via gRPC metadata, custom CA certificates for self-signed servers, and arbitrary user metadata forwarded through the proto map. Configurable timeout (`grpc_timeout_seconds`, default 10 s)
 - **Connector configuration guide** (`guide/connectors.md`): single-page reference for all 13 connectors with destination URL formats, properties, XML examples, and timeout tuning
 - **(Console)** Connector-specific form fields for Kafka, AMQP, Elasticsearch, Syslog, SMTP, and gRPC (all now active in the connector picker)
+- **(Docs)** Rewrote the Event Notifications section of the console user guide with dedicated Webhook / SMTP / gRPC form examples and three new screenshots
 
 ### Fixed
 
@@ -26,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **AMQP DNS pre-resolution workaround**: the `resolve_uri` helper that rewrote AMQP URIs to use a tokio-resolved IP was added under the false TD-013 diagnosis. With the real fix in place, `lapin`/`tcp-stream` resolves hostnames correctly from the Alpine/musl `arca` binary, so the workaround is gone and the connector passes the URI straight to `Connection::connect`
 - **ONVIF connector**: dropped from Phase 26 before any implementation shipped. The `ConnectorType::Onvif` enum variant, the console picker entry, and the roadmap checklist item have been removed. ONVIF integration was judged too niche to justify its maintenance cost; an external adapter can bridge ONVIF events into Arca via the webhook or gRPC connector when needed
+- **"Coming soon" paths in the console**: since every connector is now implemented, removed the dead `active` flag on `CONNECTOR_TYPES`, the `soon` label + disabled-tile styling in the picker, and the conditional templates that were only reachable for unimplemented connectors
 
 ## [0.19.0] — 2026-04-15
 
@@ -496,7 +500,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/dxc-technology/arca/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/dxc-technology/arca/compare/v0.18.2...v0.19.0
 [0.18.2]: https://github.com/dxc-technology/arca/compare/v0.18.1...v0.18.2
 [0.18.1]: https://github.com/dxc-technology/arca/compare/v0.18.0...v0.18.1

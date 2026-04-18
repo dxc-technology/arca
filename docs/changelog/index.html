@@ -1071,7 +1071,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0200-2026-04-18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.20.0 — 2026-04-18
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.20.0 — 2026-04-18">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2119,7 +2130,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0200-2026-04-18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.20.0 — 2026-04-18
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.20.0 — 2026-04-18">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3118,7 +3140,8 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.19.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.20.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="0200-2026-04-18"><a href="https://github.com/dxc-technology/arca/compare/v0.19.0...v0.20.0">0.20.0</a> — 2026-04-18<a class="headerlink" href="#0200-2026-04-18" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Kafka notification connector</strong>: produce S3 events to Kafka topics via <code>rdkafka</code> (librdkafka). Supports SASL authentication, configurable security protocol, and custom topics</li>
@@ -3129,6 +3152,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>gRPC notification connector</strong>: deliver S3 events as a unary <code>arca.notifications.v1.NotificationService/Notify</code> RPC via <code>tonic</code> + <code>prost</code>. Supports h2c and TLS, Bearer token via gRPC metadata, custom CA certificates for self-signed servers, and arbitrary user metadata forwarded through the proto map. Configurable timeout (<code>grpc_timeout_seconds</code>, default 10 s)</li>
 <li><strong>Connector configuration guide</strong> (<code>guide/connectors.md</code>): single-page reference for all 13 connectors with destination URL formats, properties, XML examples, and timeout tuning</li>
 <li><strong>(Console)</strong> Connector-specific form fields for Kafka, AMQP, Elasticsearch, Syslog, SMTP, and gRPC (all now active in the connector picker)</li>
+<li><strong>(Docs)</strong> Rewrote the Event Notifications section of the console user guide with dedicated Webhook / SMTP / gRPC form examples and three new screenshots</li>
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
@@ -3138,6 +3162,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <ul>
 <li><strong>AMQP DNS pre-resolution workaround</strong>: the <code>resolve_uri</code> helper that rewrote AMQP URIs to use a tokio-resolved IP was added under the false TD-013 diagnosis. With the real fix in place, <code>lapin</code>/<code>tcp-stream</code> resolves hostnames correctly from the Alpine/musl <code>arca</code> binary, so the workaround is gone and the connector passes the URI straight to <code>Connection::connect</code></li>
 <li><strong>ONVIF connector</strong>: dropped from Phase 26 before any implementation shipped. The <code>ConnectorType::Onvif</code> enum variant, the console picker entry, and the roadmap checklist item have been removed. ONVIF integration was judged too niche to justify its maintenance cost; an external adapter can bridge ONVIF events into Arca via the webhook or gRPC connector when needed</li>
+<li><strong>"Coming soon" paths in the console</strong>: since every connector is now implemented, removed the dead <code>active</code> flag on <code>CONNECTOR_TYPES</code>, the <code>soon</code> label + disabled-tile styling in the picker, and the conditional templates that were only reachable for unimplemented connectors</li>
 </ul>
 <h2 id="0190-2026-04-15"><a href="https://github.com/dxc-technology/arca/compare/v0.18.2...v0.19.0">0.19.0</a> — 2026-04-15<a class="headerlink" href="#0190-2026-04-15" title="Permanent link">&para;</a></h2>
 <h3 id="added_1">Added<a class="headerlink" href="#added_1" title="Permanent link">&para;</a></h3>
