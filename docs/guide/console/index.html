@@ -819,6 +819,45 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Event Notifications">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-webhook-connector-form" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example — Webhook connector form
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-smtp-connector-form" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example — SMTP connector form
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-grpc-connector-form" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example — gRPC connector form
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -1940,6 +1979,45 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Event Notifications">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#example-webhook-connector-form" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example — Webhook connector form
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-smtp-connector-form" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example — SMTP connector form
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-grpc-connector-form" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example — gRPC connector form
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -2604,17 +2682,26 @@
 <p><img alt="Event notifications" src="../../assets/screenshots/console-event-notifications.png" /></p>
 <p>The Event Notifications card lets you configure where S3 events (object creates, deletes, etc.) are delivered. Each notification destination has:</p>
 <ul>
-<li><strong>Connector type</strong> — which delivery backend to use (currently Webhook, with Kafka, AMQP, Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, and Elasticsearch planned)</li>
-<li><strong>Destination URL</strong> — the endpoint address</li>
-<li><strong>Auth Token</strong> — optional Bearer token for webhook authentication</li>
+<li><strong>Connector type</strong> — which delivery backend to use. All 13 connectors are implemented and selectable: <strong>Webhook</strong> and <strong>gRPC</strong> (Functions); <strong>Kafka</strong>, <strong>AMQP</strong>, <strong>Redis</strong>, <strong>NATS</strong>, <strong>MQTT</strong> (Queue); <strong>PostgreSQL</strong>, <strong>MySQL</strong>, <strong>MongoDB</strong>, <strong>Elasticsearch</strong> (Database); <strong>SMTP</strong>, <strong>Syslog</strong> (Protocol).</li>
+<li><strong>Destination URL</strong> — the endpoint address (format depends on the connector, e.g., <code>https://…/webhook</code>, <code>kafka-broker:9092</code>, <code>smtp://mail:25</code>)</li>
+<li><strong>Connector-specific properties</strong> — such as Bearer token, Kafka topic, SMTP recipient, gRPC CA certificate (see <a href="../connectors/">Notification Connectors</a> for the full catalog)</li>
 <li><strong>Event types</strong> — which S3 events to deliver (e.g., <code>s3:ObjectCreated:*</code>, <code>s3:ObjectRemoved:Delete</code>)</li>
 <li><strong>Prefix/Suffix filters</strong> — optional key filters to narrow which objects trigger events</li>
 <li><strong>Enabled/Disabled toggle</strong> — temporarily suspend delivery without removing the configuration</li>
 </ul>
 <p>Click <strong>"+ Add Notification"</strong> to open the notification modal:</p>
 <p><img alt="Notification modal" src="../../assets/screenshots/console-notification-modal.png" /></p>
-<p>The modal has a connector type selector at the top, showing all available connectors grouped by category (Functions, Queue, Database). Only the Webhook connector is currently active; others are shown as "coming soon" and will be implemented in a future release. Below the type selector, connector-specific fields appear (URL and auth token for webhooks), followed by common S3 event type checkboxes and prefix/suffix filter inputs.</p>
-<p>Click an existing notification in the list to edit it in the same modal. Use the <strong>Test connection</strong> button to verify webhook connectivity before saving.</p>
+<p>The modal opens with a connector type selector at the top, grouping every connector by category (Functions, Queue, Database, Protocol). Every tile is live — select any connector to reveal its specific form below the selector. Common S3 event type checkboxes and prefix/suffix filter inputs apply to every connector type.</p>
+<p>Click an existing notification in the list to edit it in the same modal. Use the <strong>Test connection</strong> button at the bottom of the form to probe the destination before saving — the console calls the admin API <code>/admin/notifications/test-connector</code> endpoint, which runs the connector's own connectivity check (e.g., HTTP POST for webhook, Redis <code>PING</code>, gRPC unary probe, TCP connect for syslog/SMTP).</p>
+<h4 id="example-webhook-connector-form">Example — Webhook connector form<a class="headerlink" href="#example-webhook-connector-form" title="Permanent link">&para;</a></h4>
+<p><img alt="Webhook notification form" src="../../assets/screenshots/console-notification-webhook.png" /></p>
+<p><strong>Webhook</strong> is the default (and most common) connector. The destination URL is any HTTP or HTTPS endpoint; the console POSTs the S3 event JSON to it. An optional <strong>Bearer auth token</strong> is sent in the <code>Authorization</code> header of every request so downstream systems can authenticate Arca's callbacks.</p>
+<h4 id="example-smtp-connector-form">Example — SMTP connector form<a class="headerlink" href="#example-smtp-connector-form" title="Permanent link">&para;</a></h4>
+<p><img alt="SMTP notification form" src="../../assets/screenshots/console-notification-smtp.png" /></p>
+<p>Selecting <strong>SMTP</strong> reveals the e-mail delivery fields. The destination URL is <code>smtp://host:port</code> (or <code>smtps://…</code>). <code>Recipient</code> is required; <code>Sender</code>, <code>Subject</code>, <code>Username</code>/<code>Password</code> (PLAIN auth), and the <code>STARTTLS</code> toggle are optional.</p>
+<h4 id="example-grpc-connector-form">Example — gRPC connector form<a class="headerlink" href="#example-grpc-connector-form" title="Permanent link">&para;</a></h4>
+<p><img alt="gRPC notification form" src="../../assets/screenshots/console-notification-grpc.png" /></p>
+<p>Selecting <strong>gRPC</strong> reveals the Notify-RPC form. The destination URL is <code>http://host:port</code> (h2c) or <code>https://host:port</code> (TLS). An optional <strong>Bearer auth token</strong> is forwarded as gRPC metadata, a <strong>Domain name</strong> override controls the TLS SNI, <strong>Insecure</strong> skips certificate verification for test servers, and a <strong>CA certificate</strong> textarea lets you trust a self-signed PEM CA.</p>
 <h3 id="danger-zone">Danger Zone<a class="headerlink" href="#danger-zone" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Delete this bucket</strong> — permanently removes the bucket. Requires typing the bucket name to confirm. The bucket must be empty.</li>

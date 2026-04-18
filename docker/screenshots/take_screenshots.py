@@ -345,7 +345,7 @@ def take_screenshots(rbac_ids):
     """Capture screenshots of the web console using Playwright."""
     print("\n=== Phase B: Taking screenshots ===")
 
-    total = 29
+    total = 32
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     with sync_playwright() as p:
@@ -612,18 +612,50 @@ def take_screenshots(rbac_ids):
         page.wait_for_timeout(1000)
         screenshot(page, "console-event-notifications.png")
 
-        # ----- 28. Add notification modal (connector type selector) -----
+        # ----- 28. Add notification modal (connector type selector — all 13 active) -----
         print(f"  28/{total} console-notification-modal.png")
         page.click('button:has-text("Add Notification")')
         page.wait_for_selector('h3:has-text("Add Event Notification")', timeout=10000)
         page.wait_for_timeout(500)
         screenshot(page, "console-notification-modal.png")
+
+        # ----- 29. Notification modal — Webhook connector form (default, most common) -----
+        print(f"  29/{total} console-notification-webhook.png")
+        # Webhook is selected by default; populate representative values so the
+        # form renders with visible data.
+        page.fill('input[placeholder="http://example.com/webhook"]', "https://ops.example.com/arca-events")
+        page.fill('input[placeholder="Bearer authentication token"]', "secret-token")
+        page.wait_for_timeout(500)
+        screenshot(page, "console-notification-webhook.png")
+
+        # ----- 30. Notification modal — SMTP connector form -----
+        print(f"  30/{total} console-notification-smtp.png")
+        # Select the SMTP tile in the picker
+        page.click('button:has(span:has-text("SMTP"))')
+        page.wait_for_selector('label:has-text("SMTP Destination")', timeout=10000)
+        # Populate representative values so the form renders meaningfully
+        page.fill('input[placeholder="smtp://hostname:25 or smtps://hostname:465"]', "smtp://mail.example.com:587")
+        page.fill('input[placeholder="ops@example.com"]', "ops@example.com")
+        page.fill('input[placeholder="arca-notify@example.com"]', "arca@example.com")
+        page.fill('input[placeholder="Arca S3 Notification: {event}"]', "Arca S3 alert")
+        page.wait_for_timeout(500)
+        screenshot(page, "console-notification-smtp.png")
+
+        # ----- 31. Notification modal — gRPC connector form -----
+        print(f"  31/{total} console-notification-grpc.png")
+        page.click('button:has(span:has-text("gRPC"))')
+        page.wait_for_selector('label:has-text("gRPC Destination")', timeout=10000)
+        page.fill('input[placeholder="http://hostname:50051 or https://hostname:50051"]', "https://grpc.example.com:50051")
+        page.fill('input[placeholder="Bearer authentication token"]', "secret-token")
+        page.fill('input[placeholder="example.com"]', "grpc.example.com")
+        page.wait_for_timeout(500)
+        screenshot(page, "console-notification-grpc.png")
         # Close the modal
         page.mouse.click(50, 50)
         page.wait_for_timeout(300)
 
-        # ----- 29. Notification event log -----
-        print(f"  29/{total} console-notification-events.png")
+        # ----- 32. Notification event log -----
+        print(f"  32/{total} console-notification-events.png")
         page.goto(f"{CONSOLE_URL}#/notifications")
         page.wait_for_load_state("networkidle")
         page.wait_for_selector('h2:has-text("Notification Events")', timeout=10000)

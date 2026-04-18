@@ -163,9 +163,9 @@ The versioning card lets you control object versioning for the bucket. The toggl
 
 The Event Notifications card lets you configure where S3 events (object creates, deletes, etc.) are delivered. Each notification destination has:
 
-- **Connector type** — which delivery backend to use (currently Webhook, with Kafka, AMQP, Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, and Elasticsearch planned)
-- **Destination URL** — the endpoint address
-- **Auth Token** — optional Bearer token for webhook authentication
+- **Connector type** — which delivery backend to use. All 13 connectors are implemented and selectable: **Webhook** and **gRPC** (Functions); **Kafka**, **AMQP**, **Redis**, **NATS**, **MQTT** (Queue); **PostgreSQL**, **MySQL**, **MongoDB**, **Elasticsearch** (Database); **SMTP**, **Syslog** (Protocol).
+- **Destination URL** — the endpoint address (format depends on the connector, e.g., `https://…/webhook`, `kafka-broker:9092`, `smtp://mail:25`)
+- **Connector-specific properties** — such as Bearer token, Kafka topic, SMTP recipient, gRPC CA certificate (see [Notification Connectors](connectors.md) for the full catalog)
 - **Event types** — which S3 events to deliver (e.g., `s3:ObjectCreated:*`, `s3:ObjectRemoved:Delete`)
 - **Prefix/Suffix filters** — optional key filters to narrow which objects trigger events
 - **Enabled/Disabled toggle** — temporarily suspend delivery without removing the configuration
@@ -174,9 +174,27 @@ Click **"+ Add Notification"** to open the notification modal:
 
 ![Notification modal](../assets/screenshots/console-notification-modal.png)
 
-The modal has a connector type selector at the top, showing all available connectors grouped by category (Functions, Queue, Database). Only the Webhook connector is currently active; others are shown as "coming soon" and will be implemented in a future release. Below the type selector, connector-specific fields appear (URL and auth token for webhooks), followed by common S3 event type checkboxes and prefix/suffix filter inputs.
+The modal opens with a connector type selector at the top, grouping every connector by category (Functions, Queue, Database, Protocol). Every tile is live — select any connector to reveal its specific form below the selector. Common S3 event type checkboxes and prefix/suffix filter inputs apply to every connector type.
 
-Click an existing notification in the list to edit it in the same modal. Use the **Test connection** button to verify webhook connectivity before saving.
+Click an existing notification in the list to edit it in the same modal. Use the **Test connection** button at the bottom of the form to probe the destination before saving — the console calls the admin API `/admin/notifications/test-connector` endpoint, which runs the connector's own connectivity check (e.g., HTTP POST for webhook, Redis `PING`, gRPC unary probe, TCP connect for syslog/SMTP).
+
+#### Example — Webhook connector form
+
+![Webhook notification form](../assets/screenshots/console-notification-webhook.png)
+
+**Webhook** is the default (and most common) connector. The destination URL is any HTTP or HTTPS endpoint; the console POSTs the S3 event JSON to it. An optional **Bearer auth token** is sent in the `Authorization` header of every request so downstream systems can authenticate Arca's callbacks.
+
+#### Example — SMTP connector form
+
+![SMTP notification form](../assets/screenshots/console-notification-smtp.png)
+
+Selecting **SMTP** reveals the e-mail delivery fields. The destination URL is `smtp://host:port` (or `smtps://…`). `Recipient` is required; `Sender`, `Subject`, `Username`/`Password` (PLAIN auth), and the `STARTTLS` toggle are optional.
+
+#### Example — gRPC connector form
+
+![gRPC notification form](../assets/screenshots/console-notification-grpc.png)
+
+Selecting **gRPC** reveals the Notify-RPC form. The destination URL is `http://host:port` (h2c) or `https://host:port` (TLS). An optional **Bearer auth token** is forwarded as gRPC metadata, a **Domain name** override controls the TLS SNI, **Insecure** skips certificate verification for test servers, and a **CA certificate** textarea lets you trust a self-signed PEM CA.
 
 ### Danger Zone
 
