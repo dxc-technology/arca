@@ -39,6 +39,7 @@ _HAS_CONNECTOR_ELASTICSEARCH=false
 _HAS_CONNECTOR_SYSLOG=false
 _HAS_CONNECTOR_SMTP=false
 _HAS_CONNECTOR_GRPC=false
+_HAS_REPLICATION=false
 
 # --- Feature registration ---
 
@@ -184,6 +185,12 @@ enable_connector_grpc() {
     _HAS_CONNECTOR_GRPC=true
     enable_notifications
     _FEATURES+=(connector-grpc)
+}
+
+enable_replication() {
+    if $_HAS_REPLICATION; then return; fi
+    _HAS_REPLICATION=true
+    _FEATURES+=(replication)
 }
 
 # --- Config generation ---
@@ -396,6 +403,17 @@ compose_cmd() {
                     files+=("$grpc_file")
                 fi
                 ;;
+            replication)
+                # Second Arca instance for replication testing
+                local repl_file="$REPO_ROOT/docker/docker-compose.replication.yml"
+                local already=false
+                for f in "${files[@]}"; do
+                    [[ "$f" == "$repl_file" ]] && already=true
+                done
+                if ! $already; then
+                    files+=("$repl_file")
+                fi
+                ;;
         esac
     done
 
@@ -470,6 +488,7 @@ load_env() {
             connector-syslog)       enable_connector_syslog ;;
             connector-smtp)         enable_connector_smtp ;;
             connector-grpc)         enable_connector_grpc ;;
+            replication)            enable_replication ;;
             custom)                 _FEATURES+=(custom) ;;
         esac
     done

@@ -285,6 +285,10 @@ pub async fn complete_multipart_upload(
         return resp;
     }
 
+    // Capture headers before consuming the body (needed later for the
+    // replication emit on loop-prevention header detection).
+    let request_headers = request.headers().clone();
+
     // Read and parse XML body (1 MB limit).
     let body_bytes = match axum::body::to_bytes(request.into_body(), 1_048_576).await {
         Ok(b) => b,
@@ -434,6 +438,7 @@ pub async fn complete_multipart_upload(
         storage_class: "STANDARD".to_string(),
         checksum_algorithm: None,
         checksum_value: None,
+        replication_status: None,
     };
     let (old, version_id) = match state.metadata.put_object(&record).await {
         Ok(r) => r,
@@ -500,12 +505,35 @@ pub async fn complete_multipart_upload(
         timestamp: chrono::Utc::now(),
     });
 
+    // Phase 28 — Replication. Treat a completed multipart upload as a Put.
+    let current_tags = {
+        let vid = version_id.clone().unwrap_or_default();
+        state
+            .metadata
+            .get_object_tags(&bucket, &key, &vid)
+            .await
+            .unwrap_or_default()
+    };
+    let replication_status = crate::replication::emit_and_stamp(
+        &state,
+        &request_headers,
+        &bucket,
+        &key,
+        version_id.as_deref(),
+        arca_core::store::replication::ReplicationEventType::Put,
+        &current_tags,
+    )
+    .await;
+
     let xml = xml_types::complete_multipart_upload_result(&bucket, &key, &composite_etag);
     let mut builder = Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/xml");
     if let Some(ref vid) = version_id {
         builder = builder.header("x-amz-version-id", vid.as_str());
+    }
+    if let Some(status) = replication_status {
+        builder = builder.header("x-amz-replication-status", status.as_header());
     }
     if record.encryption_algorithm.is_some() {
         builder = builder.header("x-amz-server-side-encryption", "AES256");

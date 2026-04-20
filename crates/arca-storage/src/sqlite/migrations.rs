@@ -359,6 +359,38 @@ const MIGRATIONS: &[Migration] = &[
             CREATE INDEX idx_presigned_urls_bucket_key ON presigned_urls(bucket, key);
         ",
     },
+    Migration {
+        version: 17,
+        description: "Add replication journal and replication_status on objects",
+        // `replication_status` is NULL for unreplicated objects, or one of
+        // PENDING / COMPLETED / FAILED / REPLICA (the last for incoming replicas).
+        sql: "
+            ALTER TABLE objects ADD COLUMN replication_status TEXT;
+
+            CREATE TABLE replication_journal (
+                id                   TEXT PRIMARY KEY NOT NULL,
+                bucket               TEXT NOT NULL,
+                key                  TEXT NOT NULL,
+                version_id           TEXT,
+                rule_id              TEXT NOT NULL,
+                event_type           TEXT NOT NULL,
+                destination_endpoint TEXT NOT NULL,
+                destination_bucket   TEXT NOT NULL,
+                status               TEXT NOT NULL DEFAULT 'pending',
+                attempts             INTEGER NOT NULL DEFAULT 0,
+                last_error           TEXT,
+                next_retry_at        TEXT NOT NULL,
+                created_at           TEXT NOT NULL,
+                updated_at           TEXT NOT NULL
+            );
+            CREATE INDEX idx_replication_journal_claim
+                ON replication_journal(status, next_retry_at);
+            CREATE INDEX idx_replication_journal_bucket
+                ON replication_journal(bucket, created_at);
+            CREATE INDEX idx_replication_journal_updated
+                ON replication_journal(updated_at);
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -432,7 +464,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -482,12 +514,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
 
-        // Sixteen migration records
+        // Seventeen migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 16);
+        assert_eq!(count, 17);
     }
 }

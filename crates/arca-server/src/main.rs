@@ -7,6 +7,7 @@ mod credential;
 mod compress_existing;
 mod fsck;
 mod recover;
+mod replicator;
 mod tls;
 mod tls_generate;
 mod vault;
@@ -291,6 +292,22 @@ async fn main() -> Result<()> {
                 notification_store: stores.notification,
                 connector_registry: None, // Set after building the registry below.
                 presigned_url_store: stores.presigned_url,
+                replication_store: stores.replication.clone(),
+                replication_source_id: config
+                    .replication
+                    .as_ref()
+                    .map(|r| r.source_endpoint_id.clone())
+                    .unwrap_or_else(|| "arca".to_string()),
+                replication_journal_retention_days: config
+                    .replication
+                    .as_ref()
+                    .map(|r| r.journal_retention_days)
+                    .unwrap_or(30),
+                replication_journal_max_age_days: config
+                    .replication
+                    .as_ref()
+                    .map(|r| r.journal_max_age_days)
+                    .unwrap_or(90),
                 bucket_encryption_cache: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
                 compression_invalidator,
                 audit_tx: if audit_enabled {
@@ -408,6 +425,16 @@ async fn main() -> Result<()> {
             } else {
                 None
             };
+
+            let repl_config = config.replication.clone().unwrap_or_default();
+            let _replication_worker = replicator::spawn_replication_worker(
+                state.metadata.clone(),
+                state.blob.clone(),
+                state.replication_store.clone(),
+                state.server_config.clone(),
+                repl_config,
+                None,
+            );
 
             let addr = format!("{}:{}", config.server.bind, config.server.port);
             tracing::info!("Starting Arca on {addr}");
@@ -716,6 +743,7 @@ struct StoreSet {
     metrics: Option<Arc<dyn arca_core::store::MetricsStore>>,
     notification: Option<Arc<dyn arca_core::store::NotificationStore>>,
     presigned_url: Option<Arc<dyn arca_core::store::PresignedUrlStore>>,
+    replication: Arc<dyn arca_core::store::ReplicationStore>,
 }
 
 /// Helper to build a `StoreSet` from any type implementing all store traits.
@@ -731,6 +759,7 @@ where
         + arca_core::store::MetricsStore
         + arca_core::store::NotificationStore
         + arca_core::store::PresignedUrlStore
+        + arca_core::store::ReplicationStore
         + 'static,
 {
     StoreSet {
@@ -743,7 +772,8 @@ where
         audit: Some(store.clone() as Arc<dyn arca_core::store::AuditStore>),
         metrics: Some(store.clone() as Arc<dyn arca_core::store::MetricsStore>),
         notification: Some(store.clone() as Arc<dyn arca_core::store::NotificationStore>),
-        presigned_url: Some(store as Arc<dyn arca_core::store::PresignedUrlStore>),
+        presigned_url: Some(store.clone() as Arc<dyn arca_core::store::PresignedUrlStore>),
+        replication: store as Arc<dyn arca_core::store::ReplicationStore>,
     }
 }
 

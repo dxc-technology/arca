@@ -16,6 +16,7 @@ mod metrics;
 mod migrations;
 mod notification;
 mod presigned_url;
+mod replication;
 mod server_config;
 mod team;
 pub(crate) mod user;

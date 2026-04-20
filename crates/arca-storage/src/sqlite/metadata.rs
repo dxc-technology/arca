@@ -27,7 +27,7 @@ fn get_versioning_state(conn: &Connection, bucket: &str) -> VersioningState {
 }
 
 /// Column list for all object SELECT queries (20 columns).
-const OBJECT_COLUMNS: &str = "bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value";
+const OBJECT_COLUMNS: &str = "bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status";
 
 #[async_trait::async_trait]
 impl MetadataStore for SqliteStore {
@@ -413,6 +413,7 @@ impl MetadataStore for SqliteStore {
                             storage_class: "STANDARD".to_string(),
                             checksum_algorithm: None,
                             checksum_value: None,
+                            replication_status: None,
                         })
                     }
                     VersioningState::Suspended => {
@@ -1571,6 +1572,7 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
     let storage_class: String = row.get(17).unwrap_or_else(|_| "STANDARD".to_string());
     let checksum_algorithm: Option<String> = row.get(18).unwrap_or(None);
     let checksum_value: Option<String> = row.get(19).unwrap_or(None);
+    let replication_status: Option<String> = row.get(20).unwrap_or(None);
 
     Ok(ObjectRecord {
         bucket: row.get(0)?,
@@ -1593,6 +1595,7 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
         storage_class,
         checksum_algorithm,
         checksum_value,
+        replication_status,
     })
 }
 
@@ -1626,6 +1629,7 @@ mod tests {
             storage_class: "STANDARD".to_string(),
             checksum_algorithm: None,
             checksum_value: None,
+            replication_status: None,
         }
     }
 

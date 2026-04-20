@@ -90,6 +90,10 @@ pub struct ObjectRecord {
     /// Base64-encoded checksum value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checksum_value: Option<String>,
+    /// Replication status: `PENDING`, `COMPLETED`, `FAILED`, or `REPLICA`.
+    /// `None` for objects that have never been subject to replication.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replication_status: Option<String>,
 }
 
 fn default_standard() -> String {

@@ -16,7 +16,7 @@ use super::PgStore;
 const OBJECT_COLUMNS: &str = "bucket, key, blob_id, size, etag, content_type, last_modified, \
     metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, \
     is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, \
-    checksum_algorithm, checksum_value";
+    checksum_algorithm, checksum_value, replication_status";
 
 /// Reads the bucket versioning state from `bucket_config`.
 /// Called inside a transaction context.
@@ -161,6 +161,7 @@ fn row_to_object_record(row: &sqlx_postgres::PgRow) -> ObjectRecord {
         storage_class: row.get("storage_class"),
         checksum_algorithm: row.get("checksum_algorithm"),
         checksum_value: row.get("checksum_value"),
+        replication_status: row.try_get("replication_status").unwrap_or(None),
     }
 }
 
@@ -612,6 +613,7 @@ impl MetadataStore for PgStore {
                     storage_class: "STANDARD".to_string(),
                     checksum_algorithm: None,
                     checksum_value: None,
+                    replication_status: None,
                 })
             }
             VersioningState::Suspended => {

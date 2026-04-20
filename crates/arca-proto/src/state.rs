@@ -6,7 +6,7 @@ use std::sync::RwLock;
 use std::collections::HashMap;
 use std::time::Instant;
 
-use arca_core::store::{AuditStore, BlobStore, ConnectorRegistry, CredentialStore, GrantStore, MetadataStore, MetricsStore, NotificationStore, PresignedUrlStore, ServerConfigStore, SsecBlobOps, TeamStore, UserStore};
+use arca_core::store::{AuditStore, BlobStore, ConnectorRegistry, CredentialStore, GrantStore, MetadataStore, MetricsStore, NotificationStore, PresignedUrlStore, ReplicationStore, ServerConfigStore, SsecBlobOps, TeamStore, UserStore};
 use arca_core::store::audit::AuditEntry;
 
 use crate::metrics::MetricsRegistry;
@@ -87,6 +87,15 @@ pub struct AppState {
     pub connector_registry: Option<Arc<ConnectorRegistry>>,
     /// Presigned URL tracking store (for visibility in console).
     pub presigned_url_store: Option<Arc<dyn PresignedUrlStore>>,
+    /// Replication journal store (Phase 28). Always present once migrations run.
+    pub replication_store: Arc<dyn ReplicationStore>,
+    /// Stable identifier for this instance used as the loop-prevention
+    /// `x-amz-arca-replication-source` header on outbound replication requests.
+    pub replication_source_id: String,
+    /// Journal retention cap in days (worker purges COMPLETED rows older than this).
+    pub replication_journal_retention_days: u32,
+    /// Hard cap (any status) in days for journal rows.
+    pub replication_journal_max_age_days: u32,
     /// Cache for per-bucket encryption config lookups (bucket -> (has_encryption, expires_at)).
     /// Avoids a DB query on every PUT/UploadPart when global encryption is disabled.
     pub bucket_encryption_cache: Arc<RwLock<HashMap<String, (bool, Instant)>>>,

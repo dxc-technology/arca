@@ -10,7 +10,7 @@ use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, OnRequest, OnResponse, TraceLayer};
 use tracing::Level;
 
-use crate::handlers::{admin, admin_export, admin_grants, admin_import, admin_monitoring, admin_notifications, admin_presigned_urls, admin_settings, admin_teams, admin_users, archive, bucket, object};
+use crate::handlers::{admin, admin_export, admin_grants, admin_import, admin_monitoring, admin_notifications, admin_presigned_urls, admin_replication, admin_settings, admin_teams, admin_users, archive, bucket, object};
 use crate::middleware;
 use crate::state::AppState;
 
@@ -157,6 +157,14 @@ pub fn build_router(state: AppState) -> Router {
         // Presigned URL tracking
         .route("/presigned-urls", get(admin_presigned_urls::list_presigned_urls))
         .route("/presigned-urls/{id}", delete(admin_presigned_urls::delete_presigned_url))
+        // Replication (Phase 28)
+        .route("/replication/journal", get(admin_replication::list_journal))
+        .route(
+            "/replication/credentials/{name}",
+            post(admin_replication::upsert_credential)
+                .delete(admin_replication::delete_credential),
+        )
+        .route("/replication/retry/{id}", post(admin_replication::retry_entry))
         // Grant management
         .route("/grants", get(admin_grants::list_grants).post(admin_grants::create_grant))
         .route(

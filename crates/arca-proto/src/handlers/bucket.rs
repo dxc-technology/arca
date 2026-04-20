@@ -257,6 +257,51 @@ pub async fn get_bucket(
         }
     }
 
+    // GetBucketReplication
+    if params.iter().any(|(k, _)| k == "replication") {
+        match state.metadata.head_bucket(&bucket).await {
+            Ok(Some(_)) => {}
+            Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
+            Err(e) => return internal_error_response(e, &resource),
+        }
+        match state
+            .metadata
+            .get_bucket_config(&bucket, "replication_configuration")
+            .await
+        {
+            Ok(Some(json_str)) => {
+                match serde_json::from_str::<arca_core::s3::replication::ReplicationConfiguration>(
+                    &json_str,
+                ) {
+                    Ok(config) => {
+                        let xml = arca_core::s3::replication::replication_configuration_to_xml(
+                            &config,
+                        );
+                        return Response::builder()
+                            .status(StatusCode::OK)
+                            .header("Content-Type", "application/xml")
+                            .body(Body::from(xml))
+                            .expect("build get_bucket_replication response");
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, bucket = %bucket, "corrupted replication config in DB");
+                        return internal_error_response(
+                            arca_core::error::ArcaError::Internal(e.to_string()),
+                            &resource,
+                        );
+                    }
+                }
+            }
+            Ok(None) => {
+                return s3_error_response(S3Error::new(
+                    S3ErrorCode::ReplicationConfigurationNotFoundError,
+                    &resource,
+                ));
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
+    }
+
     // GetObjectLockConfiguration
     if params.iter().any(|(k, _)| k == "object-lock") {
         match state.metadata.head_bucket(&bucket).await {
@@ -1410,6 +1455,60 @@ pub async fn create_bucket(
         }
     }
 
+    // PutBucketReplication
+    if query.starts_with("replication") || query.starts_with("replication=") || query.starts_with("replication&") {
+        match state.metadata.head_bucket(&bucket).await {
+            Ok(Some(_)) => {}
+            Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
+            Err(e) => return internal_error_response(e, &resource),
+        }
+
+        // Source bucket MUST have versioning Enabled (mirrors AWS CRR semantics).
+        let versioning = match state.metadata.get_bucket_config(&bucket, "versioning").await {
+            Ok(v) => v,
+            Err(e) => return internal_error_response(e, &resource),
+        };
+        if versioning.as_deref() != Some("Enabled") {
+            return s3_error_response(S3Error::with_message(
+                S3ErrorCode::InvalidRequest,
+                "Replication requires versioning to be Enabled on the source bucket",
+                &resource,
+            ));
+        }
+
+        let body_bytes = match axum::body::to_bytes(request.into_body(), 64 * 1024).await {
+            Ok(b) => b,
+            Err(_) => return s3_error_response(S3Error::new(S3ErrorCode::InvalidRequest, &resource)),
+        };
+        let xml_str = String::from_utf8_lossy(&body_bytes);
+        let config = match arca_core::s3::replication::parse_replication_configuration_xml(&xml_str) {
+            Ok(c) => c,
+            Err(e) => return s3_error_response(e),
+        };
+        let json_str = match serde_json::to_string(&config) {
+            Ok(s) => s,
+            Err(e) => {
+                return internal_error_response(
+                    arca_core::error::ArcaError::Internal(e.to_string()),
+                    &resource,
+                );
+            }
+        };
+        match state
+            .metadata
+            .set_bucket_config(&bucket, "replication_configuration", &json_str)
+            .await
+        {
+            Ok(()) => {
+                return Response::builder()
+                    .status(StatusCode::OK)
+                    .body(Body::empty())
+                    .expect("build put_bucket_replication response");
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
+    }
+
     // PutBucketLifecycleConfiguration
     if query.starts_with("lifecycle") || query.starts_with("lifecycle=") || query.starts_with("lifecycle&") {
         match state.metadata.head_bucket(&bucket).await {
@@ -1673,6 +1772,28 @@ pub async fn delete_bucket(
                     .status(StatusCode::NO_CONTENT)
                     .body(Body::empty())
                     .expect("build delete_bucket_encryption response");
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
+    }
+
+    // DeleteBucketReplication
+    if query.starts_with("replication") || query.starts_with("replication=") || query.starts_with("replication&") {
+        match state.metadata.head_bucket(&bucket).await {
+            Ok(Some(_)) => {}
+            Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
+            Err(e) => return internal_error_response(e, &resource),
+        }
+        match state
+            .metadata
+            .delete_bucket_config(&bucket, "replication_configuration")
+            .await
+        {
+            Ok(_) => {
+                return Response::builder()
+                    .status(StatusCode::NO_CONTENT)
+                    .body(Body::empty())
+                    .expect("build delete_bucket_replication response");
             }
             Err(e) => return internal_error_response(e, &resource),
         }

@@ -48,6 +48,7 @@ sqlx-postgres = { version = "0.8", features = ["chrono", "json"] }
 # Streaming / bytes
 bytes = "1"
 futures-core = "0.3"
+futures-util = "0.3"
 tokio-stream = "0.1"
 tokio-util = { version = "0.7", features = ["io"] }
 

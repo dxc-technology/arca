@@ -21,6 +21,13 @@ pub struct BackgroundWorker {
 }
 
 impl BackgroundWorker {
+    /// Wrap an already-spawned `JoinHandle` (used by workers that don't fit the
+    /// simple periodic timer pattern, e.g. the replication worker which mixes
+    /// a timer with an mpsc wake-up).
+    pub fn from_handle(handle: tokio::task::JoinHandle<()>) -> Self {
+        Self { handle }
+    }
+
     /// Spawn a periodic worker that calls `task` every `interval`.
     pub fn spawn_periodic<F, Fut>(name: &'static str, interval: Duration, task: F) -> Self
     where

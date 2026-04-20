@@ -620,6 +620,7 @@ pub async fn put_object(
         storage_class,
         checksum_algorithm,
         checksum_value,
+        replication_status: None,
     };
     let (old, version_id) = match state.metadata.put_object(&record).await {
         Ok(r) => r,
@@ -669,12 +670,40 @@ pub async fn put_object(
         timestamp: chrono::Utc::now(),
     });
 
+    // Phase 28 — Replication. On the REPLICA side (incoming replicated write)
+    // this stamps the object REPLICA and does NOT emit journal entries; on the
+    // source side it inserts one journal row per matching rule and stamps
+    // PENDING. Returns None when replication is not configured.
+    let current_tags = if tagging_header.is_some() {
+        let tag_vid = version_id.clone().unwrap_or_default();
+        state
+            .metadata
+            .get_object_tags(&record.bucket, &record.key, &tag_vid)
+            .await
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let replication_status = crate::replication::emit_and_stamp(
+        &state,
+        &headers,
+        &record.bucket,
+        &record.key,
+        version_id.as_deref(),
+        arca_core::store::replication::ReplicationEventType::Put,
+        &current_tags,
+    )
+    .await;
+
     let etag = format!("\"{}\"", put_result.etag);
     let mut builder = Response::builder()
         .status(StatusCode::OK)
         .header("ETag", &etag);
     if let Some(ref vid) = version_id {
         builder = builder.header("x-amz-version-id", vid.as_str());
+    }
+    if let Some(status) = replication_status {
+        builder = builder.header("x-amz-replication-status", status.as_header());
     }
     if let Some(ref ssec) = ssec_key {
         builder = builder
@@ -987,6 +1016,7 @@ async fn copy_object(
         storage_class: src_record.storage_class.clone(),
         checksum_algorithm: src_record.checksum_algorithm.clone(),
         checksum_value: src_record.checksum_value.clone(),
+        replication_status: None,
     };
     let (old, version_id) = match state.metadata.put_object(&record).await {
         Ok(r) => r,
@@ -1049,6 +1079,26 @@ async fn copy_object(
         timestamp: chrono::Utc::now(),
     });
 
+    // Phase 28 — Replication. Treat CopyObject as a Put on the destination.
+    let dest_tags = {
+        let vid = version_id.clone().unwrap_or_default();
+        state
+            .metadata
+            .get_object_tags(&record.bucket, &record.key, &vid)
+            .await
+            .unwrap_or_default()
+    };
+    let replication_status = crate::replication::emit_and_stamp(
+        &state,
+        request.headers(),
+        &record.bucket,
+        &record.key,
+        version_id.as_deref(),
+        arca_core::store::replication::ReplicationEventType::Put,
+        &dest_tags,
+    )
+    .await;
+
     // CopyObject returns XML body (not just headers like PutObject).
     let xml = xml_types::copy_object_result(&put_result.etag, &now);
     let mut builder = Response::builder()
@@ -1061,6 +1111,9 @@ async fn copy_object(
     // Add x-amz-version-id for the new destination version.
     if let Some(ref vid) = version_id {
         builder = builder.header("x-amz-version-id", vid.as_str());
+    }
+    if let Some(status) = replication_status {
+        builder = builder.header("x-amz-replication-status", status.as_header());
     }
     if let Some(ref ssec) = dest_ssec {
         builder = builder
@@ -1566,6 +1619,9 @@ pub async fn get_object(
     if let Some(ref vid) = record.version_id {
         builder = builder.header("x-amz-version-id", vid.as_str());
     }
+    if let Some(ref rs) = record.replication_status {
+        builder = builder.header("x-amz-replication-status", rs.as_str());
+    }
     if let Some(range_str) = content_range {
         builder = builder.header("Content-Range", range_str);
     }
@@ -1756,6 +1812,9 @@ pub async fn head_object(
 
     if let Some(ref vid) = record.version_id {
         builder = builder.header("x-amz-version-id", vid.as_str());
+    }
+    if let Some(ref rs) = record.replication_status {
+        builder = builder.header("x-amz-replication-status", rs.as_str());
     }
 
     if is_ssec {
@@ -2031,6 +2090,24 @@ pub async fn delete_object(
             request_id: None,
             timestamp: chrono::Utc::now(),
         });
+    }
+
+    // Phase 28 — Replication. Only delete-marker creation is replicated (matches
+    // AWS default DeleteMarkerReplication behaviour). Hard deletes of specific
+    // versions (handled earlier in this function) are never replicated.
+    if let Some(ref old_record) = old {
+        if old_record.is_delete_marker {
+            let _ = crate::replication::emit_and_stamp(
+                &state,
+                &headers,
+                &bucket,
+                &key,
+                old_record.version_id.as_deref(),
+                arca_core::store::replication::ReplicationEventType::DeleteMarker,
+                &[],
+            )
+            .await;
+        }
     }
 
     // S3 returns 204 regardless of whether the object existed.
@@ -2311,6 +2388,7 @@ async fn put_object_tagging(
         Err(resp) => return resp,
     };
 
+    let headers = request.headers().clone();
     let body_bytes = match axum::body::to_bytes(request.into_body(), 64 * 1024).await {
         Ok(b) => b,
         Err(_) => return s3_error_response(S3Error::new(S3ErrorCode::InvalidRequest, resource)),
@@ -2323,6 +2401,18 @@ async fn put_object_tagging(
 
     match state.metadata.put_object_tags(bucket, key, &tag_vid, &tags).await {
         Ok(()) => {
+            // Phase 28 — Replication: replicate tag change.
+            let _ = crate::replication::emit_and_stamp(
+                state,
+                &headers,
+                bucket,
+                key,
+                resp_vid.as_deref(),
+                arca_core::store::replication::ReplicationEventType::Tag,
+                &tags,
+            )
+            .await;
+
             let mut builder = Response::builder().status(StatusCode::OK);
             if let Some(ref vid) = resp_vid {
                 builder = builder.header("x-amz-version-id", vid.as_str());

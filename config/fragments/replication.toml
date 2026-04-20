@@ -1,0 +1,28 @@
+[replication]
+# How often the replication worker polls the journal.
+poll_interval_seconds = 15
+
+# Maximum number of journal entries processed per cycle.
+batch_size = 100
+
+# Maximum delivery attempts before a journal entry is marked FAILED.
+max_retries = 10
+
+# Base retry backoff in seconds. Exponential: base * 2^attempt, capped at 1 hour.
+retry_base_seconds = 5
+
+# Outbound HTTP request timeout in seconds.
+request_timeout_seconds = 60
+
+# Stable identifier for this Arca instance. Sent as the
+# `x-amz-arca-replication-source` header on every outbound replication request
+# so receivers can flag the object REPLICA and skip re-emitting on mirror rules.
+# Set this to a unique, stable string per deployment.
+source_endpoint_id = "arca"
+
+# Days after which COMPLETED journal rows are purged by the retention worker.
+journal_retention_days = 30
+
+# Hard cap in days for ANY journal row, regardless of status. Prevents the
+# table from growing unbounded if a destination stays offline forever.
+journal_max_age_days = 90

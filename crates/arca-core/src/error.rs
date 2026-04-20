@@ -57,6 +57,7 @@ pub enum S3ErrorCode {
     SlowDown,
     InvalidRetentionPeriod,
     InvalidBucketState,
+    ReplicationConfigurationNotFoundError,
 }
 
 impl S3ErrorCode {
@@ -97,6 +98,7 @@ impl S3ErrorCode {
             S3ErrorCode::SlowDown => 503,
             S3ErrorCode::InvalidRetentionPeriod => 400,
             S3ErrorCode::InvalidBucketState => 409,
+            S3ErrorCode::ReplicationConfigurationNotFoundError => 404,
         }
     }
 
@@ -141,6 +143,9 @@ impl S3ErrorCode {
             S3ErrorCode::SlowDown => "SlowDown",
             S3ErrorCode::InvalidRetentionPeriod => "InvalidRetentionPeriod",
             S3ErrorCode::InvalidBucketState => "InvalidBucketState",
+            S3ErrorCode::ReplicationConfigurationNotFoundError => {
+                "ReplicationConfigurationNotFoundError"
+            }
         }
     }
 
@@ -228,6 +233,9 @@ impl S3ErrorCode {
             }
             S3ErrorCode::InvalidBucketState => {
                 "The request is not valid for the current state of the bucket."
+            }
+            S3ErrorCode::ReplicationConfigurationNotFoundError => {
+                "The replication configuration was not found."
             }
         }
     }

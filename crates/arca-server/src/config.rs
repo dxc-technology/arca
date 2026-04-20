@@ -12,6 +12,7 @@ pub struct Config {
     pub encryption: Option<EncryptionConfig>,
     pub monitoring: Option<MonitoringConfig>,
     pub notifications: Option<NotificationsConfig>,
+    pub replication: Option<ReplicationConfig>,
 }
 
 /// Server configuration.
@@ -557,6 +558,83 @@ impl Default for NotificationsConfig {
             event_retention_days: None,
         }
     }
+}
+
+/// Replication worker configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ReplicationConfig {
+    /// How often the worker polls the journal, in seconds.
+    #[serde(default = "default_poll_interval")]
+    pub poll_interval_seconds: u64,
+    /// Maximum number of journal entries processed per tick.
+    #[serde(default = "default_batch_size")]
+    pub batch_size: u32,
+    /// Maximum delivery attempts before marking an entry `failed`.
+    #[serde(default = "default_replication_max_retries")]
+    pub max_retries: u32,
+    /// Base retry backoff in seconds (exponential: base * 2^attempt, capped at 1h).
+    #[serde(default = "default_replication_retry_base")]
+    pub retry_base_seconds: u64,
+    /// Outbound HTTP request timeout in seconds.
+    #[serde(default = "default_replication_request_timeout")]
+    pub request_timeout_seconds: u64,
+    /// Stable identifier for this Arca instance. Sent as the
+    /// `x-amz-arca-replication-source` header on every outbound request so
+    /// the receiver can flag the object REPLICA and skip its own journal emit
+    /// (loop prevention for mirror configurations).
+    #[serde(default = "default_source_endpoint_id")]
+    pub source_endpoint_id: String,
+    /// Days after which COMPLETED journal rows are purged by the retention
+    /// worker. Keeps the journal bounded during normal operation.
+    #[serde(default = "default_journal_retention_days")]
+    pub journal_retention_days: u32,
+    /// Hard cap in days for ANY journal row regardless of status. Prevents
+    /// unbounded growth when a destination stays offline forever.
+    #[serde(default = "default_journal_max_age_days")]
+    pub journal_max_age_days: u32,
+}
+
+impl Default for ReplicationConfig {
+    fn default() -> Self {
+        Self {
+            poll_interval_seconds: default_poll_interval(),
+            batch_size: default_batch_size(),
+            max_retries: default_replication_max_retries(),
+            retry_base_seconds: default_replication_retry_base(),
+            request_timeout_seconds: default_replication_request_timeout(),
+            source_endpoint_id: default_source_endpoint_id(),
+            journal_retention_days: default_journal_retention_days(),
+            journal_max_age_days: default_journal_max_age_days(),
+        }
+    }
+}
+
+fn default_poll_interval() -> u64 {
+    15
+}
+fn default_batch_size() -> u32 {
+    100
+}
+fn default_replication_max_retries() -> u32 {
+    10
+}
+fn default_replication_retry_base() -> u64 {
+    5
+}
+fn default_replication_request_timeout() -> u64 {
+    60
+}
+fn default_source_endpoint_id() -> String {
+    // Fall back to a stable per-host value. Operators should set this
+    // explicitly; the default is merely "non-empty" so loop prevention works
+    // out of the box in single-instance setups.
+    "arca".to_string()
+}
+fn default_journal_retention_days() -> u32 {
+    30
+}
+fn default_journal_max_age_days() -> u32 {
+    90
 }
 
 fn default_channel_size() -> usize {
@@ -1267,6 +1345,7 @@ data_dir = "/data"
             encryption: None,
             monitoring: None,
             notifications: None,
+            replication: None,
         }
     }
 

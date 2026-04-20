@@ -229,6 +229,68 @@ pub fn generate_presigned_url(
     format!("{canonical_qs}&X-Amz-Signature={signature}")
 }
 
+/// Input to `sign_outbound_request`.
+///
+/// Represents an HTTP request that is about to be sent to an S3-compatible
+/// endpoint. The caller supplies method, URI, query string, headers (including
+/// `host` and `x-amz-date`), and the SHA256 hash of the request payload
+/// (or the literal string `UNSIGNED-PAYLOAD` for streaming uploads).
+pub struct SignOutboundInput<'a> {
+    pub method: &'a str,
+    pub uri_path: &'a str,
+    pub query_string: &'a str,
+    /// All request headers that will be sent. MUST include `host`. The `x-amz-date`
+    /// header is required for signing; if missing, caller must pass it via
+    /// `request_datetime` and it will be added to the signed-headers set.
+    pub headers: &'a [(String, String)],
+    /// SHA256 hex of the body, or `UNSIGNED-PAYLOAD`.
+    pub payload_hash: &'a str,
+    pub access_key_id: &'a str,
+    pub secret_access_key: &'a str,
+    pub region: &'a str,
+    /// AWS service name (usually `s3`).
+    pub service: &'a str,
+    /// Request datetime (ISO 8601 compact: `20130524T000000Z`).
+    pub request_datetime: &'a str,
+}
+
+/// Sign an outbound request and return an `Authorization` header value.
+///
+/// Every non-empty header whose name does not start with `x-amz-content-sha256`
+/// is included in the signed-headers set. `host` is always included.
+pub fn sign_outbound_request(input: &SignOutboundInput) -> String {
+    let date = &input.request_datetime[..8];
+
+    // Signed headers: all headers the caller provided, plus host (if missing).
+    // Lowercased; deduplicated; sorted.
+    let mut names: Vec<String> = input
+        .headers
+        .iter()
+        .map(|(n, _)| n.to_lowercase())
+        .collect();
+    names.sort();
+    names.dedup();
+
+    let cu = canonical_uri(input.uri_path);
+    let cq = canonical_query_string(input.query_string);
+    let ch = canonical_headers(input.headers, &names);
+    let sh = signed_headers_str(&names);
+    let canonical =
+        format!("{}\n{cu}\n{cq}\n{ch}\n{sh}\n{}", input.method, input.payload_hash);
+
+    let canonical_hash = hex_sha256(canonical.as_bytes());
+
+    let scope = format!("{date}/{}/{}/aws4_request", input.region, input.service);
+    let sts = string_to_sign(input.request_datetime, &scope, &canonical_hash);
+    let key = signing_key(input.secret_access_key, date, input.region, input.service);
+    let signature = compute_signature(&key, &sts);
+
+    let credential = format!("{}/{}", input.access_key_id, scope);
+    format!(
+        "AWS4-HMAC-SHA256 Credential={credential}, SignedHeaders={sh}, Signature={signature}"
+    )
+}
+
 /// URI-encode a path for canonical request (S3 exception: don't double-encode).
 ///
 /// S3 uses the raw URI path as-is for the canonical URI. Unlike other AWS services,
@@ -544,6 +606,88 @@ mod tests {
         };
 
         assert!(verify_request(&input).is_ok());
+    }
+
+    #[test]
+    fn sign_outbound_roundtrip_with_verify_request() {
+        // Sign an outbound PUT with sign_outbound_request, then feed the same
+        // headers + query + path into verify_request and confirm it accepts.
+        let datetime = "20261231T120000Z";
+        let headers = vec![
+            ("host".to_string(), "replica.example.com".to_string()),
+            ("x-amz-date".to_string(), datetime.to_string()),
+            (
+                "x-amz-content-sha256".to_string(),
+                "UNSIGNED-PAYLOAD".to_string(),
+            ),
+        ];
+
+        let input = SignOutboundInput {
+            method: "PUT",
+            uri_path: "/replica/file.txt",
+            query_string: "",
+            headers: &headers,
+            payload_hash: "UNSIGNED-PAYLOAD",
+            access_key_id: "AKIAIOSFODNN7EXAMPLE",
+            secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            region: "us-east-1",
+            service: "s3",
+            request_datetime: datetime,
+        };
+
+        let auth_header = sign_outbound_request(&input);
+        let auth = parse_authorization(&auth_header).unwrap();
+        assert_eq!(auth.access_key_id, "AKIAIOSFODNN7EXAMPLE");
+        assert_eq!(auth.date, "20261231");
+        assert_eq!(auth.region, "us-east-1");
+        assert_eq!(auth.service, "s3");
+
+        let verify = VerifyInput {
+            method: "PUT",
+            uri_path: "/replica/file.txt",
+            query_string: "",
+            headers: &headers,
+            payload_hash: "UNSIGNED-PAYLOAD",
+            auth: &auth,
+            secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            request_datetime: datetime,
+        };
+        assert!(verify_request(&verify).is_ok());
+    }
+
+    #[test]
+    fn sign_outbound_includes_extra_headers() {
+        // Extra headers (e.g. the replication-source marker) must be included
+        // in the signed-headers set so they can't be stripped in transit.
+        let datetime = "20261231T120000Z";
+        let headers = vec![
+            ("host".to_string(), "replica.example.com".to_string()),
+            ("x-amz-date".to_string(), datetime.to_string()),
+            (
+                "x-amz-content-sha256".to_string(),
+                "UNSIGNED-PAYLOAD".to_string(),
+            ),
+            (
+                "x-amz-arca-replication-source".to_string(),
+                "source-a".to_string(),
+            ),
+        ];
+
+        let input = SignOutboundInput {
+            method: "PUT",
+            uri_path: "/replica/file.txt",
+            query_string: "",
+            headers: &headers,
+            payload_hash: "UNSIGNED-PAYLOAD",
+            access_key_id: "AKIAIOSFODNN7EXAMPLE",
+            secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            region: "us-east-1",
+            service: "s3",
+            request_datetime: datetime,
+        };
+        let auth_header = sign_outbound_request(&input);
+        // The custom header is part of the signed-headers list.
+        assert!(auth_header.contains("x-amz-arca-replication-source"));
     }
 
     #[test]

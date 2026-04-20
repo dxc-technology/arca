@@ -126,6 +126,7 @@ pub async fn run_recover(config: &Config, dry_run: bool, skip_verify: bool) -> R
             storage_class: "STANDARD".to_string(),
             checksum_algorithm: None,
             checksum_value: None,
+            replication_status: None,
         };
         store.put_object(&record).await?;
         object_count += 1;
@@ -317,6 +318,7 @@ mod tests {
             encryption: None,
             monitoring: None,
             notifications: None,
+            replication: None,
         }
     }
 

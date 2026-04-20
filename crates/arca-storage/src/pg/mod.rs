@@ -10,6 +10,7 @@ mod metadata;
 mod metrics;
 mod notification;
 mod presigned_url;
+mod replication;
 mod server_config;
 mod team;
 pub(crate) mod user;
@@ -45,6 +46,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 3,
         description: "Create presigned_urls tracking table",
         sql: include_str!("migrations/0003_presigned_urls.sql"),
+    },
+    Migration {
+        version: 4,
+        description: "Add replication journal and replication_status on objects",
+        sql: include_str!("migrations/0004_replication.sql"),
     },
 ];
 

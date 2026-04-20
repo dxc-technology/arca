@@ -436,6 +436,7 @@ mod tests {
             encryption: None,
             monitoring: None,
             notifications: None,
+            replication: None,
         }
     }
 
@@ -527,6 +528,7 @@ mod tests {
             storage_class: "STANDARD".to_string(),
             checksum_algorithm: None,
             checksum_value: None,
+            replication_status: None,
         };
         store.put_object(&record).await.unwrap();
     }
@@ -605,6 +607,7 @@ mod tests {
             storage_class: "STANDARD".to_string(),
             checksum_algorithm: None,
             checksum_value: None,
+            replication_status: None,
         };
         store.put_object(&record).await.unwrap();
         drop(store);
@@ -748,6 +751,7 @@ mod tests {
             storage_class: "STANDARD".to_string(),
             checksum_algorithm: None,
             checksum_value: None,
+            replication_status: None,
         };
         store.put_object(&record).await.unwrap();
         drop(store);

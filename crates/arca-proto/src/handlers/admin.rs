@@ -88,6 +88,9 @@ struct InfoResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     kms_endpoint: Option<String>,
     metadata_backend: String,
+    /// Phase 28. True when this instance has a stable replication-source ID
+    /// configured and the replication worker is wired.
+    replication_enabled: bool,
 }
 
 #[derive(Serialize)]
@@ -157,6 +160,7 @@ pub async fn info(State(state): State<AppState>) -> impl IntoResponse {
         kms_provider: state.kms_provider.clone(),
         kms_endpoint: state.kms_endpoint.clone(),
         metadata_backend: state.metadata_backend.clone(),
+        replication_enabled: !state.replication_source_id.is_empty(),
     })
 }
 

@@ -1,0 +1,32 @@
+services:
+  # A second Arca instance ("replica") on port 9001. The primary `arca`
+  # service replicates to this instance via the PutBucketReplication rules
+  # configured in the integration test setup.
+  arca-replica:
+    image: arca
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: ${BUILD_TARGET:-production}
+    ports:
+      - "9001:9000"
+    volumes:
+      - arca-replica-data:/data
+    environment:
+      - ARCA_LOG=info
+      - ARCA_ROOT_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE
+      - ARCA_ROOT_SECRET_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+
+  # Integration-test client can reach both endpoints.
+  test:
+    environment:
+      - ARCA_ENDPOINT=http://arca:9000
+      - ARCA_REPLICA_ENDPOINT=http://arca-replica:9000
+      - AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+      - AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+    depends_on:
+      - arca
+      - arca-replica
+
+volumes:
+  arca-replica-data:

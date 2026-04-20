@@ -259,6 +259,46 @@ run_ssec() {
     $COMPOSE run --rm test integration/test_ssec.py "$@"
 }
 
+run_replication() {
+    echo "==> Running replication integration tests..."
+
+    enable_replication
+    build_config
+
+    # Use a global so the EXIT trap can still see the compose command
+    # after run_replication returns.
+    _REPL_COMPOSE="$(compose_cmd)"
+
+    cleanup_repl() {
+        echo "Cleaning up replication test..."
+        ${_REPL_COMPOSE:-docker compose} down -v 2>/dev/null || true
+    }
+    trap cleanup_repl EXIT
+
+    # Step 1: Build images (source Arca + replica reuse the same image)
+    $_REPL_COMPOSE build arca
+    # Step 2: Start both instances.
+    $_REPL_COMPOSE up -d arca arca-replica
+    wait_for_arca "$_REPL_COMPOSE"
+    # Wait for the replica separately (shares the same image, different service name).
+    echo "Waiting for arca-replica..."
+    for i in $(seq 1 30); do
+        if $_REPL_COMPOSE exec -T arca-replica /usr/local/bin/arca --help >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
+    sleep 2
+    # Step 3: Run replication tests. `|| true` so a pytest failure doesn't
+    # abort the function under set -e — we capture the code and return it.
+    local rc=0
+    $_REPL_COMPOSE run --rm test integration/test_replication.py "$@" || rc=$?
+
+    trap - EXIT
+    cleanup_repl
+    return $rc
+}
+
 run_notifications() {
     echo "==> Running notification integration tests..."
 
@@ -783,6 +823,10 @@ case "${1:-all}" in
         shift
         run_notifications "$@"
         ;;
+    replication)
+        shift
+        run_replication "$@"
+        ;;
     connectors)
         shift
         run_connectors "$@"
@@ -812,6 +856,7 @@ case "${1:-all}" in
         echo "  presigned            Run presigned URL integration tests"
         echo "  ssec                 Run SSE-C integration tests"
         echo "  connectors <type>    Run connector integration tests (redis, nats, mqtt, postgresql, mysql, mongodb, kafka, amqp, elasticsearch, syslog, smtp, grpc, all)"
+        echo "  replication          Run replication integration tests (two Arca instances)"
         echo "  s3-compat            Run Ceph s3-tests compatibility suite"
         echo ""
         echo "Extra args are passed to the test runner (cargo test or pytest)."

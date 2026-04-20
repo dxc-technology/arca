@@ -6,6 +6,7 @@ pub mod authorize;
 pub mod handlers;
 pub mod metrics;
 pub mod middleware;
+pub mod replication;
 pub mod router;
 pub mod state;
 pub mod xml;
