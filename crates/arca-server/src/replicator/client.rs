@@ -28,8 +28,6 @@ pub enum OutboundOp {
     Delete,
     /// PUT tagging — expects `body` to be the `<Tagging>` XML request body.
     PutTagging,
-    /// HEAD — no body; used for conflict-check (destination `Last-Modified`).
-    Head,
 }
 
 /// Errors from the outbound client. Wrapped into the journal entry's
@@ -49,7 +47,6 @@ pub enum OutboundError {
 /// Result of a successful HEAD: destination's current `Last-Modified` (if any).
 pub struct HeadResult {
     pub last_modified: Option<DateTime<Utc>>,
-    pub exists: bool,
 }
 
 /// Outbound S3 client. Created once per journal batch.
@@ -112,10 +109,7 @@ impl OutboundClient {
 
         let status = resp.status().as_u16();
         if status == 404 {
-            return Ok(HeadResult {
-                last_modified: None,
-                exists: false,
-            });
+            return Ok(HeadResult { last_modified: None });
         }
         if !(200..300).contains(&status) {
             return Err(OutboundError::Http {
@@ -132,10 +126,7 @@ impl OutboundClient {
                     .ok()
                     .map(|d| d.with_timezone(&Utc))
             });
-        Ok(HeadResult {
-            last_modified,
-            exists: true,
-        })
+        Ok(HeadResult { last_modified })
     }
 
     /// Execute an outbound operation.
@@ -157,7 +148,6 @@ impl OutboundClient {
             OutboundOp::Put { .. } => ("PUT", None),
             OutboundOp::Delete => ("DELETE", None),
             OutboundOp::PutTagging => ("PUT", Some("tagging")),
-            OutboundOp::Head => ("HEAD", None),
         };
         let (url, host, uri_path) = build_url(endpoint, bucket, key, query)?;
         let datetime = now_iso8601();
