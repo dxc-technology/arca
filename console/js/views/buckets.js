@@ -8,6 +8,7 @@ export function bucketsView() {
     loading: true,
     showCreateModal: false,
     newBucketName: '',
+    newBucketObjectLock: false,
     creating: false,
     createError: '',
     icons,
@@ -55,13 +56,14 @@ export function bucketsView() {
       this.creating = true;
       this.createError = '';
       try {
-        const resp = await api.s3CreateBucket(this.newBucketName);
+        const resp = await api.s3CreateBucket(this.newBucketName, { objectLock: this.newBucketObjectLock });
         if (!resp.ok) {
           const text = await resp.text();
           throw new Error(text.match(/<Message>(.*?)<\/Message>/)?.[1] || `Error ${resp.status}`);
         }
         this.showCreateModal = false;
         this.newBucketName = '';
+        this.newBucketObjectLock = false;
         await this.load();
       } catch (e) { this.createError = e.message; }
       this.creating = false;
@@ -115,6 +117,15 @@ export function bucketSettingsView() {
     objectLockDays: null,
     objectLockSaving: false,
     objectLockError: '',
+    // Irreversible-action confirmation modals. Versioning (once ENABLED) and
+    // Object Lock cannot be turned off afterwards, so the first enable is
+    // gated by a typed-name confirmation (same pattern as delete-bucket).
+    showEnableVersioningModal: false,
+    enableVersioningConfirmName: '',
+    showEnableObjectLockModal: false,
+    enableObjectLockConfirmName: '',
+    pendingLockMode: '',
+    pendingLockDays: null,
     // Lifecycle state
     lifecycleRules: [],
     lifecycleLoading: false,
@@ -192,6 +203,21 @@ export function bucketSettingsView() {
       await this.loadLifecycleRules();
 
       this.loading = false;
+    },
+
+    // Gate Object Lock enable behind a typed confirmation: once enabled it
+    // cannot be disabled and WORM retention becomes enforceable on new objects.
+    requestEnableObjectLock(mode, days) {
+      this.pendingLockMode = mode || '';
+      this.pendingLockDays = days || null;
+      this.enableObjectLockConfirmName = '';
+      this.objectLockError = '';
+      this.showEnableObjectLockModal = true;
+    },
+
+    async confirmEnableObjectLock() {
+      this.showEnableObjectLockModal = false;
+      await this.enableObjectLock(this.pendingLockMode, this.pendingLockDays);
     },
 
     async enableObjectLock(mode, days) {
@@ -323,6 +349,25 @@ export function bucketSettingsView() {
     async deleteAllLifecycleRules() {
       this.lifecycleRules = [];
       await this._persistRules();
+    },
+
+    // Gate the toggle: the Disabled -> Enabled transition is irreversible
+    // (AWS S3 versioning can only be Suspended afterwards, never turned off),
+    // so we ask for typed confirmation. Suspended <-> Enabled is reversible
+    // and goes through directly.
+    requestToggleVersioning() {
+      if (!this.versioningStatus) {
+        this.enableVersioningConfirmName = '';
+        this.versioningError = '';
+        this.showEnableVersioningModal = true;
+        return;
+      }
+      this.toggleVersioning();
+    },
+
+    async confirmEnableVersioning() {
+      this.showEnableVersioningModal = false;
+      await this.toggleVersioning();
     },
 
     async toggleVersioning() {

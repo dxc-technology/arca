@@ -741,8 +741,10 @@
                       <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                     </button>
                   </div>
-                  <div class="flex items-center gap-2 text-xs text-vault-muted">
-                    <span>Created <span x-text="new Date(b.creationDate).toLocaleDateString()"></span></span>
+                  <div class="text-xs text-vault-muted mb-1.5">
+                    Created <span x-text="new Date(b.creationDate).toLocaleDateString()"></span>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-vault-muted">
                     <template x-if="b.encrypted">
                       <span class="flex items-center gap-1 text-green-400" title="SSE-S3 (AES-256)">
                         <span x-html="icons.encryptionShield"></span>
@@ -798,6 +800,12 @@
                     placeholder="my-bucket" pattern="[a-z0-9][a-z0-9.\-]{1,61}[a-z0-9]"
                     class="w-full px-3.5 py-2.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition text-sm font-mono mb-1">
                   <p class="text-[10px] text-vault-muted mb-4">Lowercase letters, numbers, hyphens, dots. 3-63 characters.</p>
+                  <label class="flex items-center gap-2 mb-4 cursor-pointer">
+                    <input type="checkbox" x-model="newBucketObjectLock"
+                      class="w-4 h-4 rounded border-vault-border bg-vault-bg text-vault-accent focus:ring-vault-accent/30 focus:ring-offset-0">
+                    <span class="text-sm text-vault-muted">Enable Object Lock</span>
+                    <span class="text-[10px] text-vault-muted/60">(WORM, auto-enables versioning, cannot be disabled later)</span>
+                  </label>
                   <div class="flex gap-3 justify-end">
                     <button type="button" @click="showCreateModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
                     <button type="submit" :disabled="creating" class="px-4 py-2 rounded-lg bg-vault-accent text-vault-bg text-sm font-medium hover:opacity-90 transition disabled:opacity-50">Create</button>
@@ -839,6 +847,8 @@
                     <span class="help-tooltip" x-text="topic.hint"></span>
                   </span>
                 </div>
+
+                <p class="text-xs text-vault-muted mb-3">Encrypt object contents at rest with AES-256 (SSE-S3). Clients see plaintext ETags, sizes, and ranged reads — encryption is transparent. Can be turned off later: existing ciphertext stays readable via the stored DEK.</p>
 
                 <!-- Read-only: server-level encryption is ON -->
                 <template x-if="adminInfoAvailable && serverEncryptionEnabled">
@@ -910,6 +920,8 @@
                   </span>
                 </div>
 
+                <p class="text-xs text-vault-muted mb-3">Compress object contents transparently before they hit disk to cut storage usage. Pick an algorithm and level, or use <span class="text-vault-text font-mono">auto</span> to let Arca choose per-object from Content-Type and size. Can be turned off later: existing compressed blobs stay readable.</p>
+
                 <!-- Toggle -->
                 <div class="flex items-center justify-between">
                   <div>
@@ -931,7 +943,7 @@
                     <label class="text-xs text-vault-muted">Algorithm</label>
                     <select x-model="compressionAlgorithm" @change="updateCompressionAlgorithm()"
                       :disabled="compressionSaving"
-                      class="px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-xs disabled:opacity-50">
+                      class="px-3 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm disabled:opacity-50">
                       <option value="auto">auto</option>
                       <option value="zstd">zstd</option>
                       <option value="lz4">lz4</option>
@@ -955,7 +967,7 @@
                       :min="(compressionLevels[compressionAlgorithm] || {}).min"
                       :max="(compressionLevels[compressionAlgorithm] || {}).max"
                       :disabled="compressionSaving"
-                      class="w-20 px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-xs disabled:opacity-50">
+                      class="w-20 px-3 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm disabled:opacity-50">
                     <span class="text-[10px] text-vault-muted/60"
                       x-text="'(' + ((compressionLevels[compressionAlgorithm] || {}).min ?? '') + '–' + ((compressionLevels[compressionAlgorithm] || {}).max ?? '') + ')'"></span>
                   </div>
@@ -994,6 +1006,9 @@
                   </span>
                 </div>
 
+                <!-- Warning shown only before the first enable -->
+                <p x-show="!versioningStatus" x-cloak class="text-xs text-vault-muted mb-3">Enable Versioning to preserve every version of each object (overwrites and deletes keep the prior copy). Once enabled, versioning can only be suspended, not turned off. <span class="text-amber-400">This action cannot be undone.</span></p>
+
                 <!-- Toggle -->
                 <div class="flex items-center justify-between">
                   <div>
@@ -1001,7 +1016,7 @@
                     <div class="text-xs text-vault-muted mt-0.5"
                       x-text="versioningStatus === 'Enabled' ? 'All object writes create new versions' : versioningStatus === 'Suspended' ? 'Suspended, new writes use null version ID' : 'Not enabled'"></div>
                   </div>
-                  <button @click="toggleVersioning()" :disabled="versioningSaving || (objectLockEnabled && versioningStatus === 'Enabled')"
+                  <button @click="requestToggleVersioning()" :disabled="versioningSaving || (objectLockEnabled && versioningStatus === 'Enabled')"
                     :class="versioningStatus === 'Enabled' ? 'bg-vault-accent' : versioningStatus === 'Suspended' ? 'bg-amber-500' : 'bg-vault-border'"
                     class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50">
                     <span :class="versioningStatus === 'Enabled' || versioningStatus === 'Suspended' ? 'translate-x-6' : 'translate-x-1'"
@@ -1063,15 +1078,15 @@
                 <div x-show="!objectLockEnabled">
                   <p class="text-xs text-vault-muted mb-3">Enable Object Lock to prevent objects from being deleted during a retention period (WORM compliance). This also enables versioning. <span class="text-amber-400">This action cannot be undone.</span></p>
                   <div class="flex items-center gap-3">
-                    <select x-ref="lockMode" class="px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-xs">
+                    <select x-ref="lockMode" class="px-3 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm">
                       <option value="">No default retention</option>
                       <option value="GOVERNANCE">GOVERNANCE</option>
                       <option value="COMPLIANCE">COMPLIANCE</option>
                     </select>
-                    <input type="number" min="1" x-ref="lockDays" placeholder="Days" class="w-20 px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-xs placeholder-slate-500">
-                    <button @click="enableObjectLock($refs.lockMode.value, $refs.lockDays.value ? parseInt($refs.lockDays.value) : null)"
+                    <input type="number" min="1" x-ref="lockDays" placeholder="Days" class="w-20 px-3 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm placeholder-slate-500">
+                    <button @click="requestEnableObjectLock($refs.lockMode.value, $refs.lockDays.value ? parseInt($refs.lockDays.value) : null)"
                       :disabled="objectLockSaving"
-                      class="px-3 py-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/30 text-xs font-medium hover:bg-vault-accent/20 transition disabled:opacity-40"
+                      class="px-3 py-1.5 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/30 text-sm font-medium hover:bg-vault-accent/20 transition disabled:opacity-40"
                       x-text="objectLockSaving ? 'Enabling...' : 'Enable Object Lock'"></button>
                   </div>
                   <p x-show="objectLockError" x-text="objectLockError" class="text-red-400 text-xs mt-2"></p>
@@ -1095,6 +1110,8 @@
                     + Add Rule
                   </button>
                 </div>
+
+                <p class="text-xs text-vault-muted mb-3">Schedule automatic cleanup for this bucket: expire objects after N days, prune old noncurrent versions, or abort incomplete multipart uploads. Each rule can target a key prefix. Rules can be edited, disabled, or removed at any time.</p>
 
                 <template x-if="lifecycleLoading">
                   <div class="flex justify-center py-4">
@@ -1251,6 +1268,8 @@
                     + Add Notification
                   </button>
                 </div>
+
+                <p class="text-xs text-vault-muted mb-3">Deliver a JSON event to an external connector (webhook, Kafka, SMTP, gRPC, ...) when objects are created, deleted, or their versions change. Filter by event type and key prefix/suffix. Delivery is retried on transient failures; failed events surface in the Event Log.</p>
 
                 <template x-if="loading">
                   <div class="flex justify-center py-4">
@@ -1837,6 +1856,47 @@
                       x-text="deleting ? 'Deleting...' : 'Delete'"></button>
                   </div>
                   <p x-show="deleteError" x-text="deleteError" class="text-red-400 text-xs mt-2"></p>
+                </form>
+              </div>
+            </div>
+
+            <!-- Enable Versioning confirmation (irreversible first-time enable) -->
+            <div x-show="showEnableVersioningModal" x-cloak x-transition.opacity x-effect="if (showEnableVersioningModal) $nextTick(() => $refs.enableVersioningInput?.focus())" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="showEnableVersioningModal = false">
+              <div class="glass rounded-xl p-6 w-full max-w-md mx-4" @click.stop>
+                <h3 class="text-lg font-semibold mb-2 text-amber-400">Enable Versioning</h3>
+                <p class="text-sm text-vault-muted mb-2">Versioning on <span class="text-vault-text font-mono" x-text="bucketName"></span> <span class="text-amber-400">cannot be turned off once enabled</span>, only suspended. Every subsequent overwrite or delete will create a new version, growing storage usage until lifecycle rules prune old ones.</p>
+                <p class="text-sm text-vault-muted mb-3">Type <span class="text-vault-text font-mono" x-text="bucketName"></span> to confirm.</p>
+                <form @submit.prevent="if (enableVersioningConfirmName === bucketName) confirmEnableVersioning()">
+                  <input type="text" x-model="enableVersioningConfirmName" x-ref="enableVersioningInput"
+                    placeholder="Type bucket name to confirm"
+                    class="w-full px-3.5 py-2.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 transition text-sm font-mono mb-4">
+                  <div class="flex gap-3 justify-end">
+                    <button type="button" @click="showEnableVersioningModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                    <button type="submit" :disabled="enableVersioningConfirmName !== bucketName || versioningSaving"
+                      class="px-4 py-2 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 text-sm font-medium hover:bg-amber-500/30 transition disabled:opacity-50">Enable</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            <!-- Enable Object Lock confirmation (irreversible) -->
+            <div x-show="showEnableObjectLockModal" x-cloak x-transition.opacity x-effect="if (showEnableObjectLockModal) $nextTick(() => $refs.enableObjectLockInput?.focus())" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="showEnableObjectLockModal = false">
+              <div class="glass rounded-xl p-6 w-full max-w-md mx-4" @click.stop>
+                <h3 class="text-lg font-semibold mb-2 text-amber-400">Enable Object Lock (WORM)</h3>
+                <p class="text-sm text-vault-muted mb-2">Object Lock on <span class="text-vault-text font-mono" x-text="bucketName"></span> <span class="text-amber-400">cannot be disabled</span> afterwards. Versioning will be enabled automatically and cannot be suspended while Object Lock is active. Objects within retention cannot be deleted or overwritten, even by administrators under COMPLIANCE mode.</p>
+                <template x-if="pendingLockMode">
+                  <p class="text-xs text-vault-muted mb-2">Default retention: <span class="text-vault-text font-mono" x-text="pendingLockMode"></span> <span x-show="pendingLockDays">for <span class="text-vault-text" x-text="pendingLockDays"></span> days</span></p>
+                </template>
+                <p class="text-sm text-vault-muted mb-3">Type <span class="text-vault-text font-mono" x-text="bucketName"></span> to confirm.</p>
+                <form @submit.prevent="if (enableObjectLockConfirmName === bucketName) confirmEnableObjectLock()">
+                  <input type="text" x-model="enableObjectLockConfirmName" x-ref="enableObjectLockInput"
+                    placeholder="Type bucket name to confirm"
+                    class="w-full px-3.5 py-2.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 transition text-sm font-mono mb-4">
+                  <div class="flex gap-3 justify-end">
+                    <button type="button" @click="showEnableObjectLockModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                    <button type="submit" :disabled="enableObjectLockConfirmName !== bucketName || objectLockSaving"
+                      class="px-4 py-2 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 text-sm font-medium hover:bg-amber-500/30 transition disabled:opacity-50">Enable Object Lock</button>
+                  </div>
                 </form>
               </div>
             </div>

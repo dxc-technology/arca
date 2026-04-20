@@ -1453,15 +1453,22 @@ pub async fn create_bucket(
             Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
             Err(e) => return internal_error_response(e, &resource),
         }
-        // Object Lock can only be enabled at bucket creation time.
-        // If it wasn't enabled then, PutObjectLockConfiguration is rejected.
+        // Object Lock is normally enabled at bucket creation. As a pragmatic
+        // relaxation, we also allow it on existing buckets that are still empty:
+        // without any objects there is nothing a late enable could weaken.
         let existing_lock = state.metadata.get_bucket_config(&bucket, "object_lock").await.unwrap_or(None);
         if existing_lock.is_none() {
-            return s3_error_response(S3Error::with_message(
-                S3ErrorCode::InvalidBucketState,
-                "Object Lock configuration cannot be enabled on existing buckets",
-                &resource,
-            ));
+            let empty = match state.metadata.bucket_is_empty(&bucket).await {
+                Ok(v) => v,
+                Err(e) => return internal_error_response(e, &resource),
+            };
+            if !empty {
+                return s3_error_response(S3Error::with_message(
+                    S3ErrorCode::InvalidBucketState,
+                    "Object Lock configuration can only be enabled on empty buckets or at bucket creation",
+                    &resource,
+                ));
+            }
         }
 
         let body_bytes = match axum::body::to_bytes(request.into_body(), 64 * 1024).await {

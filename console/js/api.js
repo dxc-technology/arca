@@ -132,7 +132,7 @@ export function apiClient() {
   const encodeKeyPath = (key) => key.split('/').map(s => encodeURIComponent(s)).join('/');
 
   return {
-    async request(method, path, { body = null, contentType = null, rawResponse = false, queryParams = {} } = {}) {
+    async request(method, path, { body = null, contentType = null, rawResponse = false, queryParams = {}, headers: extraHeaders = {} } = {}) {
       const endpoint = getEndpoint();
       let url = endpoint + path;
 
@@ -143,7 +143,7 @@ export function apiClient() {
         url += (url.includes('?') ? '&' : '?') + qs;
       }
 
-      const headers = {};
+      const headers = { ...extraHeaders };
       if (contentType) headers['Content-Type'] = contentType;
 
       // Determine body for signing
@@ -238,8 +238,10 @@ export function apiClient() {
       return all;
     },
 
-    async s3CreateBucket(name) {
-      return await this.request('PUT', '/' + encodeURIComponent(name));
+    async s3CreateBucket(name, opts = {}) {
+      const headers = {};
+      if (opts.objectLock) headers['x-amz-bucket-object-lock-enabled'] = 'true';
+      return await this.request('PUT', '/' + encodeURIComponent(name), { headers });
     },
 
     async s3DeleteBucket(name) {

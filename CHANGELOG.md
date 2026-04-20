@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Object Lock can now be enabled on empty existing buckets**, not only at bucket creation. `PutObjectLockConfiguration` used to reject any call on a bucket whose `object_lock` config was absent (`InvalidBucketState`). The handler now accepts the request when the bucket still has no objects, auto-enabling versioning as before; buckets that already contain objects are still rejected, with a clearer message ("can only be enabled on empty buckets or at bucket creation")
+- **(Console)** Create-bucket dialog gained an "Enable Object Lock" checkbox. When checked, the `PUT /{bucket}` request sends `x-amz-bucket-object-lock-enabled: true` so lock + versioning are enabled atomically with the bucket. The api client's `request` helper now forwards caller-supplied headers through SigV4 signing
+- **(Console)** Irreversible bucket-setting toggles (first-time Versioning enable, Object Lock enable) now require typed bucket-name confirmation in a modal before firing. Prevents accidental clicks in production (versioning cannot be disabled, only suspended; Object Lock cannot be disabled at all)
+- **(Console)** Buckets list cards: creation date moved to its own line above the capability badges, and the badge row now wraps so four or more indicators no longer overflow the card
+- **(Console)** Bucket settings page normalized: every card (Encryption, Compression, Versioning, Object Lock, Lifecycle, Event Notifications) now opens with a short plain-English intro paragraph explaining what the setting does and whether it can be turned off. Versioning and Object Lock intros carry the amber "This action cannot be undone." red-thread, matching the Object Lock card that set the pattern
+
 ## [0.21.0] — 2026-04-20
 
 ### Added

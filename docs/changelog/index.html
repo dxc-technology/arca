@@ -1099,6 +1099,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Unreleased">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1203,7 +1220,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#changed" class="md-nav__link">
+  <a href="#changed_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -1242,7 +1259,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#changed_1" class="md-nav__link">
+  <a href="#changed_2" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -1381,7 +1398,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#changed_2" class="md-nav__link">
+  <a href="#changed_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -1705,7 +1722,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#changed_3" class="md-nav__link">
+  <a href="#changed_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -1794,7 +1811,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#changed_4" class="md-nav__link">
+  <a href="#changed_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -1956,7 +1973,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#changed_5" class="md-nav__link">
+  <a href="#changed_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -2006,7 +2023,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#changed_6" class="md-nav__link">
+  <a href="#changed_7" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -2186,6 +2203,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Unreleased">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2290,7 +2324,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#changed" class="md-nav__link">
+  <a href="#changed_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -2329,7 +2363,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#changed_1" class="md-nav__link">
+  <a href="#changed_2" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -2468,7 +2502,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#changed_2" class="md-nav__link">
+  <a href="#changed_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -2792,7 +2826,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#changed_3" class="md-nav__link">
+  <a href="#changed_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -2881,7 +2915,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#changed_4" class="md-nav__link">
+  <a href="#changed_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -3043,7 +3077,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#changed_5" class="md-nav__link">
+  <a href="#changed_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -3093,7 +3127,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#changed_6" class="md-nav__link">
+  <a href="#changed_7" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -3225,6 +3259,14 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.21.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Object Lock can now be enabled on empty existing buckets</strong>, not only at bucket creation. <code>PutObjectLockConfiguration</code> used to reject any call on a bucket whose <code>object_lock</code> config was absent (<code>InvalidBucketState</code>). The handler now accepts the request when the bucket still has no objects, auto-enabling versioning as before; buckets that already contain objects are still rejected, with a clearer message ("can only be enabled on empty buckets or at bucket creation")</li>
+<li><strong>(Console)</strong> Create-bucket dialog gained an "Enable Object Lock" checkbox. When checked, the <code>PUT /{bucket}</code> request sends <code>x-amz-bucket-object-lock-enabled: true</code> so lock + versioning are enabled atomically with the bucket. The api client's <code>request</code> helper now forwards caller-supplied headers through SigV4 signing</li>
+<li><strong>(Console)</strong> Irreversible bucket-setting toggles (first-time Versioning enable, Object Lock enable) now require typed bucket-name confirmation in a modal before firing. Prevents accidental clicks in production (versioning cannot be disabled, only suspended; Object Lock cannot be disabled at all)</li>
+<li><strong>(Console)</strong> Buckets list cards: creation date moved to its own line above the capability badges, and the badge row now wraps so four or more indicators no longer overflow the card</li>
+<li><strong>(Console)</strong> Bucket settings page normalized: every card (Encryption, Compression, Versioning, Object Lock, Lifecycle, Event Notifications) now opens with a short plain-English intro paragraph explaining what the setting does and whether it can be turned off. Versioning and Object Lock intros carry the amber "This action cannot be undone." red-thread, matching the Object Lock card that set the pattern</li>
+</ul>
 <h2 id="0210-2026-04-20"><a href="https://github.com/dxc-technology/arca/compare/v0.20.0...v0.21.0">0.21.0</a> — 2026-04-20<a class="headerlink" href="#0210-2026-04-20" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
@@ -3270,7 +3312,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Batched audit writes</strong>: dedicated writer task with channel-based batching to reduce per-request overhead</li>
 <li><strong>Admin &amp; Server Enhancements section</strong> in roadmap for tracking features outside numbered phases</li>
 </ul>
-<h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
+<h3 id="changed_1">Changed<a class="headerlink" href="#changed_1" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Request logging moved from INFO to DEBUG level to reduce noise</li>
 </ul>
@@ -3280,7 +3322,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li>Timeline divider label in project report (changed from "MVP" to "NOW")</li>
 </ul>
 <h2 id="0182-2026-04-11"><a href="https://github.com/dxc-technology/arca/compare/v0.18.1...v0.18.2">0.18.2</a> — 2026-04-11<a class="headerlink" href="#0182-2026-04-11" title="Permanent link">&para;</a></h2>
-<h3 id="changed_1">Changed<a class="headerlink" href="#changed_1" title="Permanent link">&para;</a></h3>
+<h3 id="changed_2">Changed<a class="headerlink" href="#changed_2" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Performance: release profile optimization</strong> — enable <code>opt-level = 3</code>, thin LTO, <code>codegen-units = 1</code>, and symbol stripping for significantly faster crypto, hashing, and XML parsing</li>
 <li><strong>Performance: TLS session resumption</strong> — enable server-side session cache (256 entries) to avoid full handshakes on client reconnections</li>
@@ -3352,7 +3394,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>(Console)</strong>: Notification editor redesigned as a modal dialog (replacing inline lifecycle-style forms) with connector type selector grid showing all 10 types grouped by category (Functions, Queue, Database), SVG icons, and "coming soon" badges for unimplemented connectors</li>
 <li><strong>Roadmap Phase 26</strong>: Notification Connectors phase added (9 connectors, modular per-connector Docker test infrastructure)</li>
 </ul>
-<h3 id="changed_2">Changed<a class="headerlink" href="#changed_2" title="Permanent link">&para;</a></h3>
+<h3 id="changed_3">Changed<a class="headerlink" href="#changed_3" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>(Console)</strong>: Settings page reorganized: "Monitoring" section renamed to "Data Retention" with all retention policies grouped together (Audit Log, Notification Events, Metrics Snapshots), ordered by sidebar position</li>
 <li><strong>Notification event retention</strong> is now a server setting (<code>notification_retention_days</code>) manageable from the console, following the same TOML &gt; DB &gt; default precedence as audit and metrics retention (default: 7 days)</li>
@@ -3503,7 +3545,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Console: status column filter</strong> — filterable by HTTP status code via dropdown with checkboxes and counts</li>
 <li><strong>Console: sticky filters</strong> — all audit log filters (column headers, operation tags, page size) persist across navigation via sessionStorage</li>
 </ul>
-<h3 id="changed_3">Changed<a class="headerlink" href="#changed_3" title="Permanent link">&para;</a></h3>
+<h3 id="changed_4">Changed<a class="headerlink" href="#changed_4" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Console: audit log layout</strong> — filter bar removed, all filters moved into column headers with consistent UX (funnel icon on hover, cyan badge when active, X to clear)</li>
 <li><strong>Console: fixed sidebar</strong> — sidebar no longer scrolls with page content</li>
@@ -3543,7 +3585,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Console</strong>: object list now refreshes after deleting a specific version from the version history panel.</li>
 <li><strong>Ceph s3-tests</strong>: 50 additional tests now pass (270 → 320), primarily in Versioning and Bucket categories.</li>
 </ul>
-<h3 id="changed_4">Changed<a class="headerlink" href="#changed_4" title="Permanent link">&para;</a></h3>
+<h3 id="changed_5">Changed<a class="headerlink" href="#changed_5" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong><code>bin/s3-tests</code></strong>: report generation no longer skipped when pytest exits non-zero (test failures). The script now correctly captures the exit code and proceeds to generate the HTML report, SVG badge, passlist, and summary.json.</li>
 </ul>
@@ -3641,7 +3683,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><code>--help</code> flag on all <code>bin/</code> scripts</li>
 <li>Auto-create master key in Vault/OpenBAO at startup if missing</li>
 </ul>
-<h3 id="changed_5">Changed<a class="headerlink" href="#changed_5" title="Permanent link">&para;</a></h3>
+<h3 id="changed_6">Changed<a class="headerlink" href="#changed_6" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Centralized all builds in <code>bin/build</code> with <code>--dev</code>, <code>--console</code>, <code>--binary</code> flags</li>
 <li>Consolidated version in workspace <code>Cargo.toml</code> (single source of truth, inherited by all crates)</li>
@@ -3659,7 +3701,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Per-bucket encryption</strong> with bucket settings console page</li>
 <li>Database schema diagram in architecture documentation (SVG for dark mode)</li>
 </ul>
-<h3 id="changed_6">Changed<a class="headerlink" href="#changed_6" title="Permanent link">&para;</a></h3>
+<h3 id="changed_7">Changed<a class="headerlink" href="#changed_7" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Adopted semver <code>0.x.x</code> pre-release versioning (from <code>1.2.0</code> to <code>0.3.0</code>)</li>
 <li>Console uses standard ports (80/443) instead of 3000</li>

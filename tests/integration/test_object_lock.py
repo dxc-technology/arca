@@ -126,6 +126,47 @@ class TestObjectLockConfig:
         finally:
             cleanup_bucket(s3_client, bucket)
 
+    def test_enable_on_empty_existing_bucket(self, s3_client):
+        """Object Lock can be enabled on an existing bucket as long as it's still empty."""
+        bucket = make_bucket(s3_client)
+        try:
+            s3_client.put_object_lock_configuration(
+                Bucket=bucket,
+                ObjectLockConfiguration={"ObjectLockEnabled": "Enabled"},
+            )
+            resp = s3_client.get_object_lock_configuration(Bucket=bucket)
+            assert resp["ObjectLockConfiguration"]["ObjectLockEnabled"] == "Enabled"
+            vresp = s3_client.get_bucket_versioning(Bucket=bucket)
+            assert vresp.get("Status") == "Enabled"
+        finally:
+            cleanup_bucket(s3_client, bucket)
+
+    def test_enable_on_non_empty_bucket_rejected(self, s3_client):
+        """Object Lock cannot be enabled on a bucket that already contains objects."""
+        bucket = make_bucket(s3_client)
+        try:
+            s3_client.put_object(Bucket=bucket, Key="pre.txt", Body=b"pre-existing")
+            with pytest.raises(ClientError) as exc_info:
+                s3_client.put_object_lock_configuration(
+                    Bucket=bucket,
+                    ObjectLockConfiguration={"ObjectLockEnabled": "Enabled"},
+                )
+            assert exc_info.value.response["Error"]["Code"] == "InvalidBucketState"
+        finally:
+            cleanup_bucket(s3_client, bucket)
+
+    def test_enable_at_bucket_creation(self, s3_client):
+        """Object Lock can be enabled at bucket creation via ObjectLockEnabledForBucket=True."""
+        name = f"lockcreate-{uuid.uuid4().hex[:8]}"
+        s3_client.create_bucket(Bucket=name, ObjectLockEnabledForBucket=True)
+        try:
+            resp = s3_client.get_object_lock_configuration(Bucket=name)
+            assert resp["ObjectLockConfiguration"]["ObjectLockEnabled"] == "Enabled"
+            vresp = s3_client.get_bucket_versioning(Bucket=name)
+            assert vresp.get("Status") == "Enabled"
+        finally:
+            cleanup_bucket(s3_client, name)
+
 
 # -- PutObjectRetention / GetObjectRetention --
 
