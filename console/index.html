@@ -527,6 +527,11 @@
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0"/></svg>
             Notifications
           </a>
+          <!-- Replication (admin only) -->
+          <a x-show="isAdmin" @click="navigate('replication')" :class="view === 'replication' ? 'text-vault-accent bg-vault-accent/10 border-r-2 border-vault-accent' : 'text-vault-muted hover:text-vault-text hover:bg-white/5'" class="flex items-center gap-3 px-4 py-2.5 text-sm cursor-pointer transition-all duration-150">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></svg>
+            Replication
+          </a>
           <!-- Monitoring (admin only) -->
           <a x-show="isAdmin" @click="navigate('monitoring')" :class="view === 'monitoring' ? 'text-vault-accent bg-vault-accent/10 border-r-2 border-vault-accent' : 'text-vault-muted hover:text-vault-text hover:bg-white/5'" class="flex items-center gap-3 px-4 py-2.5 text-sm cursor-pointer transition-all duration-150">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"/></svg>
@@ -996,7 +1001,7 @@
               </div>
 
               <!-- Versioning card -->
-              <div class="glass rounded-xl p-5">
+              <div class="glass rounded-xl p-5" id="versioning-card">
                 <div class="flex items-center gap-2 mb-4">
                   <svg class="w-4 h-4 text-vault-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
                   <span class="text-sm font-semibold uppercase tracking-wider text-vault-muted">Versioning</span>
@@ -1818,6 +1823,226 @@
                     <p x-show="error" x-text="error" class="text-red-400 text-xs mt-2"></p>
                   </div>
                 </div>
+                </template>
+              </div>
+
+              <!-- Replication card (Phase 28) -->
+              <div class="glass rounded-xl p-5" x-data="bucketReplicationEditor" x-init="load(bucketName)">
+                <div class="flex items-center justify-between mb-3">
+                  <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-vault-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></svg>
+                    <span class="text-sm font-semibold uppercase tracking-wider text-vault-text">Replication</span>
+                    <span x-data="helpTrigger('replication')" class="help-host">
+                      <button class="help-trigger" @click="show()" aria-label="About replication">?</button>
+                      <span class="help-tooltip" x-text="topic.hint"></span>
+                    </span>
+                    <svg x-show="saving" class="animate-spin h-3.5 w-3.5 text-vault-accent ml-1" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                  </div>
+                  <button @click="openAddModal()" :disabled="saving || versioningEnabled === false"
+                    class="px-2.5 py-1 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/30 text-xs font-medium hover:bg-vault-accent/20 transition disabled:opacity-40">
+                    + Add Rule
+                  </button>
+                </div>
+
+                <p class="text-xs text-vault-muted mb-3">Asynchronously copy new objects, delete markers and tag changes to a bucket on any S3-compatible endpoint. Delivery retries with exponential backoff; mirror setups between two Arcas are loop-safe.</p>
+
+                <!-- Versioning-required banner -->
+                <template x-if="versioningEnabled === false">
+                  <div class="flex items-start gap-2 mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2">
+                    <svg class="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg>
+                    <div class="flex-1 text-xs">
+                      <div class="text-amber-400 font-medium">Versioning required</div>
+                      <div class="text-vault-muted mt-0.5">Replication operates on object versions. <button @click="scrollToVersioning()" class="text-amber-400 underline hover:text-amber-300">Enable versioning</button> on this bucket before adding rules.</div>
+                    </div>
+                  </div>
+                </template>
+
+                <template x-if="loading">
+                  <div class="flex justify-center py-4">
+                    <svg class="animate-spin h-5 w-5 text-vault-accent" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                  </div>
+                </template>
+
+                <template x-if="!loading && rules.length === 0 && !showModal">
+                  <p class="text-xs text-vault-muted py-2">No replication rules configured. Objects will not be replicated.</p>
+                </template>
+
+                <!-- Rules list -->
+                <template x-for="(r, index) in rules" :key="r.id">
+                  <div class="py-2.5 border-b border-vault-border/30 last:border-0">
+                    <div class="flex items-center gap-3">
+                      <div class="flex-1 min-w-0 cursor-pointer group" @click="openEditModal(index)">
+                        <div class="flex items-center gap-2 flex-wrap">
+                          <span class="text-sm font-medium text-vault-text truncate group-hover:text-vault-accent transition" x-text="r.id"></span>
+                          <!-- source ➜ destination flow -->
+                          <span class="flex items-center gap-1.5 text-[11px] text-vault-muted font-mono">
+                            <span x-text="bucketName" class="truncate max-w-[120px]"></span>
+                            <svg class="w-3 h-3 text-vault-accent/60 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"/></svg>
+                            <span class="text-vault-text/80 truncate max-w-[200px]" x-text="shortDestination(r)"></span>
+                          </span>
+                          <button @click.stop="toggleEnabled(index, bucketName)" :disabled="saving"
+                            class="text-[10px] px-1.5 py-0.5 rounded-full font-medium cursor-pointer transition"
+                            :class="statusChipClass(r.status)"
+                            x-text="r.status"></button>
+                          <svg class="w-3 h-3 text-vault-muted opacity-0 group-hover:opacity-100 transition" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Z"/></svg>
+                        </div>
+                        <div class="text-[11px] text-vault-muted mt-0.5 flex flex-wrap gap-x-3">
+                          <span x-show="r.prefix" class="inline-flex items-center gap-0.5"><span class="text-vault-muted/60">prefix:</span> <span class="font-mono" x-text="r.prefix"></span></span>
+                          <span class="inline-flex items-center gap-0.5"><span class="text-vault-muted/60">priority:</span> <span x-text="r.priority"></span></span>
+                          <span class="inline-flex items-center gap-0.5"><span class="text-vault-muted/60">creds:</span> <span class="font-mono" x-text="r.credentialRef"></span></span>
+                          <span class="inline-flex items-center gap-0.5" :class="r.deleteMarkers ? '' : 'text-vault-muted/50 line-through'">
+                            <span class="text-vault-muted/60">delete markers:</span>
+                            <span x-text="r.deleteMarkers ? 'replicated' : 'ignored'"></span>
+                          </span>
+                        </div>
+                      </div>
+                      <button @click="removeRule(index, bucketName)" :disabled="saving" class="text-vault-muted hover:text-red-400 transition p-1 flex-shrink-0" title="Remove rule">
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </template>
+
+                <template x-if="rules.length > 0">
+                  <div class="flex justify-end mt-3">
+                    <button @click="deleteAllRules(bucketName)" :disabled="saving"
+                      class="text-[11px] text-red-400/70 hover:text-red-400 transition">
+                      Delete all rules
+                    </button>
+                  </div>
+                </template>
+
+                <p x-show="error" x-text="error" class="text-red-400 text-xs mt-2"></p>
+
+                <!-- Rule editor modal -->
+                <template x-teleport="body">
+                  <div x-show="showModal" x-transition.opacity class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="closeModal()" @keydown.escape.window="closeModal()">
+                    <div class="glass rounded-xl p-6 w-full max-w-xl mx-4 max-h-[85vh] overflow-y-auto" @click.stop>
+                      <h3 class="text-lg font-semibold mb-4" x-text="modalMode === 'add' ? 'Add Replication Rule' : 'Edit Replication Rule'"></h3>
+
+                      <div class="space-y-3">
+                        <div class="grid grid-cols-[1fr_100px] gap-2">
+                          <div>
+                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Rule ID</label>
+                            <input type="text" x-model="editForm.id" placeholder="rule-a1b2c3" autocomplete="off"
+                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                          </div>
+                          <div>
+                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Priority</label>
+                            <input type="number" min="1" x-model.number="editForm.priority"
+                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text focus:outline-none focus:border-vault-accent/50 text-xs">
+                          </div>
+                        </div>
+
+                        <div>
+                          <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Status</label>
+                          <div class="flex gap-2 mt-1">
+                            <button @click="editForm.status = 'Enabled'" class="px-3 py-1.5 rounded-lg text-xs font-medium transition border"
+                              :class="editForm.status === 'Enabled' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400' : 'border-vault-border/50 text-vault-muted hover:border-vault-accent/30 hover:text-vault-text'">Enabled</button>
+                            <button @click="editForm.status = 'Disabled'" class="px-3 py-1.5 rounded-lg text-xs font-medium transition border"
+                              :class="editForm.status === 'Disabled' ? 'border-vault-muted/40 bg-white/5 text-vault-text' : 'border-vault-border/50 text-vault-muted hover:border-vault-accent/30 hover:text-vault-text'">Disabled</button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Prefix <span class="normal-case text-vault-muted/50">(optional — replicate only objects under this prefix)</span></label>
+                          <input type="text" x-model="editForm.prefix" placeholder="e.g. logs/" autocomplete="off"
+                            class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs font-mono">
+                        </div>
+
+                        <div class="pt-2 border-t border-vault-border/30">
+                          <div class="text-[10px] uppercase tracking-wider text-vault-muted/80 font-medium mb-2">Destination</div>
+                          <div class="grid grid-cols-1 md:grid-cols-[1fr_130px] gap-2">
+                            <div>
+                              <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Bucket</label>
+                              <input type="text" x-model="editForm.destBucket" placeholder="destination-bucket" autocomplete="off"
+                                class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs font-mono">
+                            </div>
+                            <div>
+                              <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Region</label>
+                              <input type="text" x-model="editForm.destRegion" placeholder="us-east-1" autocomplete="off"
+                                class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs font-mono">
+                            </div>
+                          </div>
+                          <div class="mt-2">
+                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Endpoint URL</label>
+                            <input type="url" x-model="editForm.destEndpoint" placeholder="https://replica.example.com" autocomplete="off"
+                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs font-mono">
+                            <div x-show="editForm.destEndpoint && isLikelyArcaEndpoint(editForm.destEndpoint)" class="mt-1 text-[10px] text-emerald-400/80 flex items-center gap-1">
+                              <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
+                              Looks like an Arca endpoint — loop prevention applies automatically.
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="pt-2 border-t border-vault-border/30">
+                          <div class="flex items-center gap-2 mb-2">
+                            <div class="text-[10px] uppercase tracking-wider text-vault-muted/80 font-medium">Destination credentials</div>
+                            <span class="text-[10px] text-vault-muted/50">stored in server settings</span>
+                          </div>
+
+                          <template x-if="!editForm.newCredentialMode">
+                            <div class="flex items-center gap-2">
+                              <select x-model="editForm.credentialRef"
+                                class="flex-1 px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text focus:outline-none focus:border-vault-accent/50 text-xs font-mono">
+                                <option value="">(select a credential)</option>
+                                <template x-for="ref in knownCredentialRefs" :key="ref">
+                                  <option :value="ref" x-text="ref"></option>
+                                </template>
+                              </select>
+                              <button type="button" @click="startNewCredential()"
+                                class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-vault-accent/10 text-vault-accent border border-vault-accent/30 hover:bg-vault-accent/20 transition">
+                                + New
+                              </button>
+                            </div>
+                          </template>
+
+                          <template x-if="editForm.newCredentialMode">
+                            <div class="space-y-2">
+                              <div class="flex items-center gap-2">
+                                <input type="text" x-model="editForm.credentialRef" placeholder="credential name (e.g. replica-creds)" autocomplete="off"
+                                  class="flex-1 px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs font-mono">
+                                <button type="button" @click="editForm.newCredentialMode = false; editForm.credentialRef = knownCredentialRefs[0] || ''"
+                                  class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-vault-muted border border-vault-border hover:text-vault-text transition">
+                                  Use existing
+                                </button>
+                              </div>
+                              <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                <div>
+                                  <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Access key ID</label>
+                                  <input type="text" x-model="editForm.newAccessKey" placeholder="AKIA..." autocomplete="off"
+                                    class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs font-mono">
+                                </div>
+                                <div>
+                                  <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Secret key</label>
+                                  <input type="password" x-model="editForm.newSecretKey" placeholder="secret (never colon-separated)" autocomplete="new-password"
+                                    class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs font-mono">
+                                </div>
+                              </div>
+                            </div>
+                          </template>
+                        </div>
+
+                        <div class="pt-2 border-t border-vault-border/30 flex items-start gap-2">
+                          <input type="checkbox" id="dmr-toggle" x-model="editForm.deleteMarkers"
+                            class="mt-0.5 accent-vault-accent w-3.5 h-3.5">
+                          <label for="dmr-toggle" class="text-xs text-vault-text">
+                            Replicate delete markers
+                            <span class="block text-[10px] text-vault-muted/70 mt-0.5">When enabled, DeleteObject on the source creates a delete marker on the destination too. Hard deletes of specific versions are never replicated either way.</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <p x-show="error" x-text="error" class="text-red-400 text-xs mt-3"></p>
+
+                      <div class="flex gap-2 justify-end mt-5 pt-4 border-t border-vault-border/30">
+                        <button @click="closeModal()" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                        <button @click="saveFromModal(bucketName)" :disabled="saving"
+                          class="px-4 py-2 rounded-lg bg-vault-accent text-vault-bg text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+                          x-text="modalMode === 'add' ? 'Add rule' : 'Save'"></button>
+                      </div>
+                    </div>
+                  </div>
                 </template>
               </div>
 
@@ -4088,6 +4313,324 @@
                     <div>
                       <span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-1">Payload</span>
                       <pre class="p-3 bg-black/30 rounded-lg text-[10px] overflow-auto max-h-64 font-mono text-vault-text" x-text="JSON.stringify(JSON.parse(selectedEntry.payload || '{}'), null, 2)"></pre>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- ==================== REPLICATION ==================== -->
+        <template x-if="view === 'replication'">
+          <div class="p-6 max-w-7xl" x-data="replicationView" x-init="init()" @destroy="destroy()">
+            <!-- Header -->
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+              <div class="flex items-center gap-2">
+                <h2 class="text-xl font-semibold tracking-tight">Replication Journal</h2>
+                <span class="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-vault-muted font-medium px-2 py-0.5 rounded-full border border-vault-border/40">
+                  <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+                  Auto-refresh 30s
+                </span>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="text-xs text-vault-muted" x-text="total + ' entries'"></span>
+                <button x-show="hasAnyFilter" @click="clearAllFilters()" class="text-xs text-vault-muted hover:text-vault-text transition">Clear filters</button>
+                <button @click="load()" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-vault-muted hover:text-vault-text border border-vault-border/30 hover:border-vault-border/60 transition" title="Reload now">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182"/></svg>
+                  Reload
+                </button>
+              </div>
+            </div>
+
+            <!-- Pagination bar (top) -->
+            <div class="flex flex-wrap items-center justify-end gap-3 mb-4">
+              <div class="flex items-center gap-3 flex-shrink-0">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-[11px] text-vault-muted">Show</span>
+                  <select x-model="limit" @change="limit = Number($event.target.value) || 50; page = 0; sessionStorage.setItem('repl_page_size', limit)" class="setting-number px-2 py-1 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-xs focus:outline-none focus:border-vault-accent/50 transition">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                  </select>
+                </div>
+                <span class="text-xs text-vault-muted" x-text="'Page ' + currentPage + ' of ' + totalPages"></span>
+                <div class="flex gap-0.5">
+                  <button @click="firstPage()" :disabled="page === 0" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="First page"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5"/></svg></button>
+                  <button @click="prevPage()" :disabled="page === 0" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Previous page"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg></button>
+                  <button @click="nextPage()" :disabled="currentPage >= totalPages" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Next page"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg></button>
+                  <button @click="lastPage()" :disabled="currentPage >= totalPages" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Last page"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 4.5l7.5 7.5-7.5 7.5m6-15l7.5 7.5-7.5 7.5"/></svg></button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Loading -->
+            <div x-show="loading" class="flex justify-center py-16">
+              <svg class="animate-spin h-6 w-6 text-vault-accent" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            </div>
+
+            <!-- Table -->
+            <div x-show="!loading" class="glass rounded-xl overflow-x-auto">
+              <table class="w-full text-sm" style="min-width:1080px;table-layout:fixed">
+                <colgroup>
+                  <col style="width:170px">
+                  <col style="width:130px">
+                  <col style="width:auto;min-width:160px">
+                  <col style="width:130px">
+                  <col style="width:130px">
+                  <col style="width:auto;min-width:180px">
+                  <col style="width:130px">
+                  <col style="width:72px">
+                  <col style="width:76px">
+                </colgroup>
+                <thead>
+                  <tr class="text-left text-[11px] uppercase tracking-wider text-vault-muted border-b border-vault-border/30">
+                    <!-- TIME -->
+                    <th class="px-4 py-3">
+                      <div class="col-filter" :class="{ active: filterFrom || filterTo }" @click.outside="timeOpen = false">
+                        <div class="col-label" @click="timeOpen = !timeOpen" x-show="!filterFrom && !filterTo">
+                          Created <svg class="fi" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/></svg>
+                        </div>
+                        <div x-show="filterFrom || filterTo" class="filter-badge" @click="timeOpen = !timeOpen">
+                          <span class="val" x-text="timeLabel()"></span>
+                          <span class="fbx" @click.stop="filterFrom = ''; filterTo = ''; timeOpen = false"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                        </div>
+                        <div class="time-pop" x-show="timeOpen" x-cloak>
+                          <div class="mb-2"><label>From</label><input type="datetime-local" x-model="filterFrom" @change="page = 0"></div>
+                          <div><label>To</label><input type="datetime-local" x-model="filterTo" @change="page = 0"></div>
+                        </div>
+                      </div>
+                    </th>
+                    <!-- BUCKET -->
+                    <th class="px-4 py-3">
+                      <div class="col-filter" :class="{ active: selectedBuckets.size > 0 }" @click.outside="bucketOpen = false">
+                        <div class="col-label" @click="bucketOpen = !bucketOpen" x-show="selectedBuckets.size === 0">
+                          Bucket <svg class="fi" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/></svg>
+                        </div>
+                        <div x-show="selectedBuckets.size > 0" class="filter-badge" @click="bucketOpen = !bucketOpen">
+                          <span class="val" x-text="[...selectedBuckets].join(', ')"></span>
+                          <span class="fbx" @click.stop="selectedBuckets = new Set(); bucketOpen = false; page = 0"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                        </div>
+                        <div class="col-popover" x-show="bucketOpen" x-cloak style="min-width:min(200px, calc(100vw - 2rem))">
+                          <div class="pop-search"><input type="text" x-model="bucketSearch" placeholder="Search..."></div>
+                          <div class="pop-list">
+                            <template x-for="item in bucketValues" :key="item.name">
+                              <div class="pop-item" :class="{ selected: selectedBuckets.has(item.name) }"
+                                x-show="!bucketSearch || item.name.toLowerCase().includes(bucketSearch.toLowerCase())"
+                                @click="toggleSet(selectedBuckets, item.name); selectedBuckets = new Set(selectedBuckets); page = 0">
+                                <div class="check"><svg fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="white"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg></div>
+                                <span x-text="item.name"></span>
+                                <span class="cnt" x-text="item.count"></span>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </div>
+                    </th>
+                    <!-- KEY -->
+                    <th class="px-4 py-3">
+                      <div class="col-filter" :class="{ active: filterKey }">
+                        <div class="col-label" @click="keyEditing = true; $nextTick(() => $refs.rKeyInput.focus())" x-show="!keyEditing && !filterKey">
+                          Key <svg class="fi" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/></svg>
+                        </div>
+                        <div x-show="filterKey && !keyEditing" class="filter-badge" @click="keyEditing = true; $nextTick(() => $refs.rKeyInput.focus())">
+                          <span class="val" x-text="filterKey"></span>
+                          <span class="fbx" @click.stop="filterKey = ''; page = 0"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                        </div>
+                        <input type="text" x-ref="rKeyInput" x-model="filterKey" x-show="keyEditing" class="key-inline"
+                          @focus="keyEditing = true" @blur="keyEditing = false"
+                          @keydown.enter="keyEditing = false; $refs.rKeyInput.blur(); page = 0"
+                          @keydown.escape="filterKey = ''; keyEditing = false; $refs.rKeyInput.blur(); page = 0"
+                          placeholder="filter key...">
+                      </div>
+                    </th>
+                    <!-- RULE -->
+                    <th class="px-4 py-3">
+                      <div class="col-filter" :class="{ active: filterRule }">
+                        <div class="col-label" @click="ruleEditing = true; $nextTick(() => $refs.rRuleInput.focus())" x-show="!ruleEditing && !filterRule">
+                          Rule <svg class="fi" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/></svg>
+                        </div>
+                        <div x-show="filterRule && !ruleEditing" class="filter-badge" @click="ruleEditing = true; $nextTick(() => $refs.rRuleInput.focus())">
+                          <span class="val" x-text="filterRule"></span>
+                          <span class="fbx" @click.stop="filterRule = ''; page = 0"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                        </div>
+                        <input type="text" x-ref="rRuleInput" x-model="filterRule" x-show="ruleEditing" class="key-inline"
+                          @focus="ruleEditing = true" @blur="ruleEditing = false"
+                          @keydown.enter="ruleEditing = false; $refs.rRuleInput.blur(); page = 0"
+                          @keydown.escape="filterRule = ''; ruleEditing = false; $refs.rRuleInput.blur(); page = 0"
+                          placeholder="rule id...">
+                      </div>
+                    </th>
+                    <!-- EVENT TYPE -->
+                    <th class="px-4 py-3">
+                      <div class="col-filter" :class="{ active: selectedTypes.size > 0 }" @click.outside="typeOpen = false">
+                        <div class="col-label" @click="typeOpen = !typeOpen" x-show="selectedTypes.size === 0">
+                          Type <svg class="fi" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/></svg>
+                        </div>
+                        <div x-show="selectedTypes.size > 0" class="filter-badge" @click="typeOpen = !typeOpen">
+                          <span class="val" x-text="[...selectedTypes].map(t => eventTypeLabel(t)).join(', ')"></span>
+                          <span class="fbx" @click.stop="selectedTypes = new Set(); typeOpen = false; page = 0"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                        </div>
+                        <div class="col-popover" x-show="typeOpen" x-cloak style="min-width:min(180px, calc(100vw - 2rem))">
+                          <div class="pop-list">
+                            <template x-for="item in typeValues" :key="item.name">
+                              <div class="pop-item" :class="{ selected: selectedTypes.has(item.name) }"
+                                @click="toggleSet(selectedTypes, item.name); selectedTypes = new Set(selectedTypes); page = 0">
+                                <div class="check"><svg fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="white"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg></div>
+                                <span x-text="eventTypeLabel(item.name)"></span>
+                                <span class="cnt" x-text="item.count"></span>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </div>
+                    </th>
+                    <!-- DESTINATION -->
+                    <th class="px-4 py-3">
+                      <div class="col-filter" :class="{ active: filterDest }">
+                        <div class="col-label" @click="destEditing = true; $nextTick(() => $refs.rDestInput.focus())" x-show="!destEditing && !filterDest">
+                          Destination <svg class="fi" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/></svg>
+                        </div>
+                        <div x-show="filterDest && !destEditing" class="filter-badge" @click="destEditing = true; $nextTick(() => $refs.rDestInput.focus())">
+                          <span class="val" x-text="filterDest"></span>
+                          <span class="fbx" @click.stop="filterDest = ''; page = 0"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                        </div>
+                        <input type="text" x-ref="rDestInput" x-model="filterDest" x-show="destEditing" class="key-inline"
+                          @focus="destEditing = true" @blur="destEditing = false"
+                          @keydown.enter="destEditing = false; $refs.rDestInput.blur(); page = 0"
+                          @keydown.escape="filterDest = ''; destEditing = false; $refs.rDestInput.blur(); page = 0"
+                          placeholder="bucket or endpoint...">
+                      </div>
+                    </th>
+                    <!-- STATUS -->
+                    <th class="px-4 py-3">
+                      <div class="col-filter" :class="{ active: selectedStatuses.size > 0 }" @click.outside="statusOpen = false">
+                        <div class="col-label" @click="statusOpen = !statusOpen" x-show="selectedStatuses.size === 0">
+                          Status <svg class="fi" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/></svg>
+                        </div>
+                        <div x-show="selectedStatuses.size > 0" class="filter-badge" @click="statusOpen = !statusOpen">
+                          <span class="val" x-text="[...selectedStatuses].join(', ')"></span>
+                          <span class="fbx" @click.stop="selectedStatuses = new Set(); statusOpen = false; page = 0"><svg class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span>
+                        </div>
+                        <div class="col-popover" x-show="statusOpen" x-cloak style="min-width:min(160px, calc(100vw - 2rem))">
+                          <div class="pop-list">
+                            <template x-for="item in statusValues" :key="item.name">
+                              <div class="pop-item" :class="{ selected: selectedStatuses.has(item.name) }"
+                                @click="toggleSet(selectedStatuses, item.name); selectedStatuses = new Set(selectedStatuses); page = 0">
+                                <div class="check"><svg fill="none" viewBox="0 0 24 24" stroke-width="3" stroke="white"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg></div>
+                                <span :class="statusBadgeClass(item.name)" class="px-1.5 py-0.5 rounded text-[10px] font-medium" x-text="item.name"></span>
+                                <span class="cnt" x-text="item.count"></span>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </div>
+                    </th>
+                    <th class="px-4 py-3 text-right">Tries</th>
+                    <th class="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="entry in pagedEntries" :key="entry.id">
+                    <tr @click="selectEntry(entry)" class="border-b border-vault-border/10 hover:bg-white/[0.02] cursor-pointer transition"
+                      :class="selectedEntry?.id === entry.id ? 'bg-vault-accent/5' : ''">
+                      <td class="px-4 py-2.5 text-xs text-vault-muted whitespace-nowrap" x-text="formatTime(entry.created_at)"></td>
+                      <td class="px-4 py-2.5 text-xs text-vault-text truncate" :title="entry.bucket" x-text="entry.bucket || '\u2014'"></td>
+                      <td class="px-4 py-2.5 text-xs text-vault-muted max-w-[260px] truncate font-mono" :title="entry.key" x-text="entry.key || '\u2014'"></td>
+                      <td class="px-4 py-2.5 text-xs text-vault-muted font-mono truncate" :title="entry.rule_id" x-text="entry.rule_id || '\u2014'"></td>
+                      <td class="px-4 py-2.5">
+                        <span class="text-[10px] font-medium px-1.5 py-0.5 rounded border" :class="eventTypeChip(entry.event_type)" x-text="eventTypeLabel(entry.event_type)"></span>
+                      </td>
+                      <td class="px-4 py-2.5 text-xs text-vault-muted max-w-[260px] truncate font-mono" :title="entry.destination_endpoint + ' / ' + entry.destination_bucket" x-text="shortDestination(entry)"></td>
+                      <td class="px-4 py-2.5">
+                        <span class="inline-flex items-center gap-1.5">
+                          <span class="w-1.5 h-1.5 rounded-full" :class="statusDotClass(entry.status) + (statusShouldPulse(entry.status) ? ' animate-pulse' : '')"></span>
+                          <span :class="statusBadgeClass(entry.status)" class="px-2 py-0.5 rounded-full text-[10px] font-medium" x-text="entry.status"></span>
+                        </span>
+                      </td>
+                      <td class="px-4 py-2.5 text-xs text-right text-vault-muted" x-text="entry.attempts"></td>
+                      <td class="px-4 py-2.5 text-right">
+                        <button x-show="entry.status === 'failed'" @click.stop="retryEntry(entry.id)" :disabled="retrying[entry.id]"
+                          class="px-2 py-0.5 rounded-md text-[10px] font-medium bg-vault-accent/10 text-vault-accent border border-vault-accent/30 hover:bg-vault-accent/20 transition disabled:opacity-40"
+                          x-text="retrying[entry.id] ? '…' : 'Retry'"></button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <!-- Empty state -->
+              <div x-show="pagedEntries.length === 0" class="py-12 text-center text-vault-muted text-sm">
+                No replication entries — the journal is empty or no rule has fired yet.
+              </div>
+            </div>
+
+            <!-- Pagination bar (bottom, mirror of top) -->
+            <div x-show="!loading && total > 0" class="flex flex-wrap items-center justify-end gap-3 mt-4">
+              <div class="flex items-center gap-3 flex-shrink-0">
+                <span class="text-xs text-vault-muted" x-text="'Page ' + currentPage + ' of ' + totalPages"></span>
+                <div class="flex gap-0.5">
+                  <button @click="firstPage()" :disabled="page === 0" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="First page"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5"/></svg></button>
+                  <button @click="prevPage()" :disabled="page === 0" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Previous page"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg></button>
+                  <button @click="nextPage()" :disabled="currentPage >= totalPages" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Next page"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg></button>
+                  <button @click="lastPage()" :disabled="currentPage >= totalPages" class="p-1 rounded-lg border border-vault-border text-vault-muted hover:text-vault-text transition disabled:opacity-30" title="Last page"><svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 4.5l7.5 7.5-7.5 7.5m6-15l7.5 7.5-7.5 7.5"/></svg></button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Detail backdrop (mobile) -->
+            <div x-show="selectedEntry" @click="selectedEntry = null" class="fixed inset-0 bg-black/40 z-30 md:hidden"></div>
+            <!-- Side detail panel -->
+            <div x-show="selectedEntry" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0"
+              class="fixed right-0 top-12 md:top-0 h-[calc(100%-3rem)] md:h-full w-full md:w-96 glass border-l border-vault-border/50 z-40 slide-panel overflow-y-auto">
+              <div class="p-5">
+                <div class="flex items-center justify-between mb-5">
+                  <h3 class="text-sm font-semibold uppercase tracking-wider text-vault-accent">Replication entry</h3>
+                  <button @click="selectedEntry = null" class="text-vault-muted hover:text-vault-text p-1 rounded-lg hover:bg-white/5 transition">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                  </button>
+                </div>
+                <template x-if="selectedEntry">
+                  <div class="space-y-4 text-sm">
+                    <!-- Flow summary -->
+                    <div class="glass rounded-lg p-3 bg-white/[0.02] border border-vault-border/30">
+                      <div class="text-[10px] uppercase tracking-wider text-vault-muted mb-2">Flow</div>
+                      <div class="flex items-center gap-2 text-xs font-mono">
+                        <span class="text-vault-text truncate" x-text="selectedEntry.bucket"></span>
+                        <svg class="w-3.5 h-3.5 text-vault-accent flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"/></svg>
+                        <span class="text-vault-text/80 truncate" x-text="shortDestination(selectedEntry)"></span>
+                      </div>
+                      <div class="mt-2 flex items-center gap-2">
+                        <span class="inline-flex items-center gap-1.5">
+                          <span class="w-1.5 h-1.5 rounded-full" :class="statusDotClass(selectedEntry.status) + (statusShouldPulse(selectedEntry.status) ? ' animate-pulse' : '')"></span>
+                          <span :class="statusBadgeClass(selectedEntry.status)" class="px-2 py-0.5 rounded-full text-[10px] font-medium" x-text="selectedEntry.status"></span>
+                        </span>
+                        <span class="text-[10px] font-medium px-1.5 py-0.5 rounded border" :class="eventTypeChip(selectedEntry.event_type)" x-text="eventTypeLabel(selectedEntry.event_type)"></span>
+                      </div>
+                    </div>
+
+                    <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Key</span><span class="font-mono text-xs break-all" x-text="selectedEntry.key"></span></div>
+                    <div x-show="selectedEntry.version_id"><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Version ID</span><span class="font-mono text-[10px] text-vault-muted break-all" x-text="selectedEntry.version_id"></span></div>
+                    <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Rule</span><span class="font-mono text-xs" x-text="selectedEntry.rule_id"></span></div>
+                    <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Destination endpoint</span><span class="font-mono text-xs break-all" x-text="selectedEntry.destination_endpoint"></span></div>
+                    <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Destination bucket</span><span class="font-mono text-xs" x-text="selectedEntry.destination_bucket"></span></div>
+                    <div class="grid grid-cols-2 gap-3">
+                      <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Attempts</span><span x-text="selectedEntry.attempts"></span></div>
+                      <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Next retry</span><span class="text-xs" x-text="formatTime(selectedEntry.next_retry_at)"></span></div>
+                    </div>
+                    <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Created</span><span class="text-xs" x-text="formatTime(selectedEntry.created_at)"></span></div>
+                    <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Updated</span><span class="text-xs" x-text="formatTime(selectedEntry.updated_at)"></span></div>
+                    <div x-show="selectedEntry.last_error">
+                      <span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Last error</span>
+                      <pre class="p-2.5 bg-red-500/5 border border-red-500/20 rounded-lg text-[11px] text-red-400 whitespace-pre-wrap break-all" x-text="selectedEntry.last_error"></pre>
+                    </div>
+                    <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Entry ID</span><span class="font-mono text-[10px] text-vault-muted break-all" x-text="selectedEntry.id"></span></div>
+
+                    <div x-show="selectedEntry.status === 'failed'" class="pt-3 border-t border-vault-border/30">
+                      <button @click="retryEntry(selectedEntry.id)" :disabled="retrying[selectedEntry.id]"
+                        class="w-full px-3 py-2 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/30 text-sm font-medium hover:bg-vault-accent/20 transition disabled:opacity-40"
+                        x-text="retrying[selectedEntry.id] ? 'Retrying\u2026' : 'Retry delivery now'"></button>
                     </div>
                   </div>
                 </template>

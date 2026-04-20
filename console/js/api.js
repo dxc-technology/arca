@@ -395,6 +395,22 @@ export function apiClient() {
       return await this.request('DELETE', '/' + encodeURIComponent(bucket), { queryParams: { lifecycle: '' } });
     },
 
+    async s3GetBucketReplication(bucket) {
+      return await this.request('GET', '/' + encodeURIComponent(bucket), { queryParams: { replication: '' } });
+    },
+
+    async s3PutBucketReplication(bucket, xml) {
+      return await this.request('PUT', '/' + encodeURIComponent(bucket), {
+        body: xml,
+        contentType: 'application/xml',
+        queryParams: { replication: '' },
+      });
+    },
+
+    async s3DeleteBucketReplication(bucket) {
+      return await this.request('DELETE', '/' + encodeURIComponent(bucket), { queryParams: { replication: '' } });
+    },
+
     async s3GetObjectLockConfiguration(bucket) {
       return await this.request('GET', '/' + encodeURIComponent(bucket), { queryParams: { 'object-lock': '' } });
     },

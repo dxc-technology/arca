@@ -269,6 +269,26 @@ export const HELP_TOPICS = {
         'Admin credentials bypass the grant system — they can do anything. Root is always an admin.' },
     ],
   },
+  'replication': {
+    section: 'Bucket setting',
+    title: 'Replication',
+    hint: 'Async copy of objects to another S3-compatible bucket with loop-safe mirroring.',
+    body: [
+      { kind: 'intro', text:
+        'Replication streams new objects, delete markers, and tag changes from this bucket to a destination bucket on any S3-compatible endpoint (another Arca, AWS S3, MinIO). Delivery happens on a background worker with retry and exponential backoff; the journal page shows every in-flight or failed entry.' },
+      { kind: 'note', tone: 'warn', text:
+        'Versioning must be Enabled on the source bucket. AWS-style semantics: replication operates on versions, and hard deletes are never replicated — only delete markers are.' },
+      { kind: 'rows', rows: [
+        { key: 'Rule ID',          text: 'Unique name. Use something stable — the journal and metrics pivot on it.' },
+        { key: 'Prefix',           text: 'Only objects whose key starts with this string are replicated. Leave empty to replicate every object.' },
+        { key: 'Destination',      text: 'Bucket name + endpoint URL. The bucket must already exist on the destination (Arca will not auto-create it).' },
+        { key: 'Credential ref',   text: 'Name of a credential stored in server settings. The worker signs outbound requests with these access keys.' },
+        { key: 'Delete markers',   text: 'When enabled, a DeleteObject on the source creates a delete marker on the destination too.' },
+      ] },
+      { kind: 'note', tone: 'tip', text:
+        'Mirror setups (A→B and B→A with the same bucket name) are loop-safe: every replicated write carries an x-amz-arca-replication-source header, and the receiver records the object as REPLICA without re-emitting it into its own journal.' },
+    ],
+  },
   'rbac.team': {
     section: 'Access control',
     title: 'Teams',
