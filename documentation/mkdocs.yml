@@ -50,6 +50,7 @@ nav:
     - TLS: guide/tls.md
     - Encryption: guide/encryption.md
     - Compression: guide/compression.md
+    - Replication: guide/replication.md
     - Notification Connectors: guide/connectors.md
     - Web Console: guide/console.md
     - CLI Reference: guide/cli.md

@@ -42,7 +42,7 @@ continuing from the MVP phases (0–11).
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">25</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">26</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">27</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">28</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">28</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">29</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">30</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">31</div>
@@ -123,7 +123,7 @@ graph LR
 | 25 | [Notifications and Event System](#phase-25-notifications-and-event-system-p3) | P3 | 20 | `v0.18.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 26 | [Notification Connectors](#phase-26-notification-connectors-p3) | P3 | 25 | `v0.20.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 27 | [Transparent Compression](#phase-27-transparent-compression-p2) | P2 | 13 | `v0.21.0` | <span style="color:#4caf50">&#x2714;</span> |
-| 28 | [Replication](#phase-28-replication-p3) | P3 | 17, 24 | | |
+| 28 | [Replication](#phase-28-replication-p3) | P3 | 17, 24 | _unreleased_ | <span style="color:#4caf50">&#x2714;</span> |
 | 29 | [Multi-Node and Erasure Coding](#phase-29-multi-node-and-erasure-coding-p3) | P3 | All prior | | |
 | 30 | [CLI Enhancements and Migration Tools](#phase-30-cli-enhancements-and-migration-tools-p3) | P3 | 13, 24, 29 | | |
 | 31 | [OpenTelemetry Integration](#phase-31-opentelemetry-integration-p3) | P3 | 18 | | |
@@ -459,10 +459,19 @@ coexist transparently.
 
 Asynchronous cross-instance replication for disaster recovery and geographic distribution.
 
-- [ ] Change journal in metadata DB, replication worker forwards objects to destination Arca instance
-- [ ] `PutBucketReplication` / `GetBucketReplication` / `DeleteBucketReplication` config
-- [ ] `x-amz-replication-status` headers (PENDING / COMPLETED / FAILED / REPLICA)
-- [ ] Conflict resolution: last-writer-wins by timestamp
+- [x] Change journal in metadata DB (`replication_journal`, SQLite v17 + Postgres 0004); worker drains it on a periodic tick
+- [x] Outbound S3 client over `reqwest` + full AWS SigV4 signing — talks to any S3-compatible endpoint
+- [x] `PutBucketReplication` / `GetBucketReplication` / `DeleteBucketReplication` handlers with Arca-flavoured `<Endpoint>` / `<CredentialRef>` / `<Region>` extensions on top of the standard XML
+- [x] `x-amz-replication-status` headers (`PENDING` / `COMPLETED` / `FAILED` / `REPLICA`) on Put/Get/Head/Copy/CompleteMultipart; new `replication_status` column on `objects`
+- [x] Loop-prevention: `x-amz-arca-replication-source` header on every outbound request; receiving Arca marks the object `REPLICA` and skips journal emission. Two-way mirror setups converge without ping-pong
+- [x] Per-event-type replication: PutObject, CompleteMultipartUpload, delete-marker creation on versioned buckets, `PutObjectTagging`
+- [x] Conflict resolution: last-writer-wins by `Last-Modified` (HEAD destination before every PUT)
+- [x] Exponential backoff capped at 1h; `FAILED` only stamped after terminal retry
+- [x] Admin API: `GET /admin/replication/journal` (filterable), `POST|DELETE /admin/replication/credentials/:name`, `POST /admin/replication/retry/:id`; `/admin/info` gained `replication_enabled`
+- [x] `[replication]` TOML section + bounded retention (`journal_retention_days`, `journal_max_age_days`) plumbed into the existing retention purge worker
+- [x] `docker-compose.replication.yml` (second `arca-replica` instance) + `bin/arca start --replication` + `bin/test replication`; 4 boto3 integration tests covering basic PUT, delete-marker, tags, and the two-way mirror no-loop invariant
+- [x] (Console) Per-bucket Replication card in Bucket Settings with versioning-required banner, modal-based rule editor with inline "+ New credential" flow
+- [x] (Console) Global Replication Journal admin view with inline column filters, side detail panel, auto-refresh, per-row Retry action
 
 **Depends on**: Phase 17 (versioning), Phase 24 (PostgreSQL for production)
 

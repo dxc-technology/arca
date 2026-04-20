@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://dxc-technology.github.io/arca/guide/compression/">
+        <link rel="canonical" href="https://dxc-technology.github.io/arca/guide/replication/">
       
       
-        <link rel="prev" href="../encryption/">
+        <link rel="prev" href="../compression/">
       
       
-        <link rel="next" href="../replication/">
+        <link rel="next" href="../connectors/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Compression - Arca</title>
+        <title>Replication - Arca</title>
       
     
     
@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#compression" class="md-skip">
+        <a href="#replication" class="md-skip">
           Skip to content
         </a>
       
@@ -115,7 +115,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Compression
+              Replication
             
           </span>
         </div>
@@ -570,6 +570,34 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../compression/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compression
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -589,7 +617,7 @@
   <span class="md-ellipsis">
     
   
-    Compression
+    Replication
   
 
     
@@ -607,7 +635,7 @@
   <span class="md-ellipsis">
     
   
-    Compression
+    Replication
   
 
     
@@ -633,22 +661,55 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#quick-start" class="md-nav__link">
+  <a href="#what-gets-replicated" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quick Start
+        What gets replicated
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Quick Start">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start-console" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start — console
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start-cli-direct-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start — CLI / direct API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick Start — CLI / direct API">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-enable-compression-on-a-bucket" class="md-nav__link">
+  <a href="#1-store-the-destination-credential" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. Enable compression on a bucket
+        1. Store the destination credential
       
     </span>
   </a>
@@ -656,10 +717,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-verify" class="md-nav__link">
+  <a href="#2-put-the-replication-configuration" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Verify
+        2. PUT the replication configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-upload-an-object-and-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Upload an object and verify
       
     </span>
   </a>
@@ -672,77 +744,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#algorithms" class="md-nav__link">
+  <a href="#the-loop-prevention-contract" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Algorithms
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Algorithms">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#auto-mode" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Auto mode
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#managing-per-bucket-compression" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Managing per-bucket compression
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Managing per-bucket compression">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#get-current-config" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Get current config
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#disable-compression-for-a-bucket" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Disable compression for a bucket
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mime-and-size-filters" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        MIME and size filters
+        The loop-prevention contract
       
     </span>
   </a>
@@ -750,10 +755,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mixed-mode-coexistence" class="md-nav__link">
+  <a href="#two-way-mirror-setup-arca-arca" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Mixed-mode coexistence
+        Two-way mirror setup (Arca ↔ Arca)
       
     </span>
   </a>
@@ -761,10 +766,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#offline-retrofit" class="md-nav__link">
+  <a href="#replication-journal" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Offline retrofit
+        Replication journal
       
     </span>
   </a>
@@ -772,10 +777,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#metrics" class="md-nav__link">
+  <a href="#retry-policy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Metrics
+        Retry policy
       
     </span>
   </a>
@@ -783,10 +788,43 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
+  <a href="#conflict-resolution" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Troubleshooting
+        Conflict resolution
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#journal-retention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Journal retention
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#toml-configuration-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TOML configuration reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related
       
     </span>
   </a>
@@ -797,34 +835,6 @@
   
 </nav>
       
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../replication/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Replication
-  
-
-    
-  </span>
-  
-  
-
-      </a>
     </li>
   
 
@@ -1343,22 +1353,55 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#quick-start" class="md-nav__link">
+  <a href="#what-gets-replicated" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quick Start
+        What gets replicated
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Quick Start">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start-console" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start — console
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start-cli-direct-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start — CLI / direct API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick Start — CLI / direct API">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-enable-compression-on-a-bucket" class="md-nav__link">
+  <a href="#1-store-the-destination-credential" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. Enable compression on a bucket
+        1. Store the destination credential
       
     </span>
   </a>
@@ -1366,10 +1409,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-verify" class="md-nav__link">
+  <a href="#2-put-the-replication-configuration" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Verify
+        2. PUT the replication configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-upload-an-object-and-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Upload an object and verify
       
     </span>
   </a>
@@ -1382,77 +1436,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#algorithms" class="md-nav__link">
+  <a href="#the-loop-prevention-contract" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Algorithms
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Algorithms">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#auto-mode" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Auto mode
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#managing-per-bucket-compression" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Managing per-bucket compression
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Managing per-bucket compression">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#get-current-config" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Get current config
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#disable-compression-for-a-bucket" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Disable compression for a bucket
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mime-and-size-filters" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        MIME and size filters
+        The loop-prevention contract
       
     </span>
   </a>
@@ -1460,10 +1447,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mixed-mode-coexistence" class="md-nav__link">
+  <a href="#two-way-mirror-setup-arca-arca" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Mixed-mode coexistence
+        Two-way mirror setup (Arca ↔ Arca)
       
     </span>
   </a>
@@ -1471,10 +1458,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#offline-retrofit" class="md-nav__link">
+  <a href="#replication-journal" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Offline retrofit
+        Replication journal
       
     </span>
   </a>
@@ -1482,10 +1469,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#metrics" class="md-nav__link">
+  <a href="#retry-policy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Metrics
+        Retry policy
       
     </span>
   </a>
@@ -1493,10 +1480,43 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
+  <a href="#conflict-resolution" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Troubleshooting
+        Conflict resolution
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#journal-retention" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Journal retention
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#toml-configuration-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TOML configuration reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related
       
     </span>
   </a>
@@ -1520,175 +1540,197 @@
 
 
 
-<h1 id="compression">Compression<a class="headerlink" href="#compression" title="Permanent link">&para;</a></h1>
-<p>Arca supports transparent at-rest compression. When a bucket has compression configured, new uploads are compressed before writing to disk and transparently decompressed on read. The S3 wire format is unchanged: <code>ETag</code> remains the MD5 of the plaintext and <code>Content-Length</code> reports the plaintext size. Compression sits below encryption in the stack, so <code>compress → encrypt → store</code> applies when both features are active.</p>
-<p>Compression is a <strong>per-bucket</strong>, <strong>console-managed</strong> setting. There is no instance-wide switch and no TOML configuration — the wrapper is always present at runtime and only activates on buckets that explicitly opt in.</p>
-<h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
-<h3 id="1-enable-compression-on-a-bucket">1. Enable compression on a bucket<a class="headerlink" href="#1-enable-compression-on-a-bucket" title="Permanent link">&para;</a></h3>
-<p>Open the Arca console, navigate to <strong>Buckets → <em>your bucket</em> → Settings</strong>, then in the <strong>Compression</strong> card pick an algorithm (and optionally a level) and click <strong>Enable Compression</strong>.</p>
-<p>Or use the Arca-specific S3 subresource directly:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>curl<span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span><span class="s2">&quot;http://localhost:9000/my-bucket?compression&quot;</span><span class="w"> </span><span class="se">\</span>
+<h1 id="replication">Replication<a class="headerlink" href="#replication" title="Permanent link">&para;</a></h1>
+<p>Arca replicates objects asynchronously from a source bucket to a destination bucket on any S3-compatible endpoint. The destination can be another Arca instance, AWS S3, MinIO, or any server that speaks the S3 API and signs with SigV4.</p>
+<p>Replication is <strong>one-way per rule</strong>, but two-way mirrors are supported safely by configuring symmetric rules on both sides — the loop-prevention contract (see below) guarantees no ping-pong.</p>
+<h2 id="what-gets-replicated">What gets replicated<a class="headerlink" href="#what-gets-replicated" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Event</th>
+<th>Replicated?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PutObject</code></td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>CompleteMultipartUpload</code></td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>CopyObject</code> (destination side)</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>PutObjectTagging</code> / <code>DeleteObjectTagging</code></td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Delete marker on versioned bucket</td>
+<td>Yes (opt-in per rule, default on)</td>
+</tr>
+<tr>
+<td>Hard delete of a specific version</td>
+<td><strong>No</strong> (AWS semantics)</td>
+</tr>
+<tr>
+<td>Object Lock / retention changes</td>
+<td>Not yet (tracked for a later phase)</td>
+</tr>
+<tr>
+<td>ACLs</td>
+<td>Not yet</td>
+</tr>
+</tbody>
+</table>
+<p>The destination bucket must already exist — Arca does not auto-create it.</p>
+<h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Versioning must be Enabled on the source bucket.</strong> Replication operates on object versions; <code>PutBucketReplication</code> returns <code>InvalidRequest</code> otherwise. Enable versioning first (console → Bucket Settings → Versioning → toggle).</li>
+<li><strong>A destination credential</strong> stored in the source instance's server settings, under <code>replication.credentials.&lt;name&gt;</code>. The console's rule editor can create one inline; the admin API accepts direct POSTs (see below).</li>
+</ul>
+<h2 id="quick-start-console">Quick Start — console<a class="headerlink" href="#quick-start-console" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Open <strong>Buckets → <em>bucket name</em> → Settings</strong> on the source instance. Scroll to the <strong>Replication</strong> card.</li>
+<li>If the card shows an amber "Versioning required" banner, click <strong>Enable versioning</strong> (the link scrolls to the Versioning card), toggle it on and reload.</li>
+<li>Click <strong>+ Add Rule</strong>.</li>
+<li>Fill in:</li>
+<li><strong>Rule ID</strong>: any stable string (auto-generated by default).</li>
+<li><strong>Prefix</strong> (optional): replicate only objects whose key starts with this string.</li>
+<li><strong>Destination Bucket</strong>, <strong>Endpoint URL</strong> (e.g. <code>https://replica.example.com</code>), <strong>Region</strong>.</li>
+<li><strong>Destination credentials</strong>: pick an existing one, or choose <strong>+ New</strong>, enter a credential name plus the access-key / secret, and save.</li>
+<li><strong>Replicate delete markers</strong>: default on.</li>
+<li>Click <strong>Add rule</strong>.</li>
+</ol>
+<p>The replication worker picks up new objects on its next tick (default 15 s). Each object's <code>x-amz-replication-status</code> header moves <code>PENDING → COMPLETED</code> on the source and arrives as <code>REPLICA</code> on the destination.</p>
+<h2 id="quick-start-cli-direct-api">Quick Start — CLI / direct API<a class="headerlink" href="#quick-start-cli-direct-api" title="Permanent link">&para;</a></h2>
+<h3 id="1-store-the-destination-credential">1. Store the destination credential<a class="headerlink" href="#1-store-the-destination-credential" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">&quot;http://localhost:9000/admin/replication/credentials/replica-creds&quot;</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span>--aws-sigv4<span class="w"> </span><span class="s2">&quot;aws:amz:us-east-1:s3&quot;</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span>--user<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$AWS_ACCESS_KEY_ID</span><span class="s2">:</span><span class="nv">$AWS_SECRET_ACCESS_KEY</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/xml&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;&lt;CompressionConfiguration&gt;</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="s1">        &lt;Algorithm&gt;zstd&lt;/Algorithm&gt;</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="s1">        &lt;Level&gt;5&lt;/Level&gt;</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="s1">      &lt;/CompressionConfiguration&gt;&#39;</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;access_key_id&quot;:&quot;AKIA...&quot;,&quot;secret_access_key&quot;:&quot;...&quot;}&#39;</span>
 </code></pre></div>
-<h3 id="2-verify">2. Verify<a class="headerlink" href="#2-verify" title="Permanent link">&para;</a></h3>
-<p>Upload a compressible file and check the on-disk size is smaller than the advertised <code>Content-Length</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>aws<span class="w"> </span>s3<span class="w"> </span>cp<span class="w"> </span>large-log.json<span class="w"> </span>s3://my-bucket/key<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>aws<span class="w"> </span>s3api<span class="w"> </span>head-object<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--key<span class="w"> </span>key<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
+<h3 id="2-put-the-replication-configuration">2. PUT the replication configuration<a class="headerlink" href="#2-put-the-replication-configuration" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>aws<span class="w"> </span>s3api<span class="w"> </span>put-bucket-versioning<span class="w"> </span>--bucket<span class="w"> </span>source-bucket<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span>--versioning-configuration<span class="w"> </span><span class="nv">Status</span><span class="o">=</span>Enabled<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span>--endpoint-url<span class="w"> </span>http://localhost:9000
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>cat<span class="w"> </span>&gt;/tmp/repl.xml<span class="w"> </span><span class="s">&lt;&lt;&#39;EOF&#39;</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="s">&lt;ReplicationConfiguration xmlns=&quot;http://s3.amazonaws.com/doc/2006-03-01/&quot;&gt;</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="s">  &lt;Role&gt;&lt;/Role&gt;</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="s">  &lt;Rule&gt;</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="s">    &lt;ID&gt;to-replica&lt;/ID&gt;</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="s">    &lt;Status&gt;Enabled&lt;/Status&gt;</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="s">    &lt;Priority&gt;1&lt;/Priority&gt;</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="s">    &lt;Filter&gt;&lt;Prefix&gt;&lt;/Prefix&gt;&lt;/Filter&gt;</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="s">    &lt;Destination&gt;</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="s">      &lt;Bucket&gt;replica-bucket&lt;/Bucket&gt;</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="s">      &lt;Endpoint&gt;https://replica.example.com&lt;/Endpoint&gt;</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="s">      &lt;Region&gt;us-east-1&lt;/Region&gt;</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="s">      &lt;CredentialRef&gt;replica-creds&lt;/CredentialRef&gt;</span>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="s">    &lt;/Destination&gt;</span>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="s">    &lt;DeleteMarkerReplication&gt;&lt;Status&gt;Enabled&lt;/Status&gt;&lt;/DeleteMarkerReplication&gt;</span>
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="s">  &lt;/Rule&gt;</span>
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="s">&lt;/ReplicationConfiguration&gt;</span>
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="s">EOF</span>
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>curl<span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span><span class="s2">&quot;http://localhost:9000/source-bucket?replication&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a><span class="w">  </span>--aws-sigv4<span class="w"> </span><span class="s2">&quot;aws:amz:us-east-1:s3&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a><span class="w">  </span>--user<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$AWS_ACCESS_KEY_ID</span><span class="s2">:</span><span class="nv">$AWS_SECRET_ACCESS_KEY</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/xml&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a><span class="w">  </span>--data-binary<span class="w"> </span>@/tmp/repl.xml
 </code></pre></div>
-<p><code>head-object</code> returns the plaintext size and original ETag; the blob file on disk is smaller.</p>
-<p>The Prometheus endpoint exposes <code>arca_storage_compression_ratio</code> and per-algorithm byte counters:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:9000/admin/metrics<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>compression
+<h3 id="3-upload-an-object-and-verify">3. Upload an object and verify<a class="headerlink" href="#3-upload-an-object-and-verify" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>aws<span class="w"> </span>s3<span class="w"> </span>cp<span class="w"> </span>./hello.txt<span class="w"> </span>s3://source-bucket/hello.txt<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># Replication status on the source</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>aws<span class="w"> </span>s3api<span class="w"> </span>head-object<span class="w"> </span>--bucket<span class="w"> </span>source-bucket<span class="w"> </span>--key<span class="w"> </span>hello.txt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span>--endpoint-url<span class="w"> </span>http://localhost:9000<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">&#39;.ReplicationStatus&#39;</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># COMPLETED   (after the worker&#39;s next tick)</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="c1"># On the destination, the replicated object carries status REPLICA</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>aws<span class="w"> </span>s3api<span class="w"> </span>head-object<span class="w"> </span>--bucket<span class="w"> </span>replica-bucket<span class="w"> </span>--key<span class="w"> </span>hello.txt<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">  </span>--endpoint-url<span class="w"> </span>https://replica.example.com<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">&#39;.ReplicationStatus&#39;</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="c1"># REPLICA</span>
 </code></pre></div>
-<h2 id="algorithms">Algorithms<a class="headerlink" href="#algorithms" title="Permanent link">&para;</a></h2>
-<p>Six algorithms are shipped. Pick the one that matches your workload.</p>
-<table>
-<thead>
-<tr>
-<th>Algorithm</th>
-<th>Ratio</th>
-<th>CPU (encode)</th>
-<th>CPU (decode)</th>
-<th>Notes</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>zstd</code></td>
-<td>High</td>
-<td>Medium</td>
-<td>Fast</td>
-<td>Best overall balance; default for structured text</td>
-</tr>
-<tr>
-<td><code>lz4</code></td>
-<td>Low–Medium</td>
-<td>Very fast</td>
-<td>Very fast</td>
-<td>Use when CPU is precious</td>
-</tr>
-<tr>
-<td><code>snappy</code></td>
-<td>Low</td>
-<td>Very fast</td>
-<td>Very fast</td>
-<td>Similar to lz4</td>
-</tr>
-<tr>
-<td><code>gzip</code></td>
-<td>Medium</td>
-<td>Medium</td>
-<td>Medium</td>
-<td>Ubiquitous, good for interop tooling</td>
-</tr>
-<tr>
-<td><code>brotli</code></td>
-<td>Very high (text)</td>
-<td>Slow</td>
-<td>Medium</td>
-<td>Best ratio for web assets (HTML/CSS/JS)</td>
-</tr>
-<tr>
-<td><code>xz</code></td>
-<td>Highest</td>
-<td>Slow</td>
-<td>Medium</td>
-<td>Archive-like workloads where ratio dominates</td>
-</tr>
-</tbody>
-</table>
-<h3 id="auto-mode">Auto mode<a class="headerlink" href="#auto-mode" title="Permanent link">&para;</a></h3>
-<p>With <code>Algorithm = auto</code> the wrapper picks per-object using a small deterministic rule table based on <code>Content-Type</code> and size. No sampling, no benchmarking — a plain match:</p>
-<table>
-<thead>
-<tr>
-<th>#</th>
-<th>Condition</th>
-<th>Choice</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td>Size &lt; 4 KiB</td>
-<td><code>lz4</code> (CPU-friendly)</td>
-</tr>
-<tr>
-<td>2</td>
-<td><code>text/html</code>, <code>text/css</code>, <code>application/javascript</code>, <code>image/svg+xml</code>, <code>application/xhtml+xml</code></td>
-<td><code>brotli</code> level 4</td>
-</tr>
-<tr>
-<td>3</td>
-<td><code>text/*</code>, <code>application/json</code>, <code>application/xml</code>, <code>application/yaml</code>, <code>application/x-ndjson</code>, <code>application/x-log</code>, <code>application/graphql</code></td>
-<td><code>zstd</code> level 3</td>
-</tr>
-<tr>
-<td>4</td>
-<td>Anything else</td>
-<td><code>zstd</code> level 3</td>
-</tr>
-</tbody>
-</table>
-<p>The sidecar always records the concrete algorithm chosen; the read path does not depend on the rule table.</p>
-<h2 id="managing-per-bucket-compression">Managing per-bucket compression<a class="headerlink" href="#managing-per-bucket-compression" title="Permanent link">&para;</a></h2>
-<h3 id="get-current-config">Get current config<a class="headerlink" href="#get-current-config" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-X<span class="w"> </span>GET<span class="w"> </span><span class="s2">&quot;http://localhost:9000/my-bucket?compression&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>--aws-sigv4<span class="w"> </span><span class="s2">&quot;aws:amz:us-east-1:s3&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>--user<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$AWS_ACCESS_KEY_ID</span><span class="s2">:</span><span class="nv">$AWS_SECRET_ACCESS_KEY</span><span class="s2">&quot;</span>
-</code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="cp">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">&lt;CompressionConfiguration&gt;</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="nt">&lt;Algorithm&gt;</span>zstd<span class="nt">&lt;/Algorithm&gt;</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">&lt;Level&gt;</span>5<span class="nt">&lt;/Level&gt;</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="nt">&lt;/CompressionConfiguration&gt;</span>
-</code></pre></div>
-<h3 id="disable-compression-for-a-bucket">Disable compression for a bucket<a class="headerlink" href="#disable-compression-for-a-bucket" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>curl<span class="w"> </span>-X<span class="w"> </span>DELETE<span class="w"> </span><span class="s2">&quot;http://localhost:9000/my-bucket?compression&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>--aws-sigv4<span class="w"> </span><span class="s2">&quot;aws:amz:us-east-1:s3&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span>--user<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$AWS_ACCESS_KEY_ID</span><span class="s2">:</span><span class="nv">$AWS_SECRET_ACCESS_KEY</span><span class="s2">&quot;</span>
-</code></pre></div>
-<p>Presence of the configuration = compression enabled for the bucket. <code>DELETE</code> removes the configuration; subsequent uploads pass through uncompressed. Existing compressed objects remain readable (mixed-mode).</p>
-<h2 id="mime-and-size-filters">MIME and size filters<a class="headerlink" href="#mime-and-size-filters" title="Permanent link">&para;</a></h2>
-<p>To avoid wasting CPU on already-compressed content, the write path always skips objects whose <code>Content-Type</code> matches a set of prefixes (<code>image/</code>, <code>video/</code>, <code>audio/</code>, <code>application/zip</code>, <code>application/gzip</code>, <code>application/x-7z-compressed</code>, <code>application/x-bzip2</code>, <code>application/x-xz</code>, <code>application/x-rar-compressed</code>, <code>application/pdf</code>) or whose <code>Content-Length</code> is below <strong>1 KiB</strong>. These thresholds are baked-in defaults — change the bucket's algorithm to suit your workload, but the MIME / size filters are not tunable.</p>
-<h2 id="mixed-mode-coexistence">Mixed-mode coexistence<a class="headerlink" href="#mixed-mode-coexistence" title="Permanent link">&para;</a></h2>
-<p>Enabling compression affects future uploads only. Existing objects keep their on-disk form and are read back transparently: each sidecar records whether its blob is compressed and with which algorithm, so the read path dispatches per-object.</p>
-<h2 id="offline-retrofit">Offline retrofit<a class="headerlink" href="#offline-retrofit" title="Permanent link">&para;</a></h2>
-<p>Two CLI tools let operators compress (or decompress) a data directory after the fact:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Preview what would change</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>arca<span class="w"> </span>compress-existing<span class="w"> </span>--config<span class="w"> </span>/etc/arca/config.toml<span class="w"> </span>--dry-run
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># Compress everything matching the MIME/size filters</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>arca<span class="w"> </span>compress-existing<span class="w"> </span>--config<span class="w"> </span>/etc/arca/config.toml
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="c1"># Limit to one bucket, force an algorithm</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>arca<span class="w"> </span>compress-existing<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--algorithm<span class="w"> </span>brotli
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>
-<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="c1"># Reverse the operation</span>
-<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>arca<span class="w"> </span>decompress-existing<span class="w"> </span>--config<span class="w"> </span>/etc/arca/config.toml
-</code></pre></div>
-<p>Both tools are atomic per-blob (writes a <code>.compressing.tmp</code> then renames) and resumable: re-running skips already-processed blobs because the sidecar is the source of truth. <code>arca fsck</code> recognizes and removes abandoned <code>.compressing.tmp</code> files.</p>
-<p>Default when no <code>--algorithm</code> is passed: <code>auto</code> (same rule table as the live path).</p>
-<h2 id="metrics">Metrics<a class="headerlink" href="#metrics" title="Permanent link">&para;</a></h2>
-<p>The Prometheus endpoint always exposes these series:</p>
+<h2 id="the-loop-prevention-contract">The loop-prevention contract<a class="headerlink" href="#the-loop-prevention-contract" title="Permanent link">&para;</a></h2>
+<p>Replication extensions Arca adds on top of the standard S3 replication surface:</p>
 <ul>
-<li><code>arca_compression_plaintext_bytes_total{algorithm}</code> — counter, plaintext bytes seen per algorithm.</li>
-<li><code>arca_compression_compressed_bytes_total{algorithm}</code> — counter, on-disk bytes after compression.</li>
-<li><code>arca_compression_skipped_total{reason="disabled"|"mime"|"size"}</code> — counter of writes that bypassed compression.</li>
-<li><code>arca_storage_compression_ratio</code> — gauge, aggregated ratio (plaintext / compressed).</li>
+<li>Every outbound request from the replication worker carries a custom header <code>x-amz-arca-replication-source: &lt;source_endpoint_id&gt;</code>. The value comes from <code>[replication].source_endpoint_id</code> in the TOML config (default <code>arca</code>; set a unique stable string per deployment in production).</li>
+<li>When an Arca instance <strong>receives</strong> a <code>PutObject</code> / <code>DeleteObject</code> / <code>PutObjectTagging</code> whose request carries that header, it:</li>
+<li>Stamps the object's <code>replication_status</code> as <code>REPLICA</code> instead of computing a PENDING emit.</li>
+<li><strong>Skips</strong> the journal emit entirely — no journal row is inserted.</li>
+<li>When the emit logic checks a rule's filter, it short-circuits on REPLICA objects, so they are never re-emitted by a rule configured on the receiving side.</li>
 </ul>
-<p><code>reason="disabled"</code> counts uploads to buckets with no compression configuration.</p>
-<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<p>This is what makes two-way mirrors safe. Configure the same-named bucket on both Arcas with symmetric rules: a client-originated <code>PutObject</code> on A fires exactly once on A's journal, shows up on B as a REPLICA (no emit), and stays. No ping-pong. The <code>test_mirror_does_not_loop</code> integration test asserts this invariant.</p>
+<p><strong>Caveat</strong>: destinations that are not Arca (AWS S3, MinIO, …) ignore the custom header, so two-way mirrors against non-Arca destinations are not supported — use one-way only.</p>
+<h2 id="two-way-mirror-setup-arca-arca">Two-way mirror setup (Arca ↔ Arca)<a class="headerlink" href="#two-way-mirror-setup-arca-arca" title="Permanent link">&para;</a></h2>
+<ol>
+<li>On instance A, create the destination credential (pointing at B) and a rule <code>source-bucket → source-bucket</code> with <code>Endpoint=B</code>.</li>
+<li>On instance B, create a destination credential (pointing at A) and a rule <code>source-bucket → source-bucket</code> with <code>Endpoint=A</code>.</li>
+<li>Enable versioning on <code>source-bucket</code> on both sides.</li>
+</ol>
+<p>Writes on either side now reach the other; convergence is eventual.</p>
+<h2 id="replication-journal">Replication journal<a class="headerlink" href="#replication-journal" title="Permanent link">&para;</a></h2>
+<p>Every pending / in-flight / failed delivery lives in the <code>replication_journal</code> table. The admin console has a dedicated <strong>Replication</strong> view at <code>#/replication</code> — it's the admin's single pane of glass:</p>
 <ul>
-<li><strong>ETag mismatches:</strong> not caused by compression — the ETag is always MD5 of plaintext. If they differ, check whether a proxy is re-encoding the body.</li>
-<li><strong>Smaller-than-plaintext download:</strong> a misconfigured client may have requested <code>Content-Encoding: gzip</code> or similar HTTP-level compression. Arca's at-rest compression is transparent to the client and never touches <code>Content-Encoding</code>.</li>
-<li><strong>Slow writes with brotli/xz:</strong> those algorithms trade CPU for ratio. Switch to <code>zstd</code> or <code>lz4</code> if throughput matters more than disk footprint.</li>
-<li><strong>Compression not triggering on uploads:</strong> the bucket may have no compression configured, or the content-type matches the built-in MIME skip list, or the object is below 1 KiB. The Prometheus <code>arca_compression_skipped_total</code> counter records the reason.</li>
+<li><strong>Created / Bucket / Key / Rule / Event type / Destination / Status / Tries / Actions</strong> columns with inline column-header filters.</li>
+<li>Color-coded status chips, pulsing on <code>in_flight</code> entries.</li>
+<li>Side panel with a dedicated "Flow" summary (source ➜ destination), the last error, and a per-entry <strong>Retry</strong> action.</li>
+</ul>
+<p>Programmatic access:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># List journal entries</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>curl<span class="w"> </span><span class="s2">&quot;http://localhost:9000/admin/replication/journal?status=failed&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>--aws-sigv4<span class="w"> </span><span class="s2">&quot;aws:amz:us-east-1:s3&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span>--user<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$AWS_ACCESS_KEY_ID</span><span class="s2">:</span><span class="nv">$AWS_SECRET_ACCESS_KEY</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>jq
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="c1"># Re-queue a specific entry</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">&quot;http://localhost:9000/admin/replication/retry/&lt;entry-id&gt;&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">  </span>--aws-sigv4<span class="w"> </span><span class="s2">&quot;aws:amz:us-east-1:s3&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">  </span>--user<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$AWS_ACCESS_KEY_ID</span><span class="s2">:</span><span class="nv">$AWS_SECRET_ACCESS_KEY</span><span class="s2">&quot;</span>
+</code></pre></div>
+<h2 id="retry-policy">Retry policy<a class="headerlink" href="#retry-policy" title="Permanent link">&para;</a></h2>
+<ul>
+<li>The worker runs on a timer (<code>poll_interval_seconds</code>, default 15 s) and claims up to <code>batch_size</code> pending rows per cycle (default 100).</li>
+<li>On delivery failure, the entry's <code>attempts</code> is incremented and <code>next_retry_at</code> is set to <code>now + retry_base_seconds * 2^(attempts-1)</code> (capped at 1 hour).</li>
+<li>After <code>max_retries</code> failures (default 10) the entry is marked <code>failed</code> and the source object's <code>replication_status</code> is stamped <code>FAILED</code>.</li>
+<li>Transient errors don't stamp <code>FAILED</code> — only the terminal retry does. Clients polling HEAD won't see spurious FAILED blips during a brief network hiccup.</li>
+</ul>
+<h2 id="conflict-resolution">Conflict resolution<a class="headerlink" href="#conflict-resolution" title="Permanent link">&para;</a></h2>
+<p>Before every PUT the worker does a HEAD on the destination:</p>
+<ul>
+<li>If the destination object's <code>Last-Modified</code> is greater than or equal to the source's, the PUT is skipped (destination-wins). The journal entry is still marked <code>completed</code> and the source is stamped <code>COMPLETED</code>.</li>
+<li>If the HEAD fails (network issue, 4xx), the worker proceeds with the PUT — a destination that rejects the write will surface as a normal failure and retry.</li>
+</ul>
+<p>This matches S3's eventual-consistency semantics: replicated writes never silently overwrite a newer destination version, and there is no cross-instance coordination protocol.</p>
+<h2 id="journal-retention">Journal retention<a class="headerlink" href="#journal-retention" title="Permanent link">&para;</a></h2>
+<p>The existing retention-purge worker prunes <code>completed</code> journal rows older than <code>journal_retention_days</code> (default 30). A hard cap <code>journal_max_age_days</code> (default 90) prunes rows of <strong>any</strong> status, so even a destination that has been offline indefinitely won't blow up the journal. Both thresholds are exposed in the console Settings page next to the other retention knobs.</p>
+<h2 id="toml-configuration-reference">TOML configuration reference<a class="headerlink" href="#toml-configuration-reference" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">[replication]</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">poll_interval_seconds</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="mi">15</span><span class="w">     </span><span class="c1"># worker tick</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">batch_size</span><span class="w">             </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span><span class="w">    </span><span class="c1"># rows claimed per tick</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">max_retries</span><span class="w">            </span><span class="o">=</span><span class="w"> </span><span class="mi">10</span><span class="w">     </span><span class="c1"># before FAILED</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">retry_base_seconds</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="mi">5</span><span class="w">      </span><span class="c1"># exponential base; capped at 1h</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="n">request_timeout_seconds</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">60</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="n">source_endpoint_id</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;arca-east&quot;</span><span class="w">   </span><span class="c1"># stable per-deployment; loop-prevention marker</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="n">journal_retention_days</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">30</span><span class="w">     </span><span class="c1"># completed rows purged after</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="n">journal_max_age_days</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="mi">90</span><span class="w">     </span><span class="c1"># any row purged after</span>
+</code></pre></div>
+<p>Or start a development replica alongside the primary:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--dev<span class="w"> </span>--replication<span class="w">   </span><span class="c1"># boots arca on :9000 and arca-replica on :9001</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>bin/test<span class="w"> </span>replication<span class="w">                    </span><span class="c1"># runs the 4 boto3 integration tests</span>
+</code></pre></div>
+<h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../access-control/">Access Control</a> — destination credentials are just another SigV4 access-key/secret pair.</li>
+<li><a href="../../operations/monitoring/">Monitoring &amp; Logging</a> — <code>/admin/metrics</code> exposes journal counters alongside the rest.</li>
 </ul>
 
 

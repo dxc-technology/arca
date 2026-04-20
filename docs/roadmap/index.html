@@ -599,6 +599,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../guide/replication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Replication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../guide/connectors/" class="md-nav__link">
         
   
@@ -2193,7 +2221,7 @@ continuing from the MVP phases (0–11).</p>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">25</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">26</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">27</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">28</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">28</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">29</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">30</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">31</div>
@@ -2395,8 +2423,8 @@ continuing from the MVP phases (0–11).</p>
 <td><a href="#phase-28-replication-p3">Replication</a></td>
 <td style="text-align: center;">P3</td>
 <td style="text-align: center;">17, 24</td>
-<td style="text-align: center;"></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><em>unreleased</em></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">29</td>
@@ -2705,10 +2733,19 @@ coexist transparently.</p>
 <h3 id="phase-28-replication-p3">Phase 28 — Replication [P3]<a class="headerlink" href="#phase-28-replication-p3" title="Permanent link">&para;</a></h3>
 <p>Asynchronous cross-instance replication for disaster recovery and geographic distribution.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Change journal in metadata DB, replication worker forwards objects to destination Arca instance</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>PutBucketReplication</code> / <code>GetBucketReplication</code> / <code>DeleteBucketReplication</code> config</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>x-amz-replication-status</code> headers (PENDING / COMPLETED / FAILED / REPLICA)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Conflict resolution: last-writer-wins by timestamp</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Change journal in metadata DB (<code>replication_journal</code>, SQLite v17 + Postgres 0004); worker drains it on a periodic tick</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Outbound S3 client over <code>reqwest</code> + full AWS SigV4 signing — talks to any S3-compatible endpoint</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>PutBucketReplication</code> / <code>GetBucketReplication</code> / <code>DeleteBucketReplication</code> handlers with Arca-flavoured <code>&lt;Endpoint&gt;</code> / <code>&lt;CredentialRef&gt;</code> / <code>&lt;Region&gt;</code> extensions on top of the standard XML</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>x-amz-replication-status</code> headers (<code>PENDING</code> / <code>COMPLETED</code> / <code>FAILED</code> / <code>REPLICA</code>) on Put/Get/Head/Copy/CompleteMultipart; new <code>replication_status</code> column on <code>objects</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Loop-prevention: <code>x-amz-arca-replication-source</code> header on every outbound request; receiving Arca marks the object <code>REPLICA</code> and skips journal emission. Two-way mirror setups converge without ping-pong</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Per-event-type replication: PutObject, CompleteMultipartUpload, delete-marker creation on versioned buckets, <code>PutObjectTagging</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Conflict resolution: last-writer-wins by <code>Last-Modified</code> (HEAD destination before every PUT)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Exponential backoff capped at 1h; <code>FAILED</code> only stamped after terminal retry</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Admin API: <code>GET /admin/replication/journal</code> (filterable), <code>POST|DELETE /admin/replication/credentials/:name</code>, <code>POST /admin/replication/retry/:id</code>; <code>/admin/info</code> gained <code>replication_enabled</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>[replication]</code> TOML section + bounded retention (<code>journal_retention_days</code>, <code>journal_max_age_days</code>) plumbed into the existing retention purge worker</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>docker-compose.replication.yml</code> (second <code>arca-replica</code> instance) + <code>bin/arca start --replication</code> + <code>bin/test replication</code>; 4 boto3 integration tests covering basic PUT, delete-marker, tags, and the two-way mirror no-loop invariant</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> (Console) Per-bucket Replication card in Bucket Settings with versioning-required banner, modal-based rule editor with inline "+ New credential" flow</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> (Console) Global Replication Journal admin view with inline column filters, side detail panel, auto-refresh, per-row Retry action</li>
 </ul>
 <p><strong>Depends on</strong>: Phase 17 (versioning), Phase 24 (PostgreSQL for production)</p>
 <hr />
