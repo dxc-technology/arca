@@ -63,6 +63,10 @@ When `[encryption]` is present and `enabled = true`, all new objects are encrypt
 
 When `[encryption.kms]` is present, the master key is fetched from Vault/OpenBAO at startup. See the [Encryption guide](encryption.md#kms-integration-vaultopenbao) for details.
 
+### Compression
+
+Compression is **per-bucket and console-managed** — it has no TOML configuration. The blob layer always wraps writes with the compression engine, which only activates on buckets that have been opted in via the console (or the `PUT /{bucket}?compression` S3 subresource). See the [Compression guide](compression.md) for the full workflow and XML schema.
+
 ### Request Limits
 
 | Setting | Default | Description |

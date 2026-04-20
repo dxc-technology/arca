@@ -4,6 +4,7 @@ mod cli;
 mod config;
 mod connector;
 mod credential;
+mod compress_existing;
 mod fsck;
 mod recover;
 mod tls;
@@ -106,30 +107,66 @@ async fn main() -> Result<()> {
             let ssec_blob: Arc<dyn arca_core::store::SsecBlobOps> =
                 Arc::new(arca_storage::SsecBlobStore::new(fs_blob_store.clone()));
 
-            let (blob, plain_blob): (Arc<dyn arca_core::store::BlobStore>, Option<Arc<dyn arca_core::store::BlobStore>>) =
-                if let Some(master_key) = master_key {
-                    if encryption_enabled {
-                        tracing::info!(
-                            key_id = master_key.key_id(),
-                            provider = kms_provider.as_deref().unwrap_or("unknown"),
-                            "Server-side encryption enabled (AES-256-GCM)"
-                        );
-                    } else {
-                        tracing::info!(
-                            key_id = master_key.key_id(),
-                            provider = kms_provider.as_deref().unwrap_or("unknown"),
-                            "Encryption key configured (per-bucket encryption available)"
-                        );
-                    }
-                    let plain = Arc::new(fs_blob_store.clone());
-                    let encrypting = Arc::new(arca_storage::EncryptingBlobStore::new(
+            let fs_arc = Arc::new(fs_blob_store.clone());
+
+            let (mut blob, mut plain_blob): (
+                Arc<dyn arca_core::store::BlobStore>,
+                Option<Arc<dyn arca_core::store::BlobStore>>,
+            ) = if let Some(master_key) = master_key {
+                if encryption_enabled {
+                    tracing::info!(
+                        key_id = master_key.key_id(),
+                        provider = kms_provider.as_deref().unwrap_or("unknown"),
+                        "Server-side encryption enabled (AES-256-GCM)"
+                    );
+                } else {
+                    tracing::info!(
+                        key_id = master_key.key_id(),
+                        provider = kms_provider.as_deref().unwrap_or("unknown"),
+                        "Encryption key configured (per-bucket encryption available)"
+                    );
+                }
+                let plain: Arc<dyn arca_core::store::BlobStore> =
+                    Arc::new(fs_blob_store.clone());
+                let encrypting: Arc<dyn arca_core::store::BlobStore> =
+                    Arc::new(arca_storage::EncryptingBlobStore::new(
                         fs_blob_store,
                         Arc::new(master_key),
                     ));
-                    (encrypting, Some(plain))
-                } else {
-                    (Arc::new(fs_blob_store), None)
-                };
+                (encrypting, Some(plain))
+            } else {
+                (Arc::new(fs_blob_store), None)
+            };
+
+            // Always wrap with transparent compression. The wrapper is a
+            // per-bucket passthrough by default (no bucket config = no
+            // compression); it only kicks in when a user sets
+            // `PUT /{bucket}?compression` via the console or S3 API.
+            // Compression always sits ABOVE encryption: we compress plaintext,
+            // then encrypt the compressed bytes.
+            let shared_metrics = Arc::new(arca_core::store::CompressionMetrics::new());
+            let comp_blob = Arc::new(arca_storage::CompressingBlobStore::with_metrics(
+                blob.clone(),
+                fs_arc.clone(),
+                stores.metadata.clone(),
+                shared_metrics.clone(),
+            ));
+            let compression_invalidator: Option<Arc<dyn Fn(&str) + Send + Sync>> = {
+                let inv = comp_blob.clone();
+                Some(Arc::new(move |bucket: &str| inv.invalidate_bucket(bucket)))
+            };
+            let compression_metrics_handle = Some(shared_metrics.clone());
+            blob = comp_blob as Arc<dyn arca_core::store::BlobStore>;
+
+            if let Some(p) = plain_blob {
+                let plain_comp = Arc::new(arca_storage::CompressingBlobStore::with_metrics(
+                    p,
+                    fs_arc.clone(),
+                    stores.metadata.clone(),
+                    shared_metrics.clone(),
+                ));
+                plain_blob = Some(plain_comp as Arc<dyn arca_core::store::BlobStore>);
+            }
 
             let tls_enabled = config.server.tls.is_some();
 
@@ -146,7 +183,11 @@ async fn main() -> Result<()> {
                     None => (true, None, true, None),
                 };
 
-            let metrics_registry = Arc::new(arca_proto::metrics::MetricsRegistry::new());
+            let mut metrics_registry = arca_proto::metrics::MetricsRegistry::new();
+            if let Some(ref m) = compression_metrics_handle {
+                metrics_registry.set_compression(m.clone());
+            }
+            let metrics_registry = Arc::new(metrics_registry);
 
             // Resolve limits config (with defaults when section is absent).
             let limits = config
@@ -251,6 +292,7 @@ async fn main() -> Result<()> {
                 connector_registry: None, // Set after building the registry below.
                 presigned_url_store: stores.presigned_url,
                 bucket_encryption_cache: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+                compression_invalidator,
                 audit_tx: if audit_enabled {
                     stores.audit.as_ref().map(|a| arca_proto::state::spawn_audit_writer(a.clone()))
                 } else {
@@ -530,6 +572,34 @@ async fn main() -> Result<()> {
             let config = config::load_config(&config_path)?;
             let exit_code = fsck::run_fsck(&config, verify_checksums).await?;
             std::process::exit(exit_code);
+        }
+
+        Command::CompressExisting {
+            config_path,
+            dry_run,
+            bucket,
+            algorithm,
+        } => {
+            let _ = init_tracing(&LogFormat::Text, "info");
+            let config = config::load_config(&config_path)?;
+            compress_existing::run_compress_existing(
+                &config,
+                dry_run,
+                bucket.as_deref(),
+                algorithm.as_deref(),
+            )
+            .await?;
+        }
+
+        Command::DecompressExisting {
+            config_path,
+            dry_run,
+            bucket,
+        } => {
+            let _ = init_tracing(&LogFormat::Text, "info");
+            let config = config::load_config(&config_path)?;
+            compress_existing::run_decompress_existing(&config, dry_run, bucket.as_deref())
+                .await?;
         }
 
         Command::Tls { action } => {

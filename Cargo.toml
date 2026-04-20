@@ -9,7 +9,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.20.0"
+version = "0.21.0"
 
 [workspace.dependencies]
 # Async runtime
@@ -53,6 +53,12 @@ tokio-util = { version = "0.7", features = ["io"] }
 
 # Compression
 async-compression = { version = "0.4", features = ["tokio", "gzip"] }
+zstd = "0.13"
+lz4_flex = { version = "0.11", default-features = false, features = ["std"] }
+snap = "1.1"
+flate2 = { version = "1.0", default-features = false, features = ["rust_backend"] }
+brotli = { version = "7", default-features = false, features = ["std"] }
+lzma-rs = "0.3"
 
 # Hashing
 hmac = "0.12"

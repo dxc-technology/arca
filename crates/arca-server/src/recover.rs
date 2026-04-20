@@ -377,6 +377,7 @@ mod tests {
                 last_modified: "2024-01-01T00:00:00Z".into(),
                 metadata: HashMap::new(),
                 encryption: None,
+                compression: None,
                 version_id: None,
             },
         )
@@ -395,6 +396,7 @@ mod tests {
                 last_modified: "2024-01-02T00:00:00Z".into(),
                 metadata: HashMap::new(),
                 encryption: None,
+                compression: None,
                 version_id: None,
             },
         )
@@ -413,6 +415,7 @@ mod tests {
                 last_modified: "2024-01-03T00:00:00Z".into(),
                 metadata: HashMap::new(),
                 encryption: None,
+                compression: None,
                 version_id: None,
             },
         )
@@ -463,6 +466,7 @@ mod tests {
                 last_modified: "2024-01-01T00:00:00Z".into(),
                 metadata: HashMap::new(),
                 encryption: None,
+                compression: None,
                 version_id: None,
             },
         )
@@ -496,6 +500,7 @@ mod tests {
             last_modified: "2024-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: None,
+            compression: None,
             version_id: None,
         };
         let json = serde_json::to_string(&meta).unwrap();
@@ -578,6 +583,7 @@ mod tests {
                 last_modified: "2024-01-01T00:00:00Z".into(),
                 metadata: HashMap::new(),
                 encryption: None,
+                compression: None,
                 version_id: None,
             },
         )
@@ -618,6 +624,7 @@ mod tests {
                 last_modified: "2024-01-01T00:00:00Z".into(),
                 metadata: HashMap::new(),
                 encryption: None,
+                compression: None,
                 version_id: None,
             },
         )
@@ -657,6 +664,7 @@ mod tests {
                 last_modified: "2024-06-15T12:00:00Z".into(),
                 metadata: HashMap::new(),
                 encryption: None,
+                compression: None,
                 version_id: None,
             },
         )

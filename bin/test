@@ -115,6 +115,32 @@ run_encryption() {
     return $rc
 }
 
+run_compression() {
+    echo "==> Running compression integration tests..."
+
+    # Compression is a console-only feature (no TOML fragment). The wrapper
+    # is always installed at runtime — tests just need a plain Arca up.
+    local COMPOSE
+    COMPOSE="$(compose_cmd)"
+
+    cleanup_comp() {
+        echo "Cleaning up compression test..."
+        $COMPOSE down -v 2>/dev/null || true
+    }
+    trap cleanup_comp EXIT
+
+    $COMPOSE build arca
+    $COMPOSE up -d arca
+    wait_for_arca "$COMPOSE"
+    $COMPOSE run --rm \
+        test integration/test_compression.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_comp
+    return $rc
+}
+
 run_per_bucket_encryption() {
     echo "==> Running per-bucket encryption integration tests..."
 
@@ -729,6 +755,10 @@ case "${1:-all}" in
         shift
         run_encryption "$@"
         ;;
+    compression)
+        shift
+        run_compression "$@"
+        ;;
     per-bucket-encryption)
         shift
         run_per_bucket_encryption "$@"
@@ -775,6 +805,7 @@ case "${1:-all}" in
         echo "  integration          Run integration tests only (server must be running)"
         echo "  tls                  Run TLS integration tests (self-contained)"
         echo "  encryption           Run encryption integration tests"
+        echo "  compression          Run compression integration tests"
         echo "  per-bucket-encryption  Run per-bucket encryption tests"
         echo "  kms                  Run KMS integration tests (with OpenBAO)"
         echo "  postgres             Run PostgreSQL backend integration tests"

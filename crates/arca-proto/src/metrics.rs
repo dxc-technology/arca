@@ -5,7 +5,9 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
+
+use arca_core::store::CompressionMetrics;
 
 /// Thread-safe metrics registry.
 #[derive(Debug)]
@@ -16,6 +18,8 @@ pub struct MetricsRegistry {
     histograms: RwLock<HashMap<String, LatencyHistogram>>,
     /// Active HTTP connections gauge.
     pub active_connections: AtomicU64,
+    /// Optional compression metrics (owned by `CompressingBlobStore`).
+    pub compression: Option<Arc<CompressionMetrics>>,
 }
 
 /// Predefined histogram bucket boundaries in milliseconds.
@@ -62,7 +66,14 @@ impl MetricsRegistry {
             counters: RwLock::new(HashMap::new()),
             histograms: RwLock::new(HashMap::new()),
             active_connections: AtomicU64::new(0),
+            compression: None,
         }
+    }
+
+    /// Attach a compression metrics handle so Prometheus output includes
+    /// per-algorithm byte counters and skip reasons.
+    pub fn set_compression(&mut self, metrics: Arc<CompressionMetrics>) {
+        self.compression = Some(metrics);
     }
 
     /// Record a completed request.
@@ -172,6 +183,58 @@ impl MetricsRegistry {
         out.push_str("\n# HELP arca_storage_bytes_total Total storage size in bytes\n");
         out.push_str("# TYPE arca_storage_bytes_total gauge\n");
         out.push_str(&format!("arca_storage_bytes_total {total_size_bytes}\n"));
+
+        // Compression metrics (when the wrapper is configured).
+        if let Some(ref comp) = self.compression {
+            out.push_str(
+                "\n# HELP arca_compression_plaintext_bytes_total Total plaintext bytes seen by compression, per algorithm\n",
+            );
+            out.push_str("# TYPE arca_compression_plaintext_bytes_total counter\n");
+            for (alg, plain, _) in comp.snapshot_bytes() {
+                out.push_str(&format!(
+                    "arca_compression_plaintext_bytes_total{{algorithm=\"{}\"}} {plain}\n",
+                    alg.as_str()
+                ));
+            }
+            out.push_str(
+                "\n# HELP arca_compression_compressed_bytes_total Total on-disk bytes after compression, per algorithm\n",
+            );
+            out.push_str("# TYPE arca_compression_compressed_bytes_total counter\n");
+            let mut agg_plain: u64 = 0;
+            let mut agg_comp: u64 = 0;
+            for (alg, plain, comp_bytes) in comp.snapshot_bytes() {
+                out.push_str(&format!(
+                    "arca_compression_compressed_bytes_total{{algorithm=\"{}\"}} {comp_bytes}\n",
+                    alg.as_str()
+                ));
+                agg_plain += plain;
+                agg_comp += comp_bytes;
+            }
+            let (skip_disabled, skip_mime, skip_size) = comp.snapshot_skipped();
+            out.push_str(
+                "\n# HELP arca_compression_skipped_total Writes that bypassed compression, by reason\n",
+            );
+            out.push_str("# TYPE arca_compression_skipped_total counter\n");
+            out.push_str(&format!(
+                "arca_compression_skipped_total{{reason=\"disabled\"}} {skip_disabled}\n"
+            ));
+            out.push_str(&format!(
+                "arca_compression_skipped_total{{reason=\"mime\"}} {skip_mime}\n"
+            ));
+            out.push_str(&format!(
+                "arca_compression_skipped_total{{reason=\"size\"}} {skip_size}\n"
+            ));
+            out.push_str(
+                "\n# HELP arca_storage_compression_ratio Plaintext divided by compressed bytes (higher = better)\n",
+            );
+            out.push_str("# TYPE arca_storage_compression_ratio gauge\n");
+            let ratio = if agg_comp > 0 {
+                agg_plain as f64 / agg_comp as f64
+            } else {
+                0.0
+            };
+            out.push_str(&format!("arca_storage_compression_ratio {ratio:.4}\n"));
+        }
 
         out
     }

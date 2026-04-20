@@ -71,6 +71,40 @@ pub enum Command {
         action: EncryptionAction,
     },
 
+    /// Compress existing blobs in place (offline, atomic, resumable)
+    CompressExisting {
+        /// Path to the configuration file
+        #[arg(long, default_value = "/etc/arca/config.toml")]
+        config_path: PathBuf,
+
+        /// Only report what would change; no files written
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Restrict to a single bucket
+        #[arg(long)]
+        bucket: Option<String>,
+
+        /// Override the default algorithm (auto|zstd|lz4|snappy|gzip|brotli|xz)
+        #[arg(long)]
+        algorithm: Option<String>,
+    },
+
+    /// Decompress previously compressed blobs back to plaintext on disk
+    DecompressExisting {
+        /// Path to the configuration file
+        #[arg(long, default_value = "/etc/arca/config.toml")]
+        config_path: PathBuf,
+
+        /// Only report what would change; no files written
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Restrict to a single bucket
+        #[arg(long)]
+        bucket: Option<String>,
+    },
+
     /// Manage users (offline, direct database access)
     User {
         /// Path to the configuration file

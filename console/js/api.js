@@ -335,6 +335,35 @@ export function apiClient() {
       return await this.request('DELETE', '/' + encodeURIComponent(bucket), { queryParams: { encryption: '' } });
     },
 
+    // Bucket compression (Arca extension) — presence of config = enabled.
+    async s3GetBucketCompression(bucket) {
+      try {
+        const resp = await this.request('GET', '/' + encodeURIComponent(bucket), { queryParams: { compression: '' } });
+        if (!resp.ok) return null;
+        const xml = await resp.text();
+        const doc = new DOMParser().parseFromString(xml, 'text/xml');
+        const algorithm = doc.querySelector('Algorithm')?.textContent || 'auto';
+        const levelText = doc.querySelector('Level')?.textContent;
+        const level = levelText ? parseInt(levelText, 10) : null;
+        return { algorithm, level };
+      } catch { return null; }
+    },
+
+    async s3PutBucketCompression(bucket, { algorithm = 'auto', level = null } = {}) {
+      const levelXml = (level !== null && level !== undefined && algorithm !== 'auto')
+        ? `<Level>${level}</Level>` : '';
+      const xml = `<CompressionConfiguration><Algorithm>${algorithm}</Algorithm>${levelXml}</CompressionConfiguration>`;
+      return await this.request('PUT', '/' + encodeURIComponent(bucket), {
+        body: xml,
+        contentType: 'application/xml',
+        queryParams: { compression: '' },
+      });
+    },
+
+    async s3DeleteBucketCompression(bucket) {
+      return await this.request('DELETE', '/' + encodeURIComponent(bucket), { queryParams: { compression: '' } });
+    },
+
     async s3GetBucketVersioning(bucket) {
       return await this.request('GET', '/' + encodeURIComponent(bucket), { queryParams: { versioning: '' } });
     },

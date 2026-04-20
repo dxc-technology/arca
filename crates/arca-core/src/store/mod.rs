@@ -14,7 +14,11 @@ pub mod team;
 pub mod user;
 
 pub use audit::{AuditEntry, AuditFilter, AuditStore};
-pub use blob::{BlobEncryptionInfo, BlobGetResult, BlobPutResult, BlobStore, ByteRange, ByteStream, SidecarMeta, SsecBlobOps};
+pub use blob::{
+    BlobCompressionInfo, BlobEncryptionInfo, BlobGetResult, BlobPutResult, BlobStore, ByteRange,
+    ByteStream, CompressionAlgorithm, CompressionMetrics, CompressionSkipReason, PutHints,
+    SidecarMeta, SsecBlobOps,
+};
 pub use connector::{ConnectorRegistry, DeliveryResult, NotificationConnector, TestResult};
 pub use credential::CredentialStore;
 pub use grant::GrantStore;

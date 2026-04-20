@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] — 2026-04-20
+
+### Added
+
+- **Phase 27 — Transparent at-rest compression** (P2). `CompressingBlobStore` wraps `FsBlobStore`/`EncryptingBlobStore` to compress plaintext before encryption and disk write, while keeping the wire format unchanged (`ETag` is still MD5 of plaintext; `Content-Length` reports plaintext size). Six algorithms ship: `zstd`, `lz4`, `snappy`, `gzip`, `brotli`, `xz`. An `auto` mode picks per-object via a deterministic rule table based on `Content-Type` and size (no sampling or ML). Compression is **per-bucket, console-managed** — the wrapper is always installed and activates only when a bucket has compression configured via the console or the Arca-specific `PUT/GET/DELETE /{bucket}?compression` subresource. Baked-in MIME and size filters skip already-compressed content; skipped reasons are surfaced as Prometheus counters. Chunked frame format with a footer chunk index enables O(1) ranged reads. Mixed-mode: compressed and plain blobs coexist transparently via sidecar metadata.
+- **`arca compress-existing` / `arca decompress-existing` CLI**: offline atomic retrofit of an existing data directory (resumable via sidecars, `--dry-run`, `--bucket`, `--algorithm` overrides). `arca fsck` already recognizes `.compressing.tmp` orphans.
+- **Prometheus series**: `arca_compression_plaintext_bytes_total{algorithm}`, `arca_compression_compressed_bytes_total{algorithm}`, `arca_compression_skipped_total{reason}`, `arca_storage_compression_ratio`.
+- **(Console)** Per-bucket Compression card in bucket settings — matches the Object Lock card pattern: inline algorithm dropdown + level input + single Enable/Disable button, with an "Enabled" status badge and current algorithm/level displayed when active.
+- **(Docs)** New `guide/compression.md`, new Compression note in `guide/configuration.md`, new CLI entries for `compress-existing`/`decompress-existing`.
+
 ## [0.20.0] — 2026-04-18
 
 ### Added
@@ -500,7 +510,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/dxc-technology/arca/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/dxc-technology/arca/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/dxc-technology/arca/compare/v0.18.2...v0.19.0
 [0.18.2]: https://github.com/dxc-technology/arca/compare/v0.18.1...v0.18.2

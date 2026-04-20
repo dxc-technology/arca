@@ -159,7 +159,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 
 | Suite | Tests | Details |
 |-------|------:|---------|
-| Unit tests (Rust) | 613 | arca-auth: 37, arca-core: 179, arca-proto: 37, arca-server: 183, arca-storage: 177 |
+| Unit tests (Rust) | 634 | arca-auth: 37, arca-core: 179, arca-proto: 37, arca-server: 183, arca-storage: 198 |
 | Integration — boto3 | 146 | buckets, objects, list, multipart, copy, folders, auth, admin, credentials, conditional ops |
 | Integration — RBAC | 41 | user/team/grant CRUD, attachments, effective grants, E2E access control |
 | Integration — Versioning | 21 | versioning config, PUT/GET/HEAD/DELETE with versionId, delete markers, batch delete with VersionId, ListVersions, copy |
@@ -177,22 +177,12 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — PostgreSQL | 20 | buckets, objects, multipart, versioning, tags, lifecycle, copy, range, admin health |
 | Integration — Export/Import | 19 | export all/single/multiple sections, secret masking, import dry_run/skip/overwrite, masked credentials, bucket create/skip, round-trip |
 | Integration — Notifications | 21 | Put/Get config (Topic/Queue/Lambda), filters, webhook delivery, event format, batch delete, admin API, auth token, connector type roundtrip |
+| Integration — Compression | 10 | put/get roundtrip, ETag vs plaintext MD5, MIME skip, small object skip, range reads (intra- and cross-frame), per-bucket ?compression subresource (PUT/GET/DELETE), every algorithm (zstd/lz4/snappy/gzip/brotli/xz), unknown-algorithm rejection |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
-| Connector — Redis | 7 | Pub/Sub delivery, custom channel, delete event, multiple events, payload format, connectivity test |
-| Connector — NATS | 7 | subject delivery, custom subject, delete event, multiple events, payload format, connectivity test |
-| Connector — MQTT | 7 | topic delivery, custom topic, delete event, multiple events, payload format, connectivity test |
-| Connector — PostgreSQL | 7 | table insert, custom table/schema, delete event, multiple events, payload format, connectivity test |
-| Connector — MySQL | 7 | table insert, custom table, delete event, multiple events, payload format, connectivity test |
-| Connector — MongoDB | 7 | collection insert, custom database/collection, delete event, multiple events, payload format, connectivity test |
-| Connector — Kafka | 7 | topic produce, custom topic, delete event, multiple events, payload format, connectivity test |
-| Connector — AMQP | 7 | routing-key delivery, custom routing-key, delete event, multiple events, payload format, connectivity test |
-| Connector — Elasticsearch | 7 | index delivery, custom index, delete event, multiple events, payload format, connectivity test |
-| Connector — Syslog | 7 | UDP/TCP delivery, custom format, delete event, multiple events, payload format, connectivity test |
-| Connector — SMTP | 7 | Mailpit delivery, custom subject/sender, delete event, multiple events, connectivity test OK/fail |
-| Connector — gRPC | 7 | unary Notify delivery, Bearer token metadata, forwarded user metadata, delete event, multiple events, connectivity test OK/fail |
-| **Arca tests** | **1,219** | **All tests written for this project** |
+| Connector integrations | 84 | Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Kafka, AMQP, Elasticsearch, Syslog, SMTP, gRPC — each: delivery, custom destination, delete event, multiple events, payload format, connectivity test |
+| **Arca tests** | **1,250** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 830 | 370 pass, 369 fail, 91 skip — 0 unexpected failures |
-| **Total** | **2,049** | |
+| **Total** | **2,080** | |
 
 ## License
 

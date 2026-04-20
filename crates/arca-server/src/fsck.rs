@@ -499,6 +499,7 @@ mod tests {
             last_modified: "2024-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: None,
+            compression: None,
             version_id: None,
         };
         write_sidecar(&blobs_dir, blob_id, &meta).await;
@@ -637,6 +638,7 @@ mod tests {
             last_modified: "2024-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: None,
+            compression: None,
             version_id: None,
         };
         write_sidecar(&blobs_dir, id, &bad_meta).await;
@@ -717,6 +719,7 @@ mod tests {
             last_modified: "2024-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: None,
+            compression: None,
             version_id: None,
         };
         write_sidecar(&blobs_dir, id, &meta).await;

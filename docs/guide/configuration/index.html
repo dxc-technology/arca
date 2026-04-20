@@ -599,6 +599,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#compression" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compression
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#request-limits" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -793,6 +804,34 @@
     
   
     Encryption
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compression/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compression
   
 
     
@@ -1397,6 +1436,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#compression" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compression
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#request-limits" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1705,6 +1755,8 @@
 </tbody>
 </table>
 <p>When <code>[encryption.kms]</code> is present, the master key is fetched from Vault/OpenBAO at startup. See the <a href="../encryption/#kms-integration-vaultopenbao">Encryption guide</a> for details.</p>
+<h3 id="compression">Compression<a class="headerlink" href="#compression" title="Permanent link">&para;</a></h3>
+<p>Compression is <strong>per-bucket and console-managed</strong> — it has no TOML configuration. The blob layer always wraps writes with the compression engine, which only activates on buckets that have been opted in via the console (or the <code>PUT /{bucket}?compression</code> S3 subresource). See the <a href="../compression/">Compression guide</a> for the full workflow and XML schema.</p>
 <h3 id="request-limits">Request Limits<a class="headerlink" href="#request-limits" title="Permanent link">&para;</a></h3>
 <table>
 <thead>

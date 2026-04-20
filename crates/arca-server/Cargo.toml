@@ -55,6 +55,9 @@ lettre = { workspace = true }
 tonic = { workspace = true }
 prost = { workspace = true }
 bytes = { workspace = true }
+tokio-stream = { workspace = true }
+tokio-util = { workspace = true }
+futures-core = { workspace = true }
 
 [build-dependencies]
 tonic-build = { workspace = true }

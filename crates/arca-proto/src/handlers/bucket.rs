@@ -145,6 +145,58 @@ pub async fn get_bucket(
         };
     }
 
+    // GetBucketCompression (Arca extension — parallels GetBucketEncryption)
+    if params.iter().any(|(k, _)| k == "compression") {
+        match state.metadata.head_bucket(&bucket).await {
+            Ok(Some(_)) => {}
+            Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
+            Err(e) => return internal_error_response(e, &resource),
+        }
+        match state.metadata.get_bucket_config(&bucket, "compression").await {
+            Ok(Some(json_str)) => {
+                let cfg: serde_json::Value = match serde_json::from_str(&json_str) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        return internal_error_response(
+                            arca_core::error::ArcaError::Internal(e.to_string()),
+                            &resource,
+                        )
+                    }
+                };
+                let algorithm_str = cfg
+                    .get("algorithm")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("auto");
+                let algorithm = if algorithm_str.is_empty() { "auto" } else { algorithm_str };
+                let level_xml = cfg
+                    .get("level")
+                    .and_then(|v| v.as_i64())
+                    .map(|l| format!("<Level>{l}</Level>"))
+                    .unwrap_or_default();
+                let xml = format!(
+                    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+                    <CompressionConfiguration>\
+                      <Algorithm>{algorithm}</Algorithm>\
+                      {level_xml}\
+                    </CompressionConfiguration>"
+                );
+                return Response::builder()
+                    .status(StatusCode::OK)
+                    .header("Content-Type", "application/xml")
+                    .body(Body::from(xml))
+                    .expect("build get_bucket_compression response");
+            }
+            Ok(None) => {
+                return s3_error_response(S3Error::with_message(
+                    S3ErrorCode::InvalidRequest,
+                    "The compression configuration does not exist",
+                    &resource,
+                ));
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
+    }
+
     // GetBucketTagging
     if params.iter().any(|(k, _)| k == "tagging") {
         match state.metadata.head_bucket(&bucket).await {
@@ -1078,6 +1130,101 @@ async fn put_bucket_encryption(
     }
 }
 
+/// Handles PutBucketCompression (Arca extension).
+///
+/// Expected XML body:
+/// ```xml
+/// <CompressionConfiguration>
+///   <Algorithm>zstd</Algorithm>
+///   <Level>3</Level>  <!-- optional -->
+/// </CompressionConfiguration>
+/// ```
+///
+/// Presence of the configuration = compression enabled for the bucket.
+/// To disable, call `DELETE /{bucket}?compression`.
+async fn put_bucket_compression(
+    state: AppState,
+    bucket: &str,
+    resource: &str,
+    request: axum::extract::Request,
+) -> Response {
+    match state.metadata.head_bucket(bucket).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, resource)),
+        Err(e) => return internal_error_response(e, resource),
+    }
+
+    let body_bytes = match axum::body::to_bytes(request.into_body(), 65_536).await {
+        Ok(b) => b,
+        Err(_) => {
+            return s3_error_response(S3Error::with_message(
+                S3ErrorCode::InvalidArgument,
+                "Request body too large or invalid",
+                resource,
+            ));
+        }
+    };
+    let body_str = match std::str::from_utf8(&body_bytes) {
+        Ok(s) => s,
+        Err(_) => {
+            return s3_error_response(S3Error::with_message(
+                S3ErrorCode::InvalidArgument,
+                "Request body is not valid UTF-8",
+                resource,
+            ));
+        }
+    };
+
+    let algorithm = extract_xml_leaf(body_str, "Algorithm")
+        .map(|v| v.trim().to_ascii_lowercase())
+        .unwrap_or_else(|| "auto".to_string());
+    let level = extract_xml_leaf(body_str, "Level").and_then(|v| v.trim().parse::<i32>().ok());
+
+    // Validate algorithm name.
+    if !matches!(
+        algorithm.as_str(),
+        "auto" | "zstd" | "lz4" | "snappy" | "gzip" | "brotli" | "xz"
+    ) {
+        return s3_error_response(S3Error::with_message(
+            S3ErrorCode::InvalidArgument,
+            &format!("Unsupported compression algorithm: {algorithm}"),
+            resource,
+        ));
+    }
+
+    let json = serde_json::json!({
+        "algorithm": algorithm,
+        "level": level,
+    });
+
+    match state
+        .metadata
+        .set_bucket_config(bucket, "compression", &json.to_string())
+        .await
+    {
+        Ok(()) => {
+            state.invalidate_bucket_compression_cache(bucket);
+            Response::builder()
+                .status(StatusCode::OK)
+                .body(Body::empty())
+                .expect("build put_bucket_compression response")
+        }
+        Err(e) => internal_error_response(e, resource),
+    }
+}
+
+/// Minimal leaf-element extractor: returns the text between the first
+/// matching `<Tag>...</Tag>` pair (case-sensitive). Good enough for the
+/// tiny, fixed schema we expose.
+fn extract_xml_leaf(xml: &str, tag: &str) -> Option<String> {
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let start = xml.find(&open)? + open.len();
+    let rest = &xml[start..];
+    let end_rel = rest.find(&close)?;
+    Some(rest[..end_rel].to_string())
+}
+
 /// Handles `PUT /{bucket}?versioning`.
 ///
 /// Parses the `<VersioningConfiguration><Status>...</Status></VersioningConfiguration>`
@@ -1224,6 +1371,11 @@ pub async fn create_bucket(
     // PutBucketEncryption
     if query.starts_with("encryption") || query.starts_with("encryption=") || query.starts_with("encryption&") {
         return put_bucket_encryption(state, &bucket, &resource, request).await;
+    }
+
+    // PutBucketCompression (Arca extension)
+    if query.starts_with("compression") || query.starts_with("compression=") || query.starts_with("compression&") {
+        return put_bucket_compression(state, &bucket, &resource, request).await;
     }
 
     // PutBucketVersioning
@@ -1474,6 +1626,25 @@ pub async fn delete_bucket(
                     .status(StatusCode::NO_CONTENT)
                     .body(Body::empty())
                     .expect("build delete_bucket_tagging response");
+            }
+            Err(e) => return internal_error_response(e, &resource),
+        }
+    }
+
+    // DeleteBucketCompression (Arca extension)
+    if query.starts_with("compression") || query.starts_with("compression=") || query.starts_with("compression&") {
+        match state.metadata.head_bucket(&bucket).await {
+            Ok(Some(_)) => {}
+            Ok(None) => return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource)),
+            Err(e) => return internal_error_response(e, &resource),
+        }
+        match state.metadata.delete_bucket_config(&bucket, "compression").await {
+            Ok(_) => {
+                state.invalidate_bucket_compression_cache(&bucket);
+                return Response::builder()
+                    .status(StatusCode::NO_CONTENT)
+                    .body(Body::empty())
+                    .expect("build delete_bucket_compression response");
             }
             Err(e) => return internal_error_response(e, &resource),
         }

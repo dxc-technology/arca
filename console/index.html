@@ -7,7 +7,7 @@
 
   <!-- Console version and documentation URL -->
   <script>
-    window.ARCA_CONSOLE_VERSION = "0.20.0";
+    window.ARCA_CONSOLE_VERSION = "0.21.0";
     window.ARCA_DOCS_URL = "https://dxc-technology.github.io/arca/";
   </script>
 
@@ -131,10 +131,22 @@
     .treemap-rect { transition: opacity 0.15s ease; cursor: pointer; }
     .treemap-rect:hover { opacity: 0.85; }
 
-    /* Number input spinners — visible in dark theme */
-    .setting-number {
+    /* Native form controls — force dark color-scheme so user-agent widgets
+       (number-input spinners, <select> chevrons, date/time pickers, native
+       scrollbars) render with light glyphs on our dark background. Without
+       this Chromium/Safari draw near-invisible dark-grey arrows. */
+    input[type="number"],
+    input[type="date"],
+    input[type="datetime-local"],
+    input[type="time"],
+    input[type="month"],
+    input[type="week"],
+    select,
+    textarea {
       color-scheme: dark;
     }
+    /* Legacy class used by a handful of inputs — kept for compatibility. */
+    .setting-number { color-scheme: dark; }
 
     /* Column header filters */
     .col-filter { position: relative; user-select: none; }
@@ -549,6 +561,7 @@
                         <span x-show="b.encrypted" x-html="icons.encryptionShield" title="Encrypted"></span>
                         <span x-show="b.versioned" x-html="b.versioned === 'Suspended' ? icons.versioningSuspended : icons.versioningClock" :title="'Versioning: ' + b.versioned"></span>
                         <span x-show="b.locked" x-html="icons.objectLock" title="Object Lock"></span>
+                        <span x-show="b.compressed" x-html="icons.compression" :title="'Compressed: ' + b.compressed"></span>
                         <span class="text-vault-muted font-mono" x-text="formatBytes(b.size)"></span>
                       </a>
                     </template>
@@ -641,6 +654,12 @@
                       <span class="flex items-center gap-1 text-orange-400" title="Object Lock (WORM)">
                         <span x-html="icons.objectLock"></span>
                         <span class="text-[10px] font-medium">Locked</span>
+                      </span>
+                    </template>
+                    <template x-if="b.compressed">
+                      <span class="flex items-center gap-1 text-cyan-400" :title="'Compressed: ' + b.compressed">
+                        <span x-html="icons.compression"></span>
+                        <span class="text-[10px] font-medium">Compressed</span>
                       </span>
                     </template>
                   </div>
@@ -769,6 +788,80 @@
                     <p x-show="encryptionError" x-text="encryptionError" class="text-red-400 text-xs mt-3"></p>
                   </div>
                 </template>
+              </div>
+
+              <!-- Compression card -->
+              <div class="glass rounded-xl p-5">
+                <div class="flex items-center gap-2 mb-4">
+                  <svg class="w-4 h-4 text-vault-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125S3.75 19.903 3.75 17.625V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/></svg>
+                  <span class="text-sm font-semibold uppercase tracking-wider text-vault-muted">Compression</span>
+                </div>
+
+                <!-- Toggle -->
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-sm font-medium text-vault-text">Transparent compression</div>
+                    <div class="text-xs text-vault-muted mt-0.5"
+                      x-text="compressionEnabled ? 'All object writes are compressed before storage' : 'Not enabled'"></div>
+                  </div>
+                  <button @click="toggleCompression()" :disabled="compressionSaving"
+                    :class="compressionEnabled ? 'bg-vault-accent' : 'bg-vault-border'"
+                    class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50">
+                    <span :class="compressionEnabled ? 'translate-x-6' : 'translate-x-1'"
+                      class="inline-block h-4 w-4 rounded-full bg-white transition-transform"></span>
+                  </button>
+                </div>
+
+                <!-- Inline algorithm / level controls (visible only when ON). -->
+                <div x-show="compressionEnabled" x-cloak class="mt-4 flex items-center gap-3">
+                  <div class="flex items-center gap-2">
+                    <label class="text-xs text-vault-muted">Algorithm</label>
+                    <select x-model="compressionAlgorithm" @change="updateCompressionAlgorithm()"
+                      :disabled="compressionSaving"
+                      class="px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-xs disabled:opacity-50">
+                      <option value="auto">auto</option>
+                      <option value="zstd">zstd</option>
+                      <option value="lz4">lz4</option>
+                      <option value="snappy">snappy</option>
+                      <option value="gzip">gzip</option>
+                      <option value="brotli">brotli</option>
+                      <option value="xz">xz</option>
+                    </select>
+                  </div>
+                  <div class="flex items-center gap-2" x-show="compressionLevels[compressionAlgorithm] && compressionLevels[compressionAlgorithm].levels !== false">
+                    <label class="text-xs text-vault-muted">Level</label>
+                    <input type="number"
+                      x-model.number="compressionLevel"
+                      @change="updateCompressionLevel()"
+                      :min="(compressionLevels[compressionAlgorithm] || {}).min"
+                      :max="(compressionLevels[compressionAlgorithm] || {}).max"
+                      :disabled="compressionSaving"
+                      class="w-20 px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-xs disabled:opacity-50">
+                    <span class="text-[10px] text-vault-muted/60"
+                      x-text="'(' + ((compressionLevels[compressionAlgorithm] || {}).min ?? '') + '–' + ((compressionLevels[compressionAlgorithm] || {}).max ?? '') + ')'"></span>
+                  </div>
+                </div>
+
+                <!-- Effective status -->
+                <div class="mt-4 pt-4 border-t border-vault-border/30">
+                  <div class="flex items-center gap-2">
+                    <template x-if="compressionEnabled">
+                      <div class="flex items-center gap-1.5">
+                        <svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125S3.75 19.903 3.75 17.625V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/></svg>
+                        <span class="text-sm text-green-400 font-medium"
+                          x-text="'Compressed: ' + compressionAlgorithm + (compressionLevel != null && compressionLevels[compressionAlgorithm] && compressionLevels[compressionAlgorithm].levels !== false ? ' (level ' + compressionLevel + ')' : '')"></span>
+                      </div>
+                    </template>
+                    <template x-if="!compressionEnabled">
+                      <div class="flex items-center gap-1.5">
+                        <svg class="w-4 h-4 text-vault-muted" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125S3.75 19.903 3.75 17.625V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/></svg>
+                        <span class="text-sm text-vault-muted font-medium">Not compressed</span>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+
+                <p x-show="compressionError" x-text="compressionError" class="text-red-400 text-xs mt-3"></p>
               </div>
 
               <!-- Versioning card -->
@@ -1626,6 +1719,7 @@
                 <span x-show="bucketEncrypted" x-cloak title="Encrypted bucket" x-html="icons.encryptionShield"></span>
                 <span x-show="bucketVersioned" x-cloak :title="'Versioning: ' + bucketVersioned" x-html="bucketVersioned === 'Suspended' ? icons.versioningSuspended : icons.versioningClock"></span>
                 <span x-show="bucketLocked" x-cloak title="Object Lock (WORM)" x-html="icons.objectLock"></span>
+                <span x-show="bucketCompressed" x-cloak :title="'Compressed: ' + bucketCompressed" x-html="icons.compression"></span>
                 <button @click="navigatePrefix('')" class="text-vault-accent hover:underline font-medium" x-text="bucketName"></button>
                 <template x-for="(part, i) in prefixParts" :key="i">
                   <span class="flex items-center gap-2">

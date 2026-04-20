@@ -23,12 +23,13 @@ export function bucketsView() {
       this.loading = true;
       try {
         this.buckets = await api.s3ListBuckets();
-        // Load encryption and versioning status for each bucket in parallel
+        // Load encryption, versioning, lock, and compression status in parallel.
         await Promise.all(this.buckets.map(async (b) => {
-          const [enc, vResp, lockResp] = await Promise.all([
+          const [enc, vResp, lockResp, comp] = await Promise.all([
             api.s3GetBucketEncryption(b.name),
             api.s3GetBucketVersioning(b.name).catch(() => null),
             api.s3GetObjectLockConfiguration(b.name).catch(() => null),
+            api.s3GetBucketCompression(b.name).catch(() => null),
           ]);
           b.encrypted = !!(enc && enc.algorithm);
           if (vResp && vResp.ok) {
@@ -39,6 +40,7 @@ export function bucketsView() {
             b.versioned = false;
           }
           b.locked = !!(lockResp && lockResp.ok);
+          b.compressed = comp ? (comp.algorithm || 'auto') : false;
         }));
       } catch {}
       this.loading = false;
@@ -79,6 +81,27 @@ export function bucketSettingsView() {
     encryptionOverride: false,
     encryptionSaving: false,
     encryptionError: '',
+    // Compression state (presence of config = enabled for this bucket).
+    compressionEnabled: false,
+    compressionAlgorithm: 'auto',
+    compressionLevel: null,
+    compressionSaving: false,
+    compressionError: '',
+    // Per-algorithm level metadata. Keys are algorithm names; `min`/`max`
+    // are inclusive bounds; `def` is the level used if the user hasn't
+    // picked one; `levels: false` means the algorithm has no tunable level.
+    // The template reads this map directly (no getter indirection — some
+    // Alpine expression-scope setups choke on custom getters defined
+    // alongside many other state properties).
+    compressionLevels: {
+      auto:   { levels: false },
+      zstd:   { min: 1, max: 22, def: 3 },
+      lz4:    { levels: false },
+      snappy: { levels: false },
+      gzip:   { min: 0, max: 9,  def: 6 },
+      brotli: { min: 0, max: 11, def: 4 },
+      xz:     { min: 0, max: 9,  def: 6 },
+    },
     versioningStatus: null,
     versioningSaving: false,
     versioningError: '',
@@ -131,6 +154,16 @@ export function bucketSettingsView() {
         this.encryptionActive = false;
         this.encryptionOverride = false;
       }
+
+      // Fetch bucket compression config (presence = enabled).
+      try {
+        const comp = await api.s3GetBucketCompression(this.bucketName);
+        if (comp) {
+          this.compressionEnabled = true;
+          this.compressionAlgorithm = comp.algorithm || 'auto';
+          this.compressionLevel = comp.level;
+        }
+      } catch {}
 
       // Fetch bucket versioning config
       try {
@@ -338,6 +371,78 @@ export function bucketSettingsView() {
         this.encryptionError = e.message;
       }
       this.encryptionSaving = false;
+    },
+
+    /**
+     * Primary toggle: if OFF, enable with the current algorithm/level; if ON,
+     * delete the per-bucket config. Mirrors toggleVersioning's UX.
+     */
+    async toggleCompression() {
+      if (!this.compressionEnabled) {
+        await this._putCompression(this.compressionAlgorithm || 'auto',
+          this.compressionSupportsLevel ? this.compressionLevel : null);
+      } else {
+        await this._deleteCompression();
+      }
+    },
+
+    /**
+     * Live-update: user switched algorithm or level while the toggle is ON.
+     * For level, we re-PUT with the new value; for algorithm we also reset the
+     * level to that algorithm's default (or null when the algorithm has none).
+     */
+    async updateCompressionAlgorithm() {
+      if (!this.compressionEnabled) return;
+      const meta = this.compressionLevels[this.compressionAlgorithm] || {};
+      const newLevel = meta.levels === false ? null : (meta.def ?? 3);
+      this.compressionLevel = newLevel;
+      await this._putCompression(this.compressionAlgorithm, newLevel);
+    },
+
+    async updateCompressionLevel() {
+      if (!this.compressionEnabled) return;
+      await this._putCompression(this.compressionAlgorithm, this.compressionLevel);
+    },
+
+    async _putCompression(algorithm, level) {
+      this.compressionSaving = true;
+      this.compressionError = '';
+      try {
+        const resp = await api.s3PutBucketCompression(this.bucketName, {
+          algorithm,
+          level: this.compressionLevels[algorithm]?.levels === false ? null : level,
+        });
+        if (!resp.ok) {
+          const text = await resp.text();
+          throw new Error(text.match(/<Message>(.*?)<\/Message>/)?.[1] || `Error ${resp.status}`);
+        }
+        this.compressionEnabled = true;
+        this.compressionAlgorithm = algorithm;
+        this.compressionLevel = this.compressionLevels[algorithm]?.levels === false
+          ? null
+          : (level ?? null);
+      } catch (e) {
+        this.compressionError = e.message;
+      }
+      this.compressionSaving = false;
+    },
+
+    async _deleteCompression() {
+      this.compressionSaving = true;
+      this.compressionError = '';
+      try {
+        const resp = await api.s3DeleteBucketCompression(this.bucketName);
+        if (!resp.ok && resp.status !== 204) {
+          const text = await resp.text();
+          throw new Error(text.match(/<Message>(.*?)<\/Message>/)?.[1] || `Error ${resp.status}`);
+        }
+        this.compressionEnabled = false;
+        this.compressionAlgorithm = 'auto';
+        this.compressionLevel = null;
+      } catch (e) {
+        this.compressionError = e.message;
+      }
+      this.compressionSaving = false;
     },
 
     async deleteBucket() {

@@ -539,7 +539,16 @@ pub async fn put_object(
         (result, Some(ssec_encryption_info(&nonce_prefix)))
     } else {
         let write_blob = state.blob_for_write(&bucket).await;
-        let result = match write_blob.put(&blob_id, stream).await {
+        let size_hint = headers
+            .get(header::CONTENT_LENGTH)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok());
+        let hints = arca_core::store::PutHints {
+            content_type: content_type.clone(),
+            size_hint,
+            bucket: Some(bucket.clone()),
+        };
+        let result = match write_blob.put_with_hints(&blob_id, stream, hints).await {
             Ok(r) => r,
             Err(e) => return handle_put_error(e, &resource),
         };
@@ -559,6 +568,7 @@ pub async fn put_object(
         last_modified: now.to_rfc3339(),
         metadata: metadata.clone(),
         encryption: encryption_info.clone(),
+        compression: put_result.compression.clone(),
         version_id: None,
     };
     if let Err(e) = state.blob.write_sidecar(&blob_id, &sidecar).await {
@@ -914,7 +924,15 @@ async fn copy_object(
         (result, Some(ssec_encryption_info(&nonce_prefix)))
     } else {
         let write_blob = state.blob_for_write(&dest_bucket).await;
-        let result = match write_blob.put(&new_blob_id, get_result.stream).await {
+        let hints = arca_core::store::PutHints {
+            content_type: content_type.clone(),
+            size_hint: Some(get_result.content_length),
+            bucket: Some(dest_bucket.clone()),
+        };
+        let result = match write_blob
+            .put_with_hints(&new_blob_id, get_result.stream, hints)
+            .await
+        {
             Ok(r) => r,
             Err(e) => return internal_error_response(e, &resource),
         };
@@ -934,6 +952,7 @@ async fn copy_object(
         last_modified: now.to_rfc3339(),
         metadata: metadata.clone(),
         encryption: encryption_info.clone(),
+        compression: put_result.compression.clone(),
         version_id: None,
     };
     if let Err(e) = state.blob.write_sidecar(&new_blob_id, &sidecar).await {
@@ -1205,6 +1224,7 @@ async fn upload_part_copy(
             last_modified: chrono::Utc::now().to_rfc3339(),
             metadata: std::collections::HashMap::new(),
             encryption: put_result.encryption.clone(),
+            compression: None,
             version_id: None,
         };
         if let Err(e) = state.blob.write_sidecar(&blob_id, &sidecar).await {

@@ -192,6 +192,7 @@ pub async fn upload_part(
             last_modified: chrono::Utc::now().to_rfc3339(),
             metadata: std::collections::HashMap::new(),
             encryption: put_result.encryption.clone(),
+            compression: None,
             version_id: None,
         };
         if let Err(e) = state.blob.write_sidecar(&blob_id, &sidecar).await {
@@ -400,6 +401,7 @@ pub async fn complete_multipart_upload(
         last_modified: now.to_rfc3339(),
         metadata: upload.metadata.clone(),
         encryption: put_result.encryption.clone(),
+        compression: None,
         version_id: None,
     };
     if let Err(e) = state.blob.write_sidecar(&final_blob_id, &sidecar).await {

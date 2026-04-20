@@ -30,3 +30,8 @@ data_dir = "/data"
 # # secret_field = "key"               # field containing base64-encoded key (default)
 # # tls_skip_verify = false            # skip TLS cert verification (dev only)
 # # ca_file = "/etc/ssl/vault-ca.pem"  # CA cert for Vault TLS
+#
+# Transparent at-rest compression is configured per-bucket via the console
+# or the `PUT /{bucket}?compression` S3 subresource. No instance-wide
+# section is required: the wrapper is always present at runtime and
+# activates only when a bucket has compression configured.

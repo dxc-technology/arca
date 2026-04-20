@@ -2,12 +2,126 @@
 
 use std::io;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use bytes::Bytes;
 use futures_core::Stream;
 use serde::{Deserialize, Serialize};
 
 use crate::types::BlobId;
+
+/// Reasons a write bypassed compression, for metrics.
+#[derive(Debug, Clone, Copy)]
+pub enum CompressionSkipReason {
+    Disabled,
+    Mime,
+    Size,
+}
+
+impl CompressionSkipReason {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::Mime => "mime",
+            Self::Size => "size",
+        }
+    }
+}
+
+/// Thread-safe compression metrics shared between the `CompressingBlobStore`
+/// (which increments counters) and the Prometheus renderer (which reads them).
+#[derive(Debug, Default)]
+pub struct CompressionMetrics {
+    zstd_plain: AtomicU64,
+    zstd_comp: AtomicU64,
+    lz4_plain: AtomicU64,
+    lz4_comp: AtomicU64,
+    snappy_plain: AtomicU64,
+    snappy_comp: AtomicU64,
+    gzip_plain: AtomicU64,
+    gzip_comp: AtomicU64,
+    brotli_plain: AtomicU64,
+    brotli_comp: AtomicU64,
+    xz_plain: AtomicU64,
+    xz_comp: AtomicU64,
+    skipped_disabled: AtomicU64,
+    skipped_mime: AtomicU64,
+    skipped_size: AtomicU64,
+}
+
+impl CompressionMetrics {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn record_bytes(&self, alg: CompressionAlgorithm, plain: u64, compressed: u64) {
+        let (p, c) = match alg {
+            CompressionAlgorithm::Zstd => (&self.zstd_plain, &self.zstd_comp),
+            CompressionAlgorithm::Lz4 => (&self.lz4_plain, &self.lz4_comp),
+            CompressionAlgorithm::Snappy => (&self.snappy_plain, &self.snappy_comp),
+            CompressionAlgorithm::Gzip => (&self.gzip_plain, &self.gzip_comp),
+            CompressionAlgorithm::Brotli => (&self.brotli_plain, &self.brotli_comp),
+            CompressionAlgorithm::Xz => (&self.xz_plain, &self.xz_comp),
+        };
+        p.fetch_add(plain, Ordering::Relaxed);
+        c.fetch_add(compressed, Ordering::Relaxed);
+    }
+
+    pub fn record_skipped(&self, reason: CompressionSkipReason) {
+        let counter = match reason {
+            CompressionSkipReason::Disabled => &self.skipped_disabled,
+            CompressionSkipReason::Mime => &self.skipped_mime,
+            CompressionSkipReason::Size => &self.skipped_size,
+        };
+        counter.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Returns `(algorithm, plaintext_bytes, compressed_bytes)` tuples for all
+    /// algorithms, in a stable order.
+    pub fn snapshot_bytes(&self) -> Vec<(CompressionAlgorithm, u64, u64)> {
+        vec![
+            (
+                CompressionAlgorithm::Zstd,
+                self.zstd_plain.load(Ordering::Relaxed),
+                self.zstd_comp.load(Ordering::Relaxed),
+            ),
+            (
+                CompressionAlgorithm::Lz4,
+                self.lz4_plain.load(Ordering::Relaxed),
+                self.lz4_comp.load(Ordering::Relaxed),
+            ),
+            (
+                CompressionAlgorithm::Snappy,
+                self.snappy_plain.load(Ordering::Relaxed),
+                self.snappy_comp.load(Ordering::Relaxed),
+            ),
+            (
+                CompressionAlgorithm::Gzip,
+                self.gzip_plain.load(Ordering::Relaxed),
+                self.gzip_comp.load(Ordering::Relaxed),
+            ),
+            (
+                CompressionAlgorithm::Brotli,
+                self.brotli_plain.load(Ordering::Relaxed),
+                self.brotli_comp.load(Ordering::Relaxed),
+            ),
+            (
+                CompressionAlgorithm::Xz,
+                self.xz_plain.load(Ordering::Relaxed),
+                self.xz_comp.load(Ordering::Relaxed),
+            ),
+        ]
+    }
+
+    /// Returns `(disabled, mime, size)` skip counters.
+    pub fn snapshot_skipped(&self) -> (u64, u64, u64) {
+        (
+            self.skipped_disabled.load(Ordering::Relaxed),
+            self.skipped_mime.load(Ordering::Relaxed),
+            self.skipped_size.load(Ordering::Relaxed),
+        )
+    }
+}
 
 /// A streaming byte source for reading or writing blobs.
 pub type ByteStream = Pin<Box<dyn Stream<Item = Result<Bytes, io::Error>> + Send>>;
@@ -34,6 +148,83 @@ pub struct BlobEncryptionInfo {
     pub key_id: String,
 }
 
+/// Supported compression algorithms for transparent at-rest compression.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CompressionAlgorithm {
+    Zstd,
+    Lz4,
+    Snappy,
+    Gzip,
+    Brotli,
+    Xz,
+}
+
+impl CompressionAlgorithm {
+    /// Short ASCII name (matches TOML spelling, used in XML and logs).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Zstd => "zstd",
+            Self::Lz4 => "lz4",
+            Self::Snappy => "snappy",
+            Self::Gzip => "gzip",
+            Self::Brotli => "brotli",
+            Self::Xz => "xz",
+        }
+    }
+
+    /// Single-byte code embedded in the on-disk frame header.
+    pub fn code(&self) -> u8 {
+        match self {
+            Self::Zstd => 1,
+            Self::Lz4 => 2,
+            Self::Snappy => 3,
+            Self::Gzip => 4,
+            Self::Brotli => 5,
+            Self::Xz => 6,
+        }
+    }
+
+    /// Parses a single-byte algorithm code from the on-disk frame header.
+    pub fn from_code(code: u8) -> Option<Self> {
+        match code {
+            1 => Some(Self::Zstd),
+            2 => Some(Self::Lz4),
+            3 => Some(Self::Snappy),
+            4 => Some(Self::Gzip),
+            5 => Some(Self::Brotli),
+            6 => Some(Self::Xz),
+            _ => None,
+        }
+    }
+
+    /// Parses a TOML/XML string into an algorithm.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_ascii_lowercase().as_str() {
+            "zstd" => Some(Self::Zstd),
+            "lz4" => Some(Self::Lz4),
+            "snappy" => Some(Self::Snappy),
+            "gzip" => Some(Self::Gzip),
+            "brotli" => Some(Self::Brotli),
+            "xz" => Some(Self::Xz),
+            _ => None,
+        }
+    }
+}
+
+/// Compression metadata for a blob (stored in sidecar when a blob was compressed).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlobCompressionInfo {
+    /// Concrete algorithm used (never `Auto` — resolved before write).
+    pub algorithm: CompressionAlgorithm,
+    /// Plaintext chunk size used to frame the file (bytes).
+    pub chunk_size: u32,
+    /// Original plaintext size in bytes (mirrors `SidecarMeta.size`).
+    pub original_size: u64,
+    /// On-disk size after compression (framed, including header + footer).
+    pub compressed_size: u64,
+}
+
 /// Result of a successful blob put operation.
 #[derive(Debug, Clone)]
 pub struct BlobPutResult {
@@ -43,6 +234,21 @@ pub struct BlobPutResult {
     pub etag: String,
     /// Encryption metadata, if the blob was encrypted.
     pub encryption: Option<BlobEncryptionInfo>,
+    /// Compression metadata, if the blob was compressed.
+    pub compression: Option<BlobCompressionInfo>,
+}
+
+/// Optional hints provided by the handler at write time, consumed by
+/// transparent layers (currently compression). Empty by default — unknown
+/// hints fall back to safe defaults inside the wrapper.
+#[derive(Debug, Clone, Default)]
+pub struct PutHints {
+    /// Client-advertised Content-Type (used by compression MIME filter).
+    pub content_type: Option<String>,
+    /// Expected plaintext size in bytes (used by compression size filter).
+    pub size_hint: Option<u64>,
+    /// Bucket name, when known, so the wrapper can resolve per-bucket policy.
+    pub bucket: Option<String>,
 }
 
 /// A byte range for partial reads.
@@ -78,6 +284,9 @@ pub struct SidecarMeta {
     /// Encryption metadata. Absent/null = unencrypted (backward compatible).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub encryption: Option<BlobEncryptionInfo>,
+    /// Compression metadata. Absent/null = uncompressed (backward compatible).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compression: Option<BlobCompressionInfo>,
     /// Version ID for versioned objects. Absent for unversioned (backward compat).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version_id: Option<String>,
@@ -92,6 +301,19 @@ pub trait BlobStore: Send + Sync {
         blob_id: &BlobId,
         stream: ByteStream,
     ) -> Result<BlobPutResult, crate::error::ArcaError>;
+
+    /// Writes a blob with optional hints (content type, size, bucket) that
+    /// transparent wrappers may use to steer their decisions.
+    ///
+    /// Default implementation ignores the hints and delegates to `put`.
+    async fn put_with_hints(
+        &self,
+        blob_id: &BlobId,
+        stream: ByteStream,
+        _hints: PutHints,
+    ) -> Result<BlobPutResult, crate::error::ArcaError> {
+        self.put(blob_id, stream).await
+    }
 
     /// Reads a blob (or byte range) as a stream.
     async fn get(

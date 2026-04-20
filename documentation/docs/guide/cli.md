@@ -261,3 +261,42 @@ arca fsck
 # Full check including blob checksums (slow for large datasets)
 arca fsck --verify-checksums
 ```
+
+## `arca compress-existing`
+
+Walks the blobs directory and compresses any blob that does not already carry compression metadata, honoring the live-write MIME and size filters. Atomic per-blob (writes a `.compressing.tmp` then renames) and resumable: re-running skips already-compressed blobs. See the [Compression guide](compression.md#offline-retrofit).
+
+```
+arca compress-existing [--config-path <PATH>] [--dry-run]
+                       [--bucket <NAME>] [--algorithm <NAME>]
+```
+
+| Flag | Purpose |
+|---|---|
+| `--dry-run` | Print what would be compressed without modifying files. |
+| `--bucket` | Restrict to a single bucket. |
+| `--algorithm` | Override `[compression].default_algorithm` for this run. One of `auto`, `zstd`, `lz4`, `snappy`, `gzip`, `brotli`, `xz`. |
+
+```bash
+# Preview
+arca compress-existing --dry-run
+
+# Apply compression to everything
+arca compress-existing
+
+# One bucket, force Brotli
+arca compress-existing --bucket my-bucket --algorithm brotli
+```
+
+## `arca decompress-existing`
+
+Inverse of `compress-existing` — reads each sidecar, and for compressed blobs, rewrites the plaintext to disk and removes the compression metadata. Same atomicity and resume properties.
+
+```
+arca decompress-existing [--config-path <PATH>] [--dry-run] [--bucket <NAME>]
+```
+
+```bash
+arca decompress-existing --dry-run
+arca decompress-existing --bucket my-bucket
+```

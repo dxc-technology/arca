@@ -573,6 +573,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../compression/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compression
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../connectors/" class="md-nav__link">
         
   
@@ -868,6 +896,28 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arca-compress-existing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca compress-existing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arca-decompress-existing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca decompress-existing
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1491,6 +1541,28 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#arca-compress-existing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca compress-existing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arca-decompress-existing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca decompress-existing
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1852,6 +1924,49 @@
 <a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>
 <a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="c1"># Full check including blob checksums (slow for large datasets)</span>
 <a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>arca<span class="w"> </span>fsck<span class="w"> </span>--verify-checksums
+</code></pre></div>
+<h2 id="arca-compress-existing"><code>arca compress-existing</code><a class="headerlink" href="#arca-compress-existing" title="Permanent link">&para;</a></h2>
+<p>Walks the blobs directory and compresses any blob that does not already carry compression metadata, honoring the live-write MIME and size filters. Atomic per-blob (writes a <code>.compressing.tmp</code> then renames) and resumable: re-running skips already-compressed blobs. See the <a href="../compression/#offline-retrofit">Compression guide</a>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>arca compress-existing [--config-path &lt;PATH&gt;] [--dry-run]
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>                       [--bucket &lt;NAME&gt;] [--algorithm &lt;NAME&gt;]
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Print what would be compressed without modifying files.</td>
+</tr>
+<tr>
+<td><code>--bucket</code></td>
+<td>Restrict to a single bucket.</td>
+</tr>
+<tr>
+<td><code>--algorithm</code></td>
+<td>Override <code>[compression].default_algorithm</code> for this run. One of <code>auto</code>, <code>zstd</code>, <code>lz4</code>, <code>snappy</code>, <code>gzip</code>, <code>brotli</code>, <code>xz</code>.</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="c1"># Preview</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>arca<span class="w"> </span>compress-existing<span class="w"> </span>--dry-run
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="c1"># Apply compression to everything</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>arca<span class="w"> </span>compress-existing
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="c1"># One bucket, force Brotli</span>
+<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>arca<span class="w"> </span>compress-existing<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--algorithm<span class="w"> </span>brotli
+</code></pre></div>
+<h2 id="arca-decompress-existing"><code>arca decompress-existing</code><a class="headerlink" href="#arca-decompress-existing" title="Permanent link">&para;</a></h2>
+<p>Inverse of <code>compress-existing</code> — reads each sidecar, and for compressed blobs, rewrites the plaintext to disk and removes the compression metadata. Same atomicity and resume properties.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>arca decompress-existing [--config-path &lt;PATH&gt;] [--dry-run] [--bucket &lt;NAME&gt;]
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>arca<span class="w"> </span>decompress-existing<span class="w"> </span>--dry-run
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>arca<span class="w"> </span>decompress-existing<span class="w"> </span>--bucket<span class="w"> </span>my-bucket
 </code></pre></div>
 
 

@@ -90,6 +90,10 @@ pub struct AppState {
     /// Cache for per-bucket encryption config lookups (bucket -> (has_encryption, expires_at)).
     /// Avoids a DB query on every PUT/UploadPart when global encryption is disabled.
     pub bucket_encryption_cache: Arc<RwLock<HashMap<String, (bool, Instant)>>>,
+    /// Optional invalidator for the compression wrapper's per-bucket cache.
+    /// When compression is wired, this closure forwards the bucket name to the
+    /// `CompressingBlobStore` so its cache entry is dropped on config change.
+    pub compression_invalidator: Option<Arc<dyn Fn(&str) + Send + Sync>>,
     /// Audit log channel sender for batched writes (None = audit disabled or using legacy per-request inserts).
     pub audit_tx: Option<tokio::sync::mpsc::Sender<AuditData>>,
     /// Log level from config file (None = console can change it freely).
@@ -152,6 +156,14 @@ impl AppState {
     pub fn invalidate_bucket_encryption_cache(&self, bucket: &str) {
         if let Ok(mut cache) = self.bucket_encryption_cache.write() {
             cache.remove(bucket);
+        }
+    }
+
+    /// Invalidate the per-bucket compression cache entry in the compression
+    /// wrapper (no-op when compression is not configured).
+    pub fn invalidate_bucket_compression_cache(&self, bucket: &str) {
+        if let Some(f) = &self.compression_invalidator {
+            f(bucket);
         }
     }
 

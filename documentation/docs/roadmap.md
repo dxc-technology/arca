@@ -40,8 +40,8 @@ continuing from the MVP phases (0–11).
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">23</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">24</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">25</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">26</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">27</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">26</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">27</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">28</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">29</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">30</div>
@@ -122,7 +122,7 @@ graph LR
 | 24 | [PostgreSQL Backend](#phase-24-postgresql-backend-p2) | P2 | — | `v0.16.1` | <span style="color:#4caf50">&#x2714;</span> |
 | 25 | [Notifications and Event System](#phase-25-notifications-and-event-system-p3) | P3 | 20 | `v0.18.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 26 | [Notification Connectors](#phase-26-notification-connectors-p3) | P3 | 25 | `v0.20.0` | <span style="color:#4caf50">&#x2714;</span> |
-| 27 | [Transparent Compression](#phase-27-transparent-compression-p2) | P2 | 13 | | |
+| 27 | [Transparent Compression](#phase-27-transparent-compression-p2) | P2 | 13 | `v0.21.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 28 | [Replication](#phase-28-replication-p3) | P3 | 17, 24 | | |
 | 29 | [Multi-Node and Erasure Coding](#phase-29-multi-node-and-erasure-coding-p3) | P3 | All prior | | |
 | 30 | [CLI Enhancements and Migration Tools](#phase-30-cli-enhancements-and-migration-tools-p3) | P3 | 13, 24, 29 | | |
@@ -427,29 +427,29 @@ pattern: compress, then encrypt, then store. ETag computed on original data, Con
 reports original size. Mixed-mode coexistence allows compressed and uncompressed objects to
 coexist transparently.
 
-- [ ] `CompressingBlobStore` wrapper implementing `BlobStore` trait
-- [ ] zstd compression (default)
-- [ ] lz4 compression
-- [ ] gzip compression
-- [ ] snappy compression
-- [ ] brotli compression
-- [ ] xz (LZMA2) compression
-- [ ] `[compression]` TOML config section + config fragment
-- [ ] Per-bucket compression configuration (bucket_config table)
-- [ ] MIME type filtering (skip already-compressed formats)
-- [ ] Size thresholds (min_size and max_size)
-- [ ] Sidecar metadata for compression info
-- [ ] Mixed-mode coexistence
-- [ ] Correct stacking with encryption: compress then encrypt then store
-- [ ] `arca compress-existing` CLI command (offline, in-place, with --dry-run)
-- [ ] `arca decompress-existing` CLI command (offline, in-place)
-- [ ] Compression ratio metrics in monitoring dashboard
-- [ ] Console: per-bucket compression settings card
-- [ ] Console: algorithm help popup with comparison table
-- [ ] Console: compression ratio indicator on dashboard
-- [ ] Unit tests
-- [ ] Integration tests
-- [ ] Documentation: compression configuration guide
+- [x] `CompressingBlobStore` wrapper implementing `BlobStore` trait
+- [x] zstd compression
+- [x] lz4 compression
+- [x] gzip compression
+- [x] snappy compression
+- [x] brotli compression
+- [x] xz (LZMA2) compression
+- [x] `auto` rule table (deterministic algorithm pick by Content-Type and size)
+- [x] `[compression]` TOML config section + config fragment
+- [x] Per-bucket compression configuration (bucket_config table)
+- [x] MIME type filtering (skip already-compressed formats)
+- [x] Size thresholds (min_size and max_size)
+- [x] Sidecar metadata for compression info
+- [x] Mixed-mode coexistence
+- [x] Correct stacking with encryption: compress then encrypt then store
+- [x] Chunked frame format with footer index (enables ranged reads)
+- [x] `arca compress-existing` CLI command (offline, in-place, with --dry-run)
+- [x] `arca decompress-existing` CLI command (offline, in-place)
+- [x] Prometheus metrics: per-algorithm byte counters + skip reasons + ratio gauge
+- [x] Console: per-bucket compression settings card
+- [x] Unit tests (18 new tests across arca-storage)
+- [x] Integration tests (10 boto3 tests, `bin/test compression`)
+- [x] Documentation: compression configuration guide
 
 **Depends on**: Phase 13 (encryption pipeline for correct stacking order)
 

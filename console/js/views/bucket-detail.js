@@ -104,6 +104,7 @@ export function bucketDetailView() {
     bucketEncrypted: false,
     bucketVersioned: false,
     bucketLocked: false,
+    bucketCompressed: false,
     showDeleted: false,
     deletedObjects: [],
     deletedDirectories: [],
@@ -240,6 +241,10 @@ export function bucketDetailView() {
       try {
         const lockResp = await api.s3GetObjectLockConfiguration(this.bucketName);
         this.bucketLocked = !!(lockResp && lockResp.ok);
+      } catch {}
+      try {
+        const comp = await api.s3GetBucketCompression(this.bucketName);
+        this.bucketCompressed = comp ? (comp.algorithm || 'auto') : false;
       } catch {}
       const bucket = this.bucketName;
       try {

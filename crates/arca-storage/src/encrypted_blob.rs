@@ -261,6 +261,7 @@ impl BlobStore for EncryptingBlobStore {
                 nonce_prefix: b64.encode(nonce_prefix),
                 key_id: self.master_key.key_id().to_string(),
             }),
+            compression: None,
         })
     }
 
@@ -383,6 +384,7 @@ mod tests {
             last_modified: "2026-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: put_result.encryption.clone(),
+            compression: None,
             version_id: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
@@ -411,6 +413,7 @@ mod tests {
             last_modified: "2026-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: put_result.encryption.clone(),
+            compression: None,
             version_id: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
@@ -445,6 +448,7 @@ mod tests {
             last_modified: "2026-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: None,
+            compression: None,
             version_id: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
@@ -473,6 +477,7 @@ mod tests {
             last_modified: "2026-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: put_result.encryption.clone(),
+            compression: None,
             version_id: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
@@ -502,6 +507,7 @@ mod tests {
             last_modified: "2026-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: put_result.encryption.clone(),
+            compression: None,
             version_id: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
@@ -530,6 +536,7 @@ mod tests {
             last_modified: "2026-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: put_result.encryption.clone(),
+            compression: None,
             version_id: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
@@ -561,6 +568,7 @@ mod tests {
             last_modified: "2026-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: put_result.encryption,
+            compression: None,
             version_id: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();

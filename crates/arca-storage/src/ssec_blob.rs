@@ -66,6 +66,7 @@ impl SsecBlobStore {
             size: stats.size,
             etag: hex::encode(md5_bytes),
             encryption: None,
+            compression: None,
         };
 
         Ok((result, nonce_prefix))
@@ -311,6 +312,7 @@ mod tests {
             last_modified: "2026-01-01T00:00:00Z".into(),
             metadata: HashMap::new(),
             encryption: None,
+            compression: None,
             version_id: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();

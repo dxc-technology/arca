@@ -8,6 +8,7 @@ description = "Storage implementations (filesystem + SQLite) for the Arca S3 ser
 arca-core = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
+serde = { workspace = true }
 chrono = { workspace = true }
 futures-core = { workspace = true }
 hex = { workspace = true }
@@ -25,6 +26,14 @@ base64 = { workspace = true }
 moka = { workspace = true }
 sqlx-core = { workspace = true, optional = true }
 sqlx-postgres = { workspace = true, optional = true }
+
+# Compression codecs (transparent at-rest compression)
+zstd = { workspace = true }
+lz4_flex = { workspace = true }
+snap = { workspace = true }
+flate2 = { workspace = true }
+brotli = { workspace = true }
+lzma-rs = { workspace = true }
 
 [features]
 default = []

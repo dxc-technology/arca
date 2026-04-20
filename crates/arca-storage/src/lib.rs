@@ -4,6 +4,8 @@
 //! and `FsBlobStore` for filesystem blob storage.
 
 pub mod caching;
+pub mod compressed_blob;
+pub mod compression;
 pub mod encrypted_blob;
 pub mod encryption;
 pub mod fs;
@@ -13,6 +15,7 @@ pub mod sqlite;
 pub mod ssec_blob;
 
 pub use caching::CachingMetadataStore;
+pub use compressed_blob::{BucketCompressionConfig, CompressingBlobStore};
 pub use encrypted_blob::EncryptingBlobStore;
 pub use fs::FsBlobStore;
 #[cfg(feature = "postgres")]

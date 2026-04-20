@@ -130,7 +130,7 @@ impl BlobStore for FsBlobStore {
 
         let etag = hex::encode(hasher.finalize());
 
-        Ok(BlobPutResult { size, etag, encryption: None })
+        Ok(BlobPutResult { size, etag, encryption: None, compression: None })
     }
 
     async fn get(
@@ -261,7 +261,7 @@ impl BlobStore for FsBlobStore {
 
         let etag = hex::encode(hasher.finalize());
 
-        Ok(BlobPutResult { size: total_size, etag, encryption: None })
+        Ok(BlobPutResult { size: total_size, etag, encryption: None, compression: None })
     }
 
     async fn write_sidecar(
@@ -389,6 +389,7 @@ mod tests {
             last_modified: "2024-01-01T00:00:00Z".to_string(),
             metadata: std::collections::HashMap::new(),
             encryption: None,
+            compression: None,
             version_id: None,
         };
         store.write_sidecar(&blob_id, &meta).await.unwrap();
@@ -417,6 +418,7 @@ mod tests {
             last_modified: "t".to_string(),
             metadata: std::collections::HashMap::new(),
             encryption: None,
+            compression: None,
             version_id: None,
         };
         store.write_sidecar(&blob_id, &meta).await.unwrap();
