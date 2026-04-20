@@ -7,14 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- **Object Lock can now be enabled on empty existing buckets**, not only at bucket creation. `PutObjectLockConfiguration` used to reject any call on a bucket whose `object_lock` config was absent (`InvalidBucketState`). The handler now accepts the request when the bucket still has no objects, auto-enabling versioning as before; buckets that already contain objects are still rejected, with a clearer message ("can only be enabled on empty buckets or at bucket creation")
-- **(Console)** Create-bucket dialog gained an "Enable Object Lock" checkbox. When checked, the `PUT /{bucket}` request sends `x-amz-bucket-object-lock-enabled: true` so lock + versioning are enabled atomically with the bucket. The api client's `request` helper now forwards caller-supplied headers through SigV4 signing
-- **(Console)** Irreversible bucket-setting toggles (first-time Versioning enable, Object Lock enable) now require typed bucket-name confirmation in a modal before firing. Prevents accidental clicks in production (versioning cannot be disabled, only suspended; Object Lock cannot be disabled at all)
-- **(Console)** Buckets list cards: creation date moved to its own line above the capability badges, and the badge row now wraps so four or more indicators no longer overflow the card
-- **(Console)** Bucket settings page normalized: every card (Encryption, Compression, Versioning, Object Lock, Lifecycle, Event Notifications) now opens with a short plain-English intro paragraph explaining what the setting does and whether it can be turned off. Versioning and Object Lock intros carry the amber "This action cannot be undone." red-thread, matching the Object Lock card that set the pattern
-
 ## [0.21.0] — 2026-04-20
 
 ### Added
@@ -23,7 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`arca compress-existing` / `arca decompress-existing` CLI**: offline atomic retrofit of an existing data directory (resumable via sidecars, `--dry-run`, `--bucket`, `--algorithm` overrides). `arca fsck` already recognizes `.compressing.tmp` orphans.
 - **Prometheus series**: `arca_compression_plaintext_bytes_total{algorithm}`, `arca_compression_compressed_bytes_total{algorithm}`, `arca_compression_skipped_total{reason}`, `arca_storage_compression_ratio`.
 - **(Console)** Per-bucket Compression card in bucket settings — matches the Object Lock card pattern: inline algorithm dropdown + level input + single Enable/Disable button, with an "Enabled" status badge and current algorithm/level displayed when active.
-- **(Docs)** New `guide/compression.md`, new Compression note in `guide/configuration.md`, new CLI entries for `compress-existing`/`decompress-existing`.
+- **(Console)** Inline help system: every setting carries a **"?"** trigger next to its label. Hovering shows a short one-line hint tooltip; clicking opens a modal with the full explanation, bullets, rows, notes and code samples. Backed by a single Alpine component (`helpTrigger(topicId)`) and a global modal listening for `arca:open-help` custom events. All 13 starter topics live in `console/js/help.js`; adding help to a new setting is one topic entry plus a six-line snippet next to the label.
+- **(Console)** Help coverage pass: bucket-settings cards (encryption, compression, versioning, object-lock, lifecycle, notifications), Settings page (log level, retention windows, S3 region, preview size limits) and the dashboard bucket-size widget (now also shows compression and object-lock badges, previously missing).
+- **(Console)** Create-bucket dialog gained an **Enable Object Lock** checkbox. When ticked, the `PUT /{bucket}` request sends `x-amz-bucket-object-lock-enabled: true` so Object Lock and versioning are enabled atomically with the bucket. The API client's `request` helper now forwards caller-supplied headers through SigV4 signing.
+- **(Console)** Irreversible bucket-setting toggles (first-time Versioning enable, Object Lock enable) now require typed bucket-name confirmation in a modal before firing. Prevents accidental clicks in production (versioning cannot be disabled, only suspended; Object Lock cannot be disabled at all).
+- **(Docs)** New `guide/compression.md`, new Compression note in `guide/configuration.md`, new CLI entries for `compress-existing`/`decompress-existing`. Console user guide updated for the new Object Lock enablement flow, confirmation modals and card intros.
+
+### Changed
+
+- **Object Lock can now be enabled on empty existing buckets**, not only at bucket creation. `PutObjectLockConfiguration` used to reject every call on a bucket whose `object_lock` config was absent with `InvalidBucketState` (strict S3 semantics). The handler now accepts the request when the bucket still has no objects and auto-enables versioning as before; buckets that already contain objects are still rejected, with a clearer message ("can only be enabled on empty buckets or at bucket creation"). Three new integration tests cover the accepted-empty / rejected-non-empty / accepted-at-creation matrix.
+- **(Console)** Buckets list cards: creation date moved to its own line above the capability badges, and the badge row now wraps so four or more indicators (encrypted + versioned + locked + compressed) no longer overflow the card.
+- **(Console)** Bucket settings page normalized: every card (Encryption, Compression, Versioning, Object Lock, Lifecycle, Event Notifications) now opens with a short plain-English intro paragraph explaining what the setting does and whether it can be turned off. Versioning and Object Lock intros carry the amber "This action cannot be undone." red-thread, matching the Object Lock card that set the pattern.
+- **(Console)** Compression and Object Lock inline controls (dropdowns, inputs, buttons) harmonized with the global Settings page baseline (`text-sm px-3 py-1.5`); no more size discrepancy between pages.
 
 ## [0.20.0] — 2026-04-18
 

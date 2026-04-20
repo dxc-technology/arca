@@ -165,7 +165,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — Versioning | 21 | versioning config, PUT/GET/HEAD/DELETE with versionId, delete markers, batch delete with VersionId, ListVersions, copy |
 | Integration — Monitoring | 29 | Prometheus metrics, audit log, metrics history, instance settings, preview limits, region (TD-004) |
 | Integration — Lifecycle | 17 | Put/Get/Delete lifecycle config, expiration rules, noncurrent version, abort upload, tag/and filters |
-| Integration — Object Lock | 16 | Put/Get config, retention, legal hold, COMPLIANCE/GOVERNANCE enforcement, bypass, delete markers |
+| Integration — Object Lock | 19 | Put/Get config (at creation, on empty existing buckets, rejection on non-empty), retention, legal hold, COMPLIANCE/GOVERNANCE enforcement, bypass, delete markers |
 | Integration — API Completeness | 11 | ListParts, GetObjectAttributes, checksum SHA256/CRC32 roundtrip, storage class, pagination |
 | Integration — Hardening | 7 | body size limits, health endpoint, metadata headers, cache transparency and invalidation |
 | Integration — Presigned URLs | 17 | presigned GET/PUT/HEAD/DELETE, security, admin presign, special chars, endpoint override |
@@ -180,9 +180,9 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — Compression | 10 | put/get roundtrip, ETag vs plaintext MD5, MIME skip, small object skip, range reads (intra- and cross-frame), per-bucket ?compression subresource (PUT/GET/DELETE), every algorithm (zstd/lz4/snappy/gzip/brotli/xz), unknown-algorithm rejection |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
 | Connector integrations | 84 | Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Kafka, AMQP, Elasticsearch, Syslog, SMTP, gRPC — each: delivery, custom destination, delete event, multiple events, payload format, connectivity test |
-| **Arca tests** | **1,250** | **All tests written for this project** |
+| **Arca tests** | **1,253** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 830 | 370 pass, 369 fail, 91 skip — 0 unexpected failures |
-| **Total** | **2,080** | |
+| **Total** | **2,083** | |
 
 ## License
 

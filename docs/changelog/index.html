@@ -1099,23 +1099,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#changed" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Changed
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
@@ -1135,6 +1118,17 @@
     <span class="md-ellipsis">
       
         Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
       
     </span>
   </a>
@@ -2203,23 +2197,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#changed" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Changed
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
@@ -2239,6 +2216,17 @@
     <span class="md-ellipsis">
       
         Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
       
     </span>
   </a>
@@ -3259,14 +3247,6 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.21.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
-<h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>Object Lock can now be enabled on empty existing buckets</strong>, not only at bucket creation. <code>PutObjectLockConfiguration</code> used to reject any call on a bucket whose <code>object_lock</code> config was absent (<code>InvalidBucketState</code>). The handler now accepts the request when the bucket still has no objects, auto-enabling versioning as before; buckets that already contain objects are still rejected, with a clearer message ("can only be enabled on empty buckets or at bucket creation")</li>
-<li><strong>(Console)</strong> Create-bucket dialog gained an "Enable Object Lock" checkbox. When checked, the <code>PUT /{bucket}</code> request sends <code>x-amz-bucket-object-lock-enabled: true</code> so lock + versioning are enabled atomically with the bucket. The api client's <code>request</code> helper now forwards caller-supplied headers through SigV4 signing</li>
-<li><strong>(Console)</strong> Irreversible bucket-setting toggles (first-time Versioning enable, Object Lock enable) now require typed bucket-name confirmation in a modal before firing. Prevents accidental clicks in production (versioning cannot be disabled, only suspended; Object Lock cannot be disabled at all)</li>
-<li><strong>(Console)</strong> Buckets list cards: creation date moved to its own line above the capability badges, and the badge row now wraps so four or more indicators no longer overflow the card</li>
-<li><strong>(Console)</strong> Bucket settings page normalized: every card (Encryption, Compression, Versioning, Object Lock, Lifecycle, Event Notifications) now opens with a short plain-English intro paragraph explaining what the setting does and whether it can be turned off. Versioning and Object Lock intros carry the amber "This action cannot be undone." red-thread, matching the Object Lock card that set the pattern</li>
-</ul>
 <h2 id="0210-2026-04-20"><a href="https://github.com/dxc-technology/arca/compare/v0.20.0...v0.21.0">0.21.0</a> — 2026-04-20<a class="headerlink" href="#0210-2026-04-20" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
@@ -3274,7 +3254,18 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong><code>arca compress-existing</code> / <code>arca decompress-existing</code> CLI</strong>: offline atomic retrofit of an existing data directory (resumable via sidecars, <code>--dry-run</code>, <code>--bucket</code>, <code>--algorithm</code> overrides). <code>arca fsck</code> already recognizes <code>.compressing.tmp</code> orphans.</li>
 <li><strong>Prometheus series</strong>: <code>arca_compression_plaintext_bytes_total{algorithm}</code>, <code>arca_compression_compressed_bytes_total{algorithm}</code>, <code>arca_compression_skipped_total{reason}</code>, <code>arca_storage_compression_ratio</code>.</li>
 <li><strong>(Console)</strong> Per-bucket Compression card in bucket settings — matches the Object Lock card pattern: inline algorithm dropdown + level input + single Enable/Disable button, with an "Enabled" status badge and current algorithm/level displayed when active.</li>
-<li><strong>(Docs)</strong> New <code>guide/compression.md</code>, new Compression note in <code>guide/configuration.md</code>, new CLI entries for <code>compress-existing</code>/<code>decompress-existing</code>.</li>
+<li><strong>(Console)</strong> Inline help system: every setting carries a <strong>"?"</strong> trigger next to its label. Hovering shows a short one-line hint tooltip; clicking opens a modal with the full explanation, bullets, rows, notes and code samples. Backed by a single Alpine component (<code>helpTrigger(topicId)</code>) and a global modal listening for <code>arca:open-help</code> custom events. All 13 starter topics live in <code>console/js/help.js</code>; adding help to a new setting is one topic entry plus a six-line snippet next to the label.</li>
+<li><strong>(Console)</strong> Help coverage pass: bucket-settings cards (encryption, compression, versioning, object-lock, lifecycle, notifications), Settings page (log level, retention windows, S3 region, preview size limits) and the dashboard bucket-size widget (now also shows compression and object-lock badges, previously missing).</li>
+<li><strong>(Console)</strong> Create-bucket dialog gained an <strong>Enable Object Lock</strong> checkbox. When ticked, the <code>PUT /{bucket}</code> request sends <code>x-amz-bucket-object-lock-enabled: true</code> so Object Lock and versioning are enabled atomically with the bucket. The API client's <code>request</code> helper now forwards caller-supplied headers through SigV4 signing.</li>
+<li><strong>(Console)</strong> Irreversible bucket-setting toggles (first-time Versioning enable, Object Lock enable) now require typed bucket-name confirmation in a modal before firing. Prevents accidental clicks in production (versioning cannot be disabled, only suspended; Object Lock cannot be disabled at all).</li>
+<li><strong>(Docs)</strong> New <code>guide/compression.md</code>, new Compression note in <code>guide/configuration.md</code>, new CLI entries for <code>compress-existing</code>/<code>decompress-existing</code>. Console user guide updated for the new Object Lock enablement flow, confirmation modals and card intros.</li>
+</ul>
+<h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Object Lock can now be enabled on empty existing buckets</strong>, not only at bucket creation. <code>PutObjectLockConfiguration</code> used to reject every call on a bucket whose <code>object_lock</code> config was absent with <code>InvalidBucketState</code> (strict S3 semantics). The handler now accepts the request when the bucket still has no objects and auto-enables versioning as before; buckets that already contain objects are still rejected, with a clearer message ("can only be enabled on empty buckets or at bucket creation"). Three new integration tests cover the accepted-empty / rejected-non-empty / accepted-at-creation matrix.</li>
+<li><strong>(Console)</strong> Buckets list cards: creation date moved to its own line above the capability badges, and the badge row now wraps so four or more indicators (encrypted + versioned + locked + compressed) no longer overflow the card.</li>
+<li><strong>(Console)</strong> Bucket settings page normalized: every card (Encryption, Compression, Versioning, Object Lock, Lifecycle, Event Notifications) now opens with a short plain-English intro paragraph explaining what the setting does and whether it can be turned off. Versioning and Object Lock intros carry the amber "This action cannot be undone." red-thread, matching the Object Lock card that set the pattern.</li>
+<li><strong>(Console)</strong> Compression and Object Lock inline controls (dropdowns, inputs, buttons) harmonized with the global Settings page baseline (<code>text-sm px-3 py-1.5</code>); no more size discrepancy between pages.</li>
 </ul>
 <h2 id="0200-2026-04-18"><a href="https://github.com/dxc-technology/arca/compare/v0.19.0...v0.20.0">0.20.0</a> — 2026-04-18<a class="headerlink" href="#0200-2026-04-18" title="Permanent link">&para;</a></h2>
 <h3 id="added_1">Added<a class="headerlink" href="#added_1" title="Permanent link">&para;</a></h3>

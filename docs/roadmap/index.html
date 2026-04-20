@@ -2751,6 +2751,7 @@ with observability platforms (Grafana, Datadog, Jaeger, etc.).</p>
 <p>Independent of numbered phases — general improvements to the admin API and server capabilities.</p>
 <ul class="task-list">
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Configuration export/import API: <code>GET /admin/export</code> and <code>POST /admin/import</code> for full instance config (settings, users, teams, grants, credentials, buckets, bucket configs). Supports section filtering, secret masking, skip/overwrite/dry_run modes (P2)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Per-bucket quota: hard/soft caps on bucket size (bytes) and/or object count, enforced at <code>PutObject</code>/<code>CompleteMultipartUpload</code> with <code>QuotaExceeded</code>-style S3 errors. Stored in <code>bucket_config</code>, live-updatable via the admin API (P2)</li>
 </ul>
 <hr />
 <h3 id="console-enhancements">Console Enhancements<a class="headerlink" href="#console-enhancements" title="Permanent link">&para;</a></h3>
@@ -2767,6 +2768,7 @@ with observability platforms (Grafana, Datadog, Jaeger, etc.).</p>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Responsive mobile layout (P3)</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Configuration export/import modals: section checkboxes, secrets toggle, drag-and-drop file import, conflict mode selection, per-section result display (P2)</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Deep search: recursive object search across all prefixes with server-side API, tag-based search (<code>tag:key=value</code> syntax with autocompletion), dedicated search results view showing full key paths (P2)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Per-bucket quota editor in bucket settings: numeric inputs for max size (with unit selector: MB/GB/TB) and max object count, soft/hard toggle, current usage progress bar, quota-exceeded banner on bucket browser (P2)</li>
 </ul>
 <hr />
 <h2 id="mvp-implementation-plan">MVP Implementation Plan<a class="headerlink" href="#mvp-implementation-plan" title="Permanent link">&para;</a></h2>

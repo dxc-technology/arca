@@ -517,6 +517,7 @@ with observability platforms (Grafana, Datadog, Jaeger, etc.).
 Independent of numbered phases — general improvements to the admin API and server capabilities.
 
 - [x] Configuration export/import API: `GET /admin/export` and `POST /admin/import` for full instance config (settings, users, teams, grants, credentials, buckets, bucket configs). Supports section filtering, secret masking, skip/overwrite/dry_run modes (P2)
+- [ ] Per-bucket quota: hard/soft caps on bucket size (bytes) and/or object count, enforced at `PutObject`/`CompleteMultipartUpload` with `QuotaExceeded`-style S3 errors. Stored in `bucket_config`, live-updatable via the admin API (P2)
 
 ---
 
@@ -535,6 +536,7 @@ Independent of server phases — can ship at any time.
 - [x] Responsive mobile layout (P3)
 - [x] Configuration export/import modals: section checkboxes, secrets toggle, drag-and-drop file import, conflict mode selection, per-section result display (P2)
 - [ ] Deep search: recursive object search across all prefixes with server-side API, tag-based search (`tag:key=value` syntax with autocompletion), dedicated search results view showing full key paths (P2)
+- [ ] Per-bucket quota editor in bucket settings: numeric inputs for max size (with unit selector: MB/GB/TB) and max object count, soft/hard toggle, current usage progress bar, quota-exceeded banner on bucket browser (P2)
 
 ---
 

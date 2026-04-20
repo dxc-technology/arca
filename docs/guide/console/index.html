@@ -839,6 +839,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#object-lock-worm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Object Lock (WORM)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#event-notifications" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1999,6 +2010,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#object-lock-worm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Object Lock (WORM)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#event-notifications" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2615,9 +2637,9 @@
 </ul>
 <h2 id="bucket-management">Bucket Management<a class="headerlink" href="#bucket-management" title="Permanent link">&para;</a></h2>
 <p><img alt="Bucket list" src="../../assets/screenshots/console-buckets.png" /></p>
-<p>The Buckets view shows all buckets as cards with creation date. Encrypted buckets display a green shield badge, and versioned buckets display a blue clock icon (or amber pause icon if versioning is suspended). From here you can:</p>
+<p>The Buckets view shows all buckets as cards. Each card carries the creation date on its own line plus capability badges for the features currently enabled on that bucket: green shield for encryption, blue clock (or amber pause) for versioning, orange padlock for Object Lock, cyan stack for compression. The badge row wraps so a bucket with every feature on still fits within the card.</p>
 <ul>
-<li><strong>Create</strong> a new bucket (click the "+" button)</li>
+<li><strong>Create</strong> a new bucket (click the "+" button). The create dialog accepts an optional <strong>Enable Object Lock</strong> checkbox; ticking it sends <code>x-amz-bucket-object-lock-enabled: true</code> so Object Lock and versioning are turned on atomically with the bucket.</li>
 <li><strong>Delete</strong> an empty bucket</li>
 <li><strong>Browse</strong> a bucket by clicking its card</li>
 <li><strong>Open settings</strong> via the gear icon on each card</li>
@@ -2671,7 +2693,7 @@
 <p>Toggle the treemap view to see a visual representation of object sizes within a bucket. Larger objects appear as larger rectangles, making it easy to spot storage-heavy files.</p>
 <h2 id="bucket-settings">Bucket Settings<a class="headerlink" href="#bucket-settings" title="Permanent link">&para;</a></h2>
 <p><img alt="Bucket settings" src="../../assets/screenshots/console-bucket-settings.png" /></p>
-<p>Click the gear icon in the bucket browser header (or on a bucket card) to open the settings view. It contains:</p>
+<p>Click the gear icon in the bucket browser header (or on a bucket card) to open the settings view. Every card opens with a short plain-English intro paragraph describing what the setting does and whether it can be turned off afterwards. Cards whose effects are permanent (Versioning, Object Lock) show the intro in amber with a <strong>"This action cannot be undone."</strong> red-thread and, when enabled for the first time, prompt for typed bucket-name confirmation in a modal so the toggle cannot be flipped by accident on a production bucket.</p>
 <h3 id="encryption">Encryption<a class="headerlink" href="#encryption" title="Permanent link">&para;</a></h3>
 <ul>
 <li>When <strong>server-level encryption is enabled</strong>, the card shows a read-only status indicator (e.g., "SSE-S3 (AES-256) Active" or "SSE-S3 (Vault) Active").</li>
@@ -2704,8 +2726,16 @@
 </table>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>Versioning cannot be disabled once it has been enabled, only suspended. This matches the S3 specification.</p>
+<p>Versioning cannot be disabled once it has been enabled, only suspended. This matches the S3 specification. Because the <code>Not versioned → Enabled</code> transition is irreversible, the console gates it behind a typed bucket-name confirmation modal; <code>Enabled ↔ Suspended</code> is reversible and flips directly.</p>
 </div>
+<h3 id="object-lock-worm">Object Lock (WORM)<a class="headerlink" href="#object-lock-worm" title="Permanent link">&para;</a></h3>
+<p>The Object Lock card turns the bucket into a <strong>Write-Once-Read-Many</strong> store: objects can be protected by a retention period and/or a legal hold, during which deletion and overwrite are refused.</p>
+<ul>
+<li><strong>Enable at bucket creation</strong> — tick the checkbox in the <strong>Create Bucket</strong> dialog. This is the canonical AWS S3 path.</li>
+<li><strong>Enable on an existing, empty bucket</strong> — Arca relaxes the strict S3 rule: if a bucket still contains no objects, the settings card can turn Object Lock on after the fact. Versioning is enabled automatically. Non-empty buckets are still rejected (<code>InvalidBucketState</code>).</li>
+<li><strong>Default retention</strong> — optionally pick <code>GOVERNANCE</code> or <code>COMPLIANCE</code> and a number of days. Every new object inherits this retention unless the client passes its own <code>x-amz-object-lock-*</code> headers.</li>
+</ul>
+<p>Enabling Object Lock is irreversible. The card shows an amber warning and requires typed bucket-name confirmation in a modal before sending the request.</p>
 <h3 id="event-notifications">Event Notifications<a class="headerlink" href="#event-notifications" title="Permanent link">&para;</a></h3>
 <p><img alt="Event notifications" src="../../assets/screenshots/console-event-notifications.png" /></p>
 <p>The Event Notifications card lets you configure where S3 events (object creates, deletes, etc.) are delivered. Each notification destination has:</p>

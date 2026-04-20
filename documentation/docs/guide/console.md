@@ -65,9 +65,9 @@ The dashboard is available to **admin credentials only**. It shows:
 
 ![Bucket list](../assets/screenshots/console-buckets.png)
 
-The Buckets view shows all buckets as cards with creation date. Encrypted buckets display a green shield badge, and versioned buckets display a blue clock icon (or amber pause icon if versioning is suspended). From here you can:
+The Buckets view shows all buckets as cards. Each card carries the creation date on its own line plus capability badges for the features currently enabled on that bucket: green shield for encryption, blue clock (or amber pause) for versioning, orange padlock for Object Lock, cyan stack for compression. The badge row wraps so a bucket with every feature on still fits within the card.
 
-- **Create** a new bucket (click the "+" button)
+- **Create** a new bucket (click the "+" button). The create dialog accepts an optional **Enable Object Lock** checkbox; ticking it sends `x-amz-bucket-object-lock-enabled: true` so Object Lock and versioning are turned on atomically with the bucket.
 - **Delete** an empty bucket
 - **Browse** a bucket by clicking its card
 - **Open settings** via the gear icon on each card
@@ -135,7 +135,7 @@ Toggle the treemap view to see a visual representation of object sizes within a 
 
 ![Bucket settings](../assets/screenshots/console-bucket-settings.png)
 
-Click the gear icon in the bucket browser header (or on a bucket card) to open the settings view. It contains:
+Click the gear icon in the bucket browser header (or on a bucket card) to open the settings view. Every card opens with a short plain-English intro paragraph describing what the setting does and whether it can be turned off afterwards. Cards whose effects are permanent (Versioning, Object Lock) show the intro in amber with a **"This action cannot be undone."** red-thread and, when enabled for the first time, prompt for typed bucket-name confirmation in a modal so the toggle cannot be flipped by accident on a production bucket.
 
 ### Encryption
 
@@ -155,7 +155,17 @@ The versioning card lets you control object versioning for the bucket. The toggl
 | **Suspended** (amber) | No new versions are created, but existing versions are preserved. New writes use a `null` version ID. |
 
 !!! note
-    Versioning cannot be disabled once it has been enabled, only suspended. This matches the S3 specification.
+    Versioning cannot be disabled once it has been enabled, only suspended. This matches the S3 specification. Because the `Not versioned → Enabled` transition is irreversible, the console gates it behind a typed bucket-name confirmation modal; `Enabled ↔ Suspended` is reversible and flips directly.
+
+### Object Lock (WORM)
+
+The Object Lock card turns the bucket into a **Write-Once-Read-Many** store: objects can be protected by a retention period and/or a legal hold, during which deletion and overwrite are refused.
+
+- **Enable at bucket creation** — tick the checkbox in the **Create Bucket** dialog. This is the canonical AWS S3 path.
+- **Enable on an existing, empty bucket** — Arca relaxes the strict S3 rule: if a bucket still contains no objects, the settings card can turn Object Lock on after the fact. Versioning is enabled automatically. Non-empty buckets are still rejected (`InvalidBucketState`).
+- **Default retention** — optionally pick `GOVERNANCE` or `COMPLIANCE` and a number of days. Every new object inherits this retention unless the client passes its own `x-amz-object-lock-*` headers.
+
+Enabling Object Lock is irreversible. The card shows an amber warning and requires typed bucket-name confirmation in a modal before sending the request.
 
 ### Event Notifications
 
