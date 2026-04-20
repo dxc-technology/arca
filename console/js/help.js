@@ -216,6 +216,41 @@ export const HELP_TOPICS = {
     ],
   },
 
+  // =========================== CONSOLE PREVIEW CAPS ===========================
+  'settings.preview.size': {
+    section: 'Settings · Console',
+    title: 'Preview max size (image / PDF / HTML)',
+    hint: 'Cap in MB above which the console refuses to preview these types inline.',
+    body: [
+      { kind: 'intro', text:
+        'The console can render image, PDF and HTML previews inline when you open an object. Above this cap the preview is replaced with a download prompt, so the browser never has to page-fault a huge binary.' },
+      { kind: 'note', tone: 'tip', text:
+        '0 = unlimited. Lower the cap on constrained devices or shared browsers; raise it if your team routinely inspects hi-res images / large PDFs.' },
+    ],
+  },
+  'settings.preview.text': {
+    section: 'Settings · Console',
+    title: 'Preview max text size',
+    hint: 'Cap in MB above which text / Markdown previews are replaced with a download.',
+    body: [
+      { kind: 'intro', text:
+        'Text, source code, and Markdown are syntax-highlighted in the browser — which is memory-hungry for multi-megabyte files. This cap keeps the console responsive on huge logs or SQL dumps.' },
+      { kind: 'note', tone: 'tip', text:
+        '0 = unlimited. A few MB is usually plenty; raise it if you regularly open large log files.' },
+    ],
+  },
+  'settings.preview.video': {
+    section: 'Settings · Console',
+    title: 'Preview max video size',
+    hint: 'Cap in MB above which video previews are replaced with a download.',
+    body: [
+      { kind: 'intro', text:
+        'Videos stream chunked via the <video> element, but decoding still costs memory. This cap prevents the console from auto-playing multi-GB recordings.' },
+      { kind: 'note', tone: 'tip', text:
+        '0 = unlimited. Typical defaults land between 100 MB and 1 GB depending on how your team uses the console.' },
+    ],
+  },
+
   // =========================== USERS / TEAMS / GRANTS ===========================
   'rbac.grant': {
     section: 'Access control',

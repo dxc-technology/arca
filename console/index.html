@@ -4070,6 +4070,10 @@
                   <div class="flex-1">
                     <div class="flex items-center gap-2">
                       <span class="text-sm font-medium text-vault-text">S3 Region</span>
+                      <span x-data="helpTrigger('settings.region')" class="help-host">
+                        <button class="help-trigger" @click="show()" aria-label="About S3 region">?</button>
+                        <span class="help-tooltip" x-text="topic.hint"></span>
+                      </span>
                       <span x-show="settings.region" :class="sourceClass(settings.region.source)" class="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase" x-text="sourceLabel(settings.region.source)"></span>
                       <svg x-show="settings.region?.readonly" class="w-3.5 h-3.5 text-vault-muted" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" title="Locked by configuration file"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/></svg>
                     </div>
@@ -4250,6 +4254,10 @@
                     <div class="flex-1">
                       <div class="flex items-center gap-2">
                         <span class="text-sm font-medium text-vault-text">Preview Max Size</span>
+                        <span x-data="helpTrigger('settings.preview.size')" class="help-host">
+                          <button class="help-trigger" @click="show()" aria-label="About preview max size">?</button>
+                          <span class="help-tooltip" x-text="topic.hint"></span>
+                        </span>
                         <span x-show="settings.preview_max_size_mb" :class="sourceClass(settings.preview_max_size_mb.source)" class="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase" x-text="sourceLabel(settings.preview_max_size_mb.source)"></span>
                       </div>
                       <div class="text-xs text-vault-muted mt-0.5">Max file size for image, PDF, and HTML previews (0 = unlimited)</div>
@@ -4275,6 +4283,10 @@
                     <div class="flex-1">
                       <div class="flex items-center gap-2">
                         <span class="text-sm font-medium text-vault-text">Preview Max Text Size</span>
+                        <span x-data="helpTrigger('settings.preview.text')" class="help-host">
+                          <button class="help-trigger" @click="show()" aria-label="About preview max text size">?</button>
+                          <span class="help-tooltip" x-text="topic.hint"></span>
+                        </span>
                         <span x-show="settings.preview_max_text_mb" :class="sourceClass(settings.preview_max_text_mb.source)" class="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase" x-text="sourceLabel(settings.preview_max_text_mb.source)"></span>
                       </div>
                       <div class="text-xs text-vault-muted mt-0.5">Max file size for text and Markdown previews (0 = unlimited)</div>
@@ -4300,6 +4312,10 @@
                     <div class="flex-1">
                       <div class="flex items-center gap-2">
                         <span class="text-sm font-medium text-vault-text">Preview Max Video Size</span>
+                        <span x-data="helpTrigger('settings.preview.video')" class="help-host">
+                          <button class="help-trigger" @click="show()" aria-label="About preview max video size">?</button>
+                          <span class="help-tooltip" x-text="topic.hint"></span>
+                        </span>
                         <span x-show="settings.preview_max_video_mb" :class="sourceClass(settings.preview_max_video_mb.source)" class="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase" x-text="sourceLabel(settings.preview_max_video_mb.source)"></span>
                       </div>
                       <div class="text-xs text-vault-muted mt-0.5">Max file size for video previews (0 = unlimited)</div>

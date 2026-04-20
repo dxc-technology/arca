@@ -48,14 +48,16 @@ export function dashboardView() {
               for (const obj of result.objects) totalSize += obj.size;
               token = result.isTruncated ? result.nextToken : '';
             } while (token);
-            sizes.push({ name: b.name, size: totalSize, encrypted: false, versioned: false });
-          } catch { sizes.push({ name: b.name, size: 0, encrypted: false, versioned: false }); }
+            sizes.push({ name: b.name, size: totalSize, encrypted: false, versioned: false, locked: false, compressed: false });
+          } catch { sizes.push({ name: b.name, size: 0, encrypted: false, versioned: false, locked: false, compressed: false }); }
         }
-        // Load encryption and versioning status in parallel
+        // Load encryption, versioning, object-lock and compression status in parallel.
         await Promise.all(sizes.map(async (s) => {
-          const [enc, vResp] = await Promise.all([
+          const [enc, vResp, lockResp, comp] = await Promise.all([
             api.s3GetBucketEncryption(s.name),
             api.s3GetBucketVersioning(s.name).catch(() => null),
+            api.s3GetObjectLockConfiguration(s.name).catch(() => null),
+            api.s3GetBucketCompression(s.name).catch(() => null),
           ]);
           s.encrypted = !!(enc && enc.algorithm);
           if (vResp && vResp.ok) {
@@ -63,6 +65,8 @@ export function dashboardView() {
             const m = xml.match(/<Status>(.*?)<\/Status>/);
             s.versioned = m ? m[1] : false;
           }
+          s.locked = !!(lockResp && lockResp.ok);
+          s.compressed = comp ? (comp.algorithm || 'auto') : false;
         }));
         this.bucketSizes = sizes;
         this.computeRing(sizes);
