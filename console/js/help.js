@@ -281,6 +281,7 @@ export const HELP_TOPICS = {
       { kind: 'rows', rows: [
         { key: 'Rule ID',          text: 'Unique name. Use something stable — the journal and metrics pivot on it.' },
         { key: 'Prefix',           text: 'Only objects whose key starts with this string are replicated. Leave empty to replicate every object.' },
+        { key: 'Tag filter',       text: 'Optional. When set, an object is replicated only if it carries ALL the listed tags (key and value must match exactly). Combine with a prefix to narrow further — both conditions must hold.' },
         { key: 'Destination',      text: 'Bucket name + endpoint URL. The bucket must already exist on the destination (Arca will not auto-create it).' },
         { key: 'Credential ref',   text: 'Name of a credential stored in server settings. The worker signs outbound requests with these access keys.' },
         { key: 'Delete markers',   text: 'When enabled, a DeleteObject on the source creates a delete marker on the destination too.' },

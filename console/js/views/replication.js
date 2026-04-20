@@ -256,6 +256,8 @@ export function bucketReplicationEditor() {
       status: 'Enabled',
       priority: 1,
       prefix: '',
+      // Array of { key, value } — at serialize time any empty-key entries are dropped.
+      tags: [],
       destBucket: '',
       destEndpoint: '',
       destRegion: 'us-east-1',
@@ -312,8 +314,38 @@ export function bucketReplicationEditor() {
         const id = el.getElementsByTagName('ID')[0]?.textContent || '';
         const status = el.getElementsByTagName('Status')[0]?.textContent || 'Enabled';
         const priority = parseInt(el.getElementsByTagName('Priority')[0]?.textContent || '1', 10);
+
+        // Filter: may be <Prefix> | <Tag> | <And><Prefix>...</Prefix><Tag>...</Tag>...</And>
+        // Server-side (ReplicationFilter in arca-core) supports all three shapes.
         const filterEl = el.getElementsByTagName('Filter')[0];
-        const prefix = filterEl?.getElementsByTagName('Prefix')[0]?.textContent || '';
+        let prefix = '';
+        let tags = [];
+        if (filterEl) {
+          const andEl = filterEl.getElementsByTagName('And')[0];
+          if (andEl) {
+            prefix = andEl.getElementsByTagName('Prefix')[0]?.textContent || '';
+            for (const t of andEl.getElementsByTagName('Tag')) {
+              tags.push({
+                key: t.getElementsByTagName('Key')[0]?.textContent || '',
+                value: t.getElementsByTagName('Value')[0]?.textContent || '',
+              });
+            }
+          } else {
+            // Direct child of <Filter>: either <Prefix> or a single <Tag>.
+            // Only look at direct children so we don't accidentally pick up
+            // tags nested in an <And> we already handled above.
+            for (const child of filterEl.children) {
+              if (child.tagName === 'Prefix') prefix = child.textContent || '';
+              else if (child.tagName === 'Tag') {
+                tags.push({
+                  key: child.getElementsByTagName('Key')[0]?.textContent || '',
+                  value: child.getElementsByTagName('Value')[0]?.textContent || '',
+                });
+              }
+            }
+          }
+        }
+
         const destEl = el.getElementsByTagName('Destination')[0];
         const destBucket = destEl?.getElementsByTagName('Bucket')[0]?.textContent || '';
         const destEndpoint = destEl?.getElementsByTagName('Endpoint')[0]?.textContent || '';
@@ -322,12 +354,37 @@ export function bucketReplicationEditor() {
         const dmrEl = el.getElementsByTagName('DeleteMarkerReplication')[0];
         const dmrStatus = dmrEl?.getElementsByTagName('Status')[0]?.textContent || 'Enabled';
         rules.push({
-          id, status, priority, prefix,
+          id, status, priority, prefix, tags,
           destBucket, destEndpoint, destRegion, credentialRef,
           deleteMarkers: dmrStatus === 'Enabled',
         });
       }
       return rules;
+    },
+
+    /**
+     * Serialize the <Filter> block per AWS ReplicationConfiguration shape:
+     *   - prefix only               → <Prefix>...</Prefix>
+     *   - single tag, no prefix     → <Tag><Key/><Value/></Tag>
+     *   - prefix + any tags, or ≥2  → <And><Prefix/><Tag/>...</And>
+     *   - otherwise                 → <Prefix></Prefix>  (matches everything)
+     */
+    _renderFilterXml(prefix, tags) {
+      const p = prefix || '';
+      const ts = (tags || []).filter(t => t && t.key);
+      if (!p && ts.length === 0) return '      <Prefix></Prefix>\n';
+      if (ts.length === 0) return `      <Prefix>${this.escapeXml(p)}</Prefix>\n`;
+      if (!p && ts.length === 1) {
+        const t = ts[0];
+        return `      <Tag><Key>${this.escapeXml(t.key)}</Key><Value>${this.escapeXml(t.value || '')}</Value></Tag>\n`;
+      }
+      let out = '      <And>\n';
+      if (p) out += `        <Prefix>${this.escapeXml(p)}</Prefix>\n`;
+      for (const t of ts) {
+        out += `        <Tag><Key>${this.escapeXml(t.key)}</Key><Value>${this.escapeXml(t.value || '')}</Value></Tag>\n`;
+      }
+      out += '      </And>\n';
+      return out;
     },
 
     buildReplicationXml() {
@@ -339,7 +396,7 @@ export function bucketReplicationEditor() {
         xml += `    <Status>${this.escapeXml(r.status)}</Status>\n`;
         xml += `    <Priority>${r.priority | 0}</Priority>\n`;
         xml += '    <Filter>\n';
-        xml += `      <Prefix>${this.escapeXml(r.prefix || '')}</Prefix>\n`;
+        xml += this._renderFilterXml(r.prefix, r.tags);
         xml += '    </Filter>\n';
         xml += '    <Destination>\n';
         xml += `      <Bucket>${this.escapeXml(r.destBucket)}</Bucket>\n`;
@@ -366,6 +423,7 @@ export function bucketReplicationEditor() {
         status: 'Enabled',
         priority: (this.rules.length + 1),
         prefix: '',
+        tags: [],
         destBucket: '',
         destEndpoint: '',
         destRegion: 'us-east-1',
@@ -388,6 +446,7 @@ export function bucketReplicationEditor() {
         status: r.status,
         priority: r.priority,
         prefix: r.prefix,
+        tags: (r.tags || []).map(t => ({ key: t.key, value: t.value })),
         destBucket: r.destBucket,
         destEndpoint: r.destEndpoint,
         destRegion: r.destRegion || 'us-east-1',
@@ -399,6 +458,14 @@ export function bucketReplicationEditor() {
       };
       this.error = '';
       this.showModal = true;
+    },
+
+    addTagRow() {
+      this.editForm.tags.push({ key: '', value: '' });
+    },
+
+    removeTagRow(idx) {
+      this.editForm.tags.splice(idx, 1);
     },
 
     closeModal() { this.showModal = false; this.editingIndex = -1; this.error = ''; },
@@ -438,6 +505,17 @@ export function bucketReplicationEditor() {
       }
       if (!credRef) { this.error = 'Select or create a destination credential'; return; }
 
+      // Drop empty-key tag rows (UI scaffolding) and check for duplicate keys.
+      const tagRows = (f.tags || []).filter(t => t && t.key);
+      const seen = new Set();
+      for (const t of tagRows) {
+        if (seen.has(t.key)) {
+          this.error = `Duplicate tag key '${t.key}' — each tag in a filter must have a unique key`;
+          return;
+        }
+        seen.add(t.key);
+      }
+
       this.error = '';
       this.saving = true;
       try {
@@ -457,6 +535,7 @@ export function bucketReplicationEditor() {
           status: f.status,
           priority: Number(f.priority) || 1,
           prefix: f.prefix,
+          tags: tagRows.map(t => ({ key: t.key, value: t.value || '' })),
           destBucket: f.destBucket,
           destEndpoint: f.destEndpoint,
           destRegion: f.destRegion || 'us-east-1',
