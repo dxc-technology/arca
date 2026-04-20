@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<title>Arca — Help-icon design proposals</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --vault-bg:      #0f172a;
+    --vault-surface: #1e293b;
+    --vault-border:  #334155;
+    --vault-text:    #e2e8f0;
+    --vault-muted:   #94a3b8;
+    --vault-accent:  #00d4ff;
+  }
+  html, body { background: #0b1120; color: var(--vault-text); font-family: 'DM Sans', system-ui, sans-serif; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .glass { background: rgba(30,41,59,0.55); backdrop-filter: blur(8px); border: 1px solid rgba(51,65,85,0.6); }
+  .vault-surface { background: var(--vault-surface); }
+  .vault-bg { background: var(--vault-bg); }
+  .vault-border { border-color: var(--vault-border); }
+  select, input[type=number] { color-scheme: dark; }
+  /* Help trigger — shared by every variant so geometry is comparable */
+  .help-trigger {
+    width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    font-size: 10px; font-weight: 700; line-height: 1;
+    color: var(--vault-muted); background: rgba(148,163,184,0.08); border: 1px solid rgba(148,163,184,0.25);
+    cursor: pointer; transition: all 0.15s;
+    font-family: 'DM Sans', system-ui, sans-serif;
+  }
+  .help-trigger:hover { color: var(--vault-accent); background: rgba(0,212,255,0.12); border-color: rgba(0,212,255,0.45); }
+  /* Kill outlines on all the throwaway demo controls */
+  [x-cloak] { display: none !important; }
+  /* Variant-specific styles */
+  .pop-anchor { position: relative; display: inline-block; }
+  .pop {
+    position: absolute; z-index: 30; bottom: calc(100% + 8px); left: 0;
+    width: 320px; padding: 14px; border-radius: 10px;
+    background: #111b2e; border: 1px solid rgba(0,212,255,0.25);
+    box-shadow: 0 18px 40px rgba(0,0,0,0.55);
+  }
+  .pop::after {
+    content: ''; position: absolute; top: 100%; left: 14px;
+    border: 6px solid transparent; border-top-color: rgba(0,212,255,0.25);
+  }
+  .drawer {
+    position: fixed; top: 0; right: 0; height: 100vh; width: min(420px, 95vw);
+    background: #0c1426; border-left: 1px solid rgba(0,212,255,0.2);
+    box-shadow: -24px 0 60px rgba(0,0,0,0.55);
+    transform: translateX(100%); transition: transform 0.22s ease;
+    z-index: 60; overflow-y: auto;
+  }
+  .drawer.open { transform: translateX(0); }
+  .tooltip {
+    position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+    padding: 6px 10px; border-radius: 6px; font-size: 11px;
+    background: #1e293b; border: 1px solid rgba(148,163,184,0.3); color: var(--vault-text);
+    white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.15s;
+    z-index: 30;
+  }
+  .tooltip-host:hover .tooltip { opacity: 1; }
+  .accordion-body {
+    overflow: hidden; max-height: 0; transition: max-height 0.25s ease, margin 0.2s;
+  }
+  .accordion-body.open { max-height: 600px; margin-top: 10px; }
+  .callout-strip {
+    background: linear-gradient(180deg, rgba(0,212,255,0.06), rgba(0,212,255,0));
+    border: 1px dashed rgba(0,212,255,0.25);
+  }
+  /* Algorithm-row shared styling used inside each variant's help body */
+  .algo-row { display: grid; grid-template-columns: 62px 1fr; gap: 10px; padding: 7px 0; border-top: 1px solid rgba(148,163,184,0.12); }
+  .algo-row:first-child { border-top: 0; }
+  .algo-name { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--vault-accent); padding-top: 2px; }
+  .algo-desc { font-size: 11.5px; line-height: 1.45; color: var(--vault-text); }
+  .algo-desc .best { display: block; color: var(--vault-muted); font-size: 10.5px; margin-top: 2px; }
+</style>
+</head>
+<body x-data="app" class="min-h-screen p-6 md:p-8">
+
+<!-- ============================== BRIEF ============================== -->
+<div class="max-w-6xl mx-auto mb-8">
+  <div class="glass rounded-xl p-5 md:p-6">
+    <div class="flex items-center gap-2 mb-2">
+      <span class="inline-block w-2 h-2 rounded-full" style="background:var(--vault-accent)"></span>
+      <span class="text-[10px] uppercase tracking-[0.2em]" style="color:var(--vault-muted)">Design exploration</span>
+    </div>
+    <h1 class="text-xl md:text-2xl font-semibold mb-2">Inline help-icon system for Arca console settings</h1>
+    <p class="text-sm leading-relaxed" style="color:var(--vault-muted)">
+      Six proposals for where the <span class="mono" style="color:var(--vault-accent)">?</span> trigger sits next to
+      a setting and how its help content is revealed. Compression — with seven algorithms each suited to different
+      workloads — is the pilot target. Click any <span class="mono" style="color:var(--vault-accent)">?</span> below
+      to see that variant's reveal behavior. Pick a winner, or mix and match per context.
+    </p>
+    <div class="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-[11px]" style="color:var(--vault-muted)">
+      <span><span class="mono" style="color:var(--vault-accent)">#0f172a</span> surface</span>
+      <span><span class="mono" style="color:var(--vault-accent)">#00d4ff</span> accent</span>
+      <span>DM Sans body · JetBrains Mono technical</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================== GRID ============================== -->
+<div class="max-w-6xl mx-auto grid md:grid-cols-2 gap-5">
+
+  <!-- === Variant 1 — Centered modal === -->
+  <template x-for="v in variants" :key="v.id">
+    <div class="glass rounded-xl p-5 flex flex-col">
+      <div class="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <div class="text-[10px] uppercase tracking-widest mb-0.5" style="color:var(--vault-muted)" x-text="'Variant ' + (variants.indexOf(v) + 1)"></div>
+          <h2 class="text-base font-semibold" x-text="v.name"></h2>
+        </div>
+        <span class="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full" style="background:rgba(0,212,255,0.1); color:var(--vault-accent)" x-text="v.tag"></span>
+      </div>
+      <p class="text-xs leading-relaxed mb-4" style="color:var(--vault-muted)" x-text="v.tradeoff"></p>
+
+      <!-- Mini compression card (the "setting" the help belongs to) -->
+      <div class="vault-bg rounded-lg border vault-border p-4 flex-1">
+        <!-- Header row -->
+        <div class="flex items-center gap-2 mb-3">
+          <svg class="w-3.5 h-3.5" style="color:var(--vault-accent)" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125S3.75 19.903 3.75 17.625V6.375"/></svg>
+          <span class="text-[11px] font-semibold uppercase tracking-wider" style="color:var(--vault-muted)">Compression</span>
+        </div>
+
+        <!-- Algorithm row with variant-specific trigger -->
+        <div class="flex items-center gap-2 flex-wrap">
+          <label class="text-xs" style="color:var(--vault-muted)">Algorithm</label>
+
+          <!-- V1 — Modal: trigger after label -->
+          <template x-if="v.id === 'modal'">
+            <div class="flex items-center gap-1.5">
+              <button class="help-trigger" @click="open = v.id">?</button>
+              <select class="mono text-xs px-2.5 py-1.5 rounded-md vault-surface border vault-border" @change="algo = $event.target.value">
+                <template x-for="a in algorithms" :key="a.id"><option :value="a.id" x-text="a.id" :selected="a.id === algo"></option></template>
+              </select>
+            </div>
+          </template>
+
+          <!-- V2 — Inline popover: trigger after label, popover anchored to trigger -->
+          <template x-if="v.id === 'popover'">
+            <div class="flex items-center gap-1.5">
+              <div class="pop-anchor">
+                <button class="help-trigger" @click="open = (open === v.id ? null : v.id)">?</button>
+                <div x-show="open === v.id" x-cloak class="pop" @click.outside="open = null">
+                  <div class="mb-2 text-[11px] font-semibold uppercase tracking-wider" style="color:var(--vault-accent)">Algorithms</div>
+                  <template x-for="a in algorithms" :key="a.id">
+                    <div class="algo-row"><div class="algo-name" x-text="a.id"></div>
+                      <div class="algo-desc"><span x-text="a.summary"></span><span class="best" x-text="'Best for: ' + a.bestFor"></span></div></div>
+                  </template>
+                </div>
+              </div>
+              <select class="mono text-xs px-2.5 py-1.5 rounded-md vault-surface border vault-border" @change="algo = $event.target.value">
+                <template x-for="a in algorithms" :key="a.id"><option :value="a.id" x-text="a.id" :selected="a.id === algo"></option></template>
+              </select>
+            </div>
+          </template>
+
+          <!-- V3 — Drawer: small ? floats at card's top-right, drawer slides in -->
+          <template x-if="v.id === 'drawer'">
+            <div class="flex items-center gap-1.5">
+              <button class="help-trigger" @click="open = v.id">?</button>
+              <select class="mono text-xs px-2.5 py-1.5 rounded-md vault-surface border vault-border" @change="algo = $event.target.value">
+                <template x-for="a in algorithms" :key="a.id"><option :value="a.id" x-text="a.id" :selected="a.id === algo"></option></template>
+              </select>
+            </div>
+          </template>
+
+          <!-- V4 — Tooltip + Learn more: hover = oneliner, click = full help -->
+          <template x-if="v.id === 'tooltip'">
+            <div class="flex items-center gap-1.5">
+              <span class="tooltip-host relative">
+                <button class="help-trigger" @click="open = v.id">?</button>
+                <span class="tooltip">Compressible at rest. Hover a choice; click ? for the full guide.</span>
+              </span>
+              <select class="mono text-xs px-2.5 py-1.5 rounded-md vault-surface border vault-border" @change="algo = $event.target.value">
+                <template x-for="a in algorithms" :key="a.id"><option :value="a.id" x-text="a.id" :selected="a.id === algo"></option></template>
+              </select>
+            </div>
+          </template>
+
+          <!-- V5 — Accordion: trigger toggles a panel inside the card -->
+          <template x-if="v.id === 'accordion'">
+            <div class="flex items-center gap-1.5">
+              <button class="help-trigger" @click="accordion = !accordion">?</button>
+              <select class="mono text-xs px-2.5 py-1.5 rounded-md vault-surface border vault-border" @change="algo = $event.target.value">
+                <template x-for="a in algorithms" :key="a.id"><option :value="a.id" x-text="a.id" :selected="a.id === algo"></option></template>
+              </select>
+            </div>
+          </template>
+
+          <!-- V6 — Dropdown callout: help is a sticky strip that follows the current choice -->
+          <template x-if="v.id === 'dropdown-callout'">
+            <div class="flex items-center gap-1.5">
+              <select class="mono text-xs px-2.5 py-1.5 rounded-md vault-surface border vault-border" @change="algo = $event.target.value">
+                <template x-for="a in algorithms" :key="a.id"><option :value="a.id" x-text="a.id" :selected="a.id === algo"></option></template>
+              </select>
+            </div>
+          </template>
+        </div>
+
+        <!-- V5 accordion body (inline expansion) -->
+        <template x-if="v.id === 'accordion'">
+          <div :class="'accordion-body' + (accordion ? ' open' : '')">
+            <div class="text-[10px] uppercase tracking-wider mb-2" style="color:var(--vault-accent)">Algorithms</div>
+            <template x-for="a in algorithms" :key="a.id">
+              <div class="algo-row"><div class="algo-name" x-text="a.id"></div>
+                <div class="algo-desc"><span x-text="a.summary"></span><span class="best" x-text="'Best for: ' + a.bestFor"></span></div></div>
+            </template>
+          </div>
+        </template>
+
+        <!-- V6 callout strip — always visible, follows the current algo -->
+        <template x-if="v.id === 'dropdown-callout'">
+          <div class="callout-strip mt-3 rounded-md p-3">
+            <div class="flex items-baseline gap-2 mb-0.5">
+              <span class="mono text-[11px]" style="color:var(--vault-accent)" x-text="currentAlgo().id"></span>
+              <span class="text-[10px] uppercase tracking-wider" style="color:var(--vault-muted)" x-text="'Best for: ' + currentAlgo().bestFor"></span>
+            </div>
+            <div class="text-[11.5px] leading-relaxed" x-text="currentAlgo().summary"></div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </template>
+</div>
+
+<!-- ================= Shared MODAL (used by V1) ================= -->
+<div x-show="open === 'modal'" x-cloak
+     class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background:rgba(5,10,20,0.7); backdrop-filter:blur(4px)"
+     @click.self="open = null" @keydown.escape.window="open = null">
+  <div class="glass rounded-xl p-6 w-full max-w-xl">
+    <div class="flex items-start justify-between mb-4">
+      <div>
+        <div class="text-[10px] uppercase tracking-widest mb-1" style="color:var(--vault-muted)">Help · Compression</div>
+        <h3 class="text-lg font-semibold">Choosing an algorithm</h3>
+      </div>
+      <button class="text-xl leading-none" style="color:var(--vault-muted)" @click="open = null">×</button>
+    </div>
+    <p class="text-xs mb-4" style="color:var(--vault-muted)">
+      Compression runs per-object. Filters skip already-compressed MIME types
+      (images, archives, PDFs) and blobs under 1&nbsp;KiB — these show up in
+      <span class="mono">arca_compression_skipped_total</span>.
+    </p>
+    <div>
+      <template x-for="a in algorithms" :key="a.id">
+        <div class="algo-row">
+          <div class="algo-name" x-text="a.id"></div>
+          <div class="algo-desc"><span x-text="a.summary"></span><span class="best" x-text="'Best for: ' + a.bestFor"></span></div>
+        </div>
+      </template>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Shared DRAWER (used by V3) ================= -->
+<div x-show="open === 'drawer'" x-cloak class="fixed inset-0 z-50" @click.self="open = null" @keydown.escape.window="open = null" style="background:rgba(5,10,20,0.5)"></div>
+<aside class="drawer" :class="open === 'drawer' ? 'open' : ''" x-cloak>
+  <div class="p-5 border-b" style="border-color:rgba(148,163,184,0.15)">
+    <div class="flex items-start justify-between">
+      <div>
+        <div class="text-[10px] uppercase tracking-widest mb-1" style="color:var(--vault-muted)">Help</div>
+        <h3 class="text-lg font-semibold">Compression algorithms</h3>
+      </div>
+      <button class="text-xl leading-none" style="color:var(--vault-muted)" @click="open = null">×</button>
+    </div>
+  </div>
+  <div class="p-5">
+    <p class="text-xs mb-4" style="color:var(--vault-muted)">
+      Seven algorithms, chosen per-bucket. Each is tuned to a different trade-off
+      curve between compression ratio and encode/decode CPU cost.
+    </p>
+    <template x-for="a in algorithms" :key="a.id">
+      <div class="algo-row">
+        <div class="algo-name" x-text="a.id"></div>
+        <div class="algo-desc"><span x-text="a.summary"></span><span class="best" x-text="'Best for: ' + a.bestFor"></span></div>
+      </div>
+    </template>
+    <div class="mt-5 pt-4 border-t text-[11px] leading-relaxed" style="color:var(--vault-muted); border-color:rgba(148,163,184,0.15)">
+      Changing the algorithm applies to <em>future</em> uploads only. Existing
+      objects keep their current form until rewritten; run
+      <span class="mono">arca compress-existing --algorithm &lt;name&gt;</span> to
+      migrate them offline.
+    </div>
+  </div>
+</aside>
+
+<!-- ================= Shared FULL-PANEL (used by V4 tooltip's click path) ================= -->
+<div x-show="open === 'tooltip'" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+     style="background:rgba(5,10,20,0.7); backdrop-filter:blur(4px)"
+     @click.self="open = null" @keydown.escape.window="open = null">
+  <div class="glass rounded-xl p-6 w-full max-w-lg">
+    <div class="flex items-start justify-between mb-4">
+      <div>
+        <div class="text-[10px] uppercase tracking-widest mb-1" style="color:var(--vault-muted)">Docs · Compression</div>
+        <h3 class="text-lg font-semibold">Algorithm guide</h3>
+      </div>
+      <button class="text-xl leading-none" style="color:var(--vault-muted)" @click="open = null">×</button>
+    </div>
+    <template x-for="a in algorithms" :key="a.id">
+      <div class="algo-row">
+        <div class="algo-name" x-text="a.id"></div>
+        <div class="algo-desc"><span x-text="a.summary"></span><span class="best" x-text="'Best for: ' + a.bestFor"></span></div>
+      </div>
+    </template>
+  </div>
+</div>
+
+<!-- ============================== PICK ============================== -->
+<div class="max-w-6xl mx-auto mt-8">
+  <div class="glass rounded-xl p-5">
+    <div class="text-[10px] uppercase tracking-[0.2em] mb-2" style="color:var(--vault-muted)">Pick a direction</div>
+    <p class="text-sm mb-3" style="color:var(--vault-text)">
+      Which variant should graduate from prototype to the real Arca console? Copy a verdict and hand it back to Claude.
+    </p>
+    <div class="flex flex-wrap gap-2 mb-3">
+      <template x-for="v in variants" :key="v.id">
+        <button class="text-xs mono px-3 py-1.5 rounded-md border vault-border hover:border-[var(--vault-accent)] transition"
+          :class="pick === v.id ? 'bg-[rgba(0,212,255,0.15)] text-[var(--vault-accent)] border-[var(--vault-accent)]' : ''"
+          @click="pick = v.id" x-text="v.id"></button>
+      </template>
+    </div>
+    <div class="vault-bg rounded-md border vault-border p-3 flex items-start gap-3">
+      <pre class="mono text-[11px] flex-1 whitespace-pre-wrap" x-text="prompt"></pre>
+      <button class="text-[11px] mono px-2.5 py-1.5 rounded-md border vault-border hover:border-[var(--vault-accent)] transition shrink-0"
+        @click="copy()" x-text="copied ? 'Copied ✓' : 'Copy'"></button>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('alpine:init', () => {
+  Alpine.data('app', () => ({
+    algo: 'auto',
+    open: null,       // which variant's modal/popover/drawer is currently shown
+    accordion: false, // in-card accordion state for V5
+    pick: 'popover',
+    copied: false,
+    algorithms: [
+      { id: 'auto',   summary: 'Picks per object from a deterministic rule table keyed on Content-Type and size. No sampling, no benchmarking — just a short match.', bestFor: 'Mixed workloads where you do not want to pick per bucket.' },
+      { id: 'zstd',   summary: 'Modern general-purpose codec. Excellent ratio and very fast decode, level-tunable 1–22. Default for structured text.',                      bestFor: 'JSON, XML, YAML, logs, source archives, databases.' },
+      { id: 'lz4',    summary: 'Extreme encode/decode speed at the cost of ratio. Pure-Rust block variant in Arca (no tunable level).',                                     bestFor: 'CPU-constrained hot paths, request-latency-sensitive workloads.' },
+      { id: 'snappy', summary: 'Google-designed streaming codec, similar speed/ratio profile to lz4.',                                                                        bestFor: 'Interop with Kafka, HBase, Parquet and other Snappy-native pipelines.' },
+      { id: 'gzip',   summary: 'Classic DEFLATE. Medium ratio, medium speed. Level 0–9 (default 6). Ubiquitous tooling support.',                                             bestFor: 'Interop with external CLIs, scripts, and downloads that expect .gz.' },
+      { id: 'brotli', summary: 'Exceptional ratio on textual web payloads. Slow encode, medium decode. Level 0–11 (default 4).',                                              bestFor: 'HTML / CSS / JS / SVG delivery where shrinking dominates.' },
+      { id: 'xz',     summary: 'LZMA2-based. Highest ratio of the set, slowest encode. Level 0–9 (default 6).',                                                               bestFor: 'Cold-storage archives where disk footprint dominates CPU.' },
+    ],
+    variants: [
+      { id: 'modal',            name: 'Centered modal',          tag: 'interrupts', tradeoff: 'Maximum real estate for dense content. An overlay captures focus, so it interrupts the user\'s flow — best when the user intentionally asked for help.' },
+      { id: 'popover',          name: 'Inline popover',          tag: 'lightweight', tradeoff: 'Anchored to the trigger, dismissed on outside-click. Fastest to skim for a glossary of 3–10 items. Width is constrained — content must stay short.' },
+      { id: 'drawer',           name: 'Right-side drawer',       tag: 'sidecar',    tradeoff: 'Slides in without obscuring the setting. Scales to long-form docs, cross-links, screenshots. A natural home for cross-setting help (one drawer, one router).' },
+      { id: 'tooltip',          name: 'Hover hint + Learn more', tag: 'progressive', tradeoff: 'Hover gives the one-line gist, click opens the full guide. Progressive disclosure — discoverability without overload.' },
+      { id: 'accordion',        name: 'In-card accordion',       tag: 'no-overlay', tradeoff: 'Help expands the card itself, no overlay, no focus shift. The page grows vertically. Works best when the setting lives on a page with room to breathe.' },
+      { id: 'dropdown-callout', name: 'Dropdown callout',        tag: 'contextual', tradeoff: 'A sticky strip under the control describes the current selection. Zero clicks. Limited to the one-choice case — you see one algorithm at a time, not the whole menu.' },
+    ],
+    currentAlgo() { return this.algorithms.find(a => a.id === this.algo) || this.algorithms[0]; },
+    get prompt() {
+      const v = this.variants.find(x => x.id === this.pick);
+      return `Adopt the "${v.name}" pattern for Arca console inline help (see playground/compression-help-ideas.html).\n` +
+             `Trigger: small "?" button styled like .help-trigger, placed immediately after the setting's label.\n` +
+             `Reveal: ${v.tradeoff}\n\n` +
+             `For the Compression card, populate the help with the seven algorithm entries (id + one-line summary + "Best for:" hint) as defined in the playground's algorithms[] array. Re-use the same component in other settings so help stays consistent.`;
+    },
+    copy() {
+      navigator.clipboard.writeText(this.prompt).then(() => {
+        this.copied = true; setTimeout(() => this.copied = false, 1500);
+      });
+    },
+  }));
+});
+</script>
+</body>
+</html>

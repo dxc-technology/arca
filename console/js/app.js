@@ -1,4 +1,5 @@
 import { api } from './api.js';
+import { topicFor } from './help.js';
 import { dashboardView } from './views/dashboard.js';
 import { bucketsView, bucketSettingsView } from './views/buckets.js';
 import { bucketDetailView } from './views/bucket-detail.js';
@@ -196,9 +197,47 @@ export function app() {
   };
 }
 
+// ==================== INLINE HELP ====================
+//
+// helpTrigger(id)  — drives each "?" button. Shows a hover tooltip with the
+//                    topic's short hint; clicks dispatch an `arca:open-help`
+//                    event that the single global helpModal listens for.
+// helpModal()      — the single overlay that renders the full topic body.
+
+export function helpTrigger(topicId) {
+  return {
+    topicId,
+    hovered: false,
+    get topic() { return topicFor(this.topicId); },
+    show() {
+      window.dispatchEvent(new CustomEvent('arca:open-help', { detail: this.topicId }));
+    },
+  };
+}
+
+export function helpModal() {
+  return {
+    open: false,
+    current: null,
+    get topic() { return this.current ? topicFor(this.current) : null; },
+    mount() {
+      window.addEventListener('arca:open-help', (e) => {
+        this.current = e.detail;
+        this.open = true;
+      });
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') this.open = false;
+      });
+    },
+    close() { this.open = false; },
+  };
+}
+
 // ==================== ALPINE REGISTRATION ====================
 document.addEventListener('alpine:init', () => {
   Alpine.data('app', app);
+  Alpine.data('helpTrigger', helpTrigger);
+  Alpine.data('helpModal', helpModal);
   Alpine.data('dashboardView', dashboardView);
   Alpine.data('bucketsView', bucketsView);
   Alpine.data('bucketSettingsView', bucketSettingsView);
