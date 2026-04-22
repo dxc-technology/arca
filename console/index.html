@@ -61,8 +61,11 @@
   <!-- Markdown rendering -->
   <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
 
-  <!-- App module (registers Alpine.data before Alpine initializes) -->
-  <script type="module" src="/js/app.js"></script>
+  <!-- App module (registers Alpine.data before Alpine initializes).
+       The ?v=... query param is fingerprinted per console version so browser
+       caches never pin stale code across console upgrades. Keep this in sync
+       with window.ARCA_CONSOLE_VERSION above. -->
+  <script type="module" src="/js/app.js?v=0.21.0"></script>
 
   <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -437,7 +440,7 @@
 
           <div>
             <label class="block text-xs font-medium text-vault-muted mb-1.5 uppercase tracking-wider">Secret Access Key</label>
-            <input type="password" x-model="loginForm.secretKey" required autocomplete="current-password"
+            <input x-password-toggle type="password" x-model="loginForm.secretKey" required autocomplete="current-password"
               placeholder="wJalrXUtnFEMI/..."
               class="w-full px-3.5 py-2.5 rounded-lg bg-vault-card border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition text-sm font-mono">
           </div>
@@ -1363,7 +1366,7 @@
                         </div>
                         <div>
                           <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Auth Token <span class="normal-case text-vault-muted/50">(optional, sent as Bearer token)</span></label>
-                          <input type="password" x-model="editForm.auth_token" placeholder="Bearer authentication token" autocomplete="new-password"
+                          <input x-password-toggle type="password" x-model="editForm.auth_token" placeholder="Bearer authentication token" autocomplete="new-password"
                             class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
                         </div>
                         <div>
@@ -1393,7 +1396,7 @@
                         </div>
                         <div>
                           <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Password <span class="normal-case text-vault-muted/50">(optional)</span></label>
-                          <input type="password" x-model="editForm.password" placeholder="Redis AUTH password" autocomplete="new-password"
+                          <input x-password-toggle type="password" x-model="editForm.password" placeholder="Redis AUTH password" autocomplete="new-password"
                             class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
                         </div>
                       </div>
@@ -1414,7 +1417,7 @@
                         </div>
                         <div>
                           <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Token <span class="normal-case text-vault-muted/50">(optional)</span></label>
-                          <input type="password" x-model="editForm.token" placeholder="NATS auth token" autocomplete="new-password"
+                          <input x-password-toggle type="password" x-model="editForm.token" placeholder="NATS auth token" autocomplete="new-password"
                             class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
                         </div>
                         <div class="grid grid-cols-2 gap-2">
@@ -1425,7 +1428,7 @@
                           </div>
                           <div>
                             <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Password <span class="normal-case text-vault-muted/50">(optional)</span></label>
-                            <input type="password" x-model="editForm.password" placeholder="Password" autocomplete="new-password"
+                            <input x-password-toggle type="password" x-model="editForm.password" placeholder="Password" autocomplete="new-password"
                               class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
                           </div>
                         </div>
@@ -1452,7 +1455,7 @@
                           </div>
                           <div>
                             <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Password <span class="normal-case text-vault-muted/50">(optional)</span></label>
-                            <input type="password" x-model="editForm.password" placeholder="Password" autocomplete="new-password"
+                            <input x-password-toggle type="password" x-model="editForm.password" placeholder="Password" autocomplete="new-password"
                               class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
                           </div>
                         </div>
@@ -1548,7 +1551,7 @@
                           </div>
                           <div>
                             <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">SASL Password <span class="normal-case text-vault-muted/50">(optional)</span></label>
-                            <input type="password" x-model="editForm.sasl_password" placeholder="Password" autocomplete="new-password"
+                            <input x-password-toggle type="password" x-model="editForm.sasl_password" placeholder="Password" autocomplete="new-password"
                               class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
                           </div>
                         </div>
@@ -1606,7 +1609,7 @@
                           </div>
                           <div>
                             <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Password <span class="normal-case text-vault-muted/50">(optional)</span></label>
-                            <input type="password" x-model="editForm.password" placeholder="Password" autocomplete="new-password"
+                            <input x-password-toggle type="password" x-model="editForm.password" placeholder="Password" autocomplete="new-password"
                               class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
                           </div>
                         </div>
@@ -1645,7 +1648,7 @@
                           </div>
                           <div>
                             <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Password</label>
-                            <input type="password" x-model="editForm.password" placeholder="Password" autocomplete="new-password"
+                            <input x-password-toggle type="password" x-model="editForm.password" placeholder="Password" autocomplete="new-password"
                               class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
                           </div>
                         </div>
@@ -1669,7 +1672,7 @@
                         </div>
                         <div>
                           <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Bearer auth token <span class="normal-case text-vault-muted/50">(optional)</span></label>
-                          <input type="password" x-model="editForm.auth_token" placeholder="Bearer authentication token" autocomplete="new-password"
+                          <input x-password-toggle type="password" x-model="editForm.auth_token" placeholder="Bearer authentication token" autocomplete="new-password"
                             class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
                         </div>
                         <div class="grid grid-cols-2 gap-2">
@@ -2052,7 +2055,7 @@
                                 </div>
                                 <div>
                                   <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Secret key</label>
-                                  <input type="password" x-model="editForm.newSecretKey" placeholder="secret (never colon-separated)" autocomplete="new-password"
+                                  <input x-password-toggle type="password" x-model="editForm.newSecretKey" placeholder="secret (never colon-separated)" autocomplete="new-password"
                                     class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs font-mono">
                                 </div>
                               </div>
