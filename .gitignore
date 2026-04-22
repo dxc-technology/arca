@@ -24,3 +24,7 @@ build/
 # Generated config and state (bin/lib/compose.sh plugin system)
 config/.generated.toml
 .arca-env
+
+# Developer-local docker-compose overrides. .env.example is committed as a
+# template; .env itself is per-machine and stays out of git.
+.env

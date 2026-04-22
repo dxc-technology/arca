@@ -6,13 +6,13 @@ services:
       dockerfile: docker/Dockerfile
       target: ${BUILD_TARGET:-production}
     ports:
-      - "9000:9000"
+      - "${ARCA_HOST_PORT:-9000}:9000"
     volumes:
       - arca-data:/data
     environment:
-      - ARCA_LOG=info
-      - ARCA_ROOT_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE
-      - ARCA_ROOT_SECRET_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+      - ARCA_LOG=${ARCA_LOG:-info}
+      - ARCA_ROOT_ACCESS_KEY=${ARCA_ROOT_ACCESS_KEY:-AKIAIOSFODNN7EXAMPLE}
+      - ARCA_ROOT_SECRET_KEY=${ARCA_ROOT_SECRET_KEY:-wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY}
 
   unit-test:
     image: arca-unit-test
@@ -43,9 +43,11 @@ services:
       context: ../console
       dockerfile: Dockerfile
     ports:
-      - "9080:80"
+      - "${CONSOLE_HOST_PORT:-9080}:80"
     environment:
-      - ARCA_ENDPOINT=http://localhost:9000
+      # Host-facing endpoint the browser talks to. Override to match ARCA_HOST_PORT
+      # (or a reverse-proxy URL) when the default 9000 is remapped.
+      - ARCA_ENDPOINT=${ARCA_CONSOLE_ENDPOINT:-http://localhost:9000}
     depends_on:
       - arca
     profiles:

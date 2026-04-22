@@ -9,13 +9,13 @@ services:
       dockerfile: docker/Dockerfile
       target: ${BUILD_TARGET:-production}
     ports:
-      - "9001:9000"
+      - "${ARCA_REPLICA_HOST_PORT:-9001}:9000"
     volumes:
       - arca-replica-data:/data
     environment:
-      - ARCA_LOG=info
-      - ARCA_ROOT_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE
-      - ARCA_ROOT_SECRET_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+      - ARCA_LOG=${ARCA_LOG:-info}
+      - ARCA_ROOT_ACCESS_KEY=${ARCA_ROOT_ACCESS_KEY:-AKIAIOSFODNN7EXAMPLE}
+      - ARCA_ROOT_SECRET_KEY=${ARCA_ROOT_SECRET_KEY:-wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY}
 
   # Integration-test client can reach both endpoints.
   test:
