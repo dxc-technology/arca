@@ -33,11 +33,11 @@ RUN cargo update -p darling --precise 0.20.10 2>/dev/null || true
 RUN cargo update -p darling_core --precise 0.20.10 2>/dev/null || true
 RUN cargo update -p darling_macro --precise 0.20.10 2>/dev/null || true
 
-# Copy real source code
+# Copy real source code. Cargo's mtime-vs-target/ tracking then rebuilds
+# only the crates whose sources actually changed since the previous layer.
+# (If the build cache ever gets stuck, clear it manually with
+# `docker builder prune` — do NOT reintroduce a blanket `touch` here.)
 COPY crates/ crates/
-
-# Touch source files to invalidate the cached build for our crates only
-RUN touch crates/*/src/*.rs
 
 # Git commit hash, passed from bin/build, baked into the binary via env!()
 ARG ARCA_GIT_COMMIT=unknown
