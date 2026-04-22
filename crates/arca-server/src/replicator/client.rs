@@ -263,17 +263,55 @@ fn base_signed_headers(
 }
 
 fn push_signed_headers(hmap: &mut HeaderMap, headers: &[(String, String)], auth: &str) {
+    // CRITICAL: any header whose value is silently dropped here (because
+    // reqwest rejects it) produces SignatureDoesNotMatch at the destination —
+    // the signer already hashed that header's value into the canonical
+    // request. Use `HeaderValue::from_bytes` which accepts non-ASCII UTF-8
+    // bytes (e.g. "naïve" in x-amz-meta-* values); the signer hashed the
+    // same bytes, so server and client agree. Header NAMES must still be
+    // valid tokens (ASCII letters/digits/hyphens), which they always are for
+    // the fixed set of headers we emit (host, x-amz-*, content-*) and for
+    // x-amz-meta-* prefixed keys sanitized upstream by arca-proto.
     for (k, v) in headers {
         if let (Ok(name), Ok(val)) = (
             reqwest::header::HeaderName::try_from(k.as_str()),
-            reqwest::header::HeaderValue::try_from(v.as_str()),
+            reqwest::header::HeaderValue::from_bytes(v.as_bytes()),
         ) {
             hmap.insert(name, val);
         }
     }
-    if let Ok(val) = reqwest::header::HeaderValue::try_from(auth) {
+    if let Ok(val) = reqwest::header::HeaderValue::from_bytes(auth.as_bytes()) {
         hmap.insert(reqwest::header::AUTHORIZATION, val);
     }
+}
+
+/// Percent-encode an object key per AWS SigV4 rules.
+///
+/// Unreserved characters (A-Z, a-z, 0-9, '-', '.', '_', '~') pass through.
+/// `/` is preserved as a path separator (AWS S3 keys can contain nested
+/// slashes — the canonical URI keeps them literal). Everything else is
+/// percent-encoded. This is the SAME encoding arca-auth applies when
+/// verifying inbound SigV4 signatures, so the canonical URI we sign here
+/// matches the one the destination server computes on receipt.
+///
+/// The critical invariant: the exact same encoded path MUST be used on
+/// BOTH the wire (what reqwest actually sends) and the canonical URI
+/// (what SigV4 signs). A space in the key silently becoming `%20` on the
+/// wire while staying a space in the signature is the classic
+/// `SignatureDoesNotMatch` footgun.
+fn encode_key_segment(key: &str) -> String {
+    let mut out = String::with_capacity(key.len() * 2);
+    for byte in key.bytes() {
+        match byte {
+            b'A'..=b'Z'
+            | b'a'..=b'z'
+            | b'0'..=b'9'
+            | b'-' | b'.' | b'_' | b'~'
+            | b'/' => out.push(byte as char),
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
 }
 
 /// Build the request URL + derive host + URI path.
@@ -295,8 +333,12 @@ fn build_url(
     let host = format!("{host_segment}{port_segment}");
 
     // Path-style addressing (safe everywhere). Endpoint may contain a base path.
+    // Bucket names obey strict S3 naming rules (lowercase letters, digits,
+    // dots, dashes) so they're always ASCII-safe; keys are not — percent-
+    // encode them before they hit the canonical URI or the wire.
     let base_path = parsed.path().trim_end_matches('/');
-    let uri_path = format!("{base_path}/{bucket}/{key}");
+    let encoded_key = encode_key_segment(key);
+    let uri_path = format!("{base_path}/{bucket}/{encoded_key}");
     let url = format!("{scheme}://{host}{uri_path}");
     Ok((url, host, uri_path))
 }
@@ -330,6 +372,78 @@ mod tests {
     #[test]
     fn build_url_rejects_invalid() {
         assert!(build_url("not-a-url", "b", "k", None).is_err());
+    }
+
+    #[test]
+    fn build_url_encodes_space_in_key() {
+        // Regression: MinIO returned SignatureDoesNotMatch when a key
+        // carried a space because the signer saw the raw path while
+        // reqwest encoded the space to %20 on the wire. Both paths must
+        // be the encoded form.
+        let (url, _host, path) = build_url(
+            "http://minio.example.com:9000",
+            "sync",
+            "Screenshot 2026-04-15 at 12.12.29.png",
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            path,
+            "/sync/Screenshot%202026-04-15%20at%2012.12.29.png"
+        );
+        assert_eq!(
+            url,
+            "http://minio.example.com:9000/sync/Screenshot%202026-04-15%20at%2012.12.29.png"
+        );
+    }
+
+    #[test]
+    fn build_url_preserves_slashes_in_key() {
+        // Nested-slash keys are fine; slashes are part of the canonical URI,
+        // not encoded.
+        let (_url, _host, path) =
+            build_url("http://host", "b", "folder/sub/file.txt", None).unwrap();
+        assert_eq!(path, "/b/folder/sub/file.txt");
+    }
+
+    #[test]
+    fn build_url_encodes_reserved_chars_in_key() {
+        // `+`, `:`, `?`, `&`, `=`, `#` all need encoding; unreserved chars
+        // `-`, `.`, `_`, `~` pass through.
+        let (_url, _host, path) =
+            build_url("http://host", "b", "a+b:c&d=e?f#g-._~.txt", None).unwrap();
+        assert_eq!(path, "/b/a%2Bb%3Ac%26d%3De%3Ff%23g-._~.txt");
+    }
+
+    #[test]
+    fn build_url_encodes_utf8_in_key() {
+        // Non-ASCII bytes get percent-encoded per UTF-8.
+        let (_url, _host, path) =
+            build_url("http://host", "b", "café.txt", None).unwrap();
+        assert_eq!(path, "/b/caf%C3%A9.txt");
+    }
+
+    #[test]
+    fn push_signed_headers_preserves_non_ascii_metadata_values() {
+        // Regression: `HeaderValue::try_from(&str)` would silently drop
+        // non-ASCII values, so x-amz-meta-* headers that made it past the
+        // signer disappeared on the wire → SignatureDoesNotMatch. Switching
+        // to from_bytes preserves the bytes; the signer hashed the same
+        // bytes, so signer and wire agree.
+        let mut hmap = HeaderMap::new();
+        push_signed_headers(
+            &mut hmap,
+            &[
+                ("host".to_string(), "replica.example.com".to_string()),
+                (
+                    "x-amz-meta-description".to_string(),
+                    "naïve café — résumé".to_string(),
+                ),
+            ],
+            "AWS4-HMAC-SHA256 Credential=...",
+        );
+        let meta = hmap.get("x-amz-meta-description").expect("metadata header preserved");
+        assert_eq!(meta.as_bytes(), "naïve café — résumé".as_bytes());
     }
 
     #[test]
