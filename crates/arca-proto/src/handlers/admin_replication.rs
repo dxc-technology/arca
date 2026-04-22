@@ -3,8 +3,13 @@
 //! Exposes:
 //! - `GET /admin/replication/journal` — list journal entries (filter, paginate).
 //! - `DELETE /admin/replication/journal` — clear every entry (confirm token).
+//! - `GET /admin/replication/credentials` — list stored destination credentials.
+//! - `GET /admin/replication/credentials/:name/usage` — preview which
+//!   replication rules (per bucket) reference a given credential.
 //! - `POST /admin/replication/credentials/:name` — upsert destination credentials.
-//! - `DELETE /admin/replication/credentials/:name` — remove a credential.
+//! - `DELETE /admin/replication/credentials/:name` — disable every rule that
+//!   references the credential, then remove it. Returns the list of rules
+//!   that were touched so the console can report what changed.
 //! - `POST /admin/replication/retry/:id` — bump a failed entry back to pending.
 //! - `POST /admin/replication/test-destination` — signed HEAD on the
 //!   destination bucket to check endpoint reachability + credentials.
@@ -66,6 +71,35 @@ pub async fn list_journal(
     })))
 }
 
+/// GET /admin/replication/credentials — list stored destination credentials.
+///
+/// Returns `[{name, access_key_id}]`. The secret is never exposed; the console
+/// only needs the name (for dropdowns) and the access key id (for display).
+pub async fn list_credentials(
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, AdminError> {
+    let entries = state
+        .server_config
+        .list_server_config()
+        .await
+        .map_err(|e| AdminError::internal(e.to_string()))?;
+    let mut creds: Vec<serde_json::Value> = entries
+        .into_iter()
+        .filter_map(|(k, v)| {
+            let name = k.strip_prefix(CREDENTIAL_PREFIX)?.to_string();
+            let ak = v.split_once(':').map(|(a, _)| a.to_string()).unwrap_or_default();
+            Some(serde_json::json!({ "name": name, "access_key_id": ak }))
+        })
+        .collect();
+    creds.sort_by(|a, b| {
+        a.get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .cmp(b.get("name").and_then(|v| v.as_str()).unwrap_or(""))
+    });
+    Ok(Json(serde_json::json!({ "credentials": creds })))
+}
+
 #[derive(Deserialize)]
 pub struct UpsertCredentialRequest {
     pub access_key_id: String,
@@ -106,18 +140,134 @@ pub async fn upsert_credential(
     Ok(Json(serde_json::json!({ "name": name, "access_key_id": body.access_key_id })))
 }
 
-/// DELETE /admin/replication/credentials/:name — remove a destination credential.
+/// GET /admin/replication/credentials/:name/usage — list rules referencing the
+/// credential across every bucket. Used by the console to show the user what
+/// will be disabled before they confirm deletion.
+pub async fn credential_usage(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Result<impl IntoResponse, AdminError> {
+    let usage = find_rules_referencing(&state, &name)
+        .await
+        .map_err(|e| AdminError::internal(e.to_string()))?;
+    Ok(Json(serde_json::json!({ "rules": usage })))
+}
+
+/// DELETE /admin/replication/credentials/:name — disable every replication rule
+/// that references this credential, then remove the credential itself.
+///
+/// Disabling instead of just removing the credential is deliberate: if we
+/// deleted the credential first, the replication worker would retry forever
+/// against a now-unresolvable credential reference. A clean `status = Disabled`
+/// leaves the rule in place (user can edit the destination and re-enable it)
+/// but stops new journal entries from firing.
 pub async fn delete_credential(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, AdminError> {
+    let disabled = disable_rules_referencing(&state, &name)
+        .await
+        .map_err(|e| AdminError::internal(e.to_string()))?;
     let key = format!("{CREDENTIAL_PREFIX}{name}");
     state
         .server_config
         .delete_server_config(&key)
         .await
         .map_err(|e| AdminError::internal(e.to_string()))?;
-    Ok(http::StatusCode::NO_CONTENT.into_response())
+    Ok(Json(serde_json::json!({ "rules_disabled": disabled })))
+}
+
+/// Scan every bucket's replication configuration and return
+/// `[{bucket, rule_id, enabled}]` for rules whose destination credential
+/// reference matches `name`. Used both by `/usage` (read-only) and as the
+/// discovery phase of the delete flow.
+async fn find_rules_referencing(
+    state: &AppState,
+    name: &str,
+) -> Result<Vec<serde_json::Value>, arca_core::error::ArcaError> {
+    let mut out = Vec::new();
+    let buckets = state.metadata.list_buckets().await?;
+    for b in buckets {
+        let raw = match state
+            .metadata
+            .get_bucket_config(&b.name, "replication_configuration")
+            .await?
+        {
+            Some(s) => s,
+            None => continue,
+        };
+        let config: arca_core::s3::replication::ReplicationConfiguration =
+            match serde_json::from_str(&raw) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+        for rule in &config.rules {
+            if rule.destination.credential_ref == name {
+                out.push(serde_json::json!({
+                    "bucket": b.name,
+                    "rule_id": rule.id,
+                    "enabled": matches!(
+                        rule.status,
+                        arca_core::s3::replication::RuleStatus::Enabled
+                    ),
+                }));
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Flip every rule using `name` to `Disabled` and persist. Returns the list of
+/// `{bucket, rule_id, was_enabled}` entries so the caller can surface what
+/// changed. Buckets with no matching rules are left untouched.
+async fn disable_rules_referencing(
+    state: &AppState,
+    name: &str,
+) -> Result<Vec<serde_json::Value>, arca_core::error::ArcaError> {
+    let mut out = Vec::new();
+    let buckets = state.metadata.list_buckets().await?;
+    for b in buckets {
+        let raw = match state
+            .metadata
+            .get_bucket_config(&b.name, "replication_configuration")
+            .await?
+        {
+            Some(s) => s,
+            None => continue,
+        };
+        let mut config: arca_core::s3::replication::ReplicationConfiguration =
+            match serde_json::from_str(&raw) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+        let mut touched = false;
+        for rule in &mut config.rules {
+            if rule.destination.credential_ref == name {
+                let was_enabled = matches!(
+                    rule.status,
+                    arca_core::s3::replication::RuleStatus::Enabled
+                );
+                if was_enabled {
+                    rule.status = arca_core::s3::replication::RuleStatus::Disabled;
+                    touched = true;
+                }
+                out.push(serde_json::json!({
+                    "bucket": b.name,
+                    "rule_id": rule.id,
+                    "was_enabled": was_enabled,
+                }));
+            }
+        }
+        if touched {
+            let new_json = serde_json::to_string(&config)
+                .map_err(|e| arca_core::error::ArcaError::Internal(e.to_string()))?;
+            state
+                .metadata
+                .set_bucket_config(&b.name, "replication_configuration", &new_json)
+                .await?;
+        }
+    }
+    Ok(out)
 }
 
 /// POST /admin/replication/retry/:id — reset a failed/pending entry so the

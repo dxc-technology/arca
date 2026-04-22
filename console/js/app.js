@@ -11,7 +11,7 @@ import { settingsView } from './views/settings.js';
 import { auditView } from './views/audit.js';
 import { monitoringView } from './views/monitoring.js';
 import { notificationsView, bucketNotificationEditor } from './views/notifications.js';
-import { replicationView, bucketReplicationEditor } from './views/replication.js';
+import { replicationView, bucketReplicationEditor, replicationCredentials } from './views/replication.js?v=repl-creds-4';
 
 // ==================== SHARED SVG ICONS ====================
 // Centralized SVG strings for consistent use across views.
@@ -307,4 +307,5 @@ document.addEventListener('alpine:init', () => {
   Alpine.data('bucketNotificationEditor', bucketNotificationEditor);
   Alpine.data('replicationView', replicationView);
   Alpine.data('bucketReplicationEditor', bucketReplicationEditor);
+  Alpine.data('replicationCredentials', replicationCredentials);
 });

@@ -164,6 +164,14 @@ pub fn build_router(state: AppState) -> Router {
                 .delete(admin_replication::clear_journal),
         )
         .route(
+            "/replication/credentials",
+            get(admin_replication::list_credentials),
+        )
+        .route(
+            "/replication/credentials/{name}/usage",
+            get(admin_replication::credential_usage),
+        )
+        .route(
             "/replication/credentials/{name}",
             post(admin_replication::upsert_credential)
                 .delete(admin_replication::delete_credential),

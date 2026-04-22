@@ -65,7 +65,7 @@
        The ?v=... query param is fingerprinted per console version so browser
        caches never pin stale code across console upgrades. Keep this in sync
        with window.ARCA_CONSOLE_VERSION above. -->
-  <script type="module" src="/js/app.js?v=0.21.0-repl-retention"></script>
+  <script type="module" src="/js/app.js?v=0.21.0-repl-creds-5"></script>
 
   <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -1999,7 +1999,7 @@
                               <div class="flex items-center gap-2">
                                 <input type="text" x-model="editForm.credentialRef" placeholder="credential name (e.g. replica-creds)" autocomplete="off"
                                   class="flex-1 px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs font-mono">
-                                <button type="button" @click="editForm.newCredentialMode = false; editForm.credentialRef = knownCredentialRefs[0] || ''"
+                                <button type="button" @click="editForm.newCredentialMode = false; editForm.credentialRef = knownCredentialRefs.length === 1 ? knownCredentialRefs[0] : ''"
                                   class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-vault-muted border border-vault-border hover:text-vault-text transition">
                                   Use existing
                                 </button>
@@ -4361,7 +4361,153 @@
 
         <!-- ==================== REPLICATION ==================== -->
         <template x-if="view === 'replication'">
-          <div class="p-6 max-w-7xl" x-data="replicationView" x-init="init()" @destroy="destroy()">
+          <div class="p-6 max-w-7xl">
+
+            <!-- Destination credentials card (global, shared across buckets). -->
+            <div class="glass rounded-xl p-5 mb-6" x-data="replicationCredentials" x-init="init()">
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div>
+                  <h2 class="text-xl font-semibold tracking-tight">Destination credentials</h2>
+                  <p class="text-xs text-vault-muted mt-0.5">AWS-style access key pairs reused by replication rules across every bucket. Secrets are write-only — they never leave the server.</p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button @click="load()" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-vault-muted hover:text-vault-text border border-vault-border/30 hover:border-vault-border/60 transition" title="Reload">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182"/></svg>
+                    Reload
+                  </button>
+                  <button @click="openAdd()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-vault-accent/10 text-vault-accent border border-vault-accent/30 hover:bg-vault-accent/20 transition">+ New credential</button>
+                </div>
+              </div>
+
+              <div x-show="loading" class="flex justify-center py-6">
+                <svg class="animate-spin h-5 w-5 text-vault-accent" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+              </div>
+
+              <div x-show="!loading && error" class="rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 px-3 py-2 text-xs" x-text="error"></div>
+
+              <div x-show="!loading && !error && credentials.length === 0" class="text-xs text-vault-muted italic px-1 py-2">
+                No destination credentials stored yet. Add one to make it selectable when creating a replication rule on any bucket.
+              </div>
+
+              <div x-show="!loading && !error && credentials.length > 0" class="rounded-lg border border-vault-border/30 overflow-hidden">
+                <table class="w-full text-sm">
+                  <thead class="text-[11px] uppercase tracking-wider text-vault-muted border-b border-vault-border/30">
+                    <tr>
+                      <th class="text-left px-3 py-2 font-medium">Name</th>
+                      <th class="text-left px-3 py-2 font-medium">Access key ID</th>
+                      <th class="text-right px-3 py-2 font-medium w-20">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template x-for="cred in credentials" :key="cred.name">
+                      <tr class="border-b border-vault-border/10 last:border-b-0 hover:bg-white/[0.02] transition">
+                        <td class="px-3 py-2 font-mono text-xs text-vault-text" x-text="cred.name"></td>
+                        <td class="px-3 py-2 font-mono text-xs text-vault-muted" x-text="cred.access_key_id"></td>
+                        <td class="px-3 py-2 text-right">
+                          <button @click="askDelete(cred)" class="p-1 rounded-lg text-red-400/70 hover:text-red-400 hover:bg-red-500/10 transition" title="Delete credential">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"/></svg>
+                          </button>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Add credential modal -->
+              <template x-teleport="body">
+                <div x-show="showAddModal" x-transition.opacity class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="showAddModal = false" x-cloak>
+                  <div class="glass rounded-xl p-6 w-full max-w-md mx-4" @click.stop>
+                    <h3 class="text-lg font-semibold mb-1">New destination credential</h3>
+                    <p class="text-xs text-vault-muted mb-4">Pick a short, memorable name (used as a reference in replication rules). The secret is stored server-side and never returned.</p>
+                    <div class="space-y-3">
+                      <div>
+                        <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Name</label>
+                        <input type="text" x-model="addForm.name" placeholder="replica-creds" autocomplete="off" class="w-full mt-0.5 px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs font-mono">
+                      </div>
+                      <div>
+                        <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Access key ID</label>
+                        <input type="text" x-model="addForm.access_key_id" placeholder="AKIA..." autocomplete="off" class="w-full mt-0.5 px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs font-mono">
+                      </div>
+                      <div>
+                        <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Secret access key</label>
+                        <input x-password-toggle type="password" x-model="addForm.secret_access_key" placeholder="secret (no colons)" autocomplete="new-password" class="w-full mt-0.5 px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs font-mono">
+                      </div>
+                      <div x-show="addError" class="rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 px-3 py-2 text-xs" x-text="addError"></div>
+                    </div>
+                    <div class="flex justify-end gap-2 mt-5">
+                      <button @click="showAddModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                      <button @click="saveAdd()" :disabled="adding" class="px-4 py-2 rounded-lg bg-vault-accent/20 text-vault-accent border border-vault-accent/30 text-sm font-medium hover:bg-vault-accent/30 transition disabled:opacity-40" x-text="adding ? 'Saving…' : 'Save credential'"></button>
+                    </div>
+                  </div>
+                </div>
+              </template>
+
+              <!-- Delete credential modal -->
+              <template x-teleport="body">
+                <div x-show="showDeleteModal" x-transition.opacity class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="showDeleteModal = false" x-cloak>
+                  <div class="glass rounded-xl p-6 w-full max-w-md mx-4" @click.stop>
+                    <h3 class="text-lg font-semibold mb-2 text-red-400">Delete credential</h3>
+
+                    <!-- Loading state -->
+                    <div x-show="loadingUsage" class="flex items-center gap-2 text-sm text-vault-muted mb-4">
+                      <svg class="animate-spin h-4 w-4 text-vault-accent" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                      <span>Checking which rules reference this credential…</span>
+                    </div>
+
+                    <!-- No rules reference it -->
+                    <template x-if="!loadingUsage && Array.isArray(deleteUsage) && deleteUsage.length === 0">
+                      <p class="text-sm text-vault-muted mb-4">
+                        No replication rule references <span class="font-mono text-vault-text" x-text="deleteTarget?.name"></span>. Deleting it now is safe.
+                      </p>
+                    </template>
+
+                    <!-- Rules reference it -->
+                    <template x-if="!loadingUsage && Array.isArray(deleteUsage) && deleteUsage.length > 0">
+                      <div class="mb-4 space-y-3">
+                        <p class="text-sm text-vault-muted">
+                          <span class="font-mono text-vault-text" x-text="deleteTarget?.name"></span> is currently referenced by
+                          <span class="text-vault-text font-medium" x-text="deleteUsage.length + ' rule' + (deleteUsage.length === 1 ? '' : 's')"></span>
+                          across
+                          <span class="text-vault-text font-medium" x-text="deleteUsageBuckets.length + ' bucket' + (deleteUsageBuckets.length === 1 ? '' : 's')"></span>.
+                        </p>
+                        <p class="text-sm text-vault-muted">
+                          To prevent the worker from retrying deliveries forever against a missing credential,
+                          <span class="text-amber-400 font-medium" x-text="deleteUsageEnabledCount + ' enabled rule' + (deleteUsageEnabledCount === 1 ? '' : 's')"></span>
+                          will be disabled before the credential is removed. You can re-enable them later, after pointing the destination at a different credential.
+                        </p>
+                        <div class="rounded-lg border border-vault-border/30 bg-vault-bg/50 px-3 py-2 max-h-40 overflow-y-auto text-xs font-mono text-vault-muted space-y-1">
+                          <template x-for="r in deleteUsage" :key="r.bucket + '/' + r.rule_id">
+                            <div class="flex items-center justify-between gap-2">
+                              <span class="truncate" x-text="r.bucket + ' / ' + r.rule_id"></span>
+                              <span class="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded border"
+                                :class="r.enabled
+                                  ? 'border-amber-500/40 text-amber-400 bg-amber-500/10'
+                                  : 'border-vault-border/40 text-vault-muted bg-vault-bg'"
+                                x-text="r.enabled ? 'will be disabled' : 'already disabled'"></span>
+                            </div>
+                          </template>
+                        </div>
+                      </div>
+                    </template>
+
+                    <!-- Usage lookup failed (shouldn't happen often, but the backend still works) -->
+                    <template x-if="!loadingUsage && deleteUsage === null">
+                      <p class="text-sm text-vault-muted mb-4">
+                        Couldn't check which rules reference this credential. Deleting will still disable any affected rules server-side — deliveries won't retry against a missing credential.
+                      </p>
+                    </template>
+
+                    <div class="flex gap-3 justify-end">
+                      <button @click="showDeleteModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                      <button @click="confirmDelete()" :disabled="deleting || loadingUsage" class="px-4 py-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 text-sm font-medium hover:bg-red-500/30 transition disabled:opacity-30" x-text="deleting ? 'Deleting…' : 'Delete'"></button>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+
+          <div x-data="replicationView" x-init="init()" @destroy="destroy()">
             <!-- Header -->
             <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
               <div class="flex items-center gap-2">
@@ -4691,7 +4837,8 @@
                 </div>
               </div>
             </div>
-          </div>
+          </div> <!-- /replicationView scope -->
+          </div> <!-- /outer p-6 max-w-7xl -->
         </template>
 
         <!-- ==================== SETTINGS ==================== -->

@@ -298,10 +298,35 @@ export function bucketReplicationEditor() {
     testing: false,
     testResult: null,  // null | { success: bool, message: string }
 
+    // Global credential list, fetched from GET /admin/replication/credentials
+    // every time the modal opens so dropdown reflects server state — not the
+    // stale set of refs currently wired up on existing rules.
+    globalCredentials: [],
+    // Distinguishes "admin API returned an empty list" (authoritative: zero
+    // creds stored) from "call failed / non-admin user" (fall back to inferring
+    // from this bucket's rules). Without this flag, both cases collapse into
+    // `globalCredentials.length === 0` and we can't tell them apart.
+    globalCredentialsLoaded: false,
+
     get knownCredentialRefs() {
+      if (this.globalCredentialsLoaded) {
+        return this.globalCredentials.map(c => c.name);
+      }
       const set = new Set();
       for (const r of this.rules) if (r.credentialRef) set.add(r.credentialRef);
       return [...set].sort();
+    },
+
+    async loadGlobalCredentials() {
+      try {
+        const data = await api.adminGet('/replication/credentials');
+        this.globalCredentials = (data && data.credentials) || [];
+        this.globalCredentialsLoaded = true;
+      } catch {
+        // Non-admin user or API unavailable — fall back to in-rule inference.
+        this.globalCredentials = [];
+        this.globalCredentialsLoaded = false;
+      }
     },
 
     async load(bucket) {
@@ -435,9 +460,15 @@ export function bucketReplicationEditor() {
       return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     },
 
-    openAddModal() {
+    async openAddModal() {
       this.modalMode = 'add';
       this.editingIndex = -1;
+      await this.loadGlobalCredentials();
+      // With 0 credentials stored we drop straight into the "+ New" inline
+      // flow. With exactly 1, pre-selecting it is an unambiguous convenience.
+      // With 2+, force an explicit choice so the user can't ship a rule
+      // against the wrong destination by accident.
+      const refs = this.knownCredentialRefs;
       this.editForm = {
         id: 'rule-' + Math.random().toString(36).slice(2, 8),
         status: 'Enabled',
@@ -447,8 +478,8 @@ export function bucketReplicationEditor() {
         destBucket: '',
         destEndpoint: '',
         destRegion: 'us-east-1',
-        credentialRef: this.knownCredentialRefs[0] || '',
-        newCredentialMode: this.knownCredentialRefs.length === 0,
+        credentialRef: refs.length === 1 ? refs[0] : '',
+        newCredentialMode: refs.length === 0,
         newAccessKey: '',
         newSecretKey: '',
         deleteMarkers: true,
@@ -459,10 +490,11 @@ export function bucketReplicationEditor() {
       this.showModal = true;
     },
 
-    openEditModal(idx) {
+    async openEditModal(idx) {
       const r = this.rules[idx];
       this.modalMode = 'edit';
       this.editingIndex = idx;
+      await this.loadGlobalCredentials();
       this.editForm = {
         id: r.id,
         status: r.status,
@@ -714,6 +746,159 @@ export function bucketReplicationEditor() {
       return status === 'Enabled'
         ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25'
         : 'bg-vault-border/30 text-vault-muted hover:bg-vault-border/50';
+    },
+  };
+}
+
+// ==================== DESTINATION CREDENTIALS (GLOBAL) ====================
+// Small card sitting above the Replication Journal. Lists every stored
+// destination credential (server_config keys prefixed `replication.credentials.`)
+// and lets admins add / delete them directly, so credential ownership is no
+// longer implicit — it's not something only created inline when defining a
+// rule, and it can be reused across buckets.
+export function replicationCredentials() {
+  return {
+    credentials: [],
+    loading: true,
+    error: '',
+
+    // Add modal
+    showAddModal: false,
+    adding: false,
+    addError: '',
+    addForm: { name: '', access_key_id: '', secret_access_key: '' },
+
+    // Delete modal
+    showDeleteModal: false,
+    deleting: false,
+    deleteTarget: null,
+    // Usage info fetched lazily from /admin/replication/credentials/:name/usage
+    // before we show the delete-confirmation modal, so the copy can be
+    // specific ("3 rules across 2 buckets will be disabled") rather than
+    // vague ("some things will break").
+    deleteUsage: null,
+    loadingUsage: false,
+
+    async load() {
+      this.loading = true;
+      this.error = '';
+      try {
+        const data = await api.adminGet('/replication/credentials');
+        this.credentials = (data && data.credentials) || [];
+      } catch (e) {
+        this.error = e.message || 'Failed to load credentials';
+        this.credentials = [];
+      }
+      this.loading = false;
+    },
+
+    init() { this.load(); },
+
+    openAdd() {
+      this.addForm = { name: '', access_key_id: '', secret_access_key: '' };
+      this.addError = '';
+      this.showAddModal = true;
+    },
+
+    async saveAdd() {
+      const f = this.addForm;
+      if (!f.name) { this.addError = 'Credential name is required'; return; }
+      if (!/^[A-Za-z0-9_.-]+$/.test(f.name)) {
+        this.addError = 'Name must contain only letters, digits, dot, dash, underscore';
+        return;
+      }
+      if (!f.access_key_id || !f.secret_access_key) {
+        this.addError = 'Access key ID and secret are both required';
+        return;
+      }
+      if (f.secret_access_key.includes(':')) {
+        this.addError = 'Secret must not contain a colon (storage uses ":" as separator)';
+        return;
+      }
+      this.addError = '';
+      this.adding = true;
+      try {
+        const resp = await api.adminPost('/replication/credentials/' + encodeURIComponent(f.name), {
+          access_key_id: f.access_key_id,
+          secret_access_key: f.secret_access_key,
+        });
+        if (!resp.ok) {
+          const txt = await resp.text();
+          throw new Error(txt || `Error ${resp.status}`);
+        }
+        this.showAddModal = false;
+        await this.load();
+      } catch (e) {
+        this.addError = e.message || 'Could not save credential';
+      }
+      this.adding = false;
+    },
+
+    async askDelete(cred) {
+      this.deleteTarget = cred;
+      this.deleteUsage = null;
+      this.loadingUsage = true;
+      this.showDeleteModal = true;
+      try {
+        const data = await api.adminGet('/replication/credentials/' + encodeURIComponent(cred.name) + '/usage');
+        this.deleteUsage = (data && data.rules) || [];
+      } catch {
+        // If the usage lookup fails we still let the user proceed — the
+        // backend will do the right thing (disable first, then delete)
+        // regardless of what we showed in the modal.
+        this.deleteUsage = null;
+      }
+      this.loadingUsage = false;
+    },
+
+    // Counts rules that are currently Enabled. The modal shows this so the
+    // user knows how many rules will actually flip to Disabled (rules that
+    // were already Disabled don't change).
+    get deleteUsageEnabledCount() {
+      if (!Array.isArray(this.deleteUsage)) return 0;
+      return this.deleteUsage.filter(r => r.enabled).length;
+    },
+
+    get deleteUsageBuckets() {
+      if (!Array.isArray(this.deleteUsage)) return [];
+      return [...new Set(this.deleteUsage.map(r => r.bucket))];
+    },
+
+    async confirmDelete() {
+      if (!this.deleteTarget) return;
+      this.deleting = true;
+      try {
+        const resp = await api.adminDelete('/replication/credentials/' + encodeURIComponent(this.deleteTarget.name));
+        if (!resp.ok && resp.status !== 204 && resp.status !== 404) {
+          const txt = await resp.text();
+          throw new Error(txt || `Error ${resp.status}`);
+        }
+        // DELETE returns `{rules_disabled: [...]}` (flat list across all
+        // buckets). Surface it in a toast so the user sees exactly what
+        // changed — otherwise the side effect is invisible.
+        let disabledCount = 0;
+        try {
+          const body = await resp.json();
+          if (body && Array.isArray(body.rules_disabled)) {
+            disabledCount = body.rules_disabled.filter(r => r.was_enabled).length;
+          }
+        } catch {
+          /* 204 or empty body — no summary to surface */
+        }
+        if (disabledCount > 0) {
+          this.$dispatch('show-toast', {
+            message: `Credential deleted. ${disabledCount} replication rule${disabledCount === 1 ? '' : 's'} disabled.`,
+            type: 'success',
+          });
+        }
+        this.showDeleteModal = false;
+        this.deleteTarget = null;
+        this.deleteUsage = null;
+        await this.load();
+      } catch (e) {
+        this.$dispatch('show-toast', { message: 'Delete failed: ' + e.message, type: 'error' });
+      }
+      this.deleting = false;
     },
   };
 }
