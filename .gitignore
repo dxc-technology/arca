@@ -25,6 +25,8 @@ build/
 config/.generated.toml
 .arca-env
 
-# Developer-local docker-compose overrides. .env.example is committed as a
-# template; .env itself is per-machine and stays out of git.
-.env
+# Developer-local docker-compose overrides. docker/.env.example is committed
+# as a template; docker/.env itself is per-machine and stays out of git.
+# Compose V2 loads .env from the project directory (where the compose file
+# lives), not from the shell's CWD — so it must sit next to the compose files.
+docker/.env
