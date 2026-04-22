@@ -206,6 +206,23 @@ Selecting **SMTP** reveals the e-mail delivery fields. The destination URL is `s
 
 Selecting **gRPC** reveals the Notify-RPC form. The destination URL is `http://host:port` (h2c) or `https://host:port` (TLS). An optional **Bearer auth token** is forwarded as gRPC metadata, a **Domain name** override controls the TLS SNI, **Insecure** skips certificate verification for test servers, and a **CA certificate** textarea lets you trust a self-signed PEM CA.
 
+### Replication
+
+The Replication card configures asynchronous, per-rule cross-instance replication to any S3-compatible destination (another Arca, AWS S3, MinIO, …). Replication is an AWS Cross-Region Replication (CRR) style feature: **versioning must be enabled on the source bucket**. If it isn't, the card shows an amber "Versioning required" banner with an inline "Enable versioning" link that scrolls to the Versioning card.
+
+Each rule is a tuple of:
+
+- **Rule ID** and **priority** — auto-generated for new rules; priority breaks ties when multiple rules match the same object.
+- **Prefix filter** — replicate only objects whose key starts with the given prefix. Optional.
+- **Tag filter** — replicate only objects that carry every specified tag (matches MinIO / AWS CRR tag-filter semantics). Optional.
+- **Destination** — target bucket name, region, and endpoint URL. When the endpoint looks like another Arca instance, a subtle emerald "Loop prevention active" hint appears under the URL.
+- **Destination credential** — a pointer into the global destination-credential table (see [Destination credentials](#destination-credentials) below). The dropdown lists every credential stored on the server; click **+ New** in the modal for an inline create flow if you don't want to leave the bucket settings page.
+- **Replicate delete markers** — toggles `DeleteMarkerReplication`. Enabled by default.
+
+Click the **Test** button in the destination section to probe the endpoint: Arca runs a signed `HEAD` on the destination bucket using the selected credentials and reports the HTTP status (200/3xx = reachable; 404 = endpoint works but bucket missing; 403 = signature rejected; network error = unreachable). The response includes the destination's `Server` header, so if the target is another Arca the console confirms loop prevention applies.
+
+Rule rows in the list display a `source ➜ destination` flow with a small accent arrow, chips for any tag-filter entries, and an inline Enabled/Disabled toggle. Disabled rules stop firing new journal entries but stay in the configuration so you can edit and re-enable them later.
+
 ### Danger Zone
 
 - **Delete this bucket** — permanently removes the bucket. Requires typing the bucket name to confirm. The bucket must be empty.
@@ -466,6 +483,41 @@ Click any row to open a slide-in detail panel on the right showing all fields: e
 ### Clear Events
 
 The **Clear All** button opens a confirmation modal requiring you to type "CLEAR EVENTS" to delete all notification event records. This is useful for cleaning up test data or resetting the event log.
+
+## Replication
+
+The Replication view is available to **admin credentials only** (navigate to `#/replication`). It has two stacked panels: **Destination credentials** on top, and the **Replication Journal** below.
+
+### Destination credentials
+
+Destination credentials are AWS-style access key pairs reused by replication rules across every bucket. They live in the server's `server_config` table (key prefix `replication.credentials.<name>`); the access key id is displayed in the console, the secret is never returned.
+
+The table lists each stored credential (name + access key id), with a **+ New credential** button to create one and a trash icon per row to delete. Creating a credential opens a modal asking for a short name (letters, digits, dot, dash, underscore), the access key id, and the secret. The name is the reference that replication rules point at — pick something short and descriptive (e.g., `replica-prod`, `aws-backup`).
+
+**Deleting a credential is a cascading operation.** Before confirming, the modal fetches every replication rule (across every bucket) that references the credential and lists them in the dialog with a "will be disabled" / "already disabled" chip per rule. On confirm, Arca:
+
+1. Disables every referenced rule (sets `status = Disabled` on each rule in the bucket's replication configuration).
+2. Removes the credential from `server_config`.
+
+This prevents the replication worker from looping forever retrying deliveries against a vanished credential reference. The rules stay in place with their other settings (prefix, tags, destination bucket, region) so you can edit them later, point them at a different credential, and re-enable.
+
+### Replication Journal
+
+The Journal is a chronological log of every replication delivery attempt — pending, in-flight, completed, and failed. Each row shows timestamp, source bucket + key, rule ID, event type (PUT / delete marker / tag), destination, and delivery status.
+
+Filters are built into the column headers:
+
+- **Created** — date range popover with From/To datetime pickers
+- **Bucket** — checkbox dropdown with all distinct source buckets
+- **Key** — inline substring search
+- **Rule** — inline substring search for rule ID
+- **Type** — checkbox dropdown for event type (PUT / delete marker / tag)
+- **Destination** — inline substring search across endpoint and destination bucket
+- **Status** — checkbox dropdown (pending / in_flight / completed / failed), with a subtle pulse dot on `in_flight` rows
+
+Click any row to open a slide-in detail panel showing the full entry: flow summary (bucket ➜ destination), key, version id, rule id, destination endpoint and bucket, attempt count, next retry time, created/updated timestamps, last error message (if any), and the entry's internal id. Failed rows also show a **Retry delivery now** button that flips the entry back to `pending` so the worker picks it up on the next tick.
+
+Auto-refresh is on by default (30-second cycle). The **Clear All** button opens a confirmation modal requiring you to type "CLEAR JOURNAL" to delete every entry regardless of status — useful for cleaning up test data or after a destination has been permanently retired.
 
 ## Settings
 

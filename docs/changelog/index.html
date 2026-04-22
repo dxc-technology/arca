@@ -1127,7 +1127,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0220-2026-04-22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.22.0 — 2026-04-22
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.22.0 — 2026-04-22">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2253,7 +2264,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0220-2026-04-22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.22.0 — 2026-04-22
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.22.0 — 2026-04-22">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3330,7 +3352,8 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.21.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.22.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="0220-2026-04-22"><a href="https://github.com/dxc-technology/arca/compare/v0.21.0...v0.22.0">0.22.0</a> — 2026-04-22<a class="headerlink" href="#0220-2026-04-22" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Phase 28 — Replication</strong> (P3). Asynchronous cross-instance replication for disaster recovery and geographic distribution. One-way per-rule, with explicit loop prevention so users can wire up two-way mirrors by configuring symmetric rules on both sides without infinite bounce. Destination is any S3-compatible endpoint (another Arca, AWS S3, MinIO, …) and outbound requests are signed with full AWS SigV4. Versioning is required on the source bucket (AWS CRR semantics); the <code>PutBucketReplication</code> handler rejects otherwise. The per-bucket replication configuration is stored as JSON under the <code>replication_configuration</code> key in <code>bucket_config</code>.</li>
@@ -3338,13 +3361,13 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Replication worker</strong> — DB-polled, hourly-capped backoff, per-event-type dispatch (PUT / delete-marker / tag). Conflict resolution is last-writer-wins by <code>Last-Modified</code>: the worker HEADs the destination before a PUT and skips when destination is newer. Audit entries are written on every success/failure.</li>
 <li><strong>Loop prevention</strong> — every outbound request carries <code>x-amz-arca-replication-source: &lt;source_endpoint_id&gt;</code>. Receiving Arca flags the object <code>REPLICA</code> and skips journal emission. Mirror setups converge end-to-end: integration-tested with both instances pointing at each other with the same bucket name — a single PUT on the source reaches the mirror exactly once and never bounces back.</li>
 <li><strong><code>x-amz-replication-status</code> response header</strong> on <code>PutObject</code>, <code>GetObject</code>, <code>HeadObject</code>, <code>CopyObject</code>, <code>CompleteMultipartUpload</code>. Values: <code>PENDING</code> / <code>COMPLETED</code> / <code>FAILED</code> / <code>REPLICA</code>. New <code>replication_status</code> column on <code>objects</code>; <code>ObjectRecord</code> gained the field.</li>
-<li><strong>Admin API</strong>: <code>GET /admin/replication/journal</code> (filters: bucket, status, rule_id, pagination), <code>POST /admin/replication/credentials/{name}</code> + <code>DELETE /admin/replication/credentials/{name}</code> for destination-credential management (stored encrypted as <code>replication.credentials.&lt;name&gt;</code> in <code>server_config</code>), <code>POST /admin/replication/retry/{id}</code> to requeue a failed entry. <code>/admin/info</code> gained a <code>replication_enabled: bool</code>.</li>
+<li><strong>Admin API</strong>: <code>GET /admin/replication/journal</code> (filters: bucket, status, rule_id, pagination), <code>GET /admin/replication/credentials</code> (list — name + access_key_id only, secret never returned), <code>GET /admin/replication/credentials/{name}/usage</code> (list of rules referencing the credential, per bucket) and <code>POST /admin/replication/credentials/{name}</code> + <code>DELETE /admin/replication/credentials/{name}</code> for destination-credential management (stored as <code>replication.credentials.&lt;name&gt;</code> in <code>server_config</code>). Deleting a credential now disables every replication rule that references it before removing the record, so the worker can't loop forever retrying against a vanished reference — the response body lists what was touched. <code>POST /admin/replication/retry/{id}</code> to requeue a failed entry. <code>/admin/info</code> gained a <code>replication_enabled: bool</code>.</li>
 <li><strong>Outbound SigV4 signer</strong> — new <code>sign_outbound_request</code> in <code>arca-auth</code> reusing the private canonical-request helpers; round-tripped against <code>verify_request</code> in unit tests.</li>
 <li><strong><code>PutBucketReplication</code> / <code>GetBucketReplication</code> / <code>DeleteBucketReplication</code></strong> S3 handlers with Arca-flavoured XML extensions (<code>&lt;Endpoint&gt;</code>, <code>&lt;CredentialRef&gt;</code>, <code>&lt;Region&gt;</code> alongside the standard <code>&lt;Bucket&gt;</code>). New <code>ReplicationConfigurationNotFoundError</code> S3 error code.</li>
 <li><strong><code>[replication]</code> TOML section</strong>: <code>poll_interval_seconds</code> (default 15), <code>batch_size</code> (100), <code>max_retries</code> (10), <code>retry_base_seconds</code> (5), <code>request_timeout_seconds</code> (60), <code>source_endpoint_id</code> (loop-prevention identifier), <code>journal_retention_days</code> (30) and <code>journal_max_age_days</code> (90). The last two feed the existing retention worker so <code>completed</code> rows are pruned after 30 days and the table is hard-capped at 90 regardless of status, keeping the journal bounded even during an extended destination outage.</li>
 <li><strong>Docker replication test mode</strong> — <code>docker-compose.replication.yml</code> boots a second <code>arca-replica</code> instance on <code>:9001</code>; <code>bin/arca start --replication</code> starts both; <code>bin/test replication</code> runs the full integration suite (two-instance boto3 harness). 4 new boto3 integration tests covering basic PUT replication, delete-marker propagation, tag replication, and the two-way mirror no-loop invariant.</li>
 <li><strong>(Console)</strong> Per-bucket <strong>Replication</strong> card under Bucket Settings (between Event Notifications and Danger Zone). Amber "Versioning required" banner with an inline "Enable versioning" link that smooth-scrolls to the versioning card. Rule rows show a <code>source ➜ destination</code> flow with a tiny accent arrow; each rule has an inline Enabled/Disabled toggle and chips for any tag-filter entries. Modal editor auto-generates the Rule ID, emerald-bordered Status toggle, <strong>Prefix + Tag filter</strong> editor (add/remove tag rows, duplicate-key validation, serializes as <code>&lt;Prefix&gt;</code> / <code>&lt;Tag&gt;</code> / <code>&lt;And&gt;</code> as appropriate — matching AWS + MinIO semantics), Destination (Bucket + Region + Endpoint URL) with a tiny emerald "Loop prevention active" hint when the URL looks like an Arca endpoint, and a Credential Ref dropdown with an inline "+ New" flow that POSTs the credential and immediately selects it before saving the rule.</li>
-<li><strong>(Console)</strong> New admin view at <code>#/replication</code> — <strong>Replication Journal</strong>. Inline column-header filters (Created, Bucket, Key, Rule, Event Type, Destination, Status), a color-coded status chip (pending / in_flight / completed / failed) with a subtle pulse dot on <code>in_flight</code>, side detail panel with a dedicated "Flow" summary card (bucket ➜ destination, status + event-type side by side), pagination and auto-refresh every 30 s. Failed rows have a per-row "Retry" button and a "Retry delivery now" CTA inside the side panel.</li>
+<li><strong>(Console)</strong> New admin view at <code>#/replication</code> — <strong>Destination Credentials</strong> card above the <strong>Replication Journal</strong>. The credentials card lists every stored <code>replication.credentials.*</code> entry (name + access-key-id; the secret is never exposed), with a <code>+ New credential</code> modal and per-row delete confirmation. The rule-editor modal inside bucket settings pulls this global list on open, replacing the previous "infer from existing rules" behaviour. Journal: inline column-header filters (Created, Bucket, Key, Rule, Event Type, Destination, Status), a color-coded status chip (pending / in_flight / completed / failed) with a subtle pulse dot on <code>in_flight</code>, side detail panel with a dedicated "Flow" summary card (bucket ➜ destination, status + event-type side by side), pagination and auto-refresh every 30 s. Failed rows have a per-row "Retry" button and a "Retry delivery now" CTA inside the side panel.</li>
 <li><strong>(Docs)</strong> New <code>guide/replication.md</code> covering setup, the loop-prevention contract, two-way mirror configuration, destination-credential management, the journal and retry workflow. Updated <code>guide/configuration.md</code> and the CLI reference with the <code>--replication</code> flag and <code>[replication]</code> section.</li>
 </ul>
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>

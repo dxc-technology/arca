@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0] — 2026-04-22
+
 ### Added
 
 - **Phase 28 — Replication** (P3). Asynchronous cross-instance replication for disaster recovery and geographic distribution. One-way per-rule, with explicit loop prevention so users can wire up two-way mirrors by configuring symmetric rules on both sides without infinite bounce. Destination is any S3-compatible endpoint (another Arca, AWS S3, MinIO, …) and outbound requests are signed with full AWS SigV4. Versioning is required on the source bucket (AWS CRR semantics); the `PutBucketReplication` handler rejects otherwise. The per-bucket replication configuration is stored as JSON under the `replication_configuration` key in `bucket_config`.
@@ -543,7 +545,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/dxc-technology/arca/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/dxc-technology/arca/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/dxc-technology/arca/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/dxc-technology/arca/compare/v0.18.2...v0.19.0

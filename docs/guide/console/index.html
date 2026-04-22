@@ -928,6 +928,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#replication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Replication
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#danger-zone" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1322,6 +1333,45 @@
     <span class="md-ellipsis">
       
         Clear Events
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#replication_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Replication
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Replication">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#destination-credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Destination credentials
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#replication-journal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Replication Journal
       
     </span>
   </a>
@@ -2099,6 +2149,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#replication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Replication
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#danger-zone" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2505,6 +2566,45 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#replication_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Replication
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Replication">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#destination-credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Destination credentials
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#replication-journal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Replication Journal
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#settings" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2788,6 +2888,19 @@
 <h4 id="example-grpc-connector-form">Example — gRPC connector form<a class="headerlink" href="#example-grpc-connector-form" title="Permanent link">&para;</a></h4>
 <p><img alt="gRPC notification form" src="../../assets/screenshots/console-notification-grpc.png" /></p>
 <p>Selecting <strong>gRPC</strong> reveals the Notify-RPC form. The destination URL is <code>http://host:port</code> (h2c) or <code>https://host:port</code> (TLS). An optional <strong>Bearer auth token</strong> is forwarded as gRPC metadata, a <strong>Domain name</strong> override controls the TLS SNI, <strong>Insecure</strong> skips certificate verification for test servers, and a <strong>CA certificate</strong> textarea lets you trust a self-signed PEM CA.</p>
+<h3 id="replication">Replication<a class="headerlink" href="#replication" title="Permanent link">&para;</a></h3>
+<p>The Replication card configures asynchronous, per-rule cross-instance replication to any S3-compatible destination (another Arca, AWS S3, MinIO, …). Replication is an AWS Cross-Region Replication (CRR) style feature: <strong>versioning must be enabled on the source bucket</strong>. If it isn't, the card shows an amber "Versioning required" banner with an inline "Enable versioning" link that scrolls to the Versioning card.</p>
+<p>Each rule is a tuple of:</p>
+<ul>
+<li><strong>Rule ID</strong> and <strong>priority</strong> — auto-generated for new rules; priority breaks ties when multiple rules match the same object.</li>
+<li><strong>Prefix filter</strong> — replicate only objects whose key starts with the given prefix. Optional.</li>
+<li><strong>Tag filter</strong> — replicate only objects that carry every specified tag (matches MinIO / AWS CRR tag-filter semantics). Optional.</li>
+<li><strong>Destination</strong> — target bucket name, region, and endpoint URL. When the endpoint looks like another Arca instance, a subtle emerald "Loop prevention active" hint appears under the URL.</li>
+<li><strong>Destination credential</strong> — a pointer into the global destination-credential table (see <a href="#destination-credentials">Destination credentials</a> below). The dropdown lists every credential stored on the server; click <strong>+ New</strong> in the modal for an inline create flow if you don't want to leave the bucket settings page.</li>
+<li><strong>Replicate delete markers</strong> — toggles <code>DeleteMarkerReplication</code>. Enabled by default.</li>
+</ul>
+<p>Click the <strong>Test</strong> button in the destination section to probe the endpoint: Arca runs a signed <code>HEAD</code> on the destination bucket using the selected credentials and reports the HTTP status (200/3xx = reachable; 404 = endpoint works but bucket missing; 403 = signature rejected; network error = unreachable). The response includes the destination's <code>Server</code> header, so if the target is another Arca the console confirms loop prevention applies.</p>
+<p>Rule rows in the list display a <code>source ➜ destination</code> flow with a small accent arrow, chips for any tag-filter entries, and an inline Enabled/Disabled toggle. Disabled rules stop firing new journal entries but stay in the configuration so you can edit and re-enable them later.</p>
 <h3 id="danger-zone">Danger Zone<a class="headerlink" href="#danger-zone" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Delete this bucket</strong> — permanently removes the bucket. Requires typing the bucket name to confirm. The bucket must be empty.</li>
@@ -2992,6 +3105,31 @@
 <p>Click any row to open a slide-in detail panel on the right showing all fields: event name, timestamp, bucket, key, destination URL, configuration ID, delivery status, delivery attempts, last error, and the full event payload (JSON).</p>
 <h3 id="clear-events">Clear Events<a class="headerlink" href="#clear-events" title="Permanent link">&para;</a></h3>
 <p>The <strong>Clear All</strong> button opens a confirmation modal requiring you to type "CLEAR EVENTS" to delete all notification event records. This is useful for cleaning up test data or resetting the event log.</p>
+<h2 id="replication_1">Replication<a class="headerlink" href="#replication_1" title="Permanent link">&para;</a></h2>
+<p>The Replication view is available to <strong>admin credentials only</strong> (navigate to <code>#/replication</code>). It has two stacked panels: <strong>Destination credentials</strong> on top, and the <strong>Replication Journal</strong> below.</p>
+<h3 id="destination-credentials">Destination credentials<a class="headerlink" href="#destination-credentials" title="Permanent link">&para;</a></h3>
+<p>Destination credentials are AWS-style access key pairs reused by replication rules across every bucket. They live in the server's <code>server_config</code> table (key prefix <code>replication.credentials.&lt;name&gt;</code>); the access key id is displayed in the console, the secret is never returned.</p>
+<p>The table lists each stored credential (name + access key id), with a <strong>+ New credential</strong> button to create one and a trash icon per row to delete. Creating a credential opens a modal asking for a short name (letters, digits, dot, dash, underscore), the access key id, and the secret. The name is the reference that replication rules point at — pick something short and descriptive (e.g., <code>replica-prod</code>, <code>aws-backup</code>).</p>
+<p><strong>Deleting a credential is a cascading operation.</strong> Before confirming, the modal fetches every replication rule (across every bucket) that references the credential and lists them in the dialog with a "will be disabled" / "already disabled" chip per rule. On confirm, Arca:</p>
+<ol>
+<li>Disables every referenced rule (sets <code>status = Disabled</code> on each rule in the bucket's replication configuration).</li>
+<li>Removes the credential from <code>server_config</code>.</li>
+</ol>
+<p>This prevents the replication worker from looping forever retrying deliveries against a vanished credential reference. The rules stay in place with their other settings (prefix, tags, destination bucket, region) so you can edit them later, point them at a different credential, and re-enable.</p>
+<h3 id="replication-journal">Replication Journal<a class="headerlink" href="#replication-journal" title="Permanent link">&para;</a></h3>
+<p>The Journal is a chronological log of every replication delivery attempt — pending, in-flight, completed, and failed. Each row shows timestamp, source bucket + key, rule ID, event type (PUT / delete marker / tag), destination, and delivery status.</p>
+<p>Filters are built into the column headers:</p>
+<ul>
+<li><strong>Created</strong> — date range popover with From/To datetime pickers</li>
+<li><strong>Bucket</strong> — checkbox dropdown with all distinct source buckets</li>
+<li><strong>Key</strong> — inline substring search</li>
+<li><strong>Rule</strong> — inline substring search for rule ID</li>
+<li><strong>Type</strong> — checkbox dropdown for event type (PUT / delete marker / tag)</li>
+<li><strong>Destination</strong> — inline substring search across endpoint and destination bucket</li>
+<li><strong>Status</strong> — checkbox dropdown (pending / in_flight / completed / failed), with a subtle pulse dot on <code>in_flight</code> rows</li>
+</ul>
+<p>Click any row to open a slide-in detail panel showing the full entry: flow summary (bucket ➜ destination), key, version id, rule id, destination endpoint and bucket, attempt count, next retry time, created/updated timestamps, last error message (if any), and the entry's internal id. Failed rows also show a <strong>Retry delivery now</strong> button that flips the entry back to <code>pending</code> so the worker picks it up on the next tick.</p>
+<p>Auto-refresh is on by default (30-second cycle). The <strong>Clear All</strong> button opens a confirmation modal requiring you to type "CLEAR JOURNAL" to delete every entry regardless of status — useful for cleaning up test data or after a destination has been permanently retired.</p>
 <h2 id="settings">Settings<a class="headerlink" href="#settings" title="Permanent link">&para;</a></h2>
 <p><img alt="Settings" src="../../assets/screenshots/console-settings.png" /></p>
 <p>The Settings view is available to <strong>admin credentials only</strong>. It manages instance-wide configuration with a TOML &gt; database &gt; default precedence chain:</p>
