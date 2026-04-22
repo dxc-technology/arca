@@ -420,11 +420,22 @@ async fn mark_failed(
 ) {
     let attempts = entry.attempts + 1;
     let terminal = attempts >= config.max_retries;
-    let status = if terminal { "failed" } else { "failed" };
 
-    // Exponential backoff capped at 1h.
+    // Status honesty: while we still have retries left the row belongs in
+    // `pending` with a future `next_retry_at` so the worker re-picks it on
+    // the next tick past that time. Only the LAST attempt stamps `failed`
+    // — that's what "max retries exhausted, no more attempts" means. The UI
+    // "Retry" button is gated on status=='failed', so this keeps the button
+    // hidden during transient failures (the worker is already going to
+    // retry) and visible only for rows the user actually needs to nudge.
+    let status = if terminal { "failed" } else { "pending" };
+
+    // Exponential backoff capped at 1h. For terminal failures we park the
+    // row far in the future so claim_batch doesn't re-pick it. User-initiated
+    // Retry resets next_retry_at to now.
     let delay_secs = if terminal {
-        0
+        // ~1 year — effectively "never, until the user clicks Retry".
+        60 * 60 * 24 * 365
     } else {
         std::cmp::min(
             config.retry_base_seconds * (1u64 << attempts.saturating_sub(1).min(12)),
@@ -437,11 +448,11 @@ async fn mark_failed(
         .update_status(&entry.id, status, attempts, Some(&error), next_retry)
         .await
     {
-        tracing::warn!(id = %entry.id, error = %e, "replication: update_status(failed) failed");
+        tracing::warn!(id = %entry.id, error = %e, "replication: update_status({status}) failed");
     }
     if terminal {
         // Only stamp the object FAILED after the last attempt, so the client
-        // isn't briefly told "FAILED" during transient errors.
+        // isn't briefly told FAILED during transient errors.
         let obj_status = ReplicationStatus::Failed.as_header();
         if let Err(e) = store
             .set_object_replication_status(
@@ -459,6 +470,7 @@ async fn mark_failed(
         id = %entry.id,
         attempts,
         delay_secs,
+        terminal,
         error = %error,
         "replication: delivery attempt failed"
     );
