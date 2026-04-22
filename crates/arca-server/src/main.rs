@@ -298,11 +298,14 @@ async fn main() -> Result<()> {
                     .as_ref()
                     .map(|r| r.source_endpoint_id.clone())
                     .unwrap_or_else(|| "arca".to_string()),
-                replication_journal_retention_days: config
+                // Only populate when the user explicitly set `journal_retention_days`
+                // in TOML. The ReplicationConfig Default gives 30, so we can't distinguish
+                // "user chose 30" from "not set" via the struct alone — require an explicit
+                // `[replication]` section before considering it TOML-locked.
+                config_replication_retention_days: config
                     .replication
                     .as_ref()
-                    .map(|r| r.journal_retention_days)
-                    .unwrap_or(30),
+                    .map(|r| r.journal_retention_days),
                 replication_journal_max_age_days: config
                     .replication
                     .as_ref()

@@ -126,15 +126,24 @@ export function bucketSettingsView() {
     enableObjectLockConfirmName: '',
     pendingLockMode: '',
     pendingLockDays: null,
-    // Lifecycle state
+    // Lifecycle state — modal-based editor to match the notification /
+    // replication / etc. pattern.
     lifecycleRules: [],
     lifecycleLoading: false,
     lifecycleError: '',
     lifecycleSaving: false,
-    showAddRule: false,
-    editingIndex: -1,
-    editRule: null,
-    newRule: null,
+    showLifecycleModal: false,
+    lifecycleModalMode: 'add',          // 'add' | 'edit'
+    editingLifecycleIndex: -1,           // -1 when adding
+    lifecycleForm: {
+      id: '',
+      status: 'Enabled',
+      prefix: '',
+      expirationDays: '',
+      noncurrentDays: '',
+      abortUploadDays: '',
+    },
+    lifecycleFormError: '',
 
     async load() {
       const hash = window.location.hash || '';
@@ -286,32 +295,64 @@ export function bucketSettingsView() {
       this.lifecycleSaving = false;
     },
 
-    initNewRule() {
-      this.editingIndex = -1;
-      this.editRule = null;
-      this.newRule = {
-        id: '',
+    openLifecycleAddModal() {
+      this.lifecycleModalMode = 'add';
+      this.editingLifecycleIndex = -1;
+      this.lifecycleForm = {
+        id: 'rule-' + Math.random().toString(36).slice(2, 8),
         status: 'Enabled',
         prefix: '',
         expirationDays: '',
         noncurrentDays: '',
         abortUploadDays: '',
       };
-      this.showAddRule = true;
+      this.lifecycleFormError = '';
+      this.showLifecycleModal = true;
     },
 
-    cancelAddRule() {
-      this.showAddRule = false;
-      this.newRule = null;
+    openLifecycleEditModal(index) {
+      const r = this.lifecycleRules[index];
+      this.lifecycleModalMode = 'edit';
+      this.editingLifecycleIndex = index;
+      this.lifecycleForm = {
+        id: r.id || '',
+        status: r.status || 'Enabled',
+        prefix: r.prefix || '',
+        expirationDays: r.expirationDays || '',
+        noncurrentDays: r.noncurrentDays || '',
+        abortUploadDays: r.abortUploadDays || '',
+      };
+      this.lifecycleFormError = '';
+      this.showLifecycleModal = true;
     },
 
-    async addRule() {
-      if (!this.newRule) return;
-      const rule = { ...this.newRule };
-      if (!rule.id) rule.id = 'rule-' + Date.now();
-      this.lifecycleRules.push(rule);
-      this.showAddRule = false;
-      this.newRule = null;
+    closeLifecycleModal() {
+      this.showLifecycleModal = false;
+      this.editingLifecycleIndex = -1;
+      this.lifecycleFormError = '';
+    },
+
+    async saveLifecycleFromModal() {
+      const f = this.lifecycleForm;
+      if (!f.expirationDays && !f.noncurrentDays && !f.abortUploadDays) {
+        this.lifecycleFormError =
+          'At least one action is required (expiration, noncurrent version, or abort multipart).';
+        return;
+      }
+      const rule = {
+        id: f.id || 'rule-' + Date.now(),
+        status: f.status || 'Enabled',
+        prefix: f.prefix || '',
+        expirationDays: f.expirationDays || '',
+        noncurrentDays: f.noncurrentDays || '',
+        abortUploadDays: f.abortUploadDays || '',
+      };
+      if (this.editingLifecycleIndex >= 0) {
+        this.lifecycleRules[this.editingLifecycleIndex] = rule;
+      } else {
+        this.lifecycleRules.push(rule);
+      }
+      this.closeLifecycleModal();
       await this._persistRules();
     },
 
@@ -323,26 +364,6 @@ export function bucketSettingsView() {
     async toggleRuleStatus(index) {
       const rule = this.lifecycleRules[index];
       rule.status = rule.status === 'Enabled' ? 'Disabled' : 'Enabled';
-      await this._persistRules();
-    },
-
-    startEditRule(index) {
-      this.showAddRule = false;
-      this.newRule = null;
-      this.editingIndex = index;
-      this.editRule = { ...this.lifecycleRules[index] };
-    },
-
-    cancelEditRule() {
-      this.editingIndex = -1;
-      this.editRule = null;
-    },
-
-    async saveEditRule() {
-      if (!this.editRule || this.editingIndex < 0) return;
-      this.lifecycleRules[this.editingIndex] = { ...this.editRule };
-      this.editingIndex = -1;
-      this.editRule = null;
       await this._persistRules();
     },
 

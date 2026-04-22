@@ -92,9 +92,14 @@ pub struct AppState {
     /// Stable identifier for this instance used as the loop-prevention
     /// `x-amz-arca-replication-source` header on outbound replication requests.
     pub replication_source_id: String,
-    /// Journal retention cap in days (worker purges COMPLETED rows older than this).
-    pub replication_journal_retention_days: u32,
-    /// Hard cap (any status) in days for journal rows.
+    /// Replication journal retention days from the TOML config file
+    /// (locks the value, makes it read-only from the console). When absent,
+    /// the console can set it via `replication_retention_days` in server_config
+    /// with a default fallback; effective value resolves TOML > DB > default.
+    pub config_replication_retention_days: Option<u32>,
+    /// Hard cap in days for journal rows regardless of status — a safety rail
+    /// that prevents unbounded growth when a destination stays offline forever.
+    /// TOML-only; not exposed in the console.
     pub replication_journal_max_age_days: u32,
     /// Cache for per-bucket encryption config lookups (bucket -> (has_encryption, expires_at)).
     /// Avoids a DB query on every PUT/UploadPart when global encryption is disabled.

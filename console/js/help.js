@@ -215,6 +215,17 @@ export const HELP_TOPICS = {
         'Every event published through a connector is persisted to the notification_events table so operators can inspect deliveries and retries. The retention window is independent of whether delivery succeeded.' },
     ],
   },
+  'settings.retention.replication': {
+    section: 'Settings',
+    title: 'Replication journal retention',
+    hint: 'How long to keep COMPLETED replication journal entries before the worker prunes them.',
+    body: [
+      { kind: 'intro', text:
+        'The replication journal tracks every outbound delivery — pending, in-flight, completed, failed. The retention worker prunes rows in status "completed" after this many days so the journal stays manageable. Pending and in-flight rows are never pruned by this setting. Failed rows stay until the user clicks Retry or Clear All (they\'re the ones that actually need attention).' },
+      { kind: 'note', tone: 'tip', text:
+        '0 = forever. A separate hard cap (configurable only via the TOML [replication] section, default 90 days) truncates ANY row regardless of status so a permanently-offline destination can\'t blow up the table.' },
+    ],
+  },
 
   // =========================== CONSOLE PREVIEW CAPS ===========================
   'settings.preview.size': {

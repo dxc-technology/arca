@@ -119,12 +119,16 @@ pub fn spawn_retention_worker(state: &AppState) -> BackgroundWorker {
     let metrics_store: Option<Arc<dyn MetricsStore>> = state.metrics_store.clone();
     let notification_store: Option<Arc<dyn arca_core::store::NotificationStore>> =
         state.notification_store.clone();
+    let replication_store: Arc<dyn arca_core::store::ReplicationStore> =
+        state.replication_store.clone();
     let presigned_url_store: Option<Arc<dyn arca_core::store::PresignedUrlStore>> =
         state.presigned_url_store.clone();
     let server_config: Arc<dyn ServerConfigStore> = state.server_config.clone();
     let config_audit_ret = state.config_audit_retention_days;
     let config_metrics_ret = state.config_metrics_retention_days;
     let config_notif_ret = state.config_notification_retention_days;
+    let config_repl_ret = state.config_replication_retention_days;
+    let replication_max_age_days = state.replication_journal_max_age_days;
 
     BackgroundWorker::spawn_periodic(
         "retention-purge",
@@ -133,6 +137,7 @@ pub fn spawn_retention_worker(state: &AppState) -> BackgroundWorker {
             let audit_store = audit_store.clone();
             let metrics_store = metrics_store.clone();
             let notification_store = notification_store.clone();
+            let replication_store = replication_store.clone();
             let presigned_url_store = presigned_url_store.clone();
             let server_config = server_config.clone();
             async move {
@@ -220,6 +225,51 @@ pub fn spawn_retention_worker(state: &AppState) -> BackgroundWorker {
                                 )
                             }
                         }
+                    }
+                }
+
+                // Replication journal (Phase 28): prune COMPLETED rows older
+                // than `replication_retention_days` (console-managed) and, as
+                // a hard safety rail, prune ANY row older than the TOML-only
+                // `journal_max_age_days` (default 90) — this is what keeps
+                // the table bounded even if a destination is offline forever.
+                let repl_ret_days = resolve_retention(
+                    config_repl_ret,
+                    server_config.as_ref(),
+                    "replication_retention_days",
+                    30,
+                )
+                .await;
+
+                if repl_ret_days > 0 {
+                    let cutoff =
+                        chrono::Utc::now() - chrono::Duration::days(repl_ret_days as i64);
+                    match replication_store.purge_completed(cutoff).await {
+                        Ok(n) if n > 0 => tracing::info!(
+                            purged = n,
+                            "retention: purged completed replication journal entries"
+                        ),
+                        Ok(_) => {}
+                        Err(e) => tracing::warn!(
+                            error = %e,
+                            "retention: failed to purge replication journal (completed)"
+                        ),
+                    }
+                }
+
+                if replication_max_age_days > 0 {
+                    let cutoff = chrono::Utc::now()
+                        - chrono::Duration::days(replication_max_age_days as i64);
+                    match replication_store.purge_all_older(cutoff).await {
+                        Ok(n) if n > 0 => tracing::info!(
+                            purged = n,
+                            "retention: purged replication journal entries older than hard cap"
+                        ),
+                        Ok(_) => {}
+                        Err(e) => tracing::warn!(
+                            error = %e,
+                            "retention: failed to purge replication journal (hard cap)"
+                        ),
                     }
                 }
 

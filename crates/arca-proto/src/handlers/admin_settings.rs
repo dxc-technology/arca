@@ -24,6 +24,11 @@ const DEFAULT_METRICS_RETENTION_DAYS: u32 = 30;
 /// Default notification event retention in days.
 const DEFAULT_NOTIFICATION_RETENTION_DAYS: u32 = 7;
 
+/// Default replication journal retention in days (completed rows). Matches
+/// the `journal_retention_days` default in `[replication]` TOML so the
+/// console's "default" badge reflects what the worker actually uses.
+const DEFAULT_REPLICATION_RETENTION_DAYS: u32 = 30;
+
 /// Default lifecycle evaluation interval in seconds (1 hour).
 const DEFAULT_LIFECYCLE_EVALUATION_INTERVAL: u64 = 3600;
 
@@ -46,6 +51,7 @@ const KNOWN_SETTINGS: &[&str] = &[
     "audit_retention_days",
     "notification_retention_days",
     "metrics_retention_days",
+    "replication_retention_days",
     "lifecycle_evaluation_interval",
     "preview_max_size_mb",
     "preview_max_text_mb",
@@ -68,6 +74,7 @@ struct SettingsResponse {
     audit_retention_days: SettingValue,
     notification_retention_days: SettingValue,
     metrics_retention_days: SettingValue,
+    replication_retention_days: SettingValue,
     lifecycle_evaluation_interval: SettingValue,
     preview_max_size_mb: SettingValue,
     preview_max_text_mb: SettingValue,
@@ -192,6 +199,27 @@ async fn resolve_setting(
                 })
             }
         }
+        "replication_retention_days" => {
+            if let Some(days) = state.config_replication_retention_days {
+                Ok(SettingValue {
+                    value: days.to_string(),
+                    source: "config_file",
+                    readonly: true,
+                })
+            } else if let Ok(Some(val)) = state.server_config.get_server_config("replication_retention_days").await {
+                Ok(SettingValue {
+                    value: val,
+                    source: "database",
+                    readonly: false,
+                })
+            } else {
+                Ok(SettingValue {
+                    value: DEFAULT_REPLICATION_RETENTION_DAYS.to_string(),
+                    source: "default",
+                    readonly: false,
+                })
+            }
+        }
         "lifecycle_evaluation_interval" => {
             if let Ok(Some(val)) = state.server_config.get_server_config("lifecycle_evaluation_interval").await {
                 Ok(SettingValue {
@@ -265,6 +293,7 @@ pub async fn list_settings(
     let audit_retention_days = resolve_setting(&state, "audit_retention_days").await?;
     let notification_retention_days = resolve_setting(&state, "notification_retention_days").await?;
     let metrics_retention_days = resolve_setting(&state, "metrics_retention_days").await?;
+    let replication_retention_days = resolve_setting(&state, "replication_retention_days").await?;
     let lifecycle_evaluation_interval = resolve_setting(&state, "lifecycle_evaluation_interval").await?;
     let preview_max_size_mb = resolve_setting(&state, "preview_max_size_mb").await?;
     let preview_max_text_mb = resolve_setting(&state, "preview_max_text_mb").await?;
@@ -276,6 +305,7 @@ pub async fn list_settings(
         audit_retention_days,
         notification_retention_days,
         metrics_retention_days,
+        replication_retention_days,
         lifecycle_evaluation_interval,
         preview_max_size_mb,
         preview_max_text_mb,
@@ -395,7 +425,10 @@ fn validate_setting_value(key: &str, value: &str) -> Result<(), AdminError> {
             // Full validation happens when the reloader applies it.
             Ok(())
         }
-        "audit_retention_days" | "metrics_retention_days" => {
+        "audit_retention_days"
+        | "metrics_retention_days"
+        | "notification_retention_days"
+        | "replication_retention_days" => {
             let days: u32 = value.parse().map_err(|_| {
                 AdminError::bad_request(format!("{key} must be a non-negative integer"))
             })?;
@@ -485,4 +518,19 @@ pub async fn effective_metrics_retention_days(state: &AppState) -> u32 {
         }
     }
     DEFAULT_METRICS_RETENTION_DAYS
+}
+
+/// Helper: resolve the effective replication journal retention days
+/// (completed rows only — the max-age-days hard cap is TOML-only and
+/// applies to all statuses).
+pub async fn effective_replication_retention_days(state: &AppState) -> u32 {
+    if let Some(days) = state.config_replication_retention_days {
+        return days;
+    }
+    if let Ok(Some(val)) = state.server_config.get_server_config("replication_retention_days").await {
+        if let Ok(days) = val.parse::<u32>() {
+            return days;
+        }
+    }
+    DEFAULT_REPLICATION_RETENTION_DAYS
 }

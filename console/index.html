@@ -65,7 +65,7 @@
        The ?v=... query param is fingerprinted per console version so browser
        caches never pin stale code across console upgrades. Keep this in sync
        with window.ARCA_CONSOLE_VERSION above. -->
-  <script type="module" src="/js/app.js?v=0.21.0-p28-testbtn-2"></script>
+  <script type="module" src="/js/app.js?v=0.21.0-repl-retention"></script>
 
   <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -1101,7 +1101,7 @@
                 </div>
               </div>
 
-              <!-- Lifecycle Rules card -->
+              <!-- Lifecycle Rules card (modal-based editor) -->
               <div class="glass rounded-xl p-5">
                 <div class="flex items-center justify-between mb-3">
                   <div class="flex items-center gap-2">
@@ -1113,7 +1113,7 @@
                     </span>
                     <svg x-show="lifecycleSaving" class="animate-spin h-3.5 w-3.5 text-vault-accent ml-1" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                   </div>
-                  <button @click="initNewRule()" :disabled="lifecycleSaving || showAddRule"
+                  <button @click="openLifecycleAddModal()" :disabled="lifecycleSaving"
                     class="px-2.5 py-1 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/30 text-xs font-medium hover:bg-vault-accent/20 transition disabled:opacity-40">
                     + Add Rule
                   </button>
@@ -1127,127 +1127,39 @@
                   </div>
                 </template>
 
-                <template x-if="!lifecycleLoading && lifecycleRules.length === 0 && !showAddRule">
+                <template x-if="!lifecycleLoading && lifecycleRules.length === 0 && !showLifecycleModal">
                   <p class="text-xs text-vault-muted py-2">No lifecycle rules configured. Objects and incomplete uploads will not be automatically cleaned up.</p>
                 </template>
 
-                <!-- Existing rules list -->
+                <!-- Rules list (always in display mode; click opens edit modal) -->
                 <template x-for="(rule, index) in lifecycleRules" :key="index">
                   <div class="py-2.5 border-b border-vault-border/30 last:border-0">
-                    <!-- Display mode -->
-                    <template x-if="editingIndex !== index">
-                      <div class="flex items-center gap-3">
-                        <div class="flex-1 min-w-0 cursor-pointer group" @click="startEditRule(index)">
-                          <div class="flex items-center gap-2">
-                            <span class="text-sm font-medium text-vault-text truncate group-hover:text-vault-accent transition" x-text="rule.id || '(unnamed)'"></span>
-                            <button @click.stop="toggleRuleStatus(index)" :disabled="lifecycleSaving"
-                              class="text-[10px] px-1.5 py-0.5 rounded-full font-medium cursor-pointer transition"
-                              :class="rule.status === 'Enabled' ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25' : 'bg-vault-border/30 text-vault-muted hover:bg-vault-border/50'"
-                              x-text="rule.status"></button>
-                            <svg class="w-3 h-3 text-vault-muted opacity-0 group-hover:opacity-100 transition" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Z"/></svg>
-                          </div>
-                          <div class="text-[11px] text-vault-muted mt-0.5 flex flex-wrap gap-x-2">
-                            <span x-show="rule.prefix" class="inline-flex items-center gap-0.5"><span class="text-vault-muted/60">prefix:</span> <span x-text="rule.prefix"></span></span>
-                            <span x-show="rule.expirationDays" class="inline-flex items-center gap-0.5"><span class="text-vault-muted/60">expire:</span> <span x-text="rule.expirationDays + ' days'"></span></span>
-                            <span x-show="rule.noncurrentDays" class="inline-flex items-center gap-0.5"><span class="text-vault-muted/60">noncurrent:</span> <span x-text="rule.noncurrentDays + ' days'"></span></span>
-                            <span x-show="rule.abortUploadDays" class="inline-flex items-center gap-0.5"><span class="text-vault-muted/60">abort uploads:</span> <span x-text="rule.abortUploadDays + ' days'"></span></span>
-                            <span x-show="!rule.prefix && !rule.expirationDays && !rule.noncurrentDays && !rule.abortUploadDays" class="italic">no actions</span>
-                          </div>
+                    <div class="flex items-center gap-3">
+                      <div class="flex-1 min-w-0 cursor-pointer group" @click="openLifecycleEditModal(index)">
+                        <div class="flex items-center gap-2">
+                          <span class="text-sm font-medium text-vault-text truncate group-hover:text-vault-accent transition" x-text="rule.id || '(unnamed)'"></span>
+                          <button @click.stop="toggleRuleStatus(index)" :disabled="lifecycleSaving"
+                            class="text-[10px] px-1.5 py-0.5 rounded-full font-medium cursor-pointer transition"
+                            :class="rule.status === 'Enabled' ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25' : 'bg-vault-border/30 text-vault-muted hover:bg-vault-border/50'"
+                            x-text="rule.status"></button>
+                          <svg class="w-3 h-3 text-vault-muted opacity-0 group-hover:opacity-100 transition" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Z"/></svg>
                         </div>
-                        <button @click="removeRule(index)" :disabled="lifecycleSaving" class="text-vault-muted hover:text-red-400 transition p-1 flex-shrink-0" title="Remove rule">
-                          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
-                        </button>
-                      </div>
-                    </template>
-                    <!-- Edit mode -->
-                    <template x-if="editingIndex === index">
-                      <div class="p-3 rounded-lg bg-vault-bg/50 border border-vault-accent/30 space-y-2">
-                        <div class="grid grid-cols-2 gap-2">
-                          <div>
-                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Rule ID</label>
-                            <input type="text" x-model="editRule.id"
-                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
-                          </div>
-                          <div>
-                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Prefix filter</label>
-                            <input type="text" x-model="editRule.prefix" placeholder="e.g. logs/"
-                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
-                          </div>
-                        </div>
-                        <div class="grid grid-cols-3 gap-2">
-                          <div>
-                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Expire after (days)</label>
-                            <input type="number" min="1" x-model="editRule.expirationDays" placeholder="e.g. 90"
-                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
-                          </div>
-                          <div>
-                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Noncurrent (days)</label>
-                            <input type="number" min="1" x-model="editRule.noncurrentDays" placeholder="e.g. 30"
-                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
-                          </div>
-                          <div>
-                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Abort uploads (days)</label>
-                            <input type="number" min="1" x-model="editRule.abortUploadDays" placeholder="e.g. 7"
-                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
-                          </div>
-                        </div>
-                        <div class="flex justify-end gap-2 pt-1">
-                          <button @click="cancelEditRule()" class="px-3 py-1 rounded-lg text-xs text-vault-muted hover:text-vault-text transition">Cancel</button>
-                          <button @click="saveEditRule()"
-                            :disabled="!editRule.expirationDays && !editRule.noncurrentDays && !editRule.abortUploadDays"
-                            class="px-3 py-1 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/30 text-xs font-medium hover:bg-vault-accent/20 transition disabled:opacity-40">
-                            Save
-                          </button>
+                        <div class="text-[11px] text-vault-muted mt-0.5 flex flex-wrap gap-x-2">
+                          <span x-show="rule.prefix" class="inline-flex items-center gap-0.5"><span class="text-vault-muted/60">prefix:</span> <span x-text="rule.prefix"></span></span>
+                          <span x-show="rule.expirationDays" class="inline-flex items-center gap-0.5"><span class="text-vault-muted/60">expire:</span> <span x-text="rule.expirationDays + ' days'"></span></span>
+                          <span x-show="rule.noncurrentDays" class="inline-flex items-center gap-0.5"><span class="text-vault-muted/60">noncurrent:</span> <span x-text="rule.noncurrentDays + ' days'"></span></span>
+                          <span x-show="rule.abortUploadDays" class="inline-flex items-center gap-0.5"><span class="text-vault-muted/60">abort uploads:</span> <span x-text="rule.abortUploadDays + ' days'"></span></span>
+                          <span x-show="!rule.prefix && !rule.expirationDays && !rule.noncurrentDays && !rule.abortUploadDays" class="italic">no actions</span>
                         </div>
                       </div>
-                    </template>
-                  </div>
-                </template>
-
-                <!-- Add rule form -->
-                <template x-if="showAddRule">
-                  <div class="mt-3 p-3 rounded-lg bg-vault-bg/50 border border-vault-accent/30 space-y-2">
-                    <div class="grid grid-cols-2 gap-2">
-                      <div>
-                        <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Rule ID</label>
-                        <input type="text" x-model="newRule.id" placeholder="e.g. expire-logs"
-                          class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
-                      </div>
-                      <div>
-                        <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Prefix filter</label>
-                        <input type="text" x-model="newRule.prefix" placeholder="e.g. logs/"
-                          class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
-                      </div>
-                    </div>
-                    <div class="grid grid-cols-3 gap-2">
-                      <div>
-                        <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Expire after (days)</label>
-                        <input type="number" min="1" x-model="newRule.expirationDays" placeholder="e.g. 90"
-                          class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
-                      </div>
-                      <div>
-                        <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Noncurrent (days)</label>
-                        <input type="number" min="1" x-model="newRule.noncurrentDays" placeholder="e.g. 30"
-                          class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
-                      </div>
-                      <div>
-                        <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Abort uploads (days)</label>
-                        <input type="number" min="1" x-model="newRule.abortUploadDays" placeholder="e.g. 7"
-                          class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
-                      </div>
-                    </div>
-                    <div class="flex justify-end gap-2 pt-1">
-                      <button @click="cancelAddRule()" class="px-3 py-1 rounded-lg text-xs text-vault-muted hover:text-vault-text transition">Cancel</button>
-                      <button @click="addRule()"
-                        :disabled="!newRule.expirationDays && !newRule.noncurrentDays && !newRule.abortUploadDays"
-                        class="px-3 py-1 rounded-lg bg-vault-accent/10 text-vault-accent border border-vault-accent/30 text-xs font-medium hover:bg-vault-accent/20 transition disabled:opacity-40">
-                        Add
+                      <button @click="removeRule(index)" :disabled="lifecycleSaving" class="text-vault-muted hover:text-red-400 transition p-1 flex-shrink-0" title="Remove rule">
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
                       </button>
                     </div>
                   </div>
                 </template>
 
-                <template x-if="lifecycleRules.length > 0 && !showAddRule && editingIndex < 0">
+                <template x-if="lifecycleRules.length > 0">
                   <div class="flex justify-end mt-3">
                     <button @click="deleteAllLifecycleRules()" :disabled="lifecycleSaving"
                       class="text-[11px] text-red-400/70 hover:text-red-400 transition">
@@ -1257,6 +1169,65 @@
                 </template>
 
                 <p x-show="lifecycleError" x-text="lifecycleError" class="text-red-400 text-xs mt-2"></p>
+
+                <!-- Lifecycle rule editor modal (teleported to body to escape stacking contexts). -->
+                <template x-teleport="body">
+                  <div x-show="showLifecycleModal" x-transition.opacity class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="closeLifecycleModal()" @keydown.escape.window="closeLifecycleModal()">
+                    <div class="glass rounded-xl p-6 w-full max-w-xl mx-4 max-h-[85vh] overflow-y-auto" @click.stop>
+                      <h3 class="text-lg font-semibold mb-4" x-text="lifecycleModalMode === 'add' ? 'Add Lifecycle Rule' : 'Edit Lifecycle Rule'"></h3>
+
+                      <div class="space-y-3">
+                        <div class="grid grid-cols-[1fr_1fr] gap-2">
+                          <div>
+                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Rule ID</label>
+                            <input type="text" x-model="lifecycleForm.id" placeholder="rule-a1b2c3" autocomplete="off"
+                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                          </div>
+                          <div>
+                            <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Prefix filter <span class="normal-case text-vault-muted/50">(optional)</span></label>
+                            <input type="text" x-model="lifecycleForm.prefix" placeholder="e.g. logs/" autocomplete="off"
+                              class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs font-mono">
+                          </div>
+                        </div>
+
+                        <div class="pt-2 border-t border-vault-border/30">
+                          <div class="text-[10px] uppercase tracking-wider text-vault-muted/80 font-medium mb-2">Actions <span class="normal-case text-vault-muted/50">(set at least one)</span></div>
+                          <div class="grid grid-cols-3 gap-2">
+                            <div>
+                              <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Expire after <span class="normal-case text-vault-muted/50">(days)</span></label>
+                              <input type="number" min="1" x-model="lifecycleForm.expirationDays" placeholder="e.g. 90"
+                                class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                            </div>
+                            <div>
+                              <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Noncurrent <span class="normal-case text-vault-muted/50">(days)</span></label>
+                              <input type="number" min="1" x-model="lifecycleForm.noncurrentDays" placeholder="e.g. 30"
+                                class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                            </div>
+                            <div>
+                              <label class="text-[10px] uppercase tracking-wider text-vault-muted font-medium">Abort uploads <span class="normal-case text-vault-muted/50">(days)</span></label>
+                              <input type="number" min="1" x-model="lifecycleForm.abortUploadDays" placeholder="e.g. 7"
+                                class="w-full px-2.5 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 text-xs">
+                            </div>
+                          </div>
+                          <p class="text-[10px] text-vault-muted/60 mt-2 leading-relaxed">
+                            <strong>Expire</strong> removes current-version objects after N days.
+                            <strong>Noncurrent</strong> prunes prior versions N days after they stop being current (versioned buckets only).
+                            <strong>Abort uploads</strong> cleans up multipart uploads that were never completed N days after initiation.
+                          </p>
+                        </div>
+                      </div>
+
+                      <p x-show="lifecycleFormError" x-text="lifecycleFormError" class="text-red-400 text-xs mt-3"></p>
+
+                      <div class="flex gap-2 justify-end mt-5 pt-4 border-t border-vault-border/30">
+                        <button @click="closeLifecycleModal()" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                        <button @click="saveLifecycleFromModal()" :disabled="lifecycleSaving"
+                          class="px-4 py-2 rounded-lg bg-vault-accent text-vault-bg text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+                          x-text="lifecycleModalMode === 'add' ? 'Add rule' : 'Save'"></button>
+                      </div>
+                    </div>
+                  </div>
+                </template>
               </div>
 
               <!-- Event Notifications card (modal-based editor) -->
@@ -4884,6 +4855,41 @@
                             </button>
                           </div>
                           <input type="number" min="0" max="3650" :value="settings.notification_retention_days.value" @change="saveSetting('notification_retention_days', $event.target.value)"
+                            class="setting-number w-24 px-3 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm font-mono focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition text-right">
+                          <span class="text-xs text-vault-muted">days</span>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+
+                  <div class="border-t border-vault-border/20"></div>
+
+                  <!-- Replication Journal Retention -->
+                  <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div class="flex-1">
+                      <div class="flex items-center gap-2">
+                        <span class="text-sm font-medium text-vault-text">Replication Journal</span>
+                        <span x-data="helpTrigger('settings.retention.replication')" class="help-host">
+                          <button class="help-trigger" @click="show()" aria-label="About replication journal retention">?</button>
+                          <span class="help-tooltip" x-text="topic.hint"></span>
+                        </span>
+                        <span x-show="settings.replication_retention_days" :class="sourceClass(settings.replication_retention_days.source)" class="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase" x-text="sourceLabel(settings.replication_retention_days.source)"></span>
+                        <svg x-show="settings.replication_retention_days?.readonly" class="w-3.5 h-3.5 text-vault-muted" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" title="Locked by configuration file"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/></svg>
+                      </div>
+                      <div class="text-xs text-vault-muted mt-0.5">Days to keep completed replication journal entries (0 = forever)</div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <template x-if="settings.replication_retention_days?.readonly">
+                        <span class="text-sm font-mono text-vault-text bg-vault-border/20 px-3 py-1.5 rounded-lg"><span x-text="settings.replication_retention_days.value"></span> days</span>
+                      </template>
+                      <template x-if="!settings.replication_retention_days?.readonly">
+                        <div class="flex items-center gap-2">
+                          <div class="w-7 flex justify-center">
+                            <button x-show="settings.replication_retention_days.source === 'database'" x-cloak @click="resetSetting('replication_retention_days')" class="p-1.5 rounded-lg hover:bg-red-500/10 text-vault-muted hover:text-red-400 transition" title="Reset to default">
+                              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182"/></svg>
+                            </button>
+                          </div>
+                          <input type="number" min="0" max="3650" :value="settings.replication_retention_days.value" @change="saveSetting('replication_retention_days', $event.target.value)"
                             class="setting-number w-24 px-3 py-1.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm font-mono focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition text-right">
                           <span class="text-xs text-vault-muted">days</span>
                         </div>
