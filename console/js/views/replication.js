@@ -33,6 +33,9 @@ export function replicationView() {
     autoRefresh: null,
     selectedEntry: null,
     retrying: {},
+    showClearModal: false,
+    clearConfirmText: '',
+    clearing: false,
 
     // Column filters (persisted in sessionStorage)
     filterFrom: sessionStorage.getItem('repl_f_from') || '',
@@ -221,6 +224,24 @@ export function replicationView() {
       this.retrying = { ...this.retrying, [id]: false };
     },
 
+    async clearAllJournal() {
+      this.clearing = true;
+      try {
+        const resp = await api.adminDelete('/replication/journal', { confirm: 'CLEAR JOURNAL' });
+        if (!resp.ok) {
+          const body = await resp.json();
+          throw new Error(body.message || `Error ${resp.status}`);
+        }
+        this.showClearModal = false;
+        this.clearConfirmText = '';
+        this.page = 0;
+        await this.load();
+      } catch (e) {
+        this.$dispatch('show-toast', { message: 'Clear failed: ' + e.message, type: 'error' });
+      }
+      this.clearing = false;
+    },
+
     statusBadgeClass(status) { return STATUS_META[status]?.badge || 'bg-gray-500/20 text-gray-400'; },
     statusDotClass(status) { return STATUS_META[status]?.dot || 'bg-gray-400'; },
     statusShouldPulse(status) { return STATUS_META[status]?.pulse === true; },
@@ -272,6 +293,10 @@ export function bucketReplicationEditor() {
       newSecretKey: '',
       deleteMarkers: true,
     },
+
+    // Connection-test state (reset on every modal open).
+    testing: false,
+    testResult: null,  // null | { success: bool, message: string }
 
     get knownCredentialRefs() {
       const set = new Set();
@@ -429,6 +454,8 @@ export function bucketReplicationEditor() {
         deleteMarkers: true,
       };
       this.error = '';
+      this.testResult = null;
+      this.testing = false;
       this.showModal = true;
     },
 
@@ -452,6 +479,8 @@ export function bucketReplicationEditor() {
         deleteMarkers: !!r.deleteMarkers,
       };
       this.error = '';
+      this.testResult = null;
+      this.testing = false;
       this.showModal = true;
     },
 
@@ -597,12 +626,79 @@ export function bucketReplicationEditor() {
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     },
 
-    isLikelyArcaEndpoint(url) {
-      // Heuristic for UX hint only — server-side loop prevention is authoritative.
+    // Connection test — POST /admin/replication/test-destination with the
+    // current modal form values. The server does a signed HEAD on the
+    // destination bucket and returns success/status; we render the result
+    // inline under the Destination section.
+    async testDestination() {
+      const f = this.editForm;
+      this.testResult = null;
+
+      if (!f.destEndpoint) {
+        this.testResult = { success: false, message: 'Destination endpoint is required' };
+        return;
+      }
+      if (!f.destBucket) {
+        this.testResult = { success: false, message: 'Destination bucket is required' };
+        return;
+      }
+
+      // Build the request body: either inline AK/SK (new-credential mode) or
+      // a reference to a stored credential.
+      const payload = {
+        endpoint: f.destEndpoint,
+        bucket: f.destBucket,
+        region: f.destRegion || 'us-east-1',
+      };
+      if (f.newCredentialMode) {
+        if (!f.newAccessKey || !f.newSecretKey) {
+          this.testResult = {
+            success: false,
+            message: 'Access key ID and secret are required to test a new credential',
+          };
+          return;
+        }
+        payload.access_key_id = f.newAccessKey;
+        payload.secret_access_key = f.newSecretKey;
+      } else {
+        if (!f.credentialRef) {
+          this.testResult = {
+            success: false,
+            message: 'Select or create a destination credential first',
+          };
+          return;
+        }
+        payload.credential_ref = f.credentialRef;
+      }
+
+      this.testing = true;
       try {
-        const u = new URL(url);
-        return /:\d{4,5}$/.test(u.host) || /arca/i.test(u.host);
-      } catch { return false; }
+        const resp = await api.adminPost('/replication/test-destination', payload);
+        if (!resp.ok) {
+          const txt = await resp.text();
+          throw new Error(`${resp.status}: ${txt}`);
+        }
+        const data = await resp.json();
+        this.testResult = {
+          success: !!data.success,
+          message: data.status || (data.success ? 'Connected' : 'Connection failed'),
+          detail: data.error || data.response_body || null,
+          // Authoritative server identity via the destination's `Server` header.
+          // "Arca" -> loop-prevention contract applies; anything else (MinIO,
+          // AmazonS3, nginx, …) -> don't imply it does.
+          server: data.server || null,
+          isArca: !!data.is_arca,
+        };
+      } catch (e) {
+        this.testResult = {
+          success: false,
+          message: 'Test failed',
+          detail: e.message,
+          server: null,
+          isArca: false,
+        };
+      }
+      this.testing = false;
     },
 
     shortDestination(r) {

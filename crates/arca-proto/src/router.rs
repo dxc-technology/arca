@@ -158,13 +158,21 @@ pub fn build_router(state: AppState) -> Router {
         .route("/presigned-urls", get(admin_presigned_urls::list_presigned_urls))
         .route("/presigned-urls/{id}", delete(admin_presigned_urls::delete_presigned_url))
         // Replication (Phase 28)
-        .route("/replication/journal", get(admin_replication::list_journal))
+        .route(
+            "/replication/journal",
+            get(admin_replication::list_journal)
+                .delete(admin_replication::clear_journal),
+        )
         .route(
             "/replication/credentials/{name}",
             post(admin_replication::upsert_credential)
                 .delete(admin_replication::delete_credential),
         )
         .route("/replication/retry/{id}", post(admin_replication::retry_entry))
+        .route(
+            "/replication/test-destination",
+            post(admin_replication::test_destination),
+        )
         // Grant management
         .route("/grants", get(admin_grants::list_grants).post(admin_grants::create_grant))
         .route(
