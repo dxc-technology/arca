@@ -1827,7 +1827,15 @@
               </div>
 
               <!-- Replication card (Phase 28) -->
-              <div class="glass rounded-xl p-5" x-data="bucketReplicationEditor" x-init="load(bucketName)">
+              <!-- versioningEnabled mirrors the parent bucketSettingsView.versioningStatus
+                   so toggling versioning in the card above immediately unblocks / reblocks
+                   the "+ Add Rule" button without a page refresh. While the parent is still
+                   loading (its own `loading` flag — resolved via scope walk-up because this
+                   card deliberately renames its own loading flag to `rulesLoading`) we hold
+                   the child flag at null so the amber banner stays hidden. -->
+              <div class="glass rounded-xl p-5" x-data="bucketReplicationEditor"
+                   x-init="load(bucketName)"
+                   x-effect="versioningEnabled = loading ? null : (versioningStatus === 'Enabled')">
                 <div class="flex items-center justify-between mb-3">
                   <div class="flex items-center gap-2">
                     <svg class="w-4 h-4 text-vault-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/></svg>
@@ -1857,13 +1865,13 @@
                   </div>
                 </template>
 
-                <template x-if="loading">
+                <template x-if="rulesLoading">
                   <div class="flex justify-center py-4">
                     <svg class="animate-spin h-5 w-5 text-vault-accent" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                   </div>
                 </template>
 
-                <template x-if="!loading && rules.length === 0 && !showModal">
+                <template x-if="!rulesLoading && rules.length === 0 && !showModal">
                   <p class="text-xs text-vault-muted py-2">No replication rules configured. Objects will not be replicated.</p>
                 </template>
 

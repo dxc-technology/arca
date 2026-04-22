@@ -243,8 +243,13 @@ export function replicationView() {
 export function bucketReplicationEditor() {
   return {
     rules: [],
-    versioningEnabled: null,  // null while loading, true/false after
-    loading: false,
+    // Reactively mirrors the parent bucketSettingsView.versioningStatus via x-effect
+    // in index.html. `null` = parent still loading (don't show the banner yet);
+    // `true` = versioning Enabled; `false` = versioning Disabled or Suspended.
+    versioningEnabled: null,
+    // Named distinctly from the parent's `loading` so the x-effect on this card can
+    // reference parent.loading unambiguously via scope walk-up.
+    rulesLoading: false,
     saving: false,
     error: '',
     showModal: false,
@@ -275,23 +280,13 @@ export function bucketReplicationEditor() {
     },
 
     async load(bucket) {
-      this.loading = true;
+      this.rulesLoading = true;
       this.error = '';
       try {
-        // Versioning check — replication requires Enabled on the source.
-        try {
-          const vResp = await api.s3GetBucketVersioning(bucket);
-          if (vResp.ok) {
-            const vXml = await vResp.text();
-            const doc = new DOMParser().parseFromString(vXml, 'text/xml');
-            const status = doc.getElementsByTagName('Status')[0]?.textContent || '';
-            this.versioningEnabled = (status === 'Enabled');
-          } else {
-            this.versioningEnabled = false;
-          }
-        } catch {
-          this.versioningEnabled = false;
-        }
+        // versioningEnabled is driven reactively from the parent bucketSettingsView's
+        // versioningStatus via x-effect on the card (see index.html). No local fetch
+        // here, otherwise the flag would go stale if the user toggled versioning in
+        // the Versioning card without refreshing the page.
 
         const resp = await api.s3GetBucketReplication(bucket);
         if (resp.ok) {
@@ -303,7 +298,7 @@ export function bucketReplicationEditor() {
       } catch {
         this.rules = [];
       }
-      this.loading = false;
+      this.rulesLoading = false;
     },
 
     parseReplicationXml(xml) {
