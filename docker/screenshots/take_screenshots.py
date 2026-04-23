@@ -249,6 +249,72 @@ def seed_notification_data(s3):
     print("  Notification seeding complete.")
 
 
+def seed_replication_data(s3):
+    """Configure destination credentials + a replication rule for screenshots.
+
+    Creates two global replication credentials in `server_config` (so the
+    Destination Credentials card isn't empty), and attaches a replication
+    rule to the already-versioned `documents` bucket so the per-bucket card
+    and rule-editor modal both have data to render.
+    """
+    print("\n  Seeding replication data...")
+
+    import hashlib
+    from botocore.auth import S3SigV4Auth
+    from botocore.credentials import Credentials
+    from botocore.awsrequest import AWSRequest
+
+    creds = Credentials(ACCESS_KEY, SECRET_KEY)
+
+    # Two global destination credentials via /admin/replication/credentials/<name>
+    for name, ak, sk in [
+        ("replica-prod", "AKIAREPLICAEXAMPLE1", "replicaSecret1"),
+        ("aws-backup", "AKIAREPLICAEXAMPLE2", "replicaSecret2"),
+    ]:
+        body = json.dumps({"access_key_id": ak, "secret_access_key": sk})
+        url = f"{ARCA_ENDPOINT}/admin/replication/credentials/{name}"
+        req = AWSRequest(method="POST", url=url, data=body, headers={"Content-Type": "application/json"})
+        S3SigV4Auth(creds, "s3", "us-east-1").add_auth(req)
+        resp = requests.post(url, data=body, headers=dict(req.headers))
+        if resp.status_code in (200, 201):
+            print(f"  Created replication credential: {name}")
+        else:
+            print(f"  Warning: credential {name} returned {resp.status_code}: {resp.text}")
+
+    # Replication rule on 'documents' (already versioned from seed_versioning_data)
+    xml = """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<ReplicationConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">
+  <Role></Role>
+  <Rule>
+    <ID>mirror-to-replica</ID>
+    <Status>Enabled</Status>
+    <Priority>1</Priority>
+    <Filter><Prefix>reports/</Prefix></Filter>
+    <Destination>
+      <Bucket>documents-replica</Bucket>
+      <Endpoint>https://replica.example.com</Endpoint>
+      <Region>us-east-1</Region>
+      <CredentialRef>replica-prod</CredentialRef>
+    </Destination>
+    <DeleteMarkerReplication><Status>Enabled</Status></DeleteMarkerReplication>
+  </Rule>
+</ReplicationConfiguration>"""
+    url = f"{ARCA_ENDPOINT}/documents?replication"
+    content_sha = hashlib.sha256(xml.encode()).hexdigest()
+    req = AWSRequest(method="PUT", url=url, data=xml, headers={
+        "Content-Type": "application/xml",
+        "x-amz-content-sha256": content_sha,
+    })
+    S3SigV4Auth(creds, "s3", "us-east-1").add_auth(req)
+    resp = requests.put(url, data=xml, headers=dict(req.headers))
+    if resp.status_code in (200, 204):
+        print("  Configured replication rule on documents bucket")
+    else:
+        print(f"  Warning: replication config returned {resp.status_code}: {resp.text}")
+
+    print("  Replication seeding complete.")
+
+
 def seed_rbac_data():
     """Seed RBAC data (users, teams, grants) via Admin API. Returns IDs for screenshots."""
     print("\n  Seeding RBAC data...")
@@ -345,7 +411,7 @@ def take_screenshots(rbac_ids):
     """Capture screenshots of the web console using Playwright."""
     print("\n=== Phase B: Taking screenshots ===")
 
-    total = 32
+    total = 35
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     with sync_playwright() as p:
@@ -662,6 +728,54 @@ def take_screenshots(rbac_ids):
         page.wait_for_timeout(2000)
         screenshot(page, "console-notification-events.png")
 
+        # ----- 33. Replication — Destination credentials + journal landing -----
+        print(f"  33/{total} console-replication.png")
+        page.goto(f"{CONSOLE_URL}#/replication")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_selector('h2:has-text("Destination credentials")', timeout=10000)
+        page.wait_for_timeout(1500)
+        screenshot(page, "console-replication.png")
+
+        # ----- 34. Replication — Add rule modal (per-bucket) -----
+        print(f"  34/{total} console-replication-modal.png")
+        page.goto(f"{CONSOLE_URL}#/buckets/documents/settings")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_selector('h2:has-text("Bucket Settings")', timeout=10000)
+        page.wait_for_timeout(1500)
+        # Scroll so the Replication card is visible, then open Add rule.
+        page.evaluate("document.querySelector('[x-data=\"bucketReplicationEditor\"]')?.scrollIntoView({block: 'center'})")
+        page.wait_for_timeout(500)
+        page.click('[x-data="bucketReplicationEditor"] button:has-text("Add rule")')
+        page.wait_for_selector('h3:has-text("Add Replication Rule")', timeout=10000)
+        # Populate representative values so the modal isn't blank
+        page.fill('input[placeholder="destination-bucket"]', "documents-replica")
+        page.fill('input[placeholder="https://replica.example.com"]', "https://replica.example.com")
+        page.wait_for_timeout(500)
+        screenshot(page, "console-replication-modal.png")
+        # Close the visible modal. The page contains many hidden teleported
+        # modals each with their own Cancel button, so target visible only.
+        page.locator('button:visible:has-text("Cancel")').first.click()
+        page.wait_for_timeout(300)
+
+        # ----- 35. Replication — Delete-credential cascade warning -----
+        print(f"  35/{total} console-replication-delete-credential.png")
+        page.goto(f"{CONSOLE_URL}#/replication")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_selector('h2:has-text("Destination credentials")', timeout=10000)
+        page.wait_for_timeout(1000)
+        # Click the trash icon for the `replica-prod` row (the credential used
+        # by the rule we seeded on documents, so the usage preview lists it).
+        page.click('tr:has-text("replica-prod") button[title="Delete credential"]')
+        # Use a selector unique to THIS modal — 'h3:has-text("Delete credential")'
+        # collides with the user-credentials view's "Delete Credential" heading
+        # which is teleported and hidden but still matched by :has-text. Wait on
+        # the copy that only appears in the replication delete-credential modal.
+        page.wait_for_selector('text="is currently referenced by"', timeout=10000)
+        page.wait_for_timeout(1500)
+        screenshot(page, "console-replication-delete-credential.png")
+        page.locator('button:visible:has-text("Cancel")').first.click()
+        page.wait_for_timeout(300)
+
         browser.close()
 
     print("\n  All screenshots saved to", OUTPUT_DIR)
@@ -675,6 +789,7 @@ def main():
     seed_data(s3)
     seed_versioning_data(s3)
     seed_notification_data(s3)
+    seed_replication_data(s3)
     create_extra_credential()
     rbac_ids = seed_rbac_data()
     take_screenshots(rbac_ids)

@@ -210,6 +210,8 @@ Selecting **gRPC** reveals the Notify-RPC form. The destination URL is `http://h
 
 The Replication card configures asynchronous, per-rule cross-instance replication to any S3-compatible destination (another Arca, AWS S3, MinIO, …). Replication is an AWS Cross-Region Replication (CRR) style feature: **versioning must be enabled on the source bucket**. If it isn't, the card shows an amber "Versioning required" banner with an inline "Enable versioning" link that scrolls to the Versioning card.
 
+![Replication rule modal](../assets/screenshots/console-replication-modal.png)
+
 Each rule is a tuple of:
 
 - **Rule ID** and **priority** — auto-generated for new rules; priority breaks ties when multiple rules match the same object.
@@ -486,6 +488,8 @@ The **Clear All** button opens a confirmation modal requiring you to type "CLEAR
 
 ## Replication
 
+![Replication view](../assets/screenshots/console-replication.png)
+
 The Replication view is available to **admin credentials only** (navigate to `#/replication`). It has two stacked panels: **Destination credentials** on top, and the **Replication Journal** below.
 
 ### Destination credentials
@@ -494,7 +498,11 @@ Destination credentials are AWS-style access key pairs reused by replication rul
 
 The table lists each stored credential (name + access key id), with a **+ New credential** button to create one and a trash icon per row to delete. Creating a credential opens a modal asking for a short name (letters, digits, dot, dash, underscore), the access key id, and the secret. The name is the reference that replication rules point at — pick something short and descriptive (e.g., `replica-prod`, `aws-backup`).
 
-**Deleting a credential is a cascading operation.** Before confirming, the modal fetches every replication rule (across every bucket) that references the credential and lists them in the dialog with a "will be disabled" / "already disabled" chip per rule. On confirm, Arca:
+**Deleting a credential is a cascading operation.** Before confirming, the modal fetches every replication rule (across every bucket) that references the credential and lists them in the dialog with a "will be disabled" / "already disabled" chip per rule:
+
+![Delete credential cascade modal](../assets/screenshots/console-replication-delete-credential.png)
+
+On confirm, Arca:
 
 1. Disables every referenced rule (sets `status = Disabled` on each rule in the bucket's replication configuration).
 2. Removes the credential from `server_config`.
