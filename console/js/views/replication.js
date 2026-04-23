@@ -762,6 +762,11 @@ export function replicationCredentials() {
     loading: true,
     error: '',
 
+    // List modal — shown when the user clicks "Manage credentials" in the
+    // journal header. The list lives in a modal so it doesn't push the
+    // journal down as the credential count grows.
+    showListModal: false,
+
     // Add modal
     showAddModal: false,
     adding: false,
@@ -793,6 +798,13 @@ export function replicationCredentials() {
     },
 
     init() { this.load(); },
+
+    // Open the list modal, refreshing the list first so the user always sees
+    // current server state.
+    async openList() {
+      this.showListModal = true;
+      await this.load();
+    },
 
     openAdd() {
       this.addForm = { name: '', access_key_id: '', secret_access_key: '' };

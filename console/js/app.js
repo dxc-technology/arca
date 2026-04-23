@@ -11,7 +11,7 @@ import { settingsView } from './views/settings.js';
 import { auditView } from './views/audit.js';
 import { monitoringView } from './views/monitoring.js';
 import { notificationsView, bucketNotificationEditor } from './views/notifications.js';
-import { replicationView, bucketReplicationEditor, replicationCredentials } from './views/replication.js?v=repl-creds-4';
+import { replicationView, bucketReplicationEditor, replicationCredentials } from './views/replication.js?v=repl-creds-5';
 
 // ==================== SHARED SVG ICONS ====================
 // Centralized SVG strings for consistent use across views.

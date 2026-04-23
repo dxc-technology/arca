@@ -218,7 +218,7 @@ Each rule is a tuple of:
 - **Prefix filter** — replicate only objects whose key starts with the given prefix. Optional.
 - **Tag filter** — replicate only objects that carry every specified tag (matches MinIO / AWS CRR tag-filter semantics). Optional.
 - **Destination** — target bucket name, region, and endpoint URL. When the endpoint looks like another Arca instance, a subtle emerald "Loop prevention active" hint appears under the URL.
-- **Destination credential** — a pointer into the global destination-credential table (see [Destination credentials](#destination-credentials) below). The dropdown lists every credential stored on the server; click **+ New** in the modal for an inline create flow if you don't want to leave the bucket settings page.
+- **Destination credential** — a pointer into the global destination-credential table (see [Destination credentials](#destination-credentials) below). The dropdown lists every credential stored on the server; click **+ New** in the modal for an inline create flow if you don't want to leave the bucket settings page. For full lifecycle management (view, delete, or audit usage across buckets) go to the **Replication** page in the sidebar and click the **Credentials** button in the journal header.
 - **Replicate delete markers** — toggles `DeleteMarkerReplication`. Enabled by default.
 
 Click the **Test** button in the destination section to probe the endpoint: Arca runs a signed `HEAD` on the destination bucket using the selected credentials and reports the HTTP status (200/3xx = reachable; 404 = endpoint works but bucket missing; 403 = signature rejected; network error = unreachable). The response includes the destination's `Server` header, so if the target is another Arca the console confirms loop prevention applies.
@@ -490,13 +490,15 @@ The **Clear All** button opens a confirmation modal requiring you to type "CLEAR
 
 ![Replication view](../assets/screenshots/console-replication.png)
 
-The Replication view is available to **admin credentials only** (navigate to `#/replication`). It has two stacked panels: **Destination credentials** on top, and the **Replication Journal** below.
+The Replication view is available to **admin credentials only** (navigate to `#/replication`). The page shows the **Replication Journal** as its main content. A compact **Credentials** button in the journal header opens a modal for managing destination credentials, keeping the journal above the fold even when many credentials are stored.
 
 ### Destination credentials
 
+![Destination credentials modal](../assets/screenshots/console-replication-credentials.png)
+
 Destination credentials are AWS-style access key pairs reused by replication rules across every bucket. They live in the server's `server_config` table (key prefix `replication.credentials.<name>`); the access key id is displayed in the console, the secret is never returned.
 
-The table lists each stored credential (name + access key id), with a **+ New credential** button to create one and a trash icon per row to delete. Creating a credential opens a modal asking for a short name (letters, digits, dot, dash, underscore), the access key id, and the secret. The name is the reference that replication rules point at — pick something short and descriptive (e.g., `replica-prod`, `aws-backup`).
+Click the **Credentials** button in the journal header to open the management modal. The table lists each stored credential (name + access key id), with a **+ New credential** button to create one and a trash icon per row to delete. Creating a credential opens a modal asking for a short name (letters, digits, dot, dash, underscore), the access key id, and the secret. The name is the reference that replication rules point at — pick something short and descriptive (e.g., `replica-prod`, `aws-backup`).
 
 **Deleting a credential is a cascading operation.** Before confirming, the modal fetches every replication rule (across every bucket) that references the credential and lists them in the dialog with a "will be disabled" / "already disabled" chip per rule:
 

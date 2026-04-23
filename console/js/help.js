@@ -297,6 +297,8 @@ export const HELP_TOPICS = {
         { key: 'Credential ref',   text: 'Name of a credential stored in server settings. The worker signs outbound requests with these access keys.' },
         { key: 'Delete markers',   text: 'When enabled, a DeleteObject on the source creates a delete marker on the destination too.' },
       ] },
+      { kind: 'note', tone: 'info', text:
+        'Destination credentials are managed globally: open the Replication page (sidebar → Replication), then click the "Credentials" button in the journal header. Credentials created there are shared across every bucket — they appear in the "Credential ref" dropdown on every rule.' },
       { kind: 'note', tone: 'tip', text:
         'Mirror setups (A→B and B→A with the same bucket name) are loop-safe: every replicated write carries an x-amz-arca-replication-source header, and the receiver records the object as REPLICA without re-emitting it into its own journal.' },
     ],

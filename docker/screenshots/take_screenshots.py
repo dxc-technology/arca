@@ -411,7 +411,7 @@ def take_screenshots(rbac_ids):
     """Capture screenshots of the web console using Playwright."""
     print("\n=== Phase B: Taking screenshots ===")
 
-    total = 35
+    total = 36
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     with sync_playwright() as p:
@@ -728,16 +728,34 @@ def take_screenshots(rbac_ids):
         page.wait_for_timeout(2000)
         screenshot(page, "console-notification-events.png")
 
-        # ----- 33. Replication — Destination credentials + journal landing -----
+        # ----- 33. Replication — Journal landing view -----
+        # The Replication page is now journal-first: the Destination Credentials
+        # card lives inside a modal opened via the "Credentials" button in the
+        # header, so the journal stays above the fold as the credential list
+        # grows.
         print(f"  33/{total} console-replication.png")
         page.goto(f"{CONSOLE_URL}#/replication")
         page.wait_for_load_state("networkidle")
-        page.wait_for_selector('h2:has-text("Destination credentials")', timeout=10000)
+        page.wait_for_selector('h2:has-text("Replication Journal")', timeout=10000)
         page.wait_for_timeout(1500)
         screenshot(page, "console-replication.png")
 
-        # ----- 34. Replication — Add rule modal (per-bucket) -----
-        print(f"  34/{total} console-replication-modal.png")
+        # ----- 34. Replication — Destination credentials modal -----
+        print(f"  34/{total} console-replication-credentials.png")
+        # Click the "Credentials" button in the journal header to open the
+        # credentials-management modal. Select by its title attribute so
+        # it doesn't collide with the sidebar "Credentials" tab.
+        page.click('button[title="Manage destination credentials"]')
+        page.wait_for_selector('h3:has-text("Destination credentials")', timeout=10000)
+        page.wait_for_timeout(1000)
+        screenshot(page, "console-replication-credentials.png")
+        # Close modal by clicking its X button. Use :visible filter so we pick
+        # the list modal's close button, not any hidden teleported modal's.
+        page.locator('button[title="Close"]:visible').first.click()
+        page.wait_for_timeout(300)
+
+        # ----- 35. Replication — Add rule modal (per-bucket) -----
+        print(f"  35/{total} console-replication-modal.png")
         page.goto(f"{CONSOLE_URL}#/buckets/documents/settings")
         page.wait_for_load_state("networkidle")
         page.wait_for_selector('h2:has-text("Bucket Settings")', timeout=10000)
@@ -757,14 +775,16 @@ def take_screenshots(rbac_ids):
         page.locator('button:visible:has-text("Cancel")').first.click()
         page.wait_for_timeout(300)
 
-        # ----- 35. Replication — Delete-credential cascade warning -----
-        print(f"  35/{total} console-replication-delete-credential.png")
+        # ----- 36. Replication — Delete-credential cascade warning -----
+        print(f"  36/{total} console-replication-delete-credential.png")
         page.goto(f"{CONSOLE_URL}#/replication")
         page.wait_for_load_state("networkidle")
-        page.wait_for_selector('h2:has-text("Destination credentials")', timeout=10000)
+        page.wait_for_selector('h2:has-text("Replication Journal")', timeout=10000)
         page.wait_for_timeout(1000)
-        # Click the trash icon for the `replica-prod` row (the credential used
-        # by the rule we seeded on documents, so the usage preview lists it).
+        # Open credentials modal first, then click the trash icon.
+        page.click('button[title="Manage destination credentials"]')
+        page.wait_for_selector('h3:has-text("Destination credentials")', timeout=10000)
+        page.wait_for_timeout(500)
         page.click('tr:has-text("replica-prod") button[title="Delete credential"]')
         # Use a selector unique to THIS modal — 'h3:has-text("Delete credential")'
         # collides with the user-credentials view's "Delete Credential" heading
