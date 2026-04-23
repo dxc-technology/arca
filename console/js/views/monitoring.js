@@ -189,9 +189,15 @@ export function monitoringView() {
         svg += `<text x="${ml - 6}" y="${y + 3.5}" text-anchor="end" fill="#94a3b8" font-size="9" font-family="JetBrains Mono, monospace">${this._formatYTick(tick, key)}</text>`;
       }
 
-      // X-axis labels
-      for (const tick of xTicks) {
-        svg += `<text x="${tick.x}" y="${mt + h + 14}" text-anchor="middle" fill="#94a3b8" font-size="8.5" font-family="DM Sans, system-ui">${tick.label}</text>`;
+      // X-axis labels — anchor edge ticks against the chart boundary so the
+      // first/last label can't overflow the card. Middle ticks stay centered
+      // on their data position for consistency.
+      for (let i = 0; i < xTicks.length; i++) {
+        const tick = xTicks[i];
+        let anchor = 'middle';
+        if (i === 0) anchor = 'start';
+        else if (i === xTicks.length - 1) anchor = 'end';
+        svg += `<text x="${tick.x}" y="${mt + h + 14}" text-anchor="${anchor}" fill="#94a3b8" font-size="8.5" font-family="DM Sans, system-ui">${tick.label}</text>`;
       }
 
       // Area fill + line
