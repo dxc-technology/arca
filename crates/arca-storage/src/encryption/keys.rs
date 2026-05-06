@@ -1,7 +1,19 @@
 //! Master key (KEK) and data encryption key (DEK) management.
 
+use std::sync::OnceLock;
+
 use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM};
 use ring::rand::{SecureRandom, SystemRandom};
+
+/// Process-wide `SystemRandom` instance reused by every call into this
+/// module. ring's `SystemRandom` lazily opens a thread-local handle to the
+/// OS RNG; reusing the same instance avoids the per-call setup overhead
+/// (a few microseconds * thousands of `UploadPart`s adds up under PBM-style
+/// fan-out).
+fn shared_rng() -> &'static SystemRandom {
+    static RNG: OnceLock<SystemRandom> = OnceLock::new();
+    RNG.get_or_init(SystemRandom::new)
+}
 
 /// A loaded master key (KEK) with its derived key_id.
 #[derive(Clone)]
@@ -50,9 +62,9 @@ impl MasterKey {
     /// Wraps (encrypts) a DEK using this master key.
     /// Returns (encrypted_dek, nonce) both as raw bytes.
     pub fn wrap_dek(&self, dek: &[u8]) -> Result<(Vec<u8>, Vec<u8>), String> {
-        let rng = SystemRandom::new();
         let mut nonce_bytes = [0u8; 12];
-        rng.fill(&mut nonce_bytes)
+        shared_rng()
+            .fill(&mut nonce_bytes)
             .map_err(|_| "failed to generate nonce")?;
 
         let unbound = UnboundKey::new(&AES_256_GCM, &self.key_bytes)
@@ -89,19 +101,20 @@ impl MasterKey {
     }
 }
 
-/// Generates a random 32-byte DEK.
+/// Generates a random 32-byte DEK using the shared RNG.
 pub fn generate_dek() -> Result<[u8; 32], &'static str> {
-    let rng = SystemRandom::new();
     let mut dek = [0u8; 32];
-    rng.fill(&mut dek).map_err(|_| "failed to generate DEK")?;
+    shared_rng()
+        .fill(&mut dek)
+        .map_err(|_| "failed to generate DEK")?;
     Ok(dek)
 }
 
 /// Generates a random 4-byte nonce prefix for chunk encryption.
 pub fn generate_nonce_prefix() -> Result<[u8; 4], &'static str> {
-    let rng = SystemRandom::new();
     let mut prefix = [0u8; 4];
-    rng.fill(&mut prefix)
+    shared_rng()
+        .fill(&mut prefix)
         .map_err(|_| "failed to generate nonce prefix")?;
     Ok(prefix)
 }

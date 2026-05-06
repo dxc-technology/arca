@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Encrypted multipart uploads no longer pay the 2× decrypt+re-encrypt tax on `CompleteMultipartUpload`.** `BlobStore::concat`'s default impl was decrypting every part and re-encrypting the whole final blob, so a Percona PBM MongoDB backup that took 1h plain took 2h with SSE-S3. The `EncryptingBlobStore::concat` override now produces a **composite sidecar** that points at the still-on-disk encrypted parts (no copy, no extra crypto). `get` walks the parts list and decrypts only the chunks that overlap the requested range; `delete` cascades to the part files. `SidecarMeta` gained an additive `composite: Option<Vec<CompositePart>>` field (retro-compatible — old sidecars still deserialize). The multipart handler no longer cancels the part blobs when a composite is produced. Bench: encrypted `CompleteMultipartUpload` dropped from 3.03s to 0.005s on 256 MiB / 32-part uploads (≈600× faster); aggregate encrypted throughput went from 207 MB/s to 595 MB/s on the same workload (now 13 % above plain baseline). 7 new unit tests cover full read, range within a part, range across boundaries, range spanning parts, cascade delete and the unencrypted-part fallback.
+
+### Changed
+
+- **AEAD chunk crypto runs off the tokio async runtime.** `EncryptingStream` now buffers `chunk_size × batch_factor` bytes (default 4 × 64 KiB = 256 KiB) and hands the batch to a `tokio::task::spawn_blocking` worker; up to `PIPELINE_DEPTH = 4` tasks fly per stream so network reads, disk writes and CPU-bound AEAD overlap instead of serializing on the same worker thread. Order is preserved via a FIFO `JoinHandle` queue. Tag and ciphertext are now produced in place via the new `encrypt_chunk_in_place` / `decrypt_chunk_in_place` helpers — one `Vec` allocation per batch instead of two per chunk.
+- **Tokio runtime is now built explicitly** instead of via the `#[tokio::main]` macro. New `[server.runtime]` config section: `worker_threads` and `max_blocking_threads` (both default to `num_cpus` when `0`/absent).
+- **HTTP/2 server tunables exposed via `[server.http]`**: `h2_max_concurrent_streams` (default 200), `h2_keep_alive_interval_sec`, `h2_keep_alive_timeout_sec`, `h2_initial_stream_window`, `h2_initial_connection_window`. `tls::serve_tls` now constructs the `hyper_util` `auto::Builder` once outside the accept loop and shares it via `Arc` across connection tasks.
+- **Process-wide `SystemRandom`** for DEK / nonce generation (previously a fresh instance per call).
+- `BlobPutResult` gained a `composite_parts: Option<Vec<CompositePart>>` field. The multipart handler uses it to decide whether to emit a composite sidecar or the existing single-blob sidecar.
+
+### Docker
+
+- `docker-compose.yml` now sets `ulimits.nofile = 65535:65535` and `sysctls.net.core.somaxconn = 4096` on the `arca` service so connection fan-out (multipart, parallel PBM workers) doesn't hit a hidden FD ceiling. New `docker/docker-compose.perf.yml` overlay (tmpfs `/data` for reproducible perf measurements) is layered on by `bin/perf-test --tls` / `--encryption` automatically.
+
+### Benchmarks
+
+- `tests/perf/perf_test.py` gained a `parallel-multipart` scenario (selectable via `--scenarios parallel-multipart`) that issues N concurrent multipart uploads and reports `CompleteMultipartUpload` time separately from the parts upload time. Used to detect the encrypted-concat regression and to verify the fix.
+
 ## [0.22.0] — 2026-04-22
 
 ### Added
