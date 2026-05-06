@@ -4026,7 +4026,7 @@
             <div class="flex items-center justify-between mb-6">
               <h2 class="text-xl font-semibold tracking-tight">Monitoring</h2>
               <div class="flex items-center gap-1 relative">
-                <template x-for="r in ['1h','6h','24h','7d','30d','6m','1y']">
+                <template x-for="r in ['1h','6h','24h','2d','7d','30d','6m','1y']">
                   <button @click="setRange(r)" :class="timeRange === r ? 'bg-vault-accent/20 text-vault-accent border-vault-accent/30' : 'text-vault-muted border-vault-border hover:text-vault-text'"
                     class="px-2.5 py-1 rounded-lg text-xs border transition" x-text="r"></button>
                 </template>
