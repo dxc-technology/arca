@@ -274,23 +274,27 @@ pub struct BlobGetResult {
     pub content_length: u64,
 }
 
-/// One part of an encrypted composite blob (the result of an encrypted
-/// `CompleteMultipartUpload` that avoids decrypt+re-encrypt).
+/// One part of a composite blob (the result of a `CompleteMultipartUpload`
+/// that avoids physically copying the parts into a single final blob).
 ///
-/// When a composite sidecar is read, the parts are streamed and decrypted
-/// in order to reconstruct the plaintext. Each part keeps its own DEK
-/// and nonce_prefix so concat is a metadata-only operation.
+/// On read, the composite sidecar is walked in order and each part is
+/// streamed (and decrypted, when applicable). Each part keeps its own
+/// DEK / nonce_prefix when encrypted; for plain (unencrypted, uncompressed)
+/// parts the `encryption` field is `None`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompositePart {
-    /// Blob ID of the on-disk part file (still encrypted, never deleted by
-    /// CompleteMultipartUpload — it's now logically part of the composite).
+    /// Blob ID of the on-disk part file. The part is still referenced by
+    /// the composite sidecar after CompleteMultipartUpload — never deleted
+    /// until the composite itself is deleted.
     pub blob_id: BlobId,
     /// Plaintext size in bytes of this part.
     pub plaintext_size: u64,
     /// Hex-encoded MD5 of the plaintext (= the part's S3 ETag).
     pub plaintext_etag: String,
-    /// Per-part encryption info: wrapped DEK, nonce prefix, key id.
-    pub encryption: BlobEncryptionInfo,
+    /// Per-part encryption info (DEK, nonce prefix, key id) when the part
+    /// is encrypted. `None` for plain composite parts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encryption: Option<BlobEncryptionInfo>,
 }
 
 /// Sidecar metadata written alongside blob files for disaster recovery.

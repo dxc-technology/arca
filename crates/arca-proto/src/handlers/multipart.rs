@@ -180,25 +180,26 @@ pub async fn upload_part(
         }
     };
 
-    // Write sidecar for the part blob so that EncryptingBlobStore.get()
-    // can detect and decrypt it during CompleteMultipartUpload assembly.
-    if put_result.encryption.is_some() {
-        let sidecar = SidecarMeta {
-            bucket: bucket.clone(),
-            key: format!("{key}#{upload_id}#{part_number}"),
-            size: put_result.size,
-            etag: put_result.etag.clone(),
-            content_type: None,
-            last_modified: chrono::Utc::now().to_rfc3339(),
-            metadata: std::collections::HashMap::new(),
-            encryption: put_result.encryption.clone(),
-            compression: None,
-            version_id: None,
-            composite: None,
-        };
-        if let Err(e) = state.blob.write_sidecar(&blob_id, &sidecar).await {
-            tracing::warn!(error = %e, "Failed to write part sidecar");
-        }
+    // Write sidecar for the part blob. Two callers depend on it:
+    // * `EncryptingBlobStore.get()` reads it to find the per-part DEK during
+    //   CompleteMultipartUpload assembly (when parts are encrypted).
+    // * `FsBlobStore::concat` reads it to capture each part's etag/size and
+    //   decide whether the composite fast-path is safe (when parts are plain).
+    let sidecar = SidecarMeta {
+        bucket: bucket.clone(),
+        key: format!("{key}#{upload_id}#{part_number}"),
+        size: put_result.size,
+        etag: put_result.etag.clone(),
+        content_type: None,
+        last_modified: chrono::Utc::now().to_rfc3339(),
+        metadata: std::collections::HashMap::new(),
+        encryption: put_result.encryption.clone(),
+        compression: None,
+        version_id: None,
+        composite: None,
+    };
+    if let Err(e) = state.blob.write_sidecar(&blob_id, &sidecar).await {
+        tracing::warn!(error = %e, "Failed to write part sidecar");
     }
 
     // Insert part record (returns old for cleanup).

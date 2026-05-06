@@ -9,7 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Encrypted multipart uploads no longer pay the 2× decrypt+re-encrypt tax on `CompleteMultipartUpload`.** `BlobStore::concat`'s default impl was decrypting every part and re-encrypting the whole final blob, so a Percona PBM MongoDB backup that took 1h plain took 2h with SSE-S3. The `EncryptingBlobStore::concat` override now produces a **composite sidecar** that points at the still-on-disk encrypted parts (no copy, no extra crypto). `get` walks the parts list and decrypts only the chunks that overlap the requested range; `delete` cascades to the part files. `SidecarMeta` gained an additive `composite: Option<Vec<CompositePart>>` field (retro-compatible — old sidecars still deserialize). The multipart handler no longer cancels the part blobs when a composite is produced. Bench: encrypted `CompleteMultipartUpload` dropped from 3.03s to 0.005s on 256 MiB / 32-part uploads (≈600× faster); aggregate encrypted throughput went from 207 MB/s to 595 MB/s on the same workload (now 13 % above plain baseline). 7 new unit tests cover full read, range within a part, range across boundaries, range spanning parts, cascade delete and the unencrypted-part fallback.
+- **Encrypted multipart uploads no longer pay the 2× decrypt+re-encrypt tax on `CompleteMultipartUpload`.** `BlobStore::concat`'s default impl was decrypting every part and re-encrypting the whole final blob, so a Percona PBM MongoDB backup that took 1h plain took 2h with SSE-S3. The `EncryptingBlobStore::concat` override now produces a **composite sidecar** that points at the still-on-disk encrypted parts (no copy, no extra crypto). `get` walks the parts list and decrypts only the chunks that overlap the requested range; `delete` cascades to the part files. `SidecarMeta` gained an additive `composite: Option<Vec<CompositePart>>` field (retro-compatible — old sidecars still deserialize). The multipart handler no longer cancels the part blobs when a composite is produced. 7 new unit tests cover full read, range within a part, range across boundaries, range spanning parts, cascade delete and the unencrypted-part fallback.
+- **Plain multipart uploads also benefit from the composite sidecar.** `FsBlobStore::concat` now produces a composite when every part is plain (no encryption, no compression), eliminating the byte-by-byte copy that previously dominated `CompleteMultipartUpload` time. Falls back to the existing copy+MD5 path when any part is encrypted or compressed (compression sidecar metadata can't be carried into a composite yet). 6 new unit tests mirror the encrypted composite suite. The multipart handler now writes a per-part sidecar unconditionally (was only written when the part was encrypted) so `FsBlobStore::concat` can read part etag and size to decide whether the composite path is safe.
+
+### Bench (4 concurrent multipart uploads, 256 MiB each, 8 MiB parts, tmpfs)
+
+| Scenario              | Throughput  | `CompleteMultipartUpload` p50 |
+|-----------------------|-------------|-------------------------------|
+| Plain baseline        | 527.8 MB/s  | 0.71s                         |
+| Encrypted baseline    | 207.7 MB/s  | 3.03s                         |
+| Plain after fix       | 836.9 MB/s  | 0.003s (≈237× faster)         |
+| Encrypted after fix   | 594.9 MB/s  | 0.004s (≈758× faster)         |
 
 ### Changed
 

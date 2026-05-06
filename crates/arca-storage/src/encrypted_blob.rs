@@ -259,21 +259,36 @@ impl EncryptingBlobStore {
                 part_size - 1
             };
 
-            let part_result = if sub_start == 0 && sub_end == part_size - 1 {
-                // Full read of this part.
-                self.get_encrypted_full(&part.blob_id, &part.encryption, part_size)
+            let part_result = match part.encryption.as_ref() {
+                Some(enc) if sub_start == 0 && sub_end == part_size - 1 => {
+                    self.get_encrypted_full(&part.blob_id, enc, part_size).await?
+                }
+                Some(enc) => {
+                    self.get_encrypted_range(
+                        &part.blob_id,
+                        enc,
+                        part_size,
+                        ByteRange {
+                            start: sub_start,
+                            end: Some(sub_end),
+                        },
+                    )
                     .await?
-            } else {
-                self.get_encrypted_range(
-                    &part.blob_id,
-                    &part.encryption,
-                    part_size,
-                    ByteRange {
-                        start: sub_start,
-                        end: Some(sub_end),
-                    },
-                )
-                .await?
+                }
+                None => {
+                    // Plain part inside an encrypted composite shouldn't happen
+                    // in normal flow (concat fallback handles mixed parts), but
+                    // be defensive and just delegate to the inner store.
+                    let r = if sub_start == 0 && sub_end == part_size - 1 {
+                        None
+                    } else {
+                        Some(ByteRange {
+                            start: sub_start,
+                            end: Some(sub_end),
+                        })
+                    };
+                    self.inner.get(&part.blob_id, r).await?
+                }
             };
             combined = Box::pin(tokio_stream::StreamExt::chain(combined, part_result.stream));
             cum_start = part_end_excl;
@@ -471,7 +486,7 @@ impl BlobStore for EncryptingBlobStore {
                 blob_id: blob_id.clone(),
                 plaintext_size: sidecar.size,
                 plaintext_etag: sidecar.etag,
-                encryption: enc_info,
+                encryption: Some(enc_info),
             });
         }
 
@@ -845,7 +860,7 @@ mod tests {
         for (i, p) in parts.iter().enumerate() {
             assert_eq!(p.blob_id, part_ids[i]);
             assert_eq!(p.plaintext_size, 64);
-            assert!(!p.encryption.encrypted_dek.is_empty());
+            assert!(!p.encryption.as_ref().unwrap().encrypted_dek.is_empty());
         }
         // The output blob file should NOT exist (composite is sidecar-only).
         let output_path = store.inner.blob_path(&output_id);
