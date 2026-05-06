@@ -213,8 +213,16 @@ fn build_http_builder(
 ) -> hyper_util::server::conn::auto::Builder<hyper_util::rt::TokioExecutor> {
     let mut builder =
         hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
+    // hyper requires a Timer when HTTP/2 keep-alive is configured (otherwise
+    // it panics at first ping with "You must supply a timer."). Installing
+    // TokioTimer on both protocol builders covers H1 read timeouts and H2
+    // keep-alive uniformly.
+    builder
+        .http1()
+        .timer(hyper_util::rt::TokioTimer::new());
     builder
         .http2()
+        .timer(hyper_util::rt::TokioTimer::new())
         .max_concurrent_streams(Some(http_cfg.h2_max_concurrent_streams))
         .keep_alive_interval(Some(std::time::Duration::from_secs(
             http_cfg.h2_keep_alive_interval_sec,
