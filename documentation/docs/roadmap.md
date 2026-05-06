@@ -123,7 +123,7 @@ graph LR
 | 25 | [Notifications and Event System](#phase-25-notifications-and-event-system-p3) | P3 | 20 | `v0.18.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 26 | [Notification Connectors](#phase-26-notification-connectors-p3) | P3 | 25 | `v0.20.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 27 | [Transparent Compression](#phase-27-transparent-compression-p2) | P2 | 13 | `v0.21.0` | <span style="color:#4caf50">&#x2714;</span> |
-| 28 | [Replication](#phase-28-replication-p3) | P3 | 17, 24 | `v0.22.0` | <span style="color:#4caf50">&#x2714;</span> |
+| 28 | [Replication](#phase-28-replication-p3) | P3 | 17, 24 | `v0.23.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 29 | [Multi-Node and Erasure Coding](#phase-29-multi-node-and-erasure-coding-p3) | P3 | All prior | | |
 | 30 | [CLI Enhancements and Migration Tools](#phase-30-cli-enhancements-and-migration-tools-p3) | P3 | 13, 24, 29 | | |
 | 31 | [OpenTelemetry Integration](#phase-31-opentelemetry-integration-p3) | P3 | 18 | | |

@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0] — 2026-05-06
+
 ### Fixed
 
 - **Encrypted multipart uploads no longer pay the 2× decrypt+re-encrypt tax on `CompleteMultipartUpload`.** `BlobStore::concat`'s default impl was decrypting every part and re-encrypting the whole final blob, so a Percona PBM MongoDB backup that took 1h plain took 2h with SSE-S3. The `EncryptingBlobStore::concat` override now produces a **composite sidecar** that points at the still-on-disk encrypted parts (no copy, no extra crypto). `get` walks the parts list and decrypts only the chunks that overlap the requested range; `delete` cascades to the part files. `SidecarMeta` gained an additive `composite: Option<Vec<CompositePart>>` field (retro-compatible — old sidecars still deserialize). The multipart handler no longer cancels the part blobs when a composite is produced. 7 new unit tests cover full read, range within a part, range across boundaries, range spanning parts, cascade delete and the unencrypted-part fallback.
 - **Plain multipart uploads also benefit from the composite sidecar.** `FsBlobStore::concat` now produces a composite when every part is plain (no encryption, no compression), eliminating the byte-by-byte copy that previously dominated `CompleteMultipartUpload` time. Falls back to the existing copy+MD5 path when any part is encrypted or compressed (compression sidecar metadata can't be carried into a composite yet). 6 new unit tests mirror the encrypted composite suite. The multipart handler now writes a per-part sidecar unconditionally (was only written when the part was encrypted) so `FsBlobStore::concat` can read part etag and size to decide whether the composite path is safe.
+- **HTTP/2 keep-alive panic fixed.** Configuring `keep_alive_interval` on the hyper auto-builder requires a Timer; without one hyper panicked at the first internal ping with `You must supply a timer.` The TLS server now installs `hyper_util::rt::TokioTimer` on both the H1 and H2 builder branches.
 
 ### Bench (4 concurrent multipart uploads, 256 MiB each, 8 MiB parts, tmpfs)
 
@@ -36,6 +39,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Benchmarks
 
 - `tests/perf/perf_test.py` gained a `parallel-multipart` scenario (selectable via `--scenarios parallel-multipart`) that issues N concurrent multipart uploads and reports `CompleteMultipartUpload` time separately from the parts upload time. Used to detect the encrypted-concat regression and to verify the fix.
+
+### Added
+
+- **(Console)** New `2d` timeframe button in the Monitoring view, sitting between `24h` and `7d`.
+- **(Console)** Replication credentials are now created and managed from a dedicated modal flow with inline location hints, instead of the old free-form text fallback.
+
+### Documentation
+
+- **(Console manual)** New screenshots covering the replication setup and journal flow.
+- **(Project report)** `documentation/docs/report.html` refreshed with v0.23.0 metrics: ~23 effective full-time days (46 work sessions × ~4h), 285 commits, 72,651 LoC, 2,152 tests, 28/31 phases done. Time accounting reframed as full-time-equivalent.
+
+### Tech debt
+
+- **TD-014** (recorded, not yet fixed): `arca recover` and `arca fsck` do not understand composite blobs. Composite sidecars have no on-disk file at the composite's blob path; recover currently aborts as "orphaned sidecar (blob file missing)" and fsck reports the same as `orphaned_sidecars` false positives. Runtime S3 reads/writes are unaffected. Marked with `TECHDEBT(TD-014)` comments at `crates/arca-server/src/recover.rs:207` and `crates/arca-server/src/fsck.rs` (line ~112). Proper fix sketched in `TECH_DEBT.md`.
+
+### Console (other)
+
+- Anchor monitoring chart edge x-ticks so the leftmost / rightmost labels can no longer clip out of the SVG viewport.
 
 ## [0.22.0] — 2026-04-22
 
@@ -575,7 +596,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.23.0...HEAD
+[0.23.0]: https://github.com/dxc-technology/arca/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/dxc-technology/arca/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/dxc-technology/arca/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/dxc-technology/arca/compare/v0.19.0...v0.20.0
