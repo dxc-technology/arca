@@ -38,6 +38,79 @@ pub struct ServerConfig {
     pub limits: Option<LimitsConfig>,
     /// In-memory metadata cache configuration.
     pub cache: Option<CacheConfig>,
+    /// Tokio runtime configuration (worker threads, blocking pool size).
+    /// Read at startup before the runtime is built. Defaults to num_cpus.
+    pub runtime: Option<RuntimeConfig>,
+    /// HTTP/2 server configuration (per-connection stream limits and windows).
+    pub http: Option<HttpConfig>,
+}
+
+/// Tokio runtime configuration. All fields are optional; `0` (or absent)
+/// means "use num_cpus".
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct RuntimeConfig {
+    /// Number of tokio worker threads. `0` (default) = num_cpus.
+    #[serde(default)]
+    pub worker_threads: usize,
+    /// Maximum threads in the blocking pool. `0` (default) = num_cpus.
+    /// Setting this equal to num_cpus is intentional when AEAD is offloaded
+    /// via spawn_blocking — keeps the CPU-bound pool from oversubscribing.
+    #[serde(default)]
+    pub max_blocking_threads: usize,
+}
+
+/// HTTP/2 server tunables. Applied to `hyper_util::server::conn::auto::Builder`
+/// once outside the accept loop. Defaults match the values picked for the
+/// PBM-style fan-out workload.
+#[derive(Debug, Clone, Deserialize)]
+pub struct HttpConfig {
+    /// `SETTINGS_MAX_CONCURRENT_STREAMS` advertised to clients (default: 200).
+    #[serde(default = "default_h2_max_concurrent_streams")]
+    pub h2_max_concurrent_streams: u32,
+    /// HTTP/2 keep-alive ping interval in seconds (default: 30).
+    #[serde(default = "default_h2_keep_alive_interval_sec")]
+    pub h2_keep_alive_interval_sec: u64,
+    /// HTTP/2 keep-alive ping timeout in seconds (default: 20).
+    #[serde(default = "default_h2_keep_alive_timeout_sec")]
+    pub h2_keep_alive_timeout_sec: u64,
+    /// Initial per-stream window size in bytes (default: 2 MiB).
+    #[serde(default = "default_h2_initial_stream_window")]
+    pub h2_initial_stream_window: u32,
+    /// Initial connection window size in bytes (default: 8 MiB).
+    #[serde(default = "default_h2_initial_connection_window")]
+    pub h2_initial_connection_window: u32,
+}
+
+impl Default for HttpConfig {
+    fn default() -> Self {
+        Self {
+            h2_max_concurrent_streams: default_h2_max_concurrent_streams(),
+            h2_keep_alive_interval_sec: default_h2_keep_alive_interval_sec(),
+            h2_keep_alive_timeout_sec: default_h2_keep_alive_timeout_sec(),
+            h2_initial_stream_window: default_h2_initial_stream_window(),
+            h2_initial_connection_window: default_h2_initial_connection_window(),
+        }
+    }
+}
+
+fn default_h2_max_concurrent_streams() -> u32 {
+    200
+}
+
+fn default_h2_keep_alive_interval_sec() -> u64 {
+    30
+}
+
+fn default_h2_keep_alive_timeout_sec() -> u64 {
+    20
+}
+
+fn default_h2_initial_stream_window() -> u32 {
+    2 * 1024 * 1024
+}
+
+fn default_h2_initial_connection_window() -> u32 {
+    8 * 1024 * 1024
 }
 
 /// Request limits and rate limiting configuration.
@@ -1335,6 +1408,8 @@ data_dir = "/data"
                 tls: None,
                 limits: None,
                 cache: None,
+                runtime: None,
+                http: None,
             },
             storage: StorageConfig {
                 data_dir: "/data".to_string(),

@@ -570,6 +570,7 @@ pub async fn put_object(
         encryption: encryption_info.clone(),
         compression: put_result.compression.clone(),
         version_id: None,
+        composite: None,
     };
     if let Err(e) = state.blob.write_sidecar(&blob_id, &sidecar).await {
         return internal_error_response(e, &resource);
@@ -983,6 +984,7 @@ async fn copy_object(
         encryption: encryption_info.clone(),
         compression: put_result.compression.clone(),
         version_id: None,
+        composite: None,
     };
     if let Err(e) = state.blob.write_sidecar(&new_blob_id, &sidecar).await {
         return internal_error_response(e, &resource);
@@ -1279,6 +1281,7 @@ async fn upload_part_copy(
             encryption: put_result.encryption.clone(),
             compression: None,
             version_id: None,
+            composite: None,
         };
         if let Err(e) = state.blob.write_sidecar(&blob_id, &sidecar).await {
             tracing::warn!(error = %e, "Failed to write part sidecar");

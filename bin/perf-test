@@ -95,6 +95,10 @@ if $SELF_CONTAINED; then
     build_config
 
     COMPOSE="$(compose_cmd)"
+    # Layer the perf overlay on top: tmpfs /data, raised nofile, sysctls.
+    # This isolates the benchmark from disk I/O variability and surfaces
+    # CPU-bound bottlenecks (encryption) instead of being masked by disk.
+    COMPOSE="$COMPOSE -f $REPO_ROOT/docker/docker-compose.perf.yml"
 
     generated_certs=()
     PERF_OVERRIDE=""

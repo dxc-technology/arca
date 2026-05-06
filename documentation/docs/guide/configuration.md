@@ -87,6 +87,27 @@ Compression is **per-bucket and console-managed** — it has no TOML configurati
 
 When a rate limit is exceeded, the server returns HTTP 503 with S3 error code `SlowDown` and a `Retry-After: 1` header. Rate limiting is disabled by default, enable it for production deployments exposed to the internet.
 
+### Runtime
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `server.runtime.worker_threads` | `0` (= `num_cpus`) | Number of tokio worker threads. Set explicitly when pinning to a CPU subset (e.g., container with `cpus=4`). |
+| `server.runtime.max_blocking_threads` | `0` (= `num_cpus`) | Size of tokio's blocking thread pool. AEAD chunk encryption runs here via `spawn_blocking`; capping at `num_cpus` avoids oversubscription on CPU-bound work. |
+
+The defaults are sized for the AEAD pipeline (one blocking thread per core for crypto). Increase `max_blocking_threads` if you observe contention with other blocking operations (e.g., legacy SQLite read pool).
+
+### HTTP/2
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `server.http.h2_max_concurrent_streams` | `200` | `SETTINGS_MAX_CONCURRENT_STREAMS` advertised to clients. Caps in-flight streams per HTTP/2 connection. |
+| `server.http.h2_keep_alive_interval_sec` | `30` | HTTP/2 keep-alive ping interval. |
+| `server.http.h2_keep_alive_timeout_sec` | `20` | HTTP/2 keep-alive ping timeout. |
+| `server.http.h2_initial_stream_window` | `2097152` (2 MiB) | Initial per-stream window size. |
+| `server.http.h2_initial_connection_window` | `8388608` (8 MiB) | Initial connection window size. |
+
+These tunables apply to the TLS server. The plain HTTP server uses hyper's defaults; tuning is only required under heavy fan-out (parallel multipart uploads from PBM-style backup tools).
+
 ### Metadata Cache
 
 | Setting | Default | Description |
@@ -132,6 +153,13 @@ port = 9000
 # enabled = true
 # bucket_cache_size = 1000
 # object_cache_size = 10000
+
+# [server.runtime]            # optional, defaults to num_cpus
+# worker_threads = 0           # 0 = num_cpus
+# max_blocking_threads = 0     # 0 = num_cpus
+
+# [server.http]               # optional, defaults shown
+# h2_max_concurrent_streams = 200
 
 [storage]
 data_dir = "/data"

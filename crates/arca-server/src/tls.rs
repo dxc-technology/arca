@@ -11,7 +11,7 @@ use rustls::ServerConfig as RustlsServerConfig;
 use tokio::net::TcpListener;
 use tokio::task::JoinSet;
 
-use crate::config::{ResolvedPaths, TlsConfig};
+use crate::config::{HttpConfig, ResolvedPaths, TlsConfig};
 
 // ---------------------------------------------------------------------------
 // PEM auto-detection
@@ -205,16 +205,48 @@ impl TlsReloader {
 // TLS accept loop
 // ---------------------------------------------------------------------------
 
+/// Build a hyper auto-builder once (outside the accept loop) with the
+/// HTTP/2 tunables resolved from config. Shared via `Arc` so each
+/// per-connection task can reuse it without reallocating settings.
+fn build_http_builder(
+    http_cfg: &HttpConfig,
+) -> hyper_util::server::conn::auto::Builder<hyper_util::rt::TokioExecutor> {
+    let mut builder =
+        hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
+    // hyper requires a Timer when HTTP/2 keep-alive is configured (otherwise
+    // it panics at first ping with "You must supply a timer."). Installing
+    // TokioTimer on both protocol builders covers H1 read timeouts and H2
+    // keep-alive uniformly.
+    builder
+        .http1()
+        .timer(hyper_util::rt::TokioTimer::new());
+    builder
+        .http2()
+        .timer(hyper_util::rt::TokioTimer::new())
+        .max_concurrent_streams(Some(http_cfg.h2_max_concurrent_streams))
+        .keep_alive_interval(Some(std::time::Duration::from_secs(
+            http_cfg.h2_keep_alive_interval_sec,
+        )))
+        .keep_alive_timeout(std::time::Duration::from_secs(
+            http_cfg.h2_keep_alive_timeout_sec,
+        ))
+        .initial_stream_window_size(http_cfg.h2_initial_stream_window)
+        .initial_connection_window_size(http_cfg.h2_initial_connection_window);
+    builder
+}
+
 /// Serve HTTPS connections using a manual TLS accept loop with hyper_util.
 pub async fn serve_tls(
     listener: TcpListener,
     reloader: Arc<TlsReloader>,
     app: crate::NormalizedApp,
     shutdown: impl std::future::Future<Output = ()>,
+    http_cfg: HttpConfig,
 ) -> Result<()> {
     tokio::pin!(shutdown);
 
     let mut join_set = JoinSet::new();
+    let builder = Arc::new(build_http_builder(&http_cfg));
 
     loop {
         tokio::select! {
@@ -237,9 +269,10 @@ pub async fn serve_tls(
                 let tls_config = reloader.current();
                 let acceptor = tokio_rustls::TlsAcceptor::from(tls_config);
                 let app = app.clone();
+                let builder = Arc::clone(&builder);
 
                 join_set.spawn(async move {
-                    serve_tls_connection(acceptor, tcp_stream, remote_addr, app).await;
+                    serve_tls_connection(acceptor, tcp_stream, remote_addr, app, builder).await;
                 });
             }
         }
@@ -256,6 +289,7 @@ async fn serve_tls_connection(
     tcp_stream: tokio::net::TcpStream,
     remote_addr: SocketAddr,
     app: crate::NormalizedApp,
+    builder: Arc<hyper_util::server::conn::auto::Builder<hyper_util::rt::TokioExecutor>>,
 ) {
     let tls_stream = match acceptor.accept(tcp_stream).await {
         Ok(s) => s,
@@ -277,7 +311,6 @@ async fn serve_tls_connection(
         .service(app);
     let service = hyper_util::service::TowerToHyperService::new(tower_svc);
 
-    let builder = hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
     if let Err(e) = builder.serve_connection(io, service).await {
         // Ignore normal connection closures.
         let err_str = e.to_string();

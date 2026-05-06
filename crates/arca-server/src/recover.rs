@@ -204,6 +204,11 @@ async fn process_sidecar(meta_path: &Path, skip_verify: bool) -> Result<Recovere
 
     // Check that the blob file exists.
     if !blob_path.exists() {
+        // TECHDEBT(TD-014): composite blobs (encrypted/plain `CompleteMultipartUpload`
+        // optimisation) have no on-disk file — only a sidecar listing their parts.
+        // Recover currently rejects them as orphans. Proper fix: when the sidecar
+        // has `composite: Some(parts)`, validate each referenced part exists and
+        // insert a single ObjectRecord pointing at the composite blob_id.
         anyhow::bail!("orphaned sidecar (blob file missing)");
     }
 
@@ -308,6 +313,8 @@ mod tests {
                 tls: None,
                 limits: None,
                 cache: None,
+                runtime: None,
+                http: None,
             },
             storage: StorageConfig {
                 data_dir: dir.to_str().unwrap().to_string(),
@@ -381,6 +388,7 @@ mod tests {
                 encryption: None,
                 compression: None,
                 version_id: None,
+                composite: None,
             },
         )
         .await;
@@ -400,6 +408,7 @@ mod tests {
                 encryption: None,
                 compression: None,
                 version_id: None,
+                composite: None,
             },
         )
         .await;
@@ -419,6 +428,7 @@ mod tests {
                 encryption: None,
                 compression: None,
                 version_id: None,
+                composite: None,
             },
         )
         .await;
@@ -470,6 +480,7 @@ mod tests {
                 encryption: None,
                 compression: None,
                 version_id: None,
+                composite: None,
             },
         )
         .await;
@@ -504,6 +515,7 @@ mod tests {
             encryption: None,
             compression: None,
             version_id: None,
+            composite: None,
         };
         let json = serde_json::to_string(&meta).unwrap();
         fs::write(dir.join(format!("{id}.meta")), json).await.unwrap();
@@ -587,6 +599,7 @@ mod tests {
                 encryption: None,
                 compression: None,
                 version_id: None,
+                composite: None,
             },
         )
         .await;
@@ -628,6 +641,7 @@ mod tests {
                 encryption: None,
                 compression: None,
                 version_id: None,
+                composite: None,
             },
         )
         .await;
@@ -668,6 +682,7 @@ mod tests {
                 encryption: None,
                 compression: None,
                 version_id: None,
+                composite: None,
             },
         )
         .await;

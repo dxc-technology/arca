@@ -3070,6 +3070,7 @@ with unique IDs (<code>TD-XXX</code>) referenced in source code comments.</p>
 <li><strong>Unimplemented ops</strong> (TD-007): ~33 bucket operations return 501</li>
 <li><strong>Multipart Content-Type</strong> (TD-008): Captured at init time — verify against AWS semantics</li>
 <li><strong>SSE-C multipart</strong> (TD-010): SSE-C headers rejected on multipart uploads — needs per-part encryption tracking</li>
+<li><strong>Composite blobs in <code>recover</code> / <code>fsck</code></strong> (TD-014): the multipart Complete optimisation produces composite sidecars with no on-disk blob file. <code>arca recover</code> aborts on them as orphans, <code>arca fsck</code> reports false-positive <code>orphaned_sidecars</code>. Runtime S3 reads/writes are unaffected — only the recovery and integrity-check tools need teaching how to walk composites.</li>
 </ul>
 
 

@@ -67,6 +67,7 @@ impl SsecBlobStore {
             etag: hex::encode(md5_bytes),
             encryption: None,
             compression: None,
+            composite_parts: None,
         };
 
         Ok((result, nonce_prefix))
@@ -314,6 +315,7 @@ mod tests {
             encryption: None,
             compression: None,
             version_id: None,
+            composite: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
 

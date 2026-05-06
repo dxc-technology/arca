@@ -109,6 +109,11 @@ pub async fn run_fsck(config: &Config, verify_checksums: bool) -> Result<i32> {
     let sidecar_mismatches = check_sidecar_mismatches(&disk_sidecars, &db_objects).await;
 
     // Check D: Orphaned sidecars (.meta exists, no corresponding blob).
+    // TECHDEBT(TD-014): composite sidecars (multipart Complete optimisation) by
+    // design have no on-disk blob file; they list part blob_ids in
+    // `sidecar.composite`. They show up as false positives here. Proper fix:
+    // skip composite sidecars in this check, and add a separate check that
+    // verifies every part referenced by a composite exists on disk.
     let orphaned_sidecars: Vec<BlobId> = disk_sidecars
         .keys()
         .filter(|id| !disk_blobs.contains(*id))
@@ -426,6 +431,8 @@ mod tests {
                 tls: None,
                 limits: None,
                 cache: None,
+                runtime: None,
+                http: None,
             },
             storage: StorageConfig {
                 data_dir: dir.to_str().unwrap().to_string(),
@@ -502,6 +509,7 @@ mod tests {
             encryption: None,
             compression: None,
             version_id: None,
+            composite: None,
         };
         write_sidecar(&blobs_dir, blob_id, &meta).await;
 
@@ -643,6 +651,7 @@ mod tests {
             encryption: None,
             compression: None,
             version_id: None,
+            composite: None,
         };
         write_sidecar(&blobs_dir, id, &bad_meta).await;
         drop(store);
@@ -724,6 +733,7 @@ mod tests {
             encryption: None,
             compression: None,
             version_id: None,
+            composite: None,
         };
         write_sidecar(&blobs_dir, id, &meta).await;
 

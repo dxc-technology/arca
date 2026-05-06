@@ -1,0 +1,28 @@
+# Perf overlay -- isolates perf benchmarks from disk I/O variability and
+# raises connection limits to surface CPU-bound bottlenecks (encryption).
+#
+# Applied by bin/perf-test in self-contained mode (--tls and/or --encryption).
+# Replaces the `arca-data` volume with an in-memory tmpfs so disk does not
+# dominate measurements; raises nofile to 65535 to avoid hidden FD ceilings
+# under fan-out; tunes net.core.somaxconn for high accept rate.
+
+services:
+  arca:
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    sysctls:
+      net.core.somaxconn: "4096"
+    # CPU pin (optional, comment out to use all host cores).
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '8.0'
+
+volumes:
+  arca-data:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=8g"

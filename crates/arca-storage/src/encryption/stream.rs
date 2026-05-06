@@ -11,6 +11,8 @@
 //! For byte range reads on encrypted blobs, use `decrypt_range()` which
 //! decrypts only the chunks overlapping the requested range.
 
+use std::collections::VecDeque;
+use std::future::Future as _;
 use std::io;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -20,9 +22,20 @@ use bytes::Bytes;
 use futures_core::Stream;
 use md5::{Digest, Md5};
 use ring::aead::LessSafeKey;
+use tokio::task::JoinHandle;
 
 use super::format::{self, TAG_LEN};
-use super::keys::{build_nonce, decrypt_chunk, encrypt_chunk};
+use super::keys::{build_nonce, decrypt_chunk, encrypt_chunk_in_place};
+
+/// How many `chunk_size`-sized chunks are coalesced into one `spawn_blocking`
+/// task by `EncryptingStream`. `1` disables batching. Higher values amortize
+/// the spawn_blocking overhead (~1-5 µs) over more crypto work; the trade-off
+/// is more memory in flight per stream (`chunk_size * batch * pipeline_depth`).
+pub const DEFAULT_BATCH_FACTOR: u32 = 4;
+
+/// Maximum number of in-flight encrypt tasks per stream. Caps memory at
+/// `chunk_size * batch_factor * pipeline_depth` per upload.
+pub const PIPELINE_DEPTH: usize = 4;
 
 /// Plaintext statistics captured during encryption.
 #[derive(Debug, Default)]
@@ -44,77 +57,125 @@ pub struct PlaintextStats {
 /// the plaintext size and MD5 hash.
 pub struct EncryptingStream {
     inner: Pin<Box<dyn Stream<Item = Result<Bytes, io::Error>> + Send>>,
-    key: LessSafeKey,
+    /// AEAD key shared (Arc) with spawn_blocking workers.
+    key: Arc<LessSafeKey>,
     nonce_prefix: [u8; 4],
     chunk_size: u32,
     chunk_index: u64,
+    /// Plaintext buffer accumulating until `chunk_size * batch_factor`,
+    /// then handed off to a spawn_blocking task that encrypts the whole batch.
     buffer: Vec<u8>,
     hasher: Md5,
     plaintext_size: u64,
     header_emitted: bool,
     inner_done: bool,
     stats: Arc<Mutex<PlaintextStats>>,
-    /// Encrypted chunks ready to yield (usually 0 or 1).
-    pending: Vec<Bytes>,
+    /// FIFO queue of in-flight encrypt tasks. Each task encrypts up to
+    /// `batch_factor` chunks and produces one `Bytes` containing the
+    /// concatenated on-disk frames in chunk-index order.
+    pending: VecDeque<JoinHandle<Result<Bytes, io::Error>>>,
+    /// How many `chunk_size`-sized chunks per spawn_blocking task.
+    batch_factor: u32,
+    /// True once the trailing batch has been flushed and stats finalized.
+    finalized: bool,
 }
 
 impl EncryptingStream {
-    /// Creates a new encrypting stream.
-    ///
-    /// Returns the stream and a shared handle to read plaintext stats
-    /// after the stream is fully consumed.
+    /// Creates a new encrypting stream with the default batch factor.
     pub fn new(
         inner: Pin<Box<dyn Stream<Item = Result<Bytes, io::Error>> + Send>>,
         key: LessSafeKey,
         nonce_prefix: [u8; 4],
         chunk_size: u32,
     ) -> (Self, Arc<Mutex<PlaintextStats>>) {
+        Self::with_batch_factor(inner, key, nonce_prefix, chunk_size, DEFAULT_BATCH_FACTOR)
+    }
+
+    /// Creates a new encrypting stream with a custom batch factor.
+    /// `batch_factor = 1` disables batching (one chunk per task).
+    pub fn with_batch_factor(
+        inner: Pin<Box<dyn Stream<Item = Result<Bytes, io::Error>> + Send>>,
+        key: LessSafeKey,
+        nonce_prefix: [u8; 4],
+        chunk_size: u32,
+        batch_factor: u32,
+    ) -> (Self, Arc<Mutex<PlaintextStats>>) {
         let stats = Arc::new(Mutex::new(PlaintextStats::default()));
+        let batch_factor = batch_factor.max(1);
+        let batch_capacity = (chunk_size as usize) * (batch_factor as usize);
         let stream = Self {
             inner,
-            key,
+            key: Arc::new(key),
             nonce_prefix,
             chunk_size,
             chunk_index: 0,
-            buffer: Vec::with_capacity(chunk_size as usize),
+            buffer: Vec::with_capacity(batch_capacity),
             hasher: Md5::new(),
             plaintext_size: 0,
             header_emitted: false,
             inner_done: false,
             stats: stats.clone(),
-            pending: Vec::new(),
+            pending: VecDeque::with_capacity(PIPELINE_DEPTH),
+            batch_factor,
+            finalized: false,
         };
         (stream, stats)
     }
 
-    /// Encrypts the current buffer as one chunk and pushes to `pending`.
-    fn flush_chunk(&mut self) -> Result<(), io::Error> {
+    /// Spawns a blocking task that encrypts the current `self.buffer`
+    /// (one or more chunks worth of plaintext) and pushes the resulting
+    /// `Bytes` (already framed: `[len|ciphertext|tag]+`) onto `pending`.
+    fn flush_batch(&mut self) {
         if self.buffer.is_empty() {
-            return Ok(());
+            return;
         }
-        let plaintext_len = self.buffer.len() as u32;
-        let nonce = build_nonce(&self.nonce_prefix, self.chunk_index);
-        let ciphertext = encrypt_chunk(&self.key, &nonce, &self.buffer)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let batch_capacity = (self.chunk_size as usize) * (self.batch_factor as usize);
+        let plaintext = std::mem::replace(&mut self.buffer, Vec::with_capacity(batch_capacity));
+        let chunk_size = self.chunk_size as usize;
+        let chunk_index_start = self.chunk_index;
+        let n_chunks = plaintext.len().div_ceil(chunk_size);
+        self.chunk_index += n_chunks as u64;
 
-        let mut chunk_bytes = Vec::with_capacity(4 + ciphertext.len());
-        chunk_bytes.extend_from_slice(&plaintext_len.to_le_bytes());
-        chunk_bytes.extend_from_slice(&ciphertext);
+        let key = Arc::clone(&self.key);
+        let nonce_prefix = self.nonce_prefix;
 
-        self.pending.push(Bytes::from(chunk_bytes));
-        self.chunk_index += 1;
-        self.buffer.clear();
-        Ok(())
+        let task = tokio::task::spawn_blocking(move || -> Result<Bytes, io::Error> {
+            // One allocation for the entire batch's on-disk framing.
+            let mut output = Vec::with_capacity(plaintext.len() + n_chunks * (4 + TAG_LEN));
+            let mut chunk_idx = chunk_index_start;
+            let mut offset = 0usize;
+            while offset < plaintext.len() {
+                let chunk_len = (plaintext.len() - offset).min(chunk_size);
+                let nonce = build_nonce(&nonce_prefix, chunk_idx);
+                let frame_start = output.len();
+                output.extend_from_slice(&(chunk_len as u32).to_le_bytes());
+                output.extend_from_slice(&plaintext[offset..offset + chunk_len]);
+                let plaintext_pos = frame_start + 4;
+                let tag = encrypt_chunk_in_place(
+                    &key,
+                    &nonce,
+                    &mut output[plaintext_pos..plaintext_pos + chunk_len],
+                )
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                output.extend_from_slice(&tag);
+                offset += chunk_len;
+                chunk_idx += 1;
+            }
+            Ok(Bytes::from(output))
+        });
+        self.pending.push_back(task);
     }
 
-    /// Flushes the remaining buffer and writes final stats.
-    fn finalize(&mut self) -> Result<(), io::Error> {
-        self.flush_chunk()?;
+    /// Records plaintext digest into the shared `stats` once. Idempotent.
+    fn finalize_stats(&mut self) {
+        if self.finalized {
+            return;
+        }
         let digest = self.hasher.clone().finalize();
         let mut stats = self.stats.lock().unwrap();
         stats.size = self.plaintext_size;
         stats.md5 = Some(digest.into());
-        Ok(())
+        self.finalized = true;
     }
 }
 
@@ -131,54 +192,93 @@ impl Stream for EncryptingStream {
             return Poll::Ready(Some(Ok(Bytes::from(header))));
         }
 
-        // 2. Yield any pending encrypted chunks from previous polls.
-        if !this.pending.is_empty() {
-            return Poll::Ready(Some(Ok(this.pending.remove(0))));
-        }
+        let batch_capacity =
+            (this.chunk_size as usize) * (this.batch_factor as usize);
 
-        // 3. Stream is done.
-        if this.inner_done {
-            return Poll::Ready(None);
-        }
-
-        // 4. Poll the inner stream until we produce output or get Pending/None.
+        // Main pipeline loop. Two coupled queues:
+        // * `pending` (FIFO) — in-flight spawn_blocking tasks; we MUST yield
+        //   their output in order so the on-disk frame indices stay monotonic.
+        // * `inner` — plaintext source; we keep pulling from it to fan out
+        //   encrypt tasks (up to PIPELINE_DEPTH in flight) while waiting on
+        //   the head task.
         loop {
+            // 1. Try to drain a finished task from the head of `pending`.
+            if let Some(handle) = this.pending.front_mut() {
+                match Pin::new(handle).poll(cx) {
+                    Poll::Ready(Ok(Ok(bytes))) => {
+                        this.pending.pop_front();
+                        return Poll::Ready(Some(Ok(bytes)));
+                    }
+                    Poll::Ready(Ok(Err(e))) => {
+                        this.pending.pop_front();
+                        return Poll::Ready(Some(Err(e)));
+                    }
+                    Poll::Ready(Err(join_err)) => {
+                        this.pending.pop_front();
+                        return Poll::Ready(Some(Err(io::Error::other(join_err))));
+                    }
+                    Poll::Pending => {
+                        // Head not ready yet; keep filling the pipeline.
+                    }
+                }
+            }
+
+            // 2. If the pipeline is full and the head is still pending, wait.
+            //    Otherwise pull more plaintext from `inner`.
+            let pipeline_full = this.pending.len() >= PIPELINE_DEPTH;
+            if pipeline_full && !this.pending.is_empty() {
+                // The head poll above registered its waker; tasks will wake us
+                // when ready. Don't poll inner — there's no slot to spawn into.
+                return Poll::Pending;
+            }
+
+            if this.inner_done {
+                // Source is drained and the trailing batch (if any) was
+                // flushed. If `pending` is empty too, we're done.
+                if this.pending.is_empty() {
+                    this.finalize_stats();
+                    return Poll::Ready(None);
+                }
+                // Head is in flight; wait for it.
+                return Poll::Pending;
+            }
+
             match this.inner.as_mut().poll_next(cx) {
                 Poll::Ready(Some(Ok(chunk))) => {
                     this.hasher.update(&chunk);
                     this.plaintext_size += chunk.len() as u64;
+                    this.buffer.extend_from_slice(&chunk);
 
-                    let mut remaining = chunk.as_ref();
-                    while !remaining.is_empty() {
-                        let space = this.chunk_size as usize - this.buffer.len();
-                        let take = remaining.len().min(space);
-                        this.buffer.extend_from_slice(&remaining[..take]);
-                        remaining = &remaining[take..];
-
-                        if this.buffer.len() >= this.chunk_size as usize {
-                            if let Err(e) = this.flush_chunk() {
-                                return Poll::Ready(Some(Err(e)));
-                            }
-                        }
+                    // Flush batches as long as the buffer holds at least one
+                    // full batch's worth of plaintext.
+                    while this.buffer.len() >= batch_capacity
+                        && this.pending.len() < PIPELINE_DEPTH
+                    {
+                        // `split_off(N)` keeps the first N bytes in `self.buffer`
+                        // (= the batch) and returns the rest. flush_batch then
+                        // hands `self.buffer` to the worker and replaces it with
+                        // a fresh empty Vec; we copy the remainder back.
+                        let remainder = this.buffer.split_off(batch_capacity);
+                        this.flush_batch();
+                        this.buffer.extend_from_slice(&remainder);
                     }
-
-                    if !this.pending.is_empty() {
-                        return Poll::Ready(Some(Ok(this.pending.remove(0))));
-                    }
-                    // Buffer not yet full — continue polling inner.
+                    // Loop: try the head again now that we may have spawned more.
+                    continue;
                 }
                 Poll::Ready(Some(Err(e))) => return Poll::Ready(Some(Err(e))),
                 Poll::Ready(None) => {
                     this.inner_done = true;
-                    if let Err(e) = this.finalize() {
-                        return Poll::Ready(Some(Err(e)));
+                    // Trailing partial batch (if any).
+                    if !this.buffer.is_empty() && this.pending.len() < PIPELINE_DEPTH {
+                        this.flush_batch();
                     }
-                    if !this.pending.is_empty() {
-                        return Poll::Ready(Some(Ok(this.pending.remove(0))));
-                    }
-                    return Poll::Ready(None);
+                    // Loop: drain the head.
+                    continue;
                 }
-                Poll::Pending => return Poll::Pending,
+                Poll::Pending => {
+                    // No more plaintext for now and head still in flight.
+                    return Poll::Pending;
+                }
             }
         }
     }
