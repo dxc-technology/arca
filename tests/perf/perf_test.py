@@ -287,6 +287,141 @@ def test_large_multipart(client, bucket: str, size_mb: int):
     }
 
 
+def _multipart_upload_one(
+    endpoint: str,
+    bucket: str,
+    key: str,
+    total_size: int,
+    part_size: int,
+) -> dict:
+    """Run one multipart upload from start to finish.
+
+    Returns timing breakdown so we can isolate Complete cost from part upload.
+    Uses a fresh client per worker to avoid shared-connection contention.
+    """
+    cli = create_client(endpoint)
+
+    t0 = time.monotonic()
+    resp = cli.create_multipart_upload(Bucket=bucket, Key=key)
+    upload_id = resp["UploadId"]
+    t_create = time.monotonic() - t0
+
+    parts: list[dict] = []
+    part_num = 0
+    remaining = total_size
+    t_parts_start = time.monotonic()
+    while remaining > 0:
+        part_num += 1
+        chunk = min(part_size, remaining)
+        body = os.urandom(chunk)
+        part_resp = cli.upload_part(
+            Bucket=bucket,
+            Key=key,
+            UploadId=upload_id,
+            PartNumber=part_num,
+            Body=body,
+        )
+        parts.append({"PartNumber": part_num, "ETag": part_resp["ETag"]})
+        remaining -= chunk
+    t_parts = time.monotonic() - t_parts_start
+
+    t_complete_start = time.monotonic()
+    cli.complete_multipart_upload(
+        Bucket=bucket,
+        Key=key,
+        UploadId=upload_id,
+        MultipartUpload={"Parts": parts},
+    )
+    t_complete = time.monotonic() - t_complete_start
+
+    return {
+        "key": key,
+        "size": total_size,
+        "parts": part_num,
+        "create_s": t_create,
+        "parts_s": t_parts,
+        "complete_s": t_complete,
+        "total_s": t_create + t_parts + t_complete,
+    }
+
+
+def test_parallel_multipart(
+    endpoint: str,
+    bucket: str,
+    parallel: int,
+    upload_mb: int,
+    part_mb: int,
+):
+    """Concurrent multipart uploads. Reproduces Percona PBM-like backup pattern.
+
+    Each worker uploads `upload_mb` MiB in `part_mb` MiB parts. We track
+    `complete_s` separately because the encrypted concat() pathway is the
+    suspected primary bottleneck (re-encrypts the whole object during
+    CompleteMultipartUpload).
+    """
+    print(
+        f"\n--- Parallel Multipart "
+        f"({parallel} concurrent uploads, {upload_mb}MB each, {part_mb}MB parts) ---"
+    )
+    part_size = part_mb * 1024 * 1024
+    total_size = upload_mb * 1024 * 1024
+
+    keys = [f"perf/parallel/{i:03d}.bin" for i in range(parallel)]
+    overall_start = time.monotonic()
+    results: list[dict] = []
+    errors = 0
+
+    with ThreadPoolExecutor(max_workers=parallel) as pool:
+        futures = {
+            pool.submit(_multipart_upload_one, endpoint, bucket, k, total_size, part_size): k
+            for k in keys
+        }
+        for fut in as_completed(futures):
+            try:
+                results.append(fut.result())
+            except Exception as e:
+                errors += 1
+                print(f"  ERROR on {futures[fut]}: {e}")
+
+    overall_elapsed = time.monotonic() - overall_start
+    total_bytes = sum(r["size"] for r in results)
+    aggregate_mb_s = (total_bytes / (1024 * 1024)) / overall_elapsed if overall_elapsed > 0 else 0
+
+    parts_lats = [r["parts_s"] for r in results]
+    complete_lats = [r["complete_s"] for r in results]
+    total_lats = [r["total_s"] for r in results]
+
+    p50_complete = percentile(complete_lats, 50)
+    p99_complete = percentile(complete_lats, 99)
+    avg_complete = statistics.mean(complete_lats) if complete_lats else 0
+    p50_parts = percentile(parts_lats, 50)
+    p99_parts = percentile(parts_lats, 99)
+
+    print(f"  Wall clock:      {overall_elapsed:.2f}s")
+    print(f"  Aggregate:       {aggregate_mb_s:.1f} MB/s")
+    print(f"  Successful uploads: {len(results)} ({errors} errors)")
+    print(f"  Per-upload parts time:    p50={p50_parts:.2f}s p99={p99_parts:.2f}s")
+    print(f"  Per-upload complete time: p50={p50_complete:.3f}s p99={p99_complete:.3f}s avg={avg_complete:.3f}s")
+
+    return {
+        "name": "Parallel Multipart",
+        "throughput": round(aggregate_mb_s, 1),
+        "throughput_unit": "MB/s",
+        "parallel": parallel,
+        "upload_mb": upload_mb,
+        "part_mb": part_mb,
+        "uploads": len(results),
+        "errors": errors,
+        "wall_clock_s": round(overall_elapsed, 2),
+        "complete_p50_s": round(p50_complete, 3),
+        "complete_p99_s": round(p99_complete, 3),
+        "complete_avg_s": round(avg_complete, 3),
+        "parts_p50_s": round(p50_parts, 2),
+        "parts_p99_s": round(p99_parts, 2),
+        "total_p50_s": round(percentile(total_lats, 50), 2),
+    }
+
+
 def test_mixed_workload(client, bucket: str, threads: int, ops: int):
     """Mixed workload: 70% GET, 20% PUT, 10% DELETE."""
     print(f"\n--- Mixed Workload ({ops} ops, {threads} threads) ---")
@@ -497,6 +632,32 @@ def main():
     parser.add_argument("--list-objects", type=int, default=1000)
     parser.add_argument("--large-mb", type=int, default=50)
     parser.add_argument("--mixed-ops", type=int, default=500)
+    parser.add_argument(
+        "--scenarios",
+        default="all",
+        help="Comma-separated scenarios to run: all, parallel-multipart "
+        "(default: all). 'parallel-multipart' alone runs ONLY that scenario, "
+        "useful for targeted encryption benchmarks. 'all,parallel-multipart' "
+        "runs everything.",
+    )
+    parser.add_argument(
+        "--parallel-uploads",
+        type=int,
+        default=8,
+        help="Concurrent multipart uploads in the parallel-multipart scenario",
+    )
+    parser.add_argument(
+        "--parallel-mb",
+        type=int,
+        default=512,
+        help="Total MiB per multipart upload in the parallel-multipart scenario",
+    )
+    parser.add_argument(
+        "--parallel-part-mb",
+        type=int,
+        default=8,
+        help="MiB per part in the parallel-multipart scenario",
+    )
     parser.add_argument("--json", action="store_true", help="Output JSON results")
     parser.add_argument("--baseline", help="Baseline JSON file for comparison")
     parser.add_argument("-q", "--quiet", action="store_true",
@@ -520,28 +681,43 @@ def main():
     ensure_bucket(client, bucket)
     all_results = []
 
+    scenarios = {s.strip() for s in args.scenarios.split(",") if s.strip()}
+    run_all = "all" in scenarios
+    run_parallel_multipart = "parallel-multipart" in scenarios
+
     try:
-        all_results.append(
-            test_small_object_put(client, bucket, args.threads, args.objects, 1024)
-        )
-        all_results.append(
-            test_small_object_get(client, bucket, args.threads, args.objects)
-        )
-        all_results.append(
-            test_head_object(client, bucket, args.threads, args.objects)
-        )
-        all_results.append(
-            test_delete_object(client, bucket, args.threads, args.objects)
-        )
-        all_results.append(
-            test_large_multipart(client, bucket, args.large_mb)
-        )
-        all_results.append(
-            test_mixed_workload(client, bucket, args.threads, args.mixed_ops)
-        )
-        all_results.append(
-            test_listing(client, bucket, args.list_objects)
-        )
+        if run_all:
+            all_results.append(
+                test_small_object_put(client, bucket, args.threads, args.objects, 1024)
+            )
+            all_results.append(
+                test_small_object_get(client, bucket, args.threads, args.objects)
+            )
+            all_results.append(
+                test_head_object(client, bucket, args.threads, args.objects)
+            )
+            all_results.append(
+                test_delete_object(client, bucket, args.threads, args.objects)
+            )
+            all_results.append(
+                test_large_multipart(client, bucket, args.large_mb)
+            )
+            all_results.append(
+                test_mixed_workload(client, bucket, args.threads, args.mixed_ops)
+            )
+            all_results.append(
+                test_listing(client, bucket, args.list_objects)
+            )
+        if run_parallel_multipart:
+            all_results.append(
+                test_parallel_multipart(
+                    args.endpoint,
+                    bucket,
+                    args.parallel_uploads,
+                    args.parallel_mb,
+                    args.parallel_part_mb,
+                )
+            )
     finally:
         print("\n--- Cleanup ---")
         cleanup_bucket(client, bucket)

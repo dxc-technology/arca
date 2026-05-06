@@ -194,6 +194,7 @@ pub async fn upload_part(
             encryption: put_result.encryption.clone(),
             compression: None,
             version_id: None,
+            composite: None,
         };
         if let Err(e) = state.blob.write_sidecar(&blob_id, &sidecar).await {
             tracing::warn!(error = %e, "Failed to write part sidecar");
@@ -395,6 +396,12 @@ pub async fn complete_multipart_upload(
 
     let now = chrono::Utc::now();
 
+    // When the encrypted blob store returns `composite_parts`, the final
+    // blob is a composite of still-on-disk encrypted parts (no decrypt+
+    // re-encrypt was done). Carry the parts list into the sidecar; the
+    // part source blobs MUST stay on disk and must NOT be deleted below.
+    let is_composite = put_result.composite_parts.is_some();
+
     // Write sidecar for the final blob.
     let sidecar = SidecarMeta {
         bucket: bucket.clone(),
@@ -407,6 +414,7 @@ pub async fn complete_multipart_upload(
         encryption: put_result.encryption.clone(),
         compression: None,
         version_id: None,
+        composite: put_result.composite_parts.clone(),
     };
     if let Err(e) = state.blob.write_sidecar(&final_blob_id, &sidecar).await {
         return internal_error_response(e, &resource);
@@ -472,6 +480,8 @@ pub async fn complete_multipart_upload(
     }
 
     // Delete upload + parts from DB, then clean up part blobs in background.
+    // For composite blobs the part files are still referenced by the final
+    // sidecar — only the DB rows go away here; the blobs stay on disk.
     let old_parts = match state.metadata.delete_multipart_upload(&upload_id).await {
         Ok(p) => p,
         Err(e) => {
@@ -479,7 +489,7 @@ pub async fn complete_multipart_upload(
             Vec::new()
         }
     };
-    if !old_parts.is_empty() {
+    if !old_parts.is_empty() && !is_composite {
         let blob = state.blob.clone();
         tokio::spawn(async move {
             for part in &old_parts {

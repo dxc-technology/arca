@@ -30,8 +30,7 @@ use cli::{Cli, Command, CredentialAction, EncryptionAction, LogFormat, TlsAction
 /// The normalized app type used by both HTTP and HTTPS code paths.
 pub type NormalizedApp = NormalizeService<Router>;
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     // Install the `ring` rustls crypto provider as the process-wide default.
     // tonic (gRPC connector) and lettre (SMTP connector) both pull in `rustls`
     // without forcing a crypto backend, so we install one explicitly. Ignore
@@ -40,6 +39,29 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
+    // Build the tokio runtime explicitly. For `serve` we read the optional
+    // [server.runtime] config to size the worker / blocking pool; the
+    // remaining (short-lived CLI) subcommands use the same builder with
+    // defaults so we keep one code path.
+    let mut rt_builder = tokio::runtime::Builder::new_multi_thread();
+    rt_builder.enable_all();
+    if let Command::Serve { ref config_path, .. } = cli.command {
+        if let Ok(cfg) = config::load_config(config_path) {
+            if let Some(rt_cfg) = cfg.server.runtime.as_ref() {
+                if rt_cfg.worker_threads > 0 {
+                    rt_builder.worker_threads(rt_cfg.worker_threads);
+                }
+                if rt_cfg.max_blocking_threads > 0 {
+                    rt_builder.max_blocking_threads(rt_cfg.max_blocking_threads);
+                }
+            }
+        }
+    }
+    let rt = rt_builder.build()?;
+    rt.block_on(async_main(cli))
+}
+
+async fn async_main(cli: Cli) -> Result<()> {
     match cli.command {
         Command::Serve {
             config_path,
@@ -477,6 +499,11 @@ async fn main() -> Result<()> {
                     );
                     let listener = TcpListener::bind(&addr).await?;
                     tracing::info!("Arca is ready (HTTP on {addr})");
+                    // axum 0.8 doesn't expose the underlying hyper builder;
+                    // for explicit HTTP/2 tuning on the plain path, future
+                    // work should swap `axum::serve` for the manual accept
+                    // loop pattern used by `tls::serve_tls`. Defaults are
+                    // adequate for current workloads.
                     axum::serve(listener, service)
                         .with_graceful_shutdown(shutdown_signal(drain_tx, drain_timeout))
                         .await?;
@@ -510,7 +537,8 @@ async fn main() -> Result<()> {
                     );
                     let listener = TcpListener::bind(&addr).await?;
                     tracing::info!("Arca is ready (HTTPS on {addr})");
-                    tls::serve_tls(listener, reloader, app, shutdown_signal(drain_tx, drain_timeout)).await?;
+                    let http_cfg = config.server.http.clone().unwrap_or_default();
+                    tls::serve_tls(listener, reloader, app, shutdown_signal(drain_tx, drain_timeout), http_cfg).await?;
                 }
             }
 

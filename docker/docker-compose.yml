@@ -13,6 +13,16 @@ services:
       - ARCA_LOG=${ARCA_LOG:-info}
       - ARCA_ROOT_ACCESS_KEY=${ARCA_ROOT_ACCESS_KEY:-AKIAIOSFODNN7EXAMPLE}
       - ARCA_ROOT_SECRET_KEY=${ARCA_ROOT_SECRET_KEY:-wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY}
+    # Default container nofile is often 1024, which caps concurrent
+    # connections under fan-out (PBM, parallel multipart, etc.). Raise it.
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    # Larger backlog for the listening socket — under high accept rates
+    # the default 128 fills before the runtime drains it.
+    sysctls:
+      net.core.somaxconn: "4096"
 
   unit-test:
     image: arca-unit-test

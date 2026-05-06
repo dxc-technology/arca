@@ -130,7 +130,7 @@ impl BlobStore for FsBlobStore {
 
         let etag = hex::encode(hasher.finalize());
 
-        Ok(BlobPutResult { size, etag, encryption: None, compression: None })
+        Ok(BlobPutResult { size, etag, encryption: None, compression: None, composite_parts: None })
     }
 
     async fn get(
@@ -261,7 +261,7 @@ impl BlobStore for FsBlobStore {
 
         let etag = hex::encode(hasher.finalize());
 
-        Ok(BlobPutResult { size: total_size, etag, encryption: None, compression: None })
+        Ok(BlobPutResult { size: total_size, etag, encryption: None, compression: None, composite_parts: None })
     }
 
     async fn write_sidecar(
@@ -270,6 +270,13 @@ impl BlobStore for FsBlobStore {
         meta: &SidecarMeta,
     ) -> Result<(), ArcaError> {
         let sidecar_path = self.sidecar_path(blob_id);
+        // Composite blobs never go through `put` (no on-disk file at this
+        // blob_id), so the prefix directory may not exist yet. Make it.
+        if let Some(parent) = sidecar_path.parent() {
+            fs::create_dir_all(parent)
+                .await
+                .map_err(|e| ArcaError::Internal(format!("create sidecar dir: {e}")))?;
+        }
         let json = serde_json::to_string(meta)
             .map_err(|e| ArcaError::Internal(format!("serialize sidecar: {e}")))?;
         fs::write(&sidecar_path, json.as_bytes())
@@ -391,6 +398,7 @@ mod tests {
             encryption: None,
             compression: None,
             version_id: None,
+            composite: None,
         };
         store.write_sidecar(&blob_id, &meta).await.unwrap();
 
@@ -420,6 +428,7 @@ mod tests {
             encryption: None,
             compression: None,
             version_id: None,
+            composite: None,
         };
         store.write_sidecar(&blob_id, &meta).await.unwrap();
 

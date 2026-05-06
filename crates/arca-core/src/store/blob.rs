@@ -236,6 +236,12 @@ pub struct BlobPutResult {
     pub encryption: Option<BlobEncryptionInfo>,
     /// Compression metadata, if the blob was compressed.
     pub compression: Option<BlobCompressionInfo>,
+    /// When `Some`, this blob is a composite of already-encrypted parts and
+    /// must NOT have a physical file written; the caller is expected to
+    /// write a sidecar with `composite: Some(parts)` and skip part cleanup.
+    /// Set by `EncryptingBlobStore::concat` to avoid the decrypt+re-encrypt
+    /// cost of a default `concat` implementation. `None` for normal blobs.
+    pub composite_parts: Option<Vec<CompositePart>>,
 }
 
 /// Optional hints provided by the handler at write time, consumed by
@@ -268,6 +274,25 @@ pub struct BlobGetResult {
     pub content_length: u64,
 }
 
+/// One part of an encrypted composite blob (the result of an encrypted
+/// `CompleteMultipartUpload` that avoids decrypt+re-encrypt).
+///
+/// When a composite sidecar is read, the parts are streamed and decrypted
+/// in order to reconstruct the plaintext. Each part keeps its own DEK
+/// and nonce_prefix so concat is a metadata-only operation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompositePart {
+    /// Blob ID of the on-disk part file (still encrypted, never deleted by
+    /// CompleteMultipartUpload — it's now logically part of the composite).
+    pub blob_id: BlobId,
+    /// Plaintext size in bytes of this part.
+    pub plaintext_size: u64,
+    /// Hex-encoded MD5 of the plaintext (= the part's S3 ETag).
+    pub plaintext_etag: String,
+    /// Per-part encryption info: wrapped DEK, nonce prefix, key id.
+    pub encryption: BlobEncryptionInfo,
+}
+
 /// Sidecar metadata written alongside blob files for disaster recovery.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SidecarMeta {
@@ -290,6 +315,12 @@ pub struct SidecarMeta {
     /// Version ID for versioned objects. Absent for unversioned (backward compat).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version_id: Option<String>,
+    /// Composite parts, when this blob is the result of an encrypted
+    /// `CompleteMultipartUpload`. Absent for non-composite blobs (backward
+    /// compatible). When present, the on-disk file `{blob_path}` does not
+    /// exist; reads stream from each part in order.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub composite: Option<Vec<CompositePart>>,
 }
 
 /// Trait for blob (binary data) storage operations.

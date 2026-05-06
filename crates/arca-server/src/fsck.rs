@@ -426,6 +426,8 @@ mod tests {
                 tls: None,
                 limits: None,
                 cache: None,
+                runtime: None,
+                http: None,
             },
             storage: StorageConfig {
                 data_dir: dir.to_str().unwrap().to_string(),
@@ -502,6 +504,7 @@ mod tests {
             encryption: None,
             compression: None,
             version_id: None,
+            composite: None,
         };
         write_sidecar(&blobs_dir, blob_id, &meta).await;
 
@@ -643,6 +646,7 @@ mod tests {
             encryption: None,
             compression: None,
             version_id: None,
+            composite: None,
         };
         write_sidecar(&blobs_dir, id, &bad_meta).await;
         drop(store);
@@ -724,6 +728,7 @@ mod tests {
             encryption: None,
             compression: None,
             version_id: None,
+            composite: None,
         };
         write_sidecar(&blobs_dir, id, &meta).await;
 

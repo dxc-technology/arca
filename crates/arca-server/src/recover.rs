@@ -308,6 +308,8 @@ mod tests {
                 tls: None,
                 limits: None,
                 cache: None,
+                runtime: None,
+                http: None,
             },
             storage: StorageConfig {
                 data_dir: dir.to_str().unwrap().to_string(),
@@ -381,6 +383,7 @@ mod tests {
                 encryption: None,
                 compression: None,
                 version_id: None,
+                composite: None,
             },
         )
         .await;
@@ -400,6 +403,7 @@ mod tests {
                 encryption: None,
                 compression: None,
                 version_id: None,
+                composite: None,
             },
         )
         .await;
@@ -419,6 +423,7 @@ mod tests {
                 encryption: None,
                 compression: None,
                 version_id: None,
+                composite: None,
             },
         )
         .await;
@@ -470,6 +475,7 @@ mod tests {
                 encryption: None,
                 compression: None,
                 version_id: None,
+                composite: None,
             },
         )
         .await;
@@ -504,6 +510,7 @@ mod tests {
             encryption: None,
             compression: None,
             version_id: None,
+            composite: None,
         };
         let json = serde_json::to_string(&meta).unwrap();
         fs::write(dir.join(format!("{id}.meta")), json).await.unwrap();
@@ -587,6 +594,7 @@ mod tests {
                 encryption: None,
                 compression: None,
                 version_id: None,
+                composite: None,
             },
         )
         .await;
@@ -628,6 +636,7 @@ mod tests {
                 encryption: None,
                 compression: None,
                 version_id: None,
+                composite: None,
             },
         )
         .await;
@@ -668,6 +677,7 @@ mod tests {
                 encryption: None,
                 compression: None,
                 version_id: None,
+                composite: None,
             },
         )
         .await;

@@ -458,6 +458,7 @@ impl BlobStore for CompressingBlobStore {
                 original_size: stats.size,
                 compressed_size,
             }),
+            composite_parts: None,
         })
     }
 
@@ -493,6 +494,18 @@ impl BlobStore for CompressingBlobStore {
         meta: &SidecarMeta,
     ) -> Result<(), ArcaError> {
         self.inner.write_sidecar(blob_id, meta).await
+    }
+
+    /// Delegate concat to the inner store. The encryption wrapper underneath
+    /// implements an O(N) composite-sidecar concat that returns
+    /// `composite_parts` in the put result; we forward it untouched so the
+    /// multipart handler can write the composite sidecar.
+    async fn concat(
+        &self,
+        part_blob_ids: &[BlobId],
+        output_blob_id: &BlobId,
+    ) -> Result<BlobPutResult, ArcaError> {
+        self.inner.concat(part_blob_ids, output_blob_id).await
     }
 }
 
@@ -582,6 +595,7 @@ mod tests {
             encryption: None,
             compression: result.compression.clone(),
             version_id: None,
+            composite: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
 
@@ -646,6 +660,7 @@ mod tests {
             encryption: None,
             compression: result.compression.clone(),
             version_id: None,
+            composite: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
 

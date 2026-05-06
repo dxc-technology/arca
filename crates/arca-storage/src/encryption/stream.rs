@@ -22,7 +22,7 @@ use md5::{Digest, Md5};
 use ring::aead::LessSafeKey;
 
 use super::format::{self, TAG_LEN};
-use super::keys::{build_nonce, decrypt_chunk, encrypt_chunk};
+use super::keys::{build_nonce, decrypt_chunk, encrypt_chunk_in_place};
 
 /// Plaintext statistics captured during encryption.
 #[derive(Debug, Default)]
@@ -88,18 +88,21 @@ impl EncryptingStream {
     }
 
     /// Encrypts the current buffer as one chunk and pushes to `pending`.
+    /// Single allocation: build the on-disk frame `[len_prefix | ciphertext | tag]`
+    /// directly, encrypt in place, then `Bytes::from` (zero-copy freeze).
     fn flush_chunk(&mut self) -> Result<(), io::Error> {
         if self.buffer.is_empty() {
             return Ok(());
         }
         let plaintext_len = self.buffer.len() as u32;
         let nonce = build_nonce(&self.nonce_prefix, self.chunk_index);
-        let ciphertext = encrypt_chunk(&self.key, &nonce, &self.buffer)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
-        let mut chunk_bytes = Vec::with_capacity(4 + ciphertext.len());
+        let mut chunk_bytes = Vec::with_capacity(4 + self.buffer.len() + TAG_LEN);
         chunk_bytes.extend_from_slice(&plaintext_len.to_le_bytes());
-        chunk_bytes.extend_from_slice(&ciphertext);
+        chunk_bytes.extend_from_slice(&self.buffer);
+        let tag = encrypt_chunk_in_place(&self.key, &nonce, &mut chunk_bytes[4..])
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        chunk_bytes.extend_from_slice(&tag);
 
         self.pending.push(Bytes::from(chunk_bytes));
         self.chunk_index += 1;

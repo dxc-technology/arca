@@ -12,9 +12,11 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use arca_core::error::ArcaError;
 use arca_core::store::{
-    BlobEncryptionInfo, BlobGetResult, BlobPutResult, BlobStore, ByteRange, ByteStream, SidecarMeta,
+    BlobEncryptionInfo, BlobGetResult, BlobPutResult, BlobStore, ByteRange, ByteStream,
+    CompositePart, SidecarMeta,
 };
 use arca_core::types::BlobId;
+use md5::{Digest, Md5};
 
 use crate::encryption::format::{self, HEADER_SIZE};
 use crate::encryption::keys::{
@@ -209,6 +211,79 @@ impl EncryptingBlobStore {
             content_length,
         })
     }
+
+    /// Streams plaintext from a composite blob (the result of an encrypted
+    /// `CompleteMultipartUpload`). The `parts` are still encrypted on disk
+    /// under their own per-part DEKs; we decrypt only the chunks that
+    /// overlap the requested range.
+    async fn get_composite(
+        &self,
+        parts: &[CompositePart],
+        range: Option<ByteRange>,
+    ) -> Result<BlobGetResult, ArcaError> {
+        let total: u64 = parts.iter().map(|p| p.plaintext_size).sum();
+
+        // Resolve absolute plaintext range [range_start, range_end] inclusive.
+        let (range_start, range_end) = match range {
+            Some(r) => {
+                let end = r.end.unwrap_or_else(|| total.saturating_sub(1));
+                (r.start, end.min(total.saturating_sub(1)))
+            }
+            None => (0, total.saturating_sub(1)),
+        };
+        let content_length = if total == 0 {
+            0
+        } else if range_end >= range_start {
+            range_end - range_start + 1
+        } else {
+            0
+        };
+
+        // Walk parts in order, eagerly building the per-part read futures.
+        // Each part contributes its [sub_start, sub_end] inclusive sub-range.
+        let mut combined: ByteStream = Box::pin(tokio_stream::empty());
+        let mut cum_start: u64 = 0;
+        for part in parts {
+            let part_size = part.plaintext_size;
+            let part_end_excl = cum_start + part_size;
+            // Skip parts entirely outside the requested range.
+            if part_size == 0 || part_end_excl <= range_start || cum_start > range_end {
+                cum_start = part_end_excl;
+                continue;
+            }
+            let sub_start = range_start.saturating_sub(cum_start);
+            let part_end_incl = part_end_excl - 1;
+            let sub_end = if range_end < part_end_incl {
+                range_end - cum_start
+            } else {
+                part_size - 1
+            };
+
+            let part_result = if sub_start == 0 && sub_end == part_size - 1 {
+                // Full read of this part.
+                self.get_encrypted_full(&part.blob_id, &part.encryption, part_size)
+                    .await?
+            } else {
+                self.get_encrypted_range(
+                    &part.blob_id,
+                    &part.encryption,
+                    part_size,
+                    ByteRange {
+                        start: sub_start,
+                        end: Some(sub_end),
+                    },
+                )
+                .await?
+            };
+            combined = Box::pin(tokio_stream::StreamExt::chain(combined, part_result.stream));
+            cum_start = part_end_excl;
+        }
+
+        Ok(BlobGetResult {
+            stream: combined,
+            content_length,
+        })
+    }
 }
 
 #[async_trait::async_trait]
@@ -262,6 +337,7 @@ impl BlobStore for EncryptingBlobStore {
                 key_id: self.master_key.key_id().to_string(),
             }),
             compression: None,
+            composite_parts: None,
         })
     }
 
@@ -272,6 +348,13 @@ impl BlobStore for EncryptingBlobStore {
     ) -> Result<BlobGetResult, ArcaError> {
         // Read sidecar to check if the blob is encrypted.
         let sidecar = self.read_sidecar(blob_id).await?;
+
+        // Composite blob (result of an encrypted CompleteMultipartUpload):
+        // no on-disk file at this blob_id, parts live separately and are
+        // streamed through.
+        if let Some(parts) = sidecar.as_ref().and_then(|s| s.composite.as_ref()) {
+            return self.get_composite(parts, range).await;
+        }
 
         let enc_info = sidecar.as_ref().and_then(|s| s.encryption.as_ref());
 
@@ -297,6 +380,24 @@ impl BlobStore for EncryptingBlobStore {
     }
 
     async fn delete(&self, blob_id: &BlobId) -> Result<(), ArcaError> {
+        // Composite blob: cascade-delete every part it points to before
+        // removing the composite sidecar itself. Each part's blob_id is a
+        // standalone encrypted blob with its own sidecar; `inner.delete`
+        // takes care of both the file and its sidecar.
+        if let Ok(Some(sidecar)) = self.read_sidecar(blob_id).await {
+            if let Some(parts) = sidecar.composite {
+                for p in &parts {
+                    // Best-effort: log and continue if a single part is missing.
+                    if let Err(e) = self.inner.delete(&p.blob_id).await {
+                        tracing::warn!(
+                            error = %e,
+                            blob_id = %p.blob_id.0,
+                            "failed to delete composite part during cascade"
+                        );
+                    }
+                }
+            }
+        }
         self.inner.delete(blob_id).await
     }
 
@@ -306,6 +407,109 @@ impl BlobStore for EncryptingBlobStore {
         meta: &SidecarMeta,
     ) -> Result<(), ArcaError> {
         self.inner.write_sidecar(blob_id, meta).await
+    }
+
+    /// Override concat to avoid the default decrypt+re-encrypt path.
+    ///
+    /// Reads each part's sidecar to capture its DEK, nonce_prefix, and
+    /// plaintext MD5. Returns a `BlobPutResult` carrying `composite_parts`
+    /// so the caller writes a sidecar that points at the still-on-disk
+    /// part files. CompleteMultipartUpload becomes O(N) sidecar reads
+    /// instead of O(N * part_size) AEAD work.
+    ///
+    /// Falls back to the default `get + put` impl when any part has
+    /// compression metadata (the composite path doesn't carry per-part
+    /// compression info on the final sidecar yet).
+    async fn concat(
+        &self,
+        part_blob_ids: &[BlobId],
+        output_blob_id: &BlobId,
+    ) -> Result<BlobPutResult, ArcaError> {
+        // Quick scan: if any part is compressed or unencrypted, fall back
+        // to the safe (slow) decrypt+re-encrypt path.
+        let mut composite_parts: Vec<CompositePart> = Vec::with_capacity(part_blob_ids.len());
+        let mut total_size: u64 = 0;
+        let mut md5_concat: Vec<u8> = Vec::with_capacity(part_blob_ids.len() * 16);
+        let mut needs_fallback = false;
+
+        for blob_id in part_blob_ids {
+            let sidecar = self
+                .read_sidecar(blob_id)
+                .await?
+                .ok_or_else(|| {
+                    ArcaError::Internal(format!(
+                        "missing sidecar for multipart part {}",
+                        blob_id.0
+                    ))
+                })?;
+
+            let enc_info = match sidecar.encryption.clone() {
+                Some(e) => e,
+                None => {
+                    needs_fallback = true;
+                    break;
+                }
+            };
+            if sidecar.compression.is_some() {
+                needs_fallback = true;
+                break;
+            }
+
+            let md5_bytes = hex::decode(&sidecar.etag).map_err(|e| {
+                ArcaError::Internal(format!("part {} etag is not hex: {e}", blob_id.0))
+            })?;
+            if md5_bytes.len() != 16 {
+                return Err(ArcaError::Internal(format!(
+                    "part {} has malformed etag (not 16 bytes)",
+                    blob_id.0
+                )));
+            }
+            md5_concat.extend_from_slice(&md5_bytes);
+            total_size += sidecar.size;
+
+            composite_parts.push(CompositePart {
+                blob_id: blob_id.clone(),
+                plaintext_size: sidecar.size,
+                plaintext_etag: sidecar.etag,
+                encryption: enc_info,
+            });
+        }
+
+        if needs_fallback {
+            tracing::debug!(
+                "EncryptingBlobStore::concat falling back to decrypt+re-encrypt \
+                 (one or more parts is unencrypted or compressed)"
+            );
+            // Replicate the trait default — get each, chain, put.
+            let mut combined: ByteStream = Box::pin(tokio_stream::empty());
+            for blob_id in part_blob_ids {
+                let result = self.get(blob_id, None).await?;
+                combined = Box::pin(tokio_stream::StreamExt::chain(combined, result.stream));
+            }
+            return self.put(output_blob_id, combined).await;
+        }
+
+        // Composite ETag (without S3 multipart -N suffix; the handler adds
+        // that). The handler currently overrides this anyway, but we set a
+        // sensible value for consumers that read BlobPutResult.etag.
+        let composite_md5 = Md5::digest(&md5_concat);
+
+        Ok(BlobPutResult {
+            size: total_size,
+            etag: hex::encode(composite_md5),
+            // Marker encryption info: signals "encrypted" but the per-part
+            // DEKs/nonces live in `composite_parts`. The fields are blank
+            // because the composite has no top-level DEK.
+            encryption: Some(BlobEncryptionInfo {
+                algorithm: "AES256".to_string(),
+                encrypted_dek: String::new(),
+                dek_nonce: String::new(),
+                nonce_prefix: String::new(),
+                key_id: self.master_key.key_id().to_string(),
+            }),
+            compression: None,
+            composite_parts: Some(composite_parts),
+        })
     }
 }
 
@@ -386,6 +590,7 @@ mod tests {
             encryption: put_result.encryption.clone(),
             compression: None,
             version_id: None,
+            composite: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
 
@@ -415,6 +620,7 @@ mod tests {
             encryption: put_result.encryption.clone(),
             compression: None,
             version_id: None,
+            composite: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
 
@@ -450,6 +656,7 @@ mod tests {
             encryption: None,
             compression: None,
             version_id: None,
+            composite: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
 
@@ -479,6 +686,7 @@ mod tests {
             encryption: put_result.encryption.clone(),
             compression: None,
             version_id: None,
+            composite: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
 
@@ -509,6 +717,7 @@ mod tests {
             encryption: put_result.encryption.clone(),
             compression: None,
             version_id: None,
+            composite: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
 
@@ -538,6 +747,7 @@ mod tests {
             encryption: put_result.encryption.clone(),
             compression: None,
             version_id: None,
+            composite: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
 
@@ -570,6 +780,7 @@ mod tests {
             encryption: put_result.encryption,
             compression: None,
             version_id: None,
+            composite: None,
         };
         store.write_sidecar(&blob_id, &sidecar).await.unwrap();
 
@@ -577,5 +788,256 @@ mod tests {
 
         // Get should fail.
         assert!(store.get(&blob_id, None).await.is_err());
+    }
+
+    // ----- Composite (multipart concat) tests -----
+
+    /// Helper: write `n_parts` of `part_size` random-ish bytes as encrypted
+    /// blobs. Returns the part blob ids and the concatenated plaintext that
+    /// the composite blob should reproduce.
+    async fn make_encrypted_parts(
+        store: &EncryptingBlobStore,
+        n_parts: usize,
+        part_size: usize,
+    ) -> (Vec<BlobId>, Vec<u8>) {
+        let mut ids = Vec::with_capacity(n_parts);
+        let mut full = Vec::with_capacity(n_parts * part_size);
+        for i in 0..n_parts {
+            let blob_id = BlobId::new();
+            let part_data: Vec<u8> = (0..part_size)
+                .map(|b| ((i * 31 + b) % 256) as u8)
+                .collect();
+            let put_result = store.put(&blob_id, bytes_to_stream(&part_data)).await.unwrap();
+            // Each part needs its own sidecar so concat can read encryption info.
+            let sidecar = SidecarMeta {
+                bucket: "test".into(),
+                key: format!("part-{i}"),
+                size: put_result.size,
+                etag: put_result.etag.clone(),
+                content_type: None,
+                last_modified: "2026-01-01T00:00:00Z".into(),
+                metadata: HashMap::new(),
+                encryption: put_result.encryption.clone(),
+                compression: None,
+                version_id: None,
+                composite: None,
+            };
+            store.write_sidecar(&blob_id, &sidecar).await.unwrap();
+            ids.push(blob_id);
+            full.extend_from_slice(&part_data);
+        }
+        (ids, full)
+    }
+
+    #[tokio::test]
+    async fn concat_composite_returns_parts() {
+        let (store, _dir) = test_store().await;
+        let (part_ids, _full) = make_encrypted_parts(&store, 3, 64).await;
+        let output_id = BlobId::new();
+
+        let result = store.concat(&part_ids, &output_id).await.unwrap();
+
+        // Composite path is taken — composite_parts populated, no on-disk file.
+        let parts = result.composite_parts.expect("composite path should engage");
+        assert_eq!(parts.len(), 3);
+        assert_eq!(result.size, 3 * 64);
+        // Each part has matching blob_id and plaintext_size.
+        for (i, p) in parts.iter().enumerate() {
+            assert_eq!(p.blob_id, part_ids[i]);
+            assert_eq!(p.plaintext_size, 64);
+            assert!(!p.encryption.encrypted_dek.is_empty());
+        }
+        // The output blob file should NOT exist (composite is sidecar-only).
+        let output_path = store.inner.blob_path(&output_id);
+        assert!(!output_path.exists());
+    }
+
+    #[tokio::test]
+    async fn concat_composite_get_full_roundtrip() {
+        let (store, _dir) = test_store().await;
+        let (part_ids, full) = make_encrypted_parts(&store, 3, 256).await;
+        let output_id = BlobId::new();
+        let result = store.concat(&part_ids, &output_id).await.unwrap();
+
+        // Caller writes the composite sidecar.
+        let sidecar = SidecarMeta {
+            bucket: "test".into(),
+            key: "composite.bin".into(),
+            size: result.size,
+            etag: result.etag.clone(),
+            content_type: None,
+            last_modified: "2026-01-01T00:00:00Z".into(),
+            metadata: HashMap::new(),
+            encryption: result.encryption.clone(),
+            compression: None,
+            version_id: None,
+            composite: result.composite_parts.clone(),
+        };
+        store.write_sidecar(&output_id, &sidecar).await.unwrap();
+
+        // Full read of the composite returns concatenated plaintext.
+        let get_result = store.get(&output_id, None).await.unwrap();
+        assert_eq!(get_result.content_length, full.len() as u64);
+        let body = collect_stream(get_result.stream).await;
+        assert_eq!(body, full);
+    }
+
+    #[tokio::test]
+    async fn concat_composite_get_range_within_single_part() {
+        let (store, _dir) = test_store().await;
+        let (part_ids, full) = make_encrypted_parts(&store, 3, 100).await;
+        let output_id = BlobId::new();
+        let result = store.concat(&part_ids, &output_id).await.unwrap();
+        let sidecar = SidecarMeta {
+            bucket: "test".into(),
+            key: "c.bin".into(),
+            size: result.size,
+            etag: result.etag.clone(),
+            content_type: None,
+            last_modified: "2026-01-01T00:00:00Z".into(),
+            metadata: HashMap::new(),
+            encryption: result.encryption.clone(),
+            compression: None,
+            version_id: None,
+            composite: result.composite_parts.clone(),
+        };
+        store.write_sidecar(&output_id, &sidecar).await.unwrap();
+
+        // Range fully inside part 1: bytes 110..=130 (part 1 covers [100, 200)).
+        let range = ByteRange { start: 110, end: Some(130) };
+        let g = store.get(&output_id, Some(range)).await.unwrap();
+        assert_eq!(g.content_length, 21);
+        let body = collect_stream(g.stream).await;
+        assert_eq!(body, &full[110..=130]);
+    }
+
+    #[tokio::test]
+    async fn concat_composite_get_range_cross_two_parts() {
+        let (store, _dir) = test_store().await;
+        let (part_ids, full) = make_encrypted_parts(&store, 3, 100).await;
+        let output_id = BlobId::new();
+        let result = store.concat(&part_ids, &output_id).await.unwrap();
+        let sidecar = SidecarMeta {
+            bucket: "test".into(),
+            key: "c.bin".into(),
+            size: result.size,
+            etag: result.etag.clone(),
+            content_type: None,
+            last_modified: "2026-01-01T00:00:00Z".into(),
+            metadata: HashMap::new(),
+            encryption: result.encryption.clone(),
+            compression: None,
+            version_id: None,
+            composite: result.composite_parts.clone(),
+        };
+        store.write_sidecar(&output_id, &sidecar).await.unwrap();
+
+        // Range crosses part 0 / part 1 boundary.
+        let range = ByteRange { start: 80, end: Some(150) };
+        let g = store.get(&output_id, Some(range)).await.unwrap();
+        assert_eq!(g.content_length, 71);
+        let body = collect_stream(g.stream).await;
+        assert_eq!(body, &full[80..=150]);
+    }
+
+    #[tokio::test]
+    async fn concat_composite_get_range_spans_three_parts() {
+        let (store, _dir) = test_store().await;
+        let (part_ids, full) = make_encrypted_parts(&store, 3, 100).await;
+        let output_id = BlobId::new();
+        let result = store.concat(&part_ids, &output_id).await.unwrap();
+        let sidecar = SidecarMeta {
+            bucket: "test".into(),
+            key: "c.bin".into(),
+            size: result.size,
+            etag: result.etag.clone(),
+            content_type: None,
+            last_modified: "2026-01-01T00:00:00Z".into(),
+            metadata: HashMap::new(),
+            encryption: result.encryption.clone(),
+            compression: None,
+            version_id: None,
+            composite: result.composite_parts.clone(),
+        };
+        store.write_sidecar(&output_id, &sidecar).await.unwrap();
+
+        // Range covers entire part 1 plus tails of part 0 and part 2.
+        let range = ByteRange { start: 50, end: Some(250) };
+        let g = store.get(&output_id, Some(range)).await.unwrap();
+        assert_eq!(g.content_length, 201);
+        let body = collect_stream(g.stream).await;
+        assert_eq!(body, &full[50..=250]);
+    }
+
+    #[tokio::test]
+    async fn concat_composite_delete_cascades_to_parts() {
+        let (store, _dir) = test_store().await;
+        let (part_ids, _full) = make_encrypted_parts(&store, 2, 64).await;
+        let output_id = BlobId::new();
+        let result = store.concat(&part_ids, &output_id).await.unwrap();
+        let sidecar = SidecarMeta {
+            bucket: "test".into(),
+            key: "c.bin".into(),
+            size: result.size,
+            etag: result.etag.clone(),
+            content_type: None,
+            last_modified: "2026-01-01T00:00:00Z".into(),
+            metadata: HashMap::new(),
+            encryption: result.encryption.clone(),
+            compression: None,
+            version_id: None,
+            composite: result.composite_parts.clone(),
+        };
+        store.write_sidecar(&output_id, &sidecar).await.unwrap();
+
+        // Sanity: parts on disk before delete.
+        for id in &part_ids {
+            assert!(store.inner.blob_path(id).exists());
+        }
+
+        store.delete(&output_id).await.unwrap();
+
+        // After delete, all part files are gone.
+        for id in &part_ids {
+            assert!(
+                !store.inner.blob_path(id).exists(),
+                "part {} should have been deleted",
+                id.0
+            );
+            assert!(store.get(id, None).await.is_err());
+        }
+        // Composite get also fails.
+        assert!(store.get(&output_id, None).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn concat_falls_back_when_part_unencrypted() {
+        // If a part has no encryption info, the composite path is unsafe;
+        // we expect a fallback to decrypt+re-encrypt.
+        let (store, _dir) = test_store().await;
+        let part_id = BlobId::new();
+        let part_data = b"plain";
+        // Bypass encryption by writing through inner.
+        let inner_result = store.inner.put(&part_id, bytes_to_stream(part_data)).await.unwrap();
+        let sidecar = SidecarMeta {
+            bucket: "test".into(),
+            key: "p".into(),
+            size: inner_result.size,
+            etag: inner_result.etag.clone(),
+            content_type: None,
+            last_modified: "2026-01-01T00:00:00Z".into(),
+            metadata: HashMap::new(),
+            encryption: None, // <-- unencrypted
+            compression: None,
+            version_id: None,
+            composite: None,
+        };
+        store.write_sidecar(&part_id, &sidecar).await.unwrap();
+
+        let output_id = BlobId::new();
+        let result = store.concat(&[part_id], &output_id).await.unwrap();
+        // Fallback path: composite_parts is None, an actual blob was written.
+        assert!(result.composite_parts.is_none());
+        assert!(store.inner.blob_path(&output_id).exists());
     }
 }
