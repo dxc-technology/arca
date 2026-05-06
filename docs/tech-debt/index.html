@@ -1341,6 +1341,14 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>None</td>
 <td><code>tls.rs</code>, <code>Cargo.toml</code></td>
 </tr>
+<tr>
+<td>TD-014</td>
+<td><code>recover</code> / <code>fsck</code> composite blobs</td>
+<td>Composite blobs (the result of the optimised <code>CompleteMultipartUpload</code>) live as a sidecar that lists the part blob ids — no on-disk file exists at the composite's blob path. <code>recover::process_sidecar</code> rejects them as "orphaned sidecar (blob file missing)" and aborts the rebuild. <code>fsck</code> reports the same sidecar as an <code>orphaned_sidecars</code> entry (the parts themselves are not orphaned because they each carry their own sidecar). Both tools therefore produce false positives on any data directory that has experienced multipart uploads after the composite-concat optimisation. Runtime S3 reads/writes are unaffected — the request path fully handles composites.</td>
+<td>(1) <code>recover</code>: when a sidecar has <code>composite: Some(parts)</code>, skip the blob-existence check, walk the part list, and verify each referenced part blob exists. Insert one <code>ObjectRecord</code> per composite that points at the composite blob_id (the part records are not surfaced to the metadata DB — they are a storage-layer detail). (2) <code>fsck</code>: treat composite sidecars as valid (no blob file expected); cross-check each referenced part exists; report a new <code>dangling_part</code> category when a composite references a missing part. Add unit tests for both tools using fixtures that mix composite and ordinary blobs.</td>
+<td>None at the runtime level; recovery / fsck workflows on data with composites currently fail</td>
+<td><code>crates/arca-server/src/recover.rs:206</code>, <code>crates/arca-server/src/fsck.rs</code> (<code>orphaned_sidecars</code> collection, around line 112)</td>
+</tr>
 </tbody>
 </table>
 <hr />

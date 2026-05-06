@@ -204,6 +204,11 @@ async fn process_sidecar(meta_path: &Path, skip_verify: bool) -> Result<Recovere
 
     // Check that the blob file exists.
     if !blob_path.exists() {
+        // TECHDEBT(TD-014): composite blobs (encrypted/plain `CompleteMultipartUpload`
+        // optimisation) have no on-disk file — only a sidecar listing their parts.
+        // Recover currently rejects them as orphans. Proper fix: when the sidecar
+        // has `composite: Some(parts)`, validate each referenced part exists and
+        // insert a single ObjectRecord pointing at the composite blob_id.
         anyhow::bail!("orphaned sidecar (blob file missing)");
     }
 

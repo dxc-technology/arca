@@ -796,3 +796,4 @@ Remaining items:
 - **Unimplemented ops** (TD-007): ~33 bucket operations return 501
 - **Multipart Content-Type** (TD-008): Captured at init time — verify against AWS semantics
 - **SSE-C multipart** (TD-010): SSE-C headers rejected on multipart uploads — needs per-part encryption tracking
+- **Composite blobs in `recover` / `fsck`** (TD-014): the multipart Complete optimisation produces composite sidecars with no on-disk blob file. `arca recover` aborts on them as orphans, `arca fsck` reports false-positive `orphaned_sidecars`. Runtime S3 reads/writes are unaffected — only the recovery and integrity-check tools need teaching how to walk composites.
