@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.1] — 2026-05-07
+
+### Fixed
+
+- **Plain `PutObject` and `UploadPart` no longer block tokio workers on MD5.** `FsBlobStore::put` used to interleave `Md5::update` and `tokio::fs::File::write_all` on the same async task, so the CPU-bound hash work serialized on the runtime that was supposed to be pulling network bytes. After v0.23.0 had moved AEAD off the runtime, this left plain uploads slower than encrypted in production PBM backups (the symptom that triggered this release). The new pipeline runs the producer on the async task and hands chunks to a blocking worker via a bounded `tokio::sync::mpsc::channel` (capacity 4) that owns the `std::fs::File` and folds MD5 + write together off the runtime. Same atomic `O_CREAT|O_EXCL` tmp file + rename, same `BlobPutResult` shape, all 17 `fs::blob` unit tests pass.
+
+  Bench (single-stream `1 × 1024 MiB / 8 MiB parts`, tmpfs):
+
+  | Path      | Before (v0.23.0) | After  | Δ   |
+  |-----------|------------------|--------|-----|
+  | Plain     | 263 MB/s         | 266 MB/s | flat (network-bound) |
+  | Encrypted | 188 MB/s         | 235 MB/s | +25% |
+
+  Concurrent (`4 × 256 MiB / 8 MiB parts`, tmpfs): plain ~833 → ~862 MB/s (+3.5%), encrypted 594 → 706 MB/s (+19%). The win is largest where the runtime was previously most contended (encrypted, low parallelism) — exactly the PBM-backup workload.
+- **(Console)** Admin error toasts now surface the backend's descriptive `message` instead of the HTTP category. The admin API has always returned `{"error":"<HTTP category>","message":"<detail>"}`, but the console used `body.error || body.message` everywhere — so a duplicate-username `POST /admin/users` would just say "Conflict" instead of `Username "root" already exists`. Flipped the precedence to `body.message || body.error` across `users.js`, `teams.js`, `grants.js`, `credentials.js`. For S3 endpoints (bucket/object/lifecycle/replication) the existing `<Message>` extractor (`_extractS3Error`) now covers a few sites that were still bare `Error ${status}` (`bucket-detail.js` 6 sites, `buckets.js` `DeleteBucketLifecycle`). `replication.js` got a module-level `extractS3Error` helper used in 6 sites.
+
+### Added
+
+- **(Console)** Soft duplicate-description warning on the Create User / Team / Grant / Credential modals and on the inline-edit description of the user / team / grant / credential cards. Description is free-form (no UNIQUE constraint), so the warning is purely advisory — the submit / save path is unchanged. Implemented as Alpine `x-show` over `<list>.some(...)`; the inline-edit case excludes the entity being edited via its id, and credential cards use a per-row `x-data="{ liveDesc }"` scope so the warning tracks live as you type.
+
 ## [0.23.0] — 2026-05-06
 
 ### Fixed
@@ -596,7 +616,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.23.1...HEAD
+[0.23.1]: https://github.com/dxc-technology/arca/compare/v0.23.0...v0.23.1
 [0.23.0]: https://github.com/dxc-technology/arca/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/dxc-technology/arca/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/dxc-technology/arca/compare/v0.20.0...v0.21.0
