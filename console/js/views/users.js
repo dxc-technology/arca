@@ -47,7 +47,7 @@ export function usersView() {
         });
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         this.showCreateModal = false;
         this.newUsername = '';
@@ -71,7 +71,7 @@ export function usersView() {
         const resp = await api.adminDelete('/users/' + this.deleteUser.user_id);
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         this.showDeleteModal = false;
         this.deleteUser = null;
@@ -177,7 +177,7 @@ export function userDetailView() {
         const resp = await api.adminPut('/users/' + this.userId, data);
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         const user = await api.adminGet('/users/' + this.userId);
         this.user = user;
@@ -232,7 +232,7 @@ export function userDetailView() {
         const resp = await api.adminPut('/credentials/' + credId, { active });
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         const creds = await api.adminGet('/users/' + this.userId + '/credentials');
         this.credentials = creds;
@@ -246,7 +246,7 @@ export function userDetailView() {
         const resp = await api.adminPut('/credentials/' + credId, { description });
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         const creds = await api.adminGet('/users/' + this.userId + '/credentials');
         this.credentials = creds;
@@ -267,7 +267,7 @@ export function userDetailView() {
         const resp = await api.adminDelete('/credentials/' + this.deleteCredId);
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         this.showDeleteCredModal = false;
         const creds = await api.adminGet('/users/' + this.userId + '/credentials');

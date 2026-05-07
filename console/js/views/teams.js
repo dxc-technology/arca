@@ -47,7 +47,7 @@ export function teamsView() {
         });
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         this.showCreateModal = false;
         this.newName = '';
@@ -71,7 +71,7 @@ export function teamsView() {
         const resp = await api.adminDelete('/teams/' + this.deleteTeam.team_id);
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         this.showDeleteModal = false;
         this.deleteTeam = null;
@@ -157,7 +157,7 @@ export function teamDetailView() {
         const resp = await api.adminPut('/teams/' + this.teamId, data);
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         const team = await api.adminGet('/teams/' + this.teamId);
         this.team = team;
