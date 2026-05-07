@@ -38,7 +38,7 @@ export function credentialsView() {
         const resp = await api.adminPost('/credentials', { description: this.newCredDescription, admin: this.newCredAdmin });
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         this.newCredential = await resp.json();
         this.newCredDescription = '';

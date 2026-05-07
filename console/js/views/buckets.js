@@ -278,7 +278,10 @@ export function bucketSettingsView() {
       try {
         if (this.lifecycleRules.length === 0) {
           const resp = await api.s3DeleteBucketLifecycle(this.bucketName);
-          if (!resp.ok && resp.status !== 204) throw new Error(`Error ${resp.status}`);
+          if (!resp.ok && resp.status !== 204) {
+            const text = await resp.text();
+            throw new Error(text.match(/<Message>(.*?)<\/Message>/)?.[1] || `HTTP ${resp.status}`);
+          }
         } else {
           const xml = buildLifecycleXml(this.lifecycleRules);
           const resp = await api.s3PutBucketLifecycle(this.bucketName, xml);

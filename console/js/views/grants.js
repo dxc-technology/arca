@@ -108,7 +108,7 @@ export function grantsView() {
         });
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         this.showCreateModal = false;
         this.newName = '';
@@ -133,7 +133,7 @@ export function grantsView() {
         const resp = await api.adminDelete('/grants/' + this.deleteGrant.grant_id);
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         this.showDeleteModal = false;
         this.deleteGrant = null;
@@ -156,6 +156,7 @@ export function grantDetailView() {
     grant: null,
     attachedUsers: [],
     attachedTeams: [],
+    grantsAll: [],
     loading: true,
     editName: '',
     editDescription: '',
@@ -175,10 +176,11 @@ export function grantDetailView() {
       if (!this.grantId) { this.loading = false; return; }
       this.loading = true;
       try {
-        const [grant, users, teams] = await Promise.allSettled([
+        const [grant, users, teams, allGrants] = await Promise.allSettled([
           api.adminGet('/grants/' + this.grantId),
           api.adminGet('/users'),
           api.adminGet('/teams'),
+          api.adminGet('/grants'),
         ]);
 
         if (grant.status === 'fulfilled') {
@@ -191,6 +193,7 @@ export function grantDetailView() {
               : JSON.stringify(this.grant.document, null, 2))
             : '';
         }
+        this.grantsAll = allGrants.status === 'fulfilled' ? allGrants.value : [];
 
         // Find users and teams that have this grant attached
         if (users.status === 'fulfilled') {
@@ -272,7 +275,7 @@ export function grantDetailView() {
         const resp = await api.adminPut('/grants/' + this.grantId, data);
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         const grant = await api.adminGet('/grants/' + this.grantId);
         this.grant = grant;
@@ -303,7 +306,7 @@ export function grantDetailView() {
         });
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         this.saveSuccess = true;
         setTimeout(() => { this.saveSuccess = false; }, 2000);
@@ -334,7 +337,7 @@ export function grantDetailView() {
         const resp = await api.adminDelete('/grants/' + this.grantId);
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         window.location.hash = '#/grants';
       } catch (e) {

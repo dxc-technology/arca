@@ -65,7 +65,7 @@
        The ?v=... query param is fingerprinted per console version so browser
        caches never pin stale code across console upgrades. Keep this in sync
        with window.ARCA_CONSOLE_VERSION above. -->
-  <script type="module" src="/js/app.js?v=0.22.0-creds-hint"></script>
+  <script type="module" src="/js/app.js?v=0.23.0-dup-desc-warn-creds"></script>
 
   <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -2897,10 +2897,13 @@
                   <div>
                     <h3 class="text-lg font-semibold mb-4">Create Credential</h3>
                     <form @submit.prevent="createCredential()">
-                      <label class="block text-xs font-medium text-vault-muted mb-1.5 uppercase tracking-wider">Description (optional)</label>
-                      <input type="text" x-model="newCredDescription" x-ref="credDescInput"
-                        placeholder="My application"
-                        class="w-full px-3.5 py-2.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition text-sm mb-4">
+                      <div class="mb-4">
+                        <label class="block text-xs font-medium text-vault-muted mb-1.5 uppercase tracking-wider">Description (optional)</label>
+                        <input type="text" x-model="newCredDescription" x-ref="credDescInput"
+                          placeholder="My application"
+                          class="w-full px-3.5 py-2.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition text-sm">
+                        <p x-show="newCredDescription && newCredDescription.trim() && credentials.some(c => (c.description || '').trim() === newCredDescription.trim())" x-cloak class="text-xs text-amber-400 mt-1">Another credential already uses this description. You can still continue.</p>
+                      </div>
                       <label class="flex items-center gap-2 mb-4 cursor-pointer">
                         <input type="checkbox" x-model="newCredAdmin"
                           class="w-4 h-4 rounded border-vault-border bg-vault-bg text-vault-accent focus:ring-vault-accent/30 focus:ring-offset-0">
@@ -3023,7 +3026,11 @@
               <h3 class="text-lg font-semibold text-vault-text mb-4">Create User</h3>
               <div class="space-y-4">
                 <div><label class="text-sm text-vault-muted block mb-1">Username</label><input x-model="newUsername" type="text" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent" placeholder="alice"></div>
-                <div><label class="text-sm text-vault-muted block mb-1">Description</label><input x-model="newDescription" type="text" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent" placeholder="Optional description"></div>
+                <div>
+                  <label class="text-sm text-vault-muted block mb-1">Description</label>
+                  <input x-model="newDescription" type="text" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent" placeholder="Optional description">
+                  <p x-show="newDescription && newDescription.trim() && users.some(u => (u.description || '').trim() === newDescription.trim())" x-cloak class="text-xs text-amber-400 mt-1">Another user already uses this description. You can still continue.</p>
+                </div>
                 <p x-show="createError" class="text-red-400 text-sm" x-text="createError"></p>
               </div>
               <div class="flex justify-end gap-3 mt-6">
@@ -3064,7 +3071,8 @@
           <div x-show="!loading && user">
             <!-- Description -->
             <div x-show="!user?.is_root" class="mb-4 ml-10">
-              <input type="text" :value="editDescription" @change="editDescription = $event.target.value; saveField({ description: editDescription })" class="w-full text-sm text-vault-muted bg-transparent border-b border-transparent hover:border-vault-border focus:border-vault-accent focus:outline-none py-0.5 transition" placeholder="(no description)">
+              <input type="text" :value="editDescription" @input="editDescription = $event.target.value" @change="saveField({ description: editDescription })" class="w-full text-sm text-vault-muted bg-transparent border-b border-transparent hover:border-vault-border focus:border-vault-accent focus:outline-none py-0.5 transition" placeholder="(no description)">
+              <p x-show="editDescription && editDescription.trim() && usersAll.some(u => u.user_id !== userId && (u.description || '').trim() === editDescription.trim())" x-cloak class="text-xs text-amber-400 mt-1">Another user already uses this description.</p>
             </div>
             <p x-show="user?.is_root && user?.description" class="text-vault-muted text-sm mb-4" x-text="user?.description"></p>
             <!-- Tab bar -->
@@ -3083,13 +3091,14 @@
               </div>
               <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <template x-for="cred in credentials" :key="cred.access_key_id">
-                  <div class="glass rounded-xl p-4">
+                  <div class="glass rounded-xl p-4" x-data="{ liveDesc: cred.description || '' }">
                     <div class="flex items-center justify-between mb-2">
                       <button @click="toggleCredActive(cred.access_key_id, !cred.active)" :class="cred.active ? 'bg-green-500/20 text-green-400 hover:bg-green-500/30' : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'" class="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase transition cursor-pointer" x-text="cred.active ? 'Active' : 'Inactive'" :title="cred.active ? 'Click to deactivate' : 'Click to activate'"></button>
                       <button @click="confirmDeleteCred(cred.access_key_id)" class="p-1 rounded hover:bg-red-500/10 text-vault-muted hover:text-red-400 transition"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg></button>
                     </div>
                     <div class="font-mono text-xs text-vault-text break-all mb-1" x-text="cred.access_key_id"></div>
-                    <input type="text" :value="cred.description" @change="updateCredDescription(cred.access_key_id, $event.target.value)" class="w-full text-xs text-vault-muted bg-transparent border-b border-transparent hover:border-vault-border focus:border-vault-accent focus:outline-none py-0.5 transition" placeholder="(no description)">
+                    <input type="text" :value="liveDesc" @input="liveDesc = $event.target.value" @change="updateCredDescription(cred.access_key_id, $event.target.value)" class="w-full text-xs text-vault-muted bg-transparent border-b border-transparent hover:border-vault-border focus:border-vault-accent focus:outline-none py-0.5 transition" placeholder="(no description)">
+                    <p x-show="liveDesc && liveDesc.trim() && credentials.some(c => c.access_key_id !== cred.access_key_id && (c.description || '').trim() === liveDesc.trim())" x-cloak class="text-[10px] text-amber-400 mt-1">Another credential already uses this description.</p>
                   </div>
                 </template>
               </div>
@@ -3208,7 +3217,11 @@
                 <div>
                   <h3 class="text-lg font-semibold text-vault-text mb-4">Create Credential</h3>
                   <div class="space-y-4">
-                    <div><label class="text-sm text-vault-muted block mb-1">Description</label><input x-model="newCredDescription" type="text" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent" placeholder="Optional description"></div>
+                    <div>
+                      <label class="text-sm text-vault-muted block mb-1">Description</label>
+                      <input x-model="newCredDescription" type="text" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent" placeholder="Optional description">
+                      <p x-show="newCredDescription && newCredDescription.trim() && credentials.some(c => (c.description || '').trim() === newCredDescription.trim())" x-cloak class="text-xs text-amber-400 mt-1">Another credential already uses this description. You can still continue.</p>
+                    </div>
                     <div><label class="text-sm text-vault-muted block mb-1">Access Key ID <span class="text-vault-muted/50">(optional, auto-generated if empty)</span></label><input x-model="newCredAccessKey" type="text" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text font-mono focus:outline-none focus:border-vault-accent" placeholder="Leave empty to auto-generate"></div>
                     <div><label class="text-sm text-vault-muted block mb-1">Secret Access Key <span class="text-vault-muted/50">(optional, auto-generated if empty)</span></label><input x-model="newCredSecretKey" type="text" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text font-mono focus:outline-none focus:border-vault-accent" placeholder="Leave empty to auto-generate"></div>
                     <p x-show="createCredError" class="text-red-400 text-sm" x-text="createCredError"></p>
@@ -3324,7 +3337,11 @@
               <h3 class="text-lg font-semibold text-vault-text mb-4">Create Team</h3>
               <div class="space-y-4">
                 <div><label class="text-sm text-vault-muted block mb-1">Name</label><input x-model="newName" type="text" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent" placeholder="engineering"></div>
-                <div><label class="text-sm text-vault-muted block mb-1">Description</label><input x-model="newDescription" type="text" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent" placeholder="Optional description"></div>
+                <div>
+                  <label class="text-sm text-vault-muted block mb-1">Description</label>
+                  <input x-model="newDescription" type="text" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent" placeholder="Optional description">
+                  <p x-show="newDescription && newDescription.trim() && teams.some(t => (t.description || '').trim() === newDescription.trim())" x-cloak class="text-xs text-amber-400 mt-1">Another team already uses this description. You can still continue.</p>
+                </div>
                 <p x-show="createError" class="text-red-400 text-sm" x-text="createError"></p>
               </div>
               <div class="flex justify-end gap-3 mt-6">
@@ -3363,7 +3380,8 @@
           <div x-show="!loading && team">
             <!-- Description -->
             <div class="mb-4 ml-10">
-              <input type="text" :value="editDescription" @change="editDescription = $event.target.value; saveField({ description: editDescription })" class="w-full text-sm text-vault-muted bg-transparent border-b border-transparent hover:border-vault-border focus:border-vault-accent focus:outline-none py-0.5 transition" placeholder="(no description)">
+              <input type="text" :value="editDescription" @input="editDescription = $event.target.value" @change="saveField({ description: editDescription })" class="w-full text-sm text-vault-muted bg-transparent border-b border-transparent hover:border-vault-border focus:border-vault-accent focus:outline-none py-0.5 transition" placeholder="(no description)">
+              <p x-show="editDescription && editDescription.trim() && teamsAll.some(t => t.team_id !== teamId && (t.description || '').trim() === editDescription.trim())" x-cloak class="text-xs text-amber-400 mt-1">Another team already uses this description.</p>
             </div>
             <!-- Tab bar -->
             <div class="flex gap-1 border-b border-vault-border/30 mb-6">
@@ -3517,7 +3535,11 @@
               <h3 class="text-lg font-semibold text-vault-text mb-4">Create Grant</h3>
               <div class="space-y-4">
                 <div><label class="text-sm text-vault-muted block mb-1">Name</label><input x-model="newName" type="text" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent" placeholder="s3-readonly"></div>
-                <div><label class="text-sm text-vault-muted block mb-1">Description</label><input x-model="newDescription" type="text" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent" placeholder="Optional description"></div>
+                <div>
+                  <label class="text-sm text-vault-muted block mb-1">Description</label>
+                  <input x-model="newDescription" type="text" class="w-full bg-vault-bg/50 border border-vault-border rounded-lg px-3 py-2 text-sm text-vault-text focus:outline-none focus:border-vault-accent" placeholder="Optional description">
+                  <p x-show="newDescription && newDescription.trim() && grants.some(g => (g.description || '').trim() === newDescription.trim())" x-cloak class="text-xs text-amber-400 mt-1">Another grant already uses this description. You can still continue.</p>
+                </div>
                 <div>
                   <div class="flex items-center justify-between mb-1">
                     <label class="text-sm text-vault-muted">Policy Document (JSON)</label>
@@ -3570,7 +3592,8 @@
           <div x-show="!loading && grant" class="space-y-6">
             <!-- Description -->
             <div class="ml-10" x-show="!isBuiltIn()">
-              <input type="text" :value="editDescription" @change="editDescription = $event.target.value; saveField({ description: editDescription })" class="w-full text-sm text-vault-muted bg-transparent border-b border-transparent hover:border-vault-border focus:border-vault-accent focus:outline-none py-0.5 transition" placeholder="(no description)">
+              <input type="text" :value="editDescription" @input="editDescription = $event.target.value" @change="saveField({ description: editDescription })" class="w-full text-sm text-vault-muted bg-transparent border-b border-transparent hover:border-vault-border focus:border-vault-accent focus:outline-none py-0.5 transition" placeholder="(no description)">
+              <p x-show="editDescription && editDescription.trim() && grantsAll.some(g => g.grant_id !== grantId && (g.description || '').trim() === editDescription.trim())" x-cloak class="text-xs text-amber-400 mt-1">Another grant already uses this description.</p>
             </div>
             <p x-show="isBuiltIn() && grant?.description" class="text-vault-muted text-sm ml-10" x-text="grant?.description"></p>
 

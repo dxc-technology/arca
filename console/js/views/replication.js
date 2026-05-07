@@ -19,6 +19,20 @@ function eventTypeMeta(id) {
   return EVENT_TYPES.find(e => e.id === id) || { id, label: id, chip: 'bg-slate-500/15 text-slate-300 border-slate-500/30' };
 }
 
+// Extracts the human-readable <Message> from an S3 XML error response.
+// Falls back to the HTTP status when the body isn't parseable XML.
+async function extractS3Error(resp) {
+  try {
+    const text = await resp.text();
+    const doc = new DOMParser().parseFromString(text, 'text/xml');
+    const msg = doc.querySelector('Message');
+    if (msg && msg.textContent) return msg.textContent;
+  } catch {
+    /* fall through */
+  }
+  return `HTTP ${resp.status}`;
+}
+
 // ==================== GLOBAL JOURNAL VIEW ====================
 // Mirrors the audit + notification-events pattern: inline header filters,
 // side detail panel, auto-refresh, pagination.
@@ -581,8 +595,9 @@ export function bucketReplicationEditor() {
             secret_access_key: f.newSecretKey,
           });
           if (!resp.ok) {
-            const text = await resp.text();
-            throw new Error('Could not save credential: ' + text);
+            let body = {};
+            try { body = await resp.json(); } catch {}
+            throw new Error('Could not save credential: ' + (body.message || body.error || `HTTP ${resp.status}`));
           }
         }
 
@@ -628,8 +643,7 @@ export function bucketReplicationEditor() {
       try {
         const resp = await api.s3DeleteBucketReplication(bucket);
         if (!resp.ok && resp.status !== 204 && resp.status !== 404) {
-          const text = await resp.text();
-          throw new Error(text || ('delete failed: ' + resp.status));
+          throw new Error(await extractS3Error(resp));
         }
         this.rules = [];
       } catch (e) {
@@ -644,8 +658,7 @@ export function bucketReplicationEditor() {
         const xml = this.buildReplicationXml();
         const resp = await api.s3PutBucketReplication(bucket, xml);
         if (!resp.ok) {
-          const text = await resp.text();
-          throw new Error(text || ('save failed: ' + resp.status));
+          throw new Error(await extractS3Error(resp));
         }
       } catch (e) {
         this.error = e.message || 'Save failed';
@@ -707,8 +720,9 @@ export function bucketReplicationEditor() {
       try {
         const resp = await api.adminPost('/replication/test-destination', payload);
         if (!resp.ok) {
-          const txt = await resp.text();
-          throw new Error(`${resp.status}: ${txt}`);
+          let body = {};
+          try { body = await resp.json(); } catch {}
+          throw new Error(body.message || body.error || `HTTP ${resp.status}`);
         }
         const data = await resp.json();
         this.testResult = {
@@ -835,8 +849,9 @@ export function replicationCredentials() {
           secret_access_key: f.secret_access_key,
         });
         if (!resp.ok) {
-          const txt = await resp.text();
-          throw new Error(txt || `Error ${resp.status}`);
+          let body = {};
+          try { body = await resp.json(); } catch {}
+          throw new Error(body.message || body.error || `HTTP ${resp.status}`);
         }
         this.showAddModal = false;
         await this.load();
@@ -882,8 +897,9 @@ export function replicationCredentials() {
       try {
         const resp = await api.adminDelete('/replication/credentials/' + encodeURIComponent(this.deleteTarget.name));
         if (!resp.ok && resp.status !== 204 && resp.status !== 404) {
-          const txt = await resp.text();
-          throw new Error(txt || `Error ${resp.status}`);
+          let body = {};
+          try { body = await resp.json(); } catch {}
+          throw new Error(body.message || body.error || `HTTP ${resp.status}`);
         }
         // DELETE returns `{rules_disabled: [...]}` (flat list across all
         // buckets). Surface it in a toast so the user sees exactly what
