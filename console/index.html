@@ -65,7 +65,7 @@
        The ?v=... query param is fingerprinted per console version so browser
        caches never pin stale code across console upgrades. Keep this in sync
        with window.ARCA_CONSOLE_VERSION above. -->
-  <script type="module" src="/js/app.js?v=0.23.0-dup-desc-warn"></script>
+  <script type="module" src="/js/app.js?v=0.23.0-dup-desc-warn-edit"></script>
 
   <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -3071,7 +3071,8 @@
           <div x-show="!loading && user">
             <!-- Description -->
             <div x-show="!user?.is_root" class="mb-4 ml-10">
-              <input type="text" :value="editDescription" @change="editDescription = $event.target.value; saveField({ description: editDescription })" class="w-full text-sm text-vault-muted bg-transparent border-b border-transparent hover:border-vault-border focus:border-vault-accent focus:outline-none py-0.5 transition" placeholder="(no description)">
+              <input type="text" :value="editDescription" @input="editDescription = $event.target.value" @change="saveField({ description: editDescription })" class="w-full text-sm text-vault-muted bg-transparent border-b border-transparent hover:border-vault-border focus:border-vault-accent focus:outline-none py-0.5 transition" placeholder="(no description)">
+              <p x-show="editDescription && editDescription.trim() && usersAll.some(u => u.user_id !== userId && (u.description || '').trim() === editDescription.trim())" x-cloak class="text-xs text-amber-400 mt-1">Another user already uses this description.</p>
             </div>
             <p x-show="user?.is_root && user?.description" class="text-vault-muted text-sm mb-4" x-text="user?.description"></p>
             <!-- Tab bar -->
@@ -3378,7 +3379,8 @@
           <div x-show="!loading && team">
             <!-- Description -->
             <div class="mb-4 ml-10">
-              <input type="text" :value="editDescription" @change="editDescription = $event.target.value; saveField({ description: editDescription })" class="w-full text-sm text-vault-muted bg-transparent border-b border-transparent hover:border-vault-border focus:border-vault-accent focus:outline-none py-0.5 transition" placeholder="(no description)">
+              <input type="text" :value="editDescription" @input="editDescription = $event.target.value" @change="saveField({ description: editDescription })" class="w-full text-sm text-vault-muted bg-transparent border-b border-transparent hover:border-vault-border focus:border-vault-accent focus:outline-none py-0.5 transition" placeholder="(no description)">
+              <p x-show="editDescription && editDescription.trim() && teamsAll.some(t => t.team_id !== teamId && (t.description || '').trim() === editDescription.trim())" x-cloak class="text-xs text-amber-400 mt-1">Another team already uses this description.</p>
             </div>
             <!-- Tab bar -->
             <div class="flex gap-1 border-b border-vault-border/30 mb-6">
@@ -3589,7 +3591,8 @@
           <div x-show="!loading && grant" class="space-y-6">
             <!-- Description -->
             <div class="ml-10" x-show="!isBuiltIn()">
-              <input type="text" :value="editDescription" @change="editDescription = $event.target.value; saveField({ description: editDescription })" class="w-full text-sm text-vault-muted bg-transparent border-b border-transparent hover:border-vault-border focus:border-vault-accent focus:outline-none py-0.5 transition" placeholder="(no description)">
+              <input type="text" :value="editDescription" @input="editDescription = $event.target.value" @change="saveField({ description: editDescription })" class="w-full text-sm text-vault-muted bg-transparent border-b border-transparent hover:border-vault-border focus:border-vault-accent focus:outline-none py-0.5 transition" placeholder="(no description)">
+              <p x-show="editDescription && editDescription.trim() && grantsAll.some(g => g.grant_id !== grantId && (g.description || '').trim() === editDescription.trim())" x-cloak class="text-xs text-amber-400 mt-1">Another grant already uses this description.</p>
             </div>
             <p x-show="isBuiltIn() && grant?.description" class="text-vault-muted text-sm ml-10" x-text="grant?.description"></p>
 

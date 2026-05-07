@@ -94,6 +94,7 @@ export function userDetailView() {
     user: null,
     credentials: [],
     effectiveGrants: [],
+    usersAll: [],
     loading: true,
     activeTab: 'credentials',
 
@@ -142,7 +143,7 @@ export function userDetailView() {
       if (!this.userId) { this.loading = false; return; }
       this.loading = true;
       try {
-        const [user, credentials, grants, teams, effective, allTeams, allGrants] = await Promise.allSettled([
+        const [user, credentials, grants, teams, effective, allTeams, allGrants, allUsers] = await Promise.allSettled([
           api.adminGet('/users/' + this.userId),
           api.adminGet('/users/' + this.userId + '/credentials'),
           api.adminGet('/users/' + this.userId + '/grants'),
@@ -150,12 +151,14 @@ export function userDetailView() {
           api.adminGet('/users/' + this.userId + '/effective-grants'),
           api.adminGet('/teams'),
           api.adminGet('/grants'),
+          api.adminGet('/users'),
         ]);
         this.user = user.status === 'fulfilled' ? user.value : null;
         this.editUsername = this.user?.username || '';
         this.editDescription = this.user?.description || '';
         this.credentials = credentials.status === 'fulfilled' ? credentials.value : [];
         this.effectiveGrants = effective.status === 'fulfilled' ? effective.value : [];
+        this.usersAll = allUsers.status === 'fulfilled' ? allUsers.value : [];
         // Teams shuttle
         this.teamsAll = allTeams.status === 'fulfilled' ? allTeams.value : [];
         const teamsList = teams.status === 'fulfilled' ? teams.value : [];

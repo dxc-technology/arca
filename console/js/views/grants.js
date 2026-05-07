@@ -156,6 +156,7 @@ export function grantDetailView() {
     grant: null,
     attachedUsers: [],
     attachedTeams: [],
+    grantsAll: [],
     loading: true,
     editName: '',
     editDescription: '',
@@ -175,10 +176,11 @@ export function grantDetailView() {
       if (!this.grantId) { this.loading = false; return; }
       this.loading = true;
       try {
-        const [grant, users, teams] = await Promise.allSettled([
+        const [grant, users, teams, allGrants] = await Promise.allSettled([
           api.adminGet('/grants/' + this.grantId),
           api.adminGet('/users'),
           api.adminGet('/teams'),
+          api.adminGet('/grants'),
         ]);
 
         if (grant.status === 'fulfilled') {
@@ -191,6 +193,7 @@ export function grantDetailView() {
               : JSON.stringify(this.grant.document, null, 2))
             : '';
         }
+        this.grantsAll = allGrants.status === 'fulfilled' ? allGrants.value : [];
 
         // Find users and teams that have this grant attached
         if (users.status === 'fulfilled') {
