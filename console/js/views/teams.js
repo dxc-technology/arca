@@ -47,7 +47,7 @@ export function teamsView() {
         });
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         this.showCreateModal = false;
         this.newName = '';
@@ -71,7 +71,7 @@ export function teamsView() {
         const resp = await api.adminDelete('/teams/' + this.deleteTeam.team_id);
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         this.showDeleteModal = false;
         this.deleteTeam = null;
@@ -94,6 +94,7 @@ export function teamDetailView() {
     team: null,
     loading: true,
     activeTab: 'members',
+    teamsAll: [],
 
     // Edit fields
     editName: '',
@@ -126,16 +127,18 @@ export function teamDetailView() {
       if (!this.teamId) { this.loading = false; return; }
       this.loading = true;
       try {
-        const [team, members, grants, allUsers, allGrants] = await Promise.allSettled([
+        const [team, members, grants, allUsers, allGrants, allTeams] = await Promise.allSettled([
           api.adminGet('/teams/' + this.teamId),
           api.adminGet('/teams/' + this.teamId + '/members'),
           api.adminGet('/teams/' + this.teamId + '/grants'),
           api.adminGet('/users'),
           api.adminGet('/grants'),
+          api.adminGet('/teams'),
         ]);
         this.team = team.status === 'fulfilled' ? team.value : null;
         this.editName = this.team?.name || '';
         this.editDescription = this.team?.description || '';
+        this.teamsAll = allTeams.status === 'fulfilled' ? allTeams.value : [];
         // Members shuttle
         this.membersAll = allUsers.status === 'fulfilled' ? allUsers.value : [];
         const membersList = members.status === 'fulfilled' ? members.value : [];
@@ -157,7 +160,7 @@ export function teamDetailView() {
         const resp = await api.adminPut('/teams/' + this.teamId, data);
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         const team = await api.adminGet('/teams/' + this.teamId);
         this.team = team;

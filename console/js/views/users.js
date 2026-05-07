@@ -47,7 +47,7 @@ export function usersView() {
         });
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         this.showCreateModal = false;
         this.newUsername = '';
@@ -71,7 +71,7 @@ export function usersView() {
         const resp = await api.adminDelete('/users/' + this.deleteUser.user_id);
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         this.showDeleteModal = false;
         this.deleteUser = null;
@@ -94,6 +94,7 @@ export function userDetailView() {
     user: null,
     credentials: [],
     effectiveGrants: [],
+    usersAll: [],
     loading: true,
     activeTab: 'credentials',
 
@@ -142,7 +143,7 @@ export function userDetailView() {
       if (!this.userId) { this.loading = false; return; }
       this.loading = true;
       try {
-        const [user, credentials, grants, teams, effective, allTeams, allGrants] = await Promise.allSettled([
+        const [user, credentials, grants, teams, effective, allTeams, allGrants, allUsers] = await Promise.allSettled([
           api.adminGet('/users/' + this.userId),
           api.adminGet('/users/' + this.userId + '/credentials'),
           api.adminGet('/users/' + this.userId + '/grants'),
@@ -150,12 +151,14 @@ export function userDetailView() {
           api.adminGet('/users/' + this.userId + '/effective-grants'),
           api.adminGet('/teams'),
           api.adminGet('/grants'),
+          api.adminGet('/users'),
         ]);
         this.user = user.status === 'fulfilled' ? user.value : null;
         this.editUsername = this.user?.username || '';
         this.editDescription = this.user?.description || '';
         this.credentials = credentials.status === 'fulfilled' ? credentials.value : [];
         this.effectiveGrants = effective.status === 'fulfilled' ? effective.value : [];
+        this.usersAll = allUsers.status === 'fulfilled' ? allUsers.value : [];
         // Teams shuttle
         this.teamsAll = allTeams.status === 'fulfilled' ? allTeams.value : [];
         const teamsList = teams.status === 'fulfilled' ? teams.value : [];
@@ -177,7 +180,7 @@ export function userDetailView() {
         const resp = await api.adminPut('/users/' + this.userId, data);
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         const user = await api.adminGet('/users/' + this.userId);
         this.user = user;
@@ -232,7 +235,7 @@ export function userDetailView() {
         const resp = await api.adminPut('/credentials/' + credId, { active });
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         const creds = await api.adminGet('/users/' + this.userId + '/credentials');
         this.credentials = creds;
@@ -246,7 +249,7 @@ export function userDetailView() {
         const resp = await api.adminPut('/credentials/' + credId, { description });
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         const creds = await api.adminGet('/users/' + this.userId + '/credentials');
         this.credentials = creds;
@@ -267,7 +270,7 @@ export function userDetailView() {
         const resp = await api.adminDelete('/credentials/' + this.deleteCredId);
         if (!resp.ok) {
           const body = await resp.json();
-          throw new Error(body.error || body.message || `Error ${resp.status}`);
+          throw new Error(body.message || body.error || `Error ${resp.status}`);
         }
         this.showDeleteCredModal = false;
         const creds = await api.adminGet('/users/' + this.userId + '/credentials');

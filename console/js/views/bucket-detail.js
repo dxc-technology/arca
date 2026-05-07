@@ -463,7 +463,7 @@ export function bucketDetailView() {
       this.versionsError = '';
       try {
         const resp = await api.s3ListObjectVersions(this.bucketName, this.selectedObject.key);
-        if (!resp.ok) throw new Error(`Error ${resp.status}`);
+        if (!resp.ok) throw new Error(await this._extractS3Error(resp));
         const xml = await resp.text();
         const all = api.parseListVersions(xml);
         // Filter to only this exact key (prefix match might return more).
@@ -507,7 +507,7 @@ export function bucketDetailView() {
       this.deletingVersion = true;
       try {
         const resp = await api.s3DeleteObjectVersion(this.bucketName, this.deleteVersionKey, this.deleteVersionId);
-        if (!resp.ok && resp.status !== 204) throw new Error(`Error ${resp.status}`);
+        if (!resp.ok && resp.status !== 204) throw new Error(await this._extractS3Error(resp));
         this.showDeleteVersionModal = false;
         await this.loadVersions();
         // If no versions remain, close the detail panel and refresh the full view.
@@ -609,7 +609,7 @@ export function bucketDetailView() {
           await api.s3DeleteObject(bucket, this.deleteObjKey);
         } else {
           const resp = await api.s3DeleteObject(bucket, this.deleteObjKey);
-          if (!resp.ok) throw new Error('Delete failed');
+          if (!resp.ok) throw new Error(await this._extractS3Error(resp));
         }
         this.showDeleteObjModal = false;
         this.selectedObject = null;
@@ -627,7 +627,7 @@ export function bucketDetailView() {
       const key = this.prefix + name + '/';
       try {
         const resp = await api.s3PutObject(this.bucketName, key, new Blob([], { type: 'application/x-directory' }));
-        if (!resp.ok) throw new Error('Failed to create folder');
+        if (!resp.ok) throw new Error(await this._extractS3Error(resp));
         this.showCreateFolderModal = false;
         this.newFolderName = '';
         await this.load();
@@ -809,8 +809,9 @@ export function bucketDetailView() {
         }
         const resp = await api.adminArchive(bucket, allKeys);
         if (!resp.ok) {
-          const text = await resp.text();
-          throw new Error(text);
+          let body = {};
+          try { body = await resp.json(); } catch {}
+          throw new Error(body.message || body.error || `HTTP ${resp.status}`);
         }
         const blob = await resp.blob();
         const url = URL.createObjectURL(blob);
@@ -928,8 +929,9 @@ export function bucketDetailView() {
           endpoint: sessionStorage.getItem('arca_endpoint') || undefined,
         });
         if (!resp.ok) {
-          const text = await resp.text();
-          throw new Error(text || `HTTP ${resp.status}`);
+          let errBody = {};
+          try { errBody = await resp.json(); } catch {}
+          throw new Error(errBody.message || errBody.error || `HTTP ${resp.status}`);
         }
         const body = await resp.json();
         this.shareUrl = body.url;
@@ -1069,7 +1071,7 @@ export function bucketDetailView() {
 
       try {
         const resp = await api.s3GetObject(this.bucketName, this.selectedObject.key);
-        if (!resp.ok) throw new Error(`Error ${resp.status}`);
+        if (!resp.ok) throw new Error(await this._extractS3Error(resp));
 
         if (category === 'image') {
           const blob = await resp.blob();
