@@ -3,6 +3,7 @@
 use std::io;
 use std::path::PathBuf;
 
+use bytes::Bytes;
 use futures_core::Stream;
 use md5::{Digest, Md5};
 use tokio::fs;
@@ -224,39 +225,68 @@ impl BlobStore for FsBlobStore {
                 .map_err(|e| ArcaError::Internal(format!("create blob dir: {e}")))?;
         }
 
-        // Open temp file (create new, exclusive).
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&tmp_path)
-            .await
-            .map_err(|e| ArcaError::Internal(format!("create tmp file: {e}")))?;
+        // Producer/consumer pipeline. The async task pulls chunks off the
+        // ByteStream and forwards them through a bounded channel; a blocking
+        // worker owns the file handle, MD5-hashes each chunk and writes it
+        // to disk sequentially. Md5::update is CPU-bound and dominated the
+        // tokio workers on plain uploads — running it on a blocking thread
+        // frees the runtime to keep pulling network bytes. The bound of 4
+        // gives the producer enough slack to absorb network jitter while
+        // still backpressuring it ahead of the disk.
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Bytes>(4);
+        let tmp_for_worker = tmp_path.clone();
+        let worker = tokio::task::spawn_blocking(move || -> io::Result<(u64, [u8; 16])> {
+            use std::io::Write as _;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&tmp_for_worker)?;
+            let mut hasher = Md5::new();
+            let mut size: u64 = 0;
+            while let Some(chunk) = rx.blocking_recv() {
+                hasher.update(&chunk);
+                size += chunk.len() as u64;
+                file.write_all(&chunk)?;
+            }
+            file.flush()?;
+            let digest: [u8; 16] = hasher.finalize().into();
+            Ok((size, digest))
+        });
 
-        let mut hasher = Md5::new();
-        let mut size: u64 = 0;
-
-        // Stream chunks: update MD5 hasher and write to file concurrently.
         let mut stream = std::pin::pin!(stream);
+        let mut stream_err: Option<ArcaError> = None;
         while let Some(chunk) = stream.as_mut().next().await {
-            let chunk = chunk.map_err(|e| ArcaError::Internal(format!("read stream: {e}")))?;
-            hasher.update(&chunk);
-            size += chunk.len() as u64;
-            file.write_all(&chunk)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("write blob: {e}")))?;
+            match chunk {
+                Ok(c) => {
+                    if tx.send(c).await.is_err() {
+                        // Worker exited early (likely io error); the join
+                        // below will surface the underlying cause.
+                        break;
+                    }
+                }
+                Err(e) => {
+                    stream_err = Some(ArcaError::Internal(format!("read stream: {e}")));
+                    break;
+                }
+            }
         }
+        drop(tx);
 
-        file.flush()
+        let (size, digest) = worker
             .await
-            .map_err(|e| ArcaError::Internal(format!("flush blob: {e}")))?;
-        drop(file);
+            .map_err(|e| ArcaError::Internal(format!("blob writer join: {e}")))?
+            .map_err(|e| ArcaError::Internal(format!("write blob: {e}")))?;
+
+        if let Some(e) = stream_err {
+            return Err(e);
+        }
 
         // Atomic rename: tmp → final.
         fs::rename(&tmp_path, &blob_path)
             .await
             .map_err(|e| ArcaError::Internal(format!("rename blob: {e}")))?;
 
-        let etag = hex::encode(hasher.finalize());
+        let etag = hex::encode(digest);
 
         Ok(BlobPutResult { size, etag, encryption: None, compression: None, composite_parts: None })
     }
