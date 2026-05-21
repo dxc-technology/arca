@@ -888,6 +888,52 @@ class TestAdminMe:
             )
             signed_request("DELETE", f"{endpoint}/admin/users/{user_id}", creds)
 
+    def test_me_works_without_any_grant(self, endpoint, creds):
+        """A user with no grants attached must still be able to call /admin/me
+        — the endpoint is identity-only and any valid SigV4 credential passes.
+        Other admin endpoints (e.g. /admin/info) must remain 403 for the same
+        user, proving that the grant gate has not been removed wholesale.
+        """
+        uname = f"plain-{uuid.uuid4().hex[:8]}"
+        resp = signed_request(
+            "POST", f"{endpoint}/admin/users", creds, data={"username": uname}
+        )
+        user_id = resp.json()["user_id"]
+        try:
+            # Create a credential for the user without attaching any grant.
+            resp = signed_request(
+                "POST",
+                f"{endpoint}/admin/users/{user_id}/credentials",
+                creds,
+                data={"description": "me-no-grant"},
+            )
+            user_cred = resp.json()
+            user_creds = Credentials(
+                access_key=user_cred["access_key_id"],
+                secret_key=user_cred["secret_access_key"],
+            )
+
+            # /admin/me must succeed and return the user's own username.
+            me_resp = signed_request("GET", f"{endpoint}/admin/me", user_creds)
+            assert me_resp.status_code == 200, me_resp.text
+            body = me_resp.json()
+            assert body["user"]["username"] == uname
+            assert body["user"]["is_root"] is False
+            # No grant attached -> no effective_actions returned.
+            assert body["effective_actions"] == []
+
+            # Sanity: /admin/info still 403 for the same user.
+            info_resp = signed_request("GET", f"{endpoint}/admin/info", user_creds)
+            assert info_resp.status_code == 403, info_resp.text
+
+            signed_request(
+                "DELETE",
+                f"{endpoint}/admin/credentials/{user_cred['access_key_id']}",
+                creds,
+            )
+        finally:
+            signed_request("DELETE", f"{endpoint}/admin/users/{user_id}", creds)
+
 
 # ====================================================================
 # E2E Access Control

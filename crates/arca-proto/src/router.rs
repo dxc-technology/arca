@@ -75,7 +75,6 @@ pub fn build_router(state: AppState) -> Router {
     let admin_auth = Router::new()
         .route("/info", get(admin::info))
         .route("/stats", get(admin::stats))
-        .route("/me", get(admin_users::me))
         // Legacy credential endpoints (operate on calling user's credentials)
         .route(
             "/credentials",
@@ -197,13 +196,26 @@ pub fn build_router(state: AppState) -> Router {
             middleware::admin_auth::admin_auth_middleware,
         ));
 
+    // --- Admin router (identity-only: any authenticated user) ---
+    // Self-introspection endpoints that need a valid SigV4 signature but no
+    // additional admin grant. Lets a regular S3 user read their own username.
+    let admin_identity = Router::new()
+        .route("/me", get(admin_users::me))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            middleware::admin_auth::admin_identity_middleware,
+        ));
+
     // --- Admin router (public endpoints) ---
     let admin_public = Router::new()
         .route("/health", get(admin::health))
         .route("/metrics", get(admin::prometheus_metrics));
 
     // --- Combine admin routers ---
-    let admin = Router::new().merge(admin_public).merge(admin_auth);
+    let admin = Router::new()
+        .merge(admin_public)
+        .merge(admin_identity)
+        .merge(admin_auth);
 
     // --- CORS layer ---
     // Allows the web console (running on a different origin) and third-party

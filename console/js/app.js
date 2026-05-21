@@ -157,20 +157,23 @@ export function app() {
         const healthResp = await fetch(endpoint + '/admin/health', { timeout: 5000 });
         if (!healthResp.ok) throw new Error('Cannot reach Arca server');
 
-        // Probe identity + admin access via /admin/me (admin-only, same grant
-        // as /admin/info). For non-admin users this 403s and we fall back to
-        // S3 to validate the credentials; the username stays empty in that
-        // case and the sidebar falls back to showing the access key.
-        let admin = false;
+        // /admin/me is identity-only (no grant required), so it doubles as our
+        // "credentials are valid" probe and as the source of the username.
+        // /admin/info is gated by arca:ViewServerInfo and tells us whether the
+        // user has admin reach — kept as a separate, independent check.
         let username = '';
         try {
           const me = await api.adminGet('/me');
           username = me?.user?.username || '';
-          admin = true;
         } catch {
-          const buckets = await api.s3ListBuckets();
-          if (!Array.isArray(buckets)) throw new Error('Invalid credentials');
+          throw new Error('Invalid credentials');
         }
+
+        let admin = false;
+        try {
+          const info = await api.adminGet('/info');
+          if (info.version) admin = true;
+        } catch { /* non-admin user */ }
 
         this.isAdmin = admin;
         this.username = username;
