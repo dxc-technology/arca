@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.23.1] — 2026-05-07
+### Added
+
+- **(Console)** Keyboard navigation across files in a bucket folder, turning the preview panel into a slideshow. With a file selected (side panel open), <kbd>↑</kbd> / <kbd>↓</kbd> move to the previous / next file in the current view; if the inline preview is open it reloads automatically for each new file. With the fullscreen preview modal open, <kbd>←</kbd> / <kbd>→</kbd> step through neighbours and the header shows a `position / total` counter; semitransparent ‹ › arrows on the sides give a mouse fallback. The two adjacent images / videos are prefetched in the background so navigation feels instant in slideshow mode. Search input, tag fields and other editable controls keep their native arrow behaviour. The selected row in the file list now gets a clearly visible accent ring so it's easy to tell where you are.
+
+
 
 ### Fixed
 

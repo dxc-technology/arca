@@ -65,7 +65,7 @@
        The ?v=... query param is fingerprinted per console version so browser
        caches never pin stale code across console upgrades. Keep this in sync
        with window.ARCA_CONSOLE_VERSION above. -->
-  <script type="module" src="/js/app.js?v=0.23.1-server-card-fit"></script>
+  <script type="module" src="/js/app.js?v=0.23.1-slideshow-nav"></script>
 
   <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -2187,7 +2187,10 @@
 
         <!-- ==================== BUCKET DETAIL (Object Browser) ==================== -->
         <template x-if="view === 'bucket-detail'">
-          <div class="p-6 max-w-6xl overflow-hidden" x-data="bucketDetailView" x-init="load(); $watch('searchQuery', () => { if (showTreemap) computeTreemap(); })">
+          <div class="p-6 max-w-6xl overflow-hidden" x-data="bucketDetailView"
+            x-init="load(); $watch('searchQuery', () => { if (showTreemap) computeTreemap(); }); $watch('showPreviewModal', v => { if (v) prefetchAdjacent(); })"
+            @keydown.up.window="onListNavKey($event)"
+            @keydown.down.window="onListNavKey($event)">
             <!-- Header with breadcrumbs -->
             <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-6">
               <div data-breadcrumbs class="flex items-center gap-2 text-sm min-w-0 overflow-x-auto whitespace-nowrap scrollbar-hide">
@@ -2346,7 +2349,8 @@
                 <!-- Files -->
                 <template x-for="obj in filteredObjects" :key="obj.key">
                   <div class="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] cursor-pointer transition border-b border-vault-border/20 group"
-                    :class="selectedKeys.has(obj.key) ? 'bg-vault-accent/5' : ''"
+                    :class="(selectedObject && selectedObject.key === obj.key) ? 'bg-vault-accent/10 ring-1 ring-inset ring-vault-accent/30' : (selectedKeys.has(obj.key) ? 'bg-vault-accent/5' : '')"
+                    :data-object-key="obj.key"
                     @click="selectObject(obj)">
                     <input type="checkbox" @click.stop
                       :checked="selectedKeys.has(obj.key)" @change="toggleSelect(obj.key)"
@@ -2378,6 +2382,7 @@
                 <!-- Deleted objects (shown when "Show deleted" is on) -->
                 <template x-for="obj in filteredDeletedObjects" :key="'del:' + obj.key">
                   <div class="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] cursor-pointer transition border-b border-vault-border/20 group opacity-50"
+                    :data-object-key="obj.key"
                     @click="selectObject({key: obj.key, size: 0, lastModified: obj.lastModified, etag: '', _deleted: true})">
                     <div class="w-3.5 h-3.5"></div>
                     <svg class="w-5 h-5 text-red-400/60 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
@@ -2610,17 +2615,46 @@
             </div>
 
             <!-- Preview modal (fullscreen) -->
-            <div x-show="$data.showPreviewModal" x-transition.opacity class="fixed inset-0 bg-black/80 z-50 flex flex-col" @keydown.escape.window="$data.showPreviewModal = false">
-              <div class="flex items-center justify-between px-6 py-3 border-b border-vault-border/30">
+            <div x-show="$data.showPreviewModal" x-transition.opacity class="fixed inset-0 bg-black/80 z-50 flex flex-col"
+              @keydown.escape.window="$data.showPreviewModal = false"
+              @keydown.left.window="onFullscreenNavKey($event)"
+              @keydown.right.window="onFullscreenNavKey($event)">
+              <div class="flex items-center justify-between gap-3 px-6 py-3 border-b border-vault-border/30">
                 <div class="flex items-center gap-2 text-sm text-vault-muted min-w-0">
                   <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
                   <span class="font-mono truncate" x-text="selectedObject?.key"></span>
                 </div>
-                <button @click="$data.showPreviewModal = false" class="p-1.5 rounded hover:bg-white/10 text-vault-muted hover:text-vault-text transition">
-                  <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                </button>
+                <div class="flex items-center gap-3 flex-shrink-0">
+                  <span x-show="selectedIndex !== -1 && filteredObjects.length > 1"
+                    class="text-xs text-vault-muted font-mono tabular-nums select-none" :title="'Use ← / → to navigate'">
+                    <span class="text-vault-text" x-text="selectedIndex + 1"></span>
+                    <span class="text-vault-border">/</span>
+                    <span x-text="filteredObjects.length"></span>
+                  </span>
+                  <button @click="$data.showPreviewModal = false" class="p-1.5 rounded hover:bg-white/10 text-vault-muted hover:text-vault-text transition" title="Close (Esc)">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                  </button>
+                </div>
               </div>
-              <div class="flex-1 overflow-auto p-6 flex items-start justify-center">
+              <div class="relative flex-1 overflow-auto p-6 flex items-start justify-center">
+                <!-- Previous arrow -->
+                <button x-show="hasAdjacent(-1)" @click.stop="selectAdjacent(-1)"
+                  class="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full bg-white/5 hover:bg-white/15 text-white/60 hover:text-white border border-white/10 hover:border-white/30 backdrop-blur transition"
+                  title="Previous (←)">
+                  <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5"/></svg>
+                </button>
+                <!-- Next arrow -->
+                <button x-show="hasAdjacent(1)" @click.stop="selectAdjacent(1)"
+                  class="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-3 rounded-full bg-white/5 hover:bg-white/15 text-white/60 hover:text-white border border-white/10 hover:border-white/30 backdrop-blur transition"
+                  title="Next (→)">
+                  <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+                </button>
+                <!-- Loading overlay (covers preview content while a slide loads) -->
+                <div x-show="previewLoading" class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <svg class="animate-spin h-8 w-8 text-vault-accent/80" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                </div>
+                <!-- Error / unsupported -->
+                <p x-show="previewError && !previewLoading" x-text="previewError" class="text-vault-muted/70 text-sm self-center"></p>
                 <template x-if="previewType === 'image'">
                   <img :src="previewUrl" class="max-w-full max-h-full object-contain" :alt="selectedObject?.key">
                 </template>

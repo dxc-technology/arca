@@ -378,6 +378,8 @@ export function bucketDetailView() {
       this.versions = [];
       this.versionsError = '';
       this.cleanupPreview();
+      // Keep the row visible when navigating by keyboard.
+      this._scrollRowIntoView();
       try {
         const resp = await api.s3HeadObject(this.bucketName, obj.key);
         if (resp.headers.get('x-amz-server-side-encryption')) {
@@ -397,6 +399,8 @@ export function bucketDetailView() {
         this.previewExpanded = true;
         await this.loadPreview();
       }
+      // Slideshow: prefetch neighbours when fullscreen modal is open.
+      if (this.showPreviewModal) this.prefetchAdjacent();
     },
 
     async loadObjectTags() {
@@ -1045,6 +1049,8 @@ export function bucketDetailView() {
 
     async loadPreview() {
       if (!this.selectedObject) return;
+      // Slideshow: if a neighbour was prefetched, show it immediately.
+      if (this._applyPrefetched()) return;
       this.previewLoading = true;
       this.previewError = '';
       this.previewType = null;
@@ -1133,6 +1139,158 @@ export function bucketDetailView() {
         this.previewError = 'Failed to load preview: ' + e.message;
       }
       this.previewLoading = false;
+    },
+
+    // ==================== KEYBOARD NAVIGATION ====================
+
+    /** Skip nav when the user is editing a field. */
+    _isEditableTarget(target) {
+      if (!target) return false;
+      const tag = (target.tagName || '').toUpperCase();
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+      if (target.isContentEditable) return true;
+      return false;
+    },
+
+    /** Move selection by `step` (+1 next, -1 previous) within filteredObjects. */
+    selectAdjacent(step) {
+      if (!this.selectedObject) return;
+      const list = this.filteredObjects;
+      if (!list.length) return;
+      const idx = list.findIndex(o => o.key === this.selectedObject.key);
+      if (idx === -1) return;
+      const next = list[idx + step];
+      if (!next) return;
+      this.selectObject(next);
+    },
+
+    /** Index of the current selection within filteredObjects, or -1. */
+    get selectedIndex() {
+      if (!this.selectedObject) return -1;
+      return this.filteredObjects.findIndex(o => o.key === this.selectedObject.key);
+    },
+
+    /** True iff a previous (step=-1) or next (+1) file exists. */
+    hasAdjacent(step) {
+      const i = this.selectedIndex;
+      if (i === -1) return false;
+      const j = i + step;
+      return j >= 0 && j < this.filteredObjects.length;
+    },
+
+    /** ArrowUp/Down on the bucket detail: navigate the side panel.
+     *  No-op when the fullscreen modal is open (left/right take over). */
+    onListNavKey(e) {
+      if (this.showPreviewModal) return;
+      if (!this.selectedObject) return;
+      if (this._isEditableTarget(e.target)) return;
+      if (e.key === 'ArrowUp')   { e.preventDefault(); this.selectAdjacent(-1); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); this.selectAdjacent(+1); }
+    },
+
+    /** ArrowLeft/Right while the fullscreen preview is open. */
+    onFullscreenNavKey(e) {
+      if (!this.showPreviewModal) return;
+      if (this._isEditableTarget(e.target)) return;
+      if (e.key === 'ArrowLeft')  { e.preventDefault(); this.selectAdjacent(-1); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); this.selectAdjacent(+1); }
+    },
+
+    /** Scroll the row for the currently selected object into view. */
+    _scrollRowIntoView() {
+      if (!this.selectedObject) return;
+      const key = this.selectedObject.key;
+      this.$nextTick(() => {
+        try {
+          const el = document.querySelector(`[data-object-key="${CSS.escape(key)}"]`);
+          if (el && typeof el.scrollIntoView === 'function') {
+            el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+        } catch {}
+      });
+    },
+
+    // ==================== PREFETCH (slideshow) ====================
+
+    /** key -> { url, type, contentType } for blobs already fetched. */
+    prefetchCache: new Map(),
+
+    /** Is `key` still adjacent to the current selection? */
+    _isPrefetchTarget(key) {
+      const i = this.selectedIndex;
+      if (i === -1) return false;
+      const list = this.filteredObjects;
+      return key === (list[i - 1] && list[i - 1].key)
+          || key === (list[i + 1] && list[i + 1].key);
+    },
+
+    /** Drop and revoke cache entries that are no longer adjacent. */
+    _prunePrefetchCache() {
+      for (const [key, entry] of this.prefetchCache) {
+        if (!this._isPrefetchTarget(key)) {
+          try { URL.revokeObjectURL(entry.url); } catch {}
+          this.prefetchCache.delete(key);
+        }
+      }
+    },
+
+    /** Best-effort prefetch for one neighbour. Only image/video within limits. */
+    async _prefetchOne(obj) {
+      if (!obj || this.prefetchCache.has(obj.key)) return;
+      const sz = obj.size || 0;
+      // Quick rejection: must fit at least the image limit (the smaller of the two).
+      if (sz <= 0) return;
+      if (sz > Math.max(this.PREVIEW_MAX_SIZE, this.PREVIEW_MAX_VIDEO)) return;
+      try {
+        const head = await api.s3HeadObject(this.bucketName, obj.key);
+        if (!head || !head.ok) return;
+        if (!this._isPrefetchTarget(obj.key)) return;
+        const ct = (head.headers.get('content-type') || '').toLowerCase();
+        const isImg = ct.startsWith('image/');
+        const isVid = ct.startsWith('video/');
+        if (!isImg && !isVid) return;
+        if (isImg && sz > this.PREVIEW_MAX_SIZE) return;
+        if (isVid && sz > this.PREVIEW_MAX_VIDEO) return;
+        const resp = await api.s3GetObject(this.bucketName, obj.key);
+        if (!resp || !resp.ok) return;
+        if (!this._isPrefetchTarget(obj.key)) return;
+        const blob = await resp.blob();
+        if (!this._isPrefetchTarget(obj.key)) return;
+        this.prefetchCache.set(obj.key, {
+          url: URL.createObjectURL(blob),
+          type: isImg ? 'image' : 'video',
+          contentType: ct,
+        });
+      } catch { /* best-effort */ }
+    },
+
+    /** Kick prefetch of previous + next neighbours (fullscreen only). */
+    prefetchAdjacent() {
+      if (!this.showPreviewModal || !this.selectedObject) return;
+      this._prunePrefetchCache();
+      const i = this.selectedIndex;
+      if (i === -1) return;
+      const list = this.filteredObjects;
+      if (list[i - 1]) this._prefetchOne(list[i - 1]);
+      if (list[i + 1]) this._prefetchOne(list[i + 1]);
+    },
+
+    /** Consume a prefetched blob for the current selection if present.
+     *  Returns true if the preview state was populated from cache. */
+    _applyPrefetched() {
+      if (!this.selectedObject) return false;
+      const entry = this.prefetchCache.get(this.selectedObject.key);
+      if (!entry) return false;
+      this.prefetchCache.delete(this.selectedObject.key);
+      if (this.previewUrl && this.previewUrl !== entry.url) {
+        try { URL.revokeObjectURL(this.previewUrl); } catch {}
+      }
+      this.previewUrl = entry.url;
+      this.previewType = entry.type;
+      this.previewContentType = entry.contentType || this.previewContentType;
+      this.previewLoading = false;
+      this.previewError = '';
+      return true;
     },
 
     escapeHtml(text) {

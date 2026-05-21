@@ -98,6 +98,24 @@ Click any object to open the detail panel, which shows:
 - Encryption status (when encryption is active)
 - **Share**, **Download**, and **Delete** actions
 
+When a file is selected, its row in the list is highlighted with an accent ring so you always know where you are.
+
+### Preview & Slideshow
+
+The detail panel includes a collapsible **Preview** section that renders the file in place: images, videos, PDFs, HTML, Markdown and a wide range of text and source formats (with syntax highlighting). Click the expand icon next to *Preview* to open a fullscreen view of the same content.
+
+The browser is keyboard-driven once a file is selected, turning the preview into a slideshow:
+
+| Where | Keys | Action |
+|---|---|---|
+| File list, side panel open | <kbd>↑</kbd> / <kbd>↓</kbd> | Select previous / next file. The inline preview reloads automatically if it was open. |
+| Fullscreen preview modal | <kbd>←</kbd> / <kbd>→</kbd> | Show previous / next file in the same folder. |
+| Fullscreen preview modal | <kbd>Esc</kbd> | Close the modal. |
+
+The fullscreen modal also shows a `position / total` counter in its header and semitransparent ‹ / › arrows on the left and right edges for mouse navigation. The two adjacent images (or videos, within the configured preview size limit) are prefetched in the background so navigating between photos feels instant.
+
+Arrow keys keep their native behaviour inside the search box, the tag editor and any other editable field, so typing in those controls is unaffected.
+
 ### Sharing Objects
 
 ![Share modal](../assets/screenshots/console-share-modal.png)

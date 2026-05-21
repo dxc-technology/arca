@@ -2,7 +2,7 @@ import { api } from './api.js';
 import { topicFor } from './help.js';
 import { dashboardView } from './views/dashboard.js';
 import { bucketsView, bucketSettingsView } from './views/buckets.js';
-import { bucketDetailView } from './views/bucket-detail.js';
+import { bucketDetailView } from './views/bucket-detail.js?v=slideshow-nav-1';
 import { credentialsView } from './views/credentials.js';
 import { usersView, userDetailView } from './views/users.js';
 import { teamsView, teamDetailView } from './views/teams.js';
