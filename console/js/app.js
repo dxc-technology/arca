@@ -63,6 +63,7 @@ export function app() {
   return {
     authenticated: hasSession,
     isAdmin: sessionStorage.getItem('arca_is_admin') === 'true',
+    username: sessionStorage.getItem('arca_username') || '',
     view: 'dashboard',
     sidebarOpen: false,
     currentBucket: '',
@@ -156,19 +157,25 @@ export function app() {
         const healthResp = await fetch(endpoint + '/admin/health', { timeout: 5000 });
         if (!healthResp.ok) throw new Error('Cannot reach Arca server');
 
-        // Probe admin access first; fall back to S3 for non-admin users
+        // Probe identity + admin access via /admin/me (admin-only, same grant
+        // as /admin/info). For non-admin users this 403s and we fall back to
+        // S3 to validate the credentials; the username stays empty in that
+        // case and the sidebar falls back to showing the access key.
         let admin = false;
+        let username = '';
         try {
-          const info = await api.adminGet('/info');
-          if (info.version) admin = true;
+          const me = await api.adminGet('/me');
+          username = me?.user?.username || '';
+          admin = true;
         } catch {
-          // 403 = valid credentials but non-admin; verify via S3
           const buckets = await api.s3ListBuckets();
           if (!Array.isArray(buckets)) throw new Error('Invalid credentials');
         }
 
         this.isAdmin = admin;
+        this.username = username;
         sessionStorage.setItem('arca_is_admin', admin ? 'true' : 'false');
+        if (username) sessionStorage.setItem('arca_username', username);
         this.authenticated = true;
         window.location.hash = admin ? '#/dashboard' : '#/buckets';
       } catch (e) {
@@ -182,6 +189,7 @@ export function app() {
       sessionStorage.clear();
       this.authenticated = false;
       this.isAdmin = false;
+      this.username = '';
       this.loginForm.accessKey = '';
       this.loginForm.secretKey = '';
       window.location.hash = '#/dashboard';

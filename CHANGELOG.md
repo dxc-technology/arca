@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **(Console)** Keyboard navigation across files in a bucket folder, turning the preview panel into a slideshow. With a file selected (side panel open), <kbd>↑</kbd> / <kbd>↓</kbd> move to the previous / next file in the current view; if the inline preview is open it reloads automatically for each new file. With the fullscreen preview modal open, <kbd>←</kbd> / <kbd>→</kbd> step through neighbours and the header shows a `position / total` counter; semitransparent ‹ › arrows on the sides give a mouse fallback. The two adjacent images / videos are prefetched in the background so navigation feels instant in slideshow mode. Search input, tag fields and other editable controls keep their native arrow behaviour. The selected row in the file list now gets a clearly visible accent ring so it's easy to tell where you are.
+- **(Console)** Sidebar identity block now shows the authenticated **username** next to the Admin / User badge, with the access key ID on a dedicated muted line underneath, instead of just a truncated access key. The username is fetched from `GET /admin/me` at login and persisted in `sessionStorage` (`arca_username`) so it survives page reloads. Non-admin users without `arca:ViewServerInfo` (who cannot call `/admin/me`) keep the previous access-key-only display.
 
 
 

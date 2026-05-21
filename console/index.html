@@ -65,7 +65,7 @@
        The ?v=... query param is fingerprinted per console version so browser
        caches never pin stale code across console upgrades. Keep this in sync
        with window.ARCA_CONSOLE_VERSION above. -->
-  <script type="module" src="/js/app.js?v=0.23.1-slideshow-nav"></script>
+  <script type="module" src="/js/app.js?v=0.23.1-sidebar-username"></script>
 
   <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -558,10 +558,17 @@
 
         <!-- Session info + Logout -->
         <div class="px-3 pb-4 space-y-2">
-          <div class="flex items-center gap-2 px-3">
-            <span :class="isAdmin ? 'bg-violet-500/20 text-violet-400' : 'bg-slate-500/20 text-slate-400'"
-              class="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase" x-text="isAdmin ? 'Admin' : 'User'"></span>
-            <span class="text-[10px] text-vault-muted truncate" x-text="sessionStorage.getItem('arca_access_key')?.slice(0, 12) + '…'"></span>
+          <div class="px-3 space-y-0.5 min-w-0">
+            <div class="flex items-center gap-2 min-w-0">
+              <span :class="isAdmin ? 'bg-violet-500/20 text-violet-400' : 'bg-slate-500/20 text-slate-400'"
+                class="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase flex-shrink-0" x-text="isAdmin ? 'Admin' : 'User'"></span>
+              <span class="text-sm font-semibold text-vault-text/90 truncate"
+                :title="username || sessionStorage.getItem('arca_access_key') || ''"
+                x-text="username || sessionStorage.getItem('arca_access_key') || ''"></span>
+            </div>
+            <div x-show="username" class="text-[10px] text-vault-muted/70 font-mono truncate"
+              :title="sessionStorage.getItem('arca_access_key') || ''"
+              x-text="sessionStorage.getItem('arca_access_key') || ''"></div>
           </div>
           <button @click="logout()"
             class="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-sm text-vault-muted hover:text-red-400 hover:bg-red-500/5 transition">
