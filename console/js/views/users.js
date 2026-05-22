@@ -316,6 +316,15 @@ export function userDetailView() {
       this[lastKey] = id;
     },
 
+    /** Refresh the Effective Grants tab in place after any grant/team change. */
+    async _reloadEffectiveGrants() {
+      try {
+        this.effectiveGrants = await api.adminGet(
+          '/users/' + this.userId + '/effective-grants',
+        );
+      } catch { /* best-effort: keep the previous list */ }
+    },
+
     async teamsMoveRight() {
       this.teamsMoving = true;
       for (const tid of this.teamsSelLeft) {
@@ -325,6 +334,7 @@ export function userDetailView() {
         } catch {}
       }
       this.teamsSelLeft = [];
+      await this._reloadEffectiveGrants();
       this.teamsMoving = false;
     },
 
@@ -337,6 +347,7 @@ export function userDetailView() {
         } catch {}
       }
       this.teamsSelRight = [];
+      await this._reloadEffectiveGrants();
       this.teamsMoving = false;
     },
 
@@ -349,6 +360,7 @@ export function userDetailView() {
         } catch {}
       }
       this.teamsSelLeft = [];
+      await this._reloadEffectiveGrants();
       this.teamsMoving = false;
     },
 
@@ -361,6 +373,7 @@ export function userDetailView() {
       }
       this.teamsAssignedIds = [];
       this.teamsSelRight = [];
+      await this._reloadEffectiveGrants();
       this.teamsMoving = false;
     },
 
@@ -435,6 +448,7 @@ export function userDetailView() {
         } catch {}
       }
       this.grantsSelLeft = [];
+      await this._reloadEffectiveGrants();
       this.grantsMoving = false;
     },
 
@@ -447,6 +461,7 @@ export function userDetailView() {
         } catch {}
       }
       this.grantsSelRight = [];
+      await this._reloadEffectiveGrants();
       this.grantsMoving = false;
     },
 
@@ -459,6 +474,7 @@ export function userDetailView() {
         } catch {}
       }
       this.grantsSelLeft = [];
+      await this._reloadEffectiveGrants();
       this.grantsMoving = false;
     },
 
@@ -471,6 +487,7 @@ export function userDetailView() {
       }
       this.grantsAssignedIds = [];
       this.grantsSelRight = [];
+      await this._reloadEffectiveGrants();
       this.grantsMoving = false;
     },
 

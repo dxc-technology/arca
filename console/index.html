@@ -7,7 +7,7 @@
 
   <!-- Console version and documentation URL -->
   <script>
-    window.ARCA_CONSOLE_VERSION = "0.23.1";
+    window.ARCA_CONSOLE_VERSION = "0.24.0";
     window.ARCA_DOCS_URL = "https://dxc-technology.github.io/arca/";
   </script>
 
@@ -65,7 +65,7 @@
        The ?v=... query param is fingerprinted per console version so browser
        caches never pin stale code across console upgrades. Keep this in sync
        with window.ARCA_CONSOLE_VERSION above. -->
-  <script type="module" src="/js/app.js?v=0.23.1-me-no-grant"></script>
+  <script type="module" src="/js/app.js?v=0.24.0-preview-newtab"></script>
 
   <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -2194,7 +2194,7 @@
 
         <!-- ==================== BUCKET DETAIL (Object Browser) ==================== -->
         <template x-if="view === 'bucket-detail'">
-          <div class="p-6 max-w-6xl overflow-hidden" x-data="bucketDetailView"
+          <div class="p-6 max-w-6xl min-h-full flex flex-col" x-data="bucketDetailView"
             x-init="load(); $watch('searchQuery', () => { if (showTreemap) computeTreemap(); }); $watch('showPreviewModal', v => { if (v) prefetchAdjacent(); })"
             @keydown.up.window="onListNavKey($event)"
             @keydown.down.window="onListNavKey($event)">
@@ -2298,7 +2298,7 @@
               @dragleave.prevent="dragActive = false"
               @drop.prevent="dragActive = false; handleDrop($event)"
               :class="dragActive ? 'drop-active' : ''"
-              class="border-2 border-dashed border-vault-border/50 rounded-xl mb-4 transition"
+              class="border-2 border-dashed border-vault-border/50 rounded-xl mb-4 transition flex-1 min-h-0"
               :style="dragActive ? '' : 'border-color: transparent'">
 
               <!-- Upload progress -->
@@ -2421,7 +2421,7 @@
             </div>
 
             <!-- Treemap -->
-            <div x-show="showTreemap && objects.length > 0" class="glass rounded-xl p-4"
+            <div x-show="showTreemap && objects.length > 0" class="glass rounded-xl p-4 flex-1 min-h-0"
               x-html="renderTreemap()"></div>
 
             <!-- Object detail backdrop (mobile) -->
@@ -2638,6 +2638,10 @@
                     <span class="text-vault-border">/</span>
                     <span x-text="filteredObjects.length"></span>
                   </span>
+                  <a x-show="previewUrl" :href="previewUrl" target="_blank" rel="noopener"
+                    class="p-1.5 rounded hover:bg-white/10 text-vault-muted hover:text-vault-text transition" title="Open in new tab">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>
+                  </a>
                   <button @click="$data.showPreviewModal = false" class="p-1.5 rounded hover:bg-white/10 text-vault-muted hover:text-vault-text transition" title="Close (Esc)">
                     <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                   </button>

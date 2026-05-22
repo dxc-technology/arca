@@ -4,7 +4,7 @@ import { dashboardView } from './views/dashboard.js';
 import { bucketsView, bucketSettingsView } from './views/buckets.js';
 import { bucketDetailView } from './views/bucket-detail.js?v=slideshow-nav-1';
 import { credentialsView } from './views/credentials.js';
-import { usersView, userDetailView } from './views/users.js';
+import { usersView, userDetailView } from './views/users.js?v=eff-grants-refresh-1';
 import { teamsView, teamDetailView } from './views/teams.js';
 import { grantsView, grantDetailView } from './views/grants.js';
 import { settingsView } from './views/settings.js';

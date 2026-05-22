@@ -7,13 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0] — 2026-05-21
+
 ### Added
 
 - **(Console)** Keyboard navigation across files in a bucket folder, turning the preview panel into a slideshow. With a file selected (side panel open), <kbd>↑</kbd> / <kbd>↓</kbd> move to the previous / next file in the current view; if the inline preview is open it reloads automatically for each new file. With the fullscreen preview modal open, <kbd>←</kbd> / <kbd>→</kbd> step through neighbours and the header shows a `position / total` counter; semitransparent ‹ › arrows on the sides give a mouse fallback. The two adjacent images / videos are prefetched in the background so navigation feels instant in slideshow mode. Search input, tag fields and other editable controls keep their native arrow behaviour. The selected row in the file list now gets a clearly visible accent ring so it's easy to tell where you are.
-- **(Console)** Sidebar identity block now shows the authenticated **username** next to the Admin / User badge, with the access key ID on a dedicated muted line underneath, instead of just a truncated access key. The username is fetched from `GET /admin/me` at login and persisted in `sessionStorage` (`arca_username`) so it survives page reloads.
-- **`GET /admin/me` is now identity-only and requires no grant.** The endpoint runs under a new `admin_identity_middleware` (SigV4 verify only — no `arca:*` grant check) so any user with a valid Arca credential can ask the server for their own username. Previously `/admin/me` needed `arca:ViewServerInfo`, which forced administrators to attach the full `AdministratorAccess` grant just to let the console label the sidebar with the user's name — and the side effect was that those users could then open the empty Users/Teams/Grants/Audit Log/etc. pages even though every API call inside them was a 403. The console login now probes `/admin/me` for the username (always) and `/admin/info` separately to decide the Admin / User badge, so non-admin users see the username in the sidebar without the admin menu items appearing. `admin_auth_middleware` was refactored to share its SigV4 verification logic with the new identity middleware via a private `authenticate_request` helper; the grant check itself is unchanged. New integration test `TestAdminMe::test_me_works_without_any_grant` covers a user with no grants attached: `/admin/me` returns 200 + username, `/admin/info` still returns 403 for the same user.
+- **(Console)** Sidebar identity block now shows the authenticated **username** next to the Admin / User badge, with the access key ID on a dedicated muted line underneath, instead of just a truncated access key. The username is fetched from `GET /admin/me` at login and persisted in `sessionStorage` (`arca_username`) so it survives page reloads. Non-admin users see their own username too — the admin badge and admin-only nav items remain gated on the separate `/admin/info` probe.
+- **`GET /admin/me` is now identity-only and requires no grant.** The endpoint runs under a new `admin_identity_middleware` (SigV4 verify only — no `arca:*` grant check) so any user with a valid Arca credential can ask the server for their own username. Previously `/admin/me` needed `arca:ViewServerInfo`, which forced administrators to attach the full `AdministratorAccess` grant just to let the console label the sidebar with the user's name — and the side effect was that those users could then open the empty Users/Teams/Grants/Audit Log/etc. pages even though every API call inside them was a 403. `admin_auth_middleware` was refactored to share its SigV4 verification logic with the new identity middleware via a private `authenticate_request` helper; the grant check itself is unchanged. New integration test `TestAdminMe::test_me_works_without_any_grant` covers a user with no grants attached: `/admin/me` returns 200 + username, `/admin/info` still returns 403 for the same user.
+- **(Console)** "Open in new tab" button in the fullscreen preview modal header (between the navigation counter and the close button). Opens the current `previewUrl` (a `blob:` URL) in a new browser tab so the OS's standalone PDF viewer kicks in — useful on macOS Safari, where the in-iframe PDF viewer renders the document as a tiny thumbnail strip with no zoom controls. Chrome / Edge / Firefox on Windows are unaffected (the iframe viewer already does fit-to-width there); on Safari the new tab inherits the system PDFKit renderer with a working zoom, and from there macOS users can hand the file off to Preview.app for the best rendering. The button is shown for every `previewType` that produces a blob (image, video, pdf, html, markdown) — opening the raw asset in a new tab is a useful fallback in all of those cases, not just PDF.
 
+### Changed
 
+- **(Console)** Server card layout reworked — five tiles now sit in a stable 3×2 grid with a new **Topology** entry (placeholder "Single node", will reflect multi-node configuration in Phase 29). Every value wrapper gets `whitespace-nowrap` + `min-w-0` so longer encryption strings like `Per-bucket (Vault)` no longer wrap to two lines on narrower viewports. Value text dropped from `text-lg` to `text-base` so all six tiles share the same hierarchy regardless of label length.
+- **(Console)** The drag-and-drop target in the bucket browser now stretches all the way down to the bottom of the main content area instead of hugging the small handful of rows that happen to be in view. On a sparsely-populated folder the dashed accent border used to light up only a couple of hundred pixels high, which was a fiddly target; now the whole empty area under the file list is droppable. The drop zone stays confined to the file column — it never overlaps the sidebar. Implemented by making the bucket-detail wrapper a `min-h-full flex flex-col` and giving the drop zone (and the treemap, when active) `flex-1 min-h-0` so it consumes the leftover vertical space.
+
+### Fixed
+
+- **(Console)** The **Effective Grants** tab on the user-detail page now reloads automatically after any grant or team change. Previously, attaching / detaching a direct grant and joining / leaving a team only updated the two shuttle widgets; the Effective Grants list was left untouched and the user had to navigate away and back to see the new state. A `_reloadEffectiveGrants` helper now re-fetches `/admin/users/{id}/effective-grants` at the end of `grantsMoveRight/Left/AllRight/AllLeft` and `teamsMoveRight/Left/AllRight/AllLeft`, so the tab reflects reality the moment the user releases the drag (or clicks the arrow / double-clicks a row).
+
+## [0.23.1] — 2026-05-07
 
 ### Fixed
 
@@ -622,7 +634,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.23.1...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.24.0...HEAD
+[0.24.0]: https://github.com/dxc-technology/arca/compare/v0.23.1...v0.24.0
 [0.23.1]: https://github.com/dxc-technology/arca/compare/v0.23.0...v0.23.1
 [0.23.0]: https://github.com/dxc-technology/arca/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/dxc-technology/arca/compare/v0.21.0...v0.22.0
