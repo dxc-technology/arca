@@ -10,7 +10,7 @@ use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, OnRequest, OnResponse, TraceLayer};
 use tracing::Level;
 
-use crate::handlers::{admin, admin_export, admin_grants, admin_import, admin_monitoring, admin_notifications, admin_presigned_urls, admin_replication, admin_settings, admin_teams, admin_users, archive, bucket, object};
+use crate::handlers::{admin, admin_export, admin_grants, admin_import, admin_monitoring, admin_notifications, admin_presigned_urls, admin_replication, admin_settings, admin_teams, admin_users, archive, bucket, cluster, object};
 use crate::middleware;
 use crate::state::AppState;
 
@@ -217,6 +217,27 @@ pub fn build_router(state: AppState) -> Router {
         .merge(admin_identity)
         .merge(admin_auth);
 
+    // --- Cluster router (Phase 29 HA) ---
+    // Public inter-node health/identity probe used by the membership manager.
+    let cluster_public = Router::new().route("/v1/health", get(cluster::health));
+
+    // Authenticated peer data endpoints: verbatim blob + object-row replication.
+    // The cluster_auth middleware verifies the shared cluster credential and
+    // enforces loop prevention; handlers no-op (404/503) when clustering is off.
+    let cluster_authed = Router::new()
+        .route(
+            "/v1/blob/{blob_id}",
+            put(cluster::receive_blob).get(cluster::get_blob),
+        )
+        .route("/v1/object", post(cluster::receive_object))
+        .route("/v1/object/delete", post(cluster::receive_version_delete))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            middleware::cluster_auth::cluster_auth_middleware,
+        ));
+
+    let cluster_router = Router::new().merge(cluster_public).merge(cluster_authed);
+
     // --- CORS layer ---
     // Allows the web console (running on a different origin) and third-party
     // clients to access both S3 and Admin API endpoints.
@@ -281,6 +302,7 @@ pub fn build_router(state: AppState) -> Router {
     //   RequestId → Validate → IP RateLimit → Audit → Trace → CORS → Auth → [Credential RateLimit] → Handlers
     Router::new()
         .nest("/admin", admin)
+        .nest("/cluster", cluster_router)
         .merge(s3_app)
         .layer(cors)
         .layer(

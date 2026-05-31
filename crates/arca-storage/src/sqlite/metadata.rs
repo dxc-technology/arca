@@ -543,16 +543,11 @@ impl MetadataStore for SqliteStore {
                         params![bucket, key, tag_vid],
                     )?;
 
-                    // If deleted version was latest, promote next-newest.
-                    if rec.is_latest {
-                        tx.execute(
-                            "UPDATE objects SET is_latest = 1 WHERE rowid = (
-                                SELECT rowid FROM objects WHERE bucket = ?1 AND key = ?2
-                                ORDER BY last_modified DESC LIMIT 1
-                            )",
-                            params![bucket, key],
-                        )?;
-                    }
+                    // Recompute the latest version deterministically so the
+                    // single-node and cluster (apply_remote_*) paths agree on
+                    // the winner: (last_modified, version_id, blob_id) DESC.
+                    let _ = rec;
+                    recompute_is_latest(&tx, &bucket, &key)?;
                 }
 
                 tx.commit()?;
@@ -560,6 +555,118 @@ impl MetadataStore for SqliteStore {
             })
             .await
             .map_err(|e: TrError| ArcaError::Internal(format!("delete_object_version: {e}")))
+    }
+
+    async fn apply_remote_object(&self, record: &ObjectRecord) -> Result<(), ArcaError> {
+        let record = record.clone();
+        self.conn
+            .call(move |conn| {
+                let tx = conn.transaction()?;
+                let metadata_json =
+                    serde_json::to_string(&record.metadata).unwrap_or_else(|_| "{}".to_string());
+
+                match &record.version_id {
+                    // Versioned rows are immutable, keyed by version_id. The LWW
+                    // guard (incoming >= existing) makes re-delivery and
+                    // out-of-order delivery safe and idempotent.
+                    Some(vid) => {
+                        let existing_lm: Option<String> = match tx.query_row(
+                            "SELECT last_modified FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
+                            params![record.bucket, record.key, vid],
+                            |row| row.get(0),
+                        ) {
+                            Ok(v) => Some(v),
+                            Err(rusqlite::Error::QueryReturnedNoRows) => None,
+                            Err(e) => return Err(e.into()),
+                        };
+                        let incoming = record.last_modified.to_rfc3339();
+                        let should_write = existing_lm.as_ref().map_or(true, |ex| incoming >= *ex);
+                        if should_write {
+                            tx.execute(
+                                "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
+                                params![record.bucket, record.key, vid],
+                            )?;
+                            insert_replicated_row(&tx, &record, &metadata_json)?;
+                        }
+                    }
+                    // Null-version rows form an LWW register per (bucket, key):
+                    // unversioned/suspended overwrites resolve by
+                    // (last_modified, blob_id) so all nodes converge on one row.
+                    None => {
+                        let existing: Option<(String, String)> = match tx.query_row(
+                            "SELECT last_modified, blob_id FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
+                            params![record.bucket, record.key],
+                            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                        ) {
+                            Ok(v) => Some(v),
+                            Err(rusqlite::Error::QueryReturnedNoRows) => None,
+                            Err(e) => return Err(e.into()),
+                        };
+                        let incoming_lm = record.last_modified.to_rfc3339();
+                        let incoming_blob = record.blob_id.0.clone();
+                        let should_write = match &existing {
+                            None => true,
+                            Some((lm, bid)) => {
+                                incoming_lm > *lm || (incoming_lm == *lm && incoming_blob >= *bid)
+                            }
+                        };
+                        if should_write {
+                            tx.execute(
+                                "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
+                                params![record.bucket, record.key],
+                            )?;
+                            insert_replicated_row(&tx, &record, &metadata_json)?;
+                        }
+                    }
+                }
+
+                recompute_is_latest(&tx, &record.bucket, &record.key)?;
+                tx.commit()?;
+                Ok(())
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("apply_remote_object: {e}")))
+    }
+
+    async fn apply_remote_version_delete(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: &str,
+    ) -> Result<(), ArcaError> {
+        let bucket = bucket.to_string();
+        let key = key.to_string();
+        let version_id = version_id.to_string();
+        self.conn
+            .call(move |conn| {
+                let tx = conn.transaction()?;
+                if version_id == "null" {
+                    tx.execute(
+                        "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
+                        params![bucket, key],
+                    )?;
+                    tx.execute(
+                        "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ''",
+                        params![bucket, key],
+                    )?;
+                } else {
+                    tx.execute(
+                        "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
+                        params![bucket, key, version_id],
+                    )?;
+                    tx.execute(
+                        "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
+                        params![bucket, key, version_id],
+                    )?;
+                }
+                recompute_is_latest(&tx, &bucket, &key)?;
+                tx.commit()?;
+                Ok(())
+            })
+            .await
+            .map_err(|e: TrError| {
+                ArcaError::Internal(format!("apply_remote_version_delete: {e}"))
+            })
     }
 
     async fn list_object_versions(
@@ -1432,6 +1539,66 @@ fn insert_object_row(
             record.storage_class,
             record.checksum_algorithm,
             record.checksum_value,
+        ],
+    )?;
+    Ok(())
+}
+
+/// Recomputes `is_latest` for a key deterministically: exactly the row with the
+/// greatest `(last_modified, version_id, blob_id)` is marked latest, all others
+/// not. Shared by the cluster apply paths and `delete_object_version` so every
+/// node converges on the same current version without coordination. Respects
+/// the unique index `idx_objects_latest` by zeroing all rows before setting the
+/// single winner.
+fn recompute_is_latest(conn: &Connection, bucket: &str, key: &str) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2",
+        params![bucket, key],
+    )?;
+    conn.execute(
+        "UPDATE objects SET is_latest = 1 WHERE rowid = (
+            SELECT rowid FROM objects WHERE bucket = ?1 AND key = ?2
+            ORDER BY last_modified DESC, version_id DESC, blob_id DESC
+            LIMIT 1
+        )",
+        params![bucket, key],
+    )?;
+    Ok(())
+}
+
+/// Inserts a replicated object row verbatim, including `replication_status`.
+/// `is_latest` is forced to 0 on insert so the unique latest index is never
+/// transiently violated; the caller then runs `recompute_is_latest`.
+fn insert_replicated_row(
+    conn: &Connection,
+    record: &ObjectRecord,
+    metadata_json: &str,
+) -> Result<(), rusqlite::Error> {
+    let retain_until_str = record.retain_until_date.map(|dt| dt.to_rfc3339());
+    conn.execute(
+        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+        params![
+            record.bucket,
+            record.key,
+            record.blob_id.0,
+            record.size as i64,
+            record.etag,
+            record.content_type,
+            record.last_modified.to_rfc3339(),
+            metadata_json,
+            record.encryption_algorithm,
+            record.encryption_key_id,
+            record.owner,
+            record.version_id,
+            record.is_delete_marker as i32,
+            record.retention_mode,
+            retain_until_str,
+            record.legal_hold_status,
+            record.storage_class,
+            record.checksum_algorithm,
+            record.checksum_value,
+            record.replication_status,
         ],
     )?;
     Ok(())
@@ -2472,5 +2639,115 @@ mod tests {
         // Only the latest version counts.
         assert_eq!(stats.object_count, 1);
         assert_eq!(stats.total_size_bytes, 200);
+    }
+
+    // ----- Cluster replication: apply_remote_* (Phase 29 HA) -----
+
+    #[tokio::test]
+    async fn apply_remote_object_inserts_and_is_visible() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let r = make_record("b", "k"); // null-version
+        store.apply_remote_object(&r).await.unwrap();
+        let got = store.get_object("b", "k").await.unwrap();
+        assert!(got.is_some());
+        assert!(got.unwrap().is_latest);
+    }
+
+    #[tokio::test]
+    async fn apply_remote_object_idempotent() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut r = make_record("b", "k");
+        r.version_id = Some("v1".to_string());
+        store.apply_remote_object(&r).await.unwrap();
+        store.apply_remote_object(&r).await.unwrap();
+        let versions = store.list_object_versions("b", None, None, None, 100).await.unwrap();
+        assert_eq!(versions.len(), 1, "re-delivery must not duplicate the version");
+    }
+
+    #[tokio::test]
+    async fn apply_remote_lww_null_version_newest_wins() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let t1 = chrono::Utc::now();
+        let t2 = t1 + chrono::Duration::seconds(10);
+
+        let mut older = make_record("b", "k");
+        older.version_id = None;
+        older.blob_id = BlobId("blob-old".to_string());
+        older.last_modified = t1;
+        older.etag = "old".to_string();
+
+        let mut newer = make_record("b", "k");
+        newer.version_id = None;
+        newer.blob_id = BlobId("blob-new".to_string());
+        newer.last_modified = t2;
+        newer.etag = "new".to_string();
+
+        // Apply out of order (newer first): LWW must still pick the newer one,
+        // and there must be exactly one null-version row.
+        store.apply_remote_object(&newer).await.unwrap();
+        store.apply_remote_object(&older).await.unwrap();
+
+        let got = store.get_object("b", "k").await.unwrap().unwrap();
+        assert_eq!(got.etag, "new");
+        assert!(got.is_latest);
+        let versions = store.list_object_versions("b", None, None, None, 100).await.unwrap();
+        assert_eq!(versions.len(), 1, "unversioned key must converge to one row");
+    }
+
+    #[tokio::test]
+    async fn apply_remote_versioned_recomputes_latest_regardless_of_order() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let t1 = chrono::Utc::now();
+        let t2 = t1 + chrono::Duration::seconds(10);
+
+        let mut v1 = make_record("b", "k");
+        v1.version_id = Some("v1".to_string());
+        v1.blob_id = BlobId("blob-1".to_string());
+        v1.last_modified = t1;
+
+        let mut v2 = make_record("b", "k");
+        v2.version_id = Some("v2".to_string());
+        v2.blob_id = BlobId("blob-2".to_string());
+        v2.last_modified = t2;
+
+        // Apply newest first, then oldest: recompute is deterministic on
+        // (last_modified, version_id, blob_id), so v2 is latest either way.
+        store.apply_remote_object(&v2).await.unwrap();
+        store.apply_remote_object(&v1).await.unwrap();
+
+        let versions = store.list_object_versions("b", None, None, None, 100).await.unwrap();
+        assert_eq!(versions.len(), 2, "both versions retained");
+        assert!(store.get_object_version("b", "k", "v2").await.unwrap().unwrap().is_latest);
+        assert!(!store.get_object_version("b", "k", "v1").await.unwrap().unwrap().is_latest);
+    }
+
+    #[tokio::test]
+    async fn apply_remote_version_delete_promotes_next_latest() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let t1 = chrono::Utc::now();
+        let t2 = t1 + chrono::Duration::seconds(10);
+
+        let mut v1 = make_record("b", "k");
+        v1.version_id = Some("v1".to_string());
+        v1.blob_id = BlobId("blob-1".to_string());
+        v1.last_modified = t1;
+        let mut v2 = make_record("b", "k");
+        v2.version_id = Some("v2".to_string());
+        v2.blob_id = BlobId("blob-2".to_string());
+        v2.last_modified = t2;
+
+        store.apply_remote_object(&v1).await.unwrap();
+        store.apply_remote_object(&v2).await.unwrap();
+        // Delete the current latest (v2): v1 must be promoted.
+        store.apply_remote_version_delete("b", "k", "v2").await.unwrap();
+
+        let versions = store.list_object_versions("b", None, None, None, 100).await.unwrap();
+        assert_eq!(versions.len(), 1);
+        assert!(store.get_object_version("b", "k", "v1").await.unwrap().unwrap().is_latest);
     }
 }

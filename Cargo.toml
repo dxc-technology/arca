@@ -94,11 +94,14 @@ tempfile = "3"
 # System
 libc = "0.2"
 
+# Cluster / service discovery (HA, Phase 29) — pure-Rust mDNS, no system daemon
+mdns-sd = "0.20"
+
 # Encryption
 ring = "0.17"
 
 # HTTP client (startup-only, Vault/OpenBAO KMS)
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 
 # Notification connectors
 redis = { version = "0.27", features = ["tokio-comp", "aio"] }

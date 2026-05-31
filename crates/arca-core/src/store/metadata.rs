@@ -283,4 +283,41 @@ pub trait MetadataStore: Send + Sync {
         upload_id_marker: Option<&str>,
         max_uploads: u32,
     ) -> Result<Vec<MultipartUploadRecord>, crate::error::ArcaError>;
+
+    // -- Cluster replication (Phase 29 HA) --
+
+    /// Applies a fully-formed object version received verbatim from a cluster
+    /// peer, idempotently. Unlike [`MetadataStore::put_object`], it does NOT
+    /// mint a `version_id` and does NOT run bucket versioning logic: the row is
+    /// stored as-is, then `is_latest` is recomputed deterministically across the
+    /// key's versions. Conflict resolution is last-write-wins on
+    /// `(last_modified, version_id, blob_id)`, so all nodes converge on the same
+    /// current version without coordination.
+    ///
+    /// Default implementation: unsupported (for non-clustered backends).
+    async fn apply_remote_object(
+        &self,
+        _record: &ObjectRecord,
+    ) -> Result<(), crate::error::ArcaError> {
+        Err(crate::error::ArcaError::Internal(
+            "apply_remote_object: cluster replication is not supported by this backend".to_string(),
+        ))
+    }
+
+    /// Applies a replicated hard-delete of a specific object version, then
+    /// recomputes `is_latest`. `version_id == "null"` targets the null-version
+    /// row. Idempotent (deleting an absent version is a no-op).
+    ///
+    /// Default implementation: unsupported.
+    async fn apply_remote_version_delete(
+        &self,
+        _bucket: &str,
+        _key: &str,
+        _version_id: &str,
+    ) -> Result<(), crate::error::ArcaError> {
+        Err(crate::error::ArcaError::Internal(
+            "apply_remote_version_delete: cluster replication is not supported by this backend"
+                .to_string(),
+        ))
+    }
 }

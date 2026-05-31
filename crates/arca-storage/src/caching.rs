@@ -204,6 +204,39 @@ impl MetadataStore for CachingMetadataStore {
             .await
     }
 
+    // -- Cluster replication (Phase 29 HA): forward + invalidate --
+    //
+    // Without these overrides the default trait impls ("unsupported") would
+    // shadow the backing store. Forwarding to the inner store applies the
+    // replicated change; invalidating the key drops any stale cached read so
+    // the next `get_latest_object` reflects the peer's write.
+
+    async fn apply_remote_object(&self, record: &ObjectRecord) -> Result<(), ArcaError> {
+        let result = self.inner.apply_remote_object(record).await;
+        if result.is_ok() {
+            let cache_key = Self::object_key(&record.bucket, &record.key);
+            self.object_cache.invalidate(&cache_key).await;
+        }
+        result
+    }
+
+    async fn apply_remote_version_delete(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: &str,
+    ) -> Result<(), ArcaError> {
+        let result = self
+            .inner
+            .apply_remote_version_delete(bucket, key, version_id)
+            .await;
+        if result.is_ok() {
+            let cache_key = Self::object_key(bucket, key);
+            self.object_cache.invalidate(&cache_key).await;
+        }
+        result
+    }
+
     // -- Multipart upload operations (delegated) --
 
     async fn create_multipart_upload(

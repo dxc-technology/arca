@@ -326,6 +326,7 @@ mod tests {
             monitoring: None,
             notifications: None,
             replication: None,
+            cluster: None,
         }
     }
 

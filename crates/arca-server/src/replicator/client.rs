@@ -8,10 +8,11 @@
 use std::time::Duration;
 
 use arca_auth::{sign_outbound_request, SignOutboundInput};
-use arca_core::s3::replication::REPLICATION_SOURCE_HEADER;
 use chrono::{DateTime, Utc};
 use reqwest::header::HeaderMap;
 use reqwest::Body;
+
+use crate::sigv4_http::{base_signed_headers, now_iso8601, push_signed_headers};
 
 /// All supported outbound operations.
 #[derive(Debug, Clone)]
@@ -233,57 +234,10 @@ impl OutboundClient {
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
-
-fn base_signed_headers(
-    host: &str,
-    datetime: &str,
-    content_length: Option<u64>,
-    content_type: Option<&str>,
-    source_id: &str,
-) -> Vec<(String, String)> {
-    let mut v = vec![
-        ("host".to_string(), host.to_string()),
-        ("x-amz-date".to_string(), datetime.to_string()),
-        (
-            "x-amz-content-sha256".to_string(),
-            "UNSIGNED-PAYLOAD".to_string(),
-        ),
-        (
-            REPLICATION_SOURCE_HEADER.to_string(),
-            source_id.to_string(),
-        ),
-    ];
-    if let Some(len) = content_length {
-        v.push(("content-length".to_string(), len.to_string()));
-    }
-    if let Some(ct) = content_type {
-        v.push(("content-type".to_string(), ct.to_string()));
-    }
-    v
-}
-
-fn push_signed_headers(hmap: &mut HeaderMap, headers: &[(String, String)], auth: &str) {
-    // CRITICAL: any header whose value is silently dropped here (because
-    // reqwest rejects it) produces SignatureDoesNotMatch at the destination —
-    // the signer already hashed that header's value into the canonical
-    // request. Use `HeaderValue::from_bytes` which accepts non-ASCII UTF-8
-    // bytes (e.g. "naïve" in x-amz-meta-* values); the signer hashed the
-    // same bytes, so server and client agree. Header NAMES must still be
-    // valid tokens (ASCII letters/digits/hyphens), which they always are for
-    // the fixed set of headers we emit (host, x-amz-*, content-*) and for
-    // x-amz-meta-* prefixed keys sanitized upstream by arca-proto.
-    for (k, v) in headers {
-        if let (Ok(name), Ok(val)) = (
-            reqwest::header::HeaderName::try_from(k.as_str()),
-            reqwest::header::HeaderValue::from_bytes(v.as_bytes()),
-        ) {
-            hmap.insert(name, val);
-        }
-    }
-    if let Ok(val) = reqwest::header::HeaderValue::from_bytes(auth.as_bytes()) {
-        hmap.insert(reqwest::header::AUTHORIZATION, val);
-    }
-}
+//
+// The generic SigV4 helpers (`base_signed_headers`, `push_signed_headers`,
+// `now_iso8601`) live in `crate::sigv4_http` and are shared with the cluster
+// client. The helpers below are S3-specific (path-style bucket/key URLs).
 
 /// Percent-encode an object key per AWS SigV4 rules.
 ///
@@ -341,10 +295,6 @@ fn build_url(
     let uri_path = format!("{base_path}/{bucket}/{encoded_key}");
     let url = format!("{scheme}://{host}{uri_path}");
     Ok((url, host, uri_path))
-}
-
-fn now_iso8601() -> String {
-    Utc::now().format("%Y%m%dT%H%M%SZ").to_string()
 }
 
 #[cfg(test)]
@@ -421,35 +371,5 @@ mod tests {
         let (_url, _host, path) =
             build_url("http://host", "b", "café.txt", None).unwrap();
         assert_eq!(path, "/b/caf%C3%A9.txt");
-    }
-
-    #[test]
-    fn push_signed_headers_preserves_non_ascii_metadata_values() {
-        // Regression: `HeaderValue::try_from(&str)` would silently drop
-        // non-ASCII values, so x-amz-meta-* headers that made it past the
-        // signer disappeared on the wire → SignatureDoesNotMatch. Switching
-        // to from_bytes preserves the bytes; the signer hashed the same
-        // bytes, so signer and wire agree.
-        let mut hmap = HeaderMap::new();
-        push_signed_headers(
-            &mut hmap,
-            &[
-                ("host".to_string(), "replica.example.com".to_string()),
-                (
-                    "x-amz-meta-description".to_string(),
-                    "naïve café — résumé".to_string(),
-                ),
-            ],
-            "AWS4-HMAC-SHA256 Credential=...",
-        );
-        let meta = hmap.get("x-amz-meta-description").expect("metadata header preserved");
-        assert_eq!(meta.as_bytes(), "naïve café — résumé".as_bytes());
-    }
-
-    #[test]
-    fn now_iso8601_format() {
-        let s = now_iso8601();
-        assert_eq!(s.len(), 16);
-        assert!(s.ends_with('Z'));
     }
 }

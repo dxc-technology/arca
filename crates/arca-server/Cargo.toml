@@ -40,6 +40,7 @@ base64 = { workspace = true }
 reqwest = { workspace = true }
 uuid = { workspace = true }
 libc = { workspace = true }
+mdns-sd = { workspace = true }
 redis = { workspace = true }
 async-nats = { workspace = true }
 rumqttc = { workspace = true }

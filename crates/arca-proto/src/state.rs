@@ -6,8 +6,9 @@ use std::sync::RwLock;
 use std::collections::HashMap;
 use std::time::Instant;
 
-use arca_core::store::{AuditStore, BlobStore, ConnectorRegistry, CredentialStore, GrantStore, MetadataStore, MetricsStore, NotificationStore, PresignedUrlStore, ReplicationStore, ServerConfigStore, SsecBlobOps, TeamStore, UserStore};
+use arca_core::store::{AuditStore, BlobStore, ConnectorRegistry, CredentialStore, GrantStore, MetadataStore, MetricsStore, NotificationStore, PresignedUrlStore, RawBlobOps, ReplicationStore, ServerConfigStore, SsecBlobOps, TeamStore, UserStore};
 use arca_core::store::audit::AuditEntry;
+use arca_core::cluster::ClusterState;
 
 use crate::metrics::MetricsRegistry;
 
@@ -92,6 +93,19 @@ pub struct AppState {
     /// Stable identifier for this instance used as the loop-prevention
     /// `x-amz-arca-replication-source` header on outbound replication requests.
     pub replication_source_id: String,
+    /// Shared cluster state (Phase 29 HA), `None` when clustering is disabled.
+    /// Updated by the membership manager; read by the cluster endpoints, the
+    /// admin API, the console dashboard, and the store decorators' quorum gate.
+    pub cluster: Option<Arc<ClusterState>>,
+    /// Raw, verbatim blob access for the inter-node `/cluster/v1/blob` endpoints
+    /// (write_raw / read_raw / sidecar), bypassing the encryption/compression
+    /// wrappers. `Some` only when clustering is enabled. Held behind a trait so
+    /// arca-proto need not depend on arca-storage's concrete `FsBlobStore`.
+    pub cluster_raw_blob: Option<Arc<dyn RawBlobOps>>,
+    /// Shared cluster secret (the secret half of the fixed cluster credential),
+    /// used by the `cluster_auth` middleware to verify inter-node requests.
+    /// `Some` only when clustering is enabled.
+    pub cluster_secret: Option<String>,
     /// Replication journal retention days from the TOML config file
     /// (locks the value, makes it read-only from the console). When absent,
     /// the console can set it via `replication_retention_days` in server_config

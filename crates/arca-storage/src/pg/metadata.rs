@@ -118,6 +118,81 @@ async fn insert_object_row(
     Ok(())
 }
 
+/// Inserts a replicated object row verbatim, including `replication_status`.
+/// `is_latest` is forced to FALSE so the partial unique latest index is never
+/// transiently violated; the caller then runs [`recompute_is_latest`].
+/// Mirrors the SQLite `insert_replicated_row` for cross-backend convergence.
+async fn insert_replicated_row(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    record: &ObjectRecord,
+    metadata_json: &serde_json::Value,
+) -> Result<(), sqlx_core::error::Error> {
+    sqlx_core::query::query(
+        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, \
+         metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, \
+         is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, \
+         checksum_algorithm, checksum_value, replication_status) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, FALSE, $13, $14, $15, $16, \
+         $17, $18, $19, $20)",
+    )
+    .bind(&record.bucket)
+    .bind(&record.key)
+    .bind(&record.blob_id.0)
+    .bind(record.size as i64)
+    .bind(&record.etag)
+    .bind(&record.content_type)
+    .bind(record.last_modified)
+    .bind(metadata_json)
+    .bind(&record.encryption_algorithm)
+    .bind(&record.encryption_key_id)
+    .bind(&record.owner)
+    .bind(&record.version_id)
+    .bind(record.is_delete_marker)
+    .bind(&record.retention_mode)
+    .bind(record.retain_until_date)
+    .bind(&record.legal_hold_status)
+    .bind(&record.storage_class)
+    .bind(&record.checksum_algorithm)
+    .bind(&record.checksum_value)
+    .bind(&record.replication_status)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// Recomputes `is_latest` for a `(bucket, key)` deterministically: clears the
+/// flag on every version, then sets it on the single newest by
+/// `(last_modified DESC, version_id DESC, blob_id DESC)`.
+///
+/// `version_id DESC NULLS LAST` is REQUIRED so a null-version row sorts last in
+/// the version_id tiebreak, matching SQLite (where NULL is the smallest value,
+/// hence last under DESC). Without `NULLS LAST` PostgreSQL would order NULLs
+/// first and the two backends could disagree on the current version — a
+/// divergence the cluster must never allow.
+async fn recompute_is_latest(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    bucket: &str,
+    key: &str,
+) -> Result<(), sqlx_core::error::Error> {
+    sqlx_core::query::query("UPDATE objects SET is_latest = FALSE WHERE bucket = $1 AND key = $2")
+        .bind(bucket)
+        .bind(key)
+        .execute(&mut **tx)
+        .await?;
+    sqlx_core::query::query(
+        "UPDATE objects SET is_latest = TRUE WHERE ctid = (
+            SELECT ctid FROM objects WHERE bucket = $1 AND key = $2
+            ORDER BY last_modified DESC, version_id DESC NULLS LAST, blob_id DESC
+            LIMIT 1
+        )",
+    )
+    .bind(bucket)
+    .bind(key)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
 /// Escapes special characters in a LIKE pattern so they are matched literally.
 /// PostgreSQL LIKE special characters are `%` and `_`. We use `\` as the escape character.
 fn escape_like(s: &str) -> String {
@@ -818,6 +893,159 @@ impl MetadataStore for PgStore {
             .map_err(|e| ArcaError::Internal(format!("delete_object_version: {e}")))?;
 
         Ok(deleted)
+    }
+
+    async fn apply_remote_object(&self, record: &ObjectRecord) -> Result<(), ArcaError> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
+        let metadata_json =
+            serde_json::to_value(&record.metadata).unwrap_or_else(|_| serde_json::json!({}));
+
+        match &record.version_id {
+            // Versioned rows are immutable, keyed by version_id. The LWW guard
+            // (incoming >= existing) makes re-delivery and out-of-order delivery
+            // safe and idempotent.
+            Some(vid) => {
+                let existing: Option<DateTime<Utc>> = sqlx_core::query::query(
+                    "SELECT last_modified FROM objects \
+                     WHERE bucket = $1 AND key = $2 AND version_id = $3",
+                )
+                .bind(&record.bucket)
+                .bind(&record.key)
+                .bind(vid)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?
+                .map(|row| row.get::<DateTime<Utc>, _>("last_modified"));
+
+                let should_write = existing.map_or(true, |ex| record.last_modified >= ex);
+                if should_write {
+                    sqlx_core::query::query(
+                        "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id = $3",
+                    )
+                    .bind(&record.bucket)
+                    .bind(&record.key)
+                    .bind(vid)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
+                    insert_replicated_row(&mut tx, record, &metadata_json)
+                        .await
+                        .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
+                }
+            }
+            // Null-version rows form an LWW register per (bucket, key):
+            // unversioned/suspended overwrites resolve by (last_modified, blob_id)
+            // so all nodes converge on one row.
+            None => {
+                let existing = sqlx_core::query::query(
+                    "SELECT last_modified, blob_id FROM objects \
+                     WHERE bucket = $1 AND key = $2 AND version_id IS NULL",
+                )
+                .bind(&record.bucket)
+                .bind(&record.key)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?
+                .map(|row| {
+                    (
+                        row.get::<DateTime<Utc>, _>("last_modified"),
+                        row.get::<String, _>("blob_id"),
+                    )
+                });
+
+                let should_write = match &existing {
+                    None => true,
+                    Some((lm, bid)) => {
+                        record.last_modified > *lm
+                            || (record.last_modified == *lm && record.blob_id.0 >= *bid)
+                    }
+                };
+                if should_write {
+                    sqlx_core::query::query(
+                        "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id IS NULL",
+                    )
+                    .bind(&record.bucket)
+                    .bind(&record.key)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
+                    insert_replicated_row(&mut tx, record, &metadata_json)
+                        .await
+                        .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
+                }
+            }
+        }
+
+        recompute_is_latest(&mut tx, &record.bucket, &record.key)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
+        tx.commit()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
+        Ok(())
+    }
+
+    async fn apply_remote_version_delete(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: &str,
+    ) -> Result<(), ArcaError> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("apply_remote_version_delete: {e}")))?;
+
+        if version_id == "null" {
+            sqlx_core::query::query(
+                "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id IS NULL",
+            )
+            .bind(bucket)
+            .bind(key)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("apply_remote_version_delete: {e}")))?;
+            sqlx_core::query::query(
+                "DELETE FROM object_tags WHERE bucket = $1 AND key = $2 AND version_id = ''",
+            )
+            .bind(bucket)
+            .bind(key)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("apply_remote_version_delete: {e}")))?;
+        } else {
+            sqlx_core::query::query(
+                "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id = $3",
+            )
+            .bind(bucket)
+            .bind(key)
+            .bind(version_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("apply_remote_version_delete: {e}")))?;
+            sqlx_core::query::query(
+                "DELETE FROM object_tags WHERE bucket = $1 AND key = $2 AND version_id = $3",
+            )
+            .bind(bucket)
+            .bind(key)
+            .bind(version_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("apply_remote_version_delete: {e}")))?;
+        }
+
+        recompute_is_latest(&mut tx, bucket, key)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("apply_remote_version_delete: {e}")))?;
+        tx.commit()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("apply_remote_version_delete: {e}")))?;
+        Ok(())
     }
 
     async fn list_object_versions(

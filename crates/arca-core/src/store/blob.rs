@@ -420,3 +420,45 @@ pub trait SsecBlobOps: Send + Sync {
         meta: &SidecarMeta,
     ) -> Result<(), crate::error::ArcaError>;
 }
+
+/// Raw, verbatim blob access for cluster replication (Phase 29 HA).
+///
+/// These operate on the physical on-disk artifacts, bypassing the
+/// composite/encryption/compression layers, so a blob can be replicated
+/// byte-for-byte to peers and stored under the identical `blob_id`. The
+/// receiving cluster endpoints live in `arca-proto`, which cannot see the
+/// concrete `FsBlobStore`; like [`SsecBlobOps`], this trait keeps the raw
+/// operations behind an `arca-core` interface so `AppState` can hold an
+/// `Arc<dyn RawBlobOps>` without `arca-proto` depending on `arca-storage`.
+#[async_trait::async_trait]
+pub trait RawBlobOps: Send + Sync {
+    /// Streams the raw on-disk bytes of a blob verbatim (no composite assembly,
+    /// no decrypt/decompress). Errors if the physical file is absent (e.g. a
+    /// composite blob, which has no file of its own — replicate its parts).
+    async fn read_raw(&self, blob_id: &BlobId) -> Result<BlobGetResult, crate::error::ArcaError>;
+
+    /// Writes raw bytes to a blob verbatim. Idempotent: re-delivering the same
+    /// `blob_id` overwrites with identical bytes. No MD5, no sidecar (shipped
+    /// separately via [`RawBlobOps::write_sidecar`]).
+    async fn write_raw(
+        &self,
+        blob_id: &BlobId,
+        stream: ByteStream,
+    ) -> Result<u64, crate::error::ArcaError>;
+
+    /// Whether the blob's physical file exists (anti-entropy / repair probe).
+    async fn exists(&self, blob_id: &BlobId) -> Result<bool, crate::error::ArcaError>;
+
+    /// Writes sidecar metadata alongside the blob file (verbatim).
+    async fn write_sidecar(
+        &self,
+        blob_id: &BlobId,
+        meta: &SidecarMeta,
+    ) -> Result<(), crate::error::ArcaError>;
+
+    /// Reads and parses the sidecar for a blob. `Ok(None)` if absent.
+    async fn read_sidecar(
+        &self,
+        blob_id: &BlobId,
+    ) -> Result<Option<SidecarMeta>, crate::error::ArcaError>;
+}

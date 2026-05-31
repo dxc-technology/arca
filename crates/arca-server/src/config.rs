@@ -13,6 +13,7 @@ pub struct Config {
     pub monitoring: Option<MonitoringConfig>,
     pub notifications: Option<NotificationsConfig>,
     pub replication: Option<ReplicationConfig>,
+    pub cluster: Option<ClusterConfig>,
 }
 
 /// Server configuration.
@@ -710,6 +711,134 @@ fn default_journal_max_age_days() -> u32 {
     90
 }
 
+/// Consistency policy for cluster writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ClusterMode {
+    /// CP: a write is acknowledged only once a majority of nodes hold it.
+    /// A node in the minority becomes read-only. No divergence possible.
+    #[default]
+    Quorum,
+    /// AP: always writable (even a single node); conflicts on partition heal
+    /// resolve last-write-wins.
+    Available,
+}
+
+/// How peers discover each other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum DiscoveryMode {
+    /// mDNS on the local subnet (no daemon). Default.
+    #[default]
+    Mdns,
+    /// Static seed list (identical on every node; a node ignores itself).
+    Static,
+    /// A DNS name resolving to all peers (e.g. a Kubernetes headless Service).
+    Dns,
+}
+
+/// Cluster (High Availability) configuration.
+///
+/// This section is **identical on every node**: there is no per-node `node_id`
+/// or peer list. Each node derives and persists its own `node_id`, and peers
+/// are discovered automatically. See `cluster/` for the membership manager.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ClusterConfig {
+    /// Whether clustering is enabled.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Logical cluster name. Only nodes sharing the same `cluster_id` form a
+    /// cluster (used as the discovery filter).
+    pub cluster_id: String,
+    /// Shared secret authenticating inter-node `/cluster/v1/*` requests
+    /// (identical on every node).
+    pub secret: String,
+    /// Consistency policy: "quorum" (CP, default) or "available" (AP).
+    #[serde(default)]
+    pub mode: ClusterMode,
+    /// Expected cluster size. Required in `mode = "quorum"` to derive the
+    /// write majority; ignored in `mode = "available"`.
+    pub cluster_size: Option<u32>,
+    /// Discovery mechanism (default: mdns).
+    #[serde(default)]
+    pub discovery: DiscoveryMode,
+    /// Port peers use to reach this node. Optional; defaults to `[server].port`.
+    /// Set only when it differs from the bind port (container port mapping/NAT).
+    pub advertise_port: Option<u16>,
+    /// Host/IP advertised to peers. Optional; defaults to the auto-detected
+    /// interface address (useful when bind = 0.0.0.0).
+    pub advertise_addr: Option<String>,
+    /// Seed endpoints for `discovery = "static"` (identical on every node;
+    /// a node ignores its own entry).
+    #[serde(default)]
+    pub seeds: Vec<String>,
+    /// DNS name for `discovery = "dns"` (resolves to all peers).
+    pub dns_name: Option<String>,
+    /// Interval between peer health pings, in seconds.
+    #[serde(default = "default_cluster_health_interval")]
+    pub health_interval_seconds: u64,
+    /// Interval between anti-entropy reconciliation passes, in seconds.
+    #[serde(default = "default_cluster_anti_entropy_interval")]
+    pub anti_entropy_interval_seconds: u64,
+    /// Inter-node HTTP request timeout, in seconds.
+    #[serde(default = "default_cluster_request_timeout")]
+    pub request_timeout_seconds: u64,
+}
+
+impl ClusterConfig {
+    /// Validates the cluster configuration (only meaningful when `enabled`).
+    pub fn validate(&self) -> Result<()> {
+        if self.cluster_id.trim().is_empty() {
+            bail!("[cluster] cluster_id is required and must be non-empty");
+        }
+        if self.secret.trim().is_empty() {
+            bail!("[cluster] secret is required and must be non-empty");
+        }
+        if self.mode == ClusterMode::Quorum {
+            match self.cluster_size {
+                None => bail!("[cluster] cluster_size is required when mode = \"quorum\""),
+                Some(n) if n < 1 => bail!("[cluster] cluster_size must be >= 1"),
+                _ => {}
+            }
+        }
+        match self.discovery {
+            DiscoveryMode::Static => {
+                if self.seeds.is_empty() {
+                    bail!("[cluster] seeds is required and must be non-empty when discovery = \"static\"");
+                }
+            }
+            DiscoveryMode::Dns => {
+                if self.dns_name.as_ref().map_or(true, |s| s.trim().is_empty()) {
+                    bail!("[cluster] dns_name is required when discovery = \"dns\"");
+                }
+            }
+            DiscoveryMode::Mdns => {}
+        }
+        Ok(())
+    }
+
+    /// Number of durable copies (including the local node) required to
+    /// acknowledge a write under `mode = "quorum"`: the majority
+    /// `floor(cluster_size/2)+1`. Returns `None` in `mode = "available"`,
+    /// where any single node may acknowledge.
+    pub fn write_quorum(&self) -> Option<u32> {
+        match self.mode {
+            ClusterMode::Quorum => self.cluster_size.map(|n| n / 2 + 1),
+            ClusterMode::Available => None,
+        }
+    }
+}
+
+fn default_cluster_health_interval() -> u64 {
+    5
+}
+fn default_cluster_anti_entropy_interval() -> u64 {
+    30
+}
+fn default_cluster_request_timeout() -> u64 {
+    10
+}
+
 fn default_channel_size() -> usize {
     10_000
 }
@@ -810,6 +939,11 @@ pub fn load_config(path: &Path) -> Result<Config> {
     }
     if let Some(enc) = &config.encryption {
         enc.validate()?;
+    }
+    if let Some(cluster) = &config.cluster {
+        if cluster.enabled {
+            cluster.validate()?;
+        }
     }
     config.storage.validate()?;
     Ok(config)
@@ -1421,6 +1555,7 @@ data_dir = "/data"
             monitoring: None,
             notifications: None,
             replication: None,
+            cluster: None,
         }
     }
 
@@ -1669,5 +1804,229 @@ connection_string = "postgresql://arca:arca@localhost:5432/arca"
         let config: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(config.storage.metadata_backend, "postgres");
         assert!(config.storage.validate().is_ok());
+    }
+
+    #[test]
+    fn parse_config_without_cluster() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.cluster.is_none());
+    }
+
+    #[test]
+    fn parse_config_with_cluster() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+
+[cluster]
+enabled = true
+cluster_id = "arca-prod"
+secret = "shared-cluster-secret"
+mode = "quorum"
+cluster_size = 3
+discovery = "mdns"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let cluster = config.cluster.unwrap();
+        assert!(cluster.enabled);
+        assert_eq!(cluster.cluster_id, "arca-prod");
+        assert_eq!(cluster.secret, "shared-cluster-secret");
+        assert_eq!(cluster.mode, ClusterMode::Quorum);
+        assert_eq!(cluster.cluster_size, Some(3));
+        assert_eq!(cluster.discovery, DiscoveryMode::Mdns);
+        assert!(cluster.advertise_port.is_none());
+        assert!(cluster.validate().is_ok());
+    }
+
+    #[test]
+    fn cluster_defaults() {
+        // mode and discovery default; operational intervals default.
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+
+[cluster]
+enabled = true
+cluster_id = "arca-prod"
+secret = "s"
+cluster_size = 3
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let cluster = config.cluster.unwrap();
+        assert_eq!(cluster.mode, ClusterMode::Quorum); // default
+        assert_eq!(cluster.discovery, DiscoveryMode::Mdns); // default
+        assert_eq!(cluster.health_interval_seconds, 5);
+        assert_eq!(cluster.anti_entropy_interval_seconds, 30);
+        assert_eq!(cluster.request_timeout_seconds, 10);
+    }
+
+    #[test]
+    fn cluster_quorum_requires_cluster_size() {
+        let cluster = ClusterConfig {
+            enabled: true,
+            cluster_id: "c".to_string(),
+            secret: "s".to_string(),
+            mode: ClusterMode::Quorum,
+            cluster_size: None,
+            discovery: DiscoveryMode::Mdns,
+            advertise_port: None,
+            advertise_addr: None,
+            seeds: vec![],
+            dns_name: None,
+            health_interval_seconds: 5,
+            anti_entropy_interval_seconds: 30,
+            request_timeout_seconds: 10,
+        };
+        let err = cluster.validate().unwrap_err().to_string();
+        assert!(err.contains("cluster_size is required"), "got: {err}");
+    }
+
+    #[test]
+    fn cluster_available_mode_ignores_cluster_size() {
+        let cluster = ClusterConfig {
+            enabled: true,
+            cluster_id: "c".to_string(),
+            secret: "s".to_string(),
+            mode: ClusterMode::Available,
+            cluster_size: None,
+            discovery: DiscoveryMode::Mdns,
+            advertise_port: None,
+            advertise_addr: None,
+            seeds: vec![],
+            dns_name: None,
+            health_interval_seconds: 5,
+            anti_entropy_interval_seconds: 30,
+            request_timeout_seconds: 10,
+        };
+        assert!(cluster.validate().is_ok());
+        assert_eq!(cluster.write_quorum(), None);
+    }
+
+    #[test]
+    fn cluster_static_discovery_requires_seeds() {
+        let cluster = ClusterConfig {
+            enabled: true,
+            cluster_id: "c".to_string(),
+            secret: "s".to_string(),
+            mode: ClusterMode::Available,
+            cluster_size: None,
+            discovery: DiscoveryMode::Static,
+            advertise_port: None,
+            advertise_addr: None,
+            seeds: vec![],
+            dns_name: None,
+            health_interval_seconds: 5,
+            anti_entropy_interval_seconds: 30,
+            request_timeout_seconds: 10,
+        };
+        let err = cluster.validate().unwrap_err().to_string();
+        assert!(err.contains("seeds is required"), "got: {err}");
+    }
+
+    #[test]
+    fn cluster_dns_discovery_requires_dns_name() {
+        let cluster = ClusterConfig {
+            enabled: true,
+            cluster_id: "c".to_string(),
+            secret: "s".to_string(),
+            mode: ClusterMode::Available,
+            cluster_size: None,
+            discovery: DiscoveryMode::Dns,
+            advertise_port: None,
+            advertise_addr: None,
+            seeds: vec![],
+            dns_name: None,
+            health_interval_seconds: 5,
+            anti_entropy_interval_seconds: 30,
+            request_timeout_seconds: 10,
+        };
+        let err = cluster.validate().unwrap_err().to_string();
+        assert!(err.contains("dns_name is required"), "got: {err}");
+    }
+
+    #[test]
+    fn cluster_empty_secret_fails() {
+        let cluster = ClusterConfig {
+            enabled: true,
+            cluster_id: "c".to_string(),
+            secret: "   ".to_string(),
+            mode: ClusterMode::Available,
+            cluster_size: None,
+            discovery: DiscoveryMode::Mdns,
+            advertise_port: None,
+            advertise_addr: None,
+            seeds: vec![],
+            dns_name: None,
+            health_interval_seconds: 5,
+            anti_entropy_interval_seconds: 30,
+            request_timeout_seconds: 10,
+        };
+        let err = cluster.validate().unwrap_err().to_string();
+        assert!(err.contains("secret is required"), "got: {err}");
+    }
+
+    #[test]
+    fn cluster_write_quorum_computation() {
+        // Majority = floor(n/2)+1: 1→1, 2→2, 3→2, 4→3, 5→3.
+        for (size, expected) in [(1, 1), (2, 2), (3, 2), (4, 3), (5, 3)] {
+            let cluster = ClusterConfig {
+                enabled: true,
+                cluster_id: "c".to_string(),
+                secret: "s".to_string(),
+                mode: ClusterMode::Quorum,
+                cluster_size: Some(size),
+                discovery: DiscoveryMode::Mdns,
+                advertise_port: None,
+                advertise_addr: None,
+                seeds: vec![],
+                dns_name: None,
+                health_interval_seconds: 5,
+                anti_entropy_interval_seconds: 30,
+                request_timeout_seconds: 10,
+            };
+            assert_eq!(cluster.write_quorum(), Some(expected), "size={size}");
+        }
+    }
+
+    #[test]
+    fn parse_config_cluster_available_static() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+
+[cluster]
+enabled = true
+cluster_id = "arca-prod"
+secret = "s"
+mode = "available"
+discovery = "static"
+seeds = ["arca-2:9000", "arca-3:9000"]
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let cluster = config.cluster.unwrap();
+        assert_eq!(cluster.mode, ClusterMode::Available);
+        assert_eq!(cluster.discovery, DiscoveryMode::Static);
+        assert_eq!(cluster.seeds, vec!["arca-2:9000", "arca-3:9000"]);
+        assert!(cluster.validate().is_ok());
     }
 }

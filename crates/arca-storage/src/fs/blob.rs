@@ -81,6 +81,76 @@ impl FsBlobStore {
         p
     }
 
+    // ----- Raw access for cluster replication (Phase 29) -----
+    //
+    // These bypass the composite/encryption/compression logic and operate on
+    // the physical on-disk file, so a blob can be replicated byte-for-byte to
+    // peers and stored verbatim under the identical `blob_id`. They are inherent
+    // methods (not part of `BlobStore`) because the cluster layer always holds a
+    // concrete `Arc<FsBlobStore>`, like `CompressingBlobStore` does for sidecars.
+
+    /// Streams the raw on-disk bytes of a blob verbatim (no composite assembly,
+    /// no decrypt/decompress). Errors if the physical file is absent (e.g. a
+    /// composite blob, which has no file of its own — replicate its parts).
+    pub async fn read_raw(&self, blob_id: &BlobId) -> Result<BlobGetResult, ArcaError> {
+        let blob_path = self.blob_path(blob_id);
+        let file = fs::File::open(&blob_path)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("open raw blob: {e}")))?;
+        let content_length = file
+            .metadata()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("raw blob metadata: {e}")))?
+            .len();
+        let stream = ReaderStream::with_capacity(file, 65536);
+        Ok(BlobGetResult {
+            stream: Box::pin(map_reader_stream(stream)),
+            content_length,
+        })
+    }
+
+    /// Writes raw bytes to a blob verbatim via temp-file + atomic rename, with
+    /// no MD5 or sidecar (the caller ships the sidecar separately). Idempotent:
+    /// re-delivering the same `blob_id` overwrites with identical bytes.
+    pub async fn write_raw(&self, blob_id: &BlobId, stream: ByteStream) -> Result<u64, ArcaError> {
+        let blob_path = self.blob_path(blob_id);
+        if let Some(parent) = blob_path.parent() {
+            fs::create_dir_all(parent)
+                .await
+                .map_err(|e| ArcaError::Internal(format!("create blob dir: {e}")))?;
+        }
+        let tmp_path = self.tmp_path(blob_id);
+        let mut file = fs::File::create(&tmp_path)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("create raw tmp: {e}")))?;
+        let mut size: u64 = 0;
+        let mut stream = std::pin::pin!(stream);
+        while let Some(chunk) = stream.as_mut().next().await {
+            let chunk = chunk.map_err(|e| ArcaError::Internal(format!("read raw stream: {e}")))?;
+            size += chunk.len() as u64;
+            file.write_all(&chunk)
+                .await
+                .map_err(|e| ArcaError::Internal(format!("write raw blob: {e}")))?;
+        }
+        file.flush()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("flush raw blob: {e}")))?;
+        drop(file);
+        fs::rename(&tmp_path, &blob_path)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("rename raw blob: {e}")))?;
+        Ok(size)
+    }
+
+    /// Whether the blob's physical file exists (anti-entropy probe).
+    pub async fn exists(&self, blob_id: &BlobId) -> Result<bool, ArcaError> {
+        match fs::metadata(self.blob_path(blob_id)).await {
+            Ok(_) => Ok(true),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(ArcaError::Internal(format!("stat raw blob: {e}"))),
+        }
+    }
+
     /// Reads and parses the sidecar for a blob. Returns `Ok(None)` if absent.
     async fn read_sidecar(&self, blob_id: &BlobId) -> Result<Option<SidecarMeta>, ArcaError> {
         let path = self.sidecar_path(blob_id);
@@ -525,6 +595,37 @@ impl BlobStore for FsBlobStore {
     }
 }
 
+/// Raw verbatim access for cluster replication: delegates to the inherent
+/// `read_raw`/`write_raw`/`exists`/`read_sidecar` methods and the `BlobStore`
+/// sidecar writer. Exposing them behind `RawBlobOps` lets the arca-proto
+/// cluster endpoints hold an `Arc<dyn RawBlobOps>` without depending on
+/// arca-storage.
+// Trait referenced by full path so its `write_sidecar` does not collide with
+// `BlobStore::write_sidecar` for callers (e.g. unit tests) holding a concrete
+// `FsBlobStore`. Production callers use `Arc<dyn RawBlobOps>`, never ambiguous.
+#[async_trait::async_trait]
+impl arca_core::store::RawBlobOps for FsBlobStore {
+    async fn read_raw(&self, blob_id: &BlobId) -> Result<BlobGetResult, ArcaError> {
+        FsBlobStore::read_raw(self, blob_id).await
+    }
+
+    async fn write_raw(&self, blob_id: &BlobId, stream: ByteStream) -> Result<u64, ArcaError> {
+        FsBlobStore::write_raw(self, blob_id, stream).await
+    }
+
+    async fn exists(&self, blob_id: &BlobId) -> Result<bool, ArcaError> {
+        FsBlobStore::exists(self, blob_id).await
+    }
+
+    async fn write_sidecar(&self, blob_id: &BlobId, meta: &SidecarMeta) -> Result<(), ArcaError> {
+        BlobStore::write_sidecar(self, blob_id, meta).await
+    }
+
+    async fn read_sidecar(&self, blob_id: &BlobId) -> Result<Option<SidecarMeta>, ArcaError> {
+        FsBlobStore::read_sidecar(self, blob_id).await
+    }
+}
+
 /// Maps a `ReaderStream<R>` (which yields `Result<Bytes, io::Error>`) to a `ByteStream`.
 fn map_reader_stream<R>(stream: ReaderStream<R>) -> impl Stream<Item = Result<bytes::Bytes, io::Error>>
 where
@@ -733,6 +834,91 @@ mod tests {
         let blob_id = BlobId::new();
         let result = store.get(&blob_id, None).await;
         assert!(result.is_err());
+    }
+
+    // ----- Raw access (cluster replication) -----
+
+    #[tokio::test]
+    async fn raw_write_read_roundtrip() {
+        let (store, _dir) = test_store(2).await;
+        let blob_id = BlobId::new();
+        // Arbitrary bytes incl. non-UTF8 — verbatim, no interpretation.
+        let data: &[u8] = b"\x00\x01\x02 raw ciphertext-like \xff\xfe bytes";
+        let n = store.write_raw(&blob_id, bytes_to_stream(data)).await.unwrap();
+        assert_eq!(n, data.len() as u64);
+        assert!(store.exists(&blob_id).await.unwrap());
+
+        let r = store.read_raw(&blob_id).await.unwrap();
+        assert_eq!(r.content_length, data.len() as u64);
+        let body = collect_stream(r.stream).await;
+        assert_eq!(body, data);
+    }
+
+    #[tokio::test]
+    async fn raw_write_is_idempotent_overwrite() {
+        let (store, _dir) = test_store(2).await;
+        let blob_id = BlobId::new();
+        store.write_raw(&blob_id, bytes_to_stream(b"same")).await.unwrap();
+        // Re-deliver the same blob_id (idempotent replication): overwrites cleanly.
+        store.write_raw(&blob_id, bytes_to_stream(b"same")).await.unwrap();
+        let r = store.read_raw(&blob_id).await.unwrap();
+        assert_eq!(collect_stream(r.stream).await, b"same");
+    }
+
+    #[tokio::test]
+    async fn exists_false_for_missing() {
+        let (store, _dir) = test_store(2).await;
+        assert!(!store.exists(&BlobId::new()).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn read_raw_missing_errors() {
+        let (store, _dir) = test_store(2).await;
+        assert!(store.read_raw(&BlobId::new()).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn raw_blob_ops_trait_roundtrip() {
+        // Imported function-locally (not at module scope) so RawBlobOps'
+        // write_sidecar does not collide with BlobStore's in the other tests.
+        use arca_core::store::RawBlobOps;
+        // Exercise RawBlobOps through a trait object — the exact path the
+        // arca-proto cluster endpoints take (they hold an Arc<dyn RawBlobOps>).
+        let (store, _dir) = test_store(2).await;
+        let raw: std::sync::Arc<dyn RawBlobOps> = std::sync::Arc::new(store);
+        let blob_id = BlobId::new();
+        let data: &[u8] = b"verbatim-bytes";
+
+        let n = raw.write_raw(&blob_id, bytes_to_stream(data)).await.unwrap();
+        assert_eq!(n, data.len() as u64);
+        assert!(raw.exists(&blob_id).await.unwrap());
+
+        let meta = SidecarMeta {
+            bucket: "b".to_string(),
+            key: "k".to_string(),
+            size: data.len() as u64,
+            etag: "etag".to_string(),
+            content_type: None,
+            last_modified: "2026-05-31T00:00:00Z".to_string(),
+            metadata: std::collections::HashMap::new(),
+            encryption: None,
+            compression: None,
+            version_id: None,
+            composite: None,
+        };
+        raw.write_sidecar(&blob_id, &meta).await.unwrap();
+
+        let read_back = raw
+            .read_sidecar(&blob_id)
+            .await
+            .unwrap()
+            .expect("sidecar present");
+        assert_eq!(read_back.bucket, "b");
+        assert_eq!(read_back.key, "k");
+
+        let r = raw.read_raw(&blob_id).await.unwrap();
+        assert_eq!(r.content_length, data.len() as u64);
+        assert_eq!(collect_stream(r.stream).await, data);
     }
 
     /// Helper to collect a ByteStream into a Vec<u8>.

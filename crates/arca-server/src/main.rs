@@ -1,6 +1,7 @@
 //! Arca S3-compatible object storage server.
 
 mod cli;
+mod cluster;
 mod config;
 mod connector;
 mod credential;
@@ -8,6 +9,7 @@ mod compress_existing;
 mod fsck;
 mod recover;
 mod replicator;
+mod sigv4_http;
 mod tls;
 mod tls_generate;
 mod vault;
@@ -25,7 +27,7 @@ use tracing_subscriber::EnvFilter;
 use arca_core::store::CredentialStore;
 use arca_proto::AppState;
 use arca_proto::middleware::normalize::NormalizeService;
-use cli::{Cli, Command, CredentialAction, EncryptionAction, LogFormat, TlsAction, UserAction};
+use cli::{Cli, ClusterAction, Command, CredentialAction, EncryptionAction, LogFormat, TlsAction, UserAction};
 
 /// The normalized app type used by both HTTP and HTTPS code paths.
 pub type NormalizedApp = NormalizeService<Router>;
@@ -81,6 +83,40 @@ async fn async_main(cli: Cli) -> Result<()> {
 
             let stores = open_stores(&config).await?;
             credential::ensure_root_credential(stores.credentials.as_ref()).await?;
+
+            // Cluster node identity: self-assigned and persisted in server_config
+            // so the TOML config stays byte-identical on every node. When the
+            // cluster is enabled this also serves as the replication
+            // loop-prevention source id.
+            let cluster_node_id = match config.cluster.as_ref() {
+                Some(c) if c.enabled => {
+                    Some(cluster::identity::ensure_node_id(stores.server_config.as_ref()).await?)
+                }
+                _ => None,
+            };
+
+            // Shared cluster state: the peer list + write-quorum gate. Peers are
+            // populated by the membership manager once spawned; this is the
+            // handle AppState, the cluster endpoints, and the store decorators
+            // share.
+            let cluster_state = match (config.cluster.as_ref(), cluster_node_id.as_ref()) {
+                (Some(c), Some(node_id)) if c.enabled => Some(std::sync::Arc::new(
+                    arca_core::cluster::ClusterState::new(node_id.clone(), c.write_quorum()),
+                )),
+                _ => None,
+            };
+
+            // Start the membership manager (peer discovery + health pings) when
+            // clustering is enabled. Detached task; refreshes cluster_state.
+            if let (Some(c), Some(cstate)) = (config.cluster.as_ref(), cluster_state.clone()) {
+                let scheme = if config.server.tls.is_some() {
+                    "https"
+                } else {
+                    "http"
+                };
+                let advertise_port = c.advertise_port.unwrap_or(config.server.port);
+                cluster::membership::spawn(c, cstate, scheme, advertise_port);
+            }
 
             // Apply DB-stored log level if set (console setting has precedence over config file).
             if let Ok(Some(db_level)) = stores.server_config.get_server_config("log_level").await {
@@ -315,11 +351,26 @@ async fn async_main(cli: Cli) -> Result<()> {
                 connector_registry: None, // Set after building the registry below.
                 presigned_url_store: stores.presigned_url,
                 replication_store: stores.replication.clone(),
-                replication_source_id: config
-                    .replication
+                replication_source_id: cluster_node_id.clone().unwrap_or_else(|| {
+                    config
+                        .replication
+                        .as_ref()
+                        .map(|r| r.source_endpoint_id.clone())
+                        .unwrap_or_else(|| "arca".to_string())
+                }),
+                cluster: cluster_state.clone(),
+                // Raw blob access + shared secret for the inter-node cluster
+                // endpoints. `fs_arc` is the concrete FsBlobStore (under any
+                // encryption/compression wrappers); the cluster transfers
+                // already-encoded bytes verbatim, so it must bypass them.
+                cluster_raw_blob: cluster_state
                     .as_ref()
-                    .map(|r| r.source_endpoint_id.clone())
-                    .unwrap_or_else(|| "arca".to_string()),
+                    .map(|_| fs_arc.clone() as Arc<dyn arca_core::store::RawBlobOps>),
+                cluster_secret: config
+                    .cluster
+                    .as_ref()
+                    .filter(|c| c.enabled)
+                    .map(|c| c.secret.clone()),
                 // Only populate when the user explicitly set `journal_retention_days`
                 // in TOML. The ReplicationConfig Default gives 30, so we can't distinguish
                 // "user chose 30" from "not set" via the struct alone — require an explicit
@@ -755,6 +806,27 @@ async fn async_main(cli: Cli) -> Result<()> {
                     stores.users.delete_user(&user_id).await?;
                     println!("User {} ({}) deleted.", user_id, user.username);
                 }
+            }
+        }
+
+        Command::Cluster {
+            config_path,
+            action,
+        } => {
+            let config = config::load_config(&config_path)?;
+            match action {
+                ClusterAction::Status => match config.cluster.as_ref() {
+                    Some(c) if c.enabled => {
+                        let stores = open_stores(&config).await?;
+                        let node_id =
+                            cluster::identity::ensure_node_id(stores.server_config.as_ref())
+                                .await?;
+                        cluster::status::print_status(c, &node_id);
+                    }
+                    _ => {
+                        println!("Clustering is not enabled in this configuration.");
+                    }
+                },
             }
         }
     }

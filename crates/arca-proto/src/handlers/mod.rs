@@ -14,6 +14,7 @@ pub mod admin_users;
 pub mod archive;
 pub mod body;
 pub mod bucket;
+pub mod cluster;
 pub mod multipart;
 pub mod object;
 pub mod ssec;

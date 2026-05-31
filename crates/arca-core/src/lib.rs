@@ -2,6 +2,7 @@
 //!
 //! This crate has zero I/O dependencies and is independently testable.
 
+pub mod cluster;
 pub mod credential;
 pub mod error;
 pub mod policy;

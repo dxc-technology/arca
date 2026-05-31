@@ -114,6 +114,16 @@ pub enum Command {
         #[command(subcommand)]
         action: UserAction,
     },
+
+    /// Inspect the HA cluster (this node's identity, peers, quorum)
+    Cluster {
+        /// Path to the configuration file
+        #[arg(long, default_value = "/etc/arca/config.toml")]
+        config_path: PathBuf,
+
+        #[command(subcommand)]
+        action: ClusterAction,
+    },
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -166,6 +176,12 @@ pub enum UserAction {
         /// The user ID to delete
         user_id: String,
     },
+}
+
+#[derive(Subcommand)]
+pub enum ClusterAction {
+    /// Show this node's identity and the current cluster topology
+    Status,
 }
 
 #[derive(Subcommand)]

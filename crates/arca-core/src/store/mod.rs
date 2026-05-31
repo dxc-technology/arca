@@ -18,7 +18,7 @@ pub use audit::{AuditEntry, AuditFilter, AuditStore};
 pub use blob::{
     BlobCompressionInfo, BlobEncryptionInfo, BlobGetResult, BlobPutResult, BlobStore, ByteRange,
     ByteStream, CompositePart, CompressionAlgorithm, CompressionMetrics, CompressionSkipReason,
-    PutHints, SidecarMeta, SsecBlobOps,
+    PutHints, RawBlobOps, SidecarMeta, SsecBlobOps,
 };
 pub use connector::{ConnectorRegistry, DeliveryResult, NotificationConnector, TestResult};
 pub use credential::CredentialStore;
