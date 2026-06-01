@@ -315,6 +315,14 @@ async fn async_main(cli: Cli) -> Result<()> {
             // re-fanning them out.
             let mut cluster_inner_metadata: Option<Arc<dyn arca_core::store::MetadataStore>> =
                 None;
+            let mut cluster_inner_credentials: Option<
+                Arc<dyn arca_core::store::CredentialStore>,
+            > = None;
+            let mut cluster_inner_users: Option<Arc<dyn arca_core::store::UserStore>> = None;
+            // The (possibly cluster-wrapped) identity stores used by AppState.
+            let mut credentials: Arc<dyn arca_core::store::CredentialStore> =
+                stores.credentials.clone();
+            let mut users: Arc<dyn arca_core::store::UserStore> = stores.users.clone();
             let (blob, plain_blob, metadata): (
                 Arc<dyn arca_core::store::BlobStore>,
                 Option<Arc<dyn arca_core::store::BlobStore>>,
@@ -351,6 +359,21 @@ async fn async_main(cli: Cli) -> Result<()> {
                         cstate.clone(),
                     )) as Arc<dyn arca_core::store::BlobStore>
                 });
+                // Wrap the identity stores (credential/user) so their mutations
+                // replicate to peers; keep the inner handles for the receive path.
+                cluster_inner_credentials = Some(credentials.clone());
+                cluster_inner_users = Some(users.clone());
+                credentials = Arc::new(cluster::cluster_control::ClusterCredentialStore::new(
+                    credentials.clone(),
+                    client.clone(),
+                    cstate.clone(),
+                )) as Arc<dyn arca_core::store::CredentialStore>;
+                users = Arc::new(cluster::cluster_control::ClusterUserStore::new(
+                    users.clone(),
+                    client.clone(),
+                    cstate.clone(),
+                )) as Arc<dyn arca_core::store::UserStore>;
+
                 // Keep the inner handle for the control-plane receive path.
                 cluster_inner_metadata = Some(metadata.clone());
                 let cluster_meta: Arc<dyn arca_core::store::MetadataStore> =
@@ -368,8 +391,8 @@ async fn async_main(cli: Cli) -> Result<()> {
                 blob,
                 plain_blob,
                 ssec_blob: Some(ssec_blob),
-                credentials: stores.credentials,
-                users: stores.users,
+                credentials,
+                users,
                 teams: stores.teams,
                 grants: stores.grants,
                 server_config: stores.server_config,
@@ -431,6 +454,8 @@ async fn async_main(cli: Cli) -> Result<()> {
                     .filter(|c| c.enabled)
                     .map(|c| c.secret.clone()),
                 cluster_inner_metadata,
+                cluster_inner_credentials,
+                cluster_inner_users,
                 // Only populate when the user explicitly set `journal_retention_days`
                 // in TOML. The ReplicationConfig Default gives 30, so we can't distinguish
                 // "user chose 30" from "not set" via the struct alone — require an explicit

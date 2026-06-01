@@ -111,6 +111,14 @@ pub struct AppState {
     /// applies replicated control-plane mutations through this handle so they
     /// are NOT re-fanned-out to peers. `Some` only when clustering is enabled.
     pub cluster_inner_metadata: Option<Arc<dyn MetadataStore>>,
+    /// The credential store below the cluster decorator (for `/cluster/v1/op`
+    /// credential replication, applied without re-fan-out). `Some` only when
+    /// clustering is enabled.
+    pub cluster_inner_credentials: Option<Arc<dyn CredentialStore>>,
+    /// The user store below the cluster decorator (for `/cluster/v1/op` user
+    /// replication, applied without re-fan-out). `Some` only when clustering is
+    /// enabled.
+    pub cluster_inner_users: Option<Arc<dyn UserStore>>,
     /// Replication journal retention days from the TOML config file
     /// (locks the value, makes it read-only from the console). When absent,
     /// the console can set it via `replication_retention_days` in server_config

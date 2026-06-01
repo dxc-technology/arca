@@ -161,4 +161,25 @@ impl UserStore for PgStore {
 
         Ok(result.rows_affected() > 0)
     }
+
+    async fn apply_remote_user(&self, user: &User) -> Result<(), ArcaError> {
+        sqlx_core::query::query(
+            "INSERT INTO users (user_id, username, description, is_root, created_at)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (user_id) DO UPDATE SET
+               username = EXCLUDED.username,
+               description = EXCLUDED.description,
+               is_root = EXCLUDED.is_root,
+               created_at = EXCLUDED.created_at",
+        )
+        .bind(&user.user_id)
+        .bind(&user.username)
+        .bind(&user.description)
+        .bind(user.is_root)
+        .bind(user.created_at)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("apply_remote_user: {e}")))?;
+        Ok(())
+    }
 }

@@ -28,4 +28,15 @@ pub trait UserStore: Send + Sync {
 
     /// Deletes a user. Returns false if not found.
     async fn delete_user(&self, user_id: &str) -> Result<bool, ArcaError>;
+
+    /// Applies a user received verbatim from a cluster peer (Phase 29): an
+    /// idempotent upsert keyed by `user_id`, preserving all fields. Unlike
+    /// [`UserStore::put_user`] it never errors on an existing user.
+    ///
+    /// Default implementation: unsupported (non-clustered backends).
+    async fn apply_remote_user(&self, _user: &User) -> Result<(), ArcaError> {
+        Err(ArcaError::Internal(
+            "apply_remote_user: cluster replication is not supported by this backend".to_string(),
+        ))
+    }
 }

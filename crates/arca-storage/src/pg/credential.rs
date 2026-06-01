@@ -132,6 +132,31 @@ impl CredentialStore for PgStore {
         let count: i64 = row.get(0);
         Ok(count as u64)
     }
+
+    async fn apply_remote_credential(&self, credential: &Credential) -> Result<(), ArcaError> {
+        sqlx_core::query::query(
+            "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, admin, user_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             ON CONFLICT (access_key_id) DO UPDATE SET
+               secret_access_key = EXCLUDED.secret_access_key,
+               description = EXCLUDED.description,
+               created_at = EXCLUDED.created_at,
+               active = EXCLUDED.active,
+               admin = EXCLUDED.admin,
+               user_id = EXCLUDED.user_id",
+        )
+        .bind(&credential.access_key_id)
+        .bind(&credential.secret_access_key)
+        .bind(&credential.description)
+        .bind(credential.created_at)
+        .bind(credential.active)
+        .bind(credential.admin)
+        .bind(&credential.user_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("apply_remote_credential: {e}")))?;
+        Ok(())
+    }
 }
 
 /// Converts a PostgreSQL row to a `Credential`.

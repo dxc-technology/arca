@@ -15,6 +15,7 @@
 
 pub mod client;
 pub mod cluster_blob;
+pub mod cluster_control;
 pub mod cluster_meta;
 pub mod identity;
 pub mod membership;

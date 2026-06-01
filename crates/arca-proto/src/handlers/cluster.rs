@@ -194,9 +194,14 @@ pub async fn receive_version_delete(State(state): State<AppState>, body: Bytes) 
 /// Applied through `cluster_inner_metadata` (the store BELOW the cluster
 /// decorator) so it is NOT re-fanned-out to peers. Idempotent.
 pub async fn receive_op(State(state): State<AppState>, body: Bytes) -> Response {
-    let inner = match &state.cluster_inner_metadata {
-        Some(m) => m.clone(),
-        None => return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster"),
+    // All inner control-plane handles are present together iff clustering is on.
+    let (metadata, credentials, users) = match (
+        &state.cluster_inner_metadata,
+        &state.cluster_inner_credentials,
+        &state.cluster_inner_users,
+    ) {
+        (Some(m), Some(c), Some(u)) => (m, c, u),
+        _ => return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster"),
     };
     let op: ControlOp = match serde_json::from_slice(&body) {
         Ok(o) => o,
@@ -204,15 +209,23 @@ pub async fn receive_op(State(state): State<AppState>, body: Bytes) -> Response 
     };
 
     let result = match op {
-        ControlOp::BucketUpsert { info } => inner.apply_remote_bucket(&info).await,
-        ControlOp::BucketDelete { name } => inner.delete_bucket(&name).await.map(|_| ()),
+        ControlOp::BucketUpsert { info } => metadata.apply_remote_bucket(&info).await,
+        ControlOp::BucketDelete { name } => metadata.delete_bucket(&name).await.map(|_| ()),
         ControlOp::BucketConfigSet { bucket, key, value } => {
-            inner.set_bucket_config(&bucket, &key, &value).await
+            metadata.set_bucket_config(&bucket, &key, &value).await
         }
         ControlOp::BucketConfigDelete { bucket, key } => {
-            inner.delete_bucket_config(&bucket, &key).await.map(|_| ())
+            metadata.delete_bucket_config(&bucket, &key).await.map(|_| ())
         }
-        ControlOp::BucketTags { bucket, tags } => inner.put_bucket_tags(&bucket, &tags).await,
+        ControlOp::BucketTags { bucket, tags } => metadata.put_bucket_tags(&bucket, &tags).await,
+        ControlOp::CredentialUpsert { credential } => {
+            credentials.apply_remote_credential(&credential).await
+        }
+        ControlOp::CredentialDelete { access_key_id } => {
+            credentials.delete_credential(&access_key_id).await.map(|_| ())
+        }
+        ControlOp::UserUpsert { user } => users.apply_remote_user(&user).await,
+        ControlOp::UserDelete { user_id } => users.delete_user(&user_id).await.map(|_| ()),
     };
 
     match result {

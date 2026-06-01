@@ -153,6 +153,32 @@ impl UserStore for SqliteStore {
             .await
             .map_err(|e: TrError| ArcaError::Internal(format!("delete_user: {e}")))
     }
+
+    async fn apply_remote_user(&self, user: &User) -> Result<(), ArcaError> {
+        let u = user.clone();
+        self.conn
+            .call(move |conn| {
+                conn.execute(
+                    "INSERT INTO users (user_id, username, description, is_root, created_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5)
+                     ON CONFLICT(user_id) DO UPDATE SET
+                       username = excluded.username,
+                       description = excluded.description,
+                       is_root = excluded.is_root,
+                       created_at = excluded.created_at",
+                    params![
+                        u.user_id,
+                        u.username,
+                        u.description,
+                        u.is_root as i32,
+                        u.created_at.to_rfc3339(),
+                    ],
+                )?;
+                Ok(())
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("apply_remote_user: {e}")))
+    }
 }
 
 pub(crate) fn row_to_user(row: &rusqlite::Row) -> Result<User, rusqlite::Error> {
@@ -300,5 +326,26 @@ mod tests {
         store.put_user(&make_user("u8", "grace")).await.unwrap();
         let dup = make_user("u8", "heidi");
         assert!(store.put_user(&dup).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn apply_remote_user_upserts_and_is_idempotent() {
+        let store = test_store().await;
+        let user = make_user("ru", "alice");
+        // Verbatim insert with no prior put_user.
+        store.apply_remote_user(&user).await.unwrap();
+        assert_eq!(
+            store.get_user("ru").await.unwrap().unwrap().username,
+            "alice"
+        );
+
+        // Re-deliver with an updated username: overwrites in place, no error.
+        let mut u2 = user.clone();
+        u2.username = "alice2".to_string();
+        store.apply_remote_user(&u2).await.unwrap();
+        assert_eq!(
+            store.get_user("ru").await.unwrap().unwrap().username,
+            "alice2"
+        );
     }
 }

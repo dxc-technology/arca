@@ -145,6 +145,36 @@ impl CredentialStore for SqliteStore {
             .await
             .map_err(|e: TrError| ArcaError::Internal(format!("count_active_credentials: {e}")))
     }
+
+    async fn apply_remote_credential(&self, credential: &Credential) -> Result<(), ArcaError> {
+        let cred = credential.clone();
+        self.conn
+            .call(move |conn| {
+                conn.execute(
+                    "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, admin, user_id)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                     ON CONFLICT(access_key_id) DO UPDATE SET
+                       secret_access_key = excluded.secret_access_key,
+                       description = excluded.description,
+                       created_at = excluded.created_at,
+                       active = excluded.active,
+                       admin = excluded.admin,
+                       user_id = excluded.user_id",
+                    params![
+                        cred.access_key_id,
+                        cred.secret_access_key,
+                        cred.description,
+                        cred.created_at.to_rfc3339(),
+                        cred.active as i32,
+                        cred.admin as i32,
+                        cred.user_id,
+                    ],
+                )?;
+                Ok(())
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("apply_remote_credential: {e}")))
+    }
 }
 
 /// Converts a SQLite row to a `Credential`.
@@ -292,6 +322,34 @@ mod tests {
 
         let result = store.put_credential(&cred).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn apply_remote_credential_upserts_and_is_idempotent() {
+        let store = test_store().await;
+        let cred = Credential {
+            access_key_id: "RK".to_string(),
+            secret_access_key: "s1".to_string(),
+            description: "d".to_string(),
+            created_at: Utc::now(),
+            active: true,
+            admin: false,
+            user_id: "root".to_string(),
+        };
+        // Verbatim insert with no prior put_credential.
+        store.apply_remote_credential(&cred).await.unwrap();
+        let got = store.get_credential("RK").await.unwrap().unwrap();
+        assert_eq!(got.secret_access_key, "s1");
+        assert!(got.active);
+
+        // Re-deliver with updated fields: overwrites in place, no error.
+        let mut cred2 = cred.clone();
+        cred2.secret_access_key = "s2".to_string();
+        cred2.active = false;
+        store.apply_remote_credential(&cred2).await.unwrap();
+        let got2 = store.get_credential("RK").await.unwrap().unwrap();
+        assert_eq!(got2.secret_access_key, "s2");
+        assert!(!got2.active);
     }
 
     #[tokio::test]

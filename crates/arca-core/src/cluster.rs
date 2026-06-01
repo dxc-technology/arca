@@ -18,7 +18,7 @@ use std::sync::RwLock;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::types::BucketInfo;
+use crate::types::{BucketInfo, Credential, User};
 
 /// Fixed access-key id of the shared cluster credential. The matching secret is
 /// `[cluster].secret`; every inter-node `/cluster/v1/*` request is signed and
@@ -73,6 +73,15 @@ pub enum ControlOp {
         bucket: String,
         tags: Vec<(String, String)>,
     },
+    /// Create or replace a credential verbatim (so failover auth recognizes the
+    /// access key).
+    CredentialUpsert { credential: Credential },
+    /// Delete a credential by access key id.
+    CredentialDelete { access_key_id: String },
+    /// Create or replace a user verbatim.
+    UserUpsert { user: User },
+    /// Delete a user by id.
+    UserDelete { user_id: String },
 }
 
 /// A peer node as currently seen by this node.
@@ -278,6 +287,32 @@ mod tests {
             ControlOp::BucketTags {
                 bucket: "b".to_string(),
                 tags: vec![("k".to_string(), "v".to_string())],
+            },
+            ControlOp::CredentialUpsert {
+                credential: Credential {
+                    access_key_id: "AK".to_string(),
+                    secret_access_key: "sk".to_string(),
+                    description: "d".to_string(),
+                    created_at: Utc::now(),
+                    active: true,
+                    admin: false,
+                    user_id: "u1".to_string(),
+                },
+            },
+            ControlOp::CredentialDelete {
+                access_key_id: "AK".to_string(),
+            },
+            ControlOp::UserUpsert {
+                user: User {
+                    user_id: "u1".to_string(),
+                    username: "alice".to_string(),
+                    description: String::new(),
+                    is_root: false,
+                    created_at: Utc::now(),
+                },
+            },
+            ControlOp::UserDelete {
+                user_id: "u1".to_string(),
             },
         ];
         for op in &ops {
