@@ -18,6 +18,8 @@ use std::sync::RwLock;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::types::BucketInfo;
+
 /// Fixed access-key id of the shared cluster credential. The matching secret is
 /// `[cluster].secret`; every inter-node `/cluster/v1/*` request is signed and
 /// verified with this credential, so no per-node credential is ever stored.
@@ -42,6 +44,35 @@ pub struct ClusterVersionDelete {
     pub bucket: String,
     pub key: String,
     pub version_id: String,
+}
+
+/// Body of `POST /cluster/v1/op`: a replicated control-plane mutation applied
+/// idempotently by the receiving node. Shared contract between the cluster
+/// client (sender) and the receive handler.
+///
+/// This chunk covers the bucket family (so replicated objects become servable
+/// on peers). Identity entities (credentials, users, teams, grants,
+/// server_config) reuse this same `/op` channel in a follow-up.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ControlOp {
+    /// Create or replace a bucket row verbatim.
+    BucketUpsert { info: BucketInfo },
+    /// Delete a bucket (cascades its tags/config locally).
+    BucketDelete { name: String },
+    /// Set a single bucket-config key (e.g. versioning, encryption).
+    BucketConfigSet {
+        bucket: String,
+        key: String,
+        value: String,
+    },
+    /// Delete a single bucket-config key.
+    BucketConfigDelete { bucket: String, key: String },
+    /// Replace all tags on a bucket (an empty list clears them).
+    BucketTags {
+        bucket: String,
+        tags: Vec<(String, String)>,
+    },
 }
 
 /// A peer node as currently seen by this node.
@@ -220,5 +251,45 @@ mod tests {
         state.set_peers(vec![peer("n2", true)]);
         assert_eq!(state.peers().len(), 1);
         assert_eq!(state.peers()[0].node_id, "n2");
+    }
+
+    #[test]
+    fn control_op_serde_roundtrip() {
+        let ops = vec![
+            ControlOp::BucketUpsert {
+                info: BucketInfo {
+                    name: "b".to_string(),
+                    created_at: Utc::now(),
+                    owner: "root".to_string(),
+                },
+            },
+            ControlOp::BucketDelete {
+                name: "b".to_string(),
+            },
+            ControlOp::BucketConfigSet {
+                bucket: "b".to_string(),
+                key: "versioning".to_string(),
+                value: "Enabled".to_string(),
+            },
+            ControlOp::BucketConfigDelete {
+                bucket: "b".to_string(),
+                key: "versioning".to_string(),
+            },
+            ControlOp::BucketTags {
+                bucket: "b".to_string(),
+                tags: vec![("k".to_string(), "v".to_string())],
+            },
+        ];
+        for op in &ops {
+            let json = serde_json::to_string(op).unwrap();
+            // The tagged enum carries a "kind" discriminant.
+            assert!(json.contains("\"kind\""), "missing kind tag in {json}");
+            let back: ControlOp = serde_json::from_str(&json).unwrap();
+            assert_eq!(
+                serde_json::to_string(&back).unwrap(),
+                json,
+                "round-trip mismatch for {json}"
+            );
+        }
     }
 }

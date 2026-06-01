@@ -310,6 +310,11 @@ async fn async_main(cli: Cli) -> Result<()> {
             // shipping already-encoded bytes and canonical rows verbatim. The
             // raw FsBlobStore (fs_arc) stays available to AppState.cluster_raw_blob
             // for the receive endpoints, so applied replicas never re-fan-out.
+            // `cluster_inner_metadata` keeps the pre-decorator metadata handle so
+            // the /cluster/v1/op receive path applies control-plane ops without
+            // re-fanning them out.
+            let mut cluster_inner_metadata: Option<Arc<dyn arca_core::store::MetadataStore>> =
+                None;
             let (blob, plain_blob, metadata): (
                 Arc<dyn arca_core::store::BlobStore>,
                 Option<Arc<dyn arca_core::store::BlobStore>>,
@@ -346,6 +351,8 @@ async fn async_main(cli: Cli) -> Result<()> {
                         cstate.clone(),
                     )) as Arc<dyn arca_core::store::BlobStore>
                 });
+                // Keep the inner handle for the control-plane receive path.
+                cluster_inner_metadata = Some(metadata.clone());
                 let cluster_meta: Arc<dyn arca_core::store::MetadataStore> =
                     Arc::new(cluster::cluster_meta::ClusterMetadataStore::new(
                         metadata, client, cstate,
@@ -423,6 +430,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                     .as_ref()
                     .filter(|c| c.enabled)
                     .map(|c| c.secret.clone()),
+                cluster_inner_metadata,
                 // Only populate when the user explicitly set `journal_retention_days`
                 // in TOML. The ReplicationConfig Default gives 30, so we can't distinguish
                 // "user chose 30" from "not set" via the struct alone — require an explicit

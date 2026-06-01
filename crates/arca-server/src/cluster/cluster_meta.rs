@@ -17,19 +17,21 @@
 //! - `quorum`: when live nodes < majority, replicated writes are refused with
 //!   `503 ServiceUnavailable` (the node stays read-only) — no divergence.
 //!
-//! NOT yet cluster-aware (delegate only — tracked for the follow-up chunks):
-//! object tags, retention/legal-hold, multipart, and all bucket /
-//! `bucket_config` mutations (the latter are control-plane, replicated via
-//! `/cluster/v1/op` once that lands). Until bucket creation replicates,
-//! replicated object rows are not yet servable on a peer that lacks the bucket;
-//! the end-to-end path completes with the control-plane chunk.
+//! Control plane replicated via `/cluster/v1/op` (`ControlOp`): bucket create /
+//! delete, `bucket_config` (versioning, encryption, ...), and bucket tags — so a
+//! peer that receives an object row can actually serve it.
+//!
+//! NOT yet cluster-aware (delegate only — tracked for follow-up chunks): object
+//! tags, retention/legal-hold, multipart, and the IDENTITY control plane
+//! (credentials, users, teams, grants, server_config — they need their own
+//! store decorators and reuse the same `/cluster/v1/op` channel).
 //!
 //! `apply_remote_*` delegate straight to the inner store and never re-fan-out
 //! (they apply rows already received from a peer).
 
 use std::sync::Arc;
 
-use arca_core::cluster::ClusterState;
+use arca_core::cluster::{ClusterState, ControlOp};
 use arca_core::error::ArcaError;
 use arca_core::store::MetadataStore;
 use arca_core::types::{
@@ -119,6 +121,19 @@ impl ClusterMetadataStore {
             }
         }
     }
+
+    /// Replicates a control-plane op to every live peer (best-effort).
+    async fn fan_out_op(&self, op: &ControlOp) {
+        for endpoint in self.live_peers() {
+            if let Err(e) = self.client.send_op(&endpoint, op).await {
+                tracing::warn!(
+                    error = %e,
+                    peer = %endpoint,
+                    "cluster control-plane fan-out failed (will reconcile via anti-entropy in M4)"
+                );
+            }
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -130,7 +145,14 @@ impl MetadataStore for ClusterMetadataStore {
     }
 
     async fn create_bucket(&self, name: &str) -> Result<(), ArcaError> {
-        self.inner.create_bucket(name).await
+        self.check_write_quorum()?;
+        self.inner.create_bucket(name).await?;
+        // Replicate the full row (created_at/owner) verbatim so peers can serve
+        // objects written to this bucket.
+        if let Ok(Some(info)) = self.inner.head_bucket(name).await {
+            self.fan_out_op(&ControlOp::BucketUpsert { info }).await;
+        }
+        Ok(())
     }
 
     async fn head_bucket(&self, name: &str) -> Result<Option<BucketInfo>, ArcaError> {
@@ -138,7 +160,15 @@ impl MetadataStore for ClusterMetadataStore {
     }
 
     async fn delete_bucket(&self, name: &str) -> Result<bool, ArcaError> {
-        self.inner.delete_bucket(name).await
+        self.check_write_quorum()?;
+        let existed = self.inner.delete_bucket(name).await?;
+        if existed {
+            self.fan_out_op(&ControlOp::BucketDelete {
+                name: name.to_string(),
+            })
+            .await;
+        }
+        Ok(existed)
     }
 
     async fn bucket_is_empty(&self, name: &str) -> Result<bool, ArcaError> {
@@ -340,9 +370,17 @@ impl MetadataStore for ClusterMetadataStore {
         config_key: &str,
         config_value: &str,
     ) -> Result<(), ArcaError> {
+        self.check_write_quorum()?;
         self.inner
             .set_bucket_config(bucket, config_key, config_value)
-            .await
+            .await?;
+        self.fan_out_op(&ControlOp::BucketConfigSet {
+            bucket: bucket.to_string(),
+            key: config_key.to_string(),
+            value: config_value.to_string(),
+        })
+        .await;
+        Ok(())
     }
 
     async fn delete_bucket_config(
@@ -350,7 +388,16 @@ impl MetadataStore for ClusterMetadataStore {
         bucket: &str,
         config_key: &str,
     ) -> Result<bool, ArcaError> {
-        self.inner.delete_bucket_config(bucket, config_key).await
+        self.check_write_quorum()?;
+        let existed = self.inner.delete_bucket_config(bucket, config_key).await?;
+        if existed {
+            self.fan_out_op(&ControlOp::BucketConfigDelete {
+                bucket: bucket.to_string(),
+                key: config_key.to_string(),
+            })
+            .await;
+        }
+        Ok(existed)
     }
 
     // -- Tag operations (delegate; replication is a follow-up) --
@@ -364,11 +411,28 @@ impl MetadataStore for ClusterMetadataStore {
         bucket: &str,
         tags: &[(String, String)],
     ) -> Result<(), ArcaError> {
-        self.inner.put_bucket_tags(bucket, tags).await
+        self.check_write_quorum()?;
+        self.inner.put_bucket_tags(bucket, tags).await?;
+        self.fan_out_op(&ControlOp::BucketTags {
+            bucket: bucket.to_string(),
+            tags: tags.to_vec(),
+        })
+        .await;
+        Ok(())
     }
 
     async fn delete_bucket_tags(&self, bucket: &str) -> Result<bool, ArcaError> {
-        self.inner.delete_bucket_tags(bucket).await
+        self.check_write_quorum()?;
+        let existed = self.inner.delete_bucket_tags(bucket).await?;
+        if existed {
+            // Replicate as a tags-replace with an empty set, clearing peers' tags.
+            self.fan_out_op(&ControlOp::BucketTags {
+                bucket: bucket.to_string(),
+                tags: Vec::new(),
+            })
+            .await;
+        }
+        Ok(existed)
     }
 
     async fn get_object_tags(
@@ -470,6 +534,10 @@ impl MetadataStore for ClusterMetadataStore {
             .apply_remote_version_delete(bucket, key, version_id)
             .await
     }
+
+    async fn apply_remote_bucket(&self, info: &BucketInfo) -> Result<(), ArcaError> {
+        self.inner.apply_remote_bucket(info).await
+    }
 }
 
 #[cfg(test)]
@@ -564,5 +632,28 @@ mod tests {
         // (best-effort, reconciled by anti-entropy in M4); the local write stands.
         store.put_object(&sample_record()).await.unwrap();
         assert!(store.get_object("b", "k").await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn quorum_mode_refuses_create_bucket_without_majority() {
+        let (inner, _dir) = temp_store().await;
+        // cluster_size=3 -> quorum=2; alone -> control-plane writes are refused too.
+        let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
+        let store = ClusterMetadataStore::new(inner, client(), cluster);
+        let err = store.create_bucket("b").await.unwrap_err();
+        match err {
+            ArcaError::S3(e) => assert_eq!(e.code, S3ErrorCode::ServiceUnavailable),
+            other => panic!("expected ServiceUnavailable, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn available_mode_create_bucket_alone() {
+        let (inner, _dir) = temp_store().await;
+        let cluster = Arc::new(ClusterState::new("self-node", None));
+        let store = ClusterMetadataStore::new(inner, client(), cluster);
+        // available mode: bucket creation succeeds solo; no peers -> no fan-out.
+        store.create_bucket("b").await.unwrap();
+        assert!(store.head_bucket("b").await.unwrap().is_some());
     }
 }

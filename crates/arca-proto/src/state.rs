@@ -106,6 +106,11 @@ pub struct AppState {
     /// used by the `cluster_auth` middleware to verify inter-node requests.
     /// `Some` only when clustering is enabled.
     pub cluster_secret: Option<String>,
+    /// The metadata store BELOW the cluster decorator (i.e. before
+    /// `ClusterMetadataStore` wraps it). The `/cluster/v1/op` receive handler
+    /// applies replicated control-plane mutations through this handle so they
+    /// are NOT re-fanned-out to peers. `Some` only when clustering is enabled.
+    pub cluster_inner_metadata: Option<Arc<dyn MetadataStore>>,
     /// Replication journal retention days from the TOML config file
     /// (locks the value, makes it read-only from the console). When absent,
     /// the console can set it via `replication_retention_days` in server_config

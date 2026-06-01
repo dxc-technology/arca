@@ -1048,6 +1048,20 @@ impl MetadataStore for PgStore {
         Ok(())
     }
 
+    async fn apply_remote_bucket(&self, info: &BucketInfo) -> Result<(), ArcaError> {
+        sqlx_core::query::query(
+            "INSERT INTO buckets (name, created_at, owner) VALUES ($1, $2, $3) \
+             ON CONFLICT (name) DO UPDATE SET created_at = EXCLUDED.created_at, owner = EXCLUDED.owner",
+        )
+        .bind(&info.name)
+        .bind(info.created_at)
+        .bind(&info.owner)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("apply_remote_bucket: {e}")))?;
+        Ok(())
+    }
+
     async fn list_object_versions(
         &self,
         bucket: &str,

@@ -677,6 +677,25 @@ impl MetadataStore for SqliteStore {
             })
     }
 
+    async fn apply_remote_bucket(&self, info: &BucketInfo) -> Result<(), ArcaError> {
+        let name = info.name.clone();
+        let created_at = info.created_at.to_rfc3339();
+        let owner = info.owner.clone();
+        self.conn
+            .call(move |conn| {
+                // ON CONFLICT DO UPDATE (not INSERT OR REPLACE) so we never
+                // delete-and-reinsert the row, which could cascade to dependents.
+                conn.execute(
+                    "INSERT INTO buckets (name, created_at, owner) VALUES (?1, ?2, ?3) \
+                     ON CONFLICT(name) DO UPDATE SET created_at = excluded.created_at, owner = excluded.owner",
+                    params![name, created_at, owner],
+                )?;
+                Ok(())
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("apply_remote_bucket: {e}")))
+    }
+
     async fn list_object_versions(
         &self,
         bucket: &str,
@@ -1871,6 +1890,32 @@ mod tests {
             .expect("bucket should exist");
 
         assert_eq!(bucket.name, "my-bucket");
+    }
+
+    #[tokio::test]
+    async fn apply_remote_bucket_upserts_and_is_idempotent() {
+        let store = test_store().await;
+        let info = BucketInfo {
+            name: "replicated".to_string(),
+            created_at: chrono::Utc::now(),
+            owner: "alice".to_string(),
+        };
+        // Verbatim insert with no prior create_bucket.
+        store.apply_remote_bucket(&info).await.unwrap();
+        let got = store
+            .head_bucket("replicated")
+            .await
+            .unwrap()
+            .expect("bucket present");
+        assert_eq!(got.name, "replicated");
+        assert_eq!(got.owner, "alice");
+
+        // Re-delivery with an updated owner overwrites in place, no error.
+        let mut info2 = info.clone();
+        info2.owner = "bob".to_string();
+        store.apply_remote_bucket(&info2).await.unwrap();
+        let got2 = store.head_bucket("replicated").await.unwrap().unwrap();
+        assert_eq!(got2.owner, "bob");
     }
 
     #[tokio::test]

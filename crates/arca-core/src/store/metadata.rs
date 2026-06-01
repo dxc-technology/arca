@@ -320,4 +320,20 @@ pub trait MetadataStore: Send + Sync {
                 .to_string(),
         ))
     }
+
+    /// Creates or replaces a bucket row verbatim (name, created_at, owner) from
+    /// a control-plane replication op. Idempotent: re-delivery overwrites with
+    /// the same values. Unlike [`MetadataStore::create_bucket`] it preserves the
+    /// origin's `created_at`/`owner` and never errors on an existing bucket, so
+    /// replicated objects become servable on the peer.
+    ///
+    /// Default implementation: unsupported.
+    async fn apply_remote_bucket(
+        &self,
+        _info: &BucketInfo,
+    ) -> Result<(), crate::error::ArcaError> {
+        Err(crate::error::ArcaError::Internal(
+            "apply_remote_bucket: cluster replication is not supported by this backend".to_string(),
+        ))
+    }
 }

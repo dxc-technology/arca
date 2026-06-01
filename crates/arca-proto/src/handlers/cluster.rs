@@ -21,7 +21,7 @@ use serde::Serialize;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 
-use arca_core::cluster::{ClusterVersionDelete, CLUSTER_SIDECAR_HEADER};
+use arca_core::cluster::{ClusterVersionDelete, ControlOp, CLUSTER_SIDECAR_HEADER};
 use arca_core::store::SidecarMeta;
 use arca_core::types::{BlobId, ObjectRecord};
 
@@ -185,6 +185,41 @@ pub async fn receive_version_delete(State(state): State<AppState>, body: Bytes) 
         Err(e) => err(
             StatusCode::INTERNAL_SERVER_ERROR,
             &format!("apply_remote_version_delete failed: {e}"),
+        ),
+    }
+}
+
+/// `POST /cluster/v1/op` — apply a replicated control-plane operation.
+///
+/// Applied through `cluster_inner_metadata` (the store BELOW the cluster
+/// decorator) so it is NOT re-fanned-out to peers. Idempotent.
+pub async fn receive_op(State(state): State<AppState>, body: Bytes) -> Response {
+    let inner = match &state.cluster_inner_metadata {
+        Some(m) => m.clone(),
+        None => return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster"),
+    };
+    let op: ControlOp = match serde_json::from_slice(&body) {
+        Ok(o) => o,
+        Err(e) => return err(StatusCode::BAD_REQUEST, &format!("invalid control op json: {e}")),
+    };
+
+    let result = match op {
+        ControlOp::BucketUpsert { info } => inner.apply_remote_bucket(&info).await,
+        ControlOp::BucketDelete { name } => inner.delete_bucket(&name).await.map(|_| ()),
+        ControlOp::BucketConfigSet { bucket, key, value } => {
+            inner.set_bucket_config(&bucket, &key, &value).await
+        }
+        ControlOp::BucketConfigDelete { bucket, key } => {
+            inner.delete_bucket_config(&bucket, &key).await.map(|_| ())
+        }
+        ControlOp::BucketTags { bucket, tags } => inner.put_bucket_tags(&bucket, &tags).await,
+    };
+
+    match result {
+        Ok(()) => StatusCode::OK.into_response(),
+        Err(e) => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("apply control op failed: {e}"),
         ),
     }
 }

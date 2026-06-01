@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use arca_auth::{sign_outbound_request, SignOutboundInput};
 use arca_core::cluster::{
-    ClusterVersionDelete, CLUSTER_ACCESS_KEY, CLUSTER_REGION, CLUSTER_SIDECAR_HEADER,
+    ClusterVersionDelete, ControlOp, CLUSTER_ACCESS_KEY, CLUSTER_REGION, CLUSTER_SIDECAR_HEADER,
 };
 use arca_core::store::{ByteStream, SidecarMeta};
 use arca_core::types::{BlobId, ObjectRecord};
@@ -111,6 +111,13 @@ impl ClusterClient {
         let body = serde_json::to_vec(&payload).map_err(|e| ClusterError::Serde(e.to_string()))?;
         self.post_json(endpoint, "/cluster/v1/object/delete", body)
             .await
+    }
+
+    /// Replicates a control-plane operation to a peer (`POST /cluster/v1/op`).
+    /// The peer applies it idempotently to its local stores.
+    pub async fn send_op(&self, endpoint: &str, op: &ControlOp) -> Result<(), ClusterError> {
+        let body = serde_json::to_vec(op).map_err(|e| ClusterError::Serde(e.to_string()))?;
+        self.post_json(endpoint, "/cluster/v1/op", body).await
     }
 
     /// Streams a blob's raw bytes + sidecar to a peer (`PUT /cluster/v1/blob/{id}`),

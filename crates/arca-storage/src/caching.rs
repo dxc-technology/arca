@@ -237,6 +237,15 @@ impl MetadataStore for CachingMetadataStore {
         result
     }
 
+    async fn apply_remote_bucket(&self, info: &BucketInfo) -> Result<(), ArcaError> {
+        let result = self.inner.apply_remote_bucket(info).await;
+        if result.is_ok() {
+            // Drop any stale head_bucket cache entry so the replicated row is seen.
+            self.invalidate_bucket(&info.name).await;
+        }
+        result
+    }
+
     // -- Multipart upload operations (delegated) --
 
     async fn create_multipart_upload(
