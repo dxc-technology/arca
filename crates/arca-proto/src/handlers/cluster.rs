@@ -195,12 +195,14 @@ pub async fn receive_version_delete(State(state): State<AppState>, body: Bytes) 
 /// decorator) so it is NOT re-fanned-out to peers. Idempotent.
 pub async fn receive_op(State(state): State<AppState>, body: Bytes) -> Response {
     // All inner control-plane handles are present together iff clustering is on.
-    let (metadata, credentials, users) = match (
+    let (metadata, credentials, users, grants, teams) = match (
         &state.cluster_inner_metadata,
         &state.cluster_inner_credentials,
         &state.cluster_inner_users,
+        &state.cluster_inner_grants,
+        &state.cluster_inner_teams,
     ) {
-        (Some(m), Some(c), Some(u)) => (m, c, u),
+        (Some(m), Some(c), Some(u), Some(g), Some(t)) => (m, c, u, g, t),
         _ => return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster"),
     };
     let op: ControlOp = match serde_json::from_slice(&body) {
@@ -226,6 +228,28 @@ pub async fn receive_op(State(state): State<AppState>, body: Bytes) -> Response 
         }
         ControlOp::UserUpsert { user } => users.apply_remote_user(&user).await,
         ControlOp::UserDelete { user_id } => users.delete_user(&user_id).await.map(|_| ()),
+        ControlOp::GrantUpsert { grant } => grants.apply_remote_grant(&grant).await,
+        ControlOp::GrantDelete { grant_id } => grants.delete_grant(&grant_id).await.map(|_| ()),
+        ControlOp::UserGrantAttach { user_id, grant_id } => {
+            grants.attach_to_user(&user_id, &grant_id).await
+        }
+        ControlOp::UserGrantDetach { user_id, grant_id } => {
+            grants.detach_from_user(&user_id, &grant_id).await.map(|_| ())
+        }
+        ControlOp::TeamGrantAttach { team_id, grant_id } => {
+            grants.attach_to_team(&team_id, &grant_id).await
+        }
+        ControlOp::TeamGrantDetach { team_id, grant_id } => {
+            grants.detach_from_team(&team_id, &grant_id).await.map(|_| ())
+        }
+        ControlOp::TeamUpsert { team } => teams.apply_remote_team(&team).await,
+        ControlOp::TeamDelete { team_id } => teams.delete_team(&team_id).await.map(|_| ()),
+        ControlOp::TeamMemberAdd { team_id, user_id } => {
+            teams.add_member(&team_id, &user_id).await
+        }
+        ControlOp::TeamMemberRemove { team_id, user_id } => {
+            teams.remove_member(&team_id, &user_id).await.map(|_| ())
+        }
     };
 
     match result {

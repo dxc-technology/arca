@@ -18,7 +18,7 @@ use std::sync::RwLock;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::types::{BucketInfo, Credential, User};
+use crate::types::{BucketInfo, Credential, Grant, Team, User};
 
 /// Fixed access-key id of the shared cluster credential. The matching secret is
 /// `[cluster].secret`; every inter-node `/cluster/v1/*` request is signed and
@@ -82,6 +82,26 @@ pub enum ControlOp {
     UserUpsert { user: User },
     /// Delete a user by id.
     UserDelete { user_id: String },
+    /// Create or replace a grant (policy) verbatim.
+    GrantUpsert { grant: Grant },
+    /// Delete a grant by id.
+    GrantDelete { grant_id: String },
+    /// Attach a grant to a user (idempotent).
+    UserGrantAttach { user_id: String, grant_id: String },
+    /// Detach a grant from a user.
+    UserGrantDetach { user_id: String, grant_id: String },
+    /// Attach a grant to a team (idempotent).
+    TeamGrantAttach { team_id: String, grant_id: String },
+    /// Detach a grant from a team.
+    TeamGrantDetach { team_id: String, grant_id: String },
+    /// Create or replace a team verbatim.
+    TeamUpsert { team: Team },
+    /// Delete a team by id.
+    TeamDelete { team_id: String },
+    /// Add a user to a team (idempotent).
+    TeamMemberAdd { team_id: String, user_id: String },
+    /// Remove a user from a team.
+    TeamMemberRemove { team_id: String, user_id: String },
 }
 
 /// A peer node as currently seen by this node.
@@ -312,6 +332,35 @@ mod tests {
                 },
             },
             ControlOp::UserDelete {
+                user_id: "u1".to_string(),
+            },
+            ControlOp::GrantUpsert {
+                grant: Grant {
+                    grant_id: "g1".to_string(),
+                    name: "g".to_string(),
+                    description: String::new(),
+                    document: crate::policy::PolicyDocument {
+                        version: "2012-10-17".to_string(),
+                        statement: vec![],
+                    },
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                },
+            },
+            ControlOp::UserGrantAttach {
+                user_id: "u1".to_string(),
+                grant_id: "g1".to_string(),
+            },
+            ControlOp::TeamUpsert {
+                team: Team {
+                    team_id: "t1".to_string(),
+                    name: "t".to_string(),
+                    description: String::new(),
+                    created_at: Utc::now(),
+                },
+            },
+            ControlOp::TeamMemberAdd {
+                team_id: "t1".to_string(),
                 user_id: "u1".to_string(),
             },
         ];

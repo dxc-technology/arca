@@ -119,6 +119,12 @@ pub struct AppState {
     /// replication, applied without re-fan-out). `Some` only when clustering is
     /// enabled.
     pub cluster_inner_users: Option<Arc<dyn UserStore>>,
+    /// The grant store below the cluster decorator (for `/cluster/v1/op` grant +
+    /// attachment replication). `Some` only when clustering is enabled.
+    pub cluster_inner_grants: Option<Arc<dyn GrantStore>>,
+    /// The team store below the cluster decorator (for `/cluster/v1/op` team +
+    /// membership replication). `Some` only when clustering is enabled.
+    pub cluster_inner_teams: Option<Arc<dyn TeamStore>>,
     /// Replication journal retention days from the TOML config file
     /// (locks the value, makes it read-only from the console). When absent,
     /// the console can set it via `replication_retention_days` in server_config

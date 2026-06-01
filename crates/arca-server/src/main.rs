@@ -319,10 +319,14 @@ async fn async_main(cli: Cli) -> Result<()> {
                 Arc<dyn arca_core::store::CredentialStore>,
             > = None;
             let mut cluster_inner_users: Option<Arc<dyn arca_core::store::UserStore>> = None;
+            let mut cluster_inner_grants: Option<Arc<dyn arca_core::store::GrantStore>> = None;
+            let mut cluster_inner_teams: Option<Arc<dyn arca_core::store::TeamStore>> = None;
             // The (possibly cluster-wrapped) identity stores used by AppState.
             let mut credentials: Arc<dyn arca_core::store::CredentialStore> =
                 stores.credentials.clone();
             let mut users: Arc<dyn arca_core::store::UserStore> = stores.users.clone();
+            let mut grants: Arc<dyn arca_core::store::GrantStore> = stores.grants.clone();
+            let mut teams: Arc<dyn arca_core::store::TeamStore> = stores.teams.clone();
             let (blob, plain_blob, metadata): (
                 Arc<dyn arca_core::store::BlobStore>,
                 Option<Arc<dyn arca_core::store::BlobStore>>,
@@ -373,6 +377,18 @@ async fn async_main(cli: Cli) -> Result<()> {
                     client.clone(),
                     cstate.clone(),
                 )) as Arc<dyn arca_core::store::UserStore>;
+                cluster_inner_grants = Some(grants.clone());
+                cluster_inner_teams = Some(teams.clone());
+                grants = Arc::new(cluster::cluster_control::ClusterGrantStore::new(
+                    grants.clone(),
+                    client.clone(),
+                    cstate.clone(),
+                )) as Arc<dyn arca_core::store::GrantStore>;
+                teams = Arc::new(cluster::cluster_control::ClusterTeamStore::new(
+                    teams.clone(),
+                    client.clone(),
+                    cstate.clone(),
+                )) as Arc<dyn arca_core::store::TeamStore>;
 
                 // Keep the inner handle for the control-plane receive path.
                 cluster_inner_metadata = Some(metadata.clone());
@@ -393,8 +409,8 @@ async fn async_main(cli: Cli) -> Result<()> {
                 ssec_blob: Some(ssec_blob),
                 credentials,
                 users,
-                teams: stores.teams,
-                grants: stores.grants,
+                teams,
+                grants,
                 server_config: stores.server_config,
                 domain: config.server.domain.clone(),
                 config_region: config.server.region.clone(),
@@ -456,6 +472,8 @@ async fn async_main(cli: Cli) -> Result<()> {
                 cluster_inner_metadata,
                 cluster_inner_credentials,
                 cluster_inner_users,
+                cluster_inner_grants,
+                cluster_inner_teams,
                 // Only populate when the user explicitly set `journal_retention_days`
                 // in TOML. The ReplicationConfig Default gives 30, so we can't distinguish
                 // "user chose 30" from "not set" via the struct alone — require an explicit

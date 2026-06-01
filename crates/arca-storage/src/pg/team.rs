@@ -205,4 +205,23 @@ impl TeamStore for PgStore {
 
         Ok(rows.iter().map(row_to_team).collect())
     }
+
+    async fn apply_remote_team(&self, team: &Team) -> Result<(), ArcaError> {
+        sqlx_core::query::query(
+            "INSERT INTO teams (team_id, name, description, created_at)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (team_id) DO UPDATE SET
+               name = EXCLUDED.name,
+               description = EXCLUDED.description,
+               created_at = EXCLUDED.created_at",
+        )
+        .bind(&team.team_id)
+        .bind(&team.name)
+        .bind(&team.description)
+        .bind(team.created_at)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("apply_remote_team: {e}")))?;
+        Ok(())
+    }
 }

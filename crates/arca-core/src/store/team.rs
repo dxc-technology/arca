@@ -37,4 +37,16 @@ pub trait TeamStore: Send + Sync {
 
     /// Lists all teams a user belongs to.
     async fn list_user_teams(&self, user_id: &str) -> Result<Vec<Team>, ArcaError>;
+
+    /// Applies a team received verbatim from a cluster peer (Phase 29): an
+    /// idempotent upsert keyed by `team_id`. Unlike [`TeamStore::put_team`] it
+    /// never errors on an existing team. Memberships replicate separately (the
+    /// join-table ops are already idempotent).
+    ///
+    /// Default implementation: unsupported (non-clustered backends).
+    async fn apply_remote_team(&self, _team: &Team) -> Result<(), ArcaError> {
+        Err(ArcaError::Internal(
+            "apply_remote_team: cluster replication is not supported by this backend".to_string(),
+        ))
+    }
 }

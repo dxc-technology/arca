@@ -292,4 +292,29 @@ impl GrantStore for PgStore {
         }
         Ok(policies)
     }
+
+    async fn apply_remote_grant(&self, grant: &Grant) -> Result<(), ArcaError> {
+        let doc_json = serde_json::to_value(&grant.document)
+            .map_err(|e| ArcaError::Internal(format!("serialize grant document: {e}")))?;
+        sqlx_core::query::query(
+            "INSERT INTO grants (grant_id, name, description, document, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (grant_id) DO UPDATE SET
+               name = EXCLUDED.name,
+               description = EXCLUDED.description,
+               document = EXCLUDED.document,
+               created_at = EXCLUDED.created_at,
+               updated_at = EXCLUDED.updated_at",
+        )
+        .bind(&grant.grant_id)
+        .bind(&grant.name)
+        .bind(&grant.description)
+        .bind(&doc_json)
+        .bind(grant.created_at)
+        .bind(grant.updated_at)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("apply_remote_grant: {e}")))?;
+        Ok(())
+    }
 }

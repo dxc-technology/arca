@@ -17,8 +17,9 @@ use std::sync::Arc;
 
 use arca_core::cluster::{ClusterState, ControlOp};
 use arca_core::error::ArcaError;
-use arca_core::store::{CredentialStore, UserStore};
-use arca_core::types::{Credential, User};
+use arca_core::policy::PolicyDocument;
+use arca_core::store::{CredentialStore, GrantStore, TeamStore, UserStore};
+use arca_core::types::{Credential, Grant, Team, User};
 use arca_core::{S3Error, S3ErrorCode};
 
 use crate::cluster::client::ClusterClient;
@@ -237,6 +238,295 @@ impl UserStore for ClusterUserStore {
 
     async fn apply_remote_user(&self, user: &User) -> Result<(), ArcaError> {
         self.inner.apply_remote_user(user).await
+    }
+}
+
+/// Grant store decorator: replicates grant (policy) and attachment mutations.
+pub struct ClusterGrantStore {
+    inner: Arc<dyn GrantStore>,
+    client: ClusterClient,
+    cluster: Arc<ClusterState>,
+}
+
+impl ClusterGrantStore {
+    pub fn new(
+        inner: Arc<dyn GrantStore>,
+        client: ClusterClient,
+        cluster: Arc<ClusterState>,
+    ) -> Self {
+        Self {
+            inner,
+            client,
+            cluster,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl GrantStore for ClusterGrantStore {
+    async fn put_grant(&self, grant: &Grant) -> Result<(), ArcaError> {
+        check_write_quorum(&self.cluster)?;
+        self.inner.put_grant(grant).await?;
+        fan_out_op(
+            &self.client,
+            &self.cluster,
+            &ControlOp::GrantUpsert {
+                grant: grant.clone(),
+            },
+        )
+        .await;
+        Ok(())
+    }
+
+    async fn get_grant(&self, grant_id: &str) -> Result<Option<Grant>, ArcaError> {
+        self.inner.get_grant(grant_id).await
+    }
+
+    async fn get_grant_by_name(&self, name: &str) -> Result<Option<Grant>, ArcaError> {
+        self.inner.get_grant_by_name(name).await
+    }
+
+    async fn list_grants(&self) -> Result<Vec<Grant>, ArcaError> {
+        self.inner.list_grants().await
+    }
+
+    async fn update_grant(
+        &self,
+        grant_id: &str,
+        name: Option<&str>,
+        description: Option<&str>,
+        document: Option<&PolicyDocument>,
+    ) -> Result<bool, ArcaError> {
+        check_write_quorum(&self.cluster)?;
+        let ok = self
+            .inner
+            .update_grant(grant_id, name, description, document)
+            .await?;
+        if ok {
+            if let Ok(Some(grant)) = self.inner.get_grant(grant_id).await {
+                fan_out_op(&self.client, &self.cluster, &ControlOp::GrantUpsert { grant }).await;
+            }
+        }
+        Ok(ok)
+    }
+
+    async fn delete_grant(&self, grant_id: &str) -> Result<bool, ArcaError> {
+        check_write_quorum(&self.cluster)?;
+        let existed = self.inner.delete_grant(grant_id).await?;
+        if existed {
+            fan_out_op(
+                &self.client,
+                &self.cluster,
+                &ControlOp::GrantDelete {
+                    grant_id: grant_id.to_string(),
+                },
+            )
+            .await;
+        }
+        Ok(existed)
+    }
+
+    async fn attach_to_user(&self, user_id: &str, grant_id: &str) -> Result<(), ArcaError> {
+        check_write_quorum(&self.cluster)?;
+        self.inner.attach_to_user(user_id, grant_id).await?;
+        fan_out_op(
+            &self.client,
+            &self.cluster,
+            &ControlOp::UserGrantAttach {
+                user_id: user_id.to_string(),
+                grant_id: grant_id.to_string(),
+            },
+        )
+        .await;
+        Ok(())
+    }
+
+    async fn detach_from_user(&self, user_id: &str, grant_id: &str) -> Result<bool, ArcaError> {
+        check_write_quorum(&self.cluster)?;
+        let existed = self.inner.detach_from_user(user_id, grant_id).await?;
+        if existed {
+            fan_out_op(
+                &self.client,
+                &self.cluster,
+                &ControlOp::UserGrantDetach {
+                    user_id: user_id.to_string(),
+                    grant_id: grant_id.to_string(),
+                },
+            )
+            .await;
+        }
+        Ok(existed)
+    }
+
+    async fn attach_to_team(&self, team_id: &str, grant_id: &str) -> Result<(), ArcaError> {
+        check_write_quorum(&self.cluster)?;
+        self.inner.attach_to_team(team_id, grant_id).await?;
+        fan_out_op(
+            &self.client,
+            &self.cluster,
+            &ControlOp::TeamGrantAttach {
+                team_id: team_id.to_string(),
+                grant_id: grant_id.to_string(),
+            },
+        )
+        .await;
+        Ok(())
+    }
+
+    async fn detach_from_team(&self, team_id: &str, grant_id: &str) -> Result<bool, ArcaError> {
+        check_write_quorum(&self.cluster)?;
+        let existed = self.inner.detach_from_team(team_id, grant_id).await?;
+        if existed {
+            fan_out_op(
+                &self.client,
+                &self.cluster,
+                &ControlOp::TeamGrantDetach {
+                    team_id: team_id.to_string(),
+                    grant_id: grant_id.to_string(),
+                },
+            )
+            .await;
+        }
+        Ok(existed)
+    }
+
+    async fn list_user_grants(&self, user_id: &str) -> Result<Vec<Grant>, ArcaError> {
+        self.inner.list_user_grants(user_id).await
+    }
+
+    async fn list_team_grants(&self, team_id: &str) -> Result<Vec<Grant>, ArcaError> {
+        self.inner.list_team_grants(team_id).await
+    }
+
+    async fn get_effective_policies(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<PolicyDocument>, ArcaError> {
+        self.inner.get_effective_policies(user_id).await
+    }
+
+    async fn apply_remote_grant(&self, grant: &Grant) -> Result<(), ArcaError> {
+        self.inner.apply_remote_grant(grant).await
+    }
+}
+
+/// Team store decorator: replicates team and membership mutations.
+pub struct ClusterTeamStore {
+    inner: Arc<dyn TeamStore>,
+    client: ClusterClient,
+    cluster: Arc<ClusterState>,
+}
+
+impl ClusterTeamStore {
+    pub fn new(
+        inner: Arc<dyn TeamStore>,
+        client: ClusterClient,
+        cluster: Arc<ClusterState>,
+    ) -> Self {
+        Self {
+            inner,
+            client,
+            cluster,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl TeamStore for ClusterTeamStore {
+    async fn put_team(&self, team: &Team) -> Result<(), ArcaError> {
+        check_write_quorum(&self.cluster)?;
+        self.inner.put_team(team).await?;
+        fan_out_op(
+            &self.client,
+            &self.cluster,
+            &ControlOp::TeamUpsert { team: team.clone() },
+        )
+        .await;
+        Ok(())
+    }
+
+    async fn get_team(&self, team_id: &str) -> Result<Option<Team>, ArcaError> {
+        self.inner.get_team(team_id).await
+    }
+
+    async fn list_teams(&self) -> Result<Vec<Team>, ArcaError> {
+        self.inner.list_teams().await
+    }
+
+    async fn update_team(
+        &self,
+        team_id: &str,
+        name: Option<&str>,
+        description: Option<&str>,
+    ) -> Result<bool, ArcaError> {
+        check_write_quorum(&self.cluster)?;
+        let ok = self.inner.update_team(team_id, name, description).await?;
+        if ok {
+            if let Ok(Some(team)) = self.inner.get_team(team_id).await {
+                fan_out_op(&self.client, &self.cluster, &ControlOp::TeamUpsert { team }).await;
+            }
+        }
+        Ok(ok)
+    }
+
+    async fn delete_team(&self, team_id: &str) -> Result<bool, ArcaError> {
+        check_write_quorum(&self.cluster)?;
+        let existed = self.inner.delete_team(team_id).await?;
+        if existed {
+            fan_out_op(
+                &self.client,
+                &self.cluster,
+                &ControlOp::TeamDelete {
+                    team_id: team_id.to_string(),
+                },
+            )
+            .await;
+        }
+        Ok(existed)
+    }
+
+    async fn add_member(&self, team_id: &str, user_id: &str) -> Result<(), ArcaError> {
+        check_write_quorum(&self.cluster)?;
+        self.inner.add_member(team_id, user_id).await?;
+        fan_out_op(
+            &self.client,
+            &self.cluster,
+            &ControlOp::TeamMemberAdd {
+                team_id: team_id.to_string(),
+                user_id: user_id.to_string(),
+            },
+        )
+        .await;
+        Ok(())
+    }
+
+    async fn remove_member(&self, team_id: &str, user_id: &str) -> Result<bool, ArcaError> {
+        check_write_quorum(&self.cluster)?;
+        let existed = self.inner.remove_member(team_id, user_id).await?;
+        if existed {
+            fan_out_op(
+                &self.client,
+                &self.cluster,
+                &ControlOp::TeamMemberRemove {
+                    team_id: team_id.to_string(),
+                    user_id: user_id.to_string(),
+                },
+            )
+            .await;
+        }
+        Ok(existed)
+    }
+
+    async fn list_members(&self, team_id: &str) -> Result<Vec<User>, ArcaError> {
+        self.inner.list_members(team_id).await
+    }
+
+    async fn list_user_teams(&self, user_id: &str) -> Result<Vec<Team>, ArcaError> {
+        self.inner.list_user_teams(user_id).await
+    }
+
+    async fn apply_remote_team(&self, team: &Team) -> Result<(), ArcaError> {
+        self.inner.apply_remote_team(team).await
     }
 }
 

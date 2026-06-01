@@ -55,4 +55,16 @@ pub trait GrantStore: Send + Sync {
         &self,
         user_id: &str,
     ) -> Result<Vec<PolicyDocument>, ArcaError>;
+
+    /// Applies a grant received verbatim from a cluster peer (Phase 29): an
+    /// idempotent upsert keyed by `grant_id`. Unlike [`GrantStore::put_grant`]
+    /// it never errors on an existing grant. The user/team attachments
+    /// replicate separately (the join-table ops are already idempotent).
+    ///
+    /// Default implementation: unsupported (non-clustered backends).
+    async fn apply_remote_grant(&self, _grant: &Grant) -> Result<(), ArcaError> {
+        Err(ArcaError::Internal(
+            "apply_remote_grant: cluster replication is not supported by this backend".to_string(),
+        ))
+    }
 }

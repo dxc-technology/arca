@@ -330,6 +330,36 @@ impl GrantStore for SqliteStore {
             .await
             .map_err(|e: TrError| ArcaError::Internal(format!("get_effective_policies: {e}")))
     }
+
+    async fn apply_remote_grant(&self, grant: &Grant) -> Result<(), ArcaError> {
+        let g = grant.clone();
+        let doc_json = serde_json::to_string(&g.document)
+            .map_err(|e| ArcaError::Internal(format!("serialize grant document: {e}")))?;
+        self.conn
+            .call(move |conn| {
+                conn.execute(
+                    "INSERT INTO grants (grant_id, name, description, document, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                     ON CONFLICT(grant_id) DO UPDATE SET
+                       name = excluded.name,
+                       description = excluded.description,
+                       document = excluded.document,
+                       created_at = excluded.created_at,
+                       updated_at = excluded.updated_at",
+                    params![
+                        g.grant_id,
+                        g.name,
+                        g.description,
+                        doc_json,
+                        g.created_at.to_rfc3339(),
+                        g.updated_at.to_rfc3339(),
+                    ],
+                )?;
+                Ok(())
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("apply_remote_grant: {e}")))
+    }
 }
 
 fn row_to_grant(row: &rusqlite::Row) -> Result<Grant, rusqlite::Error> {
@@ -419,6 +449,28 @@ mod tests {
             description: String::new(),
             created_at: Utc::now(),
         }
+    }
+
+    #[tokio::test]
+    async fn apply_remote_grant_upserts_and_is_idempotent() {
+        let store = test_store().await;
+        let g = make_grant("g-remote", "remote-grant");
+        store.apply_remote_grant(&g).await.unwrap();
+        assert!(store.get_grant("g-remote").await.unwrap().is_some());
+
+        // Re-deliver with an updated description: overwrites in place, no error.
+        let mut g2 = make_grant("g-remote", "remote-grant");
+        g2.description = "updated".to_string();
+        store.apply_remote_grant(&g2).await.unwrap();
+        assert_eq!(
+            store
+                .get_grant("g-remote")
+                .await
+                .unwrap()
+                .unwrap()
+                .description,
+            "updated"
+        );
     }
 
     #[tokio::test]

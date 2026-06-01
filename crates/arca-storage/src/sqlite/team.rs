@@ -203,6 +203,25 @@ impl TeamStore for SqliteStore {
             .await
             .map_err(|e: TrError| ArcaError::Internal(format!("list_user_teams: {e}")))
     }
+
+    async fn apply_remote_team(&self, team: &Team) -> Result<(), ArcaError> {
+        let t = team.clone();
+        self.conn
+            .call(move |conn| {
+                conn.execute(
+                    "INSERT INTO teams (team_id, name, description, created_at)
+                     VALUES (?1, ?2, ?3, ?4)
+                     ON CONFLICT(team_id) DO UPDATE SET
+                       name = excluded.name,
+                       description = excluded.description,
+                       created_at = excluded.created_at",
+                    params![t.team_id, t.name, t.description, t.created_at.to_rfc3339()],
+                )?;
+                Ok(())
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("apply_remote_team: {e}")))
+    }
 }
 
 fn row_to_team(row: &rusqlite::Row) -> Result<Team, rusqlite::Error> {
@@ -244,6 +263,23 @@ mod tests {
             description: String::new(),
             created_at: Utc::now(),
         }
+    }
+
+    #[tokio::test]
+    async fn apply_remote_team_upserts_and_is_idempotent() {
+        let store = test_store().await;
+        let t = make_team("t-remote", "remote-team");
+        store.apply_remote_team(&t).await.unwrap();
+        assert!(store.get_team("t-remote").await.unwrap().is_some());
+
+        // Re-deliver with an updated description: overwrites in place, no error.
+        let mut t2 = make_team("t-remote", "remote-team");
+        t2.description = "updated".to_string();
+        store.apply_remote_team(&t2).await.unwrap();
+        assert_eq!(
+            store.get_team("t-remote").await.unwrap().unwrap().description,
+            "updated"
+        );
     }
 
     fn make_user(user_id: &str, username: &str) -> User {
