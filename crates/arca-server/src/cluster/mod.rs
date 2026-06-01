@@ -10,8 +10,12 @@
 //! - [`membership`] — peer discovery (mDNS / static / dns) + health pings.
 //! - [`status`] — `arca cluster status` CLI output.
 //! - [`client`] — signed inter-node transport to peers' `/cluster/v1/*`.
+//! - [`cluster_blob`] / [`cluster_meta`] — M3 write-path decorators that
+//!   replicate blobs and object rows to peers under the consistency policy.
 
 pub mod client;
+pub mod cluster_blob;
+pub mod cluster_meta;
 pub mod identity;
 pub mod membership;
 pub mod status;

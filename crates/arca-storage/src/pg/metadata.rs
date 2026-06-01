@@ -500,6 +500,13 @@ impl MetadataStore for PgStore {
             }
         };
 
+        // Finalize is_latest deterministically so the origin and cluster replicas
+        // (which run recompute in apply_remote_object) always agree on the current
+        // version (Phase 29, Risk #1). Matches the SQLite backend.
+        recompute_is_latest(&mut tx, &record.bucket, &record.key)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
+
         tx.commit()
             .await
             .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
@@ -832,7 +839,7 @@ impl MetadataStore for PgStore {
             row.as_ref().map(row_to_object_record)
         };
 
-        if let Some(ref rec) = deleted {
+        if deleted.is_some() {
             // Hard-delete the specific version.
             if version_id == "null" {
                 sqlx_core::query::query(
@@ -871,21 +878,14 @@ impl MetadataStore for PgStore {
             .await
             .map_err(|e| ArcaError::Internal(format!("delete_object_version: {e}")))?;
 
-            // If deleted version was latest, promote next-newest.
-            if rec.is_latest {
-                // PostgreSQL doesn't have rowid, use ctid or a subquery approach.
-                sqlx_core::query::query(
-                    "UPDATE objects SET is_latest = TRUE WHERE ctid = (
-                        SELECT ctid FROM objects WHERE bucket = $1 AND key = $2
-                        ORDER BY last_modified DESC LIMIT 1
-                    )",
-                )
-                .bind(bucket)
-                .bind(key)
-                .execute(&mut *tx)
+            // Recompute is_latest deterministically (full tiebreak: last_modified
+            // DESC, version_id DESC NULLS LAST, blob_id DESC), matching SQLite and
+            // apply_remote_* so every node agrees on the current version. Replaces
+            // the previous ORDER BY last_modified DESC promotion, which lacked the
+            // tiebreak and could diverge from peers (Phase 29, Risk #1).
+            recompute_is_latest(&mut tx, bucket, key)
                 .await
                 .map_err(|e| ArcaError::Internal(format!("delete_object_version: {e}")))?;
-            }
         }
 
         tx.commit()

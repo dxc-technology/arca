@@ -304,6 +304,58 @@ async fn async_main(cli: Cli) -> Result<()> {
 
             let metadata_backend = config.storage.metadata_backend.clone();
 
+            // Cluster decorators (Phase 29 M3): when clustering is enabled, wrap
+            // the blob and metadata stores so writes replicate to peers under the
+            // consistency policy. They sit ABOVE caching/compression/encryption,
+            // shipping already-encoded bytes and canonical rows verbatim. The
+            // raw FsBlobStore (fs_arc) stays available to AppState.cluster_raw_blob
+            // for the receive endpoints, so applied replicas never re-fan-out.
+            let (blob, plain_blob, metadata): (
+                Arc<dyn arca_core::store::BlobStore>,
+                Option<Arc<dyn arca_core::store::BlobStore>>,
+                Arc<dyn arca_core::store::MetadataStore>,
+            ) = if let (Some(c), Some(cstate)) = (
+                config.cluster.as_ref().filter(|c| c.enabled),
+                cluster_state.clone(),
+            ) {
+                let node_id = cluster_node_id
+                    .clone()
+                    .expect("cluster node id present when clustering is enabled");
+                let request_timeout =
+                    std::time::Duration::from_secs(c.request_timeout_seconds.max(1));
+                let client = cluster::client::ClusterClient::new(
+                    node_id,
+                    c.secret.clone(),
+                    request_timeout,
+                )
+                .map_err(|e| anyhow::anyhow!("failed to build cluster client: {e}"))?;
+                let raw: Arc<dyn arca_core::store::RawBlobOps> = fs_arc.clone();
+
+                let cluster_blob: Arc<dyn arca_core::store::BlobStore> =
+                    Arc::new(cluster::cluster_blob::ClusterBlobStore::new(
+                        blob,
+                        raw.clone(),
+                        client.clone(),
+                        cstate.clone(),
+                    ));
+                let cluster_plain = plain_blob.map(|p| {
+                    Arc::new(cluster::cluster_blob::ClusterBlobStore::new(
+                        p,
+                        raw.clone(),
+                        client.clone(),
+                        cstate.clone(),
+                    )) as Arc<dyn arca_core::store::BlobStore>
+                });
+                let cluster_meta: Arc<dyn arca_core::store::MetadataStore> =
+                    Arc::new(cluster::cluster_meta::ClusterMetadataStore::new(
+                        metadata, client, cstate,
+                    ));
+                tracing::info!("Cluster replication enabled (data-plane write path active)");
+                (cluster_blob, cluster_plain, cluster_meta)
+            } else {
+                (blob, plain_blob, metadata)
+            };
+
             let mut state = AppState {
                 metadata,
                 blob,

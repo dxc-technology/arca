@@ -178,6 +178,10 @@ impl MetadataStore for SqliteStore {
                         record.is_latest = true;
                         record.is_delete_marker = false;
                         insert_object_row(&tx, &record, &metadata_json)?;
+                        // Finalize is_latest deterministically so the origin and
+                        // cluster replicas (which run recompute in apply_remote_object)
+                        // always agree on the current version (Phase 29, Risk #1).
+                        recompute_is_latest(&tx, &record.bucket, &record.key)?;
                         tx.commit()?;
                         old // old blob to clean up
                     }
@@ -192,6 +196,8 @@ impl MetadataStore for SqliteStore {
                         record.is_latest = true;
                         record.is_delete_marker = false;
                         insert_object_row(&tx, &record, &metadata_json)?;
+                        // Finalize is_latest deterministically (see Risk #1 above).
+                        recompute_is_latest(&tx, &record.bucket, &record.key)?;
                         tx.commit()?;
                         None // keep old versions, no cleanup
                     }
@@ -217,6 +223,8 @@ impl MetadataStore for SqliteStore {
                         record.is_latest = true;
                         record.is_delete_marker = false;
                         insert_object_row(&tx, &record, &metadata_json)?;
+                        // Finalize is_latest deterministically (see Risk #1 above).
+                        recompute_is_latest(&tx, &record.bucket, &record.key)?;
                         tx.commit()?;
                         old_null // clean up old null-version blob
                     }

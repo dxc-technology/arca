@@ -58,6 +58,8 @@ pub enum S3ErrorCode {
     InvalidRetentionPeriod,
     InvalidBucketState,
     ReplicationConfigurationNotFoundError,
+    /// 503 — the cluster cannot currently accept writes (no write quorum).
+    ServiceUnavailable,
 }
 
 impl S3ErrorCode {
@@ -99,6 +101,7 @@ impl S3ErrorCode {
             S3ErrorCode::InvalidRetentionPeriod => 400,
             S3ErrorCode::InvalidBucketState => 409,
             S3ErrorCode::ReplicationConfigurationNotFoundError => 404,
+            S3ErrorCode::ServiceUnavailable => 503,
         }
     }
 
@@ -146,6 +149,7 @@ impl S3ErrorCode {
             S3ErrorCode::ReplicationConfigurationNotFoundError => {
                 "ReplicationConfigurationNotFoundError"
             }
+            S3ErrorCode::ServiceUnavailable => "ServiceUnavailable",
         }
     }
 
@@ -236,6 +240,9 @@ impl S3ErrorCode {
             }
             S3ErrorCode::ReplicationConfigurationNotFoundError => {
                 "The replication configuration was not found."
+            }
+            S3ErrorCode::ServiceUnavailable => {
+                "The service is unable to accept the write right now; please retry."
             }
         }
     }

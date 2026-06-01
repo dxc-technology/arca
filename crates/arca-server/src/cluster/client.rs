@@ -10,9 +10,8 @@
 //! of whole objects in memory (the limitation Phase 28 accepted via its
 //! `collect_stream`).
 //!
-//! The `send_*` methods are wired by the M3 write-path decorators
-//! (`ClusterBlobStore` / `ClusterMetadataStore`); until then they are unused.
-#![allow(dead_code)]
+//! The `send_*` / `fetch_blob` methods are consumed by the M3 write-path
+//! decorators (`ClusterBlobStore` / `ClusterMetadataStore`).
 
 use std::time::Duration;
 
@@ -24,6 +23,7 @@ use arca_core::store::{ByteStream, SidecarMeta};
 use arca_core::types::{BlobId, ObjectRecord};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
+use futures_util::TryStreamExt;
 use reqwest::header::HeaderMap;
 use reqwest::Body;
 
@@ -154,6 +154,59 @@ impl ClusterClient {
             .await
             .map_err(|e| ClusterError::Network(e.to_string()))?;
         Self::check(resp).await
+    }
+
+    /// Fetches a blob's raw bytes + sidecar from a peer (`GET /cluster/v1/blob/{id}`),
+    /// for read-repair. Returns the sidecar (decoded from the signed response
+    /// header) and the streaming body (empty for composite blobs). A 404 (peer
+    /// does not have the blob) surfaces as [`ClusterError::Http`] so the caller
+    /// can try the next peer.
+    pub async fn fetch_blob(
+        &self,
+        endpoint: &str,
+        blob_id: &BlobId,
+    ) -> Result<(SidecarMeta, ByteStream), ClusterError> {
+        let path = format!("/cluster/v1/blob/{}", blob_id.0);
+        let (url, host, uri_path) = cluster_target(endpoint, &path)?;
+        let datetime = now_iso8601();
+        let headers = base_signed_headers(&host, &datetime, None, None, &self.node_id);
+        let auth = self.sign("GET", &uri_path, &headers, &datetime);
+
+        let mut hmap = HeaderMap::new();
+        push_signed_headers(&mut hmap, &headers, &auth);
+
+        let resp = self
+            .http
+            .get(&url)
+            .headers(hmap)
+            .send()
+            .await
+            .map_err(|e| ClusterError::Network(e.to_string()))?;
+        let status = resp.status().as_u16();
+        if !(200..300).contains(&status) {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ClusterError::Http { status, body });
+        }
+
+        // Decode the sidecar from the signed response header (owned before the
+        // body is consumed into a stream).
+        let sidecar_b64 = resp
+            .headers()
+            .get(CLUSTER_SIDECAR_HEADER)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string())
+            .ok_or_else(|| ClusterError::Serde("missing sidecar header in response".to_string()))?;
+        let sidecar_json = BASE64
+            .decode(sidecar_b64)
+            .map_err(|e| ClusterError::Serde(format!("sidecar base64: {e}")))?;
+        let sidecar: SidecarMeta = serde_json::from_slice(&sidecar_json)
+            .map_err(|e| ClusterError::Serde(format!("sidecar json: {e}")))?;
+
+        let stream: ByteStream = Box::pin(
+            resp.bytes_stream()
+                .map_err(|e| std::io::Error::other(e)),
+        );
+        Ok((sidecar, stream))
     }
 
     /// Signs and sends a JSON body via POST to a fixed cluster path.
