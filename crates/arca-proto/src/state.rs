@@ -18,6 +18,24 @@ pub struct AuditData {
     pub entry: AuditEntry,
 }
 
+/// The control-plane stores BELOW the cluster decorators (i.e. the inner
+/// handles captured before the `Cluster*Store` wrappers are applied). The
+/// `/cluster/v1/op` receive handler applies replicated control-plane mutations
+/// through these so applied ops are NOT re-fanned-out to peers.
+///
+/// Held as a single `Option<ClusterInnerStores>` on `AppState` because
+/// clustering wires either all of these together or none — the bundle makes
+/// that invariant a type, not five parallel `Option`s the receive path must
+/// re-check.
+#[derive(Clone)]
+pub struct ClusterInnerStores {
+    pub metadata: Arc<dyn MetadataStore>,
+    pub credentials: Arc<dyn CredentialStore>,
+    pub users: Arc<dyn UserStore>,
+    pub grants: Arc<dyn GrantStore>,
+    pub teams: Arc<dyn TeamStore>,
+}
+
 /// Application state shared across all handlers.
 #[derive(Clone)]
 pub struct AppState {
@@ -106,25 +124,10 @@ pub struct AppState {
     /// used by the `cluster_auth` middleware to verify inter-node requests.
     /// `Some` only when clustering is enabled.
     pub cluster_secret: Option<String>,
-    /// The metadata store BELOW the cluster decorator (i.e. before
-    /// `ClusterMetadataStore` wraps it). The `/cluster/v1/op` receive handler
-    /// applies replicated control-plane mutations through this handle so they
-    /// are NOT re-fanned-out to peers. `Some` only when clustering is enabled.
-    pub cluster_inner_metadata: Option<Arc<dyn MetadataStore>>,
-    /// The credential store below the cluster decorator (for `/cluster/v1/op`
-    /// credential replication, applied without re-fan-out). `Some` only when
-    /// clustering is enabled.
-    pub cluster_inner_credentials: Option<Arc<dyn CredentialStore>>,
-    /// The user store below the cluster decorator (for `/cluster/v1/op` user
-    /// replication, applied without re-fan-out). `Some` only when clustering is
-    /// enabled.
-    pub cluster_inner_users: Option<Arc<dyn UserStore>>,
-    /// The grant store below the cluster decorator (for `/cluster/v1/op` grant +
-    /// attachment replication). `Some` only when clustering is enabled.
-    pub cluster_inner_grants: Option<Arc<dyn GrantStore>>,
-    /// The team store below the cluster decorator (for `/cluster/v1/op` team +
-    /// membership replication). `Some` only when clustering is enabled.
-    pub cluster_inner_teams: Option<Arc<dyn TeamStore>>,
+    /// The control-plane stores below the cluster decorators, applied by the
+    /// `/cluster/v1/op` receive handler without re-fan-out. `Some` only when
+    /// clustering is enabled (all inner handles are present together).
+    pub cluster_inner: Option<ClusterInnerStores>,
     /// Replication journal retention days from the TOML config file
     /// (locks the value, makes it read-only from the console). When absent,
     /// the console can set it via `replication_retention_days` in server_config

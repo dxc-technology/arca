@@ -191,20 +191,21 @@ pub async fn receive_version_delete(State(state): State<AppState>, body: Bytes) 
 
 /// `POST /cluster/v1/op` — apply a replicated control-plane operation.
 ///
-/// Applied through `cluster_inner_metadata` (the store BELOW the cluster
-/// decorator) so it is NOT re-fanned-out to peers. Idempotent.
+/// Applied through `cluster_inner` (the stores BELOW the cluster decorators)
+/// so it is NOT re-fanned-out to peers. Idempotent.
 pub async fn receive_op(State(state): State<AppState>, body: Bytes) -> Response {
-    // All inner control-plane handles are present together iff clustering is on.
-    let (metadata, credentials, users, grants, teams) = match (
-        &state.cluster_inner_metadata,
-        &state.cluster_inner_credentials,
-        &state.cluster_inner_users,
-        &state.cluster_inner_grants,
-        &state.cluster_inner_teams,
-    ) {
-        (Some(m), Some(c), Some(u), Some(g), Some(t)) => (m, c, u, g, t),
-        _ => return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster"),
+    // The inner control-plane handles are present together iff clustering is on.
+    let inner = match &state.cluster_inner {
+        Some(i) => i,
+        None => return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster"),
     };
+    let (metadata, credentials, users, grants, teams) = (
+        &inner.metadata,
+        &inner.credentials,
+        &inner.users,
+        &inner.grants,
+        &inner.teams,
+    );
     let op: ControlOp = match serde_json::from_slice(&body) {
         Ok(o) => o,
         Err(e) => return err(StatusCode::BAD_REQUEST, &format!("invalid control op json: {e}")),

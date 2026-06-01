@@ -310,17 +310,10 @@ async fn async_main(cli: Cli) -> Result<()> {
             // shipping already-encoded bytes and canonical rows verbatim. The
             // raw FsBlobStore (fs_arc) stays available to AppState.cluster_raw_blob
             // for the receive endpoints, so applied replicas never re-fan-out.
-            // `cluster_inner_metadata` keeps the pre-decorator metadata handle so
-            // the /cluster/v1/op receive path applies control-plane ops without
+            // `cluster_inner` bundles the pre-decorator store handles so the
+            // /cluster/v1/op receive path applies control-plane ops without
             // re-fanning them out.
-            let mut cluster_inner_metadata: Option<Arc<dyn arca_core::store::MetadataStore>> =
-                None;
-            let mut cluster_inner_credentials: Option<
-                Arc<dyn arca_core::store::CredentialStore>,
-            > = None;
-            let mut cluster_inner_users: Option<Arc<dyn arca_core::store::UserStore>> = None;
-            let mut cluster_inner_grants: Option<Arc<dyn arca_core::store::GrantStore>> = None;
-            let mut cluster_inner_teams: Option<Arc<dyn arca_core::store::TeamStore>> = None;
+            let mut cluster_inner: Option<arca_proto::ClusterInnerStores> = None;
             // The (possibly cluster-wrapped) identity stores used by AppState.
             let mut credentials: Arc<dyn arca_core::store::CredentialStore> =
                 stores.credentials.clone();
@@ -365,8 +358,8 @@ async fn async_main(cli: Cli) -> Result<()> {
                 });
                 // Wrap the identity stores (credential/user) so their mutations
                 // replicate to peers; keep the inner handles for the receive path.
-                cluster_inner_credentials = Some(credentials.clone());
-                cluster_inner_users = Some(users.clone());
+                let inner_credentials = credentials.clone();
+                let inner_users = users.clone();
                 credentials = Arc::new(cluster::cluster_control::ClusterCredentialStore::new(
                     credentials.clone(),
                     client.clone(),
@@ -377,8 +370,8 @@ async fn async_main(cli: Cli) -> Result<()> {
                     client.clone(),
                     cstate.clone(),
                 )) as Arc<dyn arca_core::store::UserStore>;
-                cluster_inner_grants = Some(grants.clone());
-                cluster_inner_teams = Some(teams.clone());
+                let inner_grants = grants.clone();
+                let inner_teams = teams.clone();
                 grants = Arc::new(cluster::cluster_control::ClusterGrantStore::new(
                     grants.clone(),
                     client.clone(),
@@ -391,11 +384,20 @@ async fn async_main(cli: Cli) -> Result<()> {
                 )) as Arc<dyn arca_core::store::TeamStore>;
 
                 // Keep the inner handle for the control-plane receive path.
-                cluster_inner_metadata = Some(metadata.clone());
+                let inner_metadata = metadata.clone();
                 let cluster_meta: Arc<dyn arca_core::store::MetadataStore> =
                     Arc::new(cluster::cluster_meta::ClusterMetadataStore::new(
                         metadata, client, cstate,
                     ));
+                // Bundle the pre-decorator handles for the `/cluster/v1/op`
+                // receive path (applied without re-fan-out).
+                cluster_inner = Some(arca_proto::ClusterInnerStores {
+                    metadata: inner_metadata,
+                    credentials: inner_credentials,
+                    users: inner_users,
+                    grants: inner_grants,
+                    teams: inner_teams,
+                });
                 tracing::info!("Cluster replication enabled (data-plane write path active)");
                 (cluster_blob, cluster_plain, cluster_meta)
             } else {
@@ -469,11 +471,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                     .as_ref()
                     .filter(|c| c.enabled)
                     .map(|c| c.secret.clone()),
-                cluster_inner_metadata,
-                cluster_inner_credentials,
-                cluster_inner_users,
-                cluster_inner_grants,
-                cluster_inner_teams,
+                cluster_inner,
                 // Only populate when the user explicitly set `journal_retention_days`
                 // in TOML. The ReplicationConfig Default gives 30, so we can't distinguish
                 // "user chose 30" from "not set" via the struct alone — require an explicit
