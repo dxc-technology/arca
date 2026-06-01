@@ -34,6 +34,7 @@ pub struct ClusterInnerStores {
     pub users: Arc<dyn UserStore>,
     pub grants: Arc<dyn GrantStore>,
     pub teams: Arc<dyn TeamStore>,
+    pub server_config: Arc<dyn ServerConfigStore>,
 }
 
 /// Application state shared across all handlers.

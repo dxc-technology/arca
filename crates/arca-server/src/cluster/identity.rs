@@ -10,7 +10,11 @@
 use arca_core::store::server_config::ServerConfigStore;
 
 /// `server_config` key under which the persisted node identity is stored.
-const NODE_ID_KEY: &str = "node_id";
+///
+/// This key is NODE-LOCAL: it is the loop-prevention identity of this node and
+/// must never be replicated to peers (doing so would overwrite a peer's own
+/// identity). The cluster `server_config` decorator denylists it.
+pub const NODE_ID_KEY: &str = "node_id";
 
 /// Returns this node's stable identity, generating and persisting a fresh UUID
 /// on first start and reusing it on every subsequent start.

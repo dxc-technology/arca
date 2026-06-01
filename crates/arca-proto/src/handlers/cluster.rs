@@ -199,12 +199,13 @@ pub async fn receive_op(State(state): State<AppState>, body: Bytes) -> Response 
         Some(i) => i,
         None => return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster"),
     };
-    let (metadata, credentials, users, grants, teams) = (
+    let (metadata, credentials, users, grants, teams, server_config) = (
         &inner.metadata,
         &inner.credentials,
         &inner.users,
         &inner.grants,
         &inner.teams,
+        &inner.server_config,
     );
     let op: ControlOp = match serde_json::from_slice(&body) {
         Ok(o) => o,
@@ -250,6 +251,12 @@ pub async fn receive_op(State(state): State<AppState>, body: Bytes) -> Response 
         }
         ControlOp::TeamMemberRemove { team_id, user_id } => {
             teams.remove_member(&team_id, &user_id).await.map(|_| ())
+        }
+        ControlOp::ServerConfigSet { key, value } => {
+            server_config.set_server_config(&key, &value).await
+        }
+        ControlOp::ServerConfigDelete { key } => {
+            server_config.delete_server_config(&key).await.map(|_| ())
         }
     };
 

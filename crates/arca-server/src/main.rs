@@ -320,6 +320,8 @@ async fn async_main(cli: Cli) -> Result<()> {
             let mut users: Arc<dyn arca_core::store::UserStore> = stores.users.clone();
             let mut grants: Arc<dyn arca_core::store::GrantStore> = stores.grants.clone();
             let mut teams: Arc<dyn arca_core::store::TeamStore> = stores.teams.clone();
+            let mut server_config: Arc<dyn arca_core::store::ServerConfigStore> =
+                stores.server_config.clone();
             let (blob, plain_blob, metadata): (
                 Arc<dyn arca_core::store::BlobStore>,
                 Option<Arc<dyn arca_core::store::BlobStore>>,
@@ -372,6 +374,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                 )) as Arc<dyn arca_core::store::UserStore>;
                 let inner_grants = grants.clone();
                 let inner_teams = teams.clone();
+                let inner_server_config = server_config.clone();
                 grants = Arc::new(cluster::cluster_control::ClusterGrantStore::new(
                     grants.clone(),
                     client.clone(),
@@ -382,6 +385,11 @@ async fn async_main(cli: Cli) -> Result<()> {
                     client.clone(),
                     cstate.clone(),
                 )) as Arc<dyn arca_core::store::TeamStore>;
+                server_config = Arc::new(cluster::cluster_control::ClusterServerConfigStore::new(
+                    server_config.clone(),
+                    client.clone(),
+                    cstate.clone(),
+                )) as Arc<dyn arca_core::store::ServerConfigStore>;
 
                 // Keep the inner handle for the control-plane receive path.
                 let inner_metadata = metadata.clone();
@@ -397,6 +405,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                     users: inner_users,
                     grants: inner_grants,
                     teams: inner_teams,
+                    server_config: inner_server_config,
                 });
                 tracing::info!("Cluster replication enabled (data-plane write path active)");
                 (cluster_blob, cluster_plain, cluster_meta)
@@ -413,7 +422,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                 users,
                 teams,
                 grants,
-                server_config: stores.server_config,
+                server_config,
                 domain: config.server.domain.clone(),
                 config_region: config.server.region.clone(),
                 started_at: std::time::Instant::now(),

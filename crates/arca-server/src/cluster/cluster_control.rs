@@ -7,8 +7,8 @@
 //! `available` mode it always proceeds and fan-out is best-effort.
 //!
 //! Replicating credentials + users is what makes failover authentication work
-//! for runtime-created (non-root) users. (Authorization — grants/teams — and
-//! `server_config` reuse this same `/op` channel in a follow-up.)
+//! for runtime-created (non-root) users. Authorization (grants/teams) and the
+//! cluster-wide `server_config` settings reuse this same `/op` channel.
 //!
 //! `apply_remote_*` delegate straight to the inner store and never re-fan-out
 //! (the `/op` receive path applies through the inner store directly anyway).
@@ -18,11 +18,12 @@ use std::sync::Arc;
 use arca_core::cluster::{ClusterState, ControlOp};
 use arca_core::error::ArcaError;
 use arca_core::policy::PolicyDocument;
-use arca_core::store::{CredentialStore, GrantStore, TeamStore, UserStore};
+use arca_core::store::{CredentialStore, GrantStore, ServerConfigStore, TeamStore, UserStore};
 use arca_core::types::{Credential, Grant, Team, User};
 use arca_core::{S3Error, S3ErrorCode};
 
 use crate::cluster::client::ClusterClient;
+use crate::cluster::identity::NODE_ID_KEY;
 
 /// The consistency-policy admission gate, shared by the identity decorators.
 /// `available` mode is always `Ok`; `quorum` mode refuses with `503` when too
@@ -530,6 +531,88 @@ impl TeamStore for ClusterTeamStore {
     }
 }
 
+/// Returns true for `server_config` keys that are NODE-LOCAL and must never be
+/// replicated to peers. Currently only the loop-prevention `node_id` identity:
+/// replicating it would overwrite a peer's own identity. Every other setting
+/// (region, retention windows, log level, preview limits, lifecycle interval)
+/// is cluster-wide and replicates.
+fn is_node_local_key(key: &str) -> bool {
+    key == NODE_ID_KEY
+}
+
+/// Server-config store decorator: replicates cluster-wide instance settings to
+/// peers. Node-local keys (see [`is_node_local_key`]) are persisted locally
+/// only — they skip both the quorum gate and the fan-out, so node identity
+/// bootstrap works even when the cluster has no write quorum.
+pub struct ClusterServerConfigStore {
+    inner: Arc<dyn ServerConfigStore>,
+    client: ClusterClient,
+    cluster: Arc<ClusterState>,
+}
+
+impl ClusterServerConfigStore {
+    pub fn new(
+        inner: Arc<dyn ServerConfigStore>,
+        client: ClusterClient,
+        cluster: Arc<ClusterState>,
+    ) -> Self {
+        Self {
+            inner,
+            client,
+            cluster,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl ServerConfigStore for ClusterServerConfigStore {
+    async fn get_server_config(&self, key: &str) -> Result<Option<String>, ArcaError> {
+        self.inner.get_server_config(key).await
+    }
+
+    async fn set_server_config(&self, key: &str, value: &str) -> Result<(), ArcaError> {
+        // Node-local keys never leave this node and never gate on quorum.
+        if is_node_local_key(key) {
+            return self.inner.set_server_config(key, value).await;
+        }
+        check_write_quorum(&self.cluster)?;
+        self.inner.set_server_config(key, value).await?;
+        fan_out_op(
+            &self.client,
+            &self.cluster,
+            &ControlOp::ServerConfigSet {
+                key: key.to_string(),
+                value: value.to_string(),
+            },
+        )
+        .await;
+        Ok(())
+    }
+
+    async fn delete_server_config(&self, key: &str) -> Result<bool, ArcaError> {
+        if is_node_local_key(key) {
+            return self.inner.delete_server_config(key).await;
+        }
+        check_write_quorum(&self.cluster)?;
+        let existed = self.inner.delete_server_config(key).await?;
+        if existed {
+            fan_out_op(
+                &self.client,
+                &self.cluster,
+                &ControlOp::ServerConfigDelete {
+                    key: key.to_string(),
+                },
+            )
+            .await;
+        }
+        Ok(existed)
+    }
+
+    async fn list_server_config(&self) -> Result<Vec<(String, String)>, ArcaError> {
+        self.inner.list_server_config().await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -579,5 +662,56 @@ mod tests {
         // available mode: write succeeds solo; no peers -> no fan-out.
         store.put_credential(&sample_credential()).await.unwrap();
         assert!(store.get_credential("K").await.unwrap().is_some());
+    }
+
+    async fn temp_server_config() -> (Arc<dyn ServerConfigStore>, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("sc.db");
+        let store = arca_storage::SqliteStore::open(&db).await.unwrap();
+        (Arc::new(store), dir)
+    }
+
+    #[test]
+    fn only_node_id_is_node_local() {
+        assert!(is_node_local_key(NODE_ID_KEY));
+        assert!(!is_node_local_key("region"));
+        assert!(!is_node_local_key("log_level"));
+        assert!(!is_node_local_key("audit_retention_days"));
+    }
+
+    #[tokio::test]
+    async fn server_config_node_local_key_bypasses_quorum_gate() {
+        let (inner, _dir) = temp_server_config().await;
+        // No write quorum (alone in a 3-node cluster): cluster-wide settings are
+        // refused, but the node-local node_id must still persist for bootstrap.
+        let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
+        let store = ClusterServerConfigStore::new(inner, client(), cluster);
+        store
+            .set_server_config(NODE_ID_KEY, "abc-123")
+            .await
+            .expect("node-local key must bypass the quorum gate");
+        assert_eq!(
+            store.get_server_config(NODE_ID_KEY).await.unwrap().as_deref(),
+            Some("abc-123")
+        );
+        // A cluster-wide key is gated when quorum is unavailable.
+        let err = store.set_server_config("region", "eu").await.unwrap_err();
+        match err {
+            ArcaError::S3(e) => assert_eq!(e.code, S3ErrorCode::ServiceUnavailable),
+            other => panic!("expected ServiceUnavailable, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn server_config_available_mode_writes_alone() {
+        let (inner, _dir) = temp_server_config().await;
+        let cluster = Arc::new(ClusterState::new("self-node", None));
+        let store = ClusterServerConfigStore::new(inner, client(), cluster);
+        // available mode: cluster-wide write succeeds solo; no peers -> no fan-out.
+        store.set_server_config("region", "eu-west-1").await.unwrap();
+        assert_eq!(
+            store.get_server_config("region").await.unwrap().as_deref(),
+            Some("eu-west-1")
+        );
     }
 }

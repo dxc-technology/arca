@@ -102,6 +102,12 @@ pub enum ControlOp {
     TeamMemberAdd { team_id: String, user_id: String },
     /// Remove a user from a team.
     TeamMemberRemove { team_id: String, user_id: String },
+    /// Set a single server-config key (cluster-wide instance settings). The
+    /// sender decorator denylists node-local keys (e.g. `node_id`), so this op
+    /// only ever carries cluster-wide settings.
+    ServerConfigSet { key: String, value: String },
+    /// Delete a single server-config key.
+    ServerConfigDelete { key: String },
 }
 
 /// A peer node as currently seen by this node.
@@ -362,6 +368,13 @@ mod tests {
             ControlOp::TeamMemberAdd {
                 team_id: "t1".to_string(),
                 user_id: "u1".to_string(),
+            },
+            ControlOp::ServerConfigSet {
+                key: "region".to_string(),
+                value: "eu-west-1".to_string(),
+            },
+            ControlOp::ServerConfigDelete {
+                key: "region".to_string(),
             },
         ];
         for op in &ops {
