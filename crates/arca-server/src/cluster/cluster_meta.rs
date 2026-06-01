@@ -18,13 +18,16 @@
 //!   `503 ServiceUnavailable` (the node stays read-only) — no divergence.
 //!
 //! Control plane replicated via `/cluster/v1/op` (`ControlOp`): bucket create /
-//! delete, `bucket_config` (versioning, encryption, ...), and bucket tags — so a
-//! peer that receives an object row can actually serve it.
+//! delete, `bucket_config` (versioning, encryption, ...), bucket tags, object
+//! tags, and in-progress multipart state (upload + part rows) — so a peer that
+//! receives an object row, or that is load-balanced a later part / Complete for
+//! an upload begun elsewhere, can serve and finish it. Retention and legal-hold
+//! replicate by re-sending the mutated object row (the LWW `>=` guard applies an
+//! equal-tuple row, carrying the updated lock columns).
 //!
-//! NOT yet cluster-aware (delegate only — tracked for follow-up chunks): object
-//! tags, retention/legal-hold, multipart, and the IDENTITY control plane
-//! (credentials, users, teams, grants, server_config — they need their own
-//! store decorators and reuse the same `/cluster/v1/op` channel).
+//! The IDENTITY control plane (credentials, users, teams, grants, server_config)
+//! has its own store decorators in `cluster_control.rs` and reuses the same
+//! `/cluster/v1/op` channel.
 //!
 //! `apply_remote_*` delegate straight to the inner store and never re-fan-out
 //! (they apply rows already received from a peer).
@@ -119,6 +122,21 @@ impl ClusterMetadataStore {
                     "cluster delete fan-out failed (will reconcile via anti-entropy in M4)"
                 );
             }
+        }
+    }
+
+    /// Re-sends the row whose lock columns (retention / legal-hold) just
+    /// changed. The mutation leaves `(last_modified, version_id, blob_id)`
+    /// unchanged, and `apply_remote_object`'s LWW guard accepts an equal tuple
+    /// (`>=`), so peers adopt the new retention/legal-hold without minting a new
+    /// version. `version_id == None` targets the current version.
+    async fn replicate_lock_change(&self, bucket: &str, key: &str, version_id: Option<&str>) {
+        let row = match version_id {
+            Some(vid) => self.inner.get_object_version(bucket, key, vid).await,
+            None => self.inner.get_latest_object(bucket, key).await,
+        };
+        if let Ok(Some(record)) = row {
+            self.fan_out_object(&record).await;
         }
     }
 
@@ -296,13 +314,19 @@ impl MetadataStore for ClusterMetadataStore {
             .await
     }
 
-    // -- Multipart upload operations (delegate; replication is a follow-up) --
+    // -- Multipart upload operations (in-progress state replicated) --
 
     async fn create_multipart_upload(
         &self,
         record: &MultipartUploadRecord,
     ) -> Result<(), ArcaError> {
-        self.inner.create_multipart_upload(record).await
+        self.check_write_quorum()?;
+        self.inner.create_multipart_upload(record).await?;
+        self.fan_out_op(&ControlOp::MultipartCreate {
+            record: record.clone(),
+        })
+        .await;
+        Ok(())
     }
 
     async fn get_multipart_upload(
@@ -313,7 +337,13 @@ impl MetadataStore for ClusterMetadataStore {
     }
 
     async fn put_part(&self, part: &PartRecord) -> Result<Option<PartRecord>, ArcaError> {
-        self.inner.put_part(part).await
+        self.check_write_quorum()?;
+        let old = self.inner.put_part(part).await?;
+        // The part blob itself already fanned out on its write_sidecar; this
+        // replicates the part row so a peer can List/Complete the upload.
+        self.fan_out_op(&ControlOp::PartUpsert { part: part.clone() })
+            .await;
+        Ok(old)
     }
 
     async fn list_parts(&self, upload_id: &str) -> Result<Vec<PartRecord>, ArcaError> {
@@ -324,10 +354,16 @@ impl MetadataStore for ClusterMetadataStore {
         &self,
         upload_id: &str,
     ) -> Result<Vec<PartRecord>, ArcaError> {
-        self.inner.delete_multipart_upload(upload_id).await
+        self.check_write_quorum()?;
+        let parts = self.inner.delete_multipart_upload(upload_id).await?;
+        self.fan_out_op(&ControlOp::MultipartDelete {
+            upload_id: upload_id.to_string(),
+        })
+        .await;
+        Ok(parts)
     }
 
-    // -- Object Lock operations (delegate; replication is a follow-up) --
+    // -- Object Lock operations (replicated by re-sending the mutated row) --
 
     async fn set_object_retention(
         &self,
@@ -337,9 +373,15 @@ impl MetadataStore for ClusterMetadataStore {
         retention_mode: Option<&str>,
         retain_until_date: Option<&str>,
     ) -> Result<bool, ArcaError> {
-        self.inner
+        self.check_write_quorum()?;
+        let changed = self
+            .inner
             .set_object_retention(bucket, key, version_id, retention_mode, retain_until_date)
-            .await
+            .await?;
+        if changed {
+            self.replicate_lock_change(bucket, key, version_id).await;
+        }
+        Ok(changed)
     }
 
     async fn set_object_legal_hold(
@@ -349,9 +391,15 @@ impl MetadataStore for ClusterMetadataStore {
         version_id: Option<&str>,
         status: Option<&str>,
     ) -> Result<bool, ArcaError> {
-        self.inner
+        self.check_write_quorum()?;
+        let changed = self
+            .inner
             .set_object_legal_hold(bucket, key, version_id, status)
-            .await
+            .await?;
+        if changed {
+            self.replicate_lock_change(bucket, key, version_id).await;
+        }
+        Ok(changed)
     }
 
     // -- Bucket config operations (delegate; control-plane follow-up) --
@@ -451,9 +499,18 @@ impl MetadataStore for ClusterMetadataStore {
         version_id: &str,
         tags: &[(String, String)],
     ) -> Result<(), ArcaError> {
+        self.check_write_quorum()?;
         self.inner
             .put_object_tags(bucket, key, version_id, tags)
-            .await
+            .await?;
+        self.fan_out_op(&ControlOp::ObjectTags {
+            bucket: bucket.to_string(),
+            key: key.to_string(),
+            version_id: version_id.to_string(),
+            tags: tags.to_vec(),
+        })
+        .await;
+        Ok(())
     }
 
     async fn delete_object_tags(
@@ -462,7 +519,19 @@ impl MetadataStore for ClusterMetadataStore {
         key: &str,
         version_id: &str,
     ) -> Result<bool, ArcaError> {
-        self.inner.delete_object_tags(bucket, key, version_id).await
+        self.check_write_quorum()?;
+        let existed = self.inner.delete_object_tags(bucket, key, version_id).await?;
+        if existed {
+            // Replicate as a replace with an empty set, clearing peers' tags.
+            self.fan_out_op(&ControlOp::ObjectTags {
+                bucket: bucket.to_string(),
+                key: key.to_string(),
+                version_id: version_id.to_string(),
+                tags: Vec::new(),
+            })
+            .await;
+        }
+        Ok(existed)
     }
 
     // -- Lifecycle query operations (read-only; delegate) --
@@ -537,6 +606,13 @@ impl MetadataStore for ClusterMetadataStore {
 
     async fn apply_remote_bucket(&self, info: &BucketInfo) -> Result<(), ArcaError> {
         self.inner.apply_remote_bucket(info).await
+    }
+
+    async fn apply_remote_multipart_upload(
+        &self,
+        record: &MultipartUploadRecord,
+    ) -> Result<(), ArcaError> {
+        self.inner.apply_remote_multipart_upload(record).await
     }
 }
 
@@ -655,5 +731,85 @@ mod tests {
         // available mode: bucket creation succeeds solo; no peers -> no fan-out.
         store.create_bucket("b").await.unwrap();
         assert!(store.head_bucket("b").await.unwrap().is_some());
+    }
+
+    fn sample_upload() -> MultipartUploadRecord {
+        MultipartUploadRecord {
+            upload_id: "u1".to_string(),
+            bucket: "b".to_string(),
+            key: "k".to_string(),
+            content_type: None,
+            initiated_at: Utc::now(),
+            metadata: Default::default(),
+            checksum_algorithm: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn available_mode_multipart_and_tags_alone() {
+        let (inner, _dir) = temp_store().await;
+        inner.create_bucket("b").await.unwrap();
+        let cluster = Arc::new(ClusterState::new("self-node", None));
+        let store = ClusterMetadataStore::new(inner, client(), cluster);
+
+        // Multipart in-progress state: create -> put_part -> delete, all solo.
+        store.create_multipart_upload(&sample_upload()).await.unwrap();
+        assert!(store.get_multipart_upload("u1").await.unwrap().is_some());
+        let part = PartRecord {
+            upload_id: "u1".to_string(),
+            part_number: 1,
+            blob_id: BlobId("part-blob".to_string()),
+            size: 4,
+            etag: "e".to_string(),
+            checksum_value: None,
+            last_modified: None,
+        };
+        store.put_part(&part).await.unwrap();
+        assert_eq!(store.list_parts("u1").await.unwrap().len(), 1);
+        store.delete_multipart_upload("u1").await.unwrap();
+        assert!(store.get_multipart_upload("u1").await.unwrap().is_none());
+
+        // Object tags: put then delete, solo.
+        store.put_object(&sample_record()).await.unwrap();
+        store
+            .put_object_tags("b", "k", "", &[("env".to_string(), "prod".to_string())])
+            .await
+            .unwrap();
+        assert_eq!(store.get_object_tags("b", "k", "").await.unwrap().len(), 1);
+        assert!(store.delete_object_tags("b", "k", "").await.unwrap());
+        assert!(store.get_object_tags("b", "k", "").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn quorum_mode_refuses_multipart_create_without_majority() {
+        let (inner, _dir) = temp_store().await;
+        let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
+        let store = ClusterMetadataStore::new(inner, client(), cluster);
+        let err = store
+            .create_multipart_upload(&sample_upload())
+            .await
+            .unwrap_err();
+        match err {
+            ArcaError::S3(e) => assert_eq!(e.code, S3ErrorCode::ServiceUnavailable),
+            other => panic!("expected ServiceUnavailable, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn available_mode_set_retention_alone() {
+        let (inner, _dir) = temp_store().await;
+        inner.create_bucket("b").await.unwrap();
+        let cluster = Arc::new(ClusterState::new("self-node", None));
+        let store = ClusterMetadataStore::new(inner, client(), cluster);
+        store.put_object(&sample_record()).await.unwrap();
+        // Sets the lock columns on the current version; replication re-sends the
+        // row (no peers here, so just verify the local write + read-back path).
+        let changed = store
+            .set_object_retention("b", "k", None, Some("GOVERNANCE"), Some("2099-01-01T00:00:00Z"))
+            .await
+            .unwrap();
+        assert!(changed);
+        let row = store.get_latest_object("b", "k").await.unwrap().unwrap();
+        assert_eq!(row.retention_mode.as_deref(), Some("GOVERNANCE"));
     }
 }

@@ -696,6 +696,39 @@ impl MetadataStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("apply_remote_bucket: {e}")))
     }
 
+    async fn apply_remote_multipart_upload(
+        &self,
+        record: &MultipartUploadRecord,
+    ) -> Result<(), ArcaError> {
+        let record = record.clone();
+        self.conn
+            .call(move |conn| {
+                let metadata_json =
+                    serde_json::to_string(&record.metadata).unwrap_or_else(|_| "{}".to_string());
+                // A multipart upload is immutable once created (upload_id is the
+                // key), so a re-delivered op is a no-op rather than an error.
+                conn.execute(
+                    "INSERT INTO multipart_uploads (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                     ON CONFLICT(upload_id) DO NOTHING",
+                    params![
+                        record.upload_id,
+                        record.bucket,
+                        record.key,
+                        record.content_type,
+                        record.initiated_at.to_rfc3339(),
+                        metadata_json,
+                        record.checksum_algorithm,
+                    ],
+                )?;
+                Ok(())
+            })
+            .await
+            .map_err(|e: TrError| {
+                ArcaError::Internal(format!("apply_remote_multipart_upload: {e}"))
+            })
+    }
+
     async fn list_object_versions(
         &self,
         bucket: &str,
@@ -1916,6 +1949,26 @@ mod tests {
         store.apply_remote_bucket(&info2).await.unwrap();
         let got2 = store.head_bucket("replicated").await.unwrap().unwrap();
         assert_eq!(got2.owner, "bob");
+    }
+
+    #[tokio::test]
+    async fn apply_remote_multipart_upload_inserts_and_is_idempotent() {
+        let store = test_store().await;
+        let record = MultipartUploadRecord {
+            upload_id: "u-remote".to_string(),
+            bucket: "b".to_string(),
+            key: "k".to_string(),
+            content_type: Some("text/plain".to_string()),
+            initiated_at: chrono::Utc::now(),
+            metadata: Default::default(),
+            checksum_algorithm: None,
+        };
+        // Verbatim insert (no local create_multipart_upload first).
+        store.apply_remote_multipart_upload(&record).await.unwrap();
+        assert!(store.get_multipart_upload("u-remote").await.unwrap().is_some());
+        // Re-delivery is a no-op (ON CONFLICT DO NOTHING), never an error.
+        store.apply_remote_multipart_upload(&record).await.unwrap();
+        assert!(store.get_multipart_upload("u-remote").await.unwrap().is_some());
     }
 
     #[tokio::test]

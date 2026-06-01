@@ -246,6 +246,15 @@ impl MetadataStore for CachingMetadataStore {
         result
     }
 
+    async fn apply_remote_multipart_upload(
+        &self,
+        record: &MultipartUploadRecord,
+    ) -> Result<(), ArcaError> {
+        // Multipart upload rows aren't cached; forward to the inner store so the
+        // default "unsupported" impl never shadows a clustered backend.
+        self.inner.apply_remote_multipart_upload(record).await
+    }
+
     // -- Multipart upload operations (delegated) --
 
     async fn create_multipart_upload(

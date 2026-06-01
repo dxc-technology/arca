@@ -1062,6 +1062,32 @@ impl MetadataStore for PgStore {
         Ok(())
     }
 
+    async fn apply_remote_multipart_upload(
+        &self,
+        record: &MultipartUploadRecord,
+    ) -> Result<(), ArcaError> {
+        let metadata_json =
+            serde_json::to_value(&record.metadata).unwrap_or_else(|_| serde_json::json!({}));
+        // Immutable once created (upload_id is the key): re-delivery is a no-op.
+        sqlx_core::query::query(
+            "INSERT INTO multipart_uploads \
+             (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7) \
+             ON CONFLICT (upload_id) DO NOTHING",
+        )
+        .bind(&record.upload_id)
+        .bind(&record.bucket)
+        .bind(&record.key)
+        .bind(&record.content_type)
+        .bind(record.initiated_at)
+        .bind(&metadata_json)
+        .bind(&record.checksum_algorithm)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("apply_remote_multipart_upload: {e}")))?;
+        Ok(())
+    }
+
     async fn list_object_versions(
         &self,
         bucket: &str,

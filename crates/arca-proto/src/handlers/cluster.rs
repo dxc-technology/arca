@@ -258,6 +258,25 @@ pub async fn receive_op(State(state): State<AppState>, body: Bytes) -> Response 
         ControlOp::ServerConfigDelete { key } => {
             server_config.delete_server_config(&key).await.map(|_| ())
         }
+        ControlOp::ObjectTags {
+            bucket,
+            key,
+            version_id,
+            tags,
+        } => {
+            // put_object_tags is a full replace (idempotent); empty clears.
+            metadata.put_object_tags(&bucket, &key, &version_id, &tags).await
+        }
+        ControlOp::MultipartCreate { record } => {
+            metadata.apply_remote_multipart_upload(&record).await
+        }
+        ControlOp::PartUpsert { part } => {
+            // put_part is an idempotent replace by (upload_id, part_number).
+            metadata.put_part(&part).await.map(|_| ())
+        }
+        ControlOp::MultipartDelete { upload_id } => {
+            metadata.delete_multipart_upload(&upload_id).await.map(|_| ())
+        }
     };
 
     match result {

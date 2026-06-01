@@ -336,4 +336,22 @@ pub trait MetadataStore: Send + Sync {
             "apply_remote_bucket: cluster replication is not supported by this backend".to_string(),
         ))
     }
+
+    /// Creates an in-progress multipart upload row verbatim from a control-plane
+    /// replication op. Idempotent: a multipart upload is immutable once created
+    /// (its `upload_id` is the key), so re-delivery is a no-op (INSERT-or-ignore)
+    /// rather than the plain INSERT of [`MetadataStore::create_multipart_upload`].
+    /// Replicating it lets any node accept `UploadPart` / `CompleteMultipartUpload`
+    /// for an upload initiated on a peer.
+    ///
+    /// Default implementation: unsupported.
+    async fn apply_remote_multipart_upload(
+        &self,
+        _record: &MultipartUploadRecord,
+    ) -> Result<(), crate::error::ArcaError> {
+        Err(crate::error::ArcaError::Internal(
+            "apply_remote_multipart_upload: cluster replication is not supported by this backend"
+                .to_string(),
+        ))
+    }
 }

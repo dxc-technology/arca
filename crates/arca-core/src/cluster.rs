@@ -18,7 +18,9 @@ use std::sync::RwLock;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::types::{BucketInfo, Credential, Grant, Team, User};
+use crate::types::{
+    BucketInfo, Credential, Grant, MultipartUploadRecord, PartRecord, Team, User,
+};
 
 /// Fixed access-key id of the shared cluster credential. The matching secret is
 /// `[cluster].secret`; every inter-node `/cluster/v1/*` request is signed and
@@ -108,6 +110,23 @@ pub enum ControlOp {
     ServerConfigSet { key: String, value: String },
     /// Delete a single server-config key.
     ServerConfigDelete { key: String },
+    /// Replace all tags on a specific object version (an empty list clears
+    /// them). `version_id` is the verbatim key the origin used (empty string for
+    /// the null version).
+    ObjectTags {
+        bucket: String,
+        key: String,
+        version_id: String,
+        tags: Vec<(String, String)>,
+    },
+    /// Create an in-progress multipart upload row (immutable; idempotent upsert).
+    MultipartCreate {
+        record: MultipartUploadRecord,
+    },
+    /// Create or replace a part row (idempotent replace by upload_id+part_number).
+    PartUpsert { part: PartRecord },
+    /// Delete a multipart upload and all its part rows (idempotent).
+    MultipartDelete { upload_id: String },
 }
 
 /// A peer node as currently seen by this node.
@@ -375,6 +394,37 @@ mod tests {
             },
             ControlOp::ServerConfigDelete {
                 key: "region".to_string(),
+            },
+            ControlOp::ObjectTags {
+                bucket: "b".to_string(),
+                key: "k".to_string(),
+                version_id: String::new(),
+                tags: vec![("k".to_string(), "v".to_string())],
+            },
+            ControlOp::MultipartCreate {
+                record: MultipartUploadRecord {
+                    upload_id: "u1".to_string(),
+                    bucket: "b".to_string(),
+                    key: "k".to_string(),
+                    content_type: None,
+                    initiated_at: Utc::now(),
+                    metadata: Default::default(),
+                    checksum_algorithm: None,
+                },
+            },
+            ControlOp::PartUpsert {
+                part: PartRecord {
+                    upload_id: "u1".to_string(),
+                    part_number: 1,
+                    blob_id: crate::types::BlobId("blob-1".to_string()),
+                    size: 4,
+                    etag: "e".to_string(),
+                    checksum_value: None,
+                    last_modified: None,
+                },
+            },
+            ControlOp::MultipartDelete {
+                upload_id: "u1".to_string(),
             },
         ];
         for op in &ops {
