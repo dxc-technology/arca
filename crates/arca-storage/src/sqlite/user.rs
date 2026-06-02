@@ -15,13 +15,14 @@ impl UserStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 conn.execute(
-                    "INSERT INTO users (user_id, username, description, is_root, created_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    "INSERT INTO users (user_id, username, description, is_root, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                     params![
                         u.user_id,
                         u.username,
                         u.description,
                         u.is_root as i32,
+                        u.created_at.to_rfc3339(),
                         u.created_at.to_rfc3339(),
                     ],
                 )?;
@@ -116,6 +117,9 @@ impl UserStore for SqliteStore {
                     ).unwrap_or(false);
                     return Ok(exists);
                 }
+                // Bump the LWW timestamp on any real change.
+                sets.push("updated_at = ?");
+                values.push(Box::new(chrono::Utc::now().to_rfc3339()));
                 let sql = format!(
                     "UPDATE users SET {} WHERE user_id = ?",
                     sets.join(", ")
@@ -159,19 +163,21 @@ impl UserStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 conn.execute(
-                    "INSERT INTO users (user_id, username, description, is_root, created_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5)
+                    "INSERT INTO users (user_id, username, description, is_root, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                      ON CONFLICT(user_id) DO UPDATE SET
                        username = excluded.username,
                        description = excluded.description,
                        is_root = excluded.is_root,
-                       created_at = excluded.created_at",
+                       created_at = excluded.created_at,
+                       updated_at = excluded.updated_at",
                     params![
                         u.user_id,
                         u.username,
                         u.description,
                         u.is_root as i32,
                         u.created_at.to_rfc3339(),
+                        chrono::Utc::now().to_rfc3339(),
                     ],
                 )?;
                 Ok(())

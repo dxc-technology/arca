@@ -15,8 +15,8 @@ impl CredentialStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 conn.execute(
-                    "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, admin, user_id)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, admin, user_id, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                     params![
                         cred.access_key_id,
                         cred.secret_access_key,
@@ -25,6 +25,7 @@ impl CredentialStore for SqliteStore {
                         cred.active as i32,
                         cred.admin as i32,
                         cred.user_id,
+                        cred.created_at.to_rfc3339(),
                     ],
                 )?;
                 Ok(())
@@ -119,6 +120,9 @@ impl CredentialStore for SqliteStore {
                     ).unwrap_or(false);
                     return Ok(exists);
                 }
+                // Bump the LWW timestamp on any real change.
+                sets.push("updated_at = ?");
+                values.push(Box::new(chrono::Utc::now().to_rfc3339()));
                 let sql = format!(
                     "UPDATE credentials SET {} WHERE access_key_id = ?",
                     sets.join(", ")
@@ -151,15 +155,16 @@ impl CredentialStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 conn.execute(
-                    "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, admin, user_id)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                    "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, admin, user_id, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
                      ON CONFLICT(access_key_id) DO UPDATE SET
                        secret_access_key = excluded.secret_access_key,
                        description = excluded.description,
                        created_at = excluded.created_at,
                        active = excluded.active,
                        admin = excluded.admin,
-                       user_id = excluded.user_id",
+                       user_id = excluded.user_id,
+                       updated_at = excluded.updated_at",
                     params![
                         cred.access_key_id,
                         cred.secret_access_key,
@@ -168,6 +173,7 @@ impl CredentialStore for SqliteStore {
                         cred.active as i32,
                         cred.admin as i32,
                         cred.user_id,
+                        chrono::Utc::now().to_rfc3339(),
                     ],
                 )?;
                 Ok(())
@@ -350,6 +356,57 @@ mod tests {
         let got2 = store.get_credential("RK").await.unwrap().unwrap();
         assert_eq!(got2.secret_access_key, "s2");
         assert!(!got2.active);
+    }
+
+    /// Reads the raw `updated_at` column (not exposed on `Credential`) so the
+    /// LWW timestamp maintenance can be asserted directly.
+    async fn read_updated_at(store: &SqliteStore, access_key_id: &str) -> String {
+        let key = access_key_id.to_string();
+        store
+            .read_conn()
+            .call(move |conn| {
+                let v: String = conn.query_row(
+                    "SELECT updated_at FROM credentials WHERE access_key_id = ?1",
+                    params![key],
+                    |row| row.get(0),
+                )?;
+                Ok::<_, rusqlite::Error>(v)
+            })
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn updated_at_is_maintained() {
+        let store = test_store().await;
+        let created = Utc::now();
+        let cred = Credential {
+            access_key_id: "UPD".to_string(),
+            secret_access_key: "s".to_string(),
+            description: "d".to_string(),
+            created_at: created,
+            active: true,
+            admin: false,
+            user_id: "root".to_string(),
+        };
+
+        // put: updated_at mirrors created_at.
+        store.put_credential(&cred).await.unwrap();
+        assert_eq!(read_updated_at(&store, "UPD").await, created.to_rfc3339());
+
+        // update: updated_at is bumped to a fresh (>=) timestamp.
+        store
+            .update_credential("UPD", None, Some("new"))
+            .await
+            .unwrap();
+        let after_update = read_updated_at(&store, "UPD").await;
+        assert!(after_update >= created.to_rfc3339());
+
+        // apply_remote: updated_at is receiver-stamped (non-empty, >= created).
+        store.apply_remote_credential(&cred).await.unwrap();
+        let after_remote = read_updated_at(&store, "UPD").await;
+        assert!(!after_remote.is_empty());
+        assert!(after_remote >= created.to_rfc3339());
     }
 
     #[tokio::test]

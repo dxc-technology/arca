@@ -22,12 +22,13 @@ fn row_to_team(row: &sqlx_postgres::PgRow) -> Team {
 impl TeamStore for PgStore {
     async fn put_team(&self, team: &Team) -> Result<(), ArcaError> {
         sqlx_core::query::query(
-            "INSERT INTO teams (team_id, name, description, created_at)
-             VALUES ($1, $2, $3, $4)",
+            "INSERT INTO teams (team_id, name, description, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5)",
         )
         .bind(&team.team_id)
         .bind(&team.name)
         .bind(&team.description)
+        .bind(team.created_at)
         .bind(team.created_at)
         .execute(&self.pool)
         .await
@@ -91,6 +92,8 @@ impl TeamStore for PgStore {
             return Ok(row.is_some());
         }
 
+        // Bump the LWW timestamp on any real change (no bound param).
+        sets.push("updated_at = NOW()".to_string());
         let sql = format!(
             "UPDATE teams SET {} WHERE team_id = ${param_idx}",
             sets.join(", ")
@@ -208,12 +211,13 @@ impl TeamStore for PgStore {
 
     async fn apply_remote_team(&self, team: &Team) -> Result<(), ArcaError> {
         sqlx_core::query::query(
-            "INSERT INTO teams (team_id, name, description, created_at)
-             VALUES ($1, $2, $3, $4)
+            "INSERT INTO teams (team_id, name, description, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, NOW())
              ON CONFLICT (team_id) DO UPDATE SET
                name = EXCLUDED.name,
                description = EXCLUDED.description,
-               created_at = EXCLUDED.created_at",
+               created_at = EXCLUDED.created_at,
+               updated_at = NOW()",
         )
         .bind(&team.team_id)
         .bind(&team.name)

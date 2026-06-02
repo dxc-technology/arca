@@ -23,13 +23,14 @@ pub(crate) fn row_to_user(row: &sqlx_postgres::PgRow) -> User {
 impl UserStore for PgStore {
     async fn put_user(&self, user: &User) -> Result<(), ArcaError> {
         sqlx_core::query::query(
-            "INSERT INTO users (user_id, username, description, is_root, created_at)
-             VALUES ($1, $2, $3, $4, $5)",
+            "INSERT INTO users (user_id, username, description, is_root, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6)",
         )
         .bind(&user.user_id)
         .bind(&user.username)
         .bind(&user.description)
         .bind(user.is_root)
+        .bind(user.created_at)
         .bind(user.created_at)
         .execute(&self.pool)
         .await
@@ -106,6 +107,8 @@ impl UserStore for PgStore {
             return Ok(row.is_some());
         }
 
+        // Bump the LWW timestamp on any real change (no bound param).
+        sets.push("updated_at = NOW()".to_string());
         let sql = format!(
             "UPDATE users SET {} WHERE user_id = ${param_idx}",
             sets.join(", ")
@@ -164,13 +167,14 @@ impl UserStore for PgStore {
 
     async fn apply_remote_user(&self, user: &User) -> Result<(), ArcaError> {
         sqlx_core::query::query(
-            "INSERT INTO users (user_id, username, description, is_root, created_at)
-             VALUES ($1, $2, $3, $4, $5)
+            "INSERT INTO users (user_id, username, description, is_root, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, NOW())
              ON CONFLICT (user_id) DO UPDATE SET
                username = EXCLUDED.username,
                description = EXCLUDED.description,
                is_root = EXCLUDED.is_root,
-               created_at = EXCLUDED.created_at",
+               created_at = EXCLUDED.created_at,
+               updated_at = NOW()",
         )
         .bind(&user.user_id)
         .bind(&user.username)

@@ -68,6 +68,11 @@ const MIGRATIONS: &[Migration] = &[
         description: "Add is_tombstone to objects (cluster hard-delete convergence)",
         sql: include_str!("migrations/0006_tombstones.sql"),
     },
+    Migration {
+        version: 7,
+        description: "Add updated_at to credentials/users/teams (cluster control-plane LWW reconcile)",
+        sql: include_str!("migrations/0007_control_updated_at.sql"),
+    },
 ];
 
 impl PgStore {

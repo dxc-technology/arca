@@ -15,9 +15,15 @@ impl TeamStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 conn.execute(
-                    "INSERT INTO teams (team_id, name, description, created_at)
-                     VALUES (?1, ?2, ?3, ?4)",
-                    params![t.team_id, t.name, t.description, t.created_at.to_rfc3339()],
+                    "INSERT INTO teams (team_id, name, description, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![
+                        t.team_id,
+                        t.name,
+                        t.description,
+                        t.created_at.to_rfc3339(),
+                        t.created_at.to_rfc3339(),
+                    ],
                 )?;
                 Ok(())
             })
@@ -91,6 +97,9 @@ impl TeamStore for SqliteStore {
                     ).unwrap_or(false);
                     return Ok(exists);
                 }
+                // Bump the LWW timestamp on any real change.
+                sets.push("updated_at = ?");
+                values.push(Box::new(chrono::Utc::now().to_rfc3339()));
                 let sql = format!(
                     "UPDATE teams SET {} WHERE team_id = ?",
                     sets.join(", ")
@@ -209,13 +218,20 @@ impl TeamStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 conn.execute(
-                    "INSERT INTO teams (team_id, name, description, created_at)
-                     VALUES (?1, ?2, ?3, ?4)
+                    "INSERT INTO teams (team_id, name, description, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5)
                      ON CONFLICT(team_id) DO UPDATE SET
                        name = excluded.name,
                        description = excluded.description,
-                       created_at = excluded.created_at",
-                    params![t.team_id, t.name, t.description, t.created_at.to_rfc3339()],
+                       created_at = excluded.created_at,
+                       updated_at = excluded.updated_at",
+                    params![
+                        t.team_id,
+                        t.name,
+                        t.description,
+                        t.created_at.to_rfc3339(),
+                        chrono::Utc::now().to_rfc3339(),
+                    ],
                 )?;
                 Ok(())
             })

@@ -424,6 +424,26 @@ const MIGRATIONS: &[Migration] = &[
         // after a grace period. Single-node deployments never set it.
         sql: "ALTER TABLE objects ADD COLUMN is_tombstone INTEGER NOT NULL DEFAULT 0;",
     },
+    Migration {
+        version: 20,
+        description: "Add updated_at to credentials/users/teams (cluster control-plane LWW reconcile)",
+        // Last-write timestamp for last-writer-wins reconciliation of the
+        // control plane via the periodic full-snapshot merge. It is NOT carried
+        // in the in-memory Credential/User/Team structs: it is a DB column
+        // maintained on every write and shipped only in the control-snapshot
+        // wire entry. Existing rows backfill to created_at (grants/bucket_config/
+        // server_config already carry updated_at). The literal DEFAULT '' is only
+        // a transient placeholder for the ADD COLUMN step; every writer
+        // (put_*/update_*/apply_remote_*) sets updated_at explicitly.
+        sql: "
+            ALTER TABLE credentials ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';
+            UPDATE credentials SET updated_at = created_at;
+            ALTER TABLE users ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';
+            UPDATE users SET updated_at = created_at;
+            ALTER TABLE teams ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';
+            UPDATE teams SET updated_at = created_at;
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -497,7 +517,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 19);
+        assert_eq!(version, 20);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -547,12 +567,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 19);
+        assert_eq!(version, 20);
 
-        // Nineteen migration records
+        // Twenty migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 19);
+        assert_eq!(count, 20);
     }
 }

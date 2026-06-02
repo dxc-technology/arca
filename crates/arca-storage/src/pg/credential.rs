@@ -12,8 +12,8 @@ use super::PgStore;
 impl CredentialStore for PgStore {
     async fn put_credential(&self, credential: &Credential) -> Result<(), ArcaError> {
         sqlx_core::query::query(
-            "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, admin, user_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, admin, user_id, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         )
         .bind(&credential.access_key_id)
         .bind(&credential.secret_access_key)
@@ -22,6 +22,7 @@ impl CredentialStore for PgStore {
         .bind(credential.active)
         .bind(credential.admin)
         .bind(&credential.user_id)
+        .bind(credential.created_at)
         .execute(&self.pool)
         .await
         .map_err(|e| ArcaError::Internal(format!("put_credential: {e}")))?;
@@ -98,6 +99,8 @@ impl CredentialStore for PgStore {
             return Ok(row.is_some());
         }
 
+        // Bump the LWW timestamp on any real change (no bound param).
+        sets.push("updated_at = NOW()".to_string());
         let sql = format!(
             "UPDATE credentials SET {} WHERE access_key_id = ${param_idx}",
             sets.join(", ")
@@ -135,15 +138,16 @@ impl CredentialStore for PgStore {
 
     async fn apply_remote_credential(&self, credential: &Credential) -> Result<(), ArcaError> {
         sqlx_core::query::query(
-            "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, admin, user_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
+            "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, admin, user_id, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
              ON CONFLICT (access_key_id) DO UPDATE SET
                secret_access_key = EXCLUDED.secret_access_key,
                description = EXCLUDED.description,
                created_at = EXCLUDED.created_at,
                active = EXCLUDED.active,
                admin = EXCLUDED.admin,
-               user_id = EXCLUDED.user_id",
+               user_id = EXCLUDED.user_id,
+               updated_at = NOW()",
         )
         .bind(&credential.access_key_id)
         .bind(&credential.secret_access_key)
