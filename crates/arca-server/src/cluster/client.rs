@@ -126,10 +126,6 @@ impl ClusterClient {
     /// cursor to advance. The anti-entropy worker loops this per peer until the
     /// batch is short. A POST (not a query-string GET) keeps the request body
     /// the `UNSIGNED-PAYLOAD` the signing path already uses.
-    ///
-    // Consumed by the anti-entropy worker (M4, next chunk); the manifest
-    // endpoint + wire types ship now so both sides land together and are tested.
-    #[allow(dead_code)]
     pub async fn fetch_manifest(
         &self,
         endpoint: &str,
@@ -279,9 +275,6 @@ impl ClusterClient {
 
     /// Signs and sends a JSON body via POST, returning the response body bytes
     /// on success (request/response ops: the manifest pull).
-    // Reached only via `fetch_manifest`, itself consumed by the M4 anti-entropy
-    // worker (next chunk).
-    #[allow(dead_code)]
     async fn post_json_recv(
         &self,
         endpoint: &str,

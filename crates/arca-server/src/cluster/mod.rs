@@ -13,6 +13,7 @@
 //! - [`cluster_blob`] / [`cluster_meta`] — M3 write-path decorators that
 //!   replicate blobs and object rows to peers under the consistency policy.
 
+pub mod anti_entropy;
 pub mod client;
 pub mod cluster_blob;
 pub mod cluster_control;

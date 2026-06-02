@@ -314,6 +314,9 @@ async fn async_main(cli: Cli) -> Result<()> {
             // /cluster/v1/op receive path applies control-plane ops without
             // re-fanning them out.
             let mut cluster_inner: Option<arca_proto::ClusterInnerStores> = None;
+            // Anti-entropy worker handle, kept alive for the process lifetime
+            // (spawned below when clustering is enabled).
+            let mut _anti_entropy_worker: Option<worker::BackgroundWorker> = None;
             // The (possibly cluster-wrapped) identity stores used by AppState.
             let mut credentials: Arc<dyn arca_core::store::CredentialStore> =
                 stores.credentials.clone();
@@ -393,6 +396,20 @@ async fn async_main(cli: Cli) -> Result<()> {
 
                 // Keep the inner handle for the control-plane receive path.
                 let inner_metadata = metadata.clone();
+
+                // Anti-entropy worker: periodically pulls each peer's
+                // changed-since manifest and applies missing/fresher rows
+                // (idempotent LWW, tombstones included), and GCs old tombstones.
+                // Applies through the INNER metadata store (below the cluster
+                // decorator) so reconciled rows are not re-fanned-out.
+                _anti_entropy_worker = Some(cluster::anti_entropy::spawn(
+                    cstate.clone(),
+                    client.clone(),
+                    inner_metadata.clone(),
+                    std::time::Duration::from_secs(c.anti_entropy_interval_seconds.max(1)),
+                    c.tombstone_grace(),
+                ));
+
                 let cluster_meta: Arc<dyn arca_core::store::MetadataStore> =
                     Arc::new(cluster::cluster_meta::ClusterMetadataStore::new(
                         metadata, client, cstate,

@@ -783,6 +783,12 @@ pub struct ClusterConfig {
     /// Inter-node HTTP request timeout, in seconds.
     #[serde(default = "default_cluster_request_timeout")]
     pub request_timeout_seconds: u64,
+    /// How long a tombstone (hard-deleted version kept for cluster convergence)
+    /// is retained before garbage collection, in days. MUST exceed the longest
+    /// expected node downtime: a node that returns after the grace window would
+    /// no longer receive the tombstone and could resurrect the deleted object.
+    #[serde(default = "default_cluster_tombstone_grace_days")]
+    pub tombstone_grace_days: u64,
 }
 
 impl ClusterConfig {
@@ -827,6 +833,11 @@ impl ClusterConfig {
             ClusterMode::Available => None,
         }
     }
+
+    /// Tombstone retention as a `Duration` (see [`ClusterConfig::tombstone_grace_days`]).
+    pub fn tombstone_grace(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(self.tombstone_grace_days * 24 * 60 * 60)
+    }
 }
 
 fn default_cluster_health_interval() -> u64 {
@@ -837,6 +848,9 @@ fn default_cluster_anti_entropy_interval() -> u64 {
 }
 fn default_cluster_request_timeout() -> u64 {
     10
+}
+fn default_cluster_tombstone_grace_days() -> u64 {
+    7
 }
 
 fn default_channel_size() -> usize {
@@ -1892,6 +1906,7 @@ cluster_size = 3
             health_interval_seconds: 5,
             anti_entropy_interval_seconds: 30,
             request_timeout_seconds: 10,
+            tombstone_grace_days: 7,
         };
         let err = cluster.validate().unwrap_err().to_string();
         assert!(err.contains("cluster_size is required"), "got: {err}");
@@ -1913,6 +1928,7 @@ cluster_size = 3
             health_interval_seconds: 5,
             anti_entropy_interval_seconds: 30,
             request_timeout_seconds: 10,
+            tombstone_grace_days: 7,
         };
         assert!(cluster.validate().is_ok());
         assert_eq!(cluster.write_quorum(), None);
@@ -1934,6 +1950,7 @@ cluster_size = 3
             health_interval_seconds: 5,
             anti_entropy_interval_seconds: 30,
             request_timeout_seconds: 10,
+            tombstone_grace_days: 7,
         };
         let err = cluster.validate().unwrap_err().to_string();
         assert!(err.contains("seeds is required"), "got: {err}");
@@ -1955,6 +1972,7 @@ cluster_size = 3
             health_interval_seconds: 5,
             anti_entropy_interval_seconds: 30,
             request_timeout_seconds: 10,
+            tombstone_grace_days: 7,
         };
         let err = cluster.validate().unwrap_err().to_string();
         assert!(err.contains("dns_name is required"), "got: {err}");
@@ -1976,6 +1994,7 @@ cluster_size = 3
             health_interval_seconds: 5,
             anti_entropy_interval_seconds: 30,
             request_timeout_seconds: 10,
+            tombstone_grace_days: 7,
         };
         let err = cluster.validate().unwrap_err().to_string();
         assert!(err.contains("secret is required"), "got: {err}");
@@ -1999,6 +2018,7 @@ cluster_size = 3
                 health_interval_seconds: 5,
                 anti_entropy_interval_seconds: 30,
                 request_timeout_seconds: 10,
+                tombstone_grace_days: 7,
             };
             assert_eq!(cluster.write_quorum(), Some(expected), "size={size}");
         }
