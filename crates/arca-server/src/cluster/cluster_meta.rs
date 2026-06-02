@@ -614,6 +614,15 @@ impl MetadataStore for ClusterMetadataStore {
     ) -> Result<(), ArcaError> {
         self.inner.apply_remote_multipart_upload(record).await
     }
+
+    async fn list_rows_changed_since(
+        &self,
+        since: u64,
+        limit: u32,
+    ) -> Result<Vec<(u64, ObjectRecord)>, ArcaError> {
+        // Read-only; the manifest endpoint serves it. No gate, no fan-out.
+        self.inner.list_rows_changed_since(since, limit).await
+    }
 }
 
 #[cfg(test)]

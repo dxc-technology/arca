@@ -391,6 +391,29 @@ const MIGRATIONS: &[Migration] = &[
                 ON replication_journal(updated_at);
         ",
     },
+    Migration {
+        version: 18,
+        description: "Add node-local monotonic seq to objects (cluster anti-entropy changed-since cursor)",
+        // `seq` is a per-node monotonic write counter, NOT a replicated field of
+        // ObjectRecord: every local write (incl. apply_remote_object) stamps it
+        // from the dedicated `object_seq` counter, so a peer's changed-since
+        // manifest pulls exactly the rows written since its last visit.
+        //
+        // The counter is a standalone table, NOT MAX(seq)+1: rewriting the
+        // highest-seq object would DELETE+INSERT it, dropping MAX below a
+        // caught-up peer's cursor and hiding the rewrite. A monotonic counter
+        // immune to deletes (the PG side uses a SEQUENCE for the same reason)
+        // avoids that. Existing rows are backfilled with distinct positive seqs
+        // (via rowid) so a from-zero manifest scan (seq > 0) returns them, and
+        // the counter starts above them.
+        sql: "
+            ALTER TABLE objects ADD COLUMN seq INTEGER NOT NULL DEFAULT 0;
+            UPDATE objects SET seq = rowid;
+            CREATE INDEX idx_objects_seq ON objects(seq);
+            CREATE TABLE object_seq (value INTEGER NOT NULL);
+            INSERT INTO object_seq (value) VALUES ((SELECT COALESCE(MAX(seq), 0) FROM objects));
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -464,7 +487,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 17);
+        assert_eq!(version, 18);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -514,12 +537,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 17);
+        assert_eq!(version, 18);
 
-        // Seventeen migration records
+        // Eighteen migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 17);
+        assert_eq!(count, 18);
     }
 }

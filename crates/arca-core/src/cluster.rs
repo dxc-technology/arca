@@ -19,7 +19,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::types::{
-    BucketInfo, Credential, Grant, MultipartUploadRecord, PartRecord, Team, User,
+    BucketInfo, Credential, Grant, MultipartUploadRecord, ObjectRecord, PartRecord, Team, User,
 };
 
 /// Fixed access-key id of the shared cluster credential. The matching secret is
@@ -127,6 +127,40 @@ pub enum ControlOp {
     PartUpsert { part: PartRecord },
     /// Delete a multipart upload and all its part rows (idempotent).
     MultipartDelete { upload_id: String },
+}
+
+/// Request body of `POST /cluster/v1/manifest`: a peer asks for every object
+/// row this node has written with a node-local `seq` strictly greater than
+/// `since`, up to `limit` rows. Modeled as a POST (not a `GET` with query
+/// params) so the request body stays the `UNSIGNED-PAYLOAD` the cluster signing
+/// path already uses, sidestepping canonical-query-string signing. Shared
+/// contract between the cluster client (sender) and the receive handler.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClusterManifestRequest {
+    /// Exclusive lower bound: return rows whose `seq` is strictly greater.
+    pub since: u64,
+    /// Maximum rows to return (the handler additionally clamps it).
+    pub limit: u32,
+}
+
+/// One entry in a [`ClusterManifest`]: an object row paired with the producing
+/// node's local `seq`. The requester applies `record` via
+/// [`crate::store::MetadataStore::apply_remote_object`] and advances its cursor
+/// to the batch's highest `seq`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManifestEntry {
+    pub seq: u64,
+    pub record: ObjectRecord,
+}
+
+/// Response body of `POST /cluster/v1/manifest`: the changed-since object rows
+/// (ascending `seq`) plus the cursor the requester advances to. When `entries`
+/// is empty the requester is caught up and `cursor` echoes the requested
+/// `since`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClusterManifest {
+    pub entries: Vec<ManifestEntry>,
+    pub cursor: u64,
 }
 
 /// A peer node as currently seen by this node.
@@ -438,5 +472,63 @@ mod tests {
                 "round-trip mismatch for {json}"
             );
         }
+    }
+
+    #[test]
+    fn manifest_wire_serde_roundtrip() {
+        // Request.
+        let req = ClusterManifestRequest {
+            since: 42,
+            limit: 500,
+        };
+        let back: ClusterManifestRequest =
+            serde_json::from_str(&serde_json::to_string(&req).unwrap()).unwrap();
+        assert_eq!(back.since, 42);
+        assert_eq!(back.limit, 500);
+
+        // Response with one entry + the cursor.
+        let record = ObjectRecord {
+            bucket: "b".to_string(),
+            key: "k".to_string(),
+            blob_id: crate::types::BlobId("blob-1".to_string()),
+            size: 4,
+            etag: "e".to_string(),
+            content_type: None,
+            last_modified: Utc::now(),
+            metadata: Default::default(),
+            encryption_algorithm: None,
+            encryption_key_id: None,
+            owner: "root".to_string(),
+            version_id: Some("v1".to_string()),
+            is_latest: true,
+            is_delete_marker: false,
+            retention_mode: None,
+            retain_until_date: None,
+            legal_hold_status: None,
+            storage_class: "STANDARD".to_string(),
+            checksum_algorithm: None,
+            checksum_value: None,
+            replication_status: None,
+        };
+        let manifest = ClusterManifest {
+            entries: vec![ManifestEntry { seq: 7, record }],
+            cursor: 7,
+        };
+        let json = serde_json::to_string(&manifest).unwrap();
+        let back: ClusterManifest = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.cursor, 7);
+        assert_eq!(back.entries.len(), 1);
+        assert_eq!(back.entries[0].seq, 7);
+        assert_eq!(back.entries[0].record.key, "k");
+
+        // Empty batch is valid (caller is caught up).
+        let empty = ClusterManifest {
+            entries: vec![],
+            cursor: 42,
+        };
+        let back: ClusterManifest =
+            serde_json::from_str(&serde_json::to_string(&empty).unwrap()).unwrap();
+        assert!(back.entries.is_empty());
+        assert_eq!(back.cursor, 42);
     }
 }

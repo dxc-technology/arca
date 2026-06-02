@@ -21,7 +21,10 @@ use serde::Serialize;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 
-use arca_core::cluster::{ClusterVersionDelete, ControlOp, CLUSTER_SIDECAR_HEADER};
+use arca_core::cluster::{
+    ClusterManifest, ClusterManifestRequest, ClusterVersionDelete, ControlOp, ManifestEntry,
+    CLUSTER_SIDECAR_HEADER,
+};
 use arca_core::store::SidecarMeta;
 use arca_core::types::{BlobId, ObjectRecord};
 
@@ -284,6 +287,48 @@ pub async fn receive_op(State(state): State<AppState>, body: Bytes) -> Response 
         Err(e) => err(
             StatusCode::INTERNAL_SERVER_ERROR,
             &format!("apply control op failed: {e}"),
+        ),
+    }
+}
+
+/// Upper bound on the manifest page size a peer may request, so an
+/// anti-entropy pull can never trigger an unbounded scan.
+const MANIFEST_MAX_LIMIT: u32 = 1000;
+
+/// `POST /cluster/v1/manifest` — serve this node's changed-since object manifest.
+///
+/// Body is a JSON [`ClusterManifestRequest`] (`since`, `limit`). Returns every
+/// object row with node-local `seq > since` (ascending), capped at
+/// [`MANIFEST_MAX_LIMIT`], plus the `cursor` the requester advances to. The peer
+/// anti-entropy worker loops this (advancing `since` to `cursor`) until the
+/// batch is short, applying each row via `apply_remote_object`.
+pub async fn manifest(State(state): State<AppState>, body: Bytes) -> Response {
+    if state.cluster.is_none() {
+        return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster");
+    }
+    let req: ClusterManifestRequest = match serde_json::from_slice(&body) {
+        Ok(r) => r,
+        Err(e) => {
+            return err(
+                StatusCode::BAD_REQUEST,
+                &format!("invalid manifest request json: {e}"),
+            )
+        }
+    };
+    let limit = req.limit.clamp(1, MANIFEST_MAX_LIMIT);
+    match state.metadata.list_rows_changed_since(req.since, limit).await {
+        Ok(rows) => {
+            // Empty batch → echo `since` so the caller's cursor doesn't move.
+            let cursor = rows.last().map(|(s, _)| *s).unwrap_or(req.since);
+            let entries = rows
+                .into_iter()
+                .map(|(seq, record)| ManifestEntry { seq, record })
+                .collect();
+            Json(ClusterManifest { entries, cursor }).into_response()
+        }
+        Err(e) => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("manifest failed: {e}"),
         ),
     }
 }

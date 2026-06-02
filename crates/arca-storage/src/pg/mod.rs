@@ -52,6 +52,11 @@ const MIGRATIONS: &[Migration] = &[
         description: "Add replication journal and replication_status on objects",
         sql: include_str!("migrations/0004_replication.sql"),
     },
+    Migration {
+        version: 5,
+        description: "Add node-local monotonic seq to objects (cluster anti-entropy changed-since cursor)",
+        sql: include_str!("migrations/0005_cluster_seq.sql"),
+    },
 ];
 
 impl PgStore {

@@ -17,7 +17,8 @@ use std::time::Duration;
 
 use arca_auth::{sign_outbound_request, SignOutboundInput};
 use arca_core::cluster::{
-    ClusterVersionDelete, ControlOp, CLUSTER_ACCESS_KEY, CLUSTER_REGION, CLUSTER_SIDECAR_HEADER,
+    ClusterManifest, ClusterManifestRequest, ClusterVersionDelete, ControlOp, CLUSTER_ACCESS_KEY,
+    CLUSTER_REGION, CLUSTER_SIDECAR_HEADER,
 };
 use arca_core::store::{ByteStream, SidecarMeta};
 use arca_core::types::{BlobId, ObjectRecord};
@@ -120,6 +121,29 @@ impl ClusterClient {
         self.post_json(endpoint, "/cluster/v1/op", body).await
     }
 
+    /// Pulls a peer's changed-since object manifest (`POST /cluster/v1/manifest`):
+    /// every row the peer wrote with `seq > since`, up to `limit`, plus the
+    /// cursor to advance. The anti-entropy worker loops this per peer until the
+    /// batch is short. A POST (not a query-string GET) keeps the request body
+    /// the `UNSIGNED-PAYLOAD` the signing path already uses.
+    ///
+    // Consumed by the anti-entropy worker (M4, next chunk); the manifest
+    // endpoint + wire types ship now so both sides land together and are tested.
+    #[allow(dead_code)]
+    pub async fn fetch_manifest(
+        &self,
+        endpoint: &str,
+        since: u64,
+        limit: u32,
+    ) -> Result<ClusterManifest, ClusterError> {
+        let req = ClusterManifestRequest { since, limit };
+        let body = serde_json::to_vec(&req).map_err(|e| ClusterError::Serde(e.to_string()))?;
+        let bytes = self
+            .post_json_recv(endpoint, "/cluster/v1/manifest", body)
+            .await?;
+        serde_json::from_slice(&bytes).map_err(|e| ClusterError::Serde(e.to_string()))
+    }
+
     /// Streams a blob's raw bytes + sidecar to a peer (`PUT /cluster/v1/blob/{id}`),
     /// stored verbatim under the same `blob_id`. For composite blobs (which have
     /// no physical file) pass an empty `body`; the peer writes only the sidecar.
@@ -216,13 +240,14 @@ impl ClusterClient {
         Ok((sidecar, stream))
     }
 
-    /// Signs and sends a JSON body via POST to a fixed cluster path.
-    async fn post_json(
+    /// Signs and sends a JSON body via POST to a fixed cluster path, returning
+    /// the raw `reqwest::Response` for the caller to interpret.
+    async fn send_post(
         &self,
         endpoint: &str,
         path: &str,
         body: Vec<u8>,
-    ) -> Result<(), ClusterError> {
+    ) -> Result<reqwest::Response, ClusterError> {
         let (url, host, uri_path) = cluster_target(endpoint, path)?;
         let datetime = now_iso8601();
         let headers = base_signed_headers(&host, &datetime, None, None, &self.node_id);
@@ -231,15 +256,48 @@ impl ClusterClient {
         let mut hmap = HeaderMap::new();
         push_signed_headers(&mut hmap, &headers, &auth);
 
-        let resp = self
-            .http
+        self.http
             .post(&url)
             .headers(hmap)
             .body(Body::from(body))
             .send()
             .await
-            .map_err(|e| ClusterError::Network(e.to_string()))?;
+            .map_err(|e| ClusterError::Network(e.to_string()))
+    }
+
+    /// Signs and sends a JSON body via POST, discarding the response body
+    /// (fire-and-forget ops: object/version-delete/control-plane fan-out).
+    async fn post_json(
+        &self,
+        endpoint: &str,
+        path: &str,
+        body: Vec<u8>,
+    ) -> Result<(), ClusterError> {
+        let resp = self.send_post(endpoint, path, body).await?;
         Self::check(resp).await
+    }
+
+    /// Signs and sends a JSON body via POST, returning the response body bytes
+    /// on success (request/response ops: the manifest pull).
+    // Reached only via `fetch_manifest`, itself consumed by the M4 anti-entropy
+    // worker (next chunk).
+    #[allow(dead_code)]
+    async fn post_json_recv(
+        &self,
+        endpoint: &str,
+        path: &str,
+        body: Vec<u8>,
+    ) -> Result<Vec<u8>, ClusterError> {
+        let resp = self.send_post(endpoint, path, body).await?;
+        let status = resp.status().as_u16();
+        if !(200..300).contains(&status) {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ClusterError::Http { status, body });
+        }
+        resp.bytes()
+            .await
+            .map(|b| b.to_vec())
+            .map_err(|e| ClusterError::Network(e.to_string()))
     }
 
     /// Computes the SigV4 `Authorization` header for the cluster credential.

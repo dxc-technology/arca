@@ -354,4 +354,30 @@ pub trait MetadataStore: Send + Sync {
                 .to_string(),
         ))
     }
+
+    /// Returns object rows whose node-local `seq` is strictly greater than
+    /// `since`, ordered by ascending `seq`, capped at `limit`, each paired with
+    /// its `seq`. This is the cluster anti-entropy changed-since cursor: a peer
+    /// tracks the highest `seq` it has applied from this node and asks for
+    /// everything newer.
+    ///
+    /// `seq` is a per-node monotonic write counter stamped on every local write
+    /// (including [`MetadataStore::apply_remote_object`], so reconciliation
+    /// propagates transitively A→B→C). It reflects this node's write order and
+    /// is immune to wall-clock skew, unlike `last_modified` (which is the
+    /// object's replicated logical mtime, not a per-node write order). Hard
+    /// deletes are NOT surfaced here — the row is gone — so deletes propagate
+    /// via real-time fan-out and hinted-handoff, not the manifest.
+    ///
+    /// Default implementation: unsupported (for non-clustered backends).
+    async fn list_rows_changed_since(
+        &self,
+        _since: u64,
+        _limit: u32,
+    ) -> Result<Vec<(u64, ObjectRecord)>, crate::error::ArcaError> {
+        Err(crate::error::ArcaError::Internal(
+            "list_rows_changed_since: cluster replication is not supported by this backend"
+                .to_string(),
+        ))
+    }
 }

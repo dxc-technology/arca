@@ -255,6 +255,17 @@ impl MetadataStore for CachingMetadataStore {
         self.inner.apply_remote_multipart_upload(record).await
     }
 
+    async fn list_rows_changed_since(
+        &self,
+        since: u64,
+        limit: u32,
+    ) -> Result<Vec<(u64, ObjectRecord)>, ArcaError> {
+        // Pure read of the inner store's changed-since cursor; nothing to cache.
+        // Forwarded so the default "unsupported" impl never shadows a clustered
+        // backend behind the cache.
+        self.inner.list_rows_changed_since(since, limit).await
+    }
+
     // -- Multipart upload operations (delegated) --
 
     async fn create_multipart_upload(

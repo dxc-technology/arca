@@ -1088,6 +1088,27 @@ impl MetadataStore for PgStore {
         Ok(())
     }
 
+    async fn list_rows_changed_since(
+        &self,
+        since: u64,
+        limit: u32,
+    ) -> Result<Vec<(u64, ObjectRecord)>, ArcaError> {
+        let sql = format!(
+            "SELECT {OBJECT_COLUMNS}, seq FROM objects \
+             WHERE seq > $1 ORDER BY seq ASC LIMIT $2"
+        );
+        let rows = sqlx_core::query::query(&sql)
+            .bind(since as i64)
+            .bind(limit as i64)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("list_rows_changed_since: {e}")))?;
+        Ok(rows
+            .iter()
+            .map(|row| (row.get::<i64, _>("seq") as u64, row_to_object_record(row)))
+            .collect())
+    }
+
     async fn list_object_versions(
         &self,
         bucket: &str,

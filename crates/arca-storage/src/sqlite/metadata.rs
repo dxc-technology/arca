@@ -393,10 +393,11 @@ impl MetadataStore for SqliteStore {
                         // Insert a delete marker.
                         let version_id = uuid::Uuid::new_v4().to_string();
                         let now = chrono::Utc::now();
+                        let seq = next_object_seq(&tx)?;
                         tx.execute(
-                            "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value)
-                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, 'root', ?4, 1, 1, NULL, NULL, NULL, 'STANDARD', NULL, NULL)",
-                            params![bucket, key, now.to_rfc3339(), version_id],
+                            "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq)
+                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, 'root', ?4, 1, 1, NULL, NULL, NULL, 'STANDARD', NULL, NULL, ?5)",
+                            params![bucket, key, now.to_rfc3339(), version_id, seq],
                         )?;
                         tx.commit()?;
                         // Return the delete marker so the handler can set response headers.
@@ -443,10 +444,11 @@ impl MetadataStore for SqliteStore {
                         )?;
                         // Insert delete marker with NULL version_id.
                         let now = chrono::Utc::now();
+                        let seq = next_object_seq(&tx)?;
                         tx.execute(
-                            "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value)
-                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, 'root', NULL, 1, 1, NULL, NULL, NULL, 'STANDARD', NULL, NULL)",
-                            params![bucket, key, now.to_rfc3339()],
+                            "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq)
+                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, 'root', NULL, 1, 1, NULL, NULL, NULL, 'STANDARD', NULL, NULL, ?4)",
+                            params![bucket, key, now.to_rfc3339(), seq],
                         )?;
                         tx.commit()?;
                         old_null // clean up old null-version blob (if any)
@@ -727,6 +729,37 @@ impl MetadataStore for SqliteStore {
             .map_err(|e: TrError| {
                 ArcaError::Internal(format!("apply_remote_multipart_upload: {e}"))
             })
+    }
+
+    async fn list_rows_changed_since(
+        &self,
+        since: u64,
+        limit: u32,
+    ) -> Result<Vec<(u64, ObjectRecord)>, ArcaError> {
+        self.read_conn()
+            .call(move |conn| {
+                // `seq` is appended after the OBJECT_COLUMNS set, so it reads at
+                // the index just past the record columns; row_to_object_record
+                // stays untouched.
+                let sql = format!(
+                    "SELECT {OBJECT_COLUMNS}, seq FROM objects \
+                     WHERE seq > ?1 ORDER BY seq ASC LIMIT ?2"
+                );
+                let seq_idx = OBJECT_COLUMNS.split(',').count();
+                let mut stmt = conn.prepare(&sql)?;
+                let rows = stmt.query_map(params![since as i64, limit], |row| {
+                    let record = row_to_object_record(row)?;
+                    let seq: i64 = row.get(seq_idx)?;
+                    Ok((seq as u64, record))
+                })?;
+                let mut out = Vec::new();
+                for r in rows {
+                    out.push(r?);
+                }
+                Ok(out)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("list_rows_changed_since: {e}")))
     }
 
     async fn list_object_versions(
@@ -1568,6 +1601,21 @@ fn fetch_null_version(
     }
 }
 
+/// Returns the next node-local monotonic `seq`, advancing the dedicated
+/// `object_seq` counter. Stamped on every local write — including
+/// `apply_remote_object` — so a peer's changed-since manifest pulls exactly the
+/// rows this node wrote since its last visit.
+///
+/// A standalone counter, NOT `MAX(seq) + 1`: rewriting the highest-seq object
+/// DELETEs then re-INSERTs it, which would drop `MAX(seq)` below a caught-up
+/// peer's cursor and hide the rewrite. The counter only ever increases. Monotonic
+/// without locking because the tokio-rusqlite connection serializes all writes
+/// on one thread; the caller runs this inside its transaction.
+fn next_object_seq(conn: &Connection) -> Result<i64, rusqlite::Error> {
+    conn.execute("UPDATE object_seq SET value = value + 1", [])?;
+    conn.query_row("SELECT value FROM object_seq", [], |row| row.get(0))
+}
+
 /// Inserts a new object row into the `objects` table.
 fn insert_object_row(
     conn: &Connection,
@@ -1575,9 +1623,10 @@ fn insert_object_row(
     metadata_json: &str,
 ) -> Result<(), rusqlite::Error> {
     let retain_until_str = record.retain_until_date.map(|dt| dt.to_rfc3339());
+    let seq = next_object_seq(conn)?;
     conn.execute(
-        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
         params![
             record.bucket,
             record.key,
@@ -1599,6 +1648,7 @@ fn insert_object_row(
             record.storage_class,
             record.checksum_algorithm,
             record.checksum_value,
+            seq,
         ],
     )?;
     Ok(())
@@ -1635,9 +1685,10 @@ fn insert_replicated_row(
     metadata_json: &str,
 ) -> Result<(), rusqlite::Error> {
     let retain_until_str = record.retain_until_date.map(|dt| dt.to_rfc3339());
+    let seq = next_object_seq(conn)?;
     conn.execute(
-        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status, seq)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
         params![
             record.bucket,
             record.key,
@@ -1659,6 +1710,7 @@ fn insert_replicated_row(
             record.checksum_algorithm,
             record.checksum_value,
             record.replication_status,
+            seq,
         ],
     )?;
     Ok(())
@@ -2855,5 +2907,66 @@ mod tests {
         let versions = store.list_object_versions("b", None, None, None, 100).await.unwrap();
         assert_eq!(versions.len(), 1);
         assert!(store.get_object_version("b", "k", "v1").await.unwrap().unwrap().is_latest);
+    }
+
+    #[tokio::test]
+    async fn changed_since_orders_by_seq_and_advances_cursor() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        for k in ["k1", "k2", "k3"] {
+            store.put_object(&make_record("b", k)).await.unwrap();
+        }
+
+        // From 0: all three, strictly increasing seq (the changed-since cursor).
+        let all = store.list_rows_changed_since(0, 100).await.unwrap();
+        assert_eq!(all.len(), 3);
+        let seqs: Vec<u64> = all.iter().map(|(s, _)| *s).collect();
+        assert!(seqs.windows(2).all(|w| w[0] < w[1]), "seq must ascend: {seqs:?}");
+
+        // A peer that already saw the first row asks for everything newer.
+        let after_first = store.list_rows_changed_since(seqs[0], 100).await.unwrap();
+        assert_eq!(after_first.len(), 2);
+        assert_eq!(after_first[0].0, seqs[1]);
+
+        // Overwriting k1 (unversioned) stamps a fresh, higher seq so the rewrite
+        // is re-pulled even though the peer already had the old k1.
+        store.put_object(&make_record("b", "k1")).await.unwrap();
+        let after_all = store.list_rows_changed_since(seqs[2], 100).await.unwrap();
+        assert_eq!(after_all.len(), 1, "only the rewritten k1 is newer");
+        assert_eq!(after_all[0].1.key, "k1");
+        assert!(after_all[0].0 > seqs[2]);
+    }
+
+    #[tokio::test]
+    async fn changed_since_respects_limit() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        for k in ["k1", "k2", "k3"] {
+            store.put_object(&make_record("b", k)).await.unwrap();
+        }
+        let page = store.list_rows_changed_since(0, 2).await.unwrap();
+        assert_eq!(page.len(), 2, "limit caps the batch");
+    }
+
+    #[tokio::test]
+    async fn changed_since_includes_remote_applied_rows() {
+        // apply_remote_object must also stamp seq, so a row this node learned
+        // from a peer is itself pulled by a third node's changed-since scan
+        // (transitive reconciliation A→B→C).
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        store.put_object(&make_record("b", "local")).await.unwrap();
+
+        let mut remote = make_record("b", "remote");
+        remote.version_id = Some("v-remote".to_string());
+        store.apply_remote_object(&remote).await.unwrap();
+
+        let all = store.list_rows_changed_since(0, 100).await.unwrap();
+        let keys: Vec<&str> = all.iter().map(|(_, r)| r.key.as_str()).collect();
+        assert!(keys.contains(&"remote"), "remote-applied row must carry a seq: {keys:?}");
+        // The remote row's seq is the highest (applied last).
+        let remote_seq = all.iter().find(|(_, r)| r.key == "remote").unwrap().0;
+        let local_seq = all.iter().find(|(_, r)| r.key == "local").unwrap().0;
+        assert!(remote_seq > local_seq);
     }
 }
