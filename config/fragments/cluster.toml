@@ -1,0 +1,14 @@
+# Cluster (High Availability) — Phase 29.
+#
+# This section is IDENTICAL on every node: each node derives and persists its
+# own node_id and discovers peers automatically. For local single-node dev
+# (`bin/arca start --cluster`) this yields a 1-node "available" cluster so the
+# console topology widget and the /admin/cluster endpoint can be exercised; the
+# 3-node compose (docker-compose.cluster.yml) overrides mode/discovery for real
+# quorum + multi-node testing.
+[cluster]
+enabled = true
+cluster_id = "arca-dev"
+secret = "dev-cluster-secret-change-me"
+mode = "available"
+discovery = "mdns"

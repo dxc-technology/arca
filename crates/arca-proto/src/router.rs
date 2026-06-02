@@ -75,6 +75,7 @@ pub fn build_router(state: AppState) -> Router {
     let admin_auth = Router::new()
         .route("/info", get(admin::info))
         .route("/stats", get(admin::stats))
+        .route("/cluster", get(admin::cluster))
         // Legacy credential endpoints (operate on calling user's credentials)
         .route(
             "/credentials",

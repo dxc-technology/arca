@@ -37,7 +37,7 @@ usage() {
 }
 
 usage_start() {
-    echo "Usage: bin/arca start [-d] [--build] [--dev] [--tls] [--encryption|--kms] [--per-bucket] [--postgres] [--replication] [--config <path>]"
+    echo "Usage: bin/arca start [-d] [--build] [--dev] [--tls] [--encryption|--kms] [--per-bucket] [--postgres] [--replication|--cluster] [--config <path>]"
     echo ""
     echo "Options:"
     echo "  -d              Run in background (detached)"
@@ -49,6 +49,7 @@ usage_start() {
     echo "  --per-bucket    Disable global encryption, enable per-bucket only"
     echo "                  (requires --encryption or --kms)"
     echo "  --replication   Start a second Arca instance (arca-replica on :9001)"
+    echo "  --cluster       Enable HA clustering (single-node dev cluster; mutually exclusive with --replication)"
     echo "  --postgres      Use PostgreSQL as metadata backend"
     echo "  --config <path> Use a custom config file (overrides fragments)"
     exit "${1:-0}"
@@ -72,6 +73,7 @@ cmd_start() {
     local want_per_bucket=false
     local want_postgres=false
     local want_replication=false
+    local want_cluster=false
 
     # Parse all flags first (order-independent)
     while [[ $# -gt 0 ]]; do
@@ -85,6 +87,7 @@ cmd_start() {
             --per-bucket) want_per_bucket=true; shift ;;
             --postgres)   want_postgres=true; shift ;;
             --replication) want_replication=true; shift ;;
+            --cluster)    want_cluster=true; shift ;;
             --config|-c)
                 if [[ -z "${2:-}" ]]; then
                     echo "Error: --config requires a file path" >&2
@@ -111,6 +114,10 @@ cmd_start() {
         echo "Error: --per-bucket requires --encryption or --kms" >&2
         exit 1
     fi
+    if $want_cluster && $want_replication; then
+        echo "Error: --cluster and --replication are mutually exclusive" >&2
+        exit 1
+    fi
 
     if $want_tls; then enable_tls; fi
     if $want_encryption; then
@@ -123,6 +130,7 @@ cmd_start() {
     fi
     if $want_postgres; then enable_postgres; fi
     if $want_replication; then enable_replication; fi
+    if $want_cluster; then enable_cluster; fi
 
     # Handle custom config: copy to .generated.toml, skip fragment concatenation
     if [[ -n "$custom_config" ]]; then

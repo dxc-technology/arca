@@ -7,6 +7,7 @@ export function dashboardView() {
     health: 'unknown',
     info: {},
     stats: {},
+    cluster: { enabled: false },
     bucketSizes: [],
     ringSegments: [],
     ringColors,
@@ -29,6 +30,7 @@ export function dashboardView() {
 
       try { this.info = await api.adminGet('/info'); } catch {}
       try { this.stats = await api.adminGet('/stats'); } catch {}
+      try { this.cluster = await api.adminGet('/cluster'); } catch { this.cluster = { enabled: false }; }
 
       // Get per-bucket sizes via ListBuckets + ListObjects
       try {
@@ -104,6 +106,20 @@ export function dashboardView() {
       }
       const totalLabel = formatBytes(this.stats.total_size_bytes || 0);
       return `<svg viewBox="0 0 200 200" class="w-48 h-48">${circles}<text x="100" y="95" text-anchor="middle" fill="#e2e8f0" font-size="16" font-weight="600" font-family="DM Sans, system-ui">${totalLabel}</text><text x="100" y="115" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="DM Sans, system-ui">Total</text></svg>`;
+    },
+
+    /// Compact "Ns/Nm/Nh/Nd ago" for a node's last health contact.
+    relativeTime(iso) {
+      if (!iso) return '—';
+      const then = new Date(iso).getTime();
+      if (isNaN(then)) return '—';
+      const s = Math.max(0, Math.floor((Date.now() - then) / 1000));
+      if (s < 60) return s + 's ago';
+      const m = Math.floor(s / 60);
+      if (m < 60) return m + 'm ago';
+      const h = Math.floor(m / 60);
+      if (h < 24) return h + 'h ago';
+      return Math.floor(h / 24) + 'd ago';
     },
 
     formatBytes,

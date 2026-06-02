@@ -40,6 +40,7 @@ _HAS_CONNECTOR_SYSLOG=false
 _HAS_CONNECTOR_SMTP=false
 _HAS_CONNECTOR_GRPC=false
 _HAS_REPLICATION=false
+_HAS_CLUSTER=false
 
 # --- Feature registration ---
 
@@ -191,6 +192,12 @@ enable_replication() {
     if $_HAS_REPLICATION; then return; fi
     _HAS_REPLICATION=true
     _FEATURES+=(replication)
+}
+
+enable_cluster() {
+    if $_HAS_CLUSTER; then return; fi
+    _HAS_CLUSTER=true
+    _FEATURES+=(cluster)
 }
 
 # --- Config generation ---
@@ -489,6 +496,7 @@ load_env() {
             connector-smtp)         enable_connector_smtp ;;
             connector-grpc)         enable_connector_grpc ;;
             replication)            enable_replication ;;
+            cluster)                enable_cluster ;;
             custom)                 _FEATURES+=(custom) ;;
         esac
     done

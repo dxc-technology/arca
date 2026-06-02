@@ -164,6 +164,112 @@ pub async fn health(State(state): State<AppState>, Query(q): Query<HealthQuery>)
     Json(HealthResponse { status: "ok" }).into_response()
 }
 
+/// One node in the `GET /admin/cluster` topology view.
+#[derive(Serialize)]
+struct ClusterNodeView {
+    node_id: String,
+    /// Peer base URL; `null` for the local node (its own endpoint is not tracked).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    endpoint: Option<String>,
+    alive: bool,
+    /// Last successful health contact (RFC3339); `null` if never / local node.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_seen: Option<String>,
+    /// True for the node serving this request.
+    local: bool,
+}
+
+/// Console-friendly cluster topology for `GET /admin/cluster`. `enabled` is
+/// false on a single-node (non-clustered) deployment, in which case the rest is
+/// omitted.
+#[derive(Serialize)]
+struct ClusterAdminResponse {
+    enabled: bool,
+    /// Consistency mode: `"quorum"` (majority required to write) or
+    /// `"available"` (always writable, best-effort replication).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mode: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    node_id: Option<String>,
+    /// Durable copies required to ACK a write (quorum mode only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    write_quorum: Option<u32>,
+    /// Whether writes can currently be acknowledged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    has_write_quorum: Option<bool>,
+    /// Live nodes (including self).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    live_node_count: Option<usize>,
+    /// Total known nodes (including self).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    node_count: Option<usize>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    nodes: Vec<ClusterNodeView>,
+}
+
+/// GET /admin/cluster — cluster topology + consistency mode for the console.
+///
+/// Returns `{"enabled": false}` on a single-node deployment, otherwise the mode
+/// (quorum/available), write-quorum status, and the full node list (self first,
+/// then peers) with per-node liveness — the data the console topology widget
+/// renders with status colours/icons.
+pub async fn cluster(State(state): State<AppState>) -> Response {
+    let snap = match state.cluster.as_ref() {
+        Some(c) => c.snapshot(),
+        None => {
+            return Json(ClusterAdminResponse {
+                enabled: false,
+                mode: None,
+                node_id: None,
+                write_quorum: None,
+                has_write_quorum: None,
+                live_node_count: None,
+                node_count: None,
+                nodes: Vec::new(),
+            })
+            .into_response()
+        }
+    };
+
+    let mode = if snap.write_quorum.is_some() {
+        "quorum"
+    } else {
+        "available"
+    };
+
+    // Self first (always live: it is serving this request), then peers.
+    let mut nodes: Vec<ClusterNodeView> = Vec::with_capacity(snap.peers.len() + 1);
+    nodes.push(ClusterNodeView {
+        node_id: snap.node_id.clone(),
+        endpoint: None,
+        alive: true,
+        last_seen: None,
+        local: true,
+    });
+    for p in &snap.peers {
+        nodes.push(ClusterNodeView {
+            node_id: p.node_id.clone(),
+            endpoint: Some(p.endpoint.clone()),
+            alive: p.alive,
+            last_seen: p.last_seen.map(|t| t.to_rfc3339()),
+            local: false,
+        });
+    }
+    let node_count = nodes.len();
+
+    Json(ClusterAdminResponse {
+        enabled: true,
+        mode: Some(mode),
+        node_id: Some(snap.node_id),
+        write_quorum: snap.write_quorum,
+        has_write_quorum: Some(snap.has_write_quorum),
+        live_node_count: Some(snap.live_node_count),
+        node_count: Some(node_count),
+        nodes,
+    })
+    .into_response()
+}
+
 /// GET /admin/metrics — Prometheus text exposition format (unauthenticated).
 pub async fn prometheus_metrics(State(state): State<AppState>) -> Response {
     let (bucket_count, object_count, total_size_bytes) =
