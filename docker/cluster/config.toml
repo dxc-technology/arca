@@ -1,0 +1,28 @@
+# 3-node HA cluster config — IDENTICAL on every node (the symmetry invariant).
+#
+# Each node derives and persists its own node_id in its data volume and reaches
+# peers via the static seed list (the three service names). Static discovery is
+# used instead of mDNS because Docker's bridge network does not pass multicast.
+# A node ignores its own entry in the seeds (it recognises its own node_id in
+# the health response).
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+
+[cluster]
+enabled = true
+cluster_id = "arca-cluster"
+# Shared secret authenticating inter-node /cluster/v1/* requests. DEV value —
+# change for any real deployment.
+secret = "dev-cluster-secret-change-me"
+# CP policy: a write needs a majority (2 of 3) of live nodes to be acknowledged.
+mode = "quorum"
+cluster_size = 3
+discovery = "static"
+seeds = ["arca-1:9000", "arca-2:9000", "arca-3:9000"]
+# Tighter intervals than the defaults for fast convergence in tests/demos.
+health_interval_seconds = 3
+anti_entropy_interval_seconds = 5

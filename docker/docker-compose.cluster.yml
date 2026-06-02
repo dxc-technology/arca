@@ -1,0 +1,86 @@
+# Standalone 3-node Arca HA cluster for integration tests and local demos.
+#
+# Run via `bin/cluster up` (not `bin/arca`, which manages the single-node dev
+# flow). Three symmetric nodes (arca-1/2/3) share one identical cluster config
+# and the same root credentials + cluster secret; each has its own data volume.
+# HAProxy fronts them on :9000 with a /admin/health check; the console talks to
+# the load balancer, exactly like a real deployment.
+#
+# Node ports 9001/9002/9003 are also exposed for direct per-node inspection
+# (e.g. GET /admin/cluster on a specific node, or killing one mid-test).
+
+x-arca-node: &arca-node
+  image: arca
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile
+    target: ${BUILD_TARGET:-production}
+  # NOTE: each node overrides `volumes` (to add its own data volume); a YAML
+  # merge does not concatenate lists, so the config mount is repeated per node.
+  environment:
+    - ARCA_LOG=${ARCA_LOG:-info}
+    - ARCA_ROOT_ACCESS_KEY=${ARCA_ROOT_ACCESS_KEY:-AKIAIOSFODNN7EXAMPLE}
+    - ARCA_ROOT_SECRET_KEY=${ARCA_ROOT_SECRET_KEY:-wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY}
+  ulimits:
+    nofile:
+      soft: 65535
+      hard: 65535
+  sysctls:
+    net.core.somaxconn: "4096"
+
+services:
+  arca-1:
+    <<: *arca-node
+    volumes:
+      - arca-1-data:/data
+      - ../docker/cluster/config.toml:/etc/arca/config.toml:ro
+    ports:
+      - "${ARCA_NODE1_HOST_PORT:-9001}:9000"
+
+  arca-2:
+    <<: *arca-node
+    volumes:
+      - arca-2-data:/data
+      - ../docker/cluster/config.toml:/etc/arca/config.toml:ro
+    ports:
+      - "${ARCA_NODE2_HOST_PORT:-9002}:9000"
+
+  arca-3:
+    <<: *arca-node
+    volumes:
+      - arca-3-data:/data
+      - ../docker/cluster/config.toml:/etc/arca/config.toml:ro
+    ports:
+      - "${ARCA_NODE3_HOST_PORT:-9003}:9000"
+
+  # Load balancer: single entry point on :9000, round-robin over live nodes.
+  arca-lb:
+    image: haproxy
+    volumes:
+      - ../docker/cluster/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    ports:
+      - "${ARCA_HOST_PORT:-9000}:9000"
+    depends_on:
+      - arca-1
+      - arca-2
+      - arca-3
+
+  # Web console, pointed at the load balancer (like a real deployment).
+  console:
+    image: arca-console
+    build:
+      context: ../console
+      dockerfile: Dockerfile
+    ports:
+      - "${CONSOLE_HOST_PORT:-9080}:80"
+    environment:
+      - ARCA_ENDPOINT=${ARCA_CONSOLE_ENDPOINT:-http://localhost:9000}
+    depends_on:
+      - arca-lb
+    profiles:
+      - console
+
+volumes:
+  arca-1-data:
+  arca-2-data:
+  arca-3-data:

@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Manage a standalone 3-node Arca HA cluster (arca-1/2/3 + HAProxy + console)
+# for integration tests and local demos. Independent of `bin/arca` (which runs
+# the single-node dev flow): this uses its own compose project so the two never
+# clash.
+#
+# Usage:
+#   bin/cluster up [-d] [--build] [--dev]   Start the 3-node cluster + LB + console
+#   bin/cluster down [-v]                    Stop it (-v also removes data volumes)
+#   bin/cluster status                       Container + per-node cluster status
+#   bin/cluster logs [-f] [service]          Show logs (optionally one service)
+#   bin/cluster node-stop <1|2|3>            Stop one node (simulate a failure)
+#   bin/cluster node-start <1|2|3>           Restart a stopped node
+#
+# Endpoints: load balancer http://localhost:9000, console http://localhost:9080,
+# individual nodes http://localhost:9001|9002|9003.
+
+cd "$(git rev-parse --show-toplevel)"
+
+PROJECT="arca-cluster"
+COMPOSE_FILE="docker/docker-compose.cluster.yml"
+COMPOSE="docker compose -p $PROJECT -f $COMPOSE_FILE --profile console"
+
+usage() {
+    echo "Usage: bin/cluster <command> [options]"
+    echo ""
+    echo "Commands:"
+    echo "  up [-d] [--build] [--dev]   Start the 3-node cluster + LB + console"
+    echo "  down [-v]                   Stop it (-v also removes data volumes)"
+    echo "  status                      Container + per-node cluster status"
+    echo "  logs [-f] [service]         Show logs"
+    echo "  node-stop <1|2|3>           Stop one node (simulate a failure)"
+    echo "  node-start <1|2|3>          Restart a stopped node"
+    echo ""
+    echo "Endpoints: LB http://localhost:9000  console http://localhost:9080"
+    echo "           nodes http://localhost:9001|9002|9003"
+    exit "${1:-0}"
+}
+
+cmd_up() {
+    local detach=false build=false
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -d)       detach=true; shift ;;
+            --build)  build=true; shift ;;
+            --dev)    export BUILD_TARGET=development; shift ;;
+            -h|--help) usage 0 ;;
+            *)        echo "Error: unknown option '$1' for 'up'" >&2; usage 1 ;;
+        esac
+    done
+
+    if $build; then
+        $COMPOSE build
+    fi
+
+    local args=()
+    $detach && args+=("-d")
+    $COMPOSE up "${args[@]+"${args[@]}"}"
+}
+
+cmd_down() {
+    local volumes=false
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -v)  volumes=true; shift ;;
+            -h|--help) usage 0 ;;
+            *)   echo "Error: unknown option '$1' for 'down'" >&2; usage 1 ;;
+        esac
+    done
+    local args=()
+    $volumes && args+=("-v")
+    $COMPOSE down "${args[@]+"${args[@]}"}"
+}
+
+cmd_status() {
+    $COMPOSE ps
+    echo ""
+    echo "Per-node cluster view (/admin/health?verbose=1):"
+    for n in 1 2 3; do
+        local port=$((9000 + n))
+        printf '  arca-%s (:%s): ' "$n" "$port"
+        if out=$(curl -fsS "http://localhost:${port}/admin/health?verbose=1" 2>/dev/null); then
+            echo "$out" | jq -c '{status, quorum: .cluster.has_write_quorum, live: .cluster.live_node_count}' 2>/dev/null || echo "$out"
+        else
+            echo "unreachable"
+        fi
+    done
+}
+
+cmd_logs() {
+    local args=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -f)  args+=("-f"); shift ;;
+            -h|--help) usage 0 ;;
+            *)   args+=("$1"); shift ;;
+        esac
+    done
+    $COMPOSE logs "${args[@]+"${args[@]}"}"
+}
+
+cmd_node() {
+    local action="$1"; shift
+    local n="${1:-}"
+    case "$n" in
+        1|2|3) ;;
+        *) echo "Error: node must be 1, 2 or 3" >&2; exit 1 ;;
+    esac
+    $COMPOSE "$action" "arca-${n}"
+}
+
+[[ $# -lt 1 ]] && usage 0
+command="$1"; shift
+case "$command" in
+    up)         cmd_up "$@" ;;
+    down)       cmd_down "$@" ;;
+    status)     cmd_status ;;
+    logs)       cmd_logs "$@" ;;
+    node-stop)  cmd_node stop "$@" ;;
+    node-start) cmd_node start "$@" ;;
+    -h|--help)  usage 0 ;;
+    *)          echo "Error: unknown command '$command'" >&2; usage 1 ;;
+esac
