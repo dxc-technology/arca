@@ -19,24 +19,27 @@
 //! - **Tombstone GC**: drop object AND control tombstones older than the
 //!   configured grace window (which must exceed the longest expected node
 //!   downtime).
+//! - **Blobs** (slower cadence): proactively REPAIR blob bytes missing for local
+//!   object rows (fetch from a peer), then GC orphan blob files no live row /
+//!   in-progress part / non-orphan composite sidecar references and older than
+//!   the grace. The GC is composite-aware (a composite's parts are kept alive by
+//!   its sidecar) and fail-safe (any enumeration error skips the pass).
 //!
 //! The changed-since manifest is incremental and indexed by `seq`, so this can
 //! run frequently and cheaply — that is why Arca relies on frequent anti-entropy
 //! plus read-repair instead of the hinted-handoff machinery large clusters need
 //! (their reconciliation is expensive and runs rarely).
 //!
-//! Blob GC/repair is layered onto this same worker in a following chunk.
-//!
 //! The high-water mark is per-peer and **in-memory**: this node's view of how
 //! far it has consumed each peer's `seq`. It is node-local and must never be
 //! replicated (it is meaningless elsewhere). On restart it resets to 0, costing
 //! one extra full manifest pass per peer — idempotent, then incremental.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
-use arca_core::cluster::{plan_control_merge, ClusterState, ManifestEntry};
+use arca_core::cluster::{plan_blob_gc, plan_control_merge, ClusterState, ManifestEntry};
 use arca_core::store::{ControlSnapshotStore, ControlTombstoneStore, MetadataStore, RawBlobOps};
 use arca_core::types::BlobId;
 use chrono::Utc;
@@ -47,11 +50,11 @@ use crate::worker::BackgroundWorker;
 /// Object manifest page size per request (the server clamps to its own max).
 const MANIFEST_BATCH: u32 = 500;
 
-/// Run the proactive blob repair scan every N anti-entropy ticks. It is an
-/// O(referenced) stat sweep, so it runs on a slower cadence than the cheap
+/// Run the blob scan (proactive repair + orphan GC) every N anti-entropy ticks.
+/// It is an O(blobs) sweep, so it runs on a slower cadence than the cheap
 /// incremental object/control reconcile (lazy read-repair on GET still covers
 /// on-access correctness between sweeps).
-const BLOB_REPAIR_EVERY_TICKS: u64 = 10;
+const BLOB_SCAN_EVERY_TICKS: u64 = 10;
 
 /// Spawns the anti-entropy worker. It runs for the lifetime of the returned
 /// handle, which the caller keeps alive.
@@ -130,11 +133,14 @@ pub fn spawn(
                 Err(e) => tracing::debug!(error = %e, "anti-entropy: control tombstone GC failed"),
             }
 
-            // 4) Blob repair (slower cadence): proactively fetch bytes for rows
-            // whose blob is missing locally, so durability does not wait for a
-            // GET to trigger the lazy read-repair.
-            if tick % BLOB_REPAIR_EVERY_TICKS == 0 {
+            // 4) Blob scan (slower cadence): proactively fetch bytes for rows
+            // whose blob is missing locally (so durability does not wait for a
+            // GET to trigger the lazy read-repair), then reclaim orphan blobs.
+            if tick % BLOB_SCAN_EVERY_TICKS == 0 {
                 repair_blobs(&client, metadata.as_ref(), raw.as_ref(), &cluster).await;
+                // Reuse the tombstone grace: like a tombstone, an orphan blob
+                // must outlive the max reconcile lag before it is safe to reclaim.
+                gc_blobs(metadata.as_ref(), raw.as_ref(), tombstone_grace).await;
             }
         }
     });
@@ -227,6 +233,75 @@ async fn fetch_and_store(
         }
     }
     false
+}
+
+/// Reclaims orphan blob files: those on disk that no live object row, in-progress
+/// part, or non-orphan composite sidecar references, AND that are older than the
+/// grace window. Composite-aware (data-loss guard): a composite's part blobs are
+/// kept alive only while the composite blob is still metadata-referenced.
+///
+/// Fail-safe: if ANY enumeration (referenced ids, sidecar list, a sidecar read,
+/// the on-disk list) fails, the whole pass is skipped — GC never deletes on a
+/// partially-computed referenced set.
+async fn gc_blobs(metadata: &dyn MetadataStore, raw: &dyn RawBlobOps, grace: Duration) {
+    // 1) Blobs referenced by metadata (live object rows + in-progress parts).
+    let mut referenced: HashSet<BlobId> = match metadata.list_referenced_blob_ids().await {
+        Ok(v) => v.into_iter().collect(),
+        Err(e) => {
+            tracing::debug!(error = %e, "blob GC: listing referenced blobs failed; skipping");
+            return;
+        }
+    };
+
+    // 2) Add the part blobs of every NON-orphan composite sidecar (a composite is
+    // non-orphan iff its own blob is still metadata-referenced). Parts of an
+    // orphaned composite (its object row gone) are intentionally left reclaimable.
+    let sidecar_ids = match raw.list_sidecar_ids().await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::debug!(error = %e, "blob GC: listing sidecars failed; skipping");
+            return;
+        }
+    };
+    for sid in &sidecar_ids {
+        match raw.read_sidecar(sid).await {
+            Ok(Some(meta)) => {
+                if let Some(parts) = meta.composite {
+                    if referenced.contains(sid) {
+                        for p in parts {
+                            referenced.insert(p.blob_id);
+                        }
+                    }
+                }
+            }
+            Ok(None) => {}
+            Err(e) => {
+                // A sidecar we cannot read might keep parts alive → do not risk it.
+                tracing::debug!(error = %e, "blob GC: sidecar read failed; skipping");
+                return;
+            }
+        }
+    }
+
+    // 3) On-disk blob files → reclaim the unreferenced, grace-expired ones.
+    let on_disk = match raw.list_blob_ids().await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::debug!(error = %e, "blob GC: listing on-disk blobs failed; skipping");
+            return;
+        }
+    };
+    let deletable = plan_blob_gc(&on_disk, &referenced, SystemTime::now(), grace);
+    let mut reclaimed = 0u64;
+    for id in &deletable {
+        match raw.delete_blob_file(id).await {
+            Ok(()) => reclaimed += 1,
+            Err(e) => tracing::warn!(error = %e, blob_id = %id.0, "blob GC: delete failed"),
+        }
+    }
+    if reclaimed > 0 {
+        tracing::info!(reclaimed, "blob GC: reclaimed orphan blobs");
+    }
 }
 
 /// Reconciles this node's control plane with a peer: pull the peer's snapshot,
@@ -387,5 +462,112 @@ mod tests {
             m.get_object("b", "k").await.unwrap().is_none(),
             "the tombstone must win and the object read as deleted"
         );
+    }
+
+    // --- blob GC (composite data-loss guard) --------------------------------
+
+    fn one_chunk(data: &[u8]) -> arca_core::store::ByteStream {
+        let b = bytes::Bytes::copy_from_slice(data);
+        Box::pin(futures_util::stream::once(
+            async move { Ok::<_, std::io::Error>(b) },
+        ))
+    }
+
+    fn plain_sidecar() -> arca_core::store::SidecarMeta {
+        arca_core::store::SidecarMeta {
+            bucket: "b".to_string(),
+            key: "k".to_string(),
+            size: 1,
+            etag: "e".to_string(),
+            content_type: None,
+            last_modified: "2026-01-01T00:00:00Z".to_string(),
+            metadata: Default::default(),
+            encryption: None,
+            compression: None,
+            version_id: None,
+            composite: None,
+        }
+    }
+
+    fn obj_with_blob(key: &str, blob_id: &str) -> ObjectRecord {
+        let mut r = rec(key, 1000);
+        r.blob_id = BlobId(blob_id.to_string());
+        r
+    }
+
+    #[tokio::test]
+    async fn gc_reclaims_orphans_and_protects_composite_parts() {
+        use arca_core::store::{CompositePart, RawBlobOps, SidecarMeta};
+
+        let dir = tempfile::tempdir().unwrap();
+        let fs = arca_storage::FsBlobStore::new(dir.path().join("blobs"), 2)
+            .await
+            .unwrap();
+        let m = store().await;
+        m.create_bucket("b").await.unwrap();
+
+        // Referenced normal blob.
+        fs.write_raw(&BlobId("ref1".into()), one_chunk(b"x")).await.unwrap();
+        RawBlobOps::write_sidecar(&fs, &BlobId("ref1".into()), &plain_sidecar()).await.unwrap();
+        m.put_object(&obj_with_blob("k1", "ref1")).await.unwrap();
+
+        // Orphan normal blob (no object row).
+        fs.write_raw(&BlobId("orphan1".into()), one_chunk(b"y")).await.unwrap();
+        RawBlobOps::write_sidecar(&fs, &BlobId("orphan1".into()), &plain_sidecar()).await.unwrap();
+
+        // Live composite: part p1 kept alive by comp1 (which has an object row).
+        fs.write_raw(&BlobId("p1".into()), one_chunk(b"z")).await.unwrap();
+        let comp1 = SidecarMeta {
+            composite: Some(vec![CompositePart {
+                blob_id: BlobId("p1".into()),
+                plaintext_size: 1,
+                plaintext_etag: "e".into(),
+                encryption: None,
+            }]),
+            ..plain_sidecar()
+        };
+        RawBlobOps::write_sidecar(&fs, &BlobId("comp1".into()), &comp1).await.unwrap();
+        m.put_object(&obj_with_blob("k2", "comp1")).await.unwrap();
+
+        // Orphan composite: part p2 kept alive ONLY by comp2, which has no row.
+        fs.write_raw(&BlobId("p2".into()), one_chunk(b"w")).await.unwrap();
+        let comp2 = SidecarMeta {
+            composite: Some(vec![CompositePart {
+                blob_id: BlobId("p2".into()),
+                plaintext_size: 1,
+                plaintext_etag: "e".into(),
+                encryption: None,
+            }]),
+            ..plain_sidecar()
+        };
+        RawBlobOps::write_sidecar(&fs, &BlobId("comp2".into()), &comp2).await.unwrap();
+
+        // grace = 0 so freshly-written blobs are immediately eligible.
+        gc_blobs(m.as_ref(), &fs, Duration::ZERO).await;
+
+        assert!(fs.exists(&BlobId("ref1".into())).await.unwrap(), "referenced blob kept");
+        assert!(!fs.exists(&BlobId("orphan1".into())).await.unwrap(), "orphan blob reclaimed");
+        assert!(fs.exists(&BlobId("p1".into())).await.unwrap(), "live composite part kept");
+        assert!(
+            !fs.exists(&BlobId("p2".into())).await.unwrap(),
+            "orphan composite's part reclaimed"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_grace_protects_young_orphans() {
+        use arca_core::store::RawBlobOps;
+        let dir = tempfile::tempdir().unwrap();
+        let fs = arca_storage::FsBlobStore::new(dir.path().join("blobs"), 2)
+            .await
+            .unwrap();
+        let m = store().await;
+
+        fs.write_raw(&BlobId("young".into()), one_chunk(b"x")).await.unwrap();
+        RawBlobOps::write_sidecar(&fs, &BlobId("young".into()), &plain_sidecar()).await.unwrap();
+
+        // Large grace: the just-written orphan is too young to reclaim.
+        gc_blobs(m.as_ref(), &fs, Duration::from_secs(3600)).await;
+        assert!(fs.exists(&BlobId("young".into())).await.unwrap());
     }
 }

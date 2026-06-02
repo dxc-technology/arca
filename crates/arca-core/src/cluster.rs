@@ -23,7 +23,8 @@ use crate::store::control_tombstone::{
     TOMBSTONE_USER,
 };
 use crate::types::{
-    BucketInfo, Credential, Grant, MultipartUploadRecord, ObjectRecord, PartRecord, Team, User,
+    BlobId, BucketInfo, Credential, Grant, MultipartUploadRecord, ObjectRecord, PartRecord, Team,
+    User,
 };
 
 /// Fixed access-key id of the shared cluster credential. The matching secret is
@@ -495,6 +496,35 @@ pub fn plan_control_merge(local: &ControlSnapshot, remote: &ControlSnapshot) -> 
     }
 
     plan
+}
+
+/// Selects on-disk blob files safe to reclaim: those NOT referenced AND older
+/// than `grace`. The grace protects freshly-written blobs whose object row has
+/// not yet reconciled to this node (it must exceed the max reconcile lag /
+/// downtime, like the tombstone grace).
+///
+/// DATA-LOSS GUARD: the caller MUST build `referenced` as the union of (a) the
+/// metadata-referenced blob_ids ([`crate::store::MetadataStore::list_referenced_blob_ids`])
+/// and (b) the part blob_ids of every composite sidecar whose composite blob is
+/// still metadata-referenced. Composite-completed multipart parts are kept alive
+/// only by their composite sidecar, so omitting (b) would delete live parts.
+pub fn plan_blob_gc(
+    on_disk: &[(BlobId, std::time::SystemTime)],
+    referenced: &std::collections::HashSet<BlobId>,
+    now: std::time::SystemTime,
+    grace: std::time::Duration,
+) -> Vec<BlobId> {
+    on_disk
+        .iter()
+        .filter(|(id, mtime)| {
+            !referenced.contains(id)
+                && now
+                    .duration_since(*mtime)
+                    .map(|age| age >= grace)
+                    .unwrap_or(false)
+        })
+        .map(|(id, _)| id.clone())
+        .collect()
 }
 
 /// Pushes the tombstone adopt/clear actions of a resolved key into the plan.
@@ -1004,6 +1034,39 @@ mod tests {
         // The stale remote credential must NOT be pulled in.
         assert!(plan.upsert_credentials.is_empty());
         assert!(plan.delete_credentials.is_empty());
+    }
+
+    // --- plan_blob_gc -------------------------------------------------------
+
+    #[test]
+    fn blob_gc_reclaims_old_unreferenced_only() {
+        use std::collections::HashSet;
+        use std::time::{Duration, SystemTime};
+
+        let now = SystemTime::now();
+        let old = now - Duration::from_secs(3600);
+        let young = now - Duration::from_secs(1);
+        let grace = Duration::from_secs(60);
+
+        let on_disk = vec![
+            (BlobId("orphan-old".to_string()), old),    // unreferenced + old → GC
+            (BlobId("orphan-young".to_string()), young), // unreferenced but young → kept
+            (BlobId("live-old".to_string()), old),       // referenced → kept
+        ];
+        let referenced: HashSet<BlobId> = [BlobId("live-old".to_string())].into_iter().collect();
+
+        let plan = plan_blob_gc(&on_disk, &referenced, now, grace);
+        assert_eq!(plan, vec![BlobId("orphan-old".to_string())]);
+    }
+
+    #[test]
+    fn blob_gc_empty_when_all_referenced() {
+        use std::collections::HashSet;
+        use std::time::{Duration, SystemTime};
+        let now = SystemTime::now();
+        let on_disk = vec![(BlobId("a".to_string()), now - Duration::from_secs(10_000))];
+        let referenced: HashSet<BlobId> = [BlobId("a".to_string())].into_iter().collect();
+        assert!(plan_blob_gc(&on_disk, &referenced, now, Duration::from_secs(60)).is_empty());
     }
 
     #[test]

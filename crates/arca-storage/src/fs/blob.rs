@@ -151,6 +151,40 @@ impl FsBlobStore {
         }
     }
 
+    /// Lists every physical blob file on disk (excluding sidecars and tmp files),
+    /// each with its last-modified time. For the cluster blob GC scan.
+    pub async fn list_blob_files(
+        &self,
+    ) -> Result<Vec<(BlobId, std::time::SystemTime)>, ArcaError> {
+        let files = walk_files(self.base_dir.clone()).await?;
+        Ok(files
+            .into_iter()
+            .filter(|(n, _)| !n.ends_with(".meta") && !n.ends_with(".tmp"))
+            .map(|(n, t)| (BlobId(n), t))
+            .collect())
+    }
+
+    /// Lists the blob ids of every sidecar (`.meta`) on disk.
+    pub async fn list_sidecar_files(&self) -> Result<Vec<BlobId>, ArcaError> {
+        let files = walk_files(self.base_dir.clone()).await?;
+        Ok(files
+            .into_iter()
+            .filter_map(|(n, _)| n.strip_suffix(".meta").map(|s| BlobId(s.to_string())))
+            .collect())
+    }
+
+    /// Deletes one physical blob file and its sidecar (no composite cascade).
+    pub async fn delete_blob_file_raw(&self, blob_id: &BlobId) -> Result<(), ArcaError> {
+        for path in [self.blob_path(blob_id), self.sidecar_path(blob_id)] {
+            match fs::remove_file(&path).await {
+                Ok(()) => {}
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                Err(e) => return Err(ArcaError::Internal(format!("delete_blob_file: {e}"))),
+            }
+        }
+        Ok(())
+    }
+
     /// Reads and parses the sidecar for a blob. Returns `Ok(None)` if absent.
     async fn read_sidecar(&self, blob_id: &BlobId) -> Result<Option<SidecarMeta>, ArcaError> {
         let path = self.sidecar_path(blob_id);
@@ -624,6 +658,59 @@ impl arca_core::store::RawBlobOps for FsBlobStore {
     async fn read_sidecar(&self, blob_id: &BlobId) -> Result<Option<SidecarMeta>, ArcaError> {
         FsBlobStore::read_sidecar(self, blob_id).await
     }
+
+    async fn list_blob_ids(&self) -> Result<Vec<(BlobId, std::time::SystemTime)>, ArcaError> {
+        FsBlobStore::list_blob_files(self).await
+    }
+
+    async fn list_sidecar_ids(&self) -> Result<Vec<BlobId>, ArcaError> {
+        FsBlobStore::list_sidecar_files(self).await
+    }
+
+    async fn delete_blob_file(&self, blob_id: &BlobId) -> Result<(), ArcaError> {
+        FsBlobStore::delete_blob_file_raw(self, blob_id).await
+    }
+}
+
+/// Recursively collects every regular file under `dir` as `(file_name, mtime)`.
+/// Errors reading a subdirectory abort the walk (the GC caller treats a failed
+/// enumeration as "skip this cycle", never as "nothing to keep").
+fn walk_files(
+    dir: PathBuf,
+) -> std::pin::Pin<
+    Box<dyn std::future::Future<Output = Result<Vec<(String, std::time::SystemTime)>, ArcaError>> + Send>,
+> {
+    Box::pin(async move {
+        let mut out = Vec::new();
+        let mut rd = match fs::read_dir(&dir).await {
+            Ok(rd) => rd,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(out),
+            Err(e) => return Err(ArcaError::Internal(format!("read_dir {dir:?}: {e}"))),
+        };
+        while let Some(entry) = rd
+            .next_entry()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("read_dir entry: {e}")))?
+        {
+            let ft = entry
+                .file_type()
+                .await
+                .map_err(|e| ArcaError::Internal(format!("file_type: {e}")))?;
+            if ft.is_dir() {
+                out.extend(walk_files(entry.path()).await?);
+            } else if ft.is_file() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                let mtime = entry
+                    .metadata()
+                    .await
+                    .ok()
+                    .and_then(|m| m.modified().ok())
+                    .unwrap_or_else(std::time::SystemTime::now);
+                out.push((name, mtime));
+            }
+        }
+        Ok(out)
+    })
 }
 
 /// Maps a `ReaderStream<R>` (which yields `Result<Bytes, io::Error>`) to a `ByteStream`.

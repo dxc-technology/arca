@@ -461,4 +461,22 @@ pub trait RawBlobOps: Send + Sync {
         &self,
         blob_id: &BlobId,
     ) -> Result<Option<SidecarMeta>, crate::error::ArcaError>;
+
+    /// Lists every physical blob FILE on disk (not sidecars), each with its last
+    /// modification time. Used by the cluster blob GC scan to find reclaim
+    /// candidates (and to grace-protect freshly-written blobs). Composite blobs
+    /// have no file, so they never appear here.
+    async fn list_blob_ids(
+        &self,
+    ) -> Result<Vec<(BlobId, std::time::SystemTime)>, crate::error::ArcaError>;
+
+    /// Lists the blob ids of every sidecar (`.meta`) on disk. The GC reads each
+    /// to discover composite blobs and the part blob_ids they keep alive.
+    async fn list_sidecar_ids(&self) -> Result<Vec<BlobId>, crate::error::ArcaError>;
+
+    /// Deletes a single physical blob file and its sidecar verbatim. Unlike
+    /// [`BlobStore::delete`] this does NOT cascade into composite parts: the GC
+    /// decides reclaim per file from a fully-computed referenced set, so a
+    /// cascade here could drop a part still referenced elsewhere.
+    async fn delete_blob_file(&self, blob_id: &BlobId) -> Result<(), crate::error::ArcaError>;
 }
