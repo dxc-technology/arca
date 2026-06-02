@@ -275,6 +275,12 @@ impl MetadataStore for CachingMetadataStore {
         self.inner.purge_tombstones(before).await
     }
 
+    async fn list_referenced_blob_ids(&self) -> Result<Vec<arca_core::types::BlobId>, ArcaError> {
+        // Pure read for the cluster blob repair/GC scan; forwarded so the default
+        // "unsupported" impl never shadows a clustered backend behind the cache.
+        self.inner.list_referenced_blob_ids().await
+    }
+
     // -- Multipart upload operations (delegated) --
 
     async fn create_multipart_upload(

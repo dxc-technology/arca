@@ -395,4 +395,21 @@ pub trait MetadataStore: Send + Sync {
     ) -> Result<u64, crate::error::ArcaError> {
         Ok(0)
     }
+
+    /// Returns every `blob_id` currently referenced by metadata: live object
+    /// rows (non-tombstone, non-empty `blob_id`) plus in-progress multipart
+    /// `parts`. This is the metadata side of the cluster blob repair/GC scan —
+    /// repair fetches missing bytes for these, and GC treats any on-disk blob
+    /// NOT in this set (nor in a composite sidecar) as a reclaim candidate.
+    /// Composite-completed multipart parts are referenced by the composite
+    /// sidecar, NOT here, so the GC caller must union those in (data-loss guard).
+    ///
+    /// Default implementation: unsupported (for non-clustered backends).
+    async fn list_referenced_blob_ids(
+        &self,
+    ) -> Result<Vec<crate::types::BlobId>, crate::error::ArcaError> {
+        Err(crate::error::ArcaError::Internal(
+            "list_referenced_blob_ids: not supported by this backend".to_string(),
+        ))
+    }
 }

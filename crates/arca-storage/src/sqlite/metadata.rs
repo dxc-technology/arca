@@ -829,6 +829,25 @@ impl MetadataStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("purge_tombstones: {e}")))
     }
 
+    async fn list_referenced_blob_ids(&self) -> Result<Vec<BlobId>, ArcaError> {
+        self.read_conn()
+            .call(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT blob_id FROM objects WHERE is_tombstone = 0 AND blob_id != ''
+                     UNION
+                     SELECT blob_id FROM parts",
+                )?;
+                let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+                let mut out = Vec::new();
+                for row in rows {
+                    out.push(BlobId(row?));
+                }
+                Ok(out)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("list_referenced_blob_ids: {e}")))
+    }
+
     async fn list_object_versions(
         &self,
         bucket: &str,
@@ -1988,6 +2007,70 @@ mod tests {
             checksum_value: None,
             replication_status: None,
         }
+    }
+
+    #[tokio::test]
+    async fn list_referenced_blob_ids_excludes_tombstones_includes_parts() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+
+        let mut r1 = make_record("b", "k1");
+        r1.blob_id = BlobId("blob-1".to_string());
+        let mut r2 = make_record("b", "k2");
+        r2.blob_id = BlobId("blob-2".to_string());
+        store.put_object(&r1).await.unwrap();
+        store.put_object(&r2).await.unwrap();
+
+        // An in-progress multipart part references its own blob (must NOT be GC'd).
+        let mpu = MultipartUploadRecord {
+            upload_id: "u1".to_string(),
+            bucket: "b".to_string(),
+            key: "big".to_string(),
+            content_type: None,
+            initiated_at: chrono::Utc::now(),
+            metadata: HashMap::new(),
+            checksum_algorithm: None,
+        };
+        store.create_multipart_upload(&mpu).await.unwrap();
+        let part = PartRecord {
+            upload_id: "u1".to_string(),
+            part_number: 1,
+            blob_id: BlobId("blob-part".to_string()),
+            size: 5,
+            etag: "e".to_string(),
+            checksum_value: None,
+            last_modified: None,
+        };
+        store.put_part(&part).await.unwrap();
+
+        let refs: std::collections::HashSet<String> = store
+            .list_referenced_blob_ids()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|b| b.0)
+            .collect();
+        assert!(refs.contains("blob-1"));
+        assert!(refs.contains("blob-2"));
+        assert!(refs.contains("blob-part"));
+
+        // Tombstoning k1 (cluster mode) drops blob-1 from the referenced set, so
+        // GC may reclaim its bytes — but blob-2 and the in-progress part stay.
+        store.set_cluster_mode(true);
+        store.delete_object("b", "k1").await.unwrap();
+        let refs2: std::collections::HashSet<String> = store
+            .list_referenced_blob_ids()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|b| b.0)
+            .collect();
+        assert!(
+            !refs2.contains("blob-1"),
+            "a tombstoned object's blob is no longer referenced"
+        );
+        assert!(refs2.contains("blob-2"));
+        assert!(refs2.contains("blob-part"));
     }
 
     // -- Stats tests --

@@ -1191,6 +1191,21 @@ impl MetadataStore for PgStore {
         Ok(result.rows_affected())
     }
 
+    async fn list_referenced_blob_ids(&self) -> Result<Vec<BlobId>, ArcaError> {
+        let rows = sqlx_core::query::query(
+            "SELECT blob_id FROM objects WHERE is_tombstone = FALSE AND blob_id != ''
+             UNION
+             SELECT blob_id FROM parts",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("list_referenced_blob_ids: {e}")))?;
+        Ok(rows
+            .iter()
+            .map(|r| BlobId(r.get::<String, _>("blob_id")))
+            .collect())
+    }
+
     async fn list_object_versions(
         &self,
         bucket: &str,

@@ -410,6 +410,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                     cstate.clone(),
                     client.clone(),
                     inner_metadata.clone(),
+                    raw.clone(),
                     stores.control_snapshot.clone(),
                     stores.control_tombstone.clone(),
                     std::time::Duration::from_secs(c.anti_entropy_interval_seconds.max(1)),

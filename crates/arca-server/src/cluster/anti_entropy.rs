@@ -37,7 +37,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use arca_core::cluster::{plan_control_merge, ClusterState, ManifestEntry};
-use arca_core::store::{ControlSnapshotStore, ControlTombstoneStore, MetadataStore};
+use arca_core::store::{ControlSnapshotStore, ControlTombstoneStore, MetadataStore, RawBlobOps};
+use arca_core::types::BlobId;
 use chrono::Utc;
 
 use crate::cluster::client::{ClusterClient, ClusterError};
@@ -46,6 +47,12 @@ use crate::worker::BackgroundWorker;
 /// Object manifest page size per request (the server clamps to its own max).
 const MANIFEST_BATCH: u32 = 500;
 
+/// Run the proactive blob repair scan every N anti-entropy ticks. It is an
+/// O(referenced) stat sweep, so it runs on a slower cadence than the cheap
+/// incremental object/control reconcile (lazy read-repair on GET still covers
+/// on-access correctness between sweeps).
+const BLOB_REPAIR_EVERY_TICKS: u64 = 10;
+
 /// Spawns the anti-entropy worker. It runs for the lifetime of the returned
 /// handle, which the caller keeps alive.
 #[allow(clippy::too_many_arguments)]
@@ -53,6 +60,7 @@ pub fn spawn(
     cluster: Arc<ClusterState>,
     client: ClusterClient,
     metadata: Arc<dyn MetadataStore>,
+    raw: Arc<dyn RawBlobOps>,
     control_snapshot: Arc<dyn ControlSnapshotStore>,
     control_tombstone: Arc<dyn ControlTombstoneStore>,
     interval: Duration,
@@ -64,9 +72,11 @@ pub fn spawn(
         let mut timer = tokio::time::interval(interval.max(Duration::from_secs(1)));
         timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         timer.tick().await; // skip the immediate first tick
+        let mut tick: u64 = 0;
 
         loop {
             timer.tick().await;
+            tick += 1;
 
             for peer in cluster.peers().into_iter().filter(|p| p.alive) {
                 // 1) Objects: pull this peer's changed-since manifest.
@@ -119,9 +129,104 @@ pub fn spawn(
                 Ok(_) => {}
                 Err(e) => tracing::debug!(error = %e, "anti-entropy: control tombstone GC failed"),
             }
+
+            // 4) Blob repair (slower cadence): proactively fetch bytes for rows
+            // whose blob is missing locally, so durability does not wait for a
+            // GET to trigger the lazy read-repair.
+            if tick % BLOB_REPAIR_EVERY_TICKS == 0 {
+                repair_blobs(&client, metadata.as_ref(), raw.as_ref(), &cluster).await;
+            }
         }
     });
     BackgroundWorker::from_handle(handle)
+}
+
+/// Proactively repairs locally-missing blob bytes: for every blob_id referenced
+/// by metadata, if the physical file is absent, fetch it (or, for a composite,
+/// its missing parts) from a live peer. Bounded by the referenced-blob count;
+/// runs on a slower cadence than the incremental reconcile.
+async fn repair_blobs(
+    client: &ClusterClient,
+    metadata: &dyn MetadataStore,
+    raw: &dyn RawBlobOps,
+    cluster: &ClusterState,
+) {
+    let referenced = match metadata.list_referenced_blob_ids().await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::debug!(error = %e, "blob repair: listing referenced blobs failed");
+            return;
+        }
+    };
+    let peers: Vec<String> = cluster
+        .peers()
+        .into_iter()
+        .filter(|p| p.alive)
+        .map(|p| p.endpoint)
+        .collect();
+    if peers.is_empty() {
+        return;
+    }
+
+    let mut repaired = 0u64;
+    for blob_id in &referenced {
+        // Present locally → nothing to do. On a stat error, skip (conservative:
+        // never attempt a repair we cannot first confirm is missing).
+        if raw.exists(blob_id).await.unwrap_or(true) {
+            continue;
+        }
+        match raw.read_sidecar(blob_id).await {
+            // Composite blob: it has no file of its own; repair any missing parts.
+            Ok(Some(meta)) if meta.composite.is_some() => {
+                for part in meta.composite.unwrap() {
+                    if !raw.exists(&part.blob_id).await.unwrap_or(true)
+                        && fetch_and_store(client, raw, &peers, &part.blob_id).await
+                    {
+                        repaired += 1;
+                    }
+                }
+            }
+            // Normal blob (or sidecar also missing) → fetch it from a peer.
+            _ => {
+                if fetch_and_store(client, raw, &peers, blob_id).await {
+                    repaired += 1;
+                }
+            }
+        }
+    }
+    if repaired > 0 {
+        tracing::info!(repaired, "blob repair: fetched missing blobs from peers");
+    }
+}
+
+/// Fetches one blob (raw bytes + sidecar) from the first live peer that has it
+/// and stores it verbatim. Composite blobs carry only the sidecar. Returns
+/// whether a peer supplied it.
+async fn fetch_and_store(
+    client: &ClusterClient,
+    raw: &dyn RawBlobOps,
+    peers: &[String],
+    blob_id: &BlobId,
+) -> bool {
+    for endpoint in peers {
+        match client.fetch_blob(endpoint, blob_id).await {
+            Ok((sidecar, stream)) => {
+                if sidecar.composite.is_none() {
+                    if let Err(e) = raw.write_raw(blob_id, stream).await {
+                        tracing::warn!(error = %e, blob_id = %blob_id.0, "blob repair: write_raw failed");
+                        continue;
+                    }
+                }
+                if let Err(e) = raw.write_sidecar(blob_id, &sidecar).await {
+                    tracing::warn!(error = %e, blob_id = %blob_id.0, "blob repair: write_sidecar failed");
+                    continue;
+                }
+                return true;
+            }
+            Err(_) => continue,
+        }
+    }
+    false
 }
 
 /// Reconciles this node's control plane with a peer: pull the peer's snapshot,
