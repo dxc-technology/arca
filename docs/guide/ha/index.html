@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://dxc-technology.github.io/arca/guide/compression/">
+        <link rel="canonical" href="https://dxc-technology.github.io/arca/guide/ha/">
       
       
-        <link rel="prev" href="../encryption/">
+        <link rel="prev" href="../replication/">
       
       
-        <link rel="next" href="../replication/">
+        <link rel="next" href="../connectors/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Compression - Arca</title>
+        <title>High Availability - Arca</title>
       
     
     
@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#compression" class="md-skip">
+        <a href="#high-availability-clustering" class="md-skip">
           Skip to content
         </a>
       
@@ -115,7 +115,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Compression
+              High Availability
             
           </span>
         </div>
@@ -570,37 +570,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Compression
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../compression/" class="md-nav__link">
         
   
   
@@ -616,187 +589,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#quick-start" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Quick Start
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Quick Start">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#1-enable-compression-on-a-bucket" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        1. Enable compression on a bucket
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#2-verify" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        2. Verify
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#algorithms" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Algorithms
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Algorithms">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#auto-mode" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Auto mode
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#managing-per-bucket-compression" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Managing per-bucket compression
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Managing per-bucket compression">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#get-current-config" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Get current config
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#disable-compression-for-a-bucket" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Disable compression for a bucket
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mime-and-size-filters" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        MIME and size filters
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mixed-mode-coexistence" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Mixed-mode coexistence
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#offline-retrofit" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Offline retrofit
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#metrics" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Metrics
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Troubleshooting
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -834,10 +626,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../ha/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    High Availability
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -853,6 +672,220 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it works
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How it works">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#symmetry-and-identity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Symmetry and identity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#replication-real-time-then-self-healing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Replication — real time, then self-healing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#consistency-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consistency model
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick start
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick start">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#single-node-dev-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Single-node dev cluster
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#three-node-local-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Three-node local cluster
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#production-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Production deployment
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Production deployment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#load-balancer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Load balancer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-note-on-the-load-balancer-being-a-spof" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A note on the load balancer being a SPOF
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-trade-offs-and-honest-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design trade-offs (and honest limitations)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#toml-configuration-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TOML configuration reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1371,22 +1404,94 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it works
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How it works">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#symmetry-and-identity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Symmetry and identity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#replication-real-time-then-self-healing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Replication — real time, then self-healing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#consistency-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consistency model
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#quick-start" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quick Start
+        Quick start
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Quick Start">
+    <nav class="md-nav" aria-label="Quick start">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-enable-compression-on-a-bucket" class="md-nav__link">
+  <a href="#single-node-dev-cluster" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. Enable compression on a bucket
+        Single-node dev cluster
       
     </span>
   </a>
@@ -1394,10 +1499,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-verify" class="md-nav__link">
+  <a href="#three-node-local-cluster" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Verify
+        Three-node local cluster
       
     </span>
   </a>
@@ -1410,22 +1515,44 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#algorithms" class="md-nav__link">
+  <a href="#observability" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Algorithms
+        Observability
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Algorithms">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#production-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Production deployment
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Production deployment">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#auto-mode" class="md-nav__link">
+  <a href="#load-balancer" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Auto mode
+        Load balancer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-note-on-the-load-balancer-being-a-spof" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A note on the load balancer being a SPOF
       
     </span>
   </a>
@@ -1438,49 +1565,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#managing-per-bucket-compression" class="md-nav__link">
+  <a href="#design-trade-offs-and-honest-limitations" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Managing per-bucket compression
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Managing per-bucket compression">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#get-current-config" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Get current config
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#disable-compression-for-a-bucket" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Disable compression for a bucket
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mime-and-size-filters" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        MIME and size filters
+        Design trade-offs (and honest limitations)
       
     </span>
   </a>
@@ -1488,10 +1576,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mixed-mode-coexistence" class="md-nav__link">
+  <a href="#toml-configuration-reference" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Mixed-mode coexistence
+        TOML configuration reference
       
     </span>
   </a>
@@ -1499,32 +1587,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#offline-retrofit" class="md-nav__link">
+  <a href="#related" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Offline retrofit
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#metrics" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Metrics
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Troubleshooting
+        Related
       
     </span>
   </a>
@@ -1548,175 +1614,173 @@
 
 
 
-<h1 id="compression">Compression<a class="headerlink" href="#compression" title="Permanent link">&para;</a></h1>
-<p>Arca supports transparent at-rest compression. When a bucket has compression configured, new uploads are compressed before writing to disk and transparently decompressed on read. The S3 wire format is unchanged: <code>ETag</code> remains the MD5 of the plaintext and <code>Content-Length</code> reports the plaintext size. Compression sits below encryption in the stack, so <code>compress → encrypt → store</code> applies when both features are active.</p>
-<p>Compression is a <strong>per-bucket</strong>, <strong>console-managed</strong> setting. There is no instance-wide switch and no TOML configuration — the wrapper is always present at runtime and only activates on buckets that explicitly opt in.</p>
-<h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
-<h3 id="1-enable-compression-on-a-bucket">1. Enable compression on a bucket<a class="headerlink" href="#1-enable-compression-on-a-bucket" title="Permanent link">&para;</a></h3>
-<p>Open the Arca console, navigate to <strong>Buckets → <em>your bucket</em> → Settings</strong>, then in the <strong>Compression</strong> card pick an algorithm (and optionally a level) and click <strong>Enable Compression</strong>.</p>
-<p>Or use the Arca-specific S3 subresource directly:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>curl<span class="w"> </span>-X<span class="w"> </span>PUT<span class="w"> </span><span class="s2">&quot;http://localhost:9000/my-bucket?compression&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span>--aws-sigv4<span class="w"> </span><span class="s2">&quot;aws:amz:us-east-1:s3&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span>--user<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$AWS_ACCESS_KEY_ID</span><span class="s2">:</span><span class="nv">$AWS_SECRET_ACCESS_KEY</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/xml&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;&lt;CompressionConfiguration&gt;</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="s1">        &lt;Algorithm&gt;zstd&lt;/Algorithm&gt;</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="s1">        &lt;Level&gt;5&lt;/Level&gt;</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="s1">      &lt;/CompressionConfiguration&gt;&#39;</span>
-</code></pre></div>
-<h3 id="2-verify">2. Verify<a class="headerlink" href="#2-verify" title="Permanent link">&para;</a></h3>
-<p>Upload a compressible file and check the on-disk size is smaller than the advertised <code>Content-Length</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>aws<span class="w"> </span>s3<span class="w"> </span>cp<span class="w"> </span>large-log.json<span class="w"> </span>s3://my-bucket/key<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>aws<span class="w"> </span>s3api<span class="w"> </span>head-object<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--key<span class="w"> </span>key<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
-</code></pre></div>
-<p><code>head-object</code> returns the plaintext size and original ETag; the blob file on disk is smaller.</p>
-<p>The Prometheus endpoint exposes <code>arca_storage_compression_ratio</code> and per-algorithm byte counters:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:9000/admin/metrics<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>compression
-</code></pre></div>
-<h2 id="algorithms">Algorithms<a class="headerlink" href="#algorithms" title="Permanent link">&para;</a></h2>
-<p>Six algorithms are shipped. Pick the one that matches your workload.</p>
+<h1 id="high-availability-clustering">High Availability (Clustering)<a class="headerlink" href="#high-availability-clustering" title="Permanent link">&para;</a></h1>
+<p>Arca runs as a <strong>symmetric, self-configuring, shared-nothing cluster</strong>. Every node is identical: there is no primary, no coordinator, no per-node configuration. You give all nodes the same config, they discover each other, and they replicate everything. A client can read and write through any node; a load balancer in front spreads traffic and routes around dead nodes.</p>
+<p>This is the <strong>full-replication</strong> model (every node holds a complete copy), targeting small clusters (typically 3 nodes) where availability and operational simplicity matter more than storage efficiency. Sharding and erasure coding are explicitly out of scope (see <a href="#design-trade-offs-and-honest-limitations">Design trade-offs</a>).</p>
+<h2 id="how-it-works">How it works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h2>
+<h3 id="symmetry-and-identity">Symmetry and identity<a class="headerlink" href="#symmetry-and-identity" title="Permanent link">&para;</a></h3>
+<p>The <code>[cluster]</code> section is <strong>byte-for-byte identical on every node</strong>. There is no <code>node_id</code> to assign and no peer list to maintain by hand: on first start each node generates a stable <code>node_id</code>, persists it in its own data directory, and keeps it across restarts. Adding a node is just starting another process with the same config.</p>
+<h3 id="discovery">Discovery<a class="headerlink" href="#discovery" title="Permanent link">&para;</a></h3>
+<p>Nodes find each other through one of three mechanisms (<code>[cluster].discovery</code>):</p>
 <table>
 <thead>
 <tr>
-<th>Algorithm</th>
-<th>Ratio</th>
-<th>CPU (encode)</th>
-<th>CPU (decode)</th>
-<th>Notes</th>
+<th>Mode</th>
+<th>How peers are found</th>
+<th>Use when</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>zstd</code></td>
-<td>High</td>
-<td>Medium</td>
-<td>Fast</td>
-<td>Best overall balance; default for structured text</td>
+<td><code>mdns</code></td>
+<td>Multicast DNS on the local segment (default)</td>
+<td>bare-metal / VMs on the same L2 subnet</td>
 </tr>
 <tr>
-<td><code>lz4</code></td>
-<td>Low–Medium</td>
-<td>Very fast</td>
-<td>Very fast</td>
-<td>Use when CPU is precious</td>
+<td><code>static</code></td>
+<td>A fixed <code>seeds</code> list of endpoints (identical on every node; a node ignores its own entry)</td>
+<td>Docker, Kubernetes, or any routed network where multicast is dropped</td>
 </tr>
 <tr>
-<td><code>snappy</code></td>
-<td>Low</td>
-<td>Very fast</td>
-<td>Very fast</td>
-<td>Similar to lz4</td>
-</tr>
-<tr>
-<td><code>gzip</code></td>
-<td>Medium</td>
-<td>Medium</td>
-<td>Medium</td>
-<td>Ubiquitous, good for interop tooling</td>
-</tr>
-<tr>
-<td><code>brotli</code></td>
-<td>Very high (text)</td>
-<td>Slow</td>
-<td>Medium</td>
-<td>Best ratio for web assets (HTML/CSS/JS)</td>
-</tr>
-<tr>
-<td><code>xz</code></td>
-<td>Highest</td>
-<td>Slow</td>
-<td>Medium</td>
-<td>Archive-like workloads where ratio dominates</td>
+<td><code>dns</code></td>
+<td>A headless service name that resolves to all peer IPs</td>
+<td>Kubernetes <code>StatefulSet</code> + headless <code>Service</code></td>
 </tr>
 </tbody>
 </table>
-<h3 id="auto-mode">Auto mode<a class="headerlink" href="#auto-mode" title="Permanent link">&para;</a></h3>
-<p>With <code>Algorithm = auto</code> the wrapper picks per-object using a small deterministic rule table based on <code>Content-Type</code> and size. No sampling, no benchmarking — a plain match:</p>
-<table>
-<thead>
-<tr>
-<th>#</th>
-<th>Condition</th>
-<th>Choice</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>1</td>
-<td>Size &lt; 4 KiB</td>
-<td><code>lz4</code> (CPU-friendly)</td>
-</tr>
-<tr>
-<td>2</td>
-<td><code>text/html</code>, <code>text/css</code>, <code>application/javascript</code>, <code>image/svg+xml</code>, <code>application/xhtml+xml</code></td>
-<td><code>brotli</code> level 4</td>
-</tr>
-<tr>
-<td>3</td>
-<td><code>text/*</code>, <code>application/json</code>, <code>application/xml</code>, <code>application/yaml</code>, <code>application/x-ndjson</code>, <code>application/x-log</code>, <code>application/graphql</code></td>
-<td><code>zstd</code> level 3</td>
-</tr>
-<tr>
-<td>4</td>
-<td>Anything else</td>
-<td><code>zstd</code> level 3</td>
-</tr>
-</tbody>
-</table>
-<p>The sidecar always records the concrete algorithm chosen; the read path does not depend on the rule table.</p>
-<h2 id="managing-per-bucket-compression">Managing per-bucket compression<a class="headerlink" href="#managing-per-bucket-compression" title="Permanent link">&para;</a></h2>
-<h3 id="get-current-config">Get current config<a class="headerlink" href="#get-current-config" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-X<span class="w"> </span>GET<span class="w"> </span><span class="s2">&quot;http://localhost:9000/my-bucket?compression&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>--aws-sigv4<span class="w"> </span><span class="s2">&quot;aws:amz:us-east-1:s3&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>--user<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$AWS_ACCESS_KEY_ID</span><span class="s2">:</span><span class="nv">$AWS_SECRET_ACCESS_KEY</span><span class="s2">&quot;</span>
-</code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="cp">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">&lt;CompressionConfiguration&gt;</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="nt">&lt;Algorithm&gt;</span>zstd<span class="nt">&lt;/Algorithm&gt;</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">&lt;Level&gt;</span>5<span class="nt">&lt;/Level&gt;</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="nt">&lt;/CompressionConfiguration&gt;</span>
-</code></pre></div>
-<h3 id="disable-compression-for-a-bucket">Disable compression for a bucket<a class="headerlink" href="#disable-compression-for-a-bucket" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>curl<span class="w"> </span>-X<span class="w"> </span>DELETE<span class="w"> </span><span class="s2">&quot;http://localhost:9000/my-bucket?compression&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>--aws-sigv4<span class="w"> </span><span class="s2">&quot;aws:amz:us-east-1:s3&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span>--user<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$AWS_ACCESS_KEY_ID</span><span class="s2">:</span><span class="nv">$AWS_SECRET_ACCESS_KEY</span><span class="s2">&quot;</span>
-</code></pre></div>
-<p>Presence of the configuration = compression enabled for the bucket. <code>DELETE</code> removes the configuration; subsequent uploads pass through uncompressed. Existing compressed objects remain readable (mixed-mode).</p>
-<h2 id="mime-and-size-filters">MIME and size filters<a class="headerlink" href="#mime-and-size-filters" title="Permanent link">&para;</a></h2>
-<p>To avoid wasting CPU on already-compressed content, the write path always skips objects whose <code>Content-Type</code> matches a set of prefixes (<code>image/</code>, <code>video/</code>, <code>audio/</code>, <code>application/zip</code>, <code>application/gzip</code>, <code>application/x-7z-compressed</code>, <code>application/x-bzip2</code>, <code>application/x-xz</code>, <code>application/x-rar-compressed</code>, <code>application/pdf</code>) or whose <code>Content-Length</code> is below <strong>1 KiB</strong>. These thresholds are baked-in defaults — change the bucket's algorithm to suit your workload, but the MIME / size filters are not tunable.</p>
-<h2 id="mixed-mode-coexistence">Mixed-mode coexistence<a class="headerlink" href="#mixed-mode-coexistence" title="Permanent link">&para;</a></h2>
-<p>Enabling compression affects future uploads only. Existing objects keep their on-disk form and are read back transparently: each sidecar records whether its blob is compressed and with which algorithm, so the read path dispatches per-object.</p>
-<h2 id="offline-retrofit">Offline retrofit<a class="headerlink" href="#offline-retrofit" title="Permanent link">&para;</a></h2>
-<p>Two CLI tools let operators compress (or decompress) a data directory after the fact:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Preview what would change</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>arca<span class="w"> </span>compress-existing<span class="w"> </span>--config<span class="w"> </span>/etc/arca/config.toml<span class="w"> </span>--dry-run
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># Compress everything matching the MIME/size filters</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>arca<span class="w"> </span>compress-existing<span class="w"> </span>--config<span class="w"> </span>/etc/arca/config.toml
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="c1"># Limit to one bucket, force an algorithm</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>arca<span class="w"> </span>compress-existing<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--algorithm<span class="w"> </span>brotli
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>
-<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="c1"># Reverse the operation</span>
-<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>arca<span class="w"> </span>decompress-existing<span class="w"> </span>--config<span class="w"> </span>/etc/arca/config.toml
-</code></pre></div>
-<p>Both tools are atomic per-blob (writes a <code>.compressing.tmp</code> then renames) and resumable: re-running skips already-processed blobs because the sidecar is the source of truth. <code>arca fsck</code> recognizes and removes abandoned <code>.compressing.tmp</code> files.</p>
-<p>Default when no <code>--algorithm</code> is passed: <code>auto</code> (same rule table as the live path).</p>
-<h2 id="metrics">Metrics<a class="headerlink" href="#metrics" title="Permanent link">&para;</a></h2>
-<p>The Prometheus endpoint always exposes these series:</p>
+<p>Discovery only supplies <em>candidate endpoints</em>. A node then health-pings each candidate's <code>/cluster/v1/health</code>; the response carries the peer's <code>node_id</code>, which is how a node recognises (and ignores) itself and learns who is alive.</p>
+<h3 id="replication-real-time-then-self-healing">Replication — real time, then self-healing<a class="headerlink" href="#replication-real-time-then-self-healing" title="Permanent link">&para;</a></h3>
+<p>Every mutation fans out to live peers <strong>in real time</strong> over the internal <code>/cluster/v1/*</code> API (signed with the shared cluster secret, never the public S3 path). That covers both planes:</p>
 <ul>
-<li><code>arca_compression_plaintext_bytes_total{algorithm}</code> — counter, plaintext bytes seen per algorithm.</li>
-<li><code>arca_compression_compressed_bytes_total{algorithm}</code> — counter, on-disk bytes after compression.</li>
-<li><code>arca_compression_skipped_total{reason="disabled"|"mime"|"size"}</code> — counter of writes that bypassed compression.</li>
-<li><code>arca_storage_compression_ratio</code> — gauge, aggregated ratio (plaintext / compressed).</li>
+<li><strong>Data plane</strong> — object rows and blob bytes (<code>PutObject</code>, multipart, deletes, retention/legal-hold, tags).</li>
+<li><strong>Control plane</strong> — buckets, bucket config, credentials, users, teams, grants, server settings.</li>
 </ul>
-<p><code>reason="disabled"</code> counts uploads to buckets with no compression configuration.</p>
-<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<p>Real-time fan-out is best-effort. A node that was <strong>down, slow, or unreachable</strong> during a write catches up on its own through several converging mechanisms — this is what makes the cluster self-healing without operator action:</p>
+<ol>
+<li><strong>Anti-entropy (objects)</strong> — each node periodically pulls every peer's <em>changed-since</em> manifest (an indexed, incremental <code>seq</code> cursor) and applies the rows it is missing. Cheap enough to run frequently.</li>
+<li><strong>Control-plane reconcile</strong> — the control plane is small, so nodes periodically exchange a full snapshot and merge it last-writer-wins (see <a href="#consistency-model">Consistency</a>).</li>
+<li><strong>Tombstones</strong> — a hard delete leaves a tombstone (a marker, not the row/blob) so the deletion <em>propagates</em> and a lagging peer cannot resurrect a deleted object/entity by shipping its stale copy back. Tombstones are invisible to reads and garbage-collected after a grace window.</li>
+<li><strong>Read-repair</strong> — a <code>GET</code> for an object whose bytes are missing locally fetches them from a peer on the spot.</li>
+<li><strong>Blob repair + GC</strong> — on a slower cadence each node proactively fetches blob bytes it has the row for but not the file (durability), and reclaims orphan blobs left after deletes (composite-multipart-aware, so live parts are never deleted).</li>
+</ol>
+<h3 id="consistency-model">Consistency model<a class="headerlink" href="#consistency-model" title="Permanent link">&para;</a></h3>
+<p>Two policies, set per cluster with <code>[cluster].mode</code>:</p>
 <ul>
-<li><strong>ETag mismatches:</strong> not caused by compression — the ETag is always MD5 of plaintext. If they differ, check whether a proxy is re-encoding the body.</li>
-<li><strong>Smaller-than-plaintext download:</strong> a misconfigured client may have requested <code>Content-Encoding: gzip</code> or similar HTTP-level compression. Arca's at-rest compression is transparent to the client and never touches <code>Content-Encoding</code>.</li>
-<li><strong>Slow writes with brotli/xz:</strong> those algorithms trade CPU for ratio. Switch to <code>zstd</code> or <code>lz4</code> if throughput matters more than disk footprint.</li>
-<li><strong>Compression not triggering on uploads:</strong> the bucket may have no compression configured, or the content-type matches the built-in MIME skip list, or the object is below 1 KiB. The Prometheus <code>arca_compression_skipped_total</code> counter records the reason.</li>
+<li><strong><code>quorum</code> (CP, default)</strong> — a write must reach a <strong>majority</strong> of nodes (<code>floor(cluster_size/2) + 1</code>) to be acknowledged. Below majority a node refuses writes with <code>503 ServiceUnavailable</code> and stays <strong>read-only</strong>, so the cluster never diverges into conflicting writes. With <code>cluster_size = 3</code> the write quorum is <code>2</code>: the cluster tolerates losing <strong>one</strong> node and keeps serving reads and writes.</li>
+<li><strong><code>available</code> (AP)</strong> — any single node accepts writes and fans out best-effort. Maximum availability, at the cost of accepting writes that may momentarily diverge and converge later.</li>
+</ul>
+<p>Both modes are <strong>eventually consistent</strong> across nodes: replication and reconcile are asynchronous, and conflicts resolve <strong>last-writer-wins (LWW)</strong>. The LWW key is <code>(last_modified, version_id, blob_id)</code> — the <code>blob_id</code> is a stable tiebreaker so two nodes that wrote the "same" null-version object at the same wall-clock instant still pick the same winner deterministically, without a coordination protocol.</p>
+<blockquote>
+<p><strong>Read-after-write:</strong> within a single node it is immediate. Across the cluster (through a round-robin load balancer) a read may briefly hit a node that has not yet received the write. Pin a client to one node (LB sticky sessions) if you need read-your-writes through the balancer.</p>
+</blockquote>
+<h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Same <code>[cluster].secret</code> on every node.</strong> It authenticates all inter-node traffic. There is no per-node credential.</li>
+<li><strong>Same encryption master key / same KMS on every node</strong>, <em>if</em> encryption is enabled. Replication ships the encrypted bytes verbatim, so every node must be able to unwrap them. (SSE-C needs nothing special — the bytes are opaque and the nonce travels in the sidecar.)</li>
+<li><strong>Synchronized clocks (NTP).</strong> LWW compares wall-clock timestamps; severe skew can pick the wrong winner on null-version rows. The <code>blob_id</code> tiebreaker mitigates ties, but NTP is still required.</li>
+<li><strong>Full connectivity between nodes</strong> on the cluster port, plus the same <code>cluster_id</code>. <code>mdns</code> additionally needs a shared L2 subnet; otherwise use <code>static</code> or <code>dns</code>.</li>
+<li><strong>No data migration.</strong> Enabling clustering on a node that already has data just works — anti-entropy populates the peers. This honours Arca's "configuration change without data migration" guarantee.</li>
+</ul>
+<h2 id="quick-start">Quick start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
+<h3 id="single-node-dev-cluster">Single-node dev cluster<a class="headerlink" href="#single-node-dev-cluster" title="Permanent link">&para;</a></h3>
+<p>To exercise the cluster code path and the console topology widget on one machine:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--dev<span class="w"> </span>--cluster<span class="w">      </span><span class="c1"># 1-node &quot;available&quot; cluster (mDNS)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w">           </span><span class="c1"># console on http://localhost:9080</span>
+</code></pre></div>
+<p>The dashboard's <strong>Cluster Topology</strong> card shows the mode, write status, and this single node.</p>
+<h3 id="three-node-local-cluster">Three-node local cluster<a class="headerlink" href="#three-node-local-cluster" title="Permanent link">&para;</a></h3>
+<p>A self-contained 3-node cluster with an HAProxy load balancer, for integration testing and demos:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>bin/cluster<span class="w"> </span>up<span class="w"> </span>-d<span class="w">            </span><span class="c1"># arca-1/2/3 + HAProxy + console</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>bin/cluster<span class="w"> </span>status<span class="w">           </span><span class="c1"># container + per-node /admin/health view</span>
+</code></pre></div>
+<p>Endpoints:</p>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>URL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Load balancer</td>
+<td><code>http://localhost:9000</code> (round-robin over the live nodes)</td>
+</tr>
+<tr>
+<td>Console</td>
+<td><code>http://localhost:9080</code></td>
+</tr>
+<tr>
+<td>Node 1/2/3</td>
+<td><code>http://localhost:9001</code> / <code>:9002</code> / <code>:9003</code> (direct, for inspection)</td>
+</tr>
+</tbody>
+</table>
+<p>Simulate a failure and watch the cluster react:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>bin/cluster<span class="w"> </span>node-stop<span class="w"> </span><span class="m">3</span><span class="w">      </span><span class="c1"># kill a node — the LB drops it, peers mark it dead</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>bin/cluster<span class="w"> </span>status<span class="w">           </span><span class="c1"># now 2/3 live; still writable (2 ≥ quorum)</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>bin/cluster<span class="w"> </span>node-start<span class="w"> </span><span class="m">3</span><span class="w">      </span><span class="c1"># it rejoins and catches up via anti-entropy</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>bin/cluster<span class="w"> </span>down<span class="w">             </span><span class="c1"># stop everything (add -v to wipe the data volumes)</span>
+</code></pre></div>
+<p>The 3 nodes share one symmetric config (<code>docker/cluster/config.toml</code>, <code>mode = "quorum"</code>, <code>discovery = "static"</code>) — Docker's bridge network drops multicast, hence static seeds.</p>
+<h2 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Console</strong> — the dashboard <strong>Cluster Topology</strong> card shows the consistency mode (Quorum·W=N / Available), the write status (Writable / Read-only when quorum is lost), and every node with a green/red status dot, the local-node badge, endpoint, and last-seen time. The Server card's <em>Topology</em> field summarises it as <code>Cluster · live/total</code>.</li>
+<li><strong><code>GET /admin/cluster</code></strong> (admin SigV4) — JSON the console consumes: <code>mode</code>, <code>write_quorum</code>, <code>has_write_quorum</code>, <code>live_node_count</code>, <code>node_count</code>, and the <code>nodes</code> list. Returns <code>{"enabled": false}</code> on a single-node deployment.</li>
+<li><strong><code>GET /admin/health?verbose=1</code></strong> (unauthenticated) — liveness plus the cluster snapshot, handy for scripts and load-balancer debugging. The plain <code>GET /admin/health</code> (200 / 503-on-drain) is the load-balancer check.</li>
+</ul>
+<h2 id="production-deployment">Production deployment<a class="headerlink" href="#production-deployment" title="Permanent link">&para;</a></h2>
+<h3 id="load-balancer">Load balancer<a class="headerlink" href="#load-balancer" title="Permanent link">&para;</a></h3>
+<p>Put any L7/L4 balancer in front and health-check <code>GET /admin/health</code> (200 = up, 503 = draining → out of rotation). The reference HAProxy backend:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>backend arca_nodes
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    balance roundrobin
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    option httpchk
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    http-check send meth GET uri /admin/health
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    http-check expect status 200
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    server arca-1 10.0.0.1:9000 check inter 2s fall 2 rise 1
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    server arca-2 10.0.0.2:9000 check inter 2s fall 2 rise 1
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    server arca-3 10.0.0.3:9000 check inter 2s fall 2 rise 1
+</code></pre></div>
+<p>For an active/passive VIP, pair HAProxy with keepalived. In Kubernetes, run a <code>StatefulSet</code> of 3 replicas with a headless <code>Service</code> and <code>discovery = "dns"</code> pointed at it; front it with a normal <code>Service</code> / Ingress.</p>
+<h3 id="a-note-on-the-load-balancer-being-a-spof">A note on the load balancer being a SPOF<a class="headerlink" href="#a-note-on-the-load-balancer-being-a-spof" title="Permanent link">&para;</a></h3>
+<p>The balancer is a single point of failure unless it is itself redundant (keepalived VIP, multiple ingress replicas, or a managed cloud LB). The Arca <em>cluster</em> survives node loss; make sure the entry point does too.</p>
+<h2 id="design-trade-offs-and-honest-limitations">Design trade-offs (and honest limitations)<a class="headerlink" href="#design-trade-offs-and-honest-limitations" title="Permanent link">&para;</a></h2>
+<p>This section exists so you can judge the approach, not just use it.</p>
+<ul>
+<li><strong>Full replication, not sharding/erasure coding.</strong> Every node stores everything. Simple and highly available; storage cost is <code>N×</code>. Sized for small clusters. Erasure coding and sharding are future work.</li>
+<li><strong>Eventual consistency, hand-rolled (Dynamo-style), not Raft.</strong> There is no consensus log. Convergence is LWW + anti-entropy + tombstones. This keeps the data path coordination-free and fast, at the cost of the well-known AP/eventual-consistency caveats. It also means correctness rests on the convergence machinery being right — which is why each piece (manifest, tombstones, reconcile, GC) is unit-tested in isolation.</li>
+<li><strong>No hinted-handoff.</strong> Larger clusters (Cassandra et al.) buffer writes for absent nodes. At N=3 with full replication, frequent incremental anti-entropy plus read-repair recover an absent node quickly enough that the extra machinery isn't worth it.</li>
+<li><strong>Control-plane catch-up gaps (documented).</strong> Credentials, users, teams, grants and buckets reconcile fully (including deletions, via tombstones). Their <em>associations and settings</em> — team memberships, grant attachments, <code>bucket_config</code>, bucket tags, server settings — replicate in <strong>real time</strong> but are <strong>not</strong> part of the periodic reconcile yet. A node that was <strong>down during one of those specific changes</strong> may miss it until the entity is touched again. This is a known follow-up, not a data-loss bug.</li>
+<li><strong>Tombstone grace vs downtime.</strong> A returning node must come back <strong>within <code>tombstone_grace_days</code></strong> (default 7) to learn of deletions that happened while it was away; past the grace, tombstones are GC'd and a very-long-absent node could resurrect deleted data. Set the grace longer than your worst-case planned downtime.</li>
+<li><strong>Clock dependence.</strong> LWW uses wall-clock time; run NTP. A hybrid logical clock is possible future hardening.</li>
+</ul>
+<h2 id="toml-configuration-reference">TOML configuration reference<a class="headerlink" href="#toml-configuration-reference" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">[cluster]</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">enabled</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">cluster_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;arca-prod&quot;</span><span class="w">          </span><span class="c1"># only nodes sharing this id form a cluster</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">secret</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;change-me&quot;</span><span class="w">          </span><span class="c1"># shared inter-node auth secret (identical everywhere)</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">mode</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;quorum&quot;</span><span class="w">             </span><span class="c1"># &quot;quorum&quot; (CP, default) | &quot;available&quot; (AP)</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="n">cluster_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="w">                  </span><span class="c1"># required in quorum mode → write quorum = 2</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="n">discovery</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;static&quot;</span><span class="w">             </span><span class="c1"># &quot;mdns&quot; (default) | &quot;static&quot; | &quot;dns&quot;</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="n">seeds</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;arca-1:9000&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;arca-2:9000&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;arca-3:9000&quot;</span><span class="p">]</span><span class="w">  </span><span class="c1"># discovery = &quot;static&quot;</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="n">dns_name</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;arca-headless&quot;</span><span class="w">      </span><span class="c1"># discovery = &quot;dns&quot;</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="c1"># Optional: what this node advertises to peers (defaults: auto-detected addr,</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="c1"># [server].port). Set only behind NAT / port remapping.</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="n">advertise_addr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;10.0.0.1&quot;</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="n">advertise_port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">9000</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="n">health_interval_seconds</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="w">     </span><span class="c1"># peer health ping cadence</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="n">anti_entropy_interval_seconds</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">5</span><span class="w">     </span><span class="c1"># reconcile pass cadence</span>
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="n">request_timeout_seconds</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="mi">30</span><span class="w">    </span><span class="c1"># inter-node HTTP timeout</span>
+<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="n">tombstone_grace_days</span><span class="w">          </span><span class="o">=</span><span class="w"> </span><span class="mi">7</span><span class="w">     </span><span class="c1"># MUST exceed worst-case node downtime</span>
+</code></pre></div>
+<h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../encryption/">Encryption</a> — every node needs the same master key for encrypted clusters.</li>
+<li><a href="../replication/">Replication</a> — asynchronous <em>cross-cluster</em> mirroring to any S3 endpoint (a different feature from intra-cluster HA; <code>--cluster</code> and <code>--replication</code> are mutually exclusive).</li>
+<li><a href="../configuration/">Configuration</a> — full TOML reference.</li>
 </ul>
 
 

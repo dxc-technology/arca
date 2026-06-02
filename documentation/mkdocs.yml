@@ -51,6 +51,7 @@ nav:
     - Encryption: guide/encryption.md
     - Compression: guide/compression.md
     - Replication: guide/replication.md
+    - High Availability: guide/ha.md
     - Notification Connectors: guide/connectors.md
     - Web Console: guide/console.md
     - CLI Reference: guide/cli.md
