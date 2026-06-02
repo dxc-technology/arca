@@ -4,6 +4,7 @@
 //! Schema migrations are applied automatically at startup.
 
 mod audit;
+mod control_snapshot;
 mod control_tombstone;
 mod credential;
 mod grant;

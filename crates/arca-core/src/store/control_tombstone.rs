@@ -12,6 +12,7 @@
 //! (the cluster decorators are the only callers).
 
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 use crate::error::ArcaError;
 
@@ -24,7 +25,7 @@ pub const TOMBSTONE_GRANT: &str = "grant";
 pub const TOMBSTONE_BUCKET: &str = "bucket";
 
 /// A record that a control-plane entity was deleted.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ControlTombstone {
     /// One of the `TOMBSTONE_*` discriminators.
     pub entity_type: String,
@@ -44,6 +45,15 @@ pub trait ControlTombstoneStore: Send + Sync {
         &self,
         entity_type: &str,
         entity_key: &str,
+    ) -> Result<(), ArcaError>;
+
+    /// Adopts a peer's tombstone verbatim, keeping the latest `deleted_at` on
+    /// conflict (used by the reconcile pass to propagate a deletion without
+    /// re-stamping its time). Distinct from [`Self::record_control_tombstone`],
+    /// which stamps `now()` for a local delete.
+    async fn apply_control_tombstone(
+        &self,
+        tombstone: &ControlTombstone,
     ) -> Result<(), ArcaError>;
 
     /// Lists every control-plane tombstone (feeds the control-snapshot).

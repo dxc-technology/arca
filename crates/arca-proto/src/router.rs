@@ -233,6 +233,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/object/delete", post(cluster::receive_version_delete))
         .route("/v1/op", post(cluster::receive_op))
         .route("/v1/manifest", post(cluster::manifest))
+        .route("/v1/control-snapshot", get(cluster::control_snapshot))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::cluster_auth::cluster_auth_middleware,

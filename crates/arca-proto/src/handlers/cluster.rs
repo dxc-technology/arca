@@ -333,6 +333,24 @@ pub async fn manifest(State(state): State<AppState>, body: Bytes) -> Response {
     }
 }
 
+/// `GET /cluster/v1/control-snapshot`: returns this node's full control-plane
+/// snapshot (credentials, users, teams, grants, buckets + tombstones) for the
+/// peer's reconcile pass to merge last-writer-wins. Read-only; built from the
+/// inner stores below the cluster decorators.
+pub async fn control_snapshot(State(state): State<AppState>) -> Response {
+    let inner = match &state.cluster_inner {
+        Some(i) => i,
+        None => return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster"),
+    };
+    match inner.control_snapshot.build_control_snapshot().await {
+        Ok(snapshot) => Json(snapshot).into_response(),
+        Err(e) => err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("control snapshot failed: {e}"),
+        ),
+    }
+}
+
 /// Decodes the base64-JSON sidecar from the signed cluster sidecar header.
 fn decode_sidecar(headers: &HeaderMap) -> Result<SidecarMeta, Response> {
     let b64 = headers

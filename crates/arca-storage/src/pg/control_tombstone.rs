@@ -27,6 +27,25 @@ impl ControlTombstoneStore for PgStore {
         Ok(())
     }
 
+    async fn apply_control_tombstone(
+        &self,
+        tombstone: &ControlTombstone,
+    ) -> Result<(), ArcaError> {
+        sqlx_core::query::query(
+            "INSERT INTO control_tombstones (entity_type, entity_key, deleted_at)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (entity_type, entity_key) DO UPDATE SET
+               deleted_at = GREATEST(control_tombstones.deleted_at, EXCLUDED.deleted_at)",
+        )
+        .bind(&tombstone.entity_type)
+        .bind(&tombstone.entity_key)
+        .bind(tombstone.deleted_at)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("apply_control_tombstone: {e}")))?;
+        Ok(())
+    }
+
     async fn list_control_tombstones(&self) -> Result<Vec<ControlTombstone>, ArcaError> {
         let rows = sqlx_core::query::query(
             "SELECT entity_type, entity_key, deleted_at FROM control_tombstones",

@@ -9,16 +9,23 @@
 //!   [`MetadataStore::apply_remote_object`] (idempotent, last-writer-wins).
 //!   Tombstones are ordinary rows in the manifest, so deletions converge too
 //!   and are never resurrected.
-//! - **Tombstone GC**: drop tombstones older than the configured grace window
-//!   (which must exceed the longest expected node downtime).
+//! - **Control plane**: for each live peer, pull its full
+//!   [`ControlSnapshot`] and merge it last-writer-wins
+//!   ([`plan_control_merge`]) — credentials, users, teams, grants, buckets, with
+//!   deletions carried as tombstones so a peer that still holds a deleted entity
+//!   cannot resurrect it. The control plane is small, so shipping the whole
+//!   snapshot each pass is cheap and also bootstraps a long-absent node past
+//!   tombstone GC.
+//! - **Tombstone GC**: drop object AND control tombstones older than the
+//!   configured grace window (which must exceed the longest expected node
+//!   downtime).
 //!
 //! The changed-since manifest is incremental and indexed by `seq`, so this can
 //! run frequently and cheaply — that is why Arca relies on frequent anti-entropy
 //! plus read-repair instead of the hinted-handoff machinery large clusters need
 //! (their reconciliation is expensive and runs rarely).
 //!
-//! Control-plane reconciliation and blob GC/repair are layered onto this same
-//! worker in following chunks.
+//! Blob GC/repair is layered onto this same worker in a following chunk.
 //!
 //! The high-water mark is per-peer and **in-memory**: this node's view of how
 //! far it has consumed each peer's `seq`. It is node-local and must never be
@@ -29,8 +36,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use arca_core::cluster::{ClusterState, ManifestEntry};
-use arca_core::store::MetadataStore;
+use arca_core::cluster::{plan_control_merge, ClusterState, ManifestEntry};
+use arca_core::store::{ControlSnapshotStore, ControlTombstoneStore, MetadataStore};
 use chrono::Utc;
 
 use crate::cluster::client::{ClusterClient, ClusterError};
@@ -41,10 +48,13 @@ const MANIFEST_BATCH: u32 = 500;
 
 /// Spawns the anti-entropy worker. It runs for the lifetime of the returned
 /// handle, which the caller keeps alive.
+#[allow(clippy::too_many_arguments)]
 pub fn spawn(
     cluster: Arc<ClusterState>,
     client: ClusterClient,
     metadata: Arc<dyn MetadataStore>,
+    control_snapshot: Arc<dyn ControlSnapshotStore>,
+    control_tombstone: Arc<dyn ControlTombstoneStore>,
     interval: Duration,
     tombstone_grace: Duration,
 ) -> BackgroundWorker {
@@ -58,8 +68,8 @@ pub fn spawn(
         loop {
             timer.tick().await;
 
-            // 1) Objects: pull each live peer's changed-since manifest.
             for peer in cluster.peers().into_iter().filter(|p| p.alive) {
+                // 1) Objects: pull this peer's changed-since manifest.
                 let since = hwm.get(&peer.node_id).copied().unwrap_or(0);
                 match reconcile_peer_objects(&client, metadata.as_ref(), &peer.endpoint, since)
                     .await
@@ -75,19 +85,81 @@ pub fn spawn(
                         );
                     }
                 }
+
+                // 2) Control plane: pull this peer's snapshot and merge LWW.
+                if let Err(e) = reconcile_peer_control(
+                    &client,
+                    control_snapshot.as_ref(),
+                    metadata.as_ref(),
+                    &peer.endpoint,
+                )
+                .await
+                {
+                    tracing::debug!(
+                        peer = %peer.endpoint,
+                        error = %e,
+                        "anti-entropy: control reconcile failed (retried next tick)"
+                    );
+                }
             }
 
-            // 2) Tombstone GC: drop tombstones past the grace window.
+            // 3) Tombstone GC: drop object AND control tombstones past the grace.
             let grace = chrono::Duration::from_std(tombstone_grace)
                 .unwrap_or_else(|_| chrono::Duration::days(7));
-            match metadata.purge_tombstones(Utc::now() - grace).await {
-                Ok(n) if n > 0 => tracing::debug!(purged = n, "anti-entropy: tombstone GC"),
+            let cutoff = Utc::now() - grace;
+            match metadata.purge_tombstones(cutoff).await {
+                Ok(n) if n > 0 => tracing::debug!(purged = n, "anti-entropy: object tombstone GC"),
                 Ok(_) => {}
-                Err(e) => tracing::debug!(error = %e, "anti-entropy: tombstone GC failed"),
+                Err(e) => tracing::debug!(error = %e, "anti-entropy: object tombstone GC failed"),
+            }
+            match control_tombstone.purge_control_tombstones(cutoff).await {
+                Ok(n) if n > 0 => {
+                    tracing::debug!(purged = n, "anti-entropy: control tombstone GC")
+                }
+                Ok(_) => {}
+                Err(e) => tracing::debug!(error = %e, "anti-entropy: control tombstone GC failed"),
             }
         }
     });
     BackgroundWorker::from_handle(handle)
+}
+
+/// Reconciles this node's control plane with a peer: pull the peer's snapshot,
+/// compute the last-writer-wins merge against our own, and apply it. Identity
+/// entities + tombstones go through the control-snapshot store; buckets go
+/// through the metadata store so the metadata cache stays coherent.
+async fn reconcile_peer_control(
+    client: &ClusterClient,
+    control_snapshot: &dyn ControlSnapshotStore,
+    metadata: &dyn MetadataStore,
+    endpoint: &str,
+) -> Result<(), ClusterError> {
+    let remote = client.fetch_control_snapshot(endpoint).await?;
+    let local = control_snapshot
+        .build_control_snapshot()
+        .await
+        .map_err(|e| ClusterError::Serde(format!("build local snapshot: {e}")))?;
+    let plan = plan_control_merge(&local, &remote);
+    if plan.is_empty() {
+        return Ok(());
+    }
+    // Identity entities (credentials/users/teams/grants) + tombstones.
+    control_snapshot
+        .apply_control_merge(&plan)
+        .await
+        .map_err(|e| ClusterError::Serde(format!("apply control merge: {e}")))?;
+    // Buckets via the (cache-aware) metadata store.
+    for bucket in &plan.upsert_buckets {
+        if let Err(e) = metadata.apply_remote_bucket(bucket).await {
+            tracing::warn!(bucket = %bucket.name, error = %e, "anti-entropy: bucket upsert failed");
+        }
+    }
+    for name in &plan.delete_buckets {
+        if let Err(e) = metadata.delete_bucket(name).await {
+            tracing::warn!(bucket = %name, error = %e, "anti-entropy: bucket delete failed");
+        }
+    }
+    Ok(())
 }
 
 /// Pulls a peer's manifest from `since`, applying each batch in `seq` order,

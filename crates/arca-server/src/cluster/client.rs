@@ -17,8 +17,8 @@ use std::time::Duration;
 
 use arca_auth::{sign_outbound_request, SignOutboundInput};
 use arca_core::cluster::{
-    ClusterManifest, ClusterManifestRequest, ClusterVersionDelete, ControlOp, CLUSTER_ACCESS_KEY,
-    CLUSTER_REGION, CLUSTER_SIDECAR_HEADER,
+    ClusterManifest, ClusterManifestRequest, ClusterVersionDelete, ControlOp, ControlSnapshot,
+    CLUSTER_ACCESS_KEY, CLUSTER_REGION, CLUSTER_SIDECAR_HEADER,
 };
 use arca_core::store::{ByteStream, SidecarMeta};
 use arca_core::types::{BlobId, ObjectRecord};
@@ -136,6 +136,18 @@ impl ClusterClient {
         let body = serde_json::to_vec(&req).map_err(|e| ClusterError::Serde(e.to_string()))?;
         let bytes = self
             .post_json_recv(endpoint, "/cluster/v1/manifest", body)
+            .await?;
+        serde_json::from_slice(&bytes).map_err(|e| ClusterError::Serde(e.to_string()))
+    }
+
+    /// Pulls a peer's full control-plane snapshot (`GET
+    /// /cluster/v1/control-snapshot`) for the reconcile pass to merge.
+    pub async fn fetch_control_snapshot(
+        &self,
+        endpoint: &str,
+    ) -> Result<ControlSnapshot, ClusterError> {
+        let bytes = self
+            .get_recv(endpoint, "/cluster/v1/control-snapshot")
             .await?;
         serde_json::from_slice(&bytes).map_err(|e| ClusterError::Serde(e.to_string()))
     }
@@ -282,6 +294,35 @@ impl ClusterClient {
         body: Vec<u8>,
     ) -> Result<Vec<u8>, ClusterError> {
         let resp = self.send_post(endpoint, path, body).await?;
+        let status = resp.status().as_u16();
+        if !(200..300).contains(&status) {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ClusterError::Http { status, body });
+        }
+        resp.bytes()
+            .await
+            .map(|b| b.to_vec())
+            .map_err(|e| ClusterError::Network(e.to_string()))
+    }
+
+    /// Signs and sends a GET to a fixed cluster path, returning the response
+    /// body bytes on success (read pulls: the control snapshot).
+    async fn get_recv(&self, endpoint: &str, path: &str) -> Result<Vec<u8>, ClusterError> {
+        let (url, host, uri_path) = cluster_target(endpoint, path)?;
+        let datetime = now_iso8601();
+        let headers = base_signed_headers(&host, &datetime, None, None, &self.node_id);
+        let auth = self.sign("GET", &uri_path, &headers, &datetime);
+
+        let mut hmap = HeaderMap::new();
+        push_signed_headers(&mut hmap, &headers, &auth);
+
+        let resp = self
+            .http
+            .get(&url)
+            .headers(hmap)
+            .send()
+            .await
+            .map_err(|e| ClusterError::Network(e.to_string()))?;
         let status = resp.status().as_u16();
         if !(200..300).contains(&status) {
             let body = resp.text().await.unwrap_or_default();

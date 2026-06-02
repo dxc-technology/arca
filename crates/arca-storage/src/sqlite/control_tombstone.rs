@@ -32,6 +32,28 @@ impl ControlTombstoneStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("record_control_tombstone: {e}")))
     }
 
+    async fn apply_control_tombstone(
+        &self,
+        tombstone: &ControlTombstone,
+    ) -> Result<(), ArcaError> {
+        let etype = tombstone.entity_type.clone();
+        let ekey = tombstone.entity_key.clone();
+        let deleted_at = tombstone.deleted_at.to_rfc3339();
+        self.conn
+            .call(move |conn| {
+                conn.execute(
+                    "INSERT INTO control_tombstones (entity_type, entity_key, deleted_at)
+                     VALUES (?1, ?2, ?3)
+                     ON CONFLICT(entity_type, entity_key) DO UPDATE SET
+                       deleted_at = MAX(deleted_at, excluded.deleted_at)",
+                    params![etype, ekey, deleted_at],
+                )?;
+                Ok(())
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("apply_control_tombstone: {e}")))
+    }
+
     async fn list_control_tombstones(&self) -> Result<Vec<ControlTombstone>, ArcaError> {
         self.read_conn()
             .call(move |conn| {

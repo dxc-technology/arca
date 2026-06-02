@@ -18,6 +18,10 @@ use std::sync::RwLock;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::store::control_tombstone::{
+    ControlTombstone, TOMBSTONE_BUCKET, TOMBSTONE_CREDENTIAL, TOMBSTONE_GRANT, TOMBSTONE_TEAM,
+    TOMBSTONE_USER,
+};
 use crate::types::{
     BucketInfo, Credential, Grant, MultipartUploadRecord, ObjectRecord, PartRecord, Team, User,
 };
@@ -161,6 +165,377 @@ pub struct ManifestEntry {
 pub struct ClusterManifest {
     pub entries: Vec<ManifestEntry>,
     pub cursor: u64,
+}
+
+/// A control-plane entity paired with its last-write timestamp, carried in a
+/// [`ControlSnapshot`]. The `updated_at` is the LWW key the reconcile pass
+/// compares (it is a DB column maintained on write, NOT a field of the inner
+/// struct — see migrations sqlite v20 / pg 0007), so it must travel here
+/// explicitly and be preserved verbatim on apply (`apply_*_at`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimestampedCredential {
+    pub credential: Credential,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// A user paired with its last-write timestamp. See [`TimestampedCredential`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimestampedUser {
+    pub user: User,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// A team paired with its last-write timestamp. See [`TimestampedCredential`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimestampedTeam {
+    pub team: Team,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Full control-plane state of a node, exchanged via `GET
+/// /cluster/v1/control-snapshot` and merged last-writer-wins by the reconcile
+/// pass (decision 12). Small and bounded (the control plane rarely changes), so
+/// shipping the whole thing each cycle is cheap and lets a long-absent node
+/// bootstrap past tombstone GC.
+///
+/// SCOPE: exactly the entities that carry a deletion tombstone — credentials,
+/// users, teams, grants, buckets — so every reconciled entity has a defense
+/// against resurrection. Grants travel with their struct-level `updated_at`;
+/// buckets are create/delete-only and reconcile on `created_at`; the rest pair
+/// the entity with its `updated_at` (a DB column, not a struct field).
+/// Memberships/attachments, bucket tags and config (server/bucket) replicate in
+/// real time but are NOT reconciled here — a documented catch-up gap for a node
+/// absent during such a change (follow-up).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ControlSnapshot {
+    pub credentials: Vec<TimestampedCredential>,
+    pub users: Vec<TimestampedUser>,
+    pub teams: Vec<TimestampedTeam>,
+    pub grants: Vec<Grant>,
+    pub buckets: Vec<BucketInfo>,
+    pub tombstones: Vec<ControlTombstone>,
+}
+
+/// The local writes a node must perform to converge with a peer's
+/// [`ControlSnapshot`], computed by [`plan_control_merge`]. Pure data: the
+/// store applies it (`apply_control_merge`). Upserts carry the winning payload
+/// AND its timestamp so the receiver preserves it (no `now()` re-stamp → no
+/// flapping).
+#[derive(Debug, Default, Clone)]
+pub struct ControlMergePlan {
+    pub upsert_credentials: Vec<TimestampedCredential>,
+    pub upsert_users: Vec<TimestampedUser>,
+    pub upsert_teams: Vec<TimestampedTeam>,
+    pub upsert_grants: Vec<Grant>,
+    pub upsert_buckets: Vec<BucketInfo>,
+    pub delete_credentials: Vec<String>,
+    pub delete_users: Vec<String>,
+    pub delete_teams: Vec<String>,
+    pub delete_grants: Vec<String>,
+    pub delete_buckets: Vec<String>,
+    /// Peer deletions to adopt locally, recorded with the given `deleted_at`.
+    pub adopt_tombstones: Vec<ControlTombstone>,
+    /// Local tombstones to clear (the entity is alive again, newer somewhere).
+    pub clear_tombstones: Vec<ControlTombstone>,
+}
+
+impl ControlMergePlan {
+    /// True when the merge requires no local writes (the common steady state).
+    pub fn is_empty(&self) -> bool {
+        self.upsert_credentials.is_empty()
+            && self.upsert_users.is_empty()
+            && self.upsert_teams.is_empty()
+            && self.upsert_grants.is_empty()
+            && self.upsert_buckets.is_empty()
+            && self.delete_credentials.is_empty()
+            && self.delete_users.is_empty()
+            && self.delete_teams.is_empty()
+            && self.delete_grants.is_empty()
+            && self.delete_buckets.is_empty()
+            && self.adopt_tombstones.is_empty()
+            && self.clear_tombstones.is_empty()
+    }
+}
+
+/// The local action for a single entity key after last-writer-wins resolution
+/// of its alive/dead timestamps across the two nodes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct KeyResolution {
+    /// Local should adopt the remote payload (remote's alive ts is strictly newer).
+    upsert_from_remote: bool,
+    /// Local should delete the live entity (it lost to a newer deletion).
+    delete_local: bool,
+    /// Record/refresh a local tombstone at this `deleted_at` (the delete won).
+    adopt_tombstone_at: Option<DateTime<Utc>>,
+    /// Remove the local tombstone (the entity is alive again).
+    clear_tombstone: bool,
+}
+
+/// Resolves one key from the four event timestamps a node may hold for it: the
+/// local/remote "alive" (entity present, `updated_at`) and "dead" (tombstone,
+/// `deleted_at`) times. The newest event wins; on an alive/dead tie the entity
+/// stays alive (a re-create at the same instant as its delete keeps the entity).
+fn resolve_key(
+    local_alive: Option<DateTime<Utc>>,
+    local_dead: Option<DateTime<Utc>>,
+    remote_alive: Option<DateTime<Utc>>,
+    remote_dead: Option<DateTime<Utc>>,
+) -> KeyResolution {
+    let global_alive = [local_alive, remote_alive].into_iter().flatten().max();
+    let global_dead = [local_dead, remote_dead].into_iter().flatten().max();
+
+    let dead = match (global_alive, global_dead) {
+        (Some(a), Some(d)) => d > a,
+        (None, Some(_)) => true,
+        _ => false,
+    };
+
+    if dead {
+        let dead_at = global_dead.expect("dead implies a deletion timestamp");
+        KeyResolution {
+            upsert_from_remote: false,
+            delete_local: local_alive.is_some(),
+            // Record locally if missing or stale.
+            adopt_tombstone_at: (local_dead < Some(dead_at)).then_some(dead_at),
+            clear_tombstone: false,
+        }
+    } else {
+        // Alive wins. Adopt the remote payload only if its alive ts is strictly
+        // newer than ours (ties keep local, avoiding needless churn).
+        let upsert_from_remote = match (remote_alive, local_alive) {
+            (Some(r), Some(l)) => r > l,
+            (Some(_), None) => true,
+            _ => false,
+        };
+        KeyResolution {
+            upsert_from_remote,
+            delete_local: false,
+            adopt_tombstone_at: None,
+            // A live entity must not keep a stale local tombstone.
+            clear_tombstone: local_dead.is_some(),
+        }
+    }
+}
+
+/// Builds a `(entity_key -> deleted_at)` map of a snapshot's tombstones of one
+/// type.
+fn tombstone_map<'a>(
+    tombstones: &'a [ControlTombstone],
+    entity_type: &str,
+) -> std::collections::HashMap<&'a str, DateTime<Utc>> {
+    tombstones
+        .iter()
+        .filter(|t| t.entity_type == entity_type)
+        .map(|t| (t.entity_key.as_str(), t.deleted_at))
+        .collect()
+}
+
+/// Computes the local writes needed to converge with `remote` (decision 12):
+/// last-writer-wins per entity, with deletions represented by tombstones so a
+/// peer that still holds a deleted entity cannot resurrect it. Pure: no I/O, so
+/// it is exhaustively unit-tested. Only the tombstoned entity families are in
+/// scope (credentials, users, teams, grants, buckets).
+pub fn plan_control_merge(local: &ControlSnapshot, remote: &ControlSnapshot) -> ControlMergePlan {
+    use std::collections::HashMap;
+    let mut plan = ControlMergePlan::default();
+
+    // -- Credentials --
+    {
+        let l_alive: HashMap<&str, DateTime<Utc>> = local
+            .credentials
+            .iter()
+            .map(|c| (c.credential.access_key_id.as_str(), c.updated_at))
+            .collect();
+        let r_alive: HashMap<&str, &TimestampedCredential> = remote
+            .credentials
+            .iter()
+            .map(|c| (c.credential.access_key_id.as_str(), c))
+            .collect();
+        let l_dead = tombstone_map(&local.tombstones, TOMBSTONE_CREDENTIAL);
+        let r_dead = tombstone_map(&remote.tombstones, TOMBSTONE_CREDENTIAL);
+        for key in union_keys(&l_alive, &r_alive, &l_dead, &r_dead) {
+            let key: &str = &key;
+            let res = resolve_key(
+                l_alive.get(key).copied(),
+                l_dead.get(key).copied(),
+                r_alive.get(key).map(|c| c.updated_at),
+                r_dead.get(key).copied(),
+            );
+            if res.upsert_from_remote {
+                plan.upsert_credentials
+                    .push((*r_alive.get(key).unwrap()).clone());
+            }
+            if res.delete_local {
+                plan.delete_credentials.push(key.to_string());
+            }
+            apply_tombstone_actions(&mut plan, TOMBSTONE_CREDENTIAL, key, &res);
+        }
+    }
+
+    // -- Users --
+    {
+        let l_alive: HashMap<&str, DateTime<Utc>> = local
+            .users
+            .iter()
+            .map(|u| (u.user.user_id.as_str(), u.updated_at))
+            .collect();
+        let r_alive: HashMap<&str, &TimestampedUser> = remote
+            .users
+            .iter()
+            .map(|u| (u.user.user_id.as_str(), u))
+            .collect();
+        let l_dead = tombstone_map(&local.tombstones, TOMBSTONE_USER);
+        let r_dead = tombstone_map(&remote.tombstones, TOMBSTONE_USER);
+        for key in union_keys(&l_alive, &r_alive, &l_dead, &r_dead) {
+            let key: &str = &key;
+            let res = resolve_key(
+                l_alive.get(key).copied(),
+                l_dead.get(key).copied(),
+                r_alive.get(key).map(|u| u.updated_at),
+                r_dead.get(key).copied(),
+            );
+            if res.upsert_from_remote {
+                plan.upsert_users.push((*r_alive.get(key).unwrap()).clone());
+            }
+            if res.delete_local {
+                plan.delete_users.push(key.to_string());
+            }
+            apply_tombstone_actions(&mut plan, TOMBSTONE_USER, key, &res);
+        }
+    }
+
+    // -- Teams --
+    {
+        let l_alive: HashMap<&str, DateTime<Utc>> = local
+            .teams
+            .iter()
+            .map(|t| (t.team.team_id.as_str(), t.updated_at))
+            .collect();
+        let r_alive: HashMap<&str, &TimestampedTeam> = remote
+            .teams
+            .iter()
+            .map(|t| (t.team.team_id.as_str(), t))
+            .collect();
+        let l_dead = tombstone_map(&local.tombstones, TOMBSTONE_TEAM);
+        let r_dead = tombstone_map(&remote.tombstones, TOMBSTONE_TEAM);
+        for key in union_keys(&l_alive, &r_alive, &l_dead, &r_dead) {
+            let key: &str = &key;
+            let res = resolve_key(
+                l_alive.get(key).copied(),
+                l_dead.get(key).copied(),
+                r_alive.get(key).map(|t| t.updated_at),
+                r_dead.get(key).copied(),
+            );
+            if res.upsert_from_remote {
+                plan.upsert_teams.push((*r_alive.get(key).unwrap()).clone());
+            }
+            if res.delete_local {
+                plan.delete_teams.push(key.to_string());
+            }
+            apply_tombstone_actions(&mut plan, TOMBSTONE_TEAM, key, &res);
+        }
+    }
+
+    // -- Grants (updated_at is a struct field) --
+    {
+        let l_alive: HashMap<&str, DateTime<Utc>> = local
+            .grants
+            .iter()
+            .map(|g| (g.grant_id.as_str(), g.updated_at))
+            .collect();
+        let r_alive: HashMap<&str, &Grant> =
+            remote.grants.iter().map(|g| (g.grant_id.as_str(), g)).collect();
+        let l_dead = tombstone_map(&local.tombstones, TOMBSTONE_GRANT);
+        let r_dead = tombstone_map(&remote.tombstones, TOMBSTONE_GRANT);
+        for key in union_keys(&l_alive, &r_alive, &l_dead, &r_dead) {
+            let key: &str = &key;
+            let res = resolve_key(
+                l_alive.get(key).copied(),
+                l_dead.get(key).copied(),
+                r_alive.get(key).map(|g| g.updated_at),
+                r_dead.get(key).copied(),
+            );
+            if res.upsert_from_remote {
+                plan.upsert_grants.push((*r_alive.get(key).unwrap()).clone());
+            }
+            if res.delete_local {
+                plan.delete_grants.push(key.to_string());
+            }
+            apply_tombstone_actions(&mut plan, TOMBSTONE_GRANT, key, &res);
+        }
+    }
+
+    // -- Buckets (create/delete only; created_at is the alive timestamp) --
+    {
+        let l_alive: HashMap<&str, DateTime<Utc>> = local
+            .buckets
+            .iter()
+            .map(|b| (b.name.as_str(), b.created_at))
+            .collect();
+        let r_alive: HashMap<&str, &BucketInfo> =
+            remote.buckets.iter().map(|b| (b.name.as_str(), b)).collect();
+        let l_dead = tombstone_map(&local.tombstones, TOMBSTONE_BUCKET);
+        let r_dead = tombstone_map(&remote.tombstones, TOMBSTONE_BUCKET);
+        for key in union_keys(&l_alive, &r_alive, &l_dead, &r_dead) {
+            let key: &str = &key;
+            let res = resolve_key(
+                l_alive.get(key).copied(),
+                l_dead.get(key).copied(),
+                r_alive.get(key).map(|b| b.created_at),
+                r_dead.get(key).copied(),
+            );
+            if res.upsert_from_remote {
+                plan.upsert_buckets.push((*r_alive.get(key).unwrap()).clone());
+            }
+            if res.delete_local {
+                plan.delete_buckets.push(key.to_string());
+            }
+            apply_tombstone_actions(&mut plan, TOMBSTONE_BUCKET, key, &res);
+        }
+    }
+
+    plan
+}
+
+/// Pushes the tombstone adopt/clear actions of a resolved key into the plan.
+fn apply_tombstone_actions(
+    plan: &mut ControlMergePlan,
+    entity_type: &str,
+    key: &str,
+    res: &KeyResolution,
+) {
+    if let Some(deleted_at) = res.adopt_tombstone_at {
+        plan.adopt_tombstones.push(ControlTombstone {
+            entity_type: entity_type.to_string(),
+            entity_key: key.to_string(),
+            deleted_at,
+        });
+    }
+    if res.clear_tombstone {
+        plan.clear_tombstones.push(ControlTombstone {
+            entity_type: entity_type.to_string(),
+            entity_key: key.to_string(),
+            // deleted_at is irrelevant for a clear (keyed by type+key).
+            deleted_at: DateTime::<Utc>::MIN_UTC,
+        });
+    }
+}
+
+/// The set of entity keys (owned) appearing in any of a type's four alive/dead
+/// maps. Four independent value generics because the local/remote "alive" maps
+/// hold different value types (timestamp vs entity reference).
+fn union_keys<A, B, C, D>(
+    local_alive: &std::collections::HashMap<&str, A>,
+    remote_alive: &std::collections::HashMap<&str, B>,
+    local_dead: &std::collections::HashMap<&str, C>,
+    remote_dead: &std::collections::HashMap<&str, D>,
+) -> Vec<String> {
+    let mut keys: std::collections::HashSet<String> = std::collections::HashSet::new();
+    keys.extend(local_alive.keys().map(|k| k.to_string()));
+    keys.extend(remote_alive.keys().map(|k| k.to_string()));
+    keys.extend(local_dead.keys().map(|k| k.to_string()));
+    keys.extend(remote_dead.keys().map(|k| k.to_string()));
+    keys.into_iter().collect()
 }
 
 /// A peer node as currently seen by this node.
@@ -531,5 +906,114 @@ mod tests {
             serde_json::from_str(&serde_json::to_string(&empty).unwrap()).unwrap();
         assert!(back.entries.is_empty());
         assert_eq!(back.cursor, 42);
+    }
+
+    // --- plan_control_merge -------------------------------------------------
+
+    fn ts(secs: i64) -> DateTime<Utc> {
+        chrono::TimeZone::timestamp_opt(&Utc, secs, 0).unwrap()
+    }
+
+    fn tcred(id: &str, updated: i64) -> TimestampedCredential {
+        TimestampedCredential {
+            credential: Credential {
+                access_key_id: id.to_string(),
+                secret_access_key: "s".to_string(),
+                description: String::new(),
+                created_at: ts(updated),
+                active: true,
+                admin: false,
+                user_id: "root".to_string(),
+            },
+            updated_at: ts(updated),
+        }
+    }
+
+    fn tomb(entity_type: &str, key: &str, at: i64) -> ControlTombstone {
+        ControlTombstone {
+            entity_type: entity_type.to_string(),
+            entity_key: key.to_string(),
+            deleted_at: ts(at),
+        }
+    }
+
+    fn snap_with_creds(
+        credentials: Vec<TimestampedCredential>,
+        tombstones: Vec<ControlTombstone>,
+    ) -> ControlSnapshot {
+        ControlSnapshot {
+            credentials,
+            users: vec![],
+            teams: vec![],
+            grants: vec![],
+            buckets: vec![],
+            tombstones,
+        }
+    }
+
+    #[test]
+    fn merge_identical_snapshots_is_empty() {
+        let s = snap_with_creds(vec![tcred("AK", 100)], vec![]);
+        assert!(plan_control_merge(&s, &s).is_empty());
+    }
+
+    #[test]
+    fn merge_pulls_newer_remote_credential() {
+        let local = snap_with_creds(vec![tcred("AK", 100)], vec![]);
+        let remote = snap_with_creds(vec![tcred("AK", 200)], vec![]);
+        let plan = plan_control_merge(&local, &remote);
+        assert_eq!(plan.upsert_credentials.len(), 1);
+        assert_eq!(plan.upsert_credentials[0].updated_at, ts(200));
+        assert!(plan.delete_credentials.is_empty());
+    }
+
+    #[test]
+    fn merge_keeps_newer_local_credential() {
+        let local = snap_with_creds(vec![tcred("AK", 300)], vec![]);
+        let remote = snap_with_creds(vec![tcred("AK", 200)], vec![]);
+        // Local is newer → no change pulled from remote.
+        assert!(plan_control_merge(&local, &remote).is_empty());
+    }
+
+    #[test]
+    fn merge_adopts_remote_create_when_local_missing() {
+        let local = snap_with_creds(vec![], vec![]);
+        let remote = snap_with_creds(vec![tcred("AK", 100)], vec![]);
+        let plan = plan_control_merge(&local, &remote);
+        assert_eq!(plan.upsert_credentials.len(), 1);
+    }
+
+    #[test]
+    fn merge_deletes_when_remote_tombstone_is_newer() {
+        // Local has a live credential; remote deleted it later.
+        let local = snap_with_creds(vec![tcred("AK", 100)], vec![]);
+        let remote = snap_with_creds(vec![], vec![tomb(TOMBSTONE_CREDENTIAL, "AK", 200)]);
+        let plan = plan_control_merge(&local, &remote);
+        assert_eq!(plan.delete_credentials, vec!["AK".to_string()]);
+        assert_eq!(plan.adopt_tombstones.len(), 1);
+        assert_eq!(plan.adopt_tombstones[0].deleted_at, ts(200));
+        assert!(plan.upsert_credentials.is_empty());
+    }
+
+    #[test]
+    fn merge_does_not_resurrect_when_local_tombstone_is_newer() {
+        // Local deleted AK (newer); remote still has it alive (older).
+        let local = snap_with_creds(vec![], vec![tomb(TOMBSTONE_CREDENTIAL, "AK", 300)]);
+        let remote = snap_with_creds(vec![tcred("AK", 100)], vec![]);
+        let plan = plan_control_merge(&local, &remote);
+        // The stale remote credential must NOT be pulled in.
+        assert!(plan.upsert_credentials.is_empty());
+        assert!(plan.delete_credentials.is_empty());
+    }
+
+    #[test]
+    fn merge_recreate_beats_older_tombstone_and_clears_it() {
+        // Local has a stale tombstone for AK; remote re-created it later.
+        let local = snap_with_creds(vec![], vec![tomb(TOMBSTONE_CREDENTIAL, "AK", 100)]);
+        let remote = snap_with_creds(vec![tcred("AK", 200)], vec![]);
+        let plan = plan_control_merge(&local, &remote);
+        assert_eq!(plan.upsert_credentials.len(), 1, "newer create wins");
+        assert_eq!(plan.clear_tombstones.len(), 1, "stale local tombstone cleared");
+        assert!(plan.delete_credentials.is_empty());
     }
 }

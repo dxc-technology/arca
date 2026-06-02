@@ -6,7 +6,7 @@ use std::sync::RwLock;
 use std::collections::HashMap;
 use std::time::Instant;
 
-use arca_core::store::{AuditStore, BlobStore, ConnectorRegistry, CredentialStore, GrantStore, MetadataStore, MetricsStore, NotificationStore, PresignedUrlStore, RawBlobOps, ReplicationStore, ServerConfigStore, SsecBlobOps, TeamStore, UserStore};
+use arca_core::store::{AuditStore, BlobStore, ConnectorRegistry, ControlSnapshotStore, CredentialStore, GrantStore, MetadataStore, MetricsStore, NotificationStore, PresignedUrlStore, RawBlobOps, ReplicationStore, ServerConfigStore, SsecBlobOps, TeamStore, UserStore};
 use arca_core::store::audit::AuditEntry;
 use arca_core::cluster::ClusterState;
 
@@ -35,6 +35,9 @@ pub struct ClusterInnerStores {
     pub grants: Arc<dyn GrantStore>,
     pub teams: Arc<dyn TeamStore>,
     pub server_config: Arc<dyn ServerConfigStore>,
+    /// Reads this node's full control snapshot for `GET
+    /// /cluster/v1/control-snapshot` (the peer-pull side of the reconcile).
+    pub control_snapshot: Arc<dyn ControlSnapshotStore>,
 }
 
 /// Application state shared across all handlers.

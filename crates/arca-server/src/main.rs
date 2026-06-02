@@ -410,6 +410,8 @@ async fn async_main(cli: Cli) -> Result<()> {
                     cstate.clone(),
                     client.clone(),
                     inner_metadata.clone(),
+                    stores.control_snapshot.clone(),
+                    stores.control_tombstone.clone(),
                     std::time::Duration::from_secs(c.anti_entropy_interval_seconds.max(1)),
                     c.tombstone_grace(),
                 ));
@@ -430,6 +432,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                     grants: inner_grants,
                     teams: inner_teams,
                     server_config: inner_server_config,
+                    control_snapshot: stores.control_snapshot.clone(),
                 });
                 tracing::info!("Cluster replication enabled (data-plane write path active)");
                 (cluster_blob, cluster_plain, cluster_meta)
@@ -982,6 +985,7 @@ struct StoreSet {
     presigned_url: Option<Arc<dyn arca_core::store::PresignedUrlStore>>,
     replication: Arc<dyn arca_core::store::ReplicationStore>,
     control_tombstone: Arc<dyn arca_core::store::ControlTombstoneStore>,
+    control_snapshot: Arc<dyn arca_core::store::ControlSnapshotStore>,
 }
 
 /// Helper to build a `StoreSet` from any type implementing all store traits.
@@ -999,6 +1003,7 @@ where
         + arca_core::store::PresignedUrlStore
         + arca_core::store::ReplicationStore
         + arca_core::store::ControlTombstoneStore
+        + arca_core::store::ControlSnapshotStore
         + 'static,
 {
     StoreSet {
@@ -1013,6 +1018,7 @@ where
         notification: Some(store.clone() as Arc<dyn arca_core::store::NotificationStore>),
         presigned_url: Some(store.clone() as Arc<dyn arca_core::store::PresignedUrlStore>),
         control_tombstone: store.clone() as Arc<dyn arca_core::store::ControlTombstoneStore>,
+        control_snapshot: store.clone() as Arc<dyn arca_core::store::ControlSnapshotStore>,
         replication: store as Arc<dyn arca_core::store::ReplicationStore>,
     }
 }
