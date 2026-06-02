@@ -100,7 +100,9 @@ pub fn spawn(config: &ClusterConfig, state: Arc<ClusterState>, scheme: &str, adv
                 let url = format!("{endpoint}/cluster/v1/health");
                 match probe(&client, &url).await {
                     Some(node_id) if node_id == self_node_id => {
-                        // It's us — never list self as a peer.
+                        // It's us — never list self as a peer, but record our
+                        // own advertised endpoint so the console can show it.
+                        state.set_local_endpoint(endpoint.clone());
                     }
                     Some(node_id) => {
                         *last_id = Some(node_id.clone());

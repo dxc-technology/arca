@@ -585,6 +585,9 @@ pub struct PeerNode {
 #[derive(Debug, Clone, Serialize)]
 pub struct ClusterSnapshot {
     pub node_id: String,
+    /// This node's own advertised endpoint, once the membership manager has
+    /// learned it (null until the first self-probe).
+    pub local_endpoint: Option<String>,
     /// Durable copies (including self) required to ACK a write. `null` =
     /// "available" mode (W=1).
     pub write_quorum: Option<u32>,
@@ -608,6 +611,10 @@ pub struct ClusterState {
     write_quorum: Option<u32>,
     /// Currently known peers (excluding self).
     peers: RwLock<Vec<PeerNode>>,
+    /// This node's own advertised endpoint, learned by the membership manager
+    /// when a discovery candidate's health probe returns this node's own id.
+    /// `None` until that first self-probe completes.
+    local_endpoint: RwLock<Option<String>>,
 }
 
 impl ClusterState {
@@ -618,7 +625,25 @@ impl ClusterState {
             node_id: node_id.into(),
             write_quorum,
             peers: RwLock::new(Vec::new()),
+            local_endpoint: RwLock::new(None),
         }
+    }
+
+    /// Records this node's own advertised endpoint (called by the membership
+    /// manager once it recognises its own id in a health probe).
+    pub fn set_local_endpoint(&self, endpoint: impl Into<String>) {
+        *self
+            .local_endpoint
+            .write()
+            .expect("cluster local_endpoint lock poisoned") = Some(endpoint.into());
+    }
+
+    /// This node's own advertised endpoint, if learned yet.
+    pub fn local_endpoint(&self) -> Option<String> {
+        self.local_endpoint
+            .read()
+            .expect("cluster local_endpoint lock poisoned")
+            .clone()
     }
 
     /// This node's stable identity.
@@ -681,6 +706,7 @@ impl ClusterState {
         };
         ClusterSnapshot {
             node_id: self.node_id.clone(),
+            local_endpoint: self.local_endpoint(),
             write_quorum: self.write_quorum,
             has_write_quorum,
             live_node_count,

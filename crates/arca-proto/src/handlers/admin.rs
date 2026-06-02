@@ -241,7 +241,7 @@ pub async fn cluster(State(state): State<AppState>) -> Response {
     let mut nodes: Vec<ClusterNodeView> = Vec::with_capacity(snap.peers.len() + 1);
     nodes.push(ClusterNodeView {
         node_id: snap.node_id.clone(),
-        endpoint: None,
+        endpoint: snap.local_endpoint.clone(),
         alive: true,
         last_seen: None,
         local: true,
