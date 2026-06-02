@@ -595,8 +595,20 @@
 
             <!-- Bento grid -->
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <!-- Bucket count -->
+              <div class="glass rounded-xl p-5 glass-hover fade-in fade-in-delay-1">
+                <div class="text-vault-muted text-xs mb-3 uppercase tracking-wider font-medium">Buckets</div>
+                <div class="text-3xl font-semibold text-vault-accent" x-text="stats.bucket_count ?? '—'"></div>
+              </div>
+
+              <!-- Object count -->
+              <div class="glass rounded-xl p-5 glass-hover fade-in fade-in-delay-2">
+                <div class="text-vault-muted text-xs mb-3 uppercase tracking-wider font-medium">Objects</div>
+                <div class="text-3xl font-semibold text-vault-indigo" x-text="stats.object_count ?? '—'"></div>
+              </div>
+
               <!-- Server info (spans 2 cols) -->
-              <div class="sm:col-span-2 glass rounded-xl p-5 glass-hover fade-in">
+              <div class="sm:col-span-2 glass rounded-xl p-5 glass-hover fade-in fade-in-delay-2">
                 <div class="flex items-center gap-2 mb-4">
                   <svg class="w-4 h-4 text-vault-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 01-3-3m3 3a3 3 0 100 6h13.5a3 3 0 100-6m-16.5-3a3 3 0 013-3h13.5a3 3 0 013 3m-19.5 0a4.5 4.5 0 01.9-2.7L5.737 5.1a3.375 3.375 0 012.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 01.9 2.7m0 0a3 3 0 01-3 3m0 3h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008zm-3 6h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008z"/></svg>
                   <span class="text-xs font-medium text-vault-muted uppercase tracking-wider">Server</span>
@@ -658,18 +670,6 @@
                     </div>
                   </div>
                 </div>
-              </div>
-
-              <!-- Bucket count -->
-              <div class="glass rounded-xl p-5 glass-hover fade-in fade-in-delay-1">
-                <div class="text-vault-muted text-xs mb-3 uppercase tracking-wider font-medium">Buckets</div>
-                <div class="text-3xl font-semibold text-vault-accent" x-text="stats.bucket_count ?? '—'"></div>
-              </div>
-
-              <!-- Object count -->
-              <div class="glass rounded-xl p-5 glass-hover fade-in fade-in-delay-2">
-                <div class="text-vault-muted text-xs mb-3 uppercase tracking-wider font-medium">Objects</div>
-                <div class="text-3xl font-semibold text-vault-indigo" x-text="stats.object_count ?? '—'"></div>
               </div>
 
               <!-- Storage ring (spans 2 cols, 2 rows) -->
