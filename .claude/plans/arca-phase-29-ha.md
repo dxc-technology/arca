@@ -22,6 +22,20 @@ Erasure coding is NOT in this phase (full-copy replication; RS remains a future 
 6. **Client failover**: external LB/VIP (HAProxy + keepalived), health on `/admin/health`. Zero routing inside Arca.
 7. **Erasure coding**: deferred to a future phase.
 
+## Architectural updates decided during M4 (2026-06-02)
+
+Decisions taken while implementing M4, which UPDATE/CORRECT the original plan. Documented here because they are the architectural heart of the resilience story.
+
+8. **Tombstones for hard deletes (CORRECTION of a plan bug).** Anti-entropy makes nodes converge by *union* of rows (LWW), but a hard delete is the *absence* of a row: a node that missed the delete ships the still-alive row back via manifest → **resurrection** of the deleted object. This affects hard deletes on unversioned buckets, explicit version deletes and lifecycle expiration (delete markers on versioned buckets are rows, hence already safe). **Solution**: in cluster mode a hard delete leaves a *tombstone* row (`is_tombstone=1`, blob cleared, fresh `seq`, `last_modified`=delete instant) instead of removing it; single-node keeps removing as it always did (gated by `set_cluster_mode`). Key insight: the **already-existing LWW on `last_modified` converges tombstones with no special cases** (the tombstone sorts after the deleted row and before any later PUT). Reads exclude tombstones (`recompute_is_latest` skips them, so every `is_latest=1` query is free). GC after `tombstone_grace_days` (> max expected downtime, default 7).
+
+9. **NO hinted handoff (DEVIATION from the M4 plan).** The plan called for hinted handoff + anti-entropy. With tombstones + anti-entropy + read-repair the correctness of deletes is already covered, so hinted handoff remains only a latency optimization. It is standard in BIG clusters (Cassandra) because there reconciliation is expensive and rare; in Arca (N=3 full replica) the changed-since manifest makes anti-entropy incremental and cheap → run it often and get the same fast recovery without the post-it machinery (accumulation during long absences, dedup, expiry). Chosen for "simple and beautiful, not over-engineered".
+
+10. **Changed-since cursor = node-local monotonic `seq` (not `updated_at`/`write_id`).** Every node has a `seq` counter on `objects` (dedicated `object_seq` table on sqlite — immune to the deletion of the highest-seq row, unlike `MAX(seq)+1`; a `SEQUENCE` on pg). It is NOT a field of `ObjectRecord`: it is stamped on every local write including `apply_remote_object`, so reconciliation propagates A→B→C. `last_modified` is NOT a valid cursor (it is the replicated logical mtime, not the node's write order); wall-clock suffers from clock skew; `seq` does not.
+
+11. **No `write_id` (CORRECTION of the M2 plan).** The plan proposed a `write_id` column to disambiguate LWW on null versions. Decided NOT to add it: the tiebreak uses the already-existing `blob_id`, ordering `(last_modified, version_id, blob_id) DESC`. No `ObjectRecord` migration, no new field.
+
+12. **Control-plane reconcile = generic tombstones + full-snapshot LWW (not an op-log).** Same trap as object deletes: a full-set comparison alone resurrects deleted entities (e.g. a revoked credential = a security hole). Chosen: full control-plane snapshot exchanged periodically + LWW merge by `updated_at`, with a generic `control_tombstones(entity_type, entity_key, deleted_at)` table to propagate deletes without resurrection. NOT an op-log: it grows forever, cannot bootstrap a new/long-absent node beyond the GC horizon, and incremental efficiency is pointless for a tiny control plane (over-engineering). The snapshot IS the bootstrap; reads stay unchanged (the entity is truly deleted, the tombstone only serves reconciliation); works in both modes.
+
 ## Configuration (identical on ALL nodes)
 
 ```toml
@@ -106,7 +120,7 @@ The cluster layer sits on top of everything: it replicates already-encoded bytes
 
 ## Implementation milestones
 
-### M1 — Identity, discovery, membership (foundations of symmetry)
+### M1 — Identity, discovery, membership (foundations of symmetry) ✅ DONE
 - `cluster/identity.rs`: `ensure_node_id(server_config)` (generates+persists a UUID), wiring in `main.rs`.
 - `config.rs`: symmetric `[cluster]` section (above). Validation: `cluster_size` present when `mode="quorum"`; non-empty `secret`.
 - `cluster/membership.rs`: `MembershipManager` (mDNS via `mdns-sd` + static/dns fallback + health ping). `AppState.cluster: Option<Arc<ClusterContext>>` (node_id, mode, cluster_size, membership, secret-derived credential, `ClusterClient`, raw `Arc<FsBlobStore>`).
@@ -115,7 +129,7 @@ The cluster layer sits on top of everything: it replicates already-encoded bytes
 
 *Outcome: nodes discover and monitor each other; no replication yet.*
 
-### M2 — Transport and verbatim reception
+### M2 — Transport and verbatim reception ✅ DONE (+ full control plane: bucket/credentials/users/grants/teams/server_config/tags/multipart)
 - `cluster/client.rs`: `ClusterClient` (sibling of `OutboundClient`), **real streaming** of the body (no `collect_stream` in RAM). Refactor the SigV4 helpers from `replicator/client.rs` into `sigv4_http.rs`. Auth via a credential derived from the shared `secret` (fixed access_key `arca-cluster` + secret), identical everywhere.
 - Raw blob access in `blob.rs` + `fs/blob.rs`: `read_raw`/`write_raw` (verbatim bytes, bypassing wrappers) + `exists`. Delegating default impls for non-FS stores.
 - Verbatim metadata methods in `metadata.rs` (+ sqlite/pg impls): `apply_remote_object` (upsert by `(bucket,key,version_id)` + LWW guard + `recompute_is_latest`), `apply_remote_version_delete`, `list_rows_changed_since`. Default `Unsupported`.
@@ -126,7 +140,7 @@ The cluster layer sits on top of everything: it replicates already-encoded bytes
 
 *Outcome: nodes can receive verbatim replicas; nobody sends them yet.*
 
-### M3 — Write path + consistency policy
+### M3 — Write path + consistency policy ✅ DONE
 - `cluster/cluster_blob.rs`: `ClusterBlobStore` (impl `BlobStore`). `put_with_hints`/`write_sidecar`: writes locally via inner → reads the raw bytes → fans out to live peers; unreachable peers → hint. `delete`: local + fan-out. `get`: local, with fetch-from-peer fallback + repair.
 - `cluster/cluster_meta.rs`: `ClusterMetadataStore` (impl `MetadataStore`). `put_object`: calls inner (versioning, canonical version_id) → applies the `mode` policy (quorum gate vs available) → fans out the resulting row → ACK. Also replicates delete/delete-marker/tags/lock/bucket-config/bucket create-delete (via idempotent `/cluster/v1/op`).
 - `cluster/cluster_control.rs`: decorators for the control-plane stores (`CredentialStore`/`UserStore`/`TeamStore`/`GrantStore`/`ServerConfigStore`) that intercept mutations and replicate them via `/cluster/v1/op` with the shared `replicate_op(entity, op, payload)` helper (same `mode` policy, same fan-out + hint). Admin handlers unchanged; wrapped in `main.rs` when the cluster is active.
@@ -136,14 +150,20 @@ The cluster layer sits on top of everything: it replicates already-encoded bytes
 
 *Outcome: working write HA, with the chosen policy.*
 
-### M4 — Resilience and catch-up
-- Hinted-handoff: new `event_type` values `cluster_object`/`cluster_delete`/`cluster_op` in `ReplicationEventType`; a cluster worker (sibling of `replicator/worker.rs`) draining via `ClusterClient`. Raise `max_retries` for long absences.
-- `cluster/anti_entropy.rs`: periodic worker — for OBJECTS `GET /cluster/v1/manifest?since=T` per peer (incremental changed-since), applies missing/fresher rows (idempotent+LWW), GCs orphaned blobs (with a grace period), repairs missing blobs. For the CONTROL PLANE (small sets): periodic full comparison of the replicated tables (credentials/users/teams/grants/server_config/buckets/bucket_config/bucket_tags) with LWW reconciliation.
-- `/admin/health?verbose=1`: node_id, peers_reachable, quorum ok, lag (`count_journal` pending). The default form is unchanged.
+### M4 — Resilience and catch-up (revised per decisions 8–12; see status below)
 
-*Outcome: a node that comes back realigns on its own.*
+No hinted handoff (decision 9). Self-healing rests on: frequent anti-entropy (changed-since manifest) + read-repair + tombstones.
 
-### M5 — Console (topology), deploy, docs, tests
+1. **Changed-since manifest** ✅ DONE (commit `073aeb3`): node-local `seq` (decision 10), `MetadataStore::list_rows_changed_since`, `POST /cluster/v1/manifest` → `ClusterManifest{entries:[{seq,record}],cursor}`, `ClusterClient::fetch_manifest`. (POST, not GET-with-query: the body stays `UNSIGNED-PAYLOAD`, no query-string signing.)
+2. **Tombstones** ✅ DONE (commit `f06ffe0`): decision 8. `is_tombstone` on objects (sqlite v19 / pg 0006), hard delete → tombstone in cluster mode, `apply_remote_version_delete` tombstones (idempotent), `purge_tombstones(before)` GC.
+3. **Objects anti-entropy worker + tombstone GC** ✅ DONE (commit `56cdca1`): `cluster/anti_entropy.rs`, for each live peer pulls the manifest from `seq=hwm` (in-memory, per-peer) and applies via `apply_remote_object` (idempotent LWW, tombstones included); tombstone GC every tick (`tombstone_grace_days`, default 7). Worker spawned in `main.rs` when `[cluster].enabled`.
+4. **`/admin/health?verbose=1`** ✅ DONE (commit `14768d1`): node_id, peers (alive/dead/last contact), quorum, live node count. The default (non-verbose) form is unchanged for the LB.
+5. **Control-plane reconcile** ⏳ TO DO (decision 12): generic tombstones + full-snapshot LWW. Sub-chunks: (a) `updated_at` on Credential/User/Team (struct + sqlite/pg DB, maintained on write) + LWW-aware `apply_remote_*`; (b) a `control_tombstones` table + CRUD store + recording on deletes in the decorators; (c) `GET /cluster/v1/control-snapshot` + `fetch_control_snapshot`; (d) a reconciliation pass in the worker + GC.
+6. **Blob repair + GC** ⏳ TO DO: proactive repair of missing blobs (durability; today only read-repair on GET) + GC of orphaned blobs (hygiene). CAUTION: the GC must be aware of multipart composite blobs (a part blob is referenced by the composite sidecar, not by an object row — data-loss risk, TD-014 territory). Slower cadence than the object reconcile (full O(n) scans).
+
+*Outcome: a node that comes back realigns on its own (objects: already; control plane + blobs: with items 5–6).*
+
+### M5 — Console (topology), deploy, docs, tests ⏳ TO DO
 - **Topology dashboard** (`console/index.html` ~line 622, `console/js/views/dashboard.js`): make the "Topology" field dynamic (today hardcoded "Single node") → e.g. "Cluster: 3 nodes (2 healthy)". Add a **dedicated bento box** with the node list (node_id, endpoint, alive/dead, last contact, local/remote) and the quorum state. Go through the `frontend-design` skill, replicate the existing views' patterns EXACTLY.
 - `GET /admin/cluster`: local node_id, mode, cluster_size, quorum ok, peer list with state and lag. Feeds the dashboard and `arca cluster status`. (An optional `#/cluster` view for the detail, modelled on `replication`.)
 - Local deployment: `docker/docker-compose.cluster.yml` (3 services `arca-1/2/3`, separate volumes, **same master key**, same `secret`, `discovery="static"` with the 3 service names as seeds — reliable in Docker where multicast does not pass) + `haproxy` with a check on `/admin/health`. `config/fragments/cluster.toml`. `bin/lib/compose.sh`: `enable_cluster()`. `bin/arca`: `--cluster` flag (mutually exclusive with `--replication`). mDNS tested/documented for bare-metal Linux LANs.
@@ -191,8 +211,9 @@ bin/test cluster               # HA integration (new target)
 ## Risk notes (where to expect bugs)
 
 1. **`recompute_is_latest` determinism**: a tiebreak disagreement = nodes diverging on "which version is current". One single pure function, used identically everywhere.
-2. **Unversioned overwrite + clock skew** (`mode="available"` especially): the only real data-loss surface. `write_id` + NTP; recommend versioning for sensitive buckets.
+2. **Unversioned overwrite + clock skew** (`mode="available"` especially): the only real data-loss surface on concurrent writes. `blob_id` tiebreak (NOT `write_id`, see decision 11) + NTP; recommend versioning for sensitive buckets.
+2-bis. **Delete resurrection** (SOLVED, decision 8): without tombstones, anti-entropy resurrects hard deletes. Tombstones prevent it for objects; for the control plane the `control_tombstones` prevent it (decision 12). The residual risk is a node absent LONGER than the grace period: it comes back after the tombstone was GC'd → it could resurrect. Mitigation: ample `*_grace` values (> max expected downtime), documented.
 3. **Quorum math vs membership**: the gate must use the LIVE node count from membership, not the configured one; health-check false positives/negatives shift the threshold. Tolerance in the health detection.
-4. **Blob/metadata ordering and orphans**: a blob with no row (orphan for GC) or a row with no blob (read-repair fetch-from-peer). Conservative GC with a grace period.
+4. **Blob/metadata ordering and orphans**: a blob without a row (orphan, to GC) or a row without a blob (read-repair fetch-from-peer). Conservative GC with grace. **Blob GC MUST be aware of multipart composites** (a part blob is referenced by the composite sidecar, not by an object row): a naïve GC would delete live parts (data loss, TD-014 territory).
 5. **Streaming of large blobs in the fan-out** without buffering N copies in RAM (replace Phase 28's `collect_stream`).
 6. **mDNS in Docker/macOS**: multicast often does not work → the test compose uses `discovery="static"`; mDNS validated on a Linux LAN. Do not promise mDNS where multicast is blocked.
