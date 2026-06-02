@@ -992,11 +992,15 @@ where
 
 /// Opens the appropriate metadata store based on the config.
 async fn open_stores(config: &config::Config) -> Result<StoreSet> {
+    // In a cluster, hard deletes must leave tombstones (so deletions converge
+    // and aren't resurrected by anti-entropy); single-node deletes outright.
+    let cluster_enabled = config.cluster.as_ref().is_some_and(|c| c.enabled);
     match config.storage.metadata_backend.as_str() {
         "sqlite" => {
             let store = Arc::new(
                 arca_storage::SqliteStore::open(&config.storage.db_path()).await?,
             );
+            store.set_cluster_mode(cluster_enabled);
             tracing::info!(backend = "sqlite", "Metadata backend ready");
             Ok(build_store_set(store))
         }
@@ -1009,6 +1013,7 @@ async fn open_stores(config: &config::Config) -> Result<StoreSet> {
                     pg_config.max_connections,
                 ).await?,
             );
+            store.set_cluster_mode(cluster_enabled);
             tracing::info!(backend = "postgres", "Metadata backend ready");
             Ok(build_store_set(store))
         }

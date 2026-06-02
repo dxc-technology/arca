@@ -27,7 +27,7 @@ fn get_versioning_state(conn: &Connection, bucket: &str) -> VersioningState {
 }
 
 /// Column list for all object SELECT queries (20 columns).
-const OBJECT_COLUMNS: &str = "bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status";
+const OBJECT_COLUMNS: &str = "bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status, is_tombstone";
 
 #[async_trait::async_trait]
 impl MetadataStore for SqliteStore {
@@ -361,6 +361,7 @@ impl MetadataStore for SqliteStore {
     ) -> Result<Option<ObjectRecord>, ArcaError> {
         let bucket = bucket.to_string();
         let key = key.to_string();
+        let cluster_mode = self.cluster_mode();
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;
@@ -368,18 +369,34 @@ impl MetadataStore for SqliteStore {
 
                 let result = match versioning {
                     VersioningState::Unversioned => {
-                        // Hard-delete as before.
                         let old = fetch_latest_object(&tx, &bucket, &key)?;
                         if old.is_some() {
-                            tx.execute(
-                                "DELETE FROM objects WHERE bucket = ?1 AND key = ?2",
-                                params![bucket, key],
-                            )?;
-                            // Clean up tags
+                            // Clustered: leave a tombstone (blob cleared, fresh
+                            // seq) so the deletion propagates via the manifest
+                            // and anti-entropy can't resurrect it. Single-node:
+                            // remove the row outright.
+                            if cluster_mode {
+                                let seq = next_object_seq(&tx)?;
+                                tx.execute(
+                                    "UPDATE objects SET is_tombstone = 1, is_delete_marker = 0, \
+                                     blob_id = '', size = 0, last_modified = ?3, seq = ?4 \
+                                     WHERE bucket = ?1 AND key = ?2",
+                                    params![bucket, key, chrono::Utc::now().to_rfc3339(), seq],
+                                )?;
+                            } else {
+                                tx.execute(
+                                    "DELETE FROM objects WHERE bucket = ?1 AND key = ?2",
+                                    params![bucket, key],
+                                )?;
+                            }
+                            // Clean up tags either way.
                             tx.execute(
                                 "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2",
                                 params![bucket, key],
                             )?;
+                            if cluster_mode {
+                                recompute_is_latest(&tx, &bucket, &key)?;
+                            }
                         }
                         tx.commit()?;
                         old // blob to clean up
@@ -395,8 +412,8 @@ impl MetadataStore for SqliteStore {
                         let now = chrono::Utc::now();
                         let seq = next_object_seq(&tx)?;
                         tx.execute(
-                            "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq)
-                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, 'root', ?4, 1, 1, NULL, NULL, NULL, 'STANDARD', NULL, NULL, ?5)",
+                            "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq, is_tombstone)
+                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, 'root', ?4, 1, 1, NULL, NULL, NULL, 'STANDARD', NULL, NULL, ?5, 0)",
                             params![bucket, key, now.to_rfc3339(), version_id, seq],
                         )?;
                         tx.commit()?;
@@ -416,6 +433,7 @@ impl MetadataStore for SqliteStore {
                             version_id: Some(version_id),
                             is_latest: true,
                             is_delete_marker: true,
+                            is_tombstone: false,
                             retention_mode: None,
                             retain_until_date: None,
                             legal_hold_status: None,
@@ -446,8 +464,8 @@ impl MetadataStore for SqliteStore {
                         let now = chrono::Utc::now();
                         let seq = next_object_seq(&tx)?;
                         tx.execute(
-                            "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq)
-                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, 'root', NULL, 1, 1, NULL, NULL, NULL, 'STANDARD', NULL, NULL, ?4)",
+                            "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq, is_tombstone)
+                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, 'root', NULL, 1, 1, NULL, NULL, NULL, 'STANDARD', NULL, NULL, ?4, 0)",
                             params![bucket, key, now.to_rfc3339(), seq],
                         )?;
                         tx.commit()?;
@@ -475,9 +493,9 @@ impl MetadataStore for SqliteStore {
         self.read_conn()
             .call(move |conn| {
                 let sql = if version_id == "null" {
-                    format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL")
+                    format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL AND is_tombstone = 0")
                 } else {
-                    format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3")
+                    format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3 AND is_tombstone = 0")
                 };
                 let mut stmt = conn.prepare(&sql)?;
                 let result = if version_id == "null" {
@@ -506,6 +524,7 @@ impl MetadataStore for SqliteStore {
         let bucket = bucket.to_string();
         let key = key.to_string();
         let version_id = version_id.to_string();
+        let cluster_mode = self.cluster_mode();
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;
@@ -513,9 +532,9 @@ impl MetadataStore for SqliteStore {
                 // Fetch the version to delete.
                 let deleted = {
                     let sql = if version_id == "null" {
-                        format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL")
+                        format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL AND is_tombstone = 0")
                     } else {
-                        format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3")
+                        format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3 AND is_tombstone = 0")
                     };
                     let mut stmt = tx.prepare(&sql)?;
                     let result = if version_id == "null" {
@@ -533,8 +552,27 @@ impl MetadataStore for SqliteStore {
                 };
 
                 if let Some(ref rec) = deleted {
-                    // Hard-delete the specific version.
-                    if version_id == "null" {
+                    // Clustered: tombstone the version (blob cleared, fresh seq)
+                    // so the deletion propagates via the manifest and can't be
+                    // resurrected by anti-entropy. Single-node: remove the row.
+                    if cluster_mode {
+                        let seq = next_object_seq(&tx)?;
+                        if version_id == "null" {
+                            tx.execute(
+                                "UPDATE objects SET is_tombstone = 1, is_delete_marker = 0, \
+                                 blob_id = '', size = 0, last_modified = ?3, seq = ?4 \
+                                 WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
+                                params![bucket, key, chrono::Utc::now().to_rfc3339(), seq],
+                            )?;
+                        } else {
+                            tx.execute(
+                                "UPDATE objects SET is_tombstone = 1, is_delete_marker = 0, \
+                                 blob_id = '', size = 0, last_modified = ?4, seq = ?5 \
+                                 WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
+                                params![bucket, key, version_id, chrono::Utc::now().to_rfc3339(), seq],
+                            )?;
+                        }
+                    } else if version_id == "null" {
                         tx.execute(
                             "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
                             params![bucket, key],
@@ -650,10 +688,20 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;
+                // Tombstone the version rather than removing it, so this node's
+                // own manifest carries the deletion onward (transitive
+                // convergence) and anti-entropy can't resurrect it. The
+                // `is_tombstone = 0` guard makes re-delivery a true no-op (no
+                // fresh seq, no re-propagation churn). Absent row → no-op; the
+                // origin's tombstone still reaches this node via anti-entropy.
+                let seq = next_object_seq(&tx)?;
+                let now = chrono::Utc::now().to_rfc3339();
                 if version_id == "null" {
                     tx.execute(
-                        "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
-                        params![bucket, key],
+                        "UPDATE objects SET is_tombstone = 1, is_delete_marker = 0, blob_id = '', \
+                         size = 0, last_modified = ?3, seq = ?4 \
+                         WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL AND is_tombstone = 0",
+                        params![bucket, key, now, seq],
                     )?;
                     tx.execute(
                         "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ''",
@@ -661,8 +709,10 @@ impl MetadataStore for SqliteStore {
                     )?;
                 } else {
                     tx.execute(
-                        "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
-                        params![bucket, key, version_id],
+                        "UPDATE objects SET is_tombstone = 1, is_delete_marker = 0, blob_id = '', \
+                         size = 0, last_modified = ?4, seq = ?5 \
+                         WHERE bucket = ?1 AND key = ?2 AND version_id = ?3 AND is_tombstone = 0",
+                        params![bucket, key, version_id, now, seq],
                     )?;
                     tx.execute(
                         "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
@@ -762,6 +812,23 @@ impl MetadataStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("list_rows_changed_since: {e}")))
     }
 
+    async fn purge_tombstones(
+        &self,
+        before: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, ArcaError> {
+        let before_str = before.to_rfc3339();
+        self.conn
+            .call(move |conn| {
+                let n = conn.execute(
+                    "DELETE FROM objects WHERE is_tombstone = 1 AND last_modified < ?1",
+                    params![before_str],
+                )?;
+                Ok(n as u64)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("purge_tombstones: {e}")))
+    }
+
     async fn list_object_versions(
         &self,
         bucket: &str,
@@ -777,7 +844,7 @@ impl MetadataStore for SqliteStore {
         self.read_conn()
             .call(move |conn| {
                 let mut sql = format!(
-                    "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1"
+                    "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND is_tombstone = 0"
                 );
                 let mut param_idx = 2u32;
 
@@ -1478,7 +1545,7 @@ impl MetadataStore for SqliteStore {
             .call(move |conn| {
                 let mut sql = format!(
                     "SELECT {OBJECT_COLUMNS} FROM objects \
-                     WHERE bucket = ?1 AND is_latest = 0 AND is_delete_marker = 0 AND last_modified < ?2"
+                     WHERE bucket = ?1 AND is_latest = 0 AND is_delete_marker = 0 AND is_tombstone = 0 AND last_modified < ?2"
                 );
                 let mut param_idx = 3u32;
 
@@ -1590,7 +1657,7 @@ fn fetch_null_version(
     key: &str,
 ) -> Result<Option<ObjectRecord>, rusqlite::Error> {
     let sql = format!(
-        "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL"
+        "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL AND is_tombstone = 0"
     );
     let mut stmt = conn.prepare(&sql)?;
     let result = stmt.query_row(params![bucket, key], |row| Ok(row_to_object_record(row)));
@@ -1625,8 +1692,8 @@ fn insert_object_row(
     let retain_until_str = record.retain_until_date.map(|dt| dt.to_rfc3339());
     let seq = next_object_seq(conn)?;
     conn.execute(
-        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq, is_tombstone)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
         params![
             record.bucket,
             record.key,
@@ -1649,6 +1716,7 @@ fn insert_object_row(
             record.checksum_algorithm,
             record.checksum_value,
             seq,
+            record.is_tombstone as i32,
         ],
     )?;
     Ok(())
@@ -1660,6 +1728,12 @@ fn insert_object_row(
 /// node converges on the same current version without coordination. Respects
 /// the unique index `idx_objects_latest` by zeroing all rows before setting the
 /// single winner.
+///
+/// Tombstones (hard-deleted versions kept only for cluster convergence) are
+/// EXCLUDED from the winner pick, so a tombstone is never `is_latest` and a
+/// query filtering `is_latest = 1` transparently skips deleted rows. Deleting
+/// the latest version thus promotes the next live version; deleting the only
+/// version leaves no `is_latest` row (the key reads as absent).
 fn recompute_is_latest(conn: &Connection, bucket: &str, key: &str) -> Result<(), rusqlite::Error> {
     conn.execute(
         "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2",
@@ -1667,7 +1741,7 @@ fn recompute_is_latest(conn: &Connection, bucket: &str, key: &str) -> Result<(),
     )?;
     conn.execute(
         "UPDATE objects SET is_latest = 1 WHERE rowid = (
-            SELECT rowid FROM objects WHERE bucket = ?1 AND key = ?2
+            SELECT rowid FROM objects WHERE bucket = ?1 AND key = ?2 AND is_tombstone = 0
             ORDER BY last_modified DESC, version_id DESC, blob_id DESC
             LIMIT 1
         )",
@@ -1687,8 +1761,8 @@ fn insert_replicated_row(
     let retain_until_str = record.retain_until_date.map(|dt| dt.to_rfc3339());
     let seq = next_object_seq(conn)?;
     conn.execute(
-        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status, seq)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status, seq, is_tombstone)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
         params![
             record.bucket,
             record.key,
@@ -1711,6 +1785,7 @@ fn insert_replicated_row(
             record.checksum_value,
             record.replication_status,
             seq,
+            record.is_tombstone as i32,
         ],
     )?;
     Ok(())
@@ -1852,6 +1927,7 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
     let checksum_algorithm: Option<String> = row.get(18).unwrap_or(None);
     let checksum_value: Option<String> = row.get(19).unwrap_or(None);
     let replication_status: Option<String> = row.get(20).unwrap_or(None);
+    let is_tombstone: bool = row.get::<_, i32>(21).unwrap_or(0) != 0;
 
     Ok(ObjectRecord {
         bucket: row.get(0)?,
@@ -1868,6 +1944,7 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
         version_id,
         is_latest,
         is_delete_marker,
+        is_tombstone,
         retention_mode,
         retain_until_date,
         legal_hold_status,
@@ -1902,6 +1979,7 @@ mod tests {
             version_id: None,
             is_latest: true,
             is_delete_marker: false,
+            is_tombstone: false,
             retention_mode: None,
             retain_until_date: None,
             legal_hold_status: None,
@@ -2968,5 +3046,92 @@ mod tests {
         let remote_seq = all.iter().find(|(_, r)| r.key == "remote").unwrap().0;
         let local_seq = all.iter().find(|(_, r)| r.key == "local").unwrap().0;
         assert!(remote_seq > local_seq);
+    }
+
+    /// A store with cluster mode on, so hard deletes tombstone instead of remove.
+    async fn cluster_store() -> SqliteStore {
+        let store = SqliteStore::open_in_memory().await.unwrap();
+        store.set_cluster_mode(true);
+        store
+    }
+
+    #[tokio::test]
+    async fn cluster_hard_delete_leaves_tombstone_invisible_to_reads() {
+        let store = cluster_store().await;
+        store.create_bucket("b").await.unwrap();
+        store.put_object(&make_record("b", "k")).await.unwrap();
+        store.delete_object("b", "k").await.unwrap();
+
+        // Invisible to S3 reads (the object is deleted)...
+        assert!(store.get_object("b", "k").await.unwrap().is_none());
+        assert!(store.get_latest_object("b", "k").await.unwrap().is_none());
+        assert!(store.list_objects("b", None, None, 100).await.unwrap().is_empty());
+
+        // ...but present as a tombstone in the changed-since manifest, so the
+        // deletion propagates to peers and is not resurrected by anti-entropy.
+        let rows = store.list_rows_changed_since(0, 100).await.unwrap();
+        let tomb = rows.iter().find(|(_, r)| r.key == "k").expect("tombstone in manifest");
+        assert!(tomb.1.is_tombstone);
+        assert_eq!(tomb.1.blob_id.0, "", "tombstone carries no blob");
+    }
+
+    #[tokio::test]
+    async fn single_node_hard_delete_removes_row_without_tombstone() {
+        let store = test_store().await; // cluster mode off
+        store.create_bucket("b").await.unwrap();
+        store.put_object(&make_record("b", "k")).await.unwrap();
+        store.delete_object("b", "k").await.unwrap();
+
+        assert!(store.get_object("b", "k").await.unwrap().is_none());
+        // Single node removes the row outright — no tombstone overhead.
+        let rows = store.list_rows_changed_since(0, 100).await.unwrap();
+        assert!(rows.iter().all(|(_, r)| !r.is_tombstone), "single node must not tombstone");
+        assert!(!rows.iter().any(|(_, r)| r.key == "k"), "row removed");
+    }
+
+    #[tokio::test]
+    async fn tombstone_blocks_anti_entropy_resurrection() {
+        // Delete a version (tombstone), then a peer that missed the delete ships
+        // the still-live version row via anti-entropy. It must NOT resurrect.
+        let store = cluster_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+        let (_, vid) = store.put_object(&make_record("b", "k")).await.unwrap();
+        let vid = vid.unwrap();
+
+        store.delete_object_version("b", "k", &vid).await.unwrap();
+        assert!(store.get_object_version("b", "k", &vid).await.unwrap().is_none());
+
+        // Stale live copy of the same version (its original, older last_modified).
+        let mut stale = make_record("b", "k");
+        stale.version_id = Some(vid.clone());
+        stale.last_modified = chrono::Utc::now() - chrono::Duration::seconds(60);
+        store.apply_remote_object(&stale).await.unwrap();
+
+        assert!(
+            store.get_object_version("b", "k", &vid).await.unwrap().is_none(),
+            "a stale live row must not resurrect a tombstoned version"
+        );
+    }
+
+    #[tokio::test]
+    async fn purge_tombstones_deletes_by_age() {
+        let store = cluster_store().await;
+        store.create_bucket("b").await.unwrap();
+        store.put_object(&make_record("b", "k1")).await.unwrap();
+        store.put_object(&make_record("b", "k2")).await.unwrap();
+        store.delete_object("b", "k1").await.unwrap();
+        store.delete_object("b", "k2").await.unwrap();
+
+        // A past cutoff keeps the just-created tombstones; a future cutoff (past
+        // their grace) removes them.
+        assert_eq!(
+            store.purge_tombstones(chrono::Utc::now() - chrono::Duration::days(1)).await.unwrap(),
+            0
+        );
+        assert_eq!(
+            store.purge_tombstones(chrono::Utc::now() + chrono::Duration::seconds(1)).await.unwrap(),
+            2
+        );
     }
 }

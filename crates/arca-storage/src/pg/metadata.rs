@@ -70,7 +70,7 @@ async fn fetch_null_version(
     key: &str,
 ) -> Result<Option<ObjectRecord>, sqlx_core::error::Error> {
     let sql = format!(
-        "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = $1 AND key = $2 AND version_id IS NULL"
+        "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = $1 AND key = $2 AND version_id IS NULL AND is_tombstone = FALSE"
     );
     let row = sqlx_core::query::query(&sql)
         .bind(bucket)
@@ -131,9 +131,9 @@ async fn insert_replicated_row(
         "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, \
          metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, \
          is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, \
-         checksum_algorithm, checksum_value, replication_status) \
+         checksum_algorithm, checksum_value, replication_status, is_tombstone) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, FALSE, $13, $14, $15, $16, \
-         $17, $18, $19, $20)",
+         $17, $18, $19, $20, $21)",
     )
     .bind(&record.bucket)
     .bind(&record.key)
@@ -155,6 +155,7 @@ async fn insert_replicated_row(
     .bind(&record.checksum_algorithm)
     .bind(&record.checksum_value)
     .bind(&record.replication_status)
+    .bind(record.is_tombstone)
     .execute(&mut **tx)
     .await?;
     Ok(())
@@ -181,7 +182,7 @@ async fn recompute_is_latest(
         .await?;
     sqlx_core::query::query(
         "UPDATE objects SET is_latest = TRUE WHERE ctid = (
-            SELECT ctid FROM objects WHERE bucket = $1 AND key = $2
+            SELECT ctid FROM objects WHERE bucket = $1 AND key = $2 AND is_tombstone = FALSE
             ORDER BY last_modified DESC, version_id DESC NULLS LAST, blob_id DESC
             LIMIT 1
         )",
@@ -237,6 +238,7 @@ fn row_to_object_record(row: &sqlx_postgres::PgRow) -> ObjectRecord {
         checksum_algorithm: row.get("checksum_algorithm"),
         checksum_value: row.get("checksum_value"),
         replication_status: row.try_get("replication_status").unwrap_or(None),
+        is_tombstone: row.try_get("is_tombstone").unwrap_or(false),
     }
 }
 
@@ -606,6 +608,7 @@ impl MetadataStore for PgStore {
         bucket: &str,
         key: &str,
     ) -> Result<Option<ObjectRecord>, ArcaError> {
+        let cluster_mode = self.cluster_mode();
         let mut tx = self
             .pool
             .begin()
@@ -616,26 +619,48 @@ impl MetadataStore for PgStore {
 
         let result = match versioning {
             VersioningState::Unversioned => {
-                // Hard-delete.
                 let old = fetch_latest_object(&mut tx, bucket, key)
                     .await
                     .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
 
                 if old.is_some() {
-                    sqlx_core::query::query("DELETE FROM objects WHERE bucket = $1 AND key = $2")
+                    // Clustered: tombstone (blob cleared) so the deletion
+                    // converges via the manifest and isn't resurrected by
+                    // anti-entropy. Single-node: remove the row.
+                    if cluster_mode {
+                        sqlx_core::query::query(
+                            "UPDATE objects SET seq = nextval('objects_seq'), is_tombstone = TRUE, is_delete_marker = FALSE, \
+                             blob_id = '', size = 0, last_modified = $3 \
+                             WHERE bucket = $1 AND key = $2",
+                        )
                         .bind(bucket)
                         .bind(key)
+                        .bind(Utc::now())
                         .execute(&mut *tx)
                         .await
                         .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+                    } else {
+                        sqlx_core::query::query("DELETE FROM objects WHERE bucket = $1 AND key = $2")
+                            .bind(bucket)
+                            .bind(key)
+                            .execute(&mut *tx)
+                            .await
+                            .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+                    }
 
-                    // Clean up tags.
+                    // Clean up tags either way.
                     sqlx_core::query::query("DELETE FROM object_tags WHERE bucket = $1 AND key = $2")
                         .bind(bucket)
                         .bind(key)
                         .execute(&mut *tx)
                         .await
                         .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+
+                    if cluster_mode {
+                        recompute_is_latest(&mut tx, bucket, key)
+                            .await
+                            .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+                    }
                 }
 
                 old // blob to clean up
@@ -689,6 +714,7 @@ impl MetadataStore for PgStore {
                     version_id: Some(version_id),
                     is_latest: true,
                     is_delete_marker: true,
+                    is_tombstone: false,
                     retention_mode: None,
                     retain_until_date: None,
                     legal_hold_status: None,
@@ -775,7 +801,7 @@ impl MetadataStore for PgStore {
         let row = if version_id == "null" {
             let sql = format!(
                 "SELECT {OBJECT_COLUMNS} FROM objects \
-                 WHERE bucket = $1 AND key = $2 AND version_id IS NULL"
+                 WHERE bucket = $1 AND key = $2 AND version_id IS NULL AND is_tombstone = FALSE"
             );
             sqlx_core::query::query(&sql)
                 .bind(bucket)
@@ -785,7 +811,7 @@ impl MetadataStore for PgStore {
         } else {
             let sql = format!(
                 "SELECT {OBJECT_COLUMNS} FROM objects \
-                 WHERE bucket = $1 AND key = $2 AND version_id = $3"
+                 WHERE bucket = $1 AND key = $2 AND version_id = $3 AND is_tombstone = FALSE"
             );
             sqlx_core::query::query(&sql)
                 .bind(bucket)
@@ -805,6 +831,7 @@ impl MetadataStore for PgStore {
         key: &str,
         version_id: &str,
     ) -> Result<Option<ObjectRecord>, ArcaError> {
+        let cluster_mode = self.cluster_mode();
         let mut tx = self
             .pool
             .begin()
@@ -815,7 +842,7 @@ impl MetadataStore for PgStore {
         let deleted = if version_id == "null" {
             let sql = format!(
                 "SELECT {OBJECT_COLUMNS} FROM objects \
-                 WHERE bucket = $1 AND key = $2 AND version_id IS NULL"
+                 WHERE bucket = $1 AND key = $2 AND version_id IS NULL AND is_tombstone = FALSE"
             );
             let row = sqlx_core::query::query(&sql)
                 .bind(bucket)
@@ -827,7 +854,7 @@ impl MetadataStore for PgStore {
         } else {
             let sql = format!(
                 "SELECT {OBJECT_COLUMNS} FROM objects \
-                 WHERE bucket = $1 AND key = $2 AND version_id = $3"
+                 WHERE bucket = $1 AND key = $2 AND version_id = $3 AND is_tombstone = FALSE"
             );
             let row = sqlx_core::query::query(&sql)
                 .bind(bucket)
@@ -840,8 +867,38 @@ impl MetadataStore for PgStore {
         };
 
         if deleted.is_some() {
-            // Hard-delete the specific version.
-            if version_id == "null" {
+            // Clustered: tombstone the version (blob cleared) so the deletion
+            // converges via the manifest and isn't resurrected by anti-entropy.
+            // Single-node: remove the row.
+            if cluster_mode {
+                let now = Utc::now();
+                if version_id == "null" {
+                    sqlx_core::query::query(
+                        "UPDATE objects SET seq = nextval('objects_seq'), is_tombstone = TRUE, is_delete_marker = FALSE, \
+                         blob_id = '', size = 0, last_modified = $3 \
+                         WHERE bucket = $1 AND key = $2 AND version_id IS NULL",
+                    )
+                    .bind(bucket)
+                    .bind(key)
+                    .bind(now)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(|e| ArcaError::Internal(format!("delete_object_version: {e}")))?;
+                } else {
+                    sqlx_core::query::query(
+                        "UPDATE objects SET seq = nextval('objects_seq'), is_tombstone = TRUE, is_delete_marker = FALSE, \
+                         blob_id = '', size = 0, last_modified = $4 \
+                         WHERE bucket = $1 AND key = $2 AND version_id = $3",
+                    )
+                    .bind(bucket)
+                    .bind(key)
+                    .bind(version_id)
+                    .bind(now)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(|e| ArcaError::Internal(format!("delete_object_version: {e}")))?;
+                }
+            } else if version_id == "null" {
                 sqlx_core::query::query(
                     "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id IS NULL",
                 )
@@ -1001,12 +1058,20 @@ impl MetadataStore for PgStore {
             .await
             .map_err(|e| ArcaError::Internal(format!("apply_remote_version_delete: {e}")))?;
 
+        // Tombstone (don't remove) so this node's manifest carries the deletion
+        // onward and anti-entropy can't resurrect it. The `is_tombstone = FALSE`
+        // guard makes re-delivery a no-op (no re-propagation churn). Absent row
+        // → no-op; the origin's tombstone still arrives via anti-entropy.
+        let now = Utc::now();
         if version_id == "null" {
             sqlx_core::query::query(
-                "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id IS NULL",
+                "UPDATE objects SET seq = nextval('objects_seq'), is_tombstone = TRUE, is_delete_marker = FALSE, blob_id = '', \
+                 size = 0, last_modified = $3 \
+                 WHERE bucket = $1 AND key = $2 AND version_id IS NULL AND is_tombstone = FALSE",
             )
             .bind(bucket)
             .bind(key)
+            .bind(now)
             .execute(&mut *tx)
             .await
             .map_err(|e| ArcaError::Internal(format!("apply_remote_version_delete: {e}")))?;
@@ -1020,11 +1085,14 @@ impl MetadataStore for PgStore {
             .map_err(|e| ArcaError::Internal(format!("apply_remote_version_delete: {e}")))?;
         } else {
             sqlx_core::query::query(
-                "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id = $3",
+                "UPDATE objects SET seq = nextval('objects_seq'), is_tombstone = TRUE, is_delete_marker = FALSE, blob_id = '', \
+                 size = 0, last_modified = $4 \
+                 WHERE bucket = $1 AND key = $2 AND version_id = $3 AND is_tombstone = FALSE",
             )
             .bind(bucket)
             .bind(key)
             .bind(version_id)
+            .bind(now)
             .execute(&mut *tx)
             .await
             .map_err(|e| ArcaError::Internal(format!("apply_remote_version_delete: {e}")))?;
@@ -1109,6 +1177,20 @@ impl MetadataStore for PgStore {
             .collect())
     }
 
+    async fn purge_tombstones(
+        &self,
+        before: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, ArcaError> {
+        let result = sqlx_core::query::query(
+            "DELETE FROM objects WHERE is_tombstone = TRUE AND last_modified < $1",
+        )
+        .bind(before)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("purge_tombstones: {e}")))?;
+        Ok(result.rows_affected())
+    }
+
     async fn list_object_versions(
         &self,
         bucket: &str,
@@ -1118,7 +1200,7 @@ impl MetadataStore for PgStore {
         max_keys: u32,
     ) -> Result<Vec<ObjectRecord>, ArcaError> {
         let mut sql = format!(
-            "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = $1"
+            "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = $1 AND is_tombstone = FALSE"
         );
         let mut param_idx = 2u32;
 
@@ -1767,7 +1849,7 @@ impl MetadataStore for PgStore {
     ) -> Result<Vec<ObjectRecord>, ArcaError> {
         let mut sql = format!(
             "SELECT {OBJECT_COLUMNS} FROM objects \
-             WHERE bucket = $1 AND is_latest = FALSE AND is_delete_marker = FALSE \
+             WHERE bucket = $1 AND is_latest = FALSE AND is_delete_marker = FALSE AND is_tombstone = FALSE \
              AND last_modified < $2"
         );
         let mut param_idx = 3u32;

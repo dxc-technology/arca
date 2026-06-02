@@ -414,6 +414,16 @@ const MIGRATIONS: &[Migration] = &[
             INSERT INTO object_seq (value) VALUES ((SELECT COALESCE(MAX(seq), 0) FROM objects));
         ",
     },
+    Migration {
+        version: 19,
+        description: "Add is_tombstone to objects (cluster hard-delete convergence)",
+        // In clustered deployments a hard delete marks the row is_tombstone=1
+        // (blob cleared) instead of removing it, so the deletion propagates via
+        // the manifest and is not resurrected by anti-entropy. Tombstones are
+        // invisible to S3 reads (recompute_is_latest excludes them) and GC'd
+        // after a grace period. Single-node deployments never set it.
+        sql: "ALTER TABLE objects ADD COLUMN is_tombstone INTEGER NOT NULL DEFAULT 0;",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -487,7 +497,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 18);
+        assert_eq!(version, 19);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -537,12 +547,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 18);
+        assert_eq!(version, 19);
 
-        // Eighteen migration records
+        // Nineteen migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 18);
+        assert_eq!(count, 19);
     }
 }

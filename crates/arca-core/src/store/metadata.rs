@@ -380,4 +380,19 @@ pub trait MetadataStore: Send + Sync {
                 .to_string(),
         ))
     }
+
+    /// Removes tombstone rows (hard-deleted versions kept only for cluster
+    /// convergence) whose `last_modified` is older than `before`, returning the
+    /// number removed. The grace period (`now - before`) MUST exceed the longest
+    /// expected node downtime: a returning node still needs the tombstone to
+    /// learn of the deletion, otherwise anti-entropy would resurrect the object.
+    ///
+    /// Default implementation: no-op (`Ok(0)`) — single-node deployments never
+    /// create tombstones (hard deletes remove the row outright).
+    async fn purge_tombstones(
+        &self,
+        _before: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, crate::error::ArcaError> {
+        Ok(0)
+    }
 }

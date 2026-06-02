@@ -15,12 +15,18 @@ mod server_config;
 mod team;
 pub(crate) mod user;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use arca_core::error::ArcaError;
 use sqlx_core::row::Row;
 
 /// Async wrapper around a PostgreSQL connection pool.
 pub struct PgStore {
     pool: sqlx_postgres::PgPool,
+    /// When true (clustered deployments), a hard delete leaves a tombstone row
+    /// instead of removing it (see [`crate::sqlite::SqliteStore`] for rationale).
+    /// Set once at startup via [`PgStore::set_cluster_mode`].
+    cluster_mode: AtomicBool,
 }
 
 /// A single migration step.
@@ -57,6 +63,11 @@ const MIGRATIONS: &[Migration] = &[
         description: "Add node-local monotonic seq to objects (cluster anti-entropy changed-since cursor)",
         sql: include_str!("migrations/0005_cluster_seq.sql"),
     },
+    Migration {
+        version: 6,
+        description: "Add is_tombstone to objects (cluster hard-delete convergence)",
+        sql: include_str!("migrations/0006_tombstones.sql"),
+    },
 ];
 
 impl PgStore {
@@ -71,7 +82,18 @@ impl PgStore {
         run_migrations(&pool).await?;
 
         tracing::info!("PostgreSQL database ready");
-        Ok(Self { pool })
+        Ok(Self { pool, cluster_mode: AtomicBool::new(false) })
+    }
+
+    /// Enables cluster mode: hard deletes leave tombstone rows instead of
+    /// removing them. Called once at startup when `[cluster].enabled`.
+    pub fn set_cluster_mode(&self, on: bool) {
+        self.cluster_mode.store(on, Ordering::Relaxed);
+    }
+
+    /// Whether hard deletes should tombstone (cluster mode) rather than remove.
+    pub(crate) fn cluster_mode(&self) -> bool {
+        self.cluster_mode.load(Ordering::Relaxed)
     }
 }
 

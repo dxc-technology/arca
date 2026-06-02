@@ -502,6 +502,7 @@ mod tests {
             version_id: Some("v1".to_string()),
             is_latest: true,
             is_delete_marker: false,
+            is_tombstone: false,
             retention_mode: None,
             retain_until_date: None,
             legal_hold_status: None,

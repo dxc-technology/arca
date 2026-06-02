@@ -72,6 +72,13 @@ pub struct ObjectRecord {
     /// Whether this is a delete marker (has no blob).
     #[serde(default)]
     pub is_delete_marker: bool,
+    /// Whether this is a tombstone: a hard-deleted version retained (with no
+    /// blob) only so the deletion converges across a cluster and is not
+    /// resurrected by anti-entropy. Invisible to all S3 reads, never `is_latest`,
+    /// GC'd after a grace period. Always `false` on single-node deployments
+    /// (hard deletes there remove the row outright). Phase 29 HA.
+    #[serde(default)]
+    pub is_tombstone: bool,
     /// Object Lock retention mode: "GOVERNANCE" or "COMPLIANCE".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retention_mode: Option<String>,

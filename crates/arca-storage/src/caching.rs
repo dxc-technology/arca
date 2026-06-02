@@ -266,6 +266,15 @@ impl MetadataStore for CachingMetadataStore {
         self.inner.list_rows_changed_since(since, limit).await
     }
 
+    async fn purge_tombstones(
+        &self,
+        before: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, ArcaError> {
+        // Maintenance delete; forwarded so the default no-op doesn't shadow the
+        // backend's real GC behind the cache.
+        self.inner.purge_tombstones(before).await
+    }
+
     // -- Multipart upload operations (delegated) --
 
     async fn create_multipart_upload(

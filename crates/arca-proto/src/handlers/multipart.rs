@@ -441,6 +441,7 @@ pub async fn complete_multipart_upload(
         version_id: None,
         is_latest: true,
         is_delete_marker: false,
+        is_tombstone: false,
         retention_mode: None,
         retain_until_date: None,
         legal_hold_status: None,

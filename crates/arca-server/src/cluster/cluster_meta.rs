@@ -623,6 +623,14 @@ impl MetadataStore for ClusterMetadataStore {
         // Read-only; the manifest endpoint serves it. No gate, no fan-out.
         self.inner.list_rows_changed_since(since, limit).await
     }
+
+    async fn purge_tombstones(
+        &self,
+        before: DateTime<Utc>,
+    ) -> Result<u64, ArcaError> {
+        // Local maintenance GC; no gate, no fan-out (each node GCs its own).
+        self.inner.purge_tombstones(before).await
+    }
 }
 
 #[cfg(test)]
@@ -648,6 +656,7 @@ mod tests {
             version_id: None,
             is_latest: true,
             is_delete_marker: false,
+            is_tombstone: false,
             retention_mode: None,
             retain_until_date: None,
             legal_hold_status: None,

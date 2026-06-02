@@ -22,7 +22,7 @@ mod team;
 pub(crate) mod user;
 
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use arca_core::error::ArcaError;
 
@@ -49,6 +49,11 @@ pub struct SqliteStore {
     read_pool: Vec<tokio_rusqlite::Connection>,
     /// Round-robin counter for read pool dispatch.
     read_idx: AtomicUsize,
+    /// When true (clustered deployments), a hard delete leaves a tombstone row
+    /// instead of removing it, so the deletion converges across nodes and is not
+    /// resurrected by anti-entropy. Single-node deployments keep `false` and
+    /// delete outright. Set once at startup via [`SqliteStore::set_cluster_mode`].
+    cluster_mode: AtomicBool,
 }
 
 impl SqliteStore {
@@ -91,7 +96,7 @@ impl SqliteStore {
             read_pool_size = DEFAULT_READ_POOL_SIZE,
             "SQLite database ready"
         );
-        Ok(Self { conn, read_pool, read_idx: AtomicUsize::new(0) })
+        Ok(Self { conn, read_pool, read_idx: AtomicUsize::new(0), cluster_mode: AtomicBool::new(false) })
     }
 
     /// Opens an in-memory SQLite database (for tests).
@@ -115,7 +120,20 @@ impl SqliteStore {
             conn,
             read_pool: Vec::new(),
             read_idx: AtomicUsize::new(0),
+            cluster_mode: AtomicBool::new(false),
         })
+    }
+
+    /// Enables cluster mode: hard deletes leave tombstone rows instead of
+    /// removing them (so deletions converge across nodes without resurrection).
+    /// Called once at startup when `[cluster].enabled`. No-op on single node.
+    pub fn set_cluster_mode(&self, on: bool) {
+        self.cluster_mode.store(on, Ordering::Relaxed);
+    }
+
+    /// Whether hard deletes should tombstone (cluster mode) rather than remove.
+    pub(crate) fn cluster_mode(&self) -> bool {
+        self.cluster_mode.load(Ordering::Relaxed)
     }
 
     /// Dispatches a read-only query to the pool (round-robin).
