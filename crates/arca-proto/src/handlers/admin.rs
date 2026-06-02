@@ -3,7 +3,7 @@
 //! JSON-based administration endpoints under `/admin/*`.
 
 use axum::body::Body;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use http::StatusCode;
@@ -77,6 +77,23 @@ struct HealthResponse {
     status: &'static str,
 }
 
+/// Query for `GET /admin/health`. `?verbose=1` (or `true`) returns the detailed
+/// cluster view instead of the bare liveness status.
+#[derive(Deserialize)]
+pub struct HealthQuery {
+    #[serde(default)]
+    verbose: Option<String>,
+}
+
+/// Detailed health body for `?verbose=1`: liveness plus the cluster topology and
+/// write-quorum status (`cluster` is null on a single-node deployment).
+#[derive(Serialize)]
+struct VerboseHealthResponse {
+    status: &'static str,
+    draining: bool,
+    cluster: Option<arca_core::cluster::ClusterSnapshot>,
+}
+
 #[derive(Serialize)]
 struct InfoResponse {
     version: String,
@@ -116,10 +133,28 @@ pub struct CreateCredentialRequest {
 
 /// GET /admin/health — unauthenticated health check.
 ///
-/// Returns 200 `{"status": "ok"}` normally, or 503 `{"status": "draining"}`
-/// during graceful shutdown drain window (so load balancers stop routing traffic).
-pub async fn health(State(state): State<AppState>) -> Response {
-    if *state.draining.borrow() {
+/// Default: 200 `{"status": "ok"}`, or 503 `{"status": "draining"}` during the
+/// graceful shutdown drain window (so load balancers stop routing traffic).
+/// This default shape is what the LB health check consumes and is unchanged.
+///
+/// `?verbose=1` returns a 200 with the cluster topology + write-quorum status
+/// for operators / the console (`cluster` is null on single-node). It does not
+/// 503 on drain so an inspector always gets the detail; the `status`/`draining`
+/// fields convey the drain state.
+pub async fn health(State(state): State<AppState>, Query(q): Query<HealthQuery>) -> Response {
+    let draining = *state.draining.borrow();
+    let verbose = matches!(q.verbose.as_deref(), Some("1") | Some("true") | Some(""));
+
+    if verbose {
+        let body = VerboseHealthResponse {
+            status: if draining { "draining" } else { "ok" },
+            draining,
+            cluster: state.cluster.as_ref().map(|c| c.snapshot()),
+        };
+        return Json(body).into_response();
+    }
+
+    if draining {
         return Response::builder()
             .status(StatusCode::SERVICE_UNAVAILABLE)
             .header("Content-Type", "application/json")
