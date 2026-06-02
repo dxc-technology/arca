@@ -9,6 +9,7 @@
 //! exploits WAL mode's concurrent reader capability.
 
 mod audit;
+mod control_tombstone;
 mod credential;
 mod grant;
 mod metadata;

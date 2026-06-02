@@ -369,11 +369,13 @@ async fn async_main(cli: Cli) -> Result<()> {
                     credentials.clone(),
                     client.clone(),
                     cstate.clone(),
+                    stores.control_tombstone.clone(),
                 )) as Arc<dyn arca_core::store::CredentialStore>;
                 users = Arc::new(cluster::cluster_control::ClusterUserStore::new(
                     users.clone(),
                     client.clone(),
                     cstate.clone(),
+                    stores.control_tombstone.clone(),
                 )) as Arc<dyn arca_core::store::UserStore>;
                 let inner_grants = grants.clone();
                 let inner_teams = teams.clone();
@@ -382,11 +384,13 @@ async fn async_main(cli: Cli) -> Result<()> {
                     grants.clone(),
                     client.clone(),
                     cstate.clone(),
+                    stores.control_tombstone.clone(),
                 )) as Arc<dyn arca_core::store::GrantStore>;
                 teams = Arc::new(cluster::cluster_control::ClusterTeamStore::new(
                     teams.clone(),
                     client.clone(),
                     cstate.clone(),
+                    stores.control_tombstone.clone(),
                 )) as Arc<dyn arca_core::store::TeamStore>;
                 server_config = Arc::new(cluster::cluster_control::ClusterServerConfigStore::new(
                     server_config.clone(),
@@ -412,7 +416,10 @@ async fn async_main(cli: Cli) -> Result<()> {
 
                 let cluster_meta: Arc<dyn arca_core::store::MetadataStore> =
                     Arc::new(cluster::cluster_meta::ClusterMetadataStore::new(
-                        metadata, client, cstate,
+                        metadata,
+                        client,
+                        cstate,
+                        stores.control_tombstone.clone(),
                     ));
                 // Bundle the pre-decorator handles for the `/cluster/v1/op`
                 // receive path (applied without re-fan-out).
@@ -974,6 +981,7 @@ struct StoreSet {
     notification: Option<Arc<dyn arca_core::store::NotificationStore>>,
     presigned_url: Option<Arc<dyn arca_core::store::PresignedUrlStore>>,
     replication: Arc<dyn arca_core::store::ReplicationStore>,
+    control_tombstone: Arc<dyn arca_core::store::ControlTombstoneStore>,
 }
 
 /// Helper to build a `StoreSet` from any type implementing all store traits.
@@ -990,6 +998,7 @@ where
         + arca_core::store::NotificationStore
         + arca_core::store::PresignedUrlStore
         + arca_core::store::ReplicationStore
+        + arca_core::store::ControlTombstoneStore
         + 'static,
 {
     StoreSet {
@@ -1003,6 +1012,7 @@ where
         metrics: Some(store.clone() as Arc<dyn arca_core::store::MetricsStore>),
         notification: Some(store.clone() as Arc<dyn arca_core::store::NotificationStore>),
         presigned_url: Some(store.clone() as Arc<dyn arca_core::store::PresignedUrlStore>),
+        control_tombstone: store.clone() as Arc<dyn arca_core::store::ControlTombstoneStore>,
         replication: store as Arc<dyn arca_core::store::ReplicationStore>,
     }
 }

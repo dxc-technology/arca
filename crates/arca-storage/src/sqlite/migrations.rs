@@ -444,6 +444,22 @@ const MIGRATIONS: &[Migration] = &[
             UPDATE teams SET updated_at = created_at;
         ",
     },
+    Migration {
+        version: 21,
+        description: "Add control_tombstones table (cluster control-plane delete convergence)",
+        // A hard delete of a control-plane entity leaves a tombstone here so the
+        // deletion propagates via the control-snapshot reconcile and is not
+        // resurrected by a peer that still holds the live row. Reconcile-only:
+        // reads of the entities are unaffected. GC'd after a grace window.
+        sql: "
+            CREATE TABLE control_tombstones (
+                entity_type TEXT NOT NULL,
+                entity_key  TEXT NOT NULL,
+                deleted_at  TEXT NOT NULL,
+                PRIMARY KEY (entity_type, entity_key)
+            );
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -517,7 +533,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 20);
+        assert_eq!(version, 21);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -567,12 +583,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 20);
+        assert_eq!(version, 21);
 
-        // Twenty migration records
+        // Twenty-one migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 20);
+        assert_eq!(count, 21);
     }
 }

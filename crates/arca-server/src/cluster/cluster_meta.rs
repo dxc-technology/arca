@@ -36,7 +36,7 @@ use std::sync::Arc;
 
 use arca_core::cluster::{ClusterState, ControlOp};
 use arca_core::error::ArcaError;
-use arca_core::store::MetadataStore;
+use arca_core::store::{ControlTombstoneStore, MetadataStore, TOMBSTONE_BUCKET};
 use arca_core::types::{
     BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
 };
@@ -51,6 +51,7 @@ pub struct ClusterMetadataStore {
     inner: Arc<dyn MetadataStore>,
     client: ClusterClient,
     cluster: Arc<ClusterState>,
+    tombstones: Arc<dyn ControlTombstoneStore>,
 }
 
 impl ClusterMetadataStore {
@@ -58,11 +59,13 @@ impl ClusterMetadataStore {
         inner: Arc<dyn MetadataStore>,
         client: ClusterClient,
         cluster: Arc<ClusterState>,
+        tombstones: Arc<dyn ControlTombstoneStore>,
     ) -> Self {
         Self {
             inner,
             client,
             cluster,
+            tombstones,
         }
     }
 
@@ -165,6 +168,15 @@ impl MetadataStore for ClusterMetadataStore {
     async fn create_bucket(&self, name: &str) -> Result<(), ArcaError> {
         self.check_write_quorum()?;
         self.inner.create_bucket(name).await?;
+        // Clear any stale deletion tombstone so the reconcile does not later
+        // re-delete this freshly (re-)created bucket.
+        if let Err(e) = self
+            .tombstones
+            .delete_control_tombstone(TOMBSTONE_BUCKET, name)
+            .await
+        {
+            tracing::warn!(error = %e, bucket = %name, "failed to clear stale bucket tombstone on create");
+        }
         // Replicate the full row (created_at/owner) verbatim so peers can serve
         // objects written to this bucket.
         if let Ok(Some(info)) = self.inner.head_bucket(name).await {
@@ -181,6 +193,15 @@ impl MetadataStore for ClusterMetadataStore {
         self.check_write_quorum()?;
         let existed = self.inner.delete_bucket(name).await?;
         if existed {
+            // Record a deletion tombstone so the delete converges via reconcile
+            // and is not resurrected by a peer that still holds the bucket row.
+            if let Err(e) = self
+                .tombstones
+                .record_control_tombstone(TOMBSTONE_BUCKET, name)
+                .await
+            {
+                tracing::warn!(error = %e, bucket = %name, "failed to record bucket tombstone (delete may be resurrected by reconcile)");
+            }
             self.fan_out_op(&ControlOp::BucketDelete {
                 name: name.to_string(),
             })
@@ -680,6 +701,12 @@ mod tests {
         ClusterClient::new("self-node", "secret", Duration::from_secs(1)).unwrap()
     }
 
+    /// A standalone in-memory tombstone store for decorator construction in
+    /// tests (these gate tests do not assert tombstone recording).
+    async fn tombstones() -> Arc<dyn ControlTombstoneStore> {
+        Arc::new(arca_storage::SqliteStore::open_in_memory().await.unwrap())
+    }
+
     fn live_peer() -> PeerNode {
         PeerNode {
             node_id: "peer-2".to_string(),
@@ -696,7 +723,7 @@ mod tests {
         let (inner, _dir) = temp_store().await;
         // cluster_size=3 -> write_quorum=2; alone (no live peers) -> 1 < 2 -> read-only.
         let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
-        let store = ClusterMetadataStore::new(inner, client(), cluster);
+        let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
         let err = store.put_object(&sample_record()).await.unwrap_err();
         match err {
             ArcaError::S3(e) => assert_eq!(e.code, S3ErrorCode::ServiceUnavailable),
@@ -710,7 +737,7 @@ mod tests {
         inner.create_bucket("b").await.unwrap();
         // available mode (write_quorum=None) -> always writable, even solo.
         let cluster = Arc::new(ClusterState::new("self-node", None));
-        let store = ClusterMetadataStore::new(inner, client(), cluster);
+        let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
         store.put_object(&sample_record()).await.unwrap();
         assert!(store.get_object("b", "k").await.unwrap().is_some());
     }
@@ -721,7 +748,7 @@ mod tests {
         inner.create_bucket("b").await.unwrap();
         let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
         cluster.set_peers(vec![live_peer()]); // self + 1 = 2 >= 2 -> quorum met
-        let store = ClusterMetadataStore::new(inner, client(), cluster);
+        let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
         // Gate passes; the fan-out to the unreachable peer fails silently
         // (best-effort, reconciled by anti-entropy in M4); the local write stands.
         store.put_object(&sample_record()).await.unwrap();
@@ -733,7 +760,7 @@ mod tests {
         let (inner, _dir) = temp_store().await;
         // cluster_size=3 -> quorum=2; alone -> control-plane writes are refused too.
         let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
-        let store = ClusterMetadataStore::new(inner, client(), cluster);
+        let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
         let err = store.create_bucket("b").await.unwrap_err();
         match err {
             ArcaError::S3(e) => assert_eq!(e.code, S3ErrorCode::ServiceUnavailable),
@@ -745,7 +772,7 @@ mod tests {
     async fn available_mode_create_bucket_alone() {
         let (inner, _dir) = temp_store().await;
         let cluster = Arc::new(ClusterState::new("self-node", None));
-        let store = ClusterMetadataStore::new(inner, client(), cluster);
+        let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
         // available mode: bucket creation succeeds solo; no peers -> no fan-out.
         store.create_bucket("b").await.unwrap();
         assert!(store.head_bucket("b").await.unwrap().is_some());
@@ -768,7 +795,7 @@ mod tests {
         let (inner, _dir) = temp_store().await;
         inner.create_bucket("b").await.unwrap();
         let cluster = Arc::new(ClusterState::new("self-node", None));
-        let store = ClusterMetadataStore::new(inner, client(), cluster);
+        let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
 
         // Multipart in-progress state: create -> put_part -> delete, all solo.
         store.create_multipart_upload(&sample_upload()).await.unwrap();
@@ -802,7 +829,7 @@ mod tests {
     async fn quorum_mode_refuses_multipart_create_without_majority() {
         let (inner, _dir) = temp_store().await;
         let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
-        let store = ClusterMetadataStore::new(inner, client(), cluster);
+        let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
         let err = store
             .create_multipart_upload(&sample_upload())
             .await
@@ -818,7 +845,7 @@ mod tests {
         let (inner, _dir) = temp_store().await;
         inner.create_bucket("b").await.unwrap();
         let cluster = Arc::new(ClusterState::new("self-node", None));
-        let store = ClusterMetadataStore::new(inner, client(), cluster);
+        let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
         store.put_object(&sample_record()).await.unwrap();
         // Sets the lock columns on the current version; replication re-sends the
         // row (no peers here, so just verify the local write + read-back path).

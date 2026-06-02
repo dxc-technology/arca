@@ -4,6 +4,7 @@
 //! Schema migrations are applied automatically at startup.
 
 mod audit;
+mod control_tombstone;
 mod credential;
 mod grant;
 mod metadata;
@@ -72,6 +73,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 7,
         description: "Add updated_at to credentials/users/teams (cluster control-plane LWW reconcile)",
         sql: include_str!("migrations/0007_control_updated_at.sql"),
+    },
+    Migration {
+        version: 8,
+        description: "Add control_tombstones table (cluster control-plane delete convergence)",
+        sql: include_str!("migrations/0008_control_tombstones.sql"),
     },
 ];
 

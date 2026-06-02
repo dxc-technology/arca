@@ -18,7 +18,10 @@ use std::sync::Arc;
 use arca_core::cluster::{ClusterState, ControlOp};
 use arca_core::error::ArcaError;
 use arca_core::policy::PolicyDocument;
-use arca_core::store::{CredentialStore, GrantStore, ServerConfigStore, TeamStore, UserStore};
+use arca_core::store::{
+    ControlTombstoneStore, CredentialStore, GrantStore, ServerConfigStore, TeamStore, UserStore,
+    TOMBSTONE_CREDENTIAL, TOMBSTONE_GRANT, TOMBSTONE_TEAM, TOMBSTONE_USER,
+};
 use arca_core::types::{Credential, Grant, Team, User};
 use arca_core::{S3Error, S3ErrorCode};
 
@@ -54,11 +57,54 @@ async fn fan_out_op(client: &ClusterClient, cluster: &ClusterState, op: &Control
     }
 }
 
+/// Records a deletion tombstone for a control-plane entity so the delete
+/// converges via the control-snapshot reconcile and is not resurrected by a
+/// peer that still holds the live row. Local write, best-effort: the entity is
+/// already deleted; a failure here is logged, not propagated.
+async fn record_tombstone(
+    tombstones: &Arc<dyn ControlTombstoneStore>,
+    entity_type: &str,
+    entity_key: &str,
+) {
+    if let Err(e) = tombstones
+        .record_control_tombstone(entity_type, entity_key)
+        .await
+    {
+        tracing::warn!(
+            error = %e,
+            entity_type,
+            entity_key,
+            "failed to record control-plane tombstone (delete may be resurrected by reconcile)"
+        );
+    }
+}
+
+/// Clears any stale tombstone for an entity that is being (re-)created locally,
+/// so the reconcile does not later re-delete the fresh entity. Best-effort.
+async fn clear_tombstone(
+    tombstones: &Arc<dyn ControlTombstoneStore>,
+    entity_type: &str,
+    entity_key: &str,
+) {
+    if let Err(e) = tombstones
+        .delete_control_tombstone(entity_type, entity_key)
+        .await
+    {
+        tracing::warn!(
+            error = %e,
+            entity_type,
+            entity_key,
+            "failed to clear stale control-plane tombstone on re-create"
+        );
+    }
+}
+
 /// Credential store decorator: replicates credential mutations to peers.
 pub struct ClusterCredentialStore {
     inner: Arc<dyn CredentialStore>,
     client: ClusterClient,
     cluster: Arc<ClusterState>,
+    tombstones: Arc<dyn ControlTombstoneStore>,
 }
 
 impl ClusterCredentialStore {
@@ -66,11 +112,13 @@ impl ClusterCredentialStore {
         inner: Arc<dyn CredentialStore>,
         client: ClusterClient,
         cluster: Arc<ClusterState>,
+        tombstones: Arc<dyn ControlTombstoneStore>,
     ) -> Self {
         Self {
             inner,
             client,
             cluster,
+            tombstones,
         }
     }
 }
@@ -80,6 +128,7 @@ impl CredentialStore for ClusterCredentialStore {
     async fn put_credential(&self, credential: &Credential) -> Result<(), ArcaError> {
         check_write_quorum(&self.cluster)?;
         self.inner.put_credential(credential).await?;
+        clear_tombstone(&self.tombstones, TOMBSTONE_CREDENTIAL, &credential.access_key_id).await;
         fan_out_op(
             &self.client,
             &self.cluster,
@@ -106,6 +155,7 @@ impl CredentialStore for ClusterCredentialStore {
         check_write_quorum(&self.cluster)?;
         let existed = self.inner.delete_credential(access_key_id).await?;
         if existed {
+            record_tombstone(&self.tombstones, TOMBSTONE_CREDENTIAL, access_key_id).await;
             fan_out_op(
                 &self.client,
                 &self.cluster,
@@ -158,6 +208,7 @@ pub struct ClusterUserStore {
     inner: Arc<dyn UserStore>,
     client: ClusterClient,
     cluster: Arc<ClusterState>,
+    tombstones: Arc<dyn ControlTombstoneStore>,
 }
 
 impl ClusterUserStore {
@@ -165,11 +216,13 @@ impl ClusterUserStore {
         inner: Arc<dyn UserStore>,
         client: ClusterClient,
         cluster: Arc<ClusterState>,
+        tombstones: Arc<dyn ControlTombstoneStore>,
     ) -> Self {
         Self {
             inner,
             client,
             cluster,
+            tombstones,
         }
     }
 }
@@ -179,6 +232,7 @@ impl UserStore for ClusterUserStore {
     async fn put_user(&self, user: &User) -> Result<(), ArcaError> {
         check_write_quorum(&self.cluster)?;
         self.inner.put_user(user).await?;
+        clear_tombstone(&self.tombstones, TOMBSTONE_USER, &user.user_id).await;
         fan_out_op(
             &self.client,
             &self.cluster,
@@ -225,6 +279,7 @@ impl UserStore for ClusterUserStore {
         check_write_quorum(&self.cluster)?;
         let existed = self.inner.delete_user(user_id).await?;
         if existed {
+            record_tombstone(&self.tombstones, TOMBSTONE_USER, user_id).await;
             fan_out_op(
                 &self.client,
                 &self.cluster,
@@ -247,6 +302,7 @@ pub struct ClusterGrantStore {
     inner: Arc<dyn GrantStore>,
     client: ClusterClient,
     cluster: Arc<ClusterState>,
+    tombstones: Arc<dyn ControlTombstoneStore>,
 }
 
 impl ClusterGrantStore {
@@ -254,11 +310,13 @@ impl ClusterGrantStore {
         inner: Arc<dyn GrantStore>,
         client: ClusterClient,
         cluster: Arc<ClusterState>,
+        tombstones: Arc<dyn ControlTombstoneStore>,
     ) -> Self {
         Self {
             inner,
             client,
             cluster,
+            tombstones,
         }
     }
 }
@@ -268,6 +326,7 @@ impl GrantStore for ClusterGrantStore {
     async fn put_grant(&self, grant: &Grant) -> Result<(), ArcaError> {
         check_write_quorum(&self.cluster)?;
         self.inner.put_grant(grant).await?;
+        clear_tombstone(&self.tombstones, TOMBSTONE_GRANT, &grant.grant_id).await;
         fan_out_op(
             &self.client,
             &self.cluster,
@@ -315,6 +374,7 @@ impl GrantStore for ClusterGrantStore {
         check_write_quorum(&self.cluster)?;
         let existed = self.inner.delete_grant(grant_id).await?;
         if existed {
+            record_tombstone(&self.tombstones, TOMBSTONE_GRANT, grant_id).await;
             fan_out_op(
                 &self.client,
                 &self.cluster,
@@ -416,6 +476,7 @@ pub struct ClusterTeamStore {
     inner: Arc<dyn TeamStore>,
     client: ClusterClient,
     cluster: Arc<ClusterState>,
+    tombstones: Arc<dyn ControlTombstoneStore>,
 }
 
 impl ClusterTeamStore {
@@ -423,11 +484,13 @@ impl ClusterTeamStore {
         inner: Arc<dyn TeamStore>,
         client: ClusterClient,
         cluster: Arc<ClusterState>,
+        tombstones: Arc<dyn ControlTombstoneStore>,
     ) -> Self {
         Self {
             inner,
             client,
             cluster,
+            tombstones,
         }
     }
 }
@@ -437,6 +500,7 @@ impl TeamStore for ClusterTeamStore {
     async fn put_team(&self, team: &Team) -> Result<(), ArcaError> {
         check_write_quorum(&self.cluster)?;
         self.inner.put_team(team).await?;
+        clear_tombstone(&self.tombstones, TOMBSTONE_TEAM, &team.team_id).await;
         fan_out_op(
             &self.client,
             &self.cluster,
@@ -474,6 +538,7 @@ impl TeamStore for ClusterTeamStore {
         check_write_quorum(&self.cluster)?;
         let existed = self.inner.delete_team(team_id).await?;
         if existed {
+            record_tombstone(&self.tombstones, TOMBSTONE_TEAM, team_id).await;
             fan_out_op(
                 &self.client,
                 &self.cluster,
@@ -625,6 +690,12 @@ mod tests {
         (Arc::new(store), dir)
     }
 
+    /// A standalone in-memory tombstone store for decorator construction in
+    /// tests (the gate tests do not exercise tombstone recording).
+    async fn tombstones() -> Arc<dyn ControlTombstoneStore> {
+        Arc::new(arca_storage::SqliteStore::open_in_memory().await.unwrap())
+    }
+
     fn client() -> ClusterClient {
         ClusterClient::new("self-node", "secret", Duration::from_secs(1)).unwrap()
     }
@@ -646,7 +717,7 @@ mod tests {
         let (inner, _dir) = temp_credentials().await;
         // cluster_size=3 -> quorum=2; alone -> identity writes are refused too.
         let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
-        let store = ClusterCredentialStore::new(inner, client(), cluster);
+        let store = ClusterCredentialStore::new(inner, client(), cluster, tombstones().await);
         let err = store.put_credential(&sample_credential()).await.unwrap_err();
         match err {
             ArcaError::S3(e) => assert_eq!(e.code, S3ErrorCode::ServiceUnavailable),
@@ -658,10 +729,34 @@ mod tests {
     async fn credential_available_mode_writes_alone() {
         let (inner, _dir) = temp_credentials().await;
         let cluster = Arc::new(ClusterState::new("self-node", None));
-        let store = ClusterCredentialStore::new(inner, client(), cluster);
+        let store = ClusterCredentialStore::new(inner, client(), cluster, tombstones().await);
         // available mode: write succeeds solo; no peers -> no fan-out.
         store.put_credential(&sample_credential()).await.unwrap();
         assert!(store.get_credential("K").await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn delete_records_tombstone_and_create_clears_it() {
+        // Same underlying store serves as both credential and tombstone store.
+        let store = Arc::new(arca_storage::SqliteStore::open_in_memory().await.unwrap());
+        let creds: Arc<dyn CredentialStore> = store.clone();
+        let tomb: Arc<dyn ControlTombstoneStore> = store.clone();
+        let cluster = Arc::new(ClusterState::new("self-node", None)); // available mode
+        let dec = ClusterCredentialStore::new(creds, client(), cluster, tomb.clone());
+
+        dec.put_credential(&sample_credential()).await.unwrap();
+        assert!(tomb.list_control_tombstones().await.unwrap().is_empty());
+
+        // Delete records a tombstone.
+        assert!(dec.delete_credential("K").await.unwrap());
+        let list = tomb.list_control_tombstones().await.unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].entity_type, TOMBSTONE_CREDENTIAL);
+        assert_eq!(list[0].entity_key, "K");
+
+        // Re-creating the same entity clears the stale tombstone.
+        dec.put_credential(&sample_credential()).await.unwrap();
+        assert!(tomb.list_control_tombstones().await.unwrap().is_empty());
     }
 
     async fn temp_server_config() -> (Arc<dyn ServerConfigStore>, tempfile::TempDir) {

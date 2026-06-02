@@ -3,6 +3,7 @@
 pub mod audit;
 pub mod blob;
 pub mod connector;
+pub mod control_tombstone;
 pub mod credential;
 pub mod grant;
 pub mod metadata;
@@ -21,6 +22,10 @@ pub use blob::{
     PutHints, RawBlobOps, SidecarMeta, SsecBlobOps,
 };
 pub use connector::{ConnectorRegistry, DeliveryResult, NotificationConnector, TestResult};
+pub use control_tombstone::{
+    ControlTombstone, ControlTombstoneStore, TOMBSTONE_BUCKET, TOMBSTONE_CREDENTIAL,
+    TOMBSTONE_GRANT, TOMBSTONE_TEAM, TOMBSTONE_USER,
+};
 pub use credential::CredentialStore;
 pub use grant::GrantStore;
 pub use metadata::MetadataStore;
