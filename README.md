@@ -15,34 +15,47 @@
 
 ---
 
-Arca is a ground-up implementation of the S3 API, designed as a **drop-in replacement** for AWS S3, MinIO, and other S3-compatible storage services. It targets 100% compatibility on a focused subset of operations, starting as a single-node server with a clear path toward production scale.
+Arca is a ground-up implementation of the S3 API, designed as a **drop-in replacement** for AWS S3, MinIO, and other S3-compatible storage services. It runs as a single node or as a symmetric, self-configuring high-availability cluster, with at-rest encryption, object versioning, RBAC, lifecycle rules, object lock, event notifications, and a web console.
 
-## MVP Status: Complete
+## Status
 
-The MVP is complete. All 12 implementation phases (0–11) have been delivered. Arca implements 15 S3 operations with **100% pass rate on implemented features** against the [Ceph s3-tests](https://github.com/ceph/s3-tests) compatibility suite.
+Production-grade and actively developed. **29 of 31** planned phases are complete (latest release **v0.25.0**), covering 60+ S3 operations plus encryption, versioning, RBAC, monitoring, lifecycle, object lock, tagging, notifications, compression, replication, and high-availability clustering. Arca passes the [Ceph s3-tests](https://github.com/ceph/s3-tests) compatibility suite with **370/830 passing and 0 unexpected failures** (100% pass rate on implemented features). See the [roadmap](https://dxc-technology.github.io/arca/roadmap/) for what's next.
 
 ## Features
 
 - **S3 API compatible** — works with aws-cli, boto3, MinIO Client (mc), rclone, and any S3 client
-- **Streaming-first** — never buffers full objects in memory; concurrent MD5 hashing during upload
-- **Disaster recovery** — sidecar `.meta` files alongside every blob enable full database rebuild (`arca recover`)
-- **Integrity checking** — `arca fsck` detects orphaned blobs, missing files, sidecar mismatches, and stale temp files
-- **Modular storage** — metadata backend behind traits (SQLite now, Postgres later)
-- **Admin API** — JSON endpoints for health, stats, and credential management under `/admin/*`
-- **Server-side encryption** — AES-256-GCM at-rest encryption (SSE-S3) with envelope encryption, per-object DEKs, and streaming chunk-based encrypt/decrypt. Master key from config file or Vault/OpenBAO KMS
-- **Native TLS** — HTTPS without a reverse proxy (`bin/arca start --tls`), with auto-detection and SIGHUP cert reload
-- **Web console** — browser-based UI for managing buckets, objects, and credentials
+- **High availability** — symmetric, self-configuring, fully-replicated cluster with real-time replication, anti-entropy self-healing, and quorum / available consistency modes (no shared storage, no coordinator)
+- **Object versioning** — version IDs, delete markers, version-specific operations
+- **Access control (RBAC)** — users, teams, grants, and bucket policies with SigV4 auth
+- **Server-side encryption** — AES-256-GCM at-rest (SSE-S3) with envelope encryption and per-object DEKs; master key from config or Vault/OpenBAO KMS; SSE-C and per-bucket encryption supported
+- **Lifecycle & Object Lock** — expiration/noncurrent rules with a background worker; WORM retention and legal hold (COMPLIANCE/GOVERNANCE)
+- **Event notifications** — bucket notifications delivered to 13 connectors (webhook, Kafka, AMQP, Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Elasticsearch, Syslog, SMTP, gRPC)
+- **Replication** — one-way per-rule replication to any S3-compatible destination, loop-safe for mirrors
+- **Transparent compression** — per-bucket at-rest compression (zstd, lz4, snappy, gzip, brotli, xz)
+- **Pluggable metadata backend** — SQLite (default) or PostgreSQL, behind traits
+- **Streaming-first** — never buffers full objects in memory; concurrent hashing during upload
+- **Disaster recovery & integrity** — sidecar `.meta` files enable full DB rebuild (`arca recover`); `arca fsck` checks filesystem/DB consistency
+- **Native TLS** — HTTPS without a reverse proxy, with auto-detection and SIGHUP cert reload
+- **Monitoring** — Prometheus metrics, audit log, and an admin API under `/admin/*`
+- **Web console** — browser-based UI for buckets, objects, credentials, users, policies, notifications, replication, and cluster topology
+- **Presigned URLs** — query-string auth for GET/PUT/HEAD/DELETE
 - **S3 compatibility tested** — 370/830 Ceph s3-tests passing, 0 unexpected failures
 
 ## S3 API Surface
 
 | Category  | Operations                                                            |
 |-----------|-----------------------------------------------------------------------|
-| Bucket    | CreateBucket, DeleteBucket, HeadBucket, ListBuckets, PutBucketEncryption, GetBucketEncryption, DeleteBucketEncryption |
-| Object    | PutObject, GetObject, DeleteObject, HeadObject, CopyObject            |
+| Bucket    | CreateBucket, DeleteBucket, HeadBucket, ListBuckets, Put/Get/DeleteBucketEncryption |
+| Object    | PutObject, GetObject, DeleteObject, HeadObject, CopyObject, GetObjectAttributes (+ SHA256/CRC32 checksums) |
 | Listing   | ListObjectsV1, ListObjectsV2, DeleteObjects (batch)                   |
-| Multipart | CreateMultipartUpload, UploadPart, UploadPartCopy, CompleteMultipartUpload, AbortMultipartUpload, ListMultipartUploads |
-| Auth      | AWS Signature V4 (header-based)                                       |
+| Multipart | CreateMultipartUpload, UploadPart, UploadPartCopy, CompleteMultipartUpload, AbortMultipartUpload, ListMultipartUploads, ListParts |
+| Versioning | Put/GetBucketVersioning, ListObjectVersions, version-specific Get/Head/Delete, delete markers |
+| Tagging   | Put/Get/DeleteObjectTagging, Put/Get/DeleteBucketTagging              |
+| Lifecycle | Put/Get/DeleteBucketLifecycleConfiguration                           |
+| Object Lock | Put/GetObjectLockConfiguration, Put/GetObjectRetention, Put/GetObjectLegalHold |
+| Policy    | Put/Get/DeleteBucketPolicy (RBAC: users, teams, grants)              |
+| Notifications | Put/GetBucketNotificationConfiguration                           |
+| Auth      | AWS Signature V4 (header-based and query-string / presigned)         |
 
 ### S3 Features Supported
 
@@ -110,7 +123,7 @@ arca-server → arca-proto, arca-storage, arca-auth → arca-core
 | `arca-core` | Shared types, traits (`BlobStore`, `MetadataStore`), errors. Zero I/O dependencies. |
 | `arca-auth` | AWS SigV4 verification. Zero I/O, independently testable against AWS test vectors. |
 | `arca-proto` | S3 HTTP protocol adapter (Axum 0.8 + Tower). Handlers, XML ser/de, middleware. |
-| `arca-storage` | Storage implementations: filesystem blobs (UUID + sidecar), SQLite metadata (WAL mode). |
+| `arca-storage` | Storage implementations: filesystem blobs (UUID + sidecar), SQLite (WAL mode) or PostgreSQL metadata, with optional encryption/compression/cluster decorators. |
 | `arca-server` | Binary. TOML config, CLI (`serve`, `recover`, `fsck`, `credential`, `tls`), dependency wiring. |
 
 ### Key Design Decisions
