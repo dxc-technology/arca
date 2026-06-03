@@ -1,0 +1,198 @@
+# Arca — 3-node HA cluster on Kubernetes (StatefulSet + headless DNS discovery)
+#
+# A symmetric, fully-replicated Arca cluster. Every pod runs the IDENTICAL
+# config; each derives and persists its own node_id in its PersistentVolume and
+# discovers peers through the headless Service via DNS (discovery = "dns"), which
+# resolves to every pod IP. The regular `arca` Service load-balances S3/admin
+# clients across the live pods.
+#
+# Apply (edit the placeholders first — see the Secret below):
+#   kubectl apply -f arca-cluster.yaml -n <your-namespace>
+#
+# Prerequisites:
+#   - Arca image built from docker/Dockerfile, pushed to your registry.
+#   - A default StorageClass (or set one on the volumeClaimTemplate).
+#   - ALL pods MUST share: the same cluster secret, the same root credentials,
+#     and — if you enable encryption — the same master key / KMS. The single
+#     mounted Secret guarantees this.
+#
+# Scaling: keep `replicas` and `[cluster].cluster_size` in sync. cluster_size
+# derives the write majority in quorum mode (writes need ⌈(N+1)/2⌉ live nodes).
+
+---
+# Shared, sensitive config: the cluster secret lives in the config file, so the
+# whole config.toml is a Secret (Arca reads cluster.secret only from the file,
+# not from env). Root credentials are passed as env from the same Secret.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: arca-cluster
+  namespace: NAMESPACE
+  labels:
+    app.kubernetes.io/name: arca
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: arca
+type: Opaque
+stringData:
+  # Root credentials (identical on every node so a client authenticates against
+  # any pod). CHANGE THESE.
+  ARCA_ROOT_ACCESS_KEY: "CHANGEME-ACCESS-KEY"
+  ARCA_ROOT_SECRET_KEY: "CHANGEME-SECRET-KEY"
+  # The cluster config, identical on every node (the symmetry invariant).
+  config.toml: |
+    [server]
+    bind = "0.0.0.0"
+    port = 9000
+
+    [storage]
+    data_dir = "/data"
+
+    [cluster]
+    enabled = true
+    cluster_id = "arca-prod"
+    # Shared secret authenticating inter-node /cluster/v1/* requests. CHANGE IT.
+    secret = "CHANGEME-CLUSTER-SECRET"
+    mode = "quorum"          # quorum (CP, majority to write) or available (AP)
+    cluster_size = 3         # keep in sync with the StatefulSet replicas
+    discovery = "dns"
+    # Headless Service name; resolves to every peer pod IP. Use the in-cluster
+    # FQDN if discovering across namespaces.
+    dns_name = "arca-headless:9000"
+    # A returning node must rejoin within this window or a delete it missed could
+    # resurrect — keep it well above your worst-case pod downtime.
+    tombstone_grace_days = 7
+    # For an encrypted cluster, add the SAME master key (or KMS) on every node:
+    # [encryption]
+    # enabled = true
+    # master_key = "CHANGEME-32-BYTE-BASE64-KEY"
+
+---
+# Headless Service: backs the StatefulSet and powers DNS peer discovery
+# (clusterIP: None → DNS returns one A record per pod).
+apiVersion: v1
+kind: Service
+metadata:
+  name: arca-headless
+  namespace: NAMESPACE
+  labels:
+    app.kubernetes.io/name: arca
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: arca
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true   # peers must resolve each other before Ready
+  selector:
+    app.kubernetes.io/name: arca
+  ports:
+    - name: arca
+      port: 9000
+      targetPort: arca
+      protocol: TCP
+
+---
+# Client-facing Service: load-balances S3 and /admin traffic across live pods.
+# Switch type to LoadBalancer (or front with an Ingress) to expose externally.
+apiVersion: v1
+kind: Service
+metadata:
+  name: arca
+  namespace: NAMESPACE
+  labels:
+    app.kubernetes.io/name: arca
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: arca
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: arca
+  ports:
+    - name: arca
+      port: 9000
+      targetPort: arca
+      protocol: TCP
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: arca
+  namespace: NAMESPACE
+  labels:
+    app.kubernetes.io/name: arca
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: arca
+spec:
+  serviceName: arca-headless
+  replicas: 3
+  # Symmetric nodes: start them together rather than one-by-one so the cluster
+  # forms quickly (no ordering dependency between peers).
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: arca
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: arca
+        app.kubernetes.io/component: server
+        app.kubernetes.io/part-of: arca
+    spec:
+      terminationGracePeriodSeconds: 45   # > drain_timeout_seconds (default 30)
+      containers:
+        - name: arca
+          image: arca:latest        # <-- replace with your registry/tag
+          args: ["serve", "--config-path", "/etc/arca/config.toml"]
+          ports:
+            - name: arca
+              containerPort: 9000
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: arca-cluster   # ARCA_ROOT_ACCESS_KEY / ARCA_ROOT_SECRET_KEY
+          volumeMounts:
+            - name: config
+              mountPath: /etc/arca
+              readOnly: true
+            - name: data
+              mountPath: /data
+          # /admin/health is always 200 on a live node (it does NOT 503 when the
+          # node loses quorum), so a lone survivor stays in rotation and serves
+          # reads; writes correctly return 503 until quorum returns.
+          readinessProbe:
+            httpGet:
+              path: /admin/health
+              port: arca
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /admin/health
+              port: arca
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+      volumes:
+        - name: config
+          secret:
+            secretName: arca-cluster
+            items:
+              - key: config.toml
+                path: config.toml
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/name: arca
+          app.kubernetes.io/part-of: arca
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        # storageClassName: standard   # <-- set to your StorageClass if no default
+        resources:
+          requests:
+            storage: 50Gi   # full replication: every node holds the full dataset

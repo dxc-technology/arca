@@ -1,0 +1,39 @@
+# Arca cluster node config — bare-metal / VM, IDENTICAL on every node.
+#
+# Copy to /etc/arca/config.toml on each node and run Arca via the systemd unit
+# (deploy/systemd/arca.service). Each node derives and persists its own node_id
+# in its data_dir; they find each other through the static seed list. Front the
+# nodes with HAProxy + keepalived (deploy/haproxy/) for a single HA endpoint.
+
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/var/lib/arca"
+
+[cluster]
+enabled = true
+cluster_id = "arca-prod"
+# Shared secret authenticating inter-node /cluster/v1/* requests. CHANGE IT and
+# keep it identical on every node.
+secret = "CHANGEME-CLUSTER-SECRET"
+mode = "quorum"          # quorum (CP, majority to write) or available (AP)
+cluster_size = 3         # number of nodes; derives the write majority
+discovery = "static"
+# Every node's address; a node ignores its own entry. Use the addresses peers
+# reach each other on (not the VIP).
+seeds = ["10.0.0.11:9000", "10.0.0.12:9000", "10.0.0.13:9000"]
+# A returning node must rejoin within this window or a delete it missed could
+# resurrect — keep it well above your worst-case node downtime.
+tombstone_grace_days = 7
+
+# On hosts behind NAT or with multiple interfaces, pin what peers should use:
+# advertise_addr = "10.0.0.11"
+# advertise_port = 9000
+
+# For an encrypted cluster, set the SAME master key (or KMS) on EVERY node, or
+# encrypted blobs will not be byte-identical across nodes:
+# [encryption]
+# enabled = true
+# master_key = "CHANGEME-32-BYTE-BASE64-KEY"
