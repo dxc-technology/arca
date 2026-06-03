@@ -31,6 +31,19 @@ export function dashboardView() {
       try { this.info = await api.adminGet('/info'); } catch {}
       try { this.stats = await api.adminGet('/stats'); } catch {}
       try { this.cluster = await api.adminGet('/cluster'); } catch { this.cluster = { enabled: false }; }
+      // Normalize a single-node deployment into the same shape the topology box
+      // renders, so the dashboard layout is identical whether or not clustering
+      // is enabled (the box then shows just this one node). `enabled` stays
+      // false, so the disk getters keep their single-node (non cluster-min) path.
+      if (!this.cluster.enabled) {
+        let host;
+        try { host = new URL(sessionStorage.getItem('arca_endpoint') || window.location.origin).host; }
+        catch { host = window.location.host; }
+        this.cluster.node_count = 1;
+        this.cluster.live_node_count = 1;
+        this.cluster.has_write_quorum = true;
+        this.cluster.nodes = [{ node_id: host || 'local node', endpoint: null, alive: true, local: true, config_ok: true, last_seen: null }];
+      }
 
       // Get per-bucket sizes via ListBuckets + ListObjects
       try {

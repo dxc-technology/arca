@@ -719,13 +719,12 @@
                 </template>
               </div>
 
-              <!-- Cluster topology (spans 2 cols; only when clustered) -->
-              <template x-if="cluster.enabled">
-                <div class="sm:col-span-2 glass rounded-xl p-5 glass-hover fade-in fade-in-delay-4">
+              <!-- Topology (spans 2 cols; always shown — the single local node when not clustered) -->
+              <div class="sm:col-span-2 glass rounded-xl p-5 glass-hover fade-in fade-in-delay-4">
                   <div class="flex items-center justify-between mb-4">
                     <div class="flex items-center gap-2">
                       <svg class="w-4 h-4 text-vault-accent" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9"/></svg>
-                      <span class="text-xs font-medium text-vault-muted uppercase tracking-wider">Cluster Topology</span>
+                      <span class="text-xs font-medium text-vault-muted uppercase tracking-wider" x-text="cluster.enabled ? 'Cluster Topology' : 'Topology'"></span>
                     </div>
                     <span class="text-xs text-vault-muted whitespace-nowrap">
                       <span class="font-semibold" :class="cluster.live_node_count === cluster.node_count ? 'text-green-400' : 'text-amber-400'" x-text="cluster.live_node_count"></span><span x-text="' / ' + cluster.node_count + ' online'"></span>
@@ -737,15 +736,18 @@
                     <div class="min-w-0">
                       <div class="text-vault-muted text-xs mb-1">Mode</div>
                       <div class="flex items-center gap-1.5">
-                        <template x-if="cluster.mode === 'quorum'">
+                        <template x-if="!cluster.enabled">
+                          <svg class="w-4 h-4 text-vault-accent flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 17.25v-.228a4.5 4.5 0 0 0-.12-1.03l-2.268-9.64a3.375 3.375 0 0 0-3.285-2.602H7.923a3.375 3.375 0 0 0-3.285 2.602l-2.268 9.64a4.5 4.5 0 0 0-.12 1.03v.228m19.5 0a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3m19.5 0a3 3 0 0 0-3-3H5.25a3 3 0 0 0-3 3m16.5 0h.008v.008h-.008v-.008Zm-3 0h.008v.008h-.008v-.008Z"/></svg>
+                        </template>
+                        <template x-if="cluster.enabled && cluster.mode === 'quorum'">
                           <svg class="w-4 h-4 text-vault-indigo flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z"/></svg>
                         </template>
-                        <template x-if="cluster.mode !== 'quorum'">
+                        <template x-if="cluster.enabled && cluster.mode !== 'quorum'">
                           <svg class="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z"/></svg>
                         </template>
                         <span class="text-base font-semibold whitespace-nowrap"
-                              :class="cluster.mode === 'quorum' ? 'text-vault-indigo' : 'text-amber-400'"
-                              x-text="cluster.mode === 'quorum' ? ('Quorum' + (cluster.write_quorum ? ' · W=' + cluster.write_quorum : '')) : 'Available'"></span>
+                              :class="!cluster.enabled ? 'text-vault-accent' : (cluster.mode === 'quorum' ? 'text-vault-indigo' : 'text-amber-400')"
+                              x-text="!cluster.enabled ? 'Single node' : (cluster.mode === 'quorum' ? ('Quorum' + (cluster.write_quorum ? ' · W=' + cluster.write_quorum : '')) : 'Available')"></span>
                       </div>
                     </div>
                     <div class="min-w-0">
@@ -798,8 +800,7 @@
                       </div>
                     </template>
                   </div>
-                </div>
-              </template>
+              </div>
 
             </div>
           </div>
