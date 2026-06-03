@@ -82,6 +82,9 @@ pub fn spawn(config: &ClusterConfig, state: Arc<ClusterState>, scheme: &str, adv
         // endpoint -> last known node_id (a peer that goes down keeps its id so
         // it can still be reported as a known-but-dead member).
         let mut known: BTreeMap<String, Option<String>> = BTreeMap::new();
+        // node_ids currently flagged as config-mismatched, so we log the warning
+        // (and its resolution) once on transition rather than every tick.
+        let mut mismatched: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
         let mut timer = tokio::time::interval(health_interval);
 
         loop {
@@ -99,30 +102,51 @@ pub fn spawn(config: &ClusterConfig, state: Arc<ClusterState>, scheme: &str, adv
             for (endpoint, last_id) in known.iter_mut() {
                 let url = format!("{endpoint}/cluster/v1/health");
                 match probe(&client, &url).await {
-                    Some(node_id) if node_id == self_node_id => {
+                    Some((node_id, _)) if node_id == self_node_id => {
                         // It's us — never list self as a peer, but record our
                         // own advertised endpoint so the console can show it.
                         state.set_local_endpoint(endpoint.clone());
                     }
-                    Some(node_id) => {
+                    Some((node_id, peer_fp)) => {
+                        // Flag config drift: a peer whose cluster-critical config
+                        // fingerprint differs from ours. Unknown on either side
+                        // (not advertised yet) is NOT flagged — don't cry wolf.
+                        let config_ok = match (state.config_fingerprint(), &peer_fp) {
+                            (Some(mine), Some(theirs)) => mine == *theirs,
+                            _ => true,
+                        };
+                        if !config_ok && mismatched.insert(node_id.clone()) {
+                            tracing::warn!(
+                                peer = %endpoint,
+                                peer_node_id = %node_id,
+                                "cluster config mismatch: this peer's cluster-critical config \
+                                 (cluster_id / secret / mode / cluster_size / master key) differs \
+                                 from ours — replication to/from it will misbehave. Align the configs."
+                            );
+                        } else if config_ok && mismatched.remove(&node_id) {
+                            tracing::info!(peer = %endpoint, peer_node_id = %node_id, "cluster config mismatch resolved");
+                        }
                         *last_id = Some(node_id.clone());
                         peers.push(PeerNode {
                             node_id,
                             endpoint: endpoint.clone(),
                             alive: true,
                             last_seen: Some(Utc::now()),
+                            config_ok,
                         });
                     }
                     None => {
                         // Unreachable: report it as down, but only once we have
                         // ever learned its identity (avoids noise from seeds
-                        // that never came up).
+                        // that never came up). A dead peer keeps config_ok = true
+                        // (we have no fresh fingerprint to judge it).
                         if let Some(id) = last_id.clone() {
                             peers.push(PeerNode {
                                 node_id: id,
                                 endpoint: endpoint.clone(),
                                 alive: false,
                                 last_seen: None,
+                                config_ok: true,
                             });
                         }
                     }
@@ -204,14 +228,20 @@ fn spawn_mdns_discovery(
     });
 }
 
-/// Health probe: returns the peer's `node_id` on a 2xx response, else `None`.
-async fn probe(client: &reqwest::Client, url: &str) -> Option<String> {
+/// Health probe: on a 2xx response returns the peer's `node_id` and its
+/// `config_fingerprint` (if advertised), else `None`.
+async fn probe(client: &reqwest::Client, url: &str) -> Option<(String, Option<String>)> {
     let resp = client.get(url).send().await.ok()?;
     if !resp.status().is_success() {
         return None;
     }
     let body: serde_json::Value = resp.json().await.ok()?;
-    body.get("node_id")?.as_str().map(|s| s.to_string())
+    let node_id = body.get("node_id")?.as_str()?.to_string();
+    let fingerprint = body
+        .get("config_fingerprint")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    Some((node_id, fingerprint))
 }
 
 /// Resolves candidate peer endpoints (base URLs) from the discovery source.

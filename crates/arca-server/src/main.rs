@@ -168,6 +168,30 @@ async fn async_main(cli: Cli) -> Result<()> {
 
             let fs_arc = Arc::new(fs_blob_store.clone());
 
+            // Stamp this node's cluster-config fingerprint (captured before the
+            // master key is moved into the blob store) so peers can flag drift in
+            // the alignment-critical config (cluster_id / secret / mode /
+            // cluster_size / master key).
+            let master_key_id: Option<String> =
+                master_key.as_ref().map(|k| k.key_id().to_string());
+            if let (Some(c), Some(cstate)) = (
+                config.cluster.as_ref().filter(|c| c.enabled),
+                cluster_state.as_ref(),
+            ) {
+                let mode = if c.write_quorum().is_some() {
+                    "quorum"
+                } else {
+                    "available"
+                };
+                cstate.set_config_fingerprint(arca_core::cluster::config_fingerprint(
+                    &c.cluster_id,
+                    mode,
+                    c.write_quorum(),
+                    &c.secret,
+                    master_key_id.as_deref(),
+                ));
+            }
+
             let (mut blob, mut plain_blob): (
                 Arc<dyn arca_core::store::BlobStore>,
                 Option<Arc<dyn arca_core::store::BlobStore>>,

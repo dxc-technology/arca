@@ -764,6 +764,14 @@
                     </div>
                   </div>
 
+                  <!-- Config-drift warning: a peer's cluster-critical config differs -->
+                  <template x-if="cluster.config_aligned === false">
+                    <div class="mb-4 flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-400">
+                      <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg>
+                      <span>Config mismatch with a peer (cluster id / secret / mode / size / master key). Replication may misbehave — align the node configs.</span>
+                    </div>
+                  </template>
+
                   <!-- Node list -->
                   <div class="rounded-lg border border-vault-border/40 divide-y divide-vault-border/30 overflow-hidden">
                     <template x-for="n in cluster.nodes" :key="n.node_id">
@@ -774,6 +782,11 @@
                             <span class="text-sm font-medium font-mono truncate" :title="n.node_id" x-text="n.node_id"></span>
                             <template x-if="n.local">
                               <span class="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase bg-vault-accent/15 text-vault-accent flex-shrink-0">this node</span>
+                            </template>
+                            <template x-if="!n.config_ok">
+                              <span class="flex-shrink-0 text-amber-400" title="Config mismatch with this node">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg>
+                              </span>
                             </template>
                           </div>
                           <div class="text-[11px] text-vault-muted/70 font-mono truncate" :title="n.endpoint || ''" x-text="n.endpoint || '(this node)'"></div>

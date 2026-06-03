@@ -17,6 +17,7 @@ use std::sync::RwLock;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::store::control_tombstone::{
     ControlTombstone, TOMBSTONE_BUCKET, TOMBSTONE_CREDENTIAL, TOMBSTONE_GRANT, TOMBSTONE_TEAM,
@@ -42,6 +43,39 @@ pub const CLUSTER_REGION: &str = "arca";
 /// signed header set, so the wrapped DEK an encrypted sidecar may contain
 /// cannot be tampered with in transit.
 pub const CLUSTER_SIDECAR_HEADER: &str = "x-arca-sidecar";
+
+/// Computes a fingerprint of the cluster-alignment-critical configuration —
+/// the fields that MUST be identical on every node for the cluster to work:
+/// `cluster_id`, the consistency contract (`mode` + effective write quorum), the
+/// shared `secret`, and the encryption master-key id. Nodes exchange this hash
+/// (via `/cluster/v1/health`) and flag any peer whose value differs, catching
+/// the silent misconfigurations: a wrong `secret` (replication 403s while the
+/// node still looks alive) or a different master key (encrypted blobs unreadable
+/// on the peer). Sensitive inputs (the secret) only feed the one-way hash; the
+/// output reveals nothing.
+pub fn config_fingerprint(
+    cluster_id: &str,
+    mode: &str,
+    write_quorum: Option<u32>,
+    secret: &str,
+    master_key_id: Option<&str>,
+) -> String {
+    let mut h = Sha256::new();
+    h.update(b"arca-cluster-cfg-v1");
+    for part in [
+        cluster_id,
+        mode,
+        &write_quorum.map(|q| q.to_string()).unwrap_or_default(),
+        secret,
+        master_key_id.unwrap_or("none"),
+    ] {
+        h.update(b"\x1f");
+        h.update(part.as_bytes());
+    }
+    let digest = h.finalize();
+    // 16 hex chars (8 bytes) is ample to detect drift between a handful of nodes.
+    digest[..8].iter().map(|b| format!("{b:02x}")).collect()
+}
 
 /// Body of `POST /cluster/v1/object/delete`: a replicated hard-delete of a
 /// single object version. `version_id == "null"` targets the null-version row.
@@ -579,6 +613,16 @@ pub struct PeerNode {
     pub alive: bool,
     /// Timestamp of the last successful health contact, if any.
     pub last_seen: Option<DateTime<Utc>>,
+    /// Whether this peer's cluster-critical config matches ours (see
+    /// [`config_fingerprint`]). `true` until a live peer reports a differing
+    /// fingerprint; a dead peer (no fresh fingerprint) stays `true` (we don't
+    /// know — don't cry wolf).
+    #[serde(default = "default_true")]
+    pub config_ok: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Serializable point-in-time view of the cluster, for the admin API / console.
@@ -615,6 +659,10 @@ pub struct ClusterState {
     /// when a discovery candidate's health probe returns this node's own id.
     /// `None` until that first self-probe completes.
     local_endpoint: RwLock<Option<String>>,
+    /// This node's own [`config_fingerprint`], set once at startup. `None` until
+    /// set (e.g. before the master key is resolved). Peers' fingerprints are
+    /// compared against this to flag config drift.
+    config_fingerprint: RwLock<Option<String>>,
 }
 
 impl ClusterState {
@@ -626,7 +674,24 @@ impl ClusterState {
             write_quorum,
             peers: RwLock::new(Vec::new()),
             local_endpoint: RwLock::new(None),
+            config_fingerprint: RwLock::new(None),
         }
+    }
+
+    /// Records this node's own cluster-config fingerprint (set once at startup).
+    pub fn set_config_fingerprint(&self, fingerprint: impl Into<String>) {
+        *self
+            .config_fingerprint
+            .write()
+            .expect("cluster config_fingerprint lock poisoned") = Some(fingerprint.into());
+    }
+
+    /// This node's own cluster-config fingerprint, if set.
+    pub fn config_fingerprint(&self) -> Option<String> {
+        self.config_fingerprint
+            .read()
+            .expect("cluster config_fingerprint lock poisoned")
+            .clone()
     }
 
     /// Records this node's own advertised endpoint (called by the membership
@@ -725,6 +790,7 @@ mod tests {
             endpoint: format!("https://{node_id}:9000"),
             alive,
             last_seen: None,
+            config_ok: true,
         }
     }
 
@@ -1063,6 +1129,35 @@ mod tests {
     }
 
     // --- plan_blob_gc -------------------------------------------------------
+
+    // --- config_fingerprint -------------------------------------------------
+
+    #[test]
+    fn config_fingerprint_is_deterministic_and_field_sensitive() {
+        let base = config_fingerprint("c1", "quorum", Some(2), "secret", Some("ab12cd34"));
+        // Same inputs → same fingerprint.
+        assert_eq!(
+            base,
+            config_fingerprint("c1", "quorum", Some(2), "secret", Some("ab12cd34"))
+        );
+        // Each critical field changes it.
+        assert_ne!(base, config_fingerprint("c2", "quorum", Some(2), "secret", Some("ab12cd34")));
+        assert_ne!(base, config_fingerprint("c1", "available", None, "secret", Some("ab12cd34")));
+        assert_ne!(base, config_fingerprint("c1", "quorum", Some(3), "secret", Some("ab12cd34")));
+        assert_ne!(base, config_fingerprint("c1", "quorum", Some(2), "other", Some("ab12cd34")));
+        assert_ne!(base, config_fingerprint("c1", "quorum", Some(2), "secret", Some("ffffffff")));
+        assert_ne!(base, config_fingerprint("c1", "quorum", Some(2), "secret", None));
+    }
+
+    #[test]
+    fn config_fingerprint_available_ignores_cluster_size() {
+        // In available mode write_quorum is None regardless of cluster_size, so two
+        // available nodes with different cluster_size still align.
+        assert_eq!(
+            config_fingerprint("c1", "available", None, "s", None),
+            config_fingerprint("c1", "available", None, "s", None)
+        );
+    }
 
     #[test]
     fn blob_gc_reclaims_old_unreferenced_only() {

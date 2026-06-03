@@ -808,6 +808,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Observability">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#config-drift-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Config-drift detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1523,6 +1540,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Observability">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#config-drift-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Config-drift detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1729,6 +1763,15 @@
 <li><strong><code>GET /admin/cluster</code></strong> (admin SigV4) — JSON the console consumes: <code>mode</code>, <code>write_quorum</code>, <code>has_write_quorum</code>, <code>live_node_count</code>, <code>node_count</code>, and the <code>nodes</code> list. Returns <code>{"enabled": false}</code> on a single-node deployment.</li>
 <li><strong><code>GET /admin/health?verbose=1</code></strong> (unauthenticated) — liveness plus the cluster snapshot, handy for scripts and load-balancer debugging. The plain <code>GET /admin/health</code> (200 / 503-on-drain) is the load-balancer check.</li>
 </ul>
+<h3 id="config-drift-detection">Config-drift detection<a class="headerlink" href="#config-drift-detection" title="Permanent link">&para;</a></h3>
+<p>A symmetric cluster only works if the alignment-critical config is identical on every node, and the dangerous mismatches are <em>silent</em>: a wrong <code>secret</code> lets a node look alive while every replication request 403s; a different encryption master key makes replicated blobs unreadable on the peer. So nodes actively check it.</p>
+<p>Each node computes a <strong>fingerprint</strong> (a one-way hash, exposing nothing sensitive) of the fields that must match — <code>cluster_id</code>, <code>secret</code>, <code>mode</code>, <code>cluster_size</code>, and the encryption master-key id — and advertises it on <code>/cluster/v1/health</code>. Every node compares each peer's fingerprint to its own. On a mismatch:</p>
+<ul>
+<li>it <strong>logs a <code>WARN</code></strong> naming the offending peer (once, on transition — not every tick);</li>
+<li>the console <strong>Cluster Topology</strong> card shows an amber warning banner and an alert icon on the mismatched node;</li>
+<li><code>GET /admin/cluster</code> reports <code>config_aligned: false</code> and <code>config_ok: false</code> on that node.</li>
+</ul>
+<p>The cluster does <strong>not</strong> refuse to start or auto-isolate the peer — a node can't know its peers' config at startup, and one misconfigured node shouldn't take down the healthy ones. It surfaces the problem loudly and keeps running; you fix the config and the warning clears on its own. (Fields that legitimately differ per node — port, <code>advertise_addr</code>, <code>node_id</code>, seeds, intervals, storage backend — are deliberately excluded from the fingerprint.)</p>
 <h2 id="production-deployment">Production deployment<a class="headerlink" href="#production-deployment" title="Permanent link">&para;</a></h2>
 <h3 id="load-balancer">Load balancer<a class="headerlink" href="#load-balancer" title="Permanent link">&para;</a></h3>
 <p>Put any L7/L4 balancer in front and health-check <code>GET /admin/health</code> (200 = up, 503 = draining → out of rotation). The reference HAProxy backend:</p>

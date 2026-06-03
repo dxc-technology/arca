@@ -34,6 +34,10 @@ use crate::state::AppState;
 struct ClusterHealthResponse {
     status: &'static str,
     node_id: String,
+    /// Fingerprint of the cluster-alignment-critical config; peers compare it to
+    /// their own to detect config drift. `null` until set at startup.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    config_fingerprint: Option<String>,
 }
 
 /// `GET /cluster/v1/health` — public liveness + identity for peers.
@@ -46,6 +50,7 @@ pub async fn health(State(state): State<AppState>) -> Response {
         Some(cluster) => Json(ClusterHealthResponse {
             status: "ok",
             node_id: cluster.node_id().to_string(),
+            config_fingerprint: cluster.config_fingerprint(),
         })
         .into_response(),
         None => (StatusCode::NOT_FOUND, "node is not part of a cluster").into_response(),

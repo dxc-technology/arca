@@ -103,6 +103,18 @@ The 3 nodes share one symmetric config (`docker/cluster/config.toml`, `mode = "q
 - **`GET /admin/cluster`** (admin SigV4) — JSON the console consumes: `mode`, `write_quorum`, `has_write_quorum`, `live_node_count`, `node_count`, and the `nodes` list. Returns `{"enabled": false}` on a single-node deployment.
 - **`GET /admin/health?verbose=1`** (unauthenticated) — liveness plus the cluster snapshot, handy for scripts and load-balancer debugging. The plain `GET /admin/health` (200 / 503-on-drain) is the load-balancer check.
 
+### Config-drift detection
+
+A symmetric cluster only works if the alignment-critical config is identical on every node, and the dangerous mismatches are *silent*: a wrong `secret` lets a node look alive while every replication request 403s; a different encryption master key makes replicated blobs unreadable on the peer. So nodes actively check it.
+
+Each node computes a **fingerprint** (a one-way hash, exposing nothing sensitive) of the fields that must match — `cluster_id`, `secret`, `mode`, `cluster_size`, and the encryption master-key id — and advertises it on `/cluster/v1/health`. Every node compares each peer's fingerprint to its own. On a mismatch:
+
+- it **logs a `WARN`** naming the offending peer (once, on transition — not every tick);
+- the console **Cluster Topology** card shows an amber warning banner and an alert icon on the mismatched node;
+- `GET /admin/cluster` reports `config_aligned: false` and `config_ok: false` on that node.
+
+The cluster does **not** refuse to start or auto-isolate the peer — a node can't know its peers' config at startup, and one misconfigured node shouldn't take down the healthy ones. It surfaces the problem loudly and keeps running; you fix the config and the warning clears on its own. (Fields that legitimately differ per node — port, `advertise_addr`, `node_id`, seeds, intervals, storage backend — are deliberately excluded from the fingerprint.)
+
 ## Production deployment
 
 ### Load balancer

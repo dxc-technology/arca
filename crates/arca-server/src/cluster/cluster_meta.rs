@@ -715,6 +715,7 @@ mod tests {
             endpoint: "http://127.0.0.1:1".to_string(),
             alive: true,
             last_seen: None,
+            config_ok: true,
         }
     }
 

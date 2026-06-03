@@ -177,6 +177,8 @@ struct ClusterNodeView {
     last_seen: Option<String>,
     /// True for the node serving this request.
     local: bool,
+    /// Whether this node's cluster-critical config matches the local node's.
+    config_ok: bool,
 }
 
 /// Console-friendly cluster topology for `GET /admin/cluster`. `enabled` is
@@ -203,6 +205,9 @@ struct ClusterAdminResponse {
     /// Total known nodes (including self).
     #[serde(skip_serializing_if = "Option::is_none")]
     node_count: Option<usize>,
+    /// False when any live peer's cluster-critical config differs from ours.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    config_aligned: Option<bool>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     nodes: Vec<ClusterNodeView>,
 }
@@ -225,6 +230,7 @@ pub async fn cluster(State(state): State<AppState>) -> Response {
                 has_write_quorum: None,
                 live_node_count: None,
                 node_count: None,
+                config_aligned: None,
                 nodes: Vec::new(),
             })
             .into_response()
@@ -245,7 +251,11 @@ pub async fn cluster(State(state): State<AppState>) -> Response {
         alive: true,
         last_seen: None,
         local: true,
+        config_ok: true,
     });
+    // A live peer whose config fingerprint differs is flagged; dead peers are
+    // not judged (config_ok stays true).
+    let config_aligned = snap.peers.iter().all(|p| !p.alive || p.config_ok);
     for p in &snap.peers {
         nodes.push(ClusterNodeView {
             node_id: p.node_id.clone(),
@@ -253,6 +263,7 @@ pub async fn cluster(State(state): State<AppState>) -> Response {
             alive: p.alive,
             last_seen: p.last_seen.map(|t| t.to_rfc3339()),
             local: false,
+            config_ok: p.config_ok,
         });
     }
     let node_count = nodes.len();
@@ -265,6 +276,7 @@ pub async fn cluster(State(state): State<AppState>) -> Response {
         has_write_quorum: Some(snap.has_write_quorum),
         live_node_count: Some(snap.live_node_count),
         node_count: Some(node_count),
+        config_aligned: Some(config_aligned),
         nodes,
     })
     .into_response()
