@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0] — 2026-06-03
+
 ### Added
 
 - **High-availability clustering (Phase 29).** Arca can now run as a symmetric, self-configuring, fully-replicated multi-node cluster — every node is identical, holds the full dataset, and serves reads and writes. Enable it with a single `[cluster]` config section (or `bin/arca --cluster` for local dev); there is no special "primary" and no separate coordinator.
@@ -636,7 +638,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.24.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.25.0...HEAD
+[0.25.0]: https://github.com/dxc-technology/arca/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/dxc-technology/arca/compare/v0.23.1...v0.24.0
 [0.23.1]: https://github.com/dxc-technology/arca/compare/v0.23.0...v0.23.1
 [0.23.0]: https://github.com/dxc-technology/arca/compare/v0.22.0...v0.23.0
