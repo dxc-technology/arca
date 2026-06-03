@@ -68,7 +68,7 @@ graph LR
     17 --> 28["28 Replication"]
     13 --> 23["23 Performance\n+ Hardening"]
     24["24 PostgreSQL\nBackend"] --> 28
-    28 --> 29["29 Multi-Node\n+ Erasure Coding"]
+    28 --> 29["29 Multi-Node\nHigh Availability"]
     29 --> 30["30 CLI Enhancements\n+ Migration"]
     13 --> 30
     24 --> 30
@@ -124,7 +124,7 @@ graph LR
 | 26 | [Notification Connectors](#phase-26-notification-connectors-p3) | P3 | 25 | `v0.20.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 27 | [Transparent Compression](#phase-27-transparent-compression-p2) | P2 | 13 | `v0.21.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 28 | [Replication](#phase-28-replication-p3) | P3 | 17, 24 | `v0.23.0` | <span style="color:#4caf50">&#x2714;</span> |
-| 29 | [Multi-Node and Erasure Coding](#phase-29-multi-node-and-erasure-coding-p3) | P3 | All prior | `v0.25.0` | <span style="color:#4caf50">&#x2714;</span> |
+| 29 | [Multi-Node High Availability](#phase-29-multi-node-high-availability-p3) | P3 | All prior | `v0.25.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 30 | [CLI Enhancements and Migration Tools](#phase-30-cli-enhancements-and-migration-tools-p3) | P3 | 13, 24, 29 | | |
 | 31 | [OpenTelemetry Integration](#phase-31-opentelemetry-integration-p3) | P3 | 18 | | |
 
@@ -477,7 +477,7 @@ Asynchronous cross-instance replication for disaster recovery and geographic dis
 
 ---
 
-### Phase 29 — Multi-Node and Erasure Coding [P3]
+### Phase 29 — Multi-Node High Availability [P3]
 
 High availability beyond single-node: a symmetric, self-configuring, fully-replicated cluster. See the [High Availability guide](guide/ha.md).
 
