@@ -22,10 +22,10 @@ flowchart LR
         A -. "replicate" .-> C
     end
 
-    classDef client fill:#eceff1,stroke:#90a4ae,color:#263238;
-    classDef lb fill:#bbdefb,stroke:#1976d2,color:#0d2744;
-    classDef recv fill:#c8e6c9,stroke:#2e7d32,color:#14321a;
-    classDef peer fill:#b2ebf2,stroke:#0097a7,color:#06363d;
+    classDef client fill:#90a4ae33,stroke:#90a4ae,stroke-width:1.5px;
+    classDef lb fill:#42a5f533,stroke:#42a5f5,stroke-width:1.5px;
+    classDef recv fill:#66bb6a33,stroke:#43a047,stroke-width:2.5px;
+    classDef peer fill:#26c6da33,stroke:#26c6da,stroke-width:1.5px;
     class Client client;
     class LB lb;
     class A recv;
@@ -82,8 +82,8 @@ flowchart LR
     s1["<b>1 of 3 up</b> · majority lost<br/>🟢 🔴 🔴<br/>quorum → Read-only (503)<br/>available → Writable"]:::warn
     s3 ~~~ s2 ~~~ s1
 
-    classDef ok fill:#c8e6c9,stroke:#2e7d32,color:#14321a;
-    classDef warn fill:#ffe082,stroke:#f9a825,color:#4a3a00;
+    classDef ok fill:#66bb6a33,stroke:#43a047,stroke-width:2px;
+    classDef warn fill:#ffb30033,stroke:#fb8c00,stroke-width:2px;
 ```
 
 In `quorum` the cluster trades availability for safety at the majority boundary; in `available` it keeps accepting writes the whole way down. Both modes are **eventually consistent** across nodes: replication and reconcile are asynchronous, and conflicts resolve **last-writer-wins (LWW)**. The LWW key is `(last_modified, version_id, blob_id)` — the `blob_id` is a stable tiebreaker so two nodes that wrote the "same" null-version object at the same wall-clock instant still pick the same winner deterministically, without a coordination protocol.

@@ -1688,10 +1688,10 @@ write fans it out to its peers, so every node ends up holding the full dataset:<
         A -. "replicate" .-&gt; C
     end
 
-    classDef client fill:#eceff1,stroke:#90a4ae,color:#263238;
-    classDef lb fill:#bbdefb,stroke:#1976d2,color:#0d2744;
-    classDef recv fill:#c8e6c9,stroke:#2e7d32,color:#14321a;
-    classDef peer fill:#b2ebf2,stroke:#0097a7,color:#06363d;
+    classDef client fill:#90a4ae33,stroke:#90a4ae,stroke-width:1.5px;
+    classDef lb fill:#42a5f533,stroke:#42a5f5,stroke-width:1.5px;
+    classDef recv fill:#66bb6a33,stroke:#43a047,stroke-width:2.5px;
+    classDef peer fill:#26c6da33,stroke:#26c6da,stroke-width:1.5px;
     class Client client;
     class LB lb;
     class A recv;
@@ -1756,8 +1756,8 @@ them, and any node that takes a write replicates it to the others.</p>
     s1["&lt;b&gt;1 of 3 up&lt;/b&gt; · majority lost&lt;br/&gt;🟢 🔴 🔴&lt;br/&gt;quorum → Read-only (503)&lt;br/&gt;available → Writable"]:::warn
     s3 ~~~ s2 ~~~ s1
 
-    classDef ok fill:#c8e6c9,stroke:#2e7d32,color:#14321a;
-    classDef warn fill:#ffe082,stroke:#f9a825,color:#4a3a00;</code></pre>
+    classDef ok fill:#66bb6a33,stroke:#43a047,stroke-width:2px;
+    classDef warn fill:#ffb30033,stroke:#fb8c00,stroke-width:2px;</code></pre>
 <p>In <code>quorum</code> the cluster trades availability for safety at the majority boundary; in <code>available</code> it keeps accepting writes the whole way down. Both modes are <strong>eventually consistent</strong> across nodes: replication and reconcile are asynchronous, and conflicts resolve <strong>last-writer-wins (LWW)</strong>. The LWW key is <code>(last_modified, version_id, blob_id)</code> — the <code>blob_id</code> is a stable tiebreaker so two nodes that wrote the "same" null-version object at the same wall-clock instant still pick the same winner deterministically, without a coordination protocol.</p>
 <blockquote>
 <p><strong>Read-after-write:</strong> within a single node it is immediate. Across the cluster (through a round-robin load balancer) a read may briefly hit a node that has not yet received the write. Pin a client to one node (LB sticky sessions) if you need read-your-writes through the balancer.</p>
