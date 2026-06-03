@@ -65,6 +65,26 @@ services:
       - arca-2
       - arca-3
 
+  # Integration test runner (boto3/pytest). Talks to the load balancer for the
+  # client-facing assertions and to each node directly for per-node replication
+  # and catch-up checks. Driven by `bin/test cluster` (profile `test`).
+  test:
+    image: arca-test
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.test
+    environment:
+      - ARCA_ENDPOINT=http://arca-lb:9000
+      - ARCA_NODE1_ENDPOINT=http://arca-1:9000
+      - ARCA_NODE2_ENDPOINT=http://arca-2:9000
+      - ARCA_NODE3_ENDPOINT=http://arca-3:9000
+      - AWS_ACCESS_KEY_ID=${ARCA_ROOT_ACCESS_KEY:-AKIAIOSFODNN7EXAMPLE}
+      - AWS_SECRET_ACCESS_KEY=${ARCA_ROOT_SECRET_KEY:-wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY}
+    depends_on:
+      - arca-lb
+    profiles:
+      - test
+
   # Web console, pointed at the load balancer (like a real deployment).
   console:
     image: arca-console

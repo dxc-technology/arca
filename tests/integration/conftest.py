@@ -9,6 +9,24 @@ import pytest
 from minio import Minio
 
 
+def pytest_configure(config):
+    """Register custom markers used by the 3-node cluster suite.
+
+    Each marker tags a test with the cluster topology it requires; `bin/test
+    cluster` orchestrates node up/down between phases and selects the matching
+    tests with `pytest -m <marker>`.
+    """
+    for name, desc in [
+        ("cluster_full", "requires all 3 cluster nodes up"),
+        ("cluster_two_thirds", "requires exactly 2 of 3 nodes up (quorum still met)"),
+        ("cluster_one_third", "requires only 1 of 3 nodes up (no quorum)"),
+        ("cluster_catchup_verify", "verifies anti-entropy convergence after a node returns"),
+        ("cluster_insufficient_storage", "requires the 507 overlay (one tiny-disk node)"),
+        ("cluster_config_drift", "requires the drift overlay (one mismatched-secret node)"),
+    ]:
+        config.addinivalue_line("markers", f"{name}: {desc}")
+
+
 @pytest.fixture
 def endpoint_url():
     """S3 endpoint URL for the Arca server."""

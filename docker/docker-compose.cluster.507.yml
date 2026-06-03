@@ -1,0 +1,23 @@
+# Overlay for the 507 InsufficientStorage integration test.
+#
+# Replaces arca-3's data volume with a small tmpfs so that node has only a few
+# MiB of free space. Because a fully replicated cluster's capacity is bounded by
+# its SMALLEST node, the write-space guard must reject a PUT larger than arca-3's
+# free space with 507 — even though arca-1 and arca-2 have plenty of room.
+#
+# Apply on top of the base cluster compose:
+#   docker compose -p arca-cluster \
+#     -f docker/docker-compose.cluster.yml \
+#     -f docker/docker-compose.cluster.507.yml up -d
+#
+# A YAML list override REPLACES the base list, so arca-3 keeps only the config
+# mount plus the tmpfs (its named volume is dropped for this run).
+
+services:
+  arca-3:
+    volumes:
+      - ../docker/cluster/config.toml:/etc/arca/config.toml:ro
+      - type: tmpfs
+        target: /data
+        tmpfs:
+          size: 16777216  # 16 MiB — room for the SQLite DB, not for a big object

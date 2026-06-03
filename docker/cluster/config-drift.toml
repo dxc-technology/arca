@@ -1,0 +1,22 @@
+# Config-drift variant: IDENTICAL to config.toml except for a DIFFERENT cluster
+# secret. Mounted on a single node by the drift integration test to verify that
+# peers detect the mismatch (config_fingerprint differs) and report it via
+# /admin/cluster without refusing to run.
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+
+[cluster]
+enabled = true
+cluster_id = "arca-cluster"
+# DELIBERATELY different from the other nodes' secret to trigger config drift.
+secret = "drifted-cluster-secret-mismatch"
+mode = "quorum"
+cluster_size = 3
+discovery = "static"
+seeds = ["arca-1:9000", "arca-2:9000", "arca-3:9000"]
+health_interval_seconds = 3
+anti_entropy_interval_seconds = 5

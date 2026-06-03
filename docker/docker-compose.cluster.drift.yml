@@ -1,0 +1,17 @@
+# Overlay for the config-drift detection integration test.
+#
+# Starts arca-3 with a DIFFERENT cluster secret (config-drift.toml). Its
+# config_fingerprint then differs from arca-1/arca-2, which the membership layer
+# detects and surfaces on /admin/cluster (config_aligned:false, the drifted node
+# config_ok:false) — without the cluster refusing to run.
+#
+# Apply on top of the base cluster compose:
+#   docker compose -p arca-cluster \
+#     -f docker/docker-compose.cluster.yml \
+#     -f docker/docker-compose.cluster.drift.yml up -d
+
+services:
+  arca-3:
+    volumes:
+      - arca-3-data:/data
+      - ../docker/cluster/config-drift.toml:/etc/arca/config.toml:ro

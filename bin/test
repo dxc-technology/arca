@@ -299,6 +299,107 @@ run_replication() {
     return $rc
 }
 
+# --- 3-node HA cluster tests ---
+
+# Live node count as seen by the node on host port $1 (via public health).
+_node_live() {
+    curl -fsS "http://localhost:${1}/admin/health?verbose=1" 2>/dev/null \
+        | jq -r '.cluster.live_node_count // empty' 2>/dev/null
+}
+
+# Wait until the node on host port $1 reports exactly $2 live nodes.
+wait_live() {
+    local port="$1" want="$2" max="${3:-90}"
+    echo "Waiting for the cluster to report $want live node(s) on :$port..."
+    for _ in $(seq 1 "$max"); do
+        [[ "$(_node_live "$port")" == "$want" ]] && { sleep 2; return 0; }
+        sleep 1
+    done
+    echo "Timed out waiting for live==$want on :$port" >&2
+    return 1
+}
+
+run_cluster() {
+    echo "==> Running 3-node HA cluster integration tests..."
+
+    local PROJECT="arca-cluster"
+    local BASE="docker/docker-compose.cluster.yml"
+    local C="docker compose -p $PROJECT -f $BASE"
+
+    cleanup_cluster() {
+        echo "Cleaning up cluster test..."
+        docker compose -p arca-cluster -f docker/docker-compose.cluster.yml down -v 2>/dev/null || true
+    }
+    trap cleanup_cluster EXIT
+
+    # Start from a clean slate (tear down any cluster left running).
+    $C down -v 2>/dev/null || true
+
+    local rc=0
+    local T="integration/test_cluster.py"
+
+    # All three nodes share the one `arca` image tag, so building a single node
+    # produces it; the others reuse the tag at `up` time. Also build the runner.
+    $C build arca-1 test || rc=$?
+
+    # ── Phases A–D share one cluster lifecycle; nodes are stopped/started
+    #    between phases (a kill/restart can't be driven from a test container).
+    if [[ $rc -eq 0 ]]; then
+        echo "── Phase A: all 3 nodes up ──"
+        $C up -d
+        wait_live 9001 3 90 || rc=1
+        [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_full -v "$@" || rc=$?; }
+    fi
+
+    if [[ $rc -eq 0 ]]; then
+        echo "── Phase B: node 3 down (2 of 3 — quorum still met) ──"
+        $C stop arca-3
+        wait_live 9001 2 60 || rc=1
+        [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_two_thirds -v "$@" || rc=$?; }
+    fi
+
+    if [[ $rc -eq 0 ]]; then
+        echo "── Phase C: nodes 2 & 3 down (1 of 3 — no quorum) ──"
+        $C stop arca-2
+        wait_live 9001 1 60 || rc=1
+        [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_one_third -v "$@" || rc=$?; }
+    fi
+
+    if [[ $rc -eq 0 ]]; then
+        echo "── Phase D: all nodes back up (anti-entropy convergence) ──"
+        $C start arca-2 arca-3
+        wait_live 9001 3 90 || rc=1
+        [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_catchup_verify -v "$@" || rc=$?; }
+    fi
+
+    # Fresh volumes for the special-topology phases.
+    $C down -v 2>/dev/null || true
+
+    if [[ $rc -eq 0 ]]; then
+        echo "── Phase E: 507 InsufficientStorage (tiny-disk node) ──"
+        local C507="$C -f docker/docker-compose.cluster.507.yml"
+        $C507 up -d
+        wait_live 9001 3 90 || rc=1
+        [[ $rc -eq 0 ]] && { $C507 run --rm --no-deps test "$T" -m cluster_insufficient_storage -v "$@" || rc=$?; }
+        $C507 down -v 2>/dev/null || true
+    fi
+
+    if [[ $rc -eq 0 ]]; then
+        echo "── Phase F: config-drift detection (mismatched secret) ──"
+        # Health is public, so all 3 nodes are still "live" — only the
+        # fingerprint differs, which the drift detector flags.
+        local CDRIFT="$C -f docker/docker-compose.cluster.drift.yml"
+        $CDRIFT up -d
+        wait_live 9001 3 90 || rc=1
+        [[ $rc -eq 0 ]] && { $CDRIFT run --rm --no-deps test "$T" -m cluster_config_drift -v "$@" || rc=$?; }
+        $CDRIFT down -v 2>/dev/null || true
+    fi
+
+    trap - EXIT
+    cleanup_cluster
+    return $rc
+}
+
 run_notifications() {
     echo "==> Running notification integration tests..."
 
@@ -827,6 +928,10 @@ case "${1:-all}" in
         shift
         run_replication "$@"
         ;;
+    cluster)
+        shift
+        run_cluster "$@"
+        ;;
     connectors)
         shift
         run_connectors "$@"
@@ -857,6 +962,7 @@ case "${1:-all}" in
         echo "  ssec                 Run SSE-C integration tests"
         echo "  connectors <type>    Run connector integration tests (redis, nats, mqtt, postgresql, mysql, mongodb, kafka, amqp, elasticsearch, syslog, smtp, grpc, all)"
         echo "  replication          Run replication integration tests (two Arca instances)"
+        echo "  cluster              Run 3-node HA cluster integration tests (phased node up/down)"
         echo "  s3-compat            Run Ceph s3-tests compatibility suite"
         echo ""
         echo "Extra args are passed to the test runner (cargo test or pytest)."
