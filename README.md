@@ -159,10 +159,11 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 
 | Suite | Tests | Details |
 |-------|------:|---------|
-| Unit tests (Rust) | 677 | arca-auth: 39, arca-core: 191, arca-proto: 37, arca-server: 194, arca-storage: 216 |
+| Unit tests (Rust) | 768 | arca-auth: 39, arca-core: 210, arca-proto: 37, arca-server: 236, arca-storage: 246 |
 | Integration — boto3 | 146 | buckets, objects, list, multipart, copy, folders, auth, admin, credentials, conditional ops |
 | Integration — RBAC | 42 | user/team/grant CRUD, attachments, effective grants, /admin/me (with and without grants), E2E access control |
 | Integration — Versioning | 21 | versioning config, PUT/GET/HEAD/DELETE with versionId, delete markers, batch delete with VersionId, ListVersions, copy |
+| Integration — Tagging | 23 | Put/Get/Delete object tags, tag limits and validation, tagging on versioned objects, tag-directive on copy |
 | Integration — Monitoring | 29 | Prometheus metrics, audit log, metrics history, instance settings, preview limits, region (TD-004) |
 | Integration — Lifecycle | 17 | Put/Get/Delete lifecycle config, expiration rules, noncurrent version, abort upload, tag/and filters |
 | Integration — Object Lock | 19 | Put/Get config (at creation, on empty existing buckets, rejection on non-empty), retention, legal hold, COMPLIANCE/GOVERNANCE enforcement, bypass, delete markers |
@@ -176,15 +177,15 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — TLS | 7 | HTTPS health/info/put/get/multipart, minio client, wrong CA rejection |
 | Integration — PostgreSQL | 20 | buckets, objects, multipart, versioning, tags, lifecycle, copy, range, admin health |
 | Integration — Export/Import | 19 | export all/single/multiple sections, secret masking, import dry_run/skip/overwrite, masked credentials, bucket create/skip, round-trip |
-| Integration — Notifications | 21 | Put/Get config (Topic/Queue/Lambda), filters, webhook delivery, event format, batch delete, admin API, auth token, connector type roundtrip |
+| Integration — Notifications | 20 | Put/Get config (Topic/Queue/Lambda), filters, webhook delivery, event format, batch delete, admin API, auth token, connector type roundtrip |
 | Integration — Compression | 10 | put/get roundtrip, ETag vs plaintext MD5, MIME skip, small object skip, range reads (intra- and cross-frame), per-bucket ?compression subresource (PUT/GET/DELETE), every algorithm (zstd/lz4/snappy/gzip/brotli/xz), unknown-algorithm rejection |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
 | Integration — Replication | 4 | basic PutObject replication, delete-marker propagation, tag sync, two-way mirror no-loop invariant |
 | Integration — HA Cluster | 11 | 3-node replication to all nodes, read-after-write, write with one node down (quorum), failover read, read-only without quorum (503), anti-entropy catch-up, cluster-wide 507 InsufficientStorage, config-drift detection |
 | Connector integrations | 84 | Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Kafka, AMQP, Elasticsearch, Syslog, SMTP, gRPC — each: delivery, custom destination, delete event, multiple events, payload format, connectivity test |
-| **Arca tests** | **1,311** | **All tests written for this project** |
+| **Arca tests** | **1,425** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 830 | 370 pass, 369 fail, 91 skip — 0 unexpected failures |
-| **Total** | **2,142** | |
+| **Total** | **2,255** | |
 
 ## License
 
