@@ -32,7 +32,7 @@ The MVP is complete. All 12 implementation phases (0–11) have been delivered. 
 - **Server-side encryption** — AES-256-GCM at-rest encryption (SSE-S3) with envelope encryption, per-object DEKs, and streaming chunk-based encrypt/decrypt. Master key from config file or Vault/OpenBAO KMS
 - **Native TLS** — HTTPS without a reverse proxy (`bin/arca start --tls`), with auto-detection and SIGHUP cert reload
 - **Web console** — browser-based UI for managing buckets, objects, and credentials
-- **S3 compatibility tested** — 338/829 Ceph s3-tests passing, 0 unexpected failures
+- **S3 compatibility tested** — 370/830 Ceph s3-tests passing, 0 unexpected failures
 
 ## S3 API Surface
 
