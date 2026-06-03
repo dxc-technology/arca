@@ -6,6 +6,35 @@ This is the **full-replication** model (every node holds a complete copy), targe
 
 ## How it works
 
+A client talks to any node through the load balancer. Whichever node receives a
+write fans it out to its peers, so every node ends up holding the full dataset:
+
+```mermaid
+flowchart LR
+    Client(["S3 client"]) -->|"read / write"| LB{{"Load balancer"}}
+    LB --> A
+    subgraph cluster["Arca cluster · every node holds the full dataset"]
+        direction TB
+        B["Node B"]
+        A["Node A<br/>receives the write"]
+        C["Node C"]
+        A -. "replicate" .-> B
+        A -. "replicate" .-> C
+    end
+
+    classDef client fill:#eceff1,stroke:#90a4ae,color:#263238;
+    classDef lb fill:#bbdefb,stroke:#1976d2,color:#0d2744;
+    classDef recv fill:#c8e6c9,stroke:#2e7d32,color:#14321a;
+    classDef peer fill:#b2ebf2,stroke:#0097a7,color:#06363d;
+    class Client client;
+    class LB lb;
+    class A recv;
+    class B,C peer;
+```
+
+The nodes are symmetric: the load balancer can route a request to **any** of
+them, and any node that takes a write replicates it to the others.
+
 ### Symmetry and identity
 
 The `[cluster]` section is **byte-for-byte identical on every node**. There is no `node_id` to assign and no peer list to maintain by hand: on first start each node generates a stable `node_id`, persists it in its own data directory, and keeps it across restarts. Adding a node is just starting another process with the same config.
@@ -44,7 +73,20 @@ Two policies, set per cluster with `[cluster].mode`:
 - **`quorum` (CP, default)** — a write must reach a **majority** of nodes (`floor(cluster_size/2) + 1`) to be acknowledged. Below majority a node refuses writes with `503 ServiceUnavailable` and stays **read-only**, so the cluster never diverges into conflicting writes. With `cluster_size = 3` the write quorum is `2`: the cluster tolerates losing **one** node and keeps serving reads and writes.
 - **`available` (AP)** — any single node accepts writes and fans out best-effort. Maximum availability, at the cost of accepting writes that may momentarily diverge and converge later.
 
-Both modes are **eventually consistent** across nodes: replication and reconcile are asynchronous, and conflicts resolve **last-writer-wins (LWW)**. The LWW key is `(last_modified, version_id, blob_id)` — the `blob_id` is a stable tiebreaker so two nodes that wrote the "same" null-version object at the same wall-clock instant still pick the same winner deterministically, without a coordination protocol.
+How a 3-node cluster behaves as nodes are lost (writes need a majority of `2` in `quorum`):
+
+```mermaid
+flowchart LR
+    s3["<b>3 of 3 up</b><br/>🟢 🟢 🟢<br/>Writable<br/>quorum and available"]:::ok
+    s2["<b>2 of 3 up</b> · one lost<br/>🟢 🟢 🔴<br/>Writable<br/>quorum and available"]:::ok
+    s1["<b>1 of 3 up</b> · majority lost<br/>🟢 🔴 🔴<br/>quorum → Read-only (503)<br/>available → Writable"]:::warn
+    s3 ~~~ s2 ~~~ s1
+
+    classDef ok fill:#c8e6c9,stroke:#2e7d32,color:#14321a;
+    classDef warn fill:#ffe082,stroke:#f9a825,color:#4a3a00;
+```
+
+In `quorum` the cluster trades availability for safety at the majority boundary; in `available` it keeps accepting writes the whole way down. Both modes are **eventually consistent** across nodes: replication and reconcile are asynchronous, and conflicts resolve **last-writer-wins (LWW)**. The LWW key is `(last_modified, version_id, blob_id)` — the `blob_id` is a stable tiebreaker so two nodes that wrote the "same" null-version object at the same wall-clock instant still pick the same winner deterministically, without a coordination protocol.
 
 > **Read-after-write:** within a single node it is immediate. Across the cluster (through a round-robin load balancer) a read may briefly hit a node that has not yet received the write. Pin a client to one node (LB sticky sessions) if you need read-your-writes through the balancer.
 
