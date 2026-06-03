@@ -130,6 +130,27 @@ The cache is transparent to clients: write operations (create/delete bucket, put
 | `monitoring.metrics.retention_days` | *(console-managed)* | Days to retain metrics snapshots. When set in TOML, the value is locked. |
 | `monitoring.metrics.interval_seconds` | `60` | How often to snapshot gauge metrics (seconds). |
 
+### Cluster (High Availability)
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `cluster.enabled` | `false` | Enable multi-node clustering. The section must be identical on every node. |
+| `cluster.cluster_id` | *(required)* | Logical cluster name; only nodes sharing it form a cluster. |
+| `cluster.secret` | *(required)* | Shared secret authenticating inter-node requests. Identical on every node. |
+| `cluster.mode` | `quorum` | `quorum` (CP — majority required to write) or `available` (AP — always writable). |
+| `cluster.cluster_size` | *(required for quorum)* | Number of nodes; derives the write majority. |
+| `cluster.discovery` | `mdns` | Peer discovery: `mdns` (LAN), `static` (seed list), or `dns` (resolve a name to all peers). |
+| `cluster.seeds` | *(required for static)* | Peer endpoints, e.g. `["10.0.0.11:9000", ...]`. Identical on every node; a node ignores its own entry. |
+| `cluster.dns_name` | *(required for dns)* | DNS name resolving to all peers (e.g. a Kubernetes headless Service). |
+| `cluster.advertise_addr` | *(auto)* | Host/IP advertised to peers. Set behind NAT or with multiple interfaces. |
+| `cluster.advertise_port` | `server.port` | Port peers use to reach this node. Set only when it differs from the bind port. |
+| `cluster.health_interval_seconds` | `5` | Interval between peer health pings. |
+| `cluster.anti_entropy_interval_seconds` | `30` | Interval between anti-entropy reconciliation passes. |
+| `cluster.request_timeout_seconds` | `30` | Inter-node HTTP request timeout. |
+| `cluster.tombstone_grace_days` | `7` | How long a delete tombstone is kept for convergence. MUST exceed the longest expected node downtime. |
+
+When `[cluster]` is enabled, every node holds the full dataset and replicates writes in real time; lagging nodes self-heal via anti-entropy. For an encrypted cluster, set the **same** master key (or KMS) on every node. See the [High Availability guide](ha.md) for the full design, deployment, and operations.
+
 ### Example
 
 ```toml

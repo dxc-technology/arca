@@ -59,6 +59,7 @@ The dashboard is available to **admin credentials only**. It shows:
 - **Storage stats**: bucket count, object count, total storage size
 - **Storage distribution**: SVG donut chart showing size per bucket
 - **Encryption status**: whether server-side encryption is active (SSE-S3 with local key or Vault/OpenBAO KMS)
+- **Topology**: a dedicated card showing the deployment topology. On a single node it shows that one node ("Single node", Writable); in a [cluster](ha.md) it shows the consistency mode, write-quorum status, and a live node list (online/offline, "this node", endpoints, last-seen, and config-mismatch flags)
 - **Health indicator**: real-time server health status with auto-refresh
 
 ## Bucket Management

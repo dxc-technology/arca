@@ -676,6 +676,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#cluster-high-availability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cluster (High Availability)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#example" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1591,6 +1602,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#cluster-high-availability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cluster (High Availability)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#example" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2058,6 +2080,89 @@
 </tr>
 </tbody>
 </table>
+<h3 id="cluster-high-availability">Cluster (High Availability)<a class="headerlink" href="#cluster-high-availability" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cluster.enabled</code></td>
+<td><code>false</code></td>
+<td>Enable multi-node clustering. The section must be identical on every node.</td>
+</tr>
+<tr>
+<td><code>cluster.cluster_id</code></td>
+<td><em>(required)</em></td>
+<td>Logical cluster name; only nodes sharing it form a cluster.</td>
+</tr>
+<tr>
+<td><code>cluster.secret</code></td>
+<td><em>(required)</em></td>
+<td>Shared secret authenticating inter-node requests. Identical on every node.</td>
+</tr>
+<tr>
+<td><code>cluster.mode</code></td>
+<td><code>quorum</code></td>
+<td><code>quorum</code> (CP — majority required to write) or <code>available</code> (AP — always writable).</td>
+</tr>
+<tr>
+<td><code>cluster.cluster_size</code></td>
+<td><em>(required for quorum)</em></td>
+<td>Number of nodes; derives the write majority.</td>
+</tr>
+<tr>
+<td><code>cluster.discovery</code></td>
+<td><code>mdns</code></td>
+<td>Peer discovery: <code>mdns</code> (LAN), <code>static</code> (seed list), or <code>dns</code> (resolve a name to all peers).</td>
+</tr>
+<tr>
+<td><code>cluster.seeds</code></td>
+<td><em>(required for static)</em></td>
+<td>Peer endpoints, e.g. <code>["10.0.0.11:9000", ...]</code>. Identical on every node; a node ignores its own entry.</td>
+</tr>
+<tr>
+<td><code>cluster.dns_name</code></td>
+<td><em>(required for dns)</em></td>
+<td>DNS name resolving to all peers (e.g. a Kubernetes headless Service).</td>
+</tr>
+<tr>
+<td><code>cluster.advertise_addr</code></td>
+<td><em>(auto)</em></td>
+<td>Host/IP advertised to peers. Set behind NAT or with multiple interfaces.</td>
+</tr>
+<tr>
+<td><code>cluster.advertise_port</code></td>
+<td><code>server.port</code></td>
+<td>Port peers use to reach this node. Set only when it differs from the bind port.</td>
+</tr>
+<tr>
+<td><code>cluster.health_interval_seconds</code></td>
+<td><code>5</code></td>
+<td>Interval between peer health pings.</td>
+</tr>
+<tr>
+<td><code>cluster.anti_entropy_interval_seconds</code></td>
+<td><code>30</code></td>
+<td>Interval between anti-entropy reconciliation passes.</td>
+</tr>
+<tr>
+<td><code>cluster.request_timeout_seconds</code></td>
+<td><code>30</code></td>
+<td>Inter-node HTTP request timeout.</td>
+</tr>
+<tr>
+<td><code>cluster.tombstone_grace_days</code></td>
+<td><code>7</code></td>
+<td>How long a delete tombstone is kept for convergence. MUST exceed the longest expected node downtime.</td>
+</tr>
+</tbody>
+</table>
+<p>When <code>[cluster]</code> is enabled, every node holds the full dataset and replicates writes in real time; lagging nodes self-heal via anti-entropy. For an encrypted cluster, set the <strong>same</strong> master key (or KMS) on every node. See the <a href="../ha/">High Availability guide</a> for the full design, deployment, and operations.</p>
 <h3 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">[server]</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">bind</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;0.0.0.0&quot;</span>

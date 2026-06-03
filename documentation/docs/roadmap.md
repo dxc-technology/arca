@@ -43,7 +43,7 @@ continuing from the MVP phases (0–11).
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">26</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">27</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">28</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">29</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">29</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">30</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">31</div>
   </div>
@@ -124,7 +124,7 @@ graph LR
 | 26 | [Notification Connectors](#phase-26-notification-connectors-p3) | P3 | 25 | `v0.20.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 27 | [Transparent Compression](#phase-27-transparent-compression-p2) | P2 | 13 | `v0.21.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 28 | [Replication](#phase-28-replication-p3) | P3 | 17, 24 | `v0.23.0` | <span style="color:#4caf50">&#x2714;</span> |
-| 29 | [Multi-Node and Erasure Coding](#phase-29-multi-node-and-erasure-coding-p3) | P3 | All prior | | |
+| 29 | [Multi-Node and Erasure Coding](#phase-29-multi-node-and-erasure-coding-p3) | P3 | All prior | `v0.25.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 30 | [CLI Enhancements and Migration Tools](#phase-30-cli-enhancements-and-migration-tools-p3) | P3 | 13, 24, 29 | | |
 | 31 | [OpenTelemetry Integration](#phase-31-opentelemetry-integration-p3) | P3 | 18 | | |
 
@@ -479,12 +479,15 @@ Asynchronous cross-instance replication for disaster recovery and geographic dis
 
 ### Phase 29 — Multi-Node and Erasure Coding [P3]
 
-Distributed storage for horizontal scalability and data durability beyond single-node.
+High availability beyond single-node: a symmetric, self-configuring, fully-replicated cluster. See the [High Availability guide](guide/ha.md).
 
-- [ ] Erasure coding: data + parity shards across storage volumes (e.g., EC:4+2)
-- [ ] Multi-node clustering: service discovery, consistent hashing, distributed metadata
-- [ ] S3 Batch Operations API
-- [ ] `SelectObjectContent` (SQL queries on CSV/JSON)
+- [x] Multi-node clustering: symmetric nodes, service discovery (mDNS / static / DNS), real-time replication of the full data and control plane
+- [x] Consistency modes: `quorum` (CP, majority to write) and `available` (AP); last-writer-wins with a deterministic `blob_id` tiebreak
+- [x] Self-healing: anti-entropy reconciliation (objects + control plane), tombstones (no delete resurrection), proactive blob repair, composite-aware blob GC
+- [x] Cluster-aware storage capacity (smallest node bounds the cluster) + `507 InsufficientStorage` write guard; config-drift detection
+- [x] Console cluster topology, `GET /admin/cluster`, `GET /admin/health?verbose=1`, `bin/cluster`, and production deploy manifests (Kubernetes StatefulSet + HAProxy/keepalived)
+
+**Deferred to future phases** (the cluster ships with full replication, not sharding): erasure coding (data + parity shards, e.g. EC:4+2), consistent-hashing / sharding for capacity beyond full replication, S3 Batch Operations API, and `SelectObjectContent` (SQL queries on CSV/JSON).
 
 **Depends on**: All prior phases. Major architecture evolution.
 
@@ -797,3 +800,4 @@ Remaining items:
 - **Multipart Content-Type** (TD-008): Captured at init time — verify against AWS semantics
 - **SSE-C multipart** (TD-010): SSE-C headers rejected on multipart uploads — needs per-part encryption tracking
 - **Composite blobs in `recover` / `fsck`** (TD-014): the multipart Complete optimisation produces composite sidecars with no on-disk blob file. `arca recover` aborts on them as orphans, `arca fsck` reports false-positive `orphaned_sidecars`. Runtime S3 reads/writes are unaffected — only the recovery and integrity-check tools need teaching how to walk composites.
+- **Cluster inter-node TLS** (TD-015): the cluster health-probe and transport clients accept invalid TLS certs so peers with self-signed certs are reachable. Inter-node requests are authenticated by SigV4 + the shared cluster secret (not TLS), so request auth is unaffected — the residual risk is confidentiality only. Fix: distribute a shared cluster CA (or pin peer fingerprints) and drop `danger_accept_invalid_certs`. Phase 29.

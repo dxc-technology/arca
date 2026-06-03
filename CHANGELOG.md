@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **High-availability clustering (Phase 29).** Arca can now run as a symmetric, self-configuring, fully-replicated multi-node cluster — every node is identical, holds the full dataset, and serves reads and writes. Enable it with a single `[cluster]` config section (or `bin/arca --cluster` for local dev); there is no special "primary" and no separate coordinator.
+  - **Real-time replication** of the whole data and control plane: objects (including multipart uploads, object tags, retention and legal hold), buckets and bucket config, and identity/authorization (credentials, users, teams, grants) and server settings. A write to any node fans out to its peers, so a client behind a load balancer can read its write from any node.
+  - **Two consistency modes.** `quorum` (default, CP): a write needs a majority of nodes; if a node loses the majority it goes read-only and rejects writes with `503 ServiceUnavailable` rather than risk divergence. `available` (AP): always writable, best-effort replication. Last-writer-wins conflict resolution with a deterministic `blob_id` tiebreak.
+  - **Self-healing.** A returning or lagging node catches up automatically: an anti-entropy worker reconciles objects (changed-since manifests) and the control plane (full-snapshot merge), proactively repairs blobs whose bytes a node is missing, and garbage-collects orphaned blobs (composite-multipart-aware). Tombstones ensure a delete is never resurrected by a peer that missed it.
+  - **Peer discovery** via mDNS (LAN), static seed list, or DNS (e.g. a Kubernetes headless Service).
+  - **Cluster-aware storage capacity.** Because every node holds the full dataset, the cluster's capacity is bounded by its smallest node; the dashboard reports the cluster-minimum free space and a write larger than that is rejected with `507 InsufficientStorage`, even if the node serving it has room.
+  - **Config-drift detection.** A node whose cluster-critical config (cluster id / secret / mode / size / master key) differs from its peers is flagged on `/admin/cluster` and in the console, without the cluster refusing to run.
+- **`GET /admin/cluster`** — cluster topology, consistency mode, write-quorum status, per-node liveness and config alignment, and cluster-effective disk capacity (`{"enabled": false}` on a single node).
+- **`GET /admin/health?verbose=1`** — health plus the cluster snapshot for operators; the default (non-verbose) health shape consumed by load balancers is unchanged.
+- **(Console)** Cluster topology on the Dashboard: a dedicated topology card showing the consistency mode, write status, and a live node list (online/offline, "this node", endpoints, last-seen, config-mismatch flags). The card is now shown on single-node deployments too, where it presents the single local node — the dashboard layout is identical whether or not clustering is enabled.
+- **Tooling and deployment.** `bin/cluster` manages a local 3-node cluster (compose + HAProxy); `deploy/kubernetes/arca-cluster.yaml` (StatefulSet + headless-Service DNS discovery) and `deploy/haproxy/` (HAProxy + keepalived floating VIP) provide production templates; a [High Availability guide](https://dxc-technology.github.io/arca/guide/ha/) documents the design, trade-offs, and operations.
+
 ## [0.24.0] — 2026-05-21
 
 ### Added

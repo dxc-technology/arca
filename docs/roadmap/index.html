@@ -2250,7 +2250,7 @@ continuing from the MVP phases (0–11).</p>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">26</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">27</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">28</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">29</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">29</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">30</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">31</div>
   </div>
@@ -2459,8 +2459,8 @@ continuing from the MVP phases (0–11).</p>
 <td><a href="#phase-29-multi-node-and-erasure-coding-p3">Multi-Node and Erasure Coding</a></td>
 <td style="text-align: center;">P3</td>
 <td style="text-align: center;">All prior</td>
-<td style="text-align: center;"></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><code>v0.25.0</code></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">30</td>
@@ -2778,13 +2778,15 @@ coexist transparently.</p>
 <p><strong>Depends on</strong>: Phase 17 (versioning), Phase 24 (PostgreSQL for production)</p>
 <hr />
 <h3 id="phase-29-multi-node-and-erasure-coding-p3">Phase 29 — Multi-Node and Erasure Coding [P3]<a class="headerlink" href="#phase-29-multi-node-and-erasure-coding-p3" title="Permanent link">&para;</a></h3>
-<p>Distributed storage for horizontal scalability and data durability beyond single-node.</p>
+<p>High availability beyond single-node: a symmetric, self-configuring, fully-replicated cluster. See the <a href="../guide/ha/">High Availability guide</a>.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Erasure coding: data + parity shards across storage volumes (e.g., EC:4+2)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Multi-node clustering: service discovery, consistent hashing, distributed metadata</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> S3 Batch Operations API</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>SelectObjectContent</code> (SQL queries on CSV/JSON)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Multi-node clustering: symmetric nodes, service discovery (mDNS / static / DNS), real-time replication of the full data and control plane</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Consistency modes: <code>quorum</code> (CP, majority to write) and <code>available</code> (AP); last-writer-wins with a deterministic <code>blob_id</code> tiebreak</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Self-healing: anti-entropy reconciliation (objects + control plane), tombstones (no delete resurrection), proactive blob repair, composite-aware blob GC</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Cluster-aware storage capacity (smallest node bounds the cluster) + <code>507 InsufficientStorage</code> write guard; config-drift detection</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Console cluster topology, <code>GET /admin/cluster</code>, <code>GET /admin/health?verbose=1</code>, <code>bin/cluster</code>, and production deploy manifests (Kubernetes StatefulSet + HAProxy/keepalived)</li>
 </ul>
+<p><strong>Deferred to future phases</strong> (the cluster ships with full replication, not sharding): erasure coding (data + parity shards, e.g. EC:4+2), consistent-hashing / sharding for capacity beyond full replication, S3 Batch Operations API, and <code>SelectObjectContent</code> (SQL queries on CSV/JSON).</p>
 <p><strong>Depends on</strong>: All prior phases. Major architecture evolution.</p>
 <hr />
 <h3 id="phase-30-cli-enhancements-and-migration-tools-p3">Phase 30 — CLI Enhancements and Migration Tools [P3]<a class="headerlink" href="#phase-30-cli-enhancements-and-migration-tools-p3" title="Permanent link">&para;</a></h3>
@@ -3099,6 +3101,7 @@ with unique IDs (<code>TD-XXX</code>) referenced in source code comments.</p>
 <li><strong>Multipart Content-Type</strong> (TD-008): Captured at init time — verify against AWS semantics</li>
 <li><strong>SSE-C multipart</strong> (TD-010): SSE-C headers rejected on multipart uploads — needs per-part encryption tracking</li>
 <li><strong>Composite blobs in <code>recover</code> / <code>fsck</code></strong> (TD-014): the multipart Complete optimisation produces composite sidecars with no on-disk blob file. <code>arca recover</code> aborts on them as orphans, <code>arca fsck</code> reports false-positive <code>orphaned_sidecars</code>. Runtime S3 reads/writes are unaffected — only the recovery and integrity-check tools need teaching how to walk composites.</li>
+<li><strong>Cluster inter-node TLS</strong> (TD-015): the cluster health-probe and transport clients accept invalid TLS certs so peers with self-signed certs are reachable. Inter-node requests are authenticated by SigV4 + the shared cluster secret (not TLS), so request auth is unaffected — the residual risk is confidentiality only. Fix: distribute a shared cluster CA (or pin peer fingerprints) and drop <code>danger_accept_invalid_certs</code>. Phase 29.</li>
 </ul>
 
 
