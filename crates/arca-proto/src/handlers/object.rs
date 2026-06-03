@@ -354,6 +354,32 @@ pub(super) fn etag_matches(header_val: &str, etag: &str) -> bool {
 /// - `?partNumber=N&uploadId=X` → UploadPart (or UploadPartCopy if x-amz-copy-source present)
 /// - `x-amz-copy-source` header → CopyObject
 /// - Otherwise → PutObject
+/// Cluster write-space guard. With full replication the smallest node bounds
+/// capacity, so a write that would not fit on some node must be refused even if
+/// the receiving node has room — otherwise it cannot be durably replicated.
+/// Returns `Err(507)` when the cluster's minimum free space (over alive nodes)
+/// is below `needed`. No-op on a single node (a local ENOSPC surfaces normally).
+/// Gated by `Content-Length`; size-unknown streaming uploads and CopyObject
+/// (no body length here) are not pre-checked.
+fn check_cluster_space(state: &AppState, needed: u64, resource: &str) -> Result<(), Response> {
+    let Some(cluster) = state.cluster.as_ref() else {
+        return Ok(());
+    };
+    let (local_total, local_available) =
+        crate::handlers::admin::aggregate_disk_stats(&state.data_dirs);
+    let (_min_total, min_available) = cluster.min_disk(local_total, local_available);
+    if let Some(avail) = min_available {
+        if avail < needed {
+            return Err(s3_error_response(S3Error::with_message(
+                S3ErrorCode::InsufficientStorage,
+                "a node in the cluster lacks the disk space to store this object",
+                resource,
+            )));
+        }
+    }
+    Ok(())
+}
+
 pub async fn put_object(
     State(state): State<AppState>,
     Path((bucket, key)): Path<(String, String)>,
@@ -373,6 +399,22 @@ pub async fn put_object(
         if query_owned.contains("legal-hold") {
             let resource = format!("/{bucket}/{key}");
             return put_object_legal_hold(&state, &bucket, &key, &resource, &query_owned, request).await;
+        }
+    }
+
+    // Cluster write-space guard (full replication ⇒ smallest node bounds
+    // capacity): refuse a write that would not fit on some node. Applies to
+    // PutObject and UploadPart (Content-Length = body size); tagging/retention
+    // above are tiny and already returned.
+    {
+        let needed = request
+            .headers()
+            .get(header::CONTENT_LENGTH)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+        if let Err(resp) = check_cluster_space(&state, needed, &format!("/{bucket}/{key}")) {
+            return resp;
         }
     }
 

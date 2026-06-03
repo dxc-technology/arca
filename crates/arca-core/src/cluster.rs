@@ -619,10 +619,27 @@ pub struct PeerNode {
     /// know — don't cry wolf).
     #[serde(default = "default_true")]
     pub config_ok: bool,
+    /// Peer's total disk capacity (bytes), as it reported via health. `None`
+    /// until known. With full replication the smallest node bounds the cluster.
+    #[serde(default)]
+    pub disk_total: Option<u64>,
+    /// Peer's available disk space (bytes), as it reported via health.
+    #[serde(default)]
+    pub disk_available: Option<u64>,
 }
 
 fn default_true() -> bool {
     true
+}
+
+/// Minimum of two optional values, treating `None` as "unknown" (ignored):
+/// `min_opt(Some(a), Some(b)) = min`, `min_opt(Some(a), None) = Some(a)`.
+fn min_opt(a: Option<u64>, b: Option<u64>) -> Option<u64> {
+    match (a, b) {
+        (Some(x), Some(y)) => Some(x.min(y)),
+        (Some(x), None) | (None, Some(x)) => Some(x),
+        (None, None) => None,
+    }
 }
 
 /// Serializable point-in-time view of the cluster, for the admin API / console.
@@ -692,6 +709,26 @@ impl ClusterState {
             .read()
             .expect("cluster config_fingerprint lock poisoned")
             .clone()
+    }
+
+    /// The cluster's effective disk capacity (bytes), as `(min_total,
+    /// min_available)` over this node and all ALIVE peers. With full replication
+    /// the smallest node bounds what the cluster can store, so the minimum free
+    /// space is what gates writes and is shown in the dashboard. `local_*` are
+    /// this node's own stats (the caller computes them); peers whose stats are
+    /// not known yet (`None`) are skipped.
+    pub fn min_disk(
+        &self,
+        local_total: Option<u64>,
+        local_available: Option<u64>,
+    ) -> (Option<u64>, Option<u64>) {
+        let mut min_total = local_total;
+        let mut min_available = local_available;
+        for p in self.peers().iter().filter(|p| p.alive) {
+            min_total = min_opt(min_total, p.disk_total);
+            min_available = min_opt(min_available, p.disk_available);
+        }
+        (min_total, min_available)
     }
 
     /// Records this node's own advertised endpoint (called by the membership
@@ -791,7 +828,38 @@ mod tests {
             alive,
             last_seen: None,
             config_ok: true,
+            disk_total: None,
+            disk_available: None,
         }
+    }
+
+    #[test]
+    fn min_disk_takes_minimum_over_alive_nodes() {
+        let state = ClusterState::new("self", None);
+        let mut p1 = peer("n2", true);
+        p1.disk_total = Some(2_000);
+        p1.disk_available = Some(100); // the bottleneck for free space
+        let mut p2 = peer("n3", true);
+        p2.disk_total = Some(1_000); // the bottleneck for total
+        p2.disk_available = Some(800);
+        // A dead peer must NOT drag the minimum down.
+        let mut dead = peer("n4", false);
+        dead.disk_total = Some(1);
+        dead.disk_available = Some(1);
+        state.set_peers(vec![p1, p2, dead]);
+
+        // Local node: 3 TB total, 500 free.
+        let (total, avail) = state.min_disk(Some(3_000), Some(500));
+        assert_eq!(total, Some(1_000), "min total across alive nodes + self");
+        assert_eq!(avail, Some(100), "min available across alive nodes + self");
+    }
+
+    #[test]
+    fn min_disk_skips_unknown_peer_stats() {
+        let state = ClusterState::new("self", None);
+        state.set_peers(vec![peer("n2", true)]); // disk stats None
+        // Peer's unknown stats are ignored; only local counts.
+        assert_eq!(state.min_disk(Some(10), Some(5)), (Some(10), Some(5)));
     }
 
     #[test]

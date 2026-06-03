@@ -108,6 +108,18 @@ export function dashboardView() {
       return `<svg viewBox="0 0 200 200" class="w-48 h-48">${circles}<text x="100" y="95" text-anchor="middle" fill="#e2e8f0" font-size="16" font-weight="600" font-family="DM Sans, system-ui">${totalLabel}</text><text x="100" y="115" text-anchor="middle" fill="#94a3b8" font-size="10" font-family="DM Sans, system-ui">Total</text></svg>`;
     },
 
+    /// Effective disk total: the cluster-wide minimum (smallest node bounds a
+    /// full-replication cluster) when clustered, else this node's disk.
+    diskTotal() {
+      return (this.cluster.enabled && this.cluster.disk_total_bytes != null)
+        ? this.cluster.disk_total_bytes : this.stats.disk_total_bytes;
+    },
+    /// Effective free space: the cluster-wide minimum when clustered.
+    diskAvailable() {
+      return (this.cluster.enabled && this.cluster.disk_available_bytes != null)
+        ? this.cluster.disk_available_bytes : this.stats.disk_available_bytes;
+    },
+
     /// Compact "Ns/Nm/Nh/Nd ago" for a node's last health contact.
     relativeTime(iso) {
       if (!iso) return '—';

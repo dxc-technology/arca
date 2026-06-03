@@ -60,6 +60,9 @@ pub enum S3ErrorCode {
     ReplicationConfigurationNotFoundError,
     /// 503 — the cluster cannot currently accept writes (no write quorum).
     ServiceUnavailable,
+    /// 507 — a node in the cluster lacks the disk space to durably hold this
+    /// write (full replication ⇒ the smallest node bounds capacity).
+    InsufficientStorage,
 }
 
 impl S3ErrorCode {
@@ -102,6 +105,7 @@ impl S3ErrorCode {
             S3ErrorCode::InvalidBucketState => 409,
             S3ErrorCode::ReplicationConfigurationNotFoundError => 404,
             S3ErrorCode::ServiceUnavailable => 503,
+            S3ErrorCode::InsufficientStorage => 507,
         }
     }
 
@@ -150,6 +154,7 @@ impl S3ErrorCode {
                 "ReplicationConfigurationNotFoundError"
             }
             S3ErrorCode::ServiceUnavailable => "ServiceUnavailable",
+            S3ErrorCode::InsufficientStorage => "InsufficientStorage",
         }
     }
 
@@ -243,6 +248,9 @@ impl S3ErrorCode {
             }
             S3ErrorCode::ServiceUnavailable => {
                 "The service is unable to accept the write right now; please retry."
+            }
+            S3ErrorCode::InsufficientStorage => {
+                "Insufficient storage: a node in the cluster lacks the disk space to store this object."
             }
         }
     }

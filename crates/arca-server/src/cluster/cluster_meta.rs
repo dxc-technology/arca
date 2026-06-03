@@ -716,6 +716,8 @@ mod tests {
             alive: true,
             last_seen: None,
             config_ok: true,
+            disk_total: None,
+            disk_available: None,
         }
     }
 

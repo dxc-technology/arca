@@ -812,6 +812,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#storage-capacity-the-smallest-node-wins" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage capacity (the smallest node wins)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#config-drift-detection" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1544,6 +1555,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#storage-capacity-the-smallest-node-wins" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage capacity (the smallest node wins)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#config-drift-detection" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1762,6 +1784,12 @@
 <li><strong>Console</strong> — the dashboard <strong>Cluster Topology</strong> card shows the consistency mode (Quorum·W=N / Available), the write status (Writable / Read-only when quorum is lost), and every node with a green/red status dot, the local-node badge, endpoint, and last-seen time. The Server card's <em>Topology</em> field summarises it as <code>Cluster · live/total</code>.</li>
 <li><strong><code>GET /admin/cluster</code></strong> (admin SigV4) — JSON the console consumes: <code>mode</code>, <code>write_quorum</code>, <code>has_write_quorum</code>, <code>live_node_count</code>, <code>node_count</code>, and the <code>nodes</code> list. Returns <code>{"enabled": false}</code> on a single-node deployment.</li>
 <li><strong><code>GET /admin/health?verbose=1</code></strong> (unauthenticated) — liveness plus the cluster snapshot, handy for scripts and load-balancer debugging. The plain <code>GET /admin/health</code> (200 / 503-on-drain) is the load-balancer check.</li>
+</ul>
+<h3 id="storage-capacity-the-smallest-node-wins">Storage capacity (the smallest node wins)<a class="headerlink" href="#storage-capacity-the-smallest-node-wins" title="Permanent link">&para;</a></h3>
+<p>With full replication every node holds a complete copy, so the cluster can only store as much as its <strong>smallest</strong> node: once the node with the least free space fills, new writes can no longer be replicated everywhere. Arca therefore treats the cluster's effective capacity as the <strong>minimum across nodes</strong>, not the sum.</p>
+<ul>
+<li><strong>Dashboard</strong> — the <em>Total Storage</em> card shows the cluster-wide free/total as the minimum over the live nodes (labelled "cluster min"), so a node with a 2 TB disk doesn't mask a peer with only 1 TB. (Nodes gossip their disk stats on <code>/cluster/v1/health</code>.)</li>
+<li><strong>Write guard</strong> — a write is refused with <code>507 Insufficient Storage</code> if it would not fit on <em>some</em> node, even when the receiving node has room: a node with plenty of space still returns 507 when replicating the object would push a peer out of space, because the write could not be durably replicated. This keeps the "every node has a complete copy" invariant. Reads and deletes are never gated (so you can always recover space). The guard is by <code>Content-Length</code>; size-unknown streaming uploads fall back to the filesystem's own out-of-space error.</li>
 </ul>
 <h3 id="config-drift-detection">Config-drift detection<a class="headerlink" href="#config-drift-detection" title="Permanent link">&para;</a></h3>
 <p>A symmetric cluster only works if the alignment-critical config is identical on every node, and the dangerous mismatches are <em>silent</em>: a wrong <code>secret</code> lets a node look alive while every replication request 403s; a different encryption master key makes replicated blobs unreadable on the peer. So nodes actively check it.</p>

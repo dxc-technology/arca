@@ -208,6 +208,14 @@ struct ClusterAdminResponse {
     /// False when any live peer's cluster-critical config differs from ours.
     #[serde(skip_serializing_if = "Option::is_none")]
     config_aligned: Option<bool>,
+    /// Cluster-effective disk capacity (bytes): the MINIMUM total across live
+    /// nodes. With full replication the smallest node bounds the cluster.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    disk_total_bytes: Option<u64>,
+    /// Cluster-effective free space (bytes): the MINIMUM available across live
+    /// nodes — what can still be written before some node fills.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    disk_available_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     nodes: Vec<ClusterNodeView>,
 }
@@ -231,6 +239,8 @@ pub async fn cluster(State(state): State<AppState>) -> Response {
                 live_node_count: None,
                 node_count: None,
                 config_aligned: None,
+                disk_total_bytes: None,
+                disk_available_bytes: None,
                 nodes: Vec::new(),
             })
             .into_response()
@@ -268,6 +278,14 @@ pub async fn cluster(State(state): State<AppState>) -> Response {
     }
     let node_count = nodes.len();
 
+    // Cluster-effective disk = min over this node + alive peers.
+    let (local_total, local_available) = aggregate_disk_stats(&state.data_dirs);
+    let (disk_total_bytes, disk_available_bytes) = state
+        .cluster
+        .as_ref()
+        .map(|c| c.min_disk(local_total, local_available))
+        .unwrap_or((local_total, local_available));
+
     Json(ClusterAdminResponse {
         enabled: true,
         mode: Some(mode),
@@ -277,6 +295,8 @@ pub async fn cluster(State(state): State<AppState>) -> Response {
         live_node_count: Some(snap.live_node_count),
         node_count: Some(node_count),
         config_aligned: Some(config_aligned),
+        disk_total_bytes,
+        disk_available_bytes,
         nodes,
     })
     .into_response()
@@ -334,7 +354,9 @@ fn disk_stats(path: &std::path::Path) -> Option<(u64, u64, u64)> {
 
 /// Aggregate filesystem stats across multiple data directories,
 /// deduplicating by device ID (dirs on the same filesystem count once).
-fn aggregate_disk_stats(dirs: &[std::path::PathBuf]) -> (Option<u64>, Option<u64>) {
+/// Returns `(total, available)` bytes. Shared with the cluster health handler
+/// (peers gossip their disk stats) and the cluster write-space guard.
+pub(crate) fn aggregate_disk_stats(dirs: &[std::path::PathBuf]) -> (Option<u64>, Option<u64>) {
     let mut seen_devices = HashSet::new();
     let mut total: u64 = 0;
     let mut available: u64 = 0;

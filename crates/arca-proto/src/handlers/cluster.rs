@@ -38,6 +38,12 @@ struct ClusterHealthResponse {
     /// their own to detect config drift. `null` until set at startup.
     #[serde(skip_serializing_if = "Option::is_none")]
     config_fingerprint: Option<String>,
+    /// This node's total disk capacity (bytes); peers track the cluster minimum.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    disk_total: Option<u64>,
+    /// This node's available disk space (bytes).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    disk_available: Option<u64>,
 }
 
 /// `GET /cluster/v1/health` — public liveness + identity for peers.
@@ -47,12 +53,18 @@ struct ClusterHealthResponse {
 /// cluster, so a misconfigured probe gets a clear signal.
 pub async fn health(State(state): State<AppState>) -> Response {
     match &state.cluster {
-        Some(cluster) => Json(ClusterHealthResponse {
-            status: "ok",
-            node_id: cluster.node_id().to_string(),
-            config_fingerprint: cluster.config_fingerprint(),
-        })
-        .into_response(),
+        Some(cluster) => {
+            let (disk_total, disk_available) =
+                crate::handlers::admin::aggregate_disk_stats(&state.data_dirs);
+            Json(ClusterHealthResponse {
+                status: "ok",
+                node_id: cluster.node_id().to_string(),
+                config_fingerprint: cluster.config_fingerprint(),
+                disk_total,
+                disk_available,
+            })
+            .into_response()
+        }
         None => (StatusCode::NOT_FOUND, "node is not part of a cluster").into_response(),
     }
 }
