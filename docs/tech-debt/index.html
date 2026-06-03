@@ -1385,6 +1385,14 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>None</td>
 <td><code>crates/arca-server/src/cluster/membership.rs</code>, <code>crates/arca-server/src/cluster/client.rs</code></td>
 </tr>
+<tr>
+<td>TD-016</td>
+<td>Cluster control-plane reconcile is partial</td>
+<td>The anti-entropy worker reconciles (full-snapshot LWW + tombstones) ONLY the 5 tombstoned control-plane families: credentials, users, teams, grants, buckets. Memberships / grant-attachments (<code>team_members</code>, <code>user_grants</code>, <code>team_grants</code>), <code>bucket_config</code>, <code>bucket_tags</code>, and <code>server_config</code> replicate in REAL TIME (best-effort fan-out) but are NOT part of the snapshot reconcile. So a node that was down/unreachable when one of those changed can stay diverged on it until the next write touches that entity — real-time replication is the only path that heals them. At N=3 with brief outages this is low-risk, but it breaks the "a returning node fully self-heals" guarantee for those families (Phase 29 HA, M4).</td>
+<td>Extend <code>build_control_snapshot</code> + <code>plan_control_merge</code> to cover these: memberships/grant-attach as a parent-owned set (replace the child set when the parent entity is the LWW winner, avoiding per-join timestamps); <code>bucket_config</code>/<code>bucket_tags</code> via their <code>updated_at</code>; <code>server_config</code> via per-key LWW (respecting the <code>node_id</code> denylist). Add tombstones where a delete must propagate (detach/remove-member/config-delete).</td>
+<td>None (runtime + real-time replication unaffected; only post-downtime convergence for these families)</td>
+<td><code>crates/arca-server/src/cluster/anti_entropy.rs</code>, <code>crates/arca-storage/src/{sqlite,pg}/control_snapshot.rs</code>, <code>crates/arca-core/src/cluster.rs</code> (<code>plan_control_merge</code>)</td>
+</tr>
 </tbody>
 </table>
 <hr />

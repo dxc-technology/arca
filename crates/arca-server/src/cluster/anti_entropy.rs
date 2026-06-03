@@ -308,6 +308,12 @@ async fn gc_blobs(metadata: &dyn MetadataStore, raw: &dyn RawBlobOps, grace: Dur
 /// compute the last-writer-wins merge against our own, and apply it. Identity
 /// entities + tombstones go through the control-snapshot store; buckets go
 /// through the metadata store so the metadata cache stays coherent.
+///
+// TECHDEBT(TD-016): this reconcile covers ONLY the 5 tombstoned families
+// (credentials, users, teams, grants, buckets). Memberships/grant-attachments,
+// bucket_config, bucket_tags and server_config replicate in real time but are
+// NOT in the snapshot merge, so a node that was down when one of those changed
+// only heals on the next write that touches it. See TECH_DEBT.md for the fix.
 async fn reconcile_peer_control(
     client: &ClusterClient,
     control_snapshot: &dyn ControlSnapshotStore,
