@@ -1500,6 +1500,7 @@ pub async fn create_bucket(
             .await
         {
             Ok(()) => {
+                state.invalidate_bucket_replication_cache(&bucket);
                 return Response::builder()
                     .status(StatusCode::OK)
                     .body(Body::empty())
@@ -1790,6 +1791,7 @@ pub async fn delete_bucket(
             .await
         {
             Ok(_) => {
+                state.invalidate_bucket_replication_cache(&bucket);
                 return Response::builder()
                     .status(StatusCode::NO_CONTENT)
                     .body(Body::empty())

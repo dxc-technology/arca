@@ -547,6 +547,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                     .map(|r| r.journal_max_age_days)
                     .unwrap_or(90),
                 bucket_encryption_cache: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+                bucket_replication_cache: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
                 compression_invalidator,
                 audit_tx: if audit_enabled {
                     stores.audit.as_ref().map(|a| arca_proto::state::spawn_audit_writer(a.clone()))

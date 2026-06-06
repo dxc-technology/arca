@@ -172,7 +172,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 
 | Suite | Tests | Details |
 |-------|------:|---------|
-| Unit tests (Rust) | 768 | arca-auth: 39, arca-core: 210, arca-proto: 37, arca-server: 236, arca-storage: 246 |
+| Unit tests (Rust) | 772 | arca-auth: 39, arca-core: 210, arca-proto: 41, arca-server: 236, arca-storage: 246 |
 | Integration — boto3 | 146 | buckets, objects, list, multipart, copy, folders, auth, admin, credentials, conditional ops |
 | Integration — RBAC | 42 | user/team/grant CRUD, attachments, effective grants, /admin/me (with and without grants), E2E access control |
 | Integration — Versioning | 21 | versioning config, PUT/GET/HEAD/DELETE with versionId, delete markers, batch delete with VersionId, ListVersions, copy |

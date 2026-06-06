@@ -265,6 +265,7 @@ async fn disable_rules_referencing(
                 .metadata
                 .set_bucket_config(&b.name, "replication_configuration", &new_json)
                 .await?;
+            state.invalidate_bucket_replication_cache(&b.name);
         }
     }
     Ok(out)

@@ -195,6 +195,14 @@ pub async fn emit_and_stamp(
     tags: &[(String, String)],
 ) -> Option<ReplicationStatus> {
     let header_pairs = extract_replication_headers(headers);
+    // Common case: a bucket with no replication configured skips the whole emit
+    // path (including the `bucket_config` read inside `maybe_emit`). The result
+    // is cached for 30s in AppState, mirroring the per-bucket encryption cache.
+    // Replica writes must still be stamped REPLICA, so they are never
+    // short-circuited here.
+    if !is_replica_write(&header_pairs) && !state.replication_enabled_for(bucket).await {
+        return None;
+    }
     let input = EmitInput {
         bucket,
         key,

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::collections::HashMap;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use arca_core::store::{AuditStore, BlobStore, ConnectorRegistry, ControlSnapshotStore, CredentialStore, GrantStore, MetadataStore, MetricsStore, NotificationStore, PresignedUrlStore, RawBlobOps, ReplicationStore, ServerConfigStore, SsecBlobOps, TeamStore, UserStore};
 use arca_core::store::audit::AuditEntry;
@@ -144,6 +144,11 @@ pub struct AppState {
     /// Cache for per-bucket encryption config lookups (bucket -> (has_encryption, expires_at)).
     /// Avoids a DB query on every PUT/UploadPart when global encryption is disabled.
     pub bucket_encryption_cache: Arc<RwLock<HashMap<String, (bool, Instant)>>>,
+    /// Cache for per-bucket replication config lookups (bucket -> (has_replication, expires_at)).
+    /// Avoids a `bucket_config` query on every write (PutObject / CompleteMultipart /
+    /// delete-marker / PutObjectTagging) when the bucket has no replication configured
+    /// (the common case). Mirrors `bucket_encryption_cache`.
+    pub bucket_replication_cache: Arc<RwLock<HashMap<String, (bool, Instant)>>>,
     /// Optional invalidator for the compression wrapper's per-bucket cache.
     /// When compression is wired, this closure forwards the bucket name to the
     /// `CompressingBlobStore` so its cache entry is dropped on config change.
@@ -154,6 +159,38 @@ pub struct AppState {
     pub config_log_level: Option<String>,
     /// Reloader closure for changing the tracing filter at runtime.
     pub log_reloader: Option<Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>>,
+}
+
+/// TTL for the per-bucket `bucket_config` lookup caches (encryption, replication):
+/// long enough to absorb bursts of writes to the same bucket, short enough that a
+/// config change on a path that forgot to invalidate still self-heals quickly.
+const BUCKET_CONFIG_CACHE_TTL: Duration = Duration::from_secs(30);
+
+/// Returns the cached boolean for `bucket` if present and not yet expired at `now`.
+/// Shared by the per-bucket encryption and replication caches.
+fn cached_bucket_flag(
+    cache: &RwLock<HashMap<String, (bool, Instant)>>,
+    bucket: &str,
+    now: Instant,
+) -> Option<bool> {
+    cache
+        .read()
+        .ok()
+        .and_then(|c| c.get(bucket).copied())
+        .filter(|(_, expires)| *expires > now)
+        .map(|(val, _)| val)
+}
+
+/// Caches `val` for `bucket`, expiring `BUCKET_CONFIG_CACHE_TTL` after `now`.
+fn cache_bucket_flag(
+    cache: &RwLock<HashMap<String, (bool, Instant)>>,
+    bucket: &str,
+    val: bool,
+    now: Instant,
+) {
+    if let Ok(mut c) = cache.write() {
+        c.insert(bucket.to_string(), (val, now + BUCKET_CONFIG_CACHE_TTL));
+    }
 }
 
 impl AppState {
@@ -177,23 +214,16 @@ impl AppState {
             // No master key configured — per-bucket encryption is impossible.
             false
         } else {
-            // Check cache first.
+            // Per-bucket encryption: cache the lookup to avoid a DB query on every write.
             let now = Instant::now();
-            let cached = self.bucket_encryption_cache.read().ok()
-                .and_then(|cache| cache.get(bucket).copied())
-                .filter(|(_, expires)| *expires > now)
-                .map(|(val, _)| val);
-
-            if let Some(val) = cached {
+            if let Some(val) = cached_bucket_flag(&self.bucket_encryption_cache, bucket, now) {
                 val
             } else {
                 let val = matches!(
                     self.metadata.get_bucket_config(bucket, "encryption_algorithm").await,
                     Ok(Some(_))
                 );
-                if let Ok(mut cache) = self.bucket_encryption_cache.write() {
-                    cache.insert(bucket.to_string(), (val, now + std::time::Duration::from_secs(30)));
-                }
+                cache_bucket_flag(&self.bucket_encryption_cache, bucket, val, now);
                 val
             }
         };
@@ -209,6 +239,33 @@ impl AppState {
     /// encryption config changes).
     pub fn invalidate_bucket_encryption_cache(&self, bucket: &str) {
         if let Ok(mut cache) = self.bucket_encryption_cache.write() {
+            cache.remove(bucket);
+        }
+    }
+
+    /// Returns whether `bucket` has a replication configuration, caching the
+    /// result for 30s to avoid a `bucket_config` read on every write. Mirrors
+    /// the per-bucket encryption cache in [`AppState::blob_for_write`]; buckets
+    /// without replication (the common case) skip the DB query entirely.
+    pub async fn replication_enabled_for(&self, bucket: &str) -> bool {
+        let now = Instant::now();
+        if let Some(val) = cached_bucket_flag(&self.bucket_replication_cache, bucket, now) {
+            return val;
+        }
+        let val = matches!(
+            self.metadata
+                .get_bucket_config(bucket, "replication_configuration")
+                .await,
+            Ok(Some(_))
+        );
+        cache_bucket_flag(&self.bucket_replication_cache, bucket, val, now);
+        val
+    }
+
+    /// Invalidate the per-bucket replication cache entry (called when bucket
+    /// replication config changes).
+    pub fn invalidate_bucket_replication_cache(&self, bucket: &str) {
+        if let Ok(mut cache) = self.bucket_replication_cache.write() {
             cache.remove(bucket);
         }
     }
@@ -279,4 +336,52 @@ pub fn spawn_audit_writer(
     });
 
     tx
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{cache_bucket_flag, cached_bucket_flag, BUCKET_CONFIG_CACHE_TTL};
+    use std::collections::HashMap;
+    use std::sync::RwLock;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn cache_returns_stored_value_within_ttl() {
+        let cache = RwLock::new(HashMap::new());
+        let now = Instant::now();
+        cache_bucket_flag(&cache, "with-config", true, now);
+        cache_bucket_flag(&cache, "without-config", false, now);
+        assert_eq!(cached_bucket_flag(&cache, "with-config", now), Some(true));
+        assert_eq!(cached_bucket_flag(&cache, "without-config", now), Some(false));
+    }
+
+    #[test]
+    fn cache_misses_for_unknown_bucket() {
+        let cache = RwLock::new(HashMap::new());
+        assert_eq!(cached_bucket_flag(&cache, "absent", Instant::now()), None);
+    }
+
+    #[test]
+    fn cache_entry_expires_after_ttl() {
+        let cache = RwLock::new(HashMap::new());
+        let now = Instant::now();
+        cache_bucket_flag(&cache, "b", true, now);
+        // Just inside the TTL window: still a hit.
+        let inside = now + BUCKET_CONFIG_CACHE_TTL - Duration::from_secs(1);
+        assert_eq!(cached_bucket_flag(&cache, "b", inside), Some(true));
+        // Past the TTL: a miss, so the next read refreshes from the DB.
+        let expired = now + BUCKET_CONFIG_CACHE_TTL + Duration::from_secs(1);
+        assert_eq!(cached_bucket_flag(&cache, "b", expired), None);
+    }
+
+    #[test]
+    fn cache_overwrite_updates_value() {
+        let cache = RwLock::new(HashMap::new());
+        let now = Instant::now();
+        cache_bucket_flag(&cache, "b", true, now);
+        // A refresh after a config change flips the cached flag.
+        let later = now + Duration::from_secs(5);
+        cache_bucket_flag(&cache, "b", false, later);
+        assert_eq!(cached_bucket_flag(&cache, "b", later), Some(false));
+    }
 }
