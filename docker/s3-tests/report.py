@@ -179,6 +179,13 @@ EXPECTED_FAIL_CATEGORIES = {
 }
 
 
+# Ceph/RGW-specific tests that are NOT part of the AWS S3 API (RGW extensions:
+# x-rgw-* headers on HeadBucket, ?list-type=unordered, account usage). They can
+# never pass against an AWS-compatible server, so they are excluded entirely from
+# the compatibility denominator rather than counted as failures.
+OUT_OF_SCOPE_CATEGORIES = {"RGW Extensions"}
+
+
 def parse_junit_xml(path: str):
     """Parse JUnit XML and return list of test results."""
     tree = ET.parse(path)
@@ -224,8 +231,8 @@ def parse_junit_xml(path: str):
     return tests
 
 
-def terminal_summary(tests: list):
-    """Print a colored terminal summary."""
+def terminal_summary(tests: list, out_of_scope_n: int = 0):
+    """Print a colored terminal summary (over in-scope tests only)."""
     total = len(tests)
     passed = sum(1 for t in tests if t["status"] == "passed")
     failed = sum(1 for t in tests if t["status"] == "failed")
@@ -250,6 +257,8 @@ def terminal_summary(tests: list):
     print(f"  {RED}Errors:   {errors}{RESET}")
     print(f"  {YELLOW}Skipped:  {skipped}{RESET}")
     print(f"  {CYAN}Pass rate: {passed/total*100:.1f}%{RESET}" if total > 0 else "")
+    if out_of_scope_n:
+        print(f"  {YELLOW}({out_of_scope_n} Ceph/RGW-specific tests excluded from scope){RESET}")
     print()
 
     if unexpected > 0:
@@ -278,8 +287,9 @@ def terminal_summary(tests: list):
     print(f"{'='*60}\n")
 
 
-def generate_html(tests: list, output_path: str, old_passlist: set | None = None):
-    """Generate a self-contained HTML dashboard."""
+def generate_html(tests: list, output_path: str, old_passlist: set | None = None,
+                  out_of_scope_n: int = 0):
+    """Generate a self-contained HTML dashboard (over in-scope tests only)."""
     total = len(tests)
     passed = sum(1 for t in tests if t["status"] == "passed")
     failed = sum(1 for t in tests if t["status"] == "failed")
@@ -292,6 +302,8 @@ def generate_html(tests: list, output_path: str, old_passlist: set | None = None
 
     pass_rate = (passed / total * 100) if total > 0 else 0
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    meta_extra = (f" · {out_of_scope_n} Ceph/RGW-specific test(s) excluded from scope"
+                  if out_of_scope_n else "")
 
     # Category breakdown
     cats = defaultdict(lambda: {"passed": 0, "failed": 0, "error": 0, "skipped": 0, "total": 0})
@@ -451,7 +463,7 @@ def generate_html(tests: list, output_path: str, old_passlist: set | None = None
 <body>
 
 <h1>Arca S3 Compatibility Report</h1>
-<p class="meta">{timestamp}</p>
+<p class="meta">{timestamp}{meta_extra}</p>
 
 <div class="cards">
   <div class="card"><div class="value">{total}</div><div class="label">Total</div></div>
@@ -538,8 +550,8 @@ def generate_badge_svg(tests: list, output_path: str):
     Path(output_path).write_text(svg, encoding="utf-8")
 
 
-def generate_summary_json(tests: list, output_path: str):
-    """Write a machine-readable JSON summary of test results."""
+def generate_summary_json(tests: list, output_path: str, out_of_scope_n: int = 0):
+    """Write a machine-readable JSON summary of in-scope test results."""
     import json
 
     total = len(tests)
@@ -565,6 +577,7 @@ def generate_summary_json(tests: list, output_path: str):
         "skipped": skipped,
         "unexpected_failures": unexpected,
         "pass_pct": pass_pct,
+        "out_of_scope_excluded": out_of_scope_n,
         "categories": {
             cat: {
                 "total": c["total"],
@@ -609,14 +622,19 @@ def main():
     report_html = sys.argv[2]
     passlist_path = sys.argv[3] if len(sys.argv) > 3 else None
 
-    tests = parse_junit_xml(results_xml)
+    all_tests = parse_junit_xml(results_xml)
+
+    # Drop Ceph/RGW-specific tests entirely: they are not AWS S3 API and would
+    # only drag the compatibility denominator down with failures we will never fix.
+    tests = [t for t in all_tests if t["category"] not in OUT_OF_SCOPE_CATEGORIES]
+    out_of_scope_n = len(all_tests) - len(tests)
 
     # Load old passlist for diff
     old_passlist = load_passlist(passlist_path) if passlist_path else None
 
     # Generate outputs
-    terminal_summary(tests)
-    generate_html(tests, report_html, old_passlist)
+    terminal_summary(tests, out_of_scope_n)
+    generate_html(tests, report_html, old_passlist, out_of_scope_n)
     print(f"HTML report written to: {report_html}")
 
     # Generate SVG badge alongside the HTML report
@@ -626,7 +644,7 @@ def main():
 
     # Generate JSON summary alongside the HTML report
     summary_path = str(Path(report_html).parent / "summary.json")
-    generate_summary_json(tests, summary_path)
+    generate_summary_json(tests, summary_path, out_of_scope_n)
     print(f"JSON summary written to: {summary_path}")
 
     if passlist_path:

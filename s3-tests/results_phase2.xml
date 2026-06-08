@@ -1,32 +1,31 @@
-<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="21" failures="4" skipped="0" tests="39" time="3.236" timestamp="2026-04-03T15:29:54.822879+00:00" hostname="f3f5803d53b3"><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_lock" time="0.114" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_lock_invalid_bucket" time="0.056" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_lock_enable_after_create" time="0.055"><failure message="botocore.exceptions.ClientError: An error occurred (InvalidBucketState) when calling the PutObjectLockConfiguration operation: Object Lock configuration cannot be enabled on existing buckets">s3tests/functional/test_s3.py:12965: in test_object_lock_put_obj_lock_enable_after_create
-    response = client.put_object_lock_configuration(Bucket=bucket_name, ObjectLockConfiguration=conf)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/usr/local/lib/python3.12/site-packages/botocore/client.py:602: in _api_call
-    return self._make_api_call(operation_name, kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/usr/local/lib/python3.12/site-packages/botocore/context.py:123: in wrapper
-    return func(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^
-/usr/local/lib/python3.12/site-packages/botocore/client.py:1078: in _make_api_call
-    raise error_class(parsed_response, operation_name)
-E   botocore.exceptions.ClientError: An error occurred (InvalidBucketState) when calling the PutObjectLockConfiguration operation: Object Lock configuration cannot be enabled on existing buckets</failure></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_lock_with_days_and_years" time="0.044" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_lock_invalid_days" time="0.045" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_lock_invalid_years" time="0.061"><failure message="AssertionError: assert 'MalformedXML' == 'InvalidRetentionPeriod'&#10;  &#10;  - InvalidRetentionPeriod&#10;  + MalformedXML">s3tests/functional/test_s3.py:13020: in test_object_lock_put_obj_lock_invalid_years
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="21" failures="5" skipped="0" tests="39" time="2.693" timestamp="2026-06-06T16:00:39.949693+00:00" hostname="95f95537e2b0"><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_lock" time="0.068" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_lock_invalid_bucket" time="0.041"><failure message="AssertionError: ClientError not raised">s3tests/functional/test_s3.py:12933: in test_object_lock_put_obj_lock_invalid_bucket
+    e = assert_raises(ClientError, client.put_object_lock_configuration, Bucket=bucket_name, ObjectLockConfiguration=conf)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+s3tests/functional/utils.py:19: in assert_raises
+    raise AssertionError("%s not raised" % excName)
+E   AssertionError: ClientError not raised</failure></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_lock_enable_after_create" time="0.026"><failure message="AssertionError: ClientError not raised">s3tests/functional/test_s3.py:12951: in test_object_lock_put_obj_lock_enable_after_create
+    e = assert_raises(ClientError, client.put_object_lock_configuration, Bucket=bucket_name, ObjectLockConfiguration=conf)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+s3tests/functional/utils.py:19: in assert_raises
+    raise AssertionError("%s not raised" % excName)
+E   AssertionError: ClientError not raised</failure></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_lock_with_days_and_years" time="0.025" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_lock_invalid_days" time="0.024" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_lock_invalid_years" time="0.043"><failure message="AssertionError: assert 'MalformedXML' == 'InvalidRetentionPeriod'&#10;  &#10;  - InvalidRetentionPeriod&#10;  + MalformedXML">s3tests/functional/test_s3.py:13020: in test_object_lock_put_obj_lock_invalid_years
     assert error_code == 'InvalidRetentionPeriod'
 E   AssertionError: assert 'MalformedXML' == 'InvalidRetentionPeriod'
 E     
 E     - InvalidRetentionPeriod
-E     + MalformedXML</failure></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_lock_invalid_mode" time="0.044" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_lock_invalid_status" time="0.046" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_suspend_versioning" time="0.050" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_get_obj_lock" time="0.060" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_get_obj_lock_invalid_bucket" time="0.036" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_retention" time="0.046" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_retention_invalid_bucket" time="0.043" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_retention_invalid_mode" time="0.064" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_get_obj_retention" time="0.067" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_get_obj_retention_iso8601" time="0.057" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_get_obj_retention_invalid_bucket" time="0.044"><failure message="assert 404 == 400">s3tests/functional/test_s3.py:13202: in test_object_lock_get_obj_retention_invalid_bucket
+E     + MalformedXML</failure></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_lock_invalid_mode" time="0.026" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_lock_invalid_status" time="0.025" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_suspend_versioning" time="0.036" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_get_obj_lock" time="0.051" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_get_obj_lock_invalid_bucket" time="0.028" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_retention" time="0.032" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_retention_invalid_bucket" time="0.032" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_retention_invalid_mode" time="0.032" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_get_obj_retention" time="0.052" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_get_obj_retention_iso8601" time="0.034" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_get_obj_retention_invalid_bucket" time="0.030"><failure message="assert 404 == 400">s3tests/functional/test_s3.py:13202: in test_object_lock_get_obj_retention_invalid_bucket
     assert status == 400
-E   assert 404 == 400</failure></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_retention_versionid" time="0.054" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_retention_override_default_retention" time="0.032"><failure message="botocore.errorfactory.AccessDenied: An error occurred (AccessDenied) when calling the PutObjectRetention operation: Object is under GOVERNANCE retention. Use x-amz-bypass-governance-retention: true to modify">s3tests/functional/test_s3.py:13241: in test_object_lock_put_obj_retention_override_default_retention
+E   assert 404 == 400</failure></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_retention_versionid" time="0.032" /><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_retention_override_default_retention" time="0.016"><failure message="botocore.errorfactory.AccessDenied: An error occurred (AccessDenied) when calling the PutObjectRetention operation: Object is under GOVERNANCE retention. Use x-amz-bypass-governance-retention: true to modify">s3tests/functional/test_s3.py:13241: in test_object_lock_put_obj_retention_override_default_retention
     client.put_object_retention(Bucket=bucket_name, Key=key, Retention=retention)
-/usr/local/lib/python3.12/site-packages/botocore/client.py:602: in _api_call
+/usr/local/lib/python3.12/site-packages/botocore/client.py:606: in _api_call
     return self._make_api_call(operation_name, kwargs)
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 /usr/local/lib/python3.12/site-packages/botocore/context.py:123: in wrapper
     return func(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^
-/usr/local/lib/python3.12/site-packages/botocore/client.py:1078: in _make_api_call
+/usr/local/lib/python3.12/site-packages/botocore/client.py:1094: in _make_api_call
     raise error_class(parsed_response, operation_name)
-E   botocore.errorfactory.AccessDenied: An error occurred (AccessDenied) when calling the PutObjectRetention operation: Object is under GOVERNANCE retention. Use x-amz-bypass-governance-retention: true to modify</failure></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_retention_override_default_retention" time="0.036"><error message="failed on teardown with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.80152 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:344: in setup_teardown
+E   botocore.errorfactory.AccessDenied: An error occurred (AccessDenied) when calling the PutObjectRetention operation: Object is under GOVERNANCE retention. Use x-amz-bypass-governance-retention: true to modify</failure></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_retention_override_default_retention" time="0.027"><error message="failed on teardown with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.828863 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:344: in setup_teardown
     teardown()
 s3tests/functional/__init__.py:313: in teardown
     nuke_prefixed_buckets(prefix=prefix)
@@ -36,7 +35,7 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.80152 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_retention_increase_period" time="0.015"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.772947 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.828863 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_retention_increase_period" time="0.010"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.806555 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
     setup()
 s3tests/functional/__init__.py:306: in setup
     nuke_prefixed_buckets(prefix=prefix)
@@ -46,7 +45,7 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.772947 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_retention_shorten_period" time="0.013"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.745814 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.806555 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_retention_shorten_period" time="0.010"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.784083 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
     setup()
 s3tests/functional/__init__.py:306: in setup
     nuke_prefixed_buckets(prefix=prefix)
@@ -56,7 +55,7 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.745814 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_retention_shorten_period_bypass" time="0.014"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.71757 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.784083 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_obj_retention_shorten_period_bypass" time="0.010"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.761701 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
     setup()
 s3tests/functional/__init__.py:306: in setup
     nuke_prefixed_buckets(prefix=prefix)
@@ -66,7 +65,7 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.71757 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_delete_object_with_retention" time="0.013"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.690785 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.761701 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_delete_object_with_retention" time="0.010"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.739526 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
     setup()
 s3tests/functional/__init__.py:306: in setup
     nuke_prefixed_buckets(prefix=prefix)
@@ -76,7 +75,7 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.690785 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_delete_multipart_object_with_retention" time="0.015"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.662832 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.739526 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_delete_multipart_object_with_retention" time="0.010"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.71733 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
     setup()
 s3tests/functional/__init__.py:306: in setup
     nuke_prefixed_buckets(prefix=prefix)
@@ -86,7 +85,7 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.662832 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_delete_object_with_retention_and_marker" time="0.016"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.632969 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.71733 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_delete_object_with_retention_and_marker" time="0.010"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.694945 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
     setup()
 s3tests/functional/__init__.py:306: in setup
     nuke_prefixed_buckets(prefix=prefix)
@@ -96,7 +95,7 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.632969 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_multi_delete_object_with_retention" time="0.014"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.604752 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.694945 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_multi_delete_object_with_retention" time="0.010"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.672699 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
     setup()
 s3tests/functional/__init__.py:306: in setup
     nuke_prefixed_buckets(prefix=prefix)
@@ -106,7 +105,7 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.604752 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_legal_hold" time="0.014"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.577251 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.672699 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_legal_hold" time="0.010"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.650207 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
     setup()
 s3tests/functional/__init__.py:306: in setup
     nuke_prefixed_buckets(prefix=prefix)
@@ -116,7 +115,7 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.577251 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_legal_hold_invalid_bucket" time="0.013"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.550873 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.650207 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_legal_hold_invalid_bucket" time="0.010"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.627831 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
     setup()
 s3tests/functional/__init__.py:306: in setup
     nuke_prefixed_buckets(prefix=prefix)
@@ -126,7 +125,7 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.550873 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_legal_hold_invalid_status" time="0.014"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.523272 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.627831 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_put_legal_hold_invalid_status" time="0.010"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.605367 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
     setup()
 s3tests/functional/__init__.py:306: in setup
     nuke_prefixed_buckets(prefix=prefix)
@@ -136,7 +135,7 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.523272 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_get_legal_hold" time="0.035"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.474863 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.605367 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_get_legal_hold" time="0.027"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.565844 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
     setup()
 s3tests/functional/__init__.py:306: in setup
     nuke_prefixed_buckets(prefix=prefix)
@@ -146,7 +145,7 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.474863 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_get_legal_hold_invalid_bucket" time="0.013"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.448264 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.565844 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_get_legal_hold_invalid_bucket" time="0.010"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.543219 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
     setup()
 s3tests/functional/__init__.py:306: in setup
     nuke_prefixed_buckets(prefix=prefix)
@@ -156,7 +155,7 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.448264 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_delete_object_with_legal_hold_on" time="0.015"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.420056 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.543219 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_delete_object_with_legal_hold_on" time="0.010"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.520533 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
     setup()
 s3tests/functional/__init__.py:306: in setup
     nuke_prefixed_buckets(prefix=prefix)
@@ -166,7 +165,7 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.420056 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_delete_multipart_object_with_legal_hold_on" time="0.015"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.39123 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.520533 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_delete_multipart_object_with_legal_hold_on" time="0.010"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.497614 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
     setup()
 s3tests/functional/__init__.py:306: in setup
     nuke_prefixed_buckets(prefix=prefix)
@@ -176,7 +175,7 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.39123 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_delete_object_with_legal_hold_off" time="0.015"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.362588 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.497614 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_delete_object_with_legal_hold_off" time="0.010"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.474321 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
     setup()
 s3tests/functional/__init__.py:306: in setup
     nuke_prefixed_buckets(prefix=prefix)
@@ -186,7 +185,7 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.362588 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_get_obj_metadata" time="0.014"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.335034 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.474321 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_get_obj_metadata" time="0.010"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.451404 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
     setup()
 s3tests/functional/__init__.py:306: in setup
     nuke_prefixed_buckets(prefix=prefix)
@@ -196,7 +195,7 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.335034 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_uploading_obj" time="0.014"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.307537 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.451404 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_uploading_obj" time="0.010"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.428427 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
     setup()
 s3tests/functional/__init__.py:306: in setup
     nuke_prefixed_buckets(prefix=prefix)
@@ -206,7 +205,7 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.307537 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_changing_mode_from_governance_with_bypass" time="0.013"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.280995 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.428427 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_changing_mode_from_governance_with_bypass" time="0.011"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.405053 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
     setup()
 s3tests/functional/__init__.py:306: in setup
     nuke_prefixed_buckets(prefix=prefix)
@@ -216,7 +215,7 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.280995 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_changing_mode_from_governance_without_bypass" time="0.015"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.252545 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.405053 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_changing_mode_from_governance_without_bypass" time="0.011"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.380814 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
     setup()
 s3tests/functional/__init__.py:306: in setup
     nuke_prefixed_buckets(prefix=prefix)
@@ -226,7 +225,7 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.252545 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_changing_mode_from_compliance" time="0.017"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.221748 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.380814 more seconds, not waiting for bucket cleanup</error></testcase><testcase classname="s3tests.functional.test_s3" name="test_object_lock_changing_mode_from_compliance" time="0.010"><error message="failed on setup with &quot;RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.357799 more seconds, not waiting for bucket cleanup&quot;">s3tests/functional/__init__.py:342: in setup_teardown
     setup()
 s3tests/functional/__init__.py:306: in setup
     nuke_prefixed_buckets(prefix=prefix)
@@ -236,4 +235,4 @@ s3tests/functional/__init__.py:150: in nuke_prefixed_buckets
     nuke_bucket(client, bucket_name)
 s3tests/functional/__init__.py:127: in nuke_bucket
     raise RuntimeError('bucket {} still has objects \
-E   RuntimeError: bucket arca-test-yar8pl1d9x4tcoebfm2-19 still has objects locked for 86399.221748 more seconds, not waiting for bucket cleanup</error></testcase></testsuite></testsuites>
+E   RuntimeError: bucket arca-test-wnjkrob1i56znwyk9ht-19 still has objects locked for 86399.357799 more seconds, not waiting for bucket cleanup</error></testcase></testsuite></testsuites>

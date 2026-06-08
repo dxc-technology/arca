@@ -1146,6 +1146,34 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#intentional-divergences-from-aws-s3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Intentional divergences from AWS S3
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Intentional divergences from AWS S3">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#object-lock-on-existing-empty-buckets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Object Lock on existing empty buckets
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1727,6 +1755,34 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#intentional-divergences-from-aws-s3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Intentional divergences from AWS S3
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Intentional divergences from AWS S3">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#object-lock-on-existing-empty-buckets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Object Lock on existing empty buckets
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2085,6 +2141,12 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>DELETE /{bucket}/{key+}?uploadId={id} HTTP/1.1
 </code></pre></div>
 <p>Returns <code>204 No Content</code> on success.</p>
+<h2 id="intentional-divergences-from-aws-s3">Intentional divergences from AWS S3<a class="headerlink" href="#intentional-divergences-from-aws-s3" title="Permanent link">&para;</a></h2>
+<p>Arca targets drop-in AWS S3 compatibility: what AWS accepts, Arca accepts; what AWS rejects, Arca rejects — with the following deliberate, documented exceptions.</p>
+<h3 id="object-lock-on-existing-empty-buckets">Object Lock on existing empty buckets<a class="headerlink" href="#object-lock-on-existing-empty-buckets" title="Permanent link">&para;</a></h3>
+<p>AWS only allows Object Lock to be enabled at bucket creation (<code>x-amz-bucket-object-lock-enabled: true</code>); <code>PutObjectLockConfiguration</code> on a bucket that was not created with Object Lock returns <code>409 InvalidBucketState</code>.</p>
+<p>Arca additionally accepts <code>PutObjectLockConfiguration</code> on an <strong>existing bucket that is still empty</strong> (auto-enabling versioning, as AWS does at creation). A late enable on an empty bucket cannot retroactively weaken WORM protection on any object, so it is safe; non-empty buckets are still rejected with <code>409 InvalidBucketState</code>. This is a console-UX convenience: enable Object Lock from a bucket's settings page without recreating the bucket.</p>
+<p>Implication: the drop-in direction (AWS-targeted clients running against Arca) is unaffected, but code that relies on this relaxation is not portable to AWS, which would reject it. This divergence is also why the Ceph s3-test <code>test_object_lock_put_obj_lock_invalid_bucket</code> is expected to fail.</p>
 
 
 

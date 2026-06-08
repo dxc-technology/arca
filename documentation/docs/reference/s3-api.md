@@ -256,3 +256,15 @@ DELETE /{bucket}/{key+}?uploadId={id} HTTP/1.1
 ```
 
 Returns `204 No Content` on success.
+
+## Intentional divergences from AWS S3
+
+Arca targets drop-in AWS S3 compatibility: what AWS accepts, Arca accepts; what AWS rejects, Arca rejects — with the following deliberate, documented exceptions.
+
+### Object Lock on existing empty buckets
+
+AWS only allows Object Lock to be enabled at bucket creation (`x-amz-bucket-object-lock-enabled: true`); `PutObjectLockConfiguration` on a bucket that was not created with Object Lock returns `409 InvalidBucketState`.
+
+Arca additionally accepts `PutObjectLockConfiguration` on an **existing bucket that is still empty** (auto-enabling versioning, as AWS does at creation). A late enable on an empty bucket cannot retroactively weaken WORM protection on any object, so it is safe; non-empty buckets are still rejected with `409 InvalidBucketState`. This is a console-UX convenience: enable Object Lock from a bucket's settings page without recreating the bucket.
+
+Implication: the drop-in direction (AWS-targeted clients running against Arca) is unaffected, but code that relies on this relaxation is not portable to AWS, which would reject it. This divergence is also why the Ceph s3-test `test_object_lock_put_obj_lock_invalid_bucket` is expected to fail.

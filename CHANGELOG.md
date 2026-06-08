@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Performance: per-bucket replication-config cache.** Object writes (PutObject, CompleteMultipartUpload, delete markers, PutObjectTagging) no longer read the bucket's `replication_configuration` from the metadata store on every request. The result is cached per bucket for 30 seconds — mirroring the existing per-bucket encryption cache — so buckets without replication (the common case) skip the database query entirely on the write hot path. The cache is invalidated immediately on `PutBucketReplication`, `DeleteBucketReplication`, and the admin credential-cascade disable, so a configuration change still takes effect at once.
+- **S3 compatibility scope.** Ceph s3-tests for RGW-only extensions (`x-rgw-*` headers, `?list-type=unordered`, account usage) — which are not part of the AWS S3 API — are now excluded from the reported compatibility denominator. A new "Intentional divergences from AWS S3" section in the API reference documents Arca's deliberate allowance of enabling Object Lock on an existing *empty* bucket (AWS permits it only at bucket creation).
+
+### Fixed
+
+- **Intermittent `400 Bad Request` on a keep-alive connection reused immediately after a rejected conditional `PutObject`.** When a `PutObject` was rejected before its request body was read (a failed `If-Match` / `If-None-Match` precondition → `412`, or `NoSuchBucket` / `NoSuchKey` / `EntityTooLarge` / invalid tagging), the unconsumed request body could desync the HTTP/1.1 keep-alive connection, so the *next* request parsed on it intermittently failed with a protocol-level `400`. These early-reject responses now send `Connection: close` (matching AWS S3), so the client never reuses a possibly-desynced connection.
 
 ## [0.25.0] — 2026-06-03
 

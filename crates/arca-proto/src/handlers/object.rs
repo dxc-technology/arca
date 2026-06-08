@@ -204,6 +204,20 @@ fn precondition_failed_response(resource: &str) -> Response {
     s3_error_response(S3Error::new(S3ErrorCode::PreconditionFailed, resource))
 }
 
+/// Sets `Connection: close` so hyper closes the keep-alive connection after this
+/// response. Used on PutObject early-rejects that return BEFORE the request body
+/// is consumed: an unconsumed request body left on a reused keep-alive connection
+/// can desync the next request parsed on it (an intermittent HTTP 400 at the
+/// protocol layer). AWS S3 closes the connection on such early errors for the
+/// same reason.
+fn close_after(mut response: Response) -> Response {
+    response.headers_mut().insert(
+        header::CONNECTION,
+        header::HeaderValue::from_static("close"),
+    );
+    response
+}
+
 /// Checks conditional headers (If-Match, If-None-Match, If-Modified-Since,
 /// If-Unmodified-Since) against an object's ETag and Last-Modified.
 ///
@@ -460,7 +474,10 @@ pub async fn put_object(
     match state.metadata.head_bucket(&bucket).await {
         Ok(Some(_)) => {}
         Ok(None) => {
-            return s3_error_response(S3Error::new(S3ErrorCode::NoSuchBucket, &resource));
+            return close_after(s3_error_response(S3Error::new(
+                S3ErrorCode::NoSuchBucket,
+                &resource,
+            )));
         }
         Err(e) => return internal_error_response(e, &resource),
     }
@@ -482,16 +499,16 @@ pub async fn put_object(
                     false,
                     &resource,
                 ) {
-                    return resp;
+                    return close_after(resp);
                 }
             }
             None => {
                 // If-Match on non-existent object → 404 NoSuchKey.
                 if request.headers().contains_key("if-match") {
-                    return s3_error_response(S3Error::new(
+                    return close_after(s3_error_response(S3Error::new(
                         S3ErrorCode::NoSuchKey,
                         &resource,
-                    ));
+                    )));
                 }
                 // If-None-Match: * on non-existent object → proceed (condition met).
             }
@@ -514,7 +531,7 @@ pub async fn put_object(
     // Validate inline tags early, before writing the blob.
     if let Some(ref th) = tagging_header {
         if let Err(e) = xml_types::parse_tagging_header(th) {
-            return s3_error_response(e);
+            return close_after(s3_error_response(e));
         }
     }
 
@@ -528,10 +545,10 @@ pub async fn put_object(
         if let Some(cl) = request.headers().get(header::CONTENT_LENGTH) {
             if let Ok(len) = cl.to_str().unwrap_or("").parse::<u64>() {
                 if len > limit {
-                    return s3_error_response(S3Error::new(
+                    return close_after(s3_error_response(S3Error::new(
                         S3ErrorCode::EntityTooLarge,
                         &resource,
-                    ));
+                    )));
                 }
             }
         }

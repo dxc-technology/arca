@@ -1,11 +1,12 @@
 {
-  "timestamp": "2026-04-03T15:29:58Z",
-  "total": 830,
-  "passed": 370,
-  "failed": 369,
+  "timestamp": "2026-06-06T16:00:43Z",
+  "total": 825,
+  "passed": 369,
+  "failed": 365,
   "skipped": 91,
   "unexpected_failures": 0,
-  "pass_pct": 44.6,
+  "pass_pct": 44.7,
+  "out_of_scope_excluded": 5,
   "categories": {
     "ACL/Policy": {
       "total": 119,
@@ -93,8 +94,8 @@
     },
     "Object Lock": {
       "total": 39,
-      "passed": 14,
-      "failed": 25,
+      "passed": 13,
+      "failed": 26,
       "skipped": 0
     },
     "Other": {
@@ -107,12 +108,6 @@
       "total": 57,
       "passed": 13,
       "failed": 44,
-      "skipped": 0
-    },
-    "RGW Extensions": {
-      "total": 5,
-      "passed": 0,
-      "failed": 5,
       "skipped": 0
     },
     "Tagging": {
