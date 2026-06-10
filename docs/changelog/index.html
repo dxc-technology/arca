@@ -1155,7 +1155,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0251-2026-06-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.25.1 — 2026-06-10
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.25.1 — 2026-06-10">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2553,7 +2564,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0251-2026-06-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.25.1 — 2026-06-10
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.25.1 — 2026-06-10">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3902,7 +3924,8 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.25.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.25.1...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="0251-2026-06-10"><a href="https://github.com/dxc-technology/arca/compare/v0.25.0...v0.25.1">0.25.1</a> — 2026-06-10<a class="headerlink" href="#0251-2026-06-10" title="Permanent link">&para;</a></h2>
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Performance: per-bucket replication-config cache.</strong> Object writes (PutObject, CompleteMultipartUpload, delete markers, PutObjectTagging) no longer read the bucket's <code>replication_configuration</code> from the metadata store on every request. The result is cached per bucket for 30 seconds — mirroring the existing per-bucket encryption cache — so buckets without replication (the common case) skip the database query entirely on the write hot path. The cache is invalidated immediately on <code>PutBucketReplication</code>, <code>DeleteBucketReplication</code>, and the admin credential-cascade disable, so a configuration change still takes effect at once.</li>

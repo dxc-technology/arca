@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.1] — 2026-06-10
+
 ### Changed
 
 - **Performance: per-bucket replication-config cache.** Object writes (PutObject, CompleteMultipartUpload, delete markers, PutObjectTagging) no longer read the bucket's `replication_configuration` from the metadata store on every request. The result is cached per bucket for 30 seconds — mirroring the existing per-bucket encryption cache — so buckets without replication (the common case) skip the database query entirely on the write hot path. The cache is invalidated immediately on `PutBucketReplication`, `DeleteBucketReplication`, and the admin credential-cascade disable, so a configuration change still takes effect at once.
@@ -647,7 +649,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.25.1...HEAD
+[0.25.1]: https://github.com/dxc-technology/arca/compare/v0.25.0...v0.25.1
 [0.25.0]: https://github.com/dxc-technology/arca/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/dxc-technology/arca/compare/v0.23.1...v0.24.0
 [0.23.1]: https://github.com/dxc-technology/arca/compare/v0.23.0...v0.23.1
