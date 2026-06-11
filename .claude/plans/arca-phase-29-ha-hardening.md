@@ -57,12 +57,12 @@ The review's three P0s plus the §2.4 prerequisite. No new test infrastructure r
 
 The proving ground of the R1 fixes and of everything else. Extends `bin/cluster`, the dedicated compose file and `tests/integration/test_cluster.py`.
 
-- [ ] **Partition helpers** in `bin/cluster`: `partition <n>` / `heal <n>` via `docker network disconnect/connect` on the `arca-cluster` compose project network (both processes stay ALIVE: that is the difference from `node-stop`).
-- [ ] **Quorum window test (verifies §2.1)**: partition 2 peers → the isolated node must refuse writes with 503 *even though membership will only notice a few seconds later* (the missing ACKs close the window); heal → convergence.
-- [ ] **Available-mode overlay (D8, §5.1)**: `docker/cluster/config-available.toml` (mode=available, everything else identical) + compose overlay; test phases: (a) 1/3 live nodes still writable; (b) partition, writes to the SAME key from both sides, heal → a single LWW winner everywhere, the loser disappears with no errors (also the basis of the doc sentence requested in §5).
-- [ ] **Control-plane catch-up test (§5.2)**: node 3 down → create a bucket + a credential via the LB → node 3 up → after one reconcile tick, bucket and credential present when querying `ARCA_NODE3_ENDPOINT` directly.
-- [ ] **Flakiness fixes (§5.3)**: `bin/test:315` waits ≥ 5 s or polls the LB (HAProxy `fall 2 inter 2s` ≈ 4 s); phase E: precondition that arca-3 shows alive in the topology before the `disk_available_bytes` check.
-- [ ] Register any new pytest markers in `conftest.py`; update the "Integration — HA Cluster" row in the `README.md` Test Coverage table.
+- [x] **Partition helpers** in `bin/cluster`: `partition <n>` / `heal <n>` via `docker network disconnect/connect` (both processes stay ALIVE: that is the difference from `node-stop`). Required a **dual-network compose design**: the `cluster` network carries inter-node + LB traffic and the seed list now uses `arca-N-cluster` aliases that exist ONLY there, so disconnecting a node severs peer traffic; the never-partitioned `mgmt` network keeps the test runner connected to every node by its plain service name (without it, the runner would lose the isolated node along with the peers). `heal` re-attaches WITH the alias (a manual `network connect` does not restore compose aliases); the node may return with a new IP — peers re-resolve per probe, but HAProxy (startup-resolved) may not track it, so the partition phases are self-contained (fresh `up`/`down -v`) and post-heal assertions target nodes directly. Test configs also gained `request_timeout_seconds = 5` (not in the drift fingerprint — verified) so fan-out toward an unreachable peer fails fast.
+- [x] **Quorum window test (verifies §2.1)** — phase G: partition arca-3 → it refuses writes with 503 *with no wait after the disconnect, on purpose*: within the window where its membership still sees the peers alive, the missing fan-out ACKs produce the 503 (observed: the failing PUT took ~5 s = the fan-out timeout, i.e. the in-window path); reads still served from the isolated node; the majority side keeps writing; heal → the majority-side write converges on arca-3 and a polled PUT proves it accepts writes again (its own membership view lags a few ticks).
+- [x] **Available-mode overlay (D8, §5.1)** — `docker/cluster/config-available.toml` (mode=available, everything else identical) + `docker-compose.cluster.available.yml` mounting it on all 3 nodes; phase H: (a) with 2/3 nodes stopped the survivor still accepts writes (same topology where quorum mode 503s in phase C); (b) partition, writes to the SAME key from both sides — both accepted — heal → a single LWW winner everywhere, the loser disappears with no errors (the basis of the §5 doc sentence, to be written in R9).
+- [x] **Control-plane catch-up test (§5.2)** — folded into the existing lifecycle: phase B (node 3 down) creates `cluster-catchup-cp` bucket + a credential via the LB (new signed `_admin_post` helper); phase D polls node 3 directly until both appear via the control-plane reconcile.
+- [x] **Flakiness fixes (§5.3)**: `wait_live` post-convergence sleep 2 s → 5 s (HAProxy `fall 2 inter 2s` ≈ 4 s to evict); phase E precondition now requires `live_node_count == 3` on `/admin/cluster` alongside the cluster-min free-space check (arca-3's disk stats are cleared while it is considered dead).
+- [x] 7 new pytest markers registered in `conftest.py` (`cluster_partition_before/minority/healed`, `cluster_available_full/split/converged/minority`); "Integration — HA Cluster" row in `README.md` updated 11 → 24 (+ totals). Full suite green: 8 phases (A–H), 24/24.
 
 *Outcome: every consistency claim is exercised by a reproducible test, partitions included. Propose release `v0.26.0` (H11).*
 
@@ -209,10 +209,10 @@ Update the Status column as work proceeds: ⬜ to do, 🔧 in progress, ✅ done
 | M7 | seq churn on identical rows | R5 | ⬜ |
 | N1 | Lock changes (retention/legal-hold) don't bump `seq` → invisible to anti-entropy (found during R1) | R5 | ⬜ |
 | M8 | Silent mtime fallback | R7 | ⬜ |
-| §5.1 | No available-mode test | R2 | ⬜ |
-| §5.2 | No control-plane catch-up test | R2 | ⬜ |
-| §5.3 | Latent flakiness (wait/phase E) | R2 | ⬜ |
-| §5.4 | Listed test debt (GC, repair, bootstrap, skew) | R2 (partial: bootstrap in the R7 test; skew stays ➖ documented) | ⬜ |
+| §5.1 | No available-mode test | R2 | ✅ |
+| §5.2 | No control-plane catch-up test | R2 | ✅ |
+| §5.3 | Latent flakiness (wait/phase E) | R2 | ✅ |
+| §5.4 | Listed test debt (GC, repair, bootstrap, skew) | R2 (partial: bootstrap in the R7 test; skew stays ➖ documented) | 🔧 (still open after R2: tombstone-GC + blob-repair tests; bootstrap arrives with the R7 readiness test; skew = doc-only in R9) |
 | §5-deploy | Inconsistent HAProxy fall/rise; k8s probes | R9 | ⬜ |
 | §5-doc1/2/3 | Available LWW, runbooks, SSE-C/quorum | R9 | ⬜ |
 | D1 | Ghost quorum (unauthenticated liveness, drift ignored) | R3 | ⬜ |
@@ -224,7 +224,7 @@ Update the Status column as work proceeds: ⬜ to do, 🔧 in progress, ✅ done
 | D5 | LB blind to writability (client-visible 503s) | R9 (doc; write-aware to be decided) | ⬜ |
 | D6 | Console incoherent on per-node views | R8 | ⬜ |
 | D7 | Quorum reads weaker than the CP label | R9 (doc + sticky reference) | ⬜ |
-| D8 | No real-partition test | R2 | ⬜ |
+| D8 | No real-partition test | R2 | ✅ |
 | D9 | TD-016 underestimated (RBAC/bucket_config) | R5 | ⬜ |
 | D10 | WORM in cluster: trust model undocumented | R9 | ⬜ |
 | D11 | Available RPO undeclared | R9 | ⬜ |

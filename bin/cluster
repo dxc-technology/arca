@@ -13,6 +13,16 @@ set -euo pipefail
 #   bin/cluster logs [-f] [service]          Show logs (optionally one service)
 #   bin/cluster node-stop <1|2|3>            Stop one node (simulate a failure)
 #   bin/cluster node-start <1|2|3>           Restart a stopped node
+#   bin/cluster partition <1|2|3>            Cut a node off the cluster network
+#   bin/cluster heal <1|2|3>                 Reconnect a partitioned node
+#
+# partition/heal simulate a NETWORK PARTITION: unlike node-stop, the process
+# stays alive on both sides. They detach/attach the node on the compose
+# `cluster` network (inter-node traffic — the seeds use the arca-N-cluster
+# aliases that exist only there), while the `mgmt` network keeps the node
+# reachable by the test runner. Note: a partitioned node's published host port
+# may stay dark even after heal (the port NATs to the original IP); restart the
+# node if you need it back for a demo — inter-node traffic re-resolves by name.
 #
 # Endpoints: load balancer http://localhost:9000, console http://localhost:9080,
 # individual nodes http://localhost:9001|9002|9003.
@@ -33,6 +43,8 @@ usage() {
     echo "  logs [-f] [service]         Show logs"
     echo "  node-stop <1|2|3>           Stop one node (simulate a failure)"
     echo "  node-start <1|2|3>          Restart a stopped node"
+    echo "  partition <1|2|3>           Cut a node off the cluster network (process stays alive)"
+    echo "  heal <1|2|3>                Reconnect a partitioned node"
     echo ""
     echo "Endpoints: LB http://localhost:9000  console http://localhost:9080"
     echo "           nodes http://localhost:9001|9002|9003"
@@ -111,6 +123,39 @@ cmd_node() {
     $COMPOSE "$action" "arca-${n}"
 }
 
+# Container ID of a running node, or fail with a clear message.
+node_cid() {
+    local n="$1" cid
+    cid="$($COMPOSE ps -q "arca-${n}")"
+    [[ -n "$cid" ]] || { echo "Error: arca-${n} is not running" >&2; exit 1; }
+    echo "$cid"
+}
+
+cmd_partition() {
+    local n="${1:-}"
+    case "$n" in
+        1|2|3) ;;
+        *) echo "Error: node must be 1, 2 or 3" >&2; exit 1 ;;
+    esac
+    docker network disconnect "${PROJECT}_cluster" "$(node_cid "$n")"
+    echo "arca-${n} partitioned off the cluster network (process still alive; mgmt network untouched)."
+}
+
+cmd_heal() {
+    local n="${1:-}"
+    case "$n" in
+        1|2|3) ;;
+        *) echo "Error: node must be 1, 2 or 3" >&2; exit 1 ;;
+    esac
+    # Re-attach WITH the cluster-only alias: a manual `network connect` does not
+    # restore the aliases compose assigned at `up`, and the seed list relies on
+    # them. The node may come back with a different IP — peers re-resolve the
+    # alias per probe, but HAProxy (startup-resolved) and the published host
+    # port may not recover until the node restarts.
+    docker network connect --alias "arca-${n}-cluster" "${PROJECT}_cluster" "$(node_cid "$n")"
+    echo "arca-${n} reconnected to the cluster network."
+}
+
 [[ $# -lt 1 ]] && usage 0
 command="$1"; shift
 case "$command" in
@@ -120,6 +165,8 @@ case "$command" in
     logs)       cmd_logs "$@" ;;
     node-stop)  cmd_node stop "$@" ;;
     node-start) cmd_node start "$@" ;;
+    partition)  cmd_partition "$@" ;;
+    heal)       cmd_heal "$@" ;;
     -h|--help)  usage 0 ;;
     *)          echo "Error: unknown command '$command'" >&2; usage 1 ;;
 esac

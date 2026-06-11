@@ -23,6 +23,13 @@ def pytest_configure(config):
         ("cluster_catchup_verify", "verifies anti-entropy convergence after a node returns"),
         ("cluster_insufficient_storage", "requires the 507 overlay (one tiny-disk node)"),
         ("cluster_config_drift", "requires the drift overlay (one mismatched-secret node)"),
+        ("cluster_partition_before", "seeds state with all 3 up, before a network partition"),
+        ("cluster_partition_minority", "requires node 3 partitioned off (process alive, network cut)"),
+        ("cluster_partition_healed", "verifies convergence after the partition heals"),
+        ("cluster_available_full", "requires the available-mode overlay with all 3 nodes up"),
+        ("cluster_available_split", "requires the available overlay with node 3 partitioned"),
+        ("cluster_available_converged", "verifies LWW convergence after the available-mode split heals"),
+        ("cluster_available_minority", "requires the available overlay with only node 1 up"),
     ]:
         config.addinivalue_line("markers", f"{name}: {desc}")
 

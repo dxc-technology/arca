@@ -312,7 +312,10 @@ wait_live() {
     local port="$1" want="$2" max="${3:-90}"
     echo "Waiting for the cluster to report $want live node(s) on :$port..."
     for _ in $(seq 1 "$max"); do
-        [[ "$(_node_live "$port")" == "$want" ]] && { sleep 2; return 0; }
+        # Membership convergence on one node does not mean HAProxy has caught
+        # up: with `fall 2 inter 2s` it takes up to ~4s to evict a dead node
+        # from rotation, so give the LB a 5s margin before tests hit it.
+        [[ "$(_node_live "$port")" == "$want" ]] && { sleep 5; return 0; }
         sleep 1
     done
     echo "Timed out waiting for live==$want on :$port" >&2
@@ -393,6 +396,56 @@ run_cluster() {
         wait_live 9001 3 90 || rc=1
         [[ $rc -eq 0 ]] && { $CDRIFT run --rm --no-deps test "$T" -m cluster_config_drift -v "$@" || rc=$?; }
         $CDRIFT down -v 2>/dev/null || true
+    fi
+
+    # ── Phases G–H exercise a REAL network partition: bin/cluster partition/heal
+    #    (same compose project) cut a node off the `cluster` network while its
+    #    process stays alive; the `mgmt` network keeps the test runner connected
+    #    to it. Self-contained phases (fresh up / down -v): after a heal the node
+    #    may re-attach with a new IP that HAProxy (startup-resolved) won't track.
+    #    wait_live polls node 1 only — a partitioned node's host port goes dark.
+
+    if [[ $rc -eq 0 ]]; then
+        echo "── Phase G: quorum mode under a network partition ──"
+        $C up -d
+        wait_live 9001 3 90 || rc=1
+        [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_partition_before -v "$@" || rc=$?; }
+        if [[ $rc -eq 0 ]]; then
+            bin/cluster partition 3 || rc=$?
+            # No wait_live here, on purpose: the 503 on the isolated node must
+            # hold even before membership notices the partition (the missing
+            # fan-out ACKs close that window — review §2.1).
+            [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_partition_minority -v "$@" || rc=$?; }
+            bin/cluster heal 3 || rc=$?
+        fi
+        if [[ $rc -eq 0 ]]; then
+            wait_live 9001 3 90 || rc=1
+            [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_partition_healed -v "$@" || rc=$?; }
+        fi
+        $C down -v 2>/dev/null || true
+    fi
+
+    if [[ $rc -eq 0 ]]; then
+        echo "── Phase H: available mode (split-brain LWW + minority writes) ──"
+        local CAVAIL="$C -f docker/docker-compose.cluster.available.yml"
+        $CAVAIL up -d
+        wait_live 9001 3 90 || rc=1
+        [[ $rc -eq 0 ]] && { $CAVAIL run --rm --no-deps test "$T" -m cluster_available_full -v "$@" || rc=$?; }
+        if [[ $rc -eq 0 ]]; then
+            bin/cluster partition 3 || rc=$?
+            [[ $rc -eq 0 ]] && { $CAVAIL run --rm --no-deps test "$T" -m cluster_available_split -v "$@" || rc=$?; }
+            bin/cluster heal 3 || rc=$?
+        fi
+        if [[ $rc -eq 0 ]]; then
+            wait_live 9001 3 90 || rc=1
+            [[ $rc -eq 0 ]] && { $CAVAIL run --rm --no-deps test "$T" -m cluster_available_converged -v "$@" || rc=$?; }
+        fi
+        if [[ $rc -eq 0 ]]; then
+            $CAVAIL stop arca-2 arca-3
+            wait_live 9001 1 60 || rc=1
+            [[ $rc -eq 0 ]] && { $CAVAIL run --rm --no-deps test "$T" -m cluster_available_minority -v "$@" || rc=$?; }
+        fi
+        $CAVAIL down -v 2>/dev/null || true
     fi
 
     trap - EXIT

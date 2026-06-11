@@ -8,6 +8,19 @@
 #
 # Node ports 9001/9002/9003 are also exposed for direct per-node inspection
 # (e.g. GET /admin/cluster on a specific node, or killing one mid-test).
+#
+# TWO networks, so partition tests can cut inter-node traffic without losing
+# test access to the isolated node:
+#   cluster  inter-node + LB traffic. Each node carries an `arca-N-cluster`
+#            alias that exists ONLY here, and the seed list uses those aliases:
+#            `bin/cluster partition <n>` (docker network disconnect) makes the
+#            node unreachable BY PEERS while its process stays alive.
+#   mgmt     test runner <-> every node, never partitioned. Plain service names
+#            (arca-1/2/3) keep resolving here, so the runner can assert against
+#            a partitioned node directly.
+# NOTE: a partitioned node's published host port may stay dark until the
+# container restarts (the port NATs to one container IP); tests poll node 1's
+# host port only and reach partitioned nodes from inside the mgmt network.
 
 x-arca-node: &arca-node
   image: arca
@@ -15,8 +28,9 @@ x-arca-node: &arca-node
     context: ..
     dockerfile: docker/Dockerfile
     target: ${BUILD_TARGET:-production}
-  # NOTE: each node overrides `volumes` (to add its own data volume); a YAML
-  # merge does not concatenate lists, so the config mount is repeated per node.
+  # NOTE: each node overrides `volumes` (to add its own data volume) and
+  # `networks` (its cluster-only alias); a YAML merge does not concatenate
+  # lists/maps, so both blocks are repeated per node.
   environment:
     - ARCA_LOG=${ARCA_LOG:-info}
     - ARCA_ROOT_ACCESS_KEY=${ARCA_ROOT_ACCESS_KEY:-AKIAIOSFODNN7EXAMPLE}
@@ -34,6 +48,10 @@ services:
     volumes:
       - arca-1-data:/data
       - ../docker/cluster/config.toml:/etc/arca/config.toml:ro
+    networks:
+      cluster:
+        aliases: [arca-1-cluster]
+      mgmt: {}
     ports:
       - "${ARCA_NODE1_HOST_PORT:-9001}:9000"
 
@@ -42,6 +60,10 @@ services:
     volumes:
       - arca-2-data:/data
       - ../docker/cluster/config.toml:/etc/arca/config.toml:ro
+    networks:
+      cluster:
+        aliases: [arca-2-cluster]
+      mgmt: {}
     ports:
       - "${ARCA_NODE2_HOST_PORT:-9002}:9000"
 
@@ -50,16 +72,26 @@ services:
     volumes:
       - arca-3-data:/data
       - ../docker/cluster/config.toml:/etc/arca/config.toml:ro
+    networks:
+      cluster:
+        aliases: [arca-3-cluster]
+      mgmt: {}
     ports:
       - "${ARCA_NODE3_HOST_PORT:-9003}:9000"
 
   # Load balancer: single entry point on :9000, round-robin over live nodes.
+  # Cluster network only: during a partition it loses the isolated node, like
+  # a real LB would. HAProxy resolves backend names once at startup, so a
+  # healed node that re-attached with a new IP may stay out of rotation; the
+  # partition test phases are self-contained (fresh up/down) to absorb this.
   arca-lb:
     image: haproxy
     volumes:
       - ../docker/cluster/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     ports:
       - "${ARCA_HOST_PORT:-9000}:9000"
+    networks:
+      - cluster
     depends_on:
       - arca-1
       - arca-2
@@ -67,7 +99,8 @@ services:
 
   # Integration test runner (boto3/pytest). Talks to the load balancer for the
   # client-facing assertions and to each node directly for per-node replication
-  # and catch-up checks. Driven by `bin/test cluster` (profile `test`).
+  # and catch-up checks. Driven by `bin/test cluster` (profile `test`). On both
+  # networks: `cluster` to reach the LB, `mgmt` to reach partitioned nodes.
   test:
     image: arca-test
     build:
@@ -80,6 +113,9 @@ services:
       - ARCA_NODE3_ENDPOINT=http://arca-3:9000
       - AWS_ACCESS_KEY_ID=${ARCA_ROOT_ACCESS_KEY:-AKIAIOSFODNN7EXAMPLE}
       - AWS_SECRET_ACCESS_KEY=${ARCA_ROOT_SECRET_KEY:-wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY}
+    networks:
+      - cluster
+      - mgmt
     depends_on:
       - arca-lb
     profiles:
@@ -95,10 +131,16 @@ services:
       - "${CONSOLE_HOST_PORT:-9080}:80"
     environment:
       - ARCA_ENDPOINT=${ARCA_CONSOLE_ENDPOINT:-http://localhost:9000}
+    networks:
+      - cluster
     depends_on:
       - arca-lb
     profiles:
       - console
+
+networks:
+  cluster:
+  mgmt:
 
 volumes:
   arca-1-data:

@@ -194,11 +194,11 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — Compression | 10 | put/get roundtrip, ETag vs plaintext MD5, MIME skip, small object skip, range reads (intra- and cross-frame), per-bucket ?compression subresource (PUT/GET/DELETE), every algorithm (zstd/lz4/snappy/gzip/brotli/xz), unknown-algorithm rejection |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
 | Integration — Replication | 4 | basic PutObject replication, delete-marker propagation, tag sync, two-way mirror no-loop invariant |
-| Integration — HA Cluster | 11 | 3-node replication to all nodes, read-after-write, write with one node down (quorum), failover read, read-only without quorum (503), anti-entropy catch-up, cluster-wide 507 InsufficientStorage, config-drift detection |
+| Integration — HA Cluster | 24 | 3-node replication to all nodes, read-after-write, write with one node down (quorum), failover read, read-only without quorum (503), anti-entropy catch-up (objects + control plane: bucket, credential), real network partition (isolated node 503s while reads keep working, majority side writes, heal convergence), available mode (split-brain writes to the same key with single LWW winner at heal, 1/3 minority still writable), cluster-wide 507 InsufficientStorage, config-drift detection |
 | Connector integrations | 84 | Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Kafka, AMQP, Elasticsearch, Syslog, SMTP, gRPC — each: delivery, custom destination, delete event, multiple events, payload format, connectivity test |
-| **Arca tests** | **1,434** | **All tests written for this project** |
+| **Arca tests** | **1,447** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 825 | 369 pass, 365 fail, 91 skip — 0 unexpected failures (RGW-only extensions excluded) |
-| **Total** | **2,264** | |
+| **Total** | **2,277** | |
 
 ## License
 

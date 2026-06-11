@@ -1,0 +1,29 @@
+# Overlay for the available-mode (AP) integration tests.
+#
+# Swaps every node's config for config-available.toml — IDENTICAL to the base
+# config except `mode = "available"`: writes never gate on quorum, so a
+# minority side keeps accepting them, and concurrent writes to the same key
+# resolve by last-writer-wins when anti-entropy merges the sides back (the
+# losing write disappears with no error to the client).
+#
+# Apply on top of the base cluster compose:
+#   docker compose -p arca-cluster \
+#     -f docker/docker-compose.cluster.yml \
+#     -f docker/docker-compose.cluster.available.yml up -d
+#
+# A YAML list override REPLACES the base list, so each node restates its data
+# volume next to the swapped config mount.
+
+services:
+  arca-1:
+    volumes:
+      - arca-1-data:/data
+      - ../docker/cluster/config-available.toml:/etc/arca/config.toml:ro
+  arca-2:
+    volumes:
+      - arca-2-data:/data
+      - ../docker/cluster/config-available.toml:/etc/arca/config.toml:ro
+  arca-3:
+    volumes:
+      - arca-3-data:/data
+      - ../docker/cluster/config-available.toml:/etc/arca/config.toml:ro

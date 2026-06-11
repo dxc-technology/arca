@@ -1668,12 +1668,12 @@
 <h2 id="r2-cluster-test-infrastructure-real-partitions-available-mode-catch-up">R2 — Cluster test infrastructure (real partitions, available mode, catch-up)<a class="headerlink" href="#r2-cluster-test-infrastructure-real-partitions-available-mode-catch-up" title="Permanent link">&para;</a></h2>
 <p>The proving ground of the R1 fixes and of everything else. Extends <code>bin/cluster</code>, the dedicated compose file and <code>tests/integration/test_cluster.py</code>.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Partition helpers</strong> in <code>bin/cluster</code>: <code>partition &lt;n&gt;</code> / <code>heal &lt;n&gt;</code> via <code>docker network disconnect/connect</code> on the <code>arca-cluster</code> compose project network (both processes stay ALIVE: that is the difference from <code>node-stop</code>).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Quorum window test (verifies §2.1)</strong>: partition 2 peers → the isolated node must refuse writes with 503 <em>even though membership will only notice a few seconds later</em> (the missing ACKs close the window); heal → convergence.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Available-mode overlay (D8, §5.1)</strong>: <code>docker/cluster/config-available.toml</code> (mode=available, everything else identical) + compose overlay; test phases: (a) 1/3 live nodes still writable; (b) partition, writes to the SAME key from both sides, heal → a single LWW winner everywhere, the loser disappears with no errors (also the basis of the doc sentence requested in §5).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Control-plane catch-up test (§5.2)</strong>: node 3 down → create a bucket + a credential via the LB → node 3 up → after one reconcile tick, bucket and credential present when querying <code>ARCA_NODE3_ENDPOINT</code> directly.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Flakiness fixes (§5.3)</strong>: <code>bin/test:315</code> waits ≥ 5 s or polls the LB (HAProxy <code>fall 2 inter 2s</code> ≈ 4 s); phase E: precondition that arca-3 shows alive in the topology before the <code>disk_available_bytes</code> check.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Register any new pytest markers in <code>conftest.py</code>; update the "Integration — HA Cluster" row in the <code>README.md</code> Test Coverage table.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>Partition helpers</strong> in <code>bin/cluster</code>: <code>partition &lt;n&gt;</code> / <code>heal &lt;n&gt;</code> via <code>docker network disconnect/connect</code> (both processes stay ALIVE: that is the difference from <code>node-stop</code>). Required a <strong>dual-network compose design</strong>: the <code>cluster</code> network carries inter-node + LB traffic and the seed list now uses <code>arca-N-cluster</code> aliases that exist ONLY there, so disconnecting a node severs peer traffic; the never-partitioned <code>mgmt</code> network keeps the test runner connected to every node by its plain service name (without it, the runner would lose the isolated node along with the peers). <code>heal</code> re-attaches WITH the alias (a manual <code>network connect</code> does not restore compose aliases); the node may return with a new IP — peers re-resolve per probe, but HAProxy (startup-resolved) may not track it, so the partition phases are self-contained (fresh <code>up</code>/<code>down -v</code>) and post-heal assertions target nodes directly. Test configs also gained <code>request_timeout_seconds = 5</code> (not in the drift fingerprint — verified) so fan-out toward an unreachable peer fails fast.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>Quorum window test (verifies §2.1)</strong> — phase G: partition arca-3 → it refuses writes with 503 <em>with no wait after the disconnect, on purpose</em>: within the window where its membership still sees the peers alive, the missing fan-out ACKs produce the 503 (observed: the failing PUT took ~5 s = the fan-out timeout, i.e. the in-window path); reads still served from the isolated node; the majority side keeps writing; heal → the majority-side write converges on arca-3 and a polled PUT proves it accepts writes again (its own membership view lags a few ticks).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>Available-mode overlay (D8, §5.1)</strong> — <code>docker/cluster/config-available.toml</code> (mode=available, everything else identical) + <code>docker-compose.cluster.available.yml</code> mounting it on all 3 nodes; phase H: (a) with 2/3 nodes stopped the survivor still accepts writes (same topology where quorum mode 503s in phase C); (b) partition, writes to the SAME key from both sides — both accepted — heal → a single LWW winner everywhere, the loser disappears with no errors (the basis of the §5 doc sentence, to be written in R9).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>Control-plane catch-up test (§5.2)</strong> — folded into the existing lifecycle: phase B (node 3 down) creates <code>cluster-catchup-cp</code> bucket + a credential via the LB (new signed <code>_admin_post</code> helper); phase D polls node 3 directly until both appear via the control-plane reconcile.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>Flakiness fixes (§5.3)</strong>: <code>wait_live</code> post-convergence sleep 2 s → 5 s (HAProxy <code>fall 2 inter 2s</code> ≈ 4 s to evict); phase E precondition now requires <code>live_node_count == 3</code> on <code>/admin/cluster</code> alongside the cluster-min free-space check (arca-3's disk stats are cleared while it is considered dead).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> 7 new pytest markers registered in <code>conftest.py</code> (<code>cluster_partition_before/minority/healed</code>, <code>cluster_available_full/split/converged/minority</code>); "Integration — HA Cluster" row in <code>README.md</code> updated 11 → 24 (+ totals). Full suite green: 8 phases (A–H), 24/24.</li>
 </ul>
 <p><em>Outcome: every consistency claim is exercised by a reproducible test, partitions included. Propose release <code>v0.26.0</code> (H11).</em></p>
 <hr />
@@ -1937,25 +1937,25 @@
 <td>§5.1</td>
 <td>No available-mode test</td>
 <td>R2</td>
-<td>⬜</td>
+<td>✅</td>
 </tr>
 <tr>
 <td>§5.2</td>
 <td>No control-plane catch-up test</td>
 <td>R2</td>
-<td>⬜</td>
+<td>✅</td>
 </tr>
 <tr>
 <td>§5.3</td>
 <td>Latent flakiness (wait/phase E)</td>
 <td>R2</td>
-<td>⬜</td>
+<td>✅</td>
 </tr>
 <tr>
 <td>§5.4</td>
 <td>Listed test debt (GC, repair, bootstrap, skew)</td>
 <td>R2 (partial: bootstrap in the R7 test; skew stays ➖ documented)</td>
-<td>⬜</td>
+<td>🔧 (still open after R2: tombstone-GC + blob-repair tests; bootstrap arrives with the R7 readiness test; skew = doc-only in R9)</td>
 </tr>
 <tr>
 <td>§5-deploy</td>
@@ -2027,7 +2027,7 @@
 <td>D8</td>
 <td>No real-partition test</td>
 <td>R2</td>
-<td>⬜</td>
+<td>✅</td>
 </tr>
 <tr>
 <td>D9</td>

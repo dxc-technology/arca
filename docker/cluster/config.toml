@@ -22,7 +22,14 @@ secret = "dev-cluster-secret-change-me"
 mode = "quorum"
 cluster_size = 3
 discovery = "static"
-seeds = ["arca-1:9000", "arca-2:9000", "arca-3:9000"]
+# The arca-N-cluster aliases exist ONLY on the compose `cluster` network, so a
+# partition test (`bin/cluster partition <n>` = docker network disconnect) cuts
+# inter-node traffic while the `mgmt` network keeps the node reachable by the
+# test runner under its plain service name.
+seeds = ["arca-1-cluster:9000", "arca-2-cluster:9000", "arca-3-cluster:9000"]
 # Tighter intervals than the defaults for fast convergence in tests/demos.
 health_interval_seconds = 3
 anti_entropy_interval_seconds = 5
+# Snappy fan-out/probe timeout so writes aimed at an unreachable peer fail fast
+# during partition tests (not part of the config-drift fingerprint).
+request_timeout_seconds = 5

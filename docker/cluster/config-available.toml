@@ -1,0 +1,30 @@
+# Available-mode (AP) variant: IDENTICAL to config.toml except `mode`.
+# Mounted on ALL THREE nodes by the available-mode integration tests (the
+# symmetry invariant still holds: every node runs the same config). Writes
+# never gate on quorum, so a minority side keeps accepting them; concurrent
+# writes to the same key resolve by last-writer-wins at anti-entropy time.
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+
+[cluster]
+enabled = true
+cluster_id = "arca-cluster"
+# Shared secret authenticating inter-node /cluster/v1/* requests. DEV value —
+# change for any real deployment.
+secret = "dev-cluster-secret-change-me"
+# AP policy: always writable, best-effort replication, LWW convergence.
+mode = "available"
+cluster_size = 3
+discovery = "static"
+# Cluster-network-only aliases — see config.toml for why.
+seeds = ["arca-1-cluster:9000", "arca-2-cluster:9000", "arca-3-cluster:9000"]
+# Tighter intervals than the defaults for fast convergence in tests/demos.
+health_interval_seconds = 3
+anti_entropy_interval_seconds = 5
+# Snappy fan-out/probe timeout so writes aimed at an unreachable peer fail fast
+# during partition tests (not part of the config-drift fingerprint).
+request_timeout_seconds = 5

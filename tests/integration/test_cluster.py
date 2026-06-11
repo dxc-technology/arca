@@ -15,12 +15,27 @@ topology it needs via a marker, and the runner selects them with `pytest -m`:
     cluster_catchup_verify all back up (anti-entropy must have converged)
     cluster_insufficient_storage  507 overlay (arca-3 on a tiny tmpfs)
     cluster_config_drift   drift overlay (arca-3 with a mismatched secret)
+    cluster_partition_before     all 3 up, seeds state for the partition phase
+    cluster_partition_minority   arca-3 partitioned off (process ALIVE, network cut)
+    cluster_partition_healed     partition healed (convergence + writability back)
+    cluster_available_full       available-mode overlay, all 3 up
+    cluster_available_split      available overlay, arca-3 partitioned (split brain)
+    cluster_available_converged  available overlay, split healed (LWW winner only)
+    cluster_available_minority   available overlay, only node 1 up (still writable)
+
+The partition markers rely on the compose dual-network design: `bin/cluster
+partition <n>` cuts a node off the `cluster` network (inter-node traffic — the
+seeds use cluster-only aliases) while this runner keeps reaching every node by
+its plain service name over the never-partitioned `mgmt` network. After a heal
+the node may re-attach with a NEW IP: HAProxy resolves backends once at
+startup, so post-heal assertions always target the nodes directly, not the LB.
 
 Cross-phase tests use DETERMINISTIC bucket/key names so a value written in one
 phase can be asserted in a later one (the cluster volumes persist across the
 node stop/start that happens between phases).
 """
 
+import json
 import os
 import time
 import uuid
@@ -54,6 +69,27 @@ FAILOVER_BUCKET = "cluster-failover"
 FAILOVER_KEY = "failover-object"
 FAILOVER_BODY = b"written while all nodes were up; must survive a node failure"
 
+# Control-plane catch-up (phases B and D): a bucket and a credential created
+# via the LB while node 3 is down, then verified directly on node 3 after its
+# re-entry (the control-plane reconcile, not the object manifest, covers them).
+CATCHUP_CP_BUCKET = "cluster-catchup-cp"
+CATCHUP_CRED_DESC = "cluster-catchup-credential"
+
+# Quorum-mode partition phase: deterministic names across its sub-phases.
+PARTITION_BUCKET = "cluster-partition"
+PARTITION_READ_KEY = "seeded-before-partition"
+PARTITION_READ_BODY = b"seeded on all nodes before the partition"
+PARTITION_MAJORITY_KEY = "written-on-majority-side"
+PARTITION_MAJORITY_BODY = b"written on the majority side during the partition"
+
+# Available-mode phase: split-brain writes to the same key, LWW at heal.
+AVAIL_BUCKET = "cluster-available"
+AVAIL_SEED_KEY = "seeded-everywhere"
+AVAIL_SEED_BODY = b"seeded on all nodes before the split"
+AVAIL_LWW_KEY = "split-brain-object"
+AVAIL_LWW_LOSER = b"written FIRST, on the isolated side - must lose LWW"
+AVAIL_LWW_WINNER = b"written LAST, on the majority side - must win LWW"
+
 
 # ── Clients ──────────────────────────────────────────────────────────────────
 
@@ -75,6 +111,19 @@ def _admin_get(endpoint, path):
     req = AWSRequest(method="GET", url=url, data="")
     S3SigV4Auth(Credentials(ACCESS_KEY, SECRET_KEY), "s3", REGION).add_auth(req)
     resp = requests.get(url, headers=dict(req.headers), timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _admin_post(endpoint, path, payload):
+    """Signed (SigV4) POST against an /admin/* endpoint, returning parsed JSON."""
+    url = f"{endpoint}{path}"
+    data = json.dumps(payload)
+    req = AWSRequest(
+        method="POST", url=url, data=data, headers={"Content-Type": "application/json"}
+    )
+    S3SigV4Auth(Credentials(ACCESS_KEY, SECRET_KEY), "s3", REGION).add_auth(req)
+    resp = requests.post(url, headers=dict(req.headers), data=data, timeout=10)
     resp.raise_for_status()
     return resp.json()
 
@@ -106,6 +155,35 @@ def _wait_object(client, bucket, key, expected, timeout=30):
             last = e.response["Error"].get("Code", str(e))
         time.sleep(1)
     pytest.fail(f"{bucket}/{key} did not converge within {timeout}s: {last}")
+
+
+def _wait_put(client, bucket, key, body, timeout=60):
+    """Poll until a PUT succeeds (e.g. 503s while a healed node re-forms its
+    quorum view), or fail after `timeout`."""
+    deadline = time.time() + timeout
+    last = "never attempted"
+    while time.time() < deadline:
+        try:
+            client.put_object(Bucket=bucket, Key=key, Body=body)
+            return
+        except ClientError as e:
+            last = e.response["Error"].get("Code", str(e))
+        time.sleep(1)
+    pytest.fail(f"PUT {bucket}/{key} kept failing for {timeout}s: {last}")
+
+
+def _wait_bucket(client, bucket, timeout=90):
+    """Poll until HeadBucket succeeds, or fail after `timeout`."""
+    deadline = time.time() + timeout
+    last = "never queried"
+    while time.time() < deadline:
+        try:
+            client.head_bucket(Bucket=bucket)
+            return
+        except ClientError as e:
+            last = e.response["Error"].get("Code", str(e))
+        time.sleep(2)
+    pytest.fail(f"bucket {bucket} did not appear within {timeout}s: {last}")
 
 
 # ── Phase: all 3 nodes up ─────────────────────────────────────────────────────
@@ -175,6 +253,20 @@ def test_catchup_write_while_node_down():
         _wait_object(_s3(NODES[n]), CATCHUP_BUCKET, CATCHUP_KEY, CATCHUP_BODY, timeout=30)
 
 
+@pytest.mark.cluster_two_thirds
+def test_control_plane_write_while_node_down():
+    """Seed CONTROL-PLANE state (a bucket and a credential) while node 3 is down.
+
+    Objects travel via the anti-entropy manifest; buckets and credentials via
+    the control-plane reconcile. Both must reach node 3 after its re-entry —
+    verified in the catch-up phase.
+    """
+    lb = _s3(LB)
+    _ensure_bucket(lb, CATCHUP_CP_BUCKET)
+    created = _admin_post(LB, "/admin/credentials", {"description": CATCHUP_CRED_DESC})
+    assert created["access_key_id"]
+
+
 # ── Phase: nodes 2 & 3 down (1 of 3 — no quorum) ──────────────────────────────
 
 @pytest.mark.cluster_one_third
@@ -206,6 +298,29 @@ def test_catchup_converges_on_returned_node():
     _wait_object(_s3(NODES[3]), CATCHUP_BUCKET, CATCHUP_KEY, CATCHUP_BODY, timeout=90)
 
 
+@pytest.mark.cluster_catchup_verify
+def test_bucket_catchup_on_returned_node():
+    """The bucket created while node 3 was down appears on it via the
+    control-plane reconcile."""
+    _wait_bucket(_s3(NODES[3]), CATCHUP_CP_BUCKET, timeout=90)
+
+
+@pytest.mark.cluster_catchup_verify
+def test_credential_catchup_on_returned_node():
+    """The credential created while node 3 was down appears on it via the
+    control-plane reconcile."""
+    deadline = time.time() + 90
+    last = None
+    while time.time() < deadline:
+        last = _admin_get(NODES[3], "/admin/credentials")
+        if any(c.get("description") == CATCHUP_CRED_DESC for c in last):
+            return
+        time.sleep(2)
+    pytest.fail(
+        f"credential '{CATCHUP_CRED_DESC}' did not appear on node 3 within 90s: {last}"
+    )
+
+
 # ── Phase: 507 overlay (arca-3 on a tiny tmpfs) ───────────────────────────────
 
 @pytest.mark.cluster_insufficient_storage
@@ -216,16 +331,22 @@ def test_put_exceeding_smallest_node_is_rejected():
     though arca-1/arca-2 have plenty of room, arca-3's tiny tmpfs caps it.
     """
     big_size = 50 * 1024 * 1024  # 50 MiB — far larger than arca-3's 16 MiB tmpfs
-    # Wait until the tiny node's free space has gossiped into the cluster minimum
-    # (otherwise the write guard may not yet see it and the big PUT would pass).
+    # Wait until arca-3 is alive in the topology AND its tiny free space has
+    # gossiped into the cluster minimum: the guard takes the min over LIVE
+    # nodes, so checking the free-space number alone can race arca-3's
+    # incorporation (its stats are cleared while it is considered dead).
     deadline = time.time() + 45
     while time.time() < deadline:
-        avail = _admin_get(NODES[1], "/admin/cluster").get("disk_available_bytes")
-        if avail is not None and avail < big_size:
+        data = _admin_get(NODES[1], "/admin/cluster")
+        avail = data.get("disk_available_bytes")
+        if data.get("live_node_count") == 3 and avail is not None and avail < big_size:
             break
         time.sleep(2)
     else:
-        pytest.fail("cluster min free space never dropped below the test object size")
+        pytest.fail(
+            "cluster min free space never dropped below the test object size "
+            "with all 3 nodes alive"
+        )
 
     lb = _s3(LB)
     bucket = f"cl-507-{uuid.uuid4().hex[:10]}"
@@ -259,3 +380,117 @@ def test_config_drift_is_detected():
     # Exactly the drifted node reports config_ok=False.
     bad = [n for n in data["nodes"] if n.get("config_ok") is False]
     assert len(bad) >= 1, f"expected at least one node with config_ok=False: {data['nodes']}"
+
+
+# ── Phase: quorum mode under a REAL network partition (arca-3 isolated) ───────
+#
+# Unlike the stop/start phases, `bin/cluster partition 3` leaves the arca-3
+# process ALIVE and severs only the cluster network — the case the consistency
+# modes exist for. This runner keeps reaching it over the mgmt network.
+
+
+@pytest.mark.cluster_partition_before
+def test_seed_object_before_partition():
+    """Seed a bucket + object on all nodes; the partition assertions read them."""
+    lb = _s3(LB)
+    _ensure_bucket(lb, PARTITION_BUCKET)
+    lb.put_object(Bucket=PARTITION_BUCKET, Key=PARTITION_READ_KEY, Body=PARTITION_READ_BODY)
+    for n in (1, 2, 3):
+        _wait_object(_s3(NODES[n]), PARTITION_BUCKET, PARTITION_READ_KEY, PARTITION_READ_BODY, timeout=30)
+
+
+@pytest.mark.cluster_partition_minority
+def test_isolated_node_refuses_writes():
+    """The isolated node refuses writes with 503 — even before its membership
+    notices the partition, the missing fan-out ACKs close the window (§2.1)."""
+    node3 = _s3(NODES[3])
+    with pytest.raises(ClientError) as exc:
+        node3.put_object(Bucket=PARTITION_BUCKET, Key="isolated-write", Body=b"x")
+    assert _status_code(exc.value) == 503
+    assert exc.value.response["Error"]["Code"] == "ServiceUnavailable"
+
+
+@pytest.mark.cluster_partition_minority
+def test_isolated_node_still_serves_reads():
+    """Reads are never quorum-gated: the isolated node serves what it has."""
+    node3 = _s3(NODES[3])
+    body = node3.get_object(Bucket=PARTITION_BUCKET, Key=PARTITION_READ_KEY)["Body"].read()
+    assert body == PARTITION_READ_BODY
+
+
+@pytest.mark.cluster_partition_minority
+def test_majority_side_still_writes():
+    """The 2-node side keeps quorum: writes succeed and replicate within it."""
+    node1 = _s3(NODES[1])
+    node1.put_object(
+        Bucket=PARTITION_BUCKET, Key=PARTITION_MAJORITY_KEY, Body=PARTITION_MAJORITY_BODY
+    )
+    for n in (1, 2):
+        _wait_object(
+            _s3(NODES[n]), PARTITION_BUCKET, PARTITION_MAJORITY_KEY,
+            PARTITION_MAJORITY_BODY, timeout=30,
+        )
+
+
+@pytest.mark.cluster_partition_healed
+def test_partition_write_converges_on_healed_node():
+    """After heal, anti-entropy delivers the majority-side write to arca-3."""
+    _wait_object(
+        _s3(NODES[3]), PARTITION_BUCKET, PARTITION_MAJORITY_KEY,
+        PARTITION_MAJORITY_BODY, timeout=90,
+    )
+
+
+@pytest.mark.cluster_partition_healed
+def test_healed_node_accepts_writes_again():
+    """arca-3 regains the quorum after heal and accepts writes again (its own
+    membership view may lag a few health ticks, hence the PUT poll)."""
+    node3 = _s3(NODES[3])
+    body = b"written on node 3 after the partition healed"
+    _wait_put(node3, PARTITION_BUCKET, "post-heal-write", body, timeout=60)
+    assert node3.get_object(Bucket=PARTITION_BUCKET, Key="post-heal-write")["Body"].read() == body
+
+
+# ── Phase: available mode (AP overlay on all 3 nodes) ─────────────────────────
+
+
+@pytest.mark.cluster_available_full
+def test_available_seed_replicates_everywhere():
+    """Bucket + object seeded via the LB land on all 3 nodes (as in quorum)."""
+    lb = _s3(LB)
+    _ensure_bucket(lb, AVAIL_BUCKET)
+    lb.put_object(Bucket=AVAIL_BUCKET, Key=AVAIL_SEED_KEY, Body=AVAIL_SEED_BODY)
+    for n in (1, 2, 3):
+        _wait_object(_s3(NODES[n]), AVAIL_BUCKET, AVAIL_SEED_KEY, AVAIL_SEED_BODY, timeout=30)
+
+
+@pytest.mark.cluster_available_split
+def test_both_sides_accept_writes_to_the_same_key():
+    """During the partition BOTH sides accept a write to the same key (AP mode
+    never gates on quorum). Isolated side first, majority side last: LWW must
+    later keep the majority-side value as the single winner."""
+    _s3(NODES[3]).put_object(Bucket=AVAIL_BUCKET, Key=AVAIL_LWW_KEY, Body=AVAIL_LWW_LOSER)
+    # Strictly later wall-clock timestamp (the containers share the host clock).
+    time.sleep(2)
+    _s3(NODES[1]).put_object(Bucket=AVAIL_BUCKET, Key=AVAIL_LWW_KEY, Body=AVAIL_LWW_WINNER)
+    # While split, each side holds its own value; convergence is asserted post-heal.
+    assert _s3(NODES[3]).get_object(Bucket=AVAIL_BUCKET, Key=AVAIL_LWW_KEY)["Body"].read() == AVAIL_LWW_LOSER
+    assert _s3(NODES[1]).get_object(Bucket=AVAIL_BUCKET, Key=AVAIL_LWW_KEY)["Body"].read() == AVAIL_LWW_WINNER
+
+
+@pytest.mark.cluster_available_converged
+def test_lww_winner_survives_everywhere():
+    """After heal a single LWW winner remains on every node; the losing write
+    disappears without any error ever surfacing to the client that made it."""
+    for n in (1, 2, 3):
+        _wait_object(_s3(NODES[n]), AVAIL_BUCKET, AVAIL_LWW_KEY, AVAIL_LWW_WINNER, timeout=90)
+
+
+@pytest.mark.cluster_available_minority
+def test_available_minority_still_writable():
+    """With 2 of 3 nodes stopped, available mode still accepts writes — the
+    same 1/3 topology where quorum mode returns 503 (the one-third phase)."""
+    node1 = _s3(NODES[1])
+    body = b"accepted with two nodes down (available mode)"
+    node1.put_object(Bucket=AVAIL_BUCKET, Key="minority-write", Body=body)
+    assert node1.get_object(Bucket=AVAIL_BUCKET, Key="minority-write")["Body"].read() == body
