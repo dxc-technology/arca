@@ -329,7 +329,11 @@ async fn reconcile_peer_control(
     if plan.is_empty() {
         return Ok(());
     }
-    // Identity entities (credentials/users/teams/grants) + tombstones.
+    // Identity entities (credentials/users/teams/grants) + tombstones. This
+    // runs BEFORE the bucket deletes below: it adopts ALL tombstones (bucket
+    // ones included) first, so a crash between the two leaves the safe state —
+    // tombstone present, bucket row still alive — which converges on the next
+    // round instead of resurrecting the deleted bucket (review §2.3).
     control_snapshot
         .apply_control_merge(&plan)
         .await

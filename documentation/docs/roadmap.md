@@ -505,7 +505,7 @@ per-milestone detail, and a finding-by-finding traceability table — is publish
 document: see the [HA Hardening plan](ha-hardening.md). The review it stems from is in the
 repository: [arca-phase-29-ha-review.md](https://github.com/dxc-technology/arca/blob/main/.claude/reviews/arca-phase-29-ha-review.md).
 
-- [ ] R1 — P0 correctness: true write quorum (ACK counting), commit-ordered PostgreSQL manifest cursor, tombstone-first control merge
+- [x] R1 — P0 correctness: true write quorum (ACK counting), commit-ordered PostgreSQL manifest cursor, tombstone-first control merge
 - [ ] R2 — Cluster test infrastructure: real network partitions, available-mode suite, control-plane catch-up test, flakiness fixes
 - [ ] R3 — Membership and quorum integrity: **peer authentication** (a rogue peer must not receive fan-out without proving secret/CA possession), config drift excluded from quorum, public health minimised, cluster-size guard, tombstone-GC liveness guard
 - [ ] R4 — Inter-node transport security: **verified mutual TLS with a shared cluster CA** (resolves TD-015), anti-replay window, body limits, secret-strength enforcement, dual-secret rotation

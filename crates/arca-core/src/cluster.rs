@@ -87,6 +87,37 @@ pub struct ClusterVersionDelete {
     pub version_id: String,
 }
 
+/// Response of `POST /cluster/v1/object` and `POST /cluster/v1/object/delete`:
+/// the receiving peer self-certifies what it durably holds, so the origin can
+/// count true replication ACKs for the write quorum (review §2.1, decision H2).
+/// Shared contract between the receive handler (producer) and the cluster
+/// client (consumer).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ClusterObjectAck {
+    /// The row was applied (idempotent LWW upsert / delete succeeded).
+    pub applied: bool,
+    /// The blob the row references is durably present on this peer (its
+    /// sidecar exists — for composites, the composite sidecar). Vacuously
+    /// `true` when the row references no blob (delete markers, tombstones,
+    /// version deletes), so a full ACK is always `applied && has_blob`.
+    pub has_blob: bool,
+}
+
+/// Whether a replicated write reached its durability quorum (review §2.1,
+/// decision H1): `acks` counts the nodes that durably hold the write — the
+/// local copy plus every peer that returned a full [`ClusterObjectAck`].
+///
+/// - Available mode (`write_quorum == None`): always satisfied (W = 1, self).
+/// - Quorum mode: satisfied when `acks >= write_quorum`.
+///
+/// Pure so the ACK-counting semantics are unit-testable in isolation.
+pub fn quorum_satisfied(acks: usize, write_quorum: Option<u32>) -> bool {
+    match write_quorum {
+        None => true,
+        Some(q) => acks >= q as usize,
+    }
+}
+
 /// Body of `POST /cluster/v1/op`: a replicated control-plane mutation applied
 /// idempotently by the receiving node. Shared contract between the cluster
 /// client (sender) and the receive handler.
@@ -831,6 +862,27 @@ mod tests {
             disk_total: None,
             disk_available: None,
         }
+    }
+
+    #[test]
+    fn quorum_satisfied_available_mode_always_true() {
+        // Available mode (no quorum): a single durable copy is enough.
+        assert!(quorum_satisfied(1, None));
+        assert!(quorum_satisfied(0, None)); // degenerate, still no gate
+    }
+
+    #[test]
+    fn quorum_satisfied_counts_acks_against_threshold() {
+        // 3-node cluster, write_quorum = 2: local + 1 peer ACK suffices.
+        assert!(quorum_satisfied(2, Some(2)));
+        assert!(quorum_satisfied(3, Some(2)));
+        // Local copy alone is NOT a quorum: the write must error (review §2.1 —
+        // an admitted write whose fan-out failed everywhere is a ghost write).
+        assert!(!quorum_satisfied(1, Some(2)));
+        assert!(!quorum_satisfied(0, Some(2)));
+        // 5-node cluster, write_quorum = 3.
+        assert!(quorum_satisfied(3, Some(3)));
+        assert!(!quorum_satisfied(2, Some(3)));
     }
 
     #[test]

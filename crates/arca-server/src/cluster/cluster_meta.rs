@@ -2,8 +2,7 @@
 //!
 //! Wraps the local `MetadataStore` and replicates object-table mutations to
 //! peers, keeping the trait so handlers and `AppState` are unchanged. It is the
-//! linearization point for the consistency policy: every replicated write
-//! passes the mode gate first.
+//! linearization point for the consistency policy.
 //!
 //! Replicated (object data plane):
 //! - `put_object` — create/overwrite, including replicated rows for any
@@ -12,10 +11,28 @@
 //!   versioned delete marker → replicated as a row.
 //! - `delete_object_version` — hard delete of a specific version.
 //!
-//! Mode gate ([`ClusterState::has_write_quorum`]):
-//! - `available`: always writable (gate is a no-op).
-//! - `quorum`: when live nodes < majority, replicated writes are refused with
-//!   `503 ServiceUnavailable` (the node stays read-only) — no divergence.
+//! Consistency policy (review §2.1, decisions H1/H2/H4):
+//! - `available`: always writable; fan-out is best-effort, ACKs are ignored.
+//! - `quorum`: a write is acknowledged to the client only when at least
+//!   `write_quorum` nodes durably hold it AT ACK TIME — the local copy plus
+//!   every peer whose [`ClusterObjectAck`] certified row-applied AND
+//!   blob-present. Two layers enforce this:
+//!   1. an *admission gate* ([`ClusterState::has_write_quorum`]) refuses early
+//!      (cheap fail-fast) when membership already knows too few nodes are live;
+//!   2. *ACK counting* after the parallel fan-out closes the failure-detection
+//!      window the gate cannot see (peers believed alive that did not ACK).
+//!
+//!   When the count falls short the client receives `503 ServiceUnavailable`
+//!   (+ `Retry-After`), but the local copy is NOT rolled back — like any quorum
+//!   system without distributed transactions, an error response means "not
+//!   acknowledged as replicated", not "undone". Anti-entropy then either
+//!   propagates the local copy (it survives) or a newer client retry overwrites
+//!   it (LWW). Divergence inside the failure-detection window is therefore
+//!   bounded to writes the client KNOWS were not acknowledged.
+//!
+//! ACK-counting scope (decision H4): object data-plane mutations only —
+//! `put_object`, the delete marker, version hard-deletes. Control-plane and tag
+//! ops remain best-effort fan-out + anti-entropy reconcile (rare mutations).
 //!
 //! Control plane replicated via `/cluster/v1/op` (`ControlOp`): bucket create /
 //! delete, `bucket_config` (versioning, encryption, ...), bucket tags, object
@@ -34,7 +51,7 @@
 
 use std::sync::Arc;
 
-use arca_core::cluster::{ClusterState, ControlOp};
+use arca_core::cluster::{quorum_satisfied, ClusterState, ControlOp};
 use arca_core::error::ArcaError;
 use arca_core::store::{ControlTombstoneStore, MetadataStore, TOMBSTONE_BUCKET};
 use arca_core::types::{
@@ -42,6 +59,7 @@ use arca_core::types::{
 };
 use arca_core::{S3Error, S3ErrorCode};
 use chrono::{DateTime, Utc};
+use futures_util::future::join_all;
 
 use crate::cluster::client::ClusterClient;
 
@@ -81,6 +99,8 @@ impl ClusterMetadataStore {
 
     /// The consistency-policy admission gate. In `available` mode this is always
     /// `Ok`; in `quorum` mode it refuses with `503` when too few nodes are live.
+    /// Fail-fast only — the authoritative check is the post-fan-out ACK count
+    /// ([`Self::enforce_ack_quorum`]), which sees what membership cannot.
     fn check_write_quorum(&self) -> Result<(), ArcaError> {
         if self.cluster.has_write_quorum() {
             Ok(())
@@ -93,67 +113,128 @@ impl ClusterMetadataStore {
         }
     }
 
-    /// Replicates a fully-formed object row to every live peer (best-effort;
-    /// anti-entropy reconciles the rest in M4).
-    async fn fan_out_object(&self, record: &ObjectRecord) {
-        for endpoint in self.live_peers() {
-            if let Err(e) = self.client.send_object(&endpoint, record).await {
-                tracing::warn!(
-                    error = %e,
-                    peer = %endpoint,
-                    bucket = %record.bucket,
-                    key = %record.key,
-                    "cluster object fan-out failed (will reconcile via anti-entropy in M4)"
-                );
-            }
+    /// The durability quorum check (review §2.1, decision H1): `acks` counts
+    /// the nodes durably holding the write (local + full peer ACKs). On a
+    /// shortfall in quorum mode the client gets `503`; the local copy is NOT
+    /// rolled back (anti-entropy propagates or LWW overwrites it — the error
+    /// means "not acknowledged as replicated", not "undone").
+    fn enforce_ack_quorum(&self, acks: usize) -> Result<(), ArcaError> {
+        if quorum_satisfied(acks, self.cluster.write_quorum()) {
+            Ok(())
+        } else {
+            Err(ArcaError::S3(S3Error::with_message(
+                S3ErrorCode::ServiceUnavailable,
+                format!(
+                    "cluster write quorum not reached ({} of {} required copies acknowledged); \
+                     the write is durable on this node and will reconcile, but it is not \
+                     acknowledged as replicated — retry",
+                    acks,
+                    self.cluster.write_quorum().unwrap_or(1),
+                ),
+                "/",
+            )))
         }
     }
 
-    /// Replicates a version hard-delete to every live peer (best-effort).
-    async fn fan_out_version_delete(&self, bucket: &str, key: &str, version_id: &str) {
-        for endpoint in self.live_peers() {
-            if let Err(e) = self
-                .client
-                .send_version_delete(&endpoint, bucket, key, version_id)
-                .await
-            {
-                tracing::warn!(
-                    error = %e,
-                    peer = %endpoint,
-                    bucket = %bucket,
-                    key = %key,
-                    "cluster delete fan-out failed (will reconcile via anti-entropy in M4)"
-                );
+    /// Replicates a fully-formed object row to every live peer IN PARALLEL
+    /// (§2.4) and returns how many peers returned a FULL ack — row applied and
+    /// referenced blob present (decision H2). Failures are logged and left to
+    /// anti-entropy; the caller decides whether the count satisfies the quorum.
+    async fn fan_out_object(&self, record: &ObjectRecord) -> usize {
+        let sends = self.live_peers().into_iter().map(|endpoint| {
+            let client = &self.client;
+            async move {
+                match client.send_object(&endpoint, record).await {
+                    Ok(ack) => {
+                        if !(ack.applied && ack.has_blob) {
+                            tracing::warn!(
+                                peer = %endpoint,
+                                applied = ack.applied,
+                                has_blob = ack.has_blob,
+                                bucket = %record.bucket,
+                                key = %record.key,
+                                "cluster object fan-out: partial ack (will reconcile via anti-entropy)"
+                            );
+                        }
+                        ack.applied && ack.has_blob
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            peer = %endpoint,
+                            bucket = %record.bucket,
+                            key = %record.key,
+                            "cluster object fan-out failed (will reconcile via anti-entropy)"
+                        );
+                        false
+                    }
+                }
             }
-        }
+        });
+        join_all(sends).await.into_iter().filter(|ok| *ok).count()
+    }
+
+    /// Replicates a version hard-delete to every live peer IN PARALLEL (§2.4)
+    /// and returns how many peers acknowledged it (no blob involved, so
+    /// `applied` alone is a full ack — decision H2).
+    async fn fan_out_version_delete(&self, bucket: &str, key: &str, version_id: &str) -> usize {
+        let sends = self.live_peers().into_iter().map(|endpoint| {
+            let client = &self.client;
+            async move {
+                match client
+                    .send_version_delete(&endpoint, bucket, key, version_id)
+                    .await
+                {
+                    Ok(ack) => ack.applied,
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            peer = %endpoint,
+                            bucket = %bucket,
+                            key = %key,
+                            "cluster delete fan-out failed (will reconcile via anti-entropy)"
+                        );
+                        false
+                    }
+                }
+            }
+        });
+        join_all(sends).await.into_iter().filter(|ok| *ok).count()
     }
 
     /// Re-sends the row whose lock columns (retention / legal-hold) just
     /// changed. The mutation leaves `(last_modified, version_id, blob_id)`
     /// unchanged, and `apply_remote_object`'s LWW guard accepts an equal tuple
     /// (`>=`), so peers adopt the new retention/legal-hold without minting a new
-    /// version. `version_id == None` targets the current version.
+    /// version. `version_id == None` targets the current version. Best-effort
+    /// (outside the H4 ACK-counting scope) — the ack count is ignored.
     async fn replicate_lock_change(&self, bucket: &str, key: &str, version_id: Option<&str>) {
         let row = match version_id {
             Some(vid) => self.inner.get_object_version(bucket, key, vid).await,
             None => self.inner.get_latest_object(bucket, key).await,
         };
         if let Ok(Some(record)) = row {
-            self.fan_out_object(&record).await;
+            let _acks = self.fan_out_object(&record).await;
         }
     }
 
-    /// Replicates a control-plane op to every live peer (best-effort).
+    /// Replicates a control-plane op to every live peer IN PARALLEL (§2.4).
+    /// Best-effort by design (decision H4): control-plane mutations are rare
+    /// and reconciled by anti-entropy, so no ACK counting here.
     async fn fan_out_op(&self, op: &ControlOp) {
-        for endpoint in self.live_peers() {
-            if let Err(e) = self.client.send_op(&endpoint, op).await {
-                tracing::warn!(
-                    error = %e,
-                    peer = %endpoint,
-                    "cluster control-plane fan-out failed (will reconcile via anti-entropy in M4)"
-                );
+        let sends = self.live_peers().into_iter().map(|endpoint| {
+            let client = &self.client;
+            async move {
+                if let Err(e) = client.send_op(&endpoint, op).await {
+                    tracing::warn!(
+                        error = %e,
+                        peer = %endpoint,
+                        "cluster control-plane fan-out failed (will reconcile via anti-entropy)"
+                    );
+                }
             }
-        }
+        });
+        join_all(sends).await;
     }
 }
 
@@ -235,7 +316,13 @@ impl MetadataStore for ClusterMetadataStore {
         replicated.version_id = version_id.clone();
         replicated.is_latest = true;
         replicated.is_delete_marker = false;
-        self.fan_out_object(&replicated).await;
+        let acks = self.fan_out_object(&replicated).await;
+
+        // True quorum (§2.1): local copy + full peer ACKs must reach the
+        // threshold, else 503. On failure the local row (and any blob it
+        // overwrote, now orphaned) stays — the anti-entropy GC reclaims
+        // orphaned blobs and the manifest propagates the row.
+        self.enforce_ack_quorum(1 + acks)?;
 
         Ok((old, version_id))
     }
@@ -265,19 +352,21 @@ impl MetadataStore for ClusterMetadataStore {
         let old = self.inner.delete_object(bucket, key).await?;
         if old.is_some() {
             // A versioned bucket creates a delete marker (a new latest row);
-            // an unversioned bucket hard-deletes. Replicate whichever happened.
-            match self.inner.get_latest_object(bucket, key).await {
+            // an unversioned bucket hard-deletes. Replicate whichever happened
+            // and hold it to the same durability quorum as a put (§2.1/H4).
+            let acks = match self.inner.get_latest_object(bucket, key).await {
                 Ok(Some(marker)) if marker.is_delete_marker => {
-                    self.fan_out_object(&marker).await;
+                    self.fan_out_object(&marker).await
                 }
                 _ => {
                     let version_id = old
                         .as_ref()
                         .and_then(|o| o.version_id.clone())
                         .unwrap_or_else(|| "null".to_string());
-                    self.fan_out_version_delete(bucket, key, &version_id).await;
+                    self.fan_out_version_delete(bucket, key, &version_id).await
                 }
-            }
+            };
+            self.enforce_ack_quorum(1 + acks)?;
         }
         Ok(old)
     }
@@ -317,7 +406,8 @@ impl MetadataStore for ClusterMetadataStore {
             .delete_object_version(bucket, key, version_id)
             .await?;
         if deleted.is_some() {
-            self.fan_out_version_delete(bucket, key, version_id).await;
+            let acks = self.fan_out_version_delete(bucket, key, version_id).await;
+            self.enforce_ack_quorum(1 + acks)?;
         }
         Ok(deleted)
     }
@@ -708,17 +798,74 @@ mod tests {
     }
 
     fn live_peer() -> PeerNode {
+        peer_at("http://127.0.0.1:1") // unreachable on purpose
+    }
+
+    fn peer_at(endpoint: &str) -> PeerNode {
         PeerNode {
             node_id: "peer-2".to_string(),
-            // Unreachable on purpose: fan-out is best-effort and must not fail
-            // the local write (connection refused returns immediately).
-            endpoint: "http://127.0.0.1:1".to_string(),
+            endpoint: endpoint.to_string(),
             alive: true,
             last_seen: None,
             config_ok: true,
             disk_total: None,
             disk_available: None,
         }
+    }
+
+    /// Spawns a minimal HTTP/1.1 peer answering every request `200 OK` with the
+    /// given JSON body — enough for the reqwest-based fan-out to parse an ack.
+    /// The listener dies with the returned handle.
+    async fn spawn_fake_peer(body: &'static str) -> (String, tokio::task::JoinHandle<()>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = tokio::spawn(async move {
+            loop {
+                let Ok((mut sock, _)) = listener.accept().await else {
+                    break;
+                };
+                tokio::spawn(async move {
+                    // Read the full request (headers + content-length body).
+                    let mut buf = Vec::new();
+                    let mut tmp = [0u8; 4096];
+                    let (mut content_len, mut header_end) = (0usize, 0usize);
+                    loop {
+                        let n = sock.read(&mut tmp).await.unwrap_or(0);
+                        if n == 0 {
+                            break;
+                        }
+                        buf.extend_from_slice(&tmp[..n]);
+                        if header_end == 0 {
+                            if let Some(pos) =
+                                buf.windows(4).position(|w| w == b"\r\n\r\n")
+                            {
+                                header_end = pos + 4;
+                                let headers =
+                                    String::from_utf8_lossy(&buf[..header_end]).to_lowercase();
+                                content_len = headers
+                                    .lines()
+                                    .find_map(|l| l.strip_prefix("content-length:"))
+                                    .and_then(|v| v.trim().parse().ok())
+                                    .unwrap_or(0);
+                            }
+                        }
+                        if header_end > 0 && buf.len() >= header_end + content_len {
+                            break;
+                        }
+                    }
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
+                         content-length: {}\r\nconnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    let _ = sock.write_all(resp.as_bytes()).await;
+                    let _ = sock.shutdown().await;
+                });
+            }
+        });
+        (format!("http://{addr}"), handle)
     }
 
     #[tokio::test]
@@ -745,17 +892,97 @@ mod tests {
         assert!(store.get_object("b", "k").await.unwrap().is_some());
     }
 
+    /// Review §2.1 (P0): the admission gate alone is NOT a quorum. A peer that
+    /// membership still believes alive but that does not ACK the fan-out must
+    /// fail the write — otherwise an acknowledged PUT exists on one machine
+    /// only (a ghost write). This pins the true-quorum semantics (H1/H2).
     #[tokio::test]
-    async fn quorum_mode_writes_with_majority_despite_unreachable_peer() {
+    async fn quorum_mode_refuses_write_when_acks_below_quorum() {
         let (inner, _dir) = temp_store().await;
         inner.create_bucket("b").await.unwrap();
         let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
-        cluster.set_peers(vec![live_peer()]); // self + 1 = 2 >= 2 -> quorum met
+        cluster.set_peers(vec![live_peer()]); // gate sees 2 "alive" -> passes
         let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
-        // Gate passes; the fan-out to the unreachable peer fails silently
-        // (best-effort, reconciled by anti-entropy in M4); the local write stands.
+        // The unreachable peer never ACKs: 1 (local) < 2 -> 503.
+        let err = store.put_object(&sample_record()).await.unwrap_err();
+        match err {
+            ArcaError::S3(e) => assert_eq!(e.code, S3ErrorCode::ServiceUnavailable),
+            other => panic!("expected ServiceUnavailable, got {other:?}"),
+        }
+        // No rollback (H1): the local copy stays for anti-entropy to propagate.
+        assert!(store.get_object("b", "k").await.unwrap().is_some());
+    }
+
+    /// The happy path of the true quorum: a peer that fully ACKs (row applied +
+    /// blob present) makes 1 + 1 = 2 >= 2 and the write succeeds.
+    #[tokio::test]
+    async fn quorum_mode_writes_when_peer_acks() {
+        let (inner, _dir) = temp_store().await;
+        inner.create_bucket("b").await.unwrap();
+        let (endpoint, _peer) =
+            spawn_fake_peer(r#"{"applied":true,"has_blob":true}"#).await;
+        let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
+        cluster.set_peers(vec![peer_at(&endpoint)]);
+        let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
         store.put_object(&sample_record()).await.unwrap();
         assert!(store.get_object("b", "k").await.unwrap().is_some());
+    }
+
+    /// A peer that applied the row but is missing the blob is NOT a durable
+    /// copy: its ack must not count toward the quorum (decision H2).
+    #[tokio::test]
+    async fn quorum_mode_partial_ack_does_not_count() {
+        let (inner, _dir) = temp_store().await;
+        inner.create_bucket("b").await.unwrap();
+        let (endpoint, _peer) =
+            spawn_fake_peer(r#"{"applied":true,"has_blob":false}"#).await;
+        let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
+        cluster.set_peers(vec![peer_at(&endpoint)]);
+        let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
+        let err = store.put_object(&sample_record()).await.unwrap_err();
+        match err {
+            ArcaError::S3(e) => assert_eq!(e.code, S3ErrorCode::ServiceUnavailable),
+            other => panic!("expected ServiceUnavailable, got {other:?}"),
+        }
+    }
+
+    /// A legacy peer (pre-ACK wire format) answers 200 with an empty body; the
+    /// rolling-upgrade contract (H10) counts it as a full ack.
+    #[tokio::test]
+    async fn quorum_mode_legacy_empty_ack_counts() {
+        let (inner, _dir) = temp_store().await;
+        inner.create_bucket("b").await.unwrap();
+        let (endpoint, _peer) = spawn_fake_peer("").await;
+        let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
+        cluster.set_peers(vec![peer_at(&endpoint)]);
+        let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
+        store.put_object(&sample_record()).await.unwrap();
+    }
+
+    /// Deletes are held to the same quorum as puts (H4): an unreachable peer
+    /// fails the delete with 503, and the local delete is NOT rolled back.
+    #[tokio::test]
+    async fn quorum_mode_refuses_delete_when_acks_below_quorum() {
+        let (inner, _dir) = temp_store().await;
+        inner.create_bucket("b").await.unwrap();
+        let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
+        cluster.set_peers(vec![live_peer()]);
+        let store = ClusterMetadataStore::new(
+            inner.clone(),
+            client(),
+            cluster.clone(),
+            tombstones().await,
+        );
+        // Seed the object with the peer "ACKing" is impossible here (peer is
+        // unreachable), so write it via the inner store directly.
+        inner.put_object(&sample_record()).await.unwrap();
+        let err = store.delete_object("b", "k").await.unwrap_err();
+        match err {
+            ArcaError::S3(e) => assert_eq!(e.code, S3ErrorCode::ServiceUnavailable),
+            other => panic!("expected ServiceUnavailable, got {other:?}"),
+        }
+        // No rollback: locally the object is gone; the deletion will reconcile.
+        assert!(store.get_object("b", "k").await.unwrap().is_none());
     }
 
     #[tokio::test]

@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **HA Hardening plan (Phase 29.1).** The remediation plan for the findings of the in-depth Phase 29 HA review is now part of the official roadmap: a new Phase 29.1 section (progress bar, dependency graph, summary table, milestone checklist) plus the full working plan — fixed design decisions, per-milestone detail, and a finding-by-finding traceability table — published as a living page on the documentation site.
 
+### Changed
+
+- **True write quorum in cluster `quorum` mode (Phase 29.1 R1, review §2.1).** A replicated write (PutObject, CompleteMultipartUpload, DeleteObject, delete markers, version deletes) is now acknowledged to the client only when at least `write_quorum` nodes durably hold it *at ACK time*: the local copy plus every peer whose fan-out response certified "row applied AND blob present". Previously the quorum was only an admission gate on membership liveness — a write whose fan-out failed on every peer was still acknowledged and could exist on a single machine. On a quorum shortfall the client now receives `503 ServiceUnavailable` with a `Retry-After` header; the local copy is *not* rolled back (as in any quorum system without distributed transactions, the error means "not acknowledged as replicated", not "undone") and anti-entropy either propagates it or a retry overwrites it. `available` mode is unchanged.
+- **Parallel cluster fan-out (Phase 29.1 R1, review §2.4).** Replication to peers (object rows, blobs, version deletes, control-plane ops) is now sent to all live peers concurrently instead of one at a time, so a slow peer no longer adds its latency to every write and the ACK counting above sees all responses in one round-trip.
+
+### Fixed
+
+- **PostgreSQL: rows could be skipped by cluster incremental sync (Phase 29.1 R1, review §2.2).** The PG backend assigned the anti-entropy manifest cursor (`seq`) from a PostgreSQL `SEQUENCE`, which is not transactional: a row could commit with a lower `seq` *after* a peer had already advanced its cursor past it, so the incremental sync silently never delivered it. The sequence is replaced by a commit-ordered single-row counter (`object_seq`, pg migration 0009, mirroring the SQLite design): the counter's row lock serializes assignment until commit, so cursor order now equals commit order and no committed row can be skipped.
+- **Control-plane merge could resurrect deleted entities on crash (Phase 29.1 R1, review §2.3).** The anti-entropy control-plane merge executed entity deletions *before* adopting the corresponding tombstones, each in its own transaction: a crash between the two left "row deleted, no tombstone", and the next reconcile with a peer still holding the live row re-created it — for a revoked credential, a security hole. Tombstones are now adopted first, so an interrupted merge always converges to the deletion.
+
 ## [0.25.1] — 2026-06-10
 
 ### Changed

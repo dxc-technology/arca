@@ -43,18 +43,24 @@ fn check_write_quorum(cluster: &ClusterState) -> Result<(), ArcaError> {
     }
 }
 
-/// Fan out a control-plane op to every live peer (best-effort; anti-entropy
-/// reconciles the rest in M4).
+/// Fan out a control-plane op to every live peer IN PARALLEL (§2.4).
+/// Best-effort by design (decision H4): identity mutations are rare and the
+/// anti-entropy control-snapshot reconcile heals what a peer missed.
 async fn fan_out_op(client: &ClusterClient, cluster: &ClusterState, op: &ControlOp) {
-    for peer in cluster.peers().into_iter().filter(|p| p.alive) {
-        if let Err(e) = client.send_op(&peer.endpoint, op).await {
-            tracing::warn!(
-                error = %e,
-                peer = %peer.endpoint,
-                "cluster control-plane fan-out failed (will reconcile via anti-entropy in M4)"
-            );
-        }
-    }
+    let sends = cluster
+        .peers()
+        .into_iter()
+        .filter(|p| p.alive)
+        .map(|peer| async move {
+            if let Err(e) = client.send_op(&peer.endpoint, op).await {
+                tracing::warn!(
+                    error = %e,
+                    peer = %peer.endpoint,
+                    "cluster control-plane fan-out failed (will reconcile via anti-entropy)"
+                );
+            }
+        });
+    futures_util::future::join_all(sends).await;
 }
 
 /// Records a deletion tombstone for a control-plane entity so the delete

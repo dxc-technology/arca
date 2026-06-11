@@ -80,18 +80,42 @@ async fn fetch_null_version(
     Ok(row.as_ref().map(row_to_object_record))
 }
 
-/// Inserts a new object row into the `objects` table.
+/// Returns the next node-local monotonic `seq`, advancing the single-row
+/// `object_seq` counter INSIDE the caller's transaction (migration 0009).
+///
+/// The `UPDATE ... RETURNING` takes the counter's row lock until commit, which
+/// serializes the assignment: seq order = commit order, so a peer's
+/// changed-since manifest cursor can never skip a row still in flight (review
+/// §2.2 — the previous SEQUENCE was not transactional and lost rows). Mirrors
+/// the SQLite `next_object_seq`.
+///
+/// LOCK-ORDER RULE: every objects-writing transaction must call this BEFORE
+/// its first row-mutating statement (uniform seq → rows order). Transactions
+/// that never take a seq (plain single-node deletes) only lock rows and cannot
+/// form a cycle with seq holders over the single counter resource.
+async fn next_object_seq(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+) -> Result<i64, sqlx_core::error::Error> {
+    let row = sqlx_core::query::query("UPDATE object_seq SET value = value + 1 RETURNING value")
+        .fetch_one(&mut **tx)
+        .await?;
+    Ok(row.get::<i64, _>("value"))
+}
+
+/// Inserts a new object row into the `objects` table, stamping the given
+/// node-local `seq` (from [`next_object_seq`], same transaction).
 async fn insert_object_row(
     tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
     record: &ObjectRecord,
     metadata_json: &serde_json::Value,
+    seq: i64,
 ) -> Result<(), sqlx_core::error::Error> {
     sqlx_core::query::query(
         "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, \
          metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, \
          is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, \
-         checksum_algorithm, checksum_value) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)",
+         checksum_algorithm, checksum_value, seq) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)",
     )
     .bind(&record.bucket)
     .bind(&record.key)
@@ -113,27 +137,31 @@ async fn insert_object_row(
     .bind(&record.storage_class)
     .bind(&record.checksum_algorithm)
     .bind(&record.checksum_value)
+    .bind(seq)
     .execute(&mut **tx)
     .await?;
     Ok(())
 }
 
-/// Inserts a replicated object row verbatim, including `replication_status`.
-/// `is_latest` is forced to FALSE so the partial unique latest index is never
-/// transiently violated; the caller then runs [`recompute_is_latest`].
-/// Mirrors the SQLite `insert_replicated_row` for cross-backend convergence.
+/// Inserts a replicated object row verbatim, including `replication_status`,
+/// stamping the given node-local `seq` (from [`next_object_seq`], same
+/// transaction). `is_latest` is forced to FALSE so the partial unique latest
+/// index is never transiently violated; the caller then runs
+/// [`recompute_is_latest`]. Mirrors the SQLite `insert_replicated_row` for
+/// cross-backend convergence.
 async fn insert_replicated_row(
     tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
     record: &ObjectRecord,
     metadata_json: &serde_json::Value,
+    seq: i64,
 ) -> Result<(), sqlx_core::error::Error> {
     sqlx_core::query::query(
         "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, \
          metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, \
          is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, \
-         checksum_algorithm, checksum_value, replication_status, is_tombstone) \
+         checksum_algorithm, checksum_value, replication_status, is_tombstone, seq) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, FALSE, $13, $14, $15, $16, \
-         $17, $18, $19, $20, $21)",
+         $17, $18, $19, $20, $21, $22)",
     )
     .bind(&record.bucket)
     .bind(&record.key)
@@ -156,6 +184,7 @@ async fn insert_replicated_row(
     .bind(&record.checksum_value)
     .bind(&record.replication_status)
     .bind(record.is_tombstone)
+    .bind(seq)
     .execute(&mut **tx)
     .await?;
     Ok(())
@@ -406,6 +435,12 @@ impl MetadataStore for PgStore {
         let metadata_json = serde_json::to_value(&record.metadata)
             .unwrap_or_else(|_| serde_json::json!({}));
 
+        // Commit-ordered seq for the row this put inserts, taken BEFORE the
+        // first row-mutating statement (lock-order rule of next_object_seq).
+        let seq = next_object_seq(&mut tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
+
         let old = match versioning {
             VersioningState::Unversioned => {
                 // Find old, DELETE + INSERT.
@@ -430,7 +465,7 @@ impl MetadataStore for PgStore {
                 record.version_id = None;
                 record.is_latest = true;
                 record.is_delete_marker = false;
-                insert_object_row(&mut tx, &record, &metadata_json).await
+                insert_object_row(&mut tx, &record, &metadata_json, seq).await
                     .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
 
                 old // old blob to clean up
@@ -451,7 +486,7 @@ impl MetadataStore for PgStore {
                 record.version_id = Some(uuid::Uuid::new_v4().to_string());
                 record.is_latest = true;
                 record.is_delete_marker = false;
-                insert_object_row(&mut tx, &record, &metadata_json).await
+                insert_object_row(&mut tx, &record, &metadata_json, seq).await
                     .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
 
                 None // keep old versions, no cleanup
@@ -495,7 +530,7 @@ impl MetadataStore for PgStore {
                 record.version_id = None;
                 record.is_latest = true;
                 record.is_delete_marker = false;
-                insert_object_row(&mut tx, &record, &metadata_json).await
+                insert_object_row(&mut tx, &record, &metadata_json, seq).await
                     .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
 
                 old_null // clean up old null-version blob
@@ -628,14 +663,22 @@ impl MetadataStore for PgStore {
                     // converges via the manifest and isn't resurrected by
                     // anti-entropy. Single-node: remove the row.
                     if cluster_mode {
+                        // Commit-ordered seq, taken before the first DML
+                        // (lock-order rule of next_object_seq). One seq for
+                        // the single row of this key (an unversioned bucket
+                        // was never versioned -> at most one row matches).
+                        let seq = next_object_seq(&mut tx)
+                            .await
+                            .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
                         sqlx_core::query::query(
-                            "UPDATE objects SET seq = nextval('objects_seq'), is_tombstone = TRUE, is_delete_marker = FALSE, \
+                            "UPDATE objects SET seq = $4, is_tombstone = TRUE, is_delete_marker = FALSE, \
                              blob_id = '', size = 0, last_modified = $3 \
                              WHERE bucket = $1 AND key = $2",
                         )
                         .bind(bucket)
                         .bind(key)
                         .bind(Utc::now())
+                        .bind(seq)
                         .execute(&mut *tx)
                         .await
                         .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
@@ -666,6 +709,12 @@ impl MetadataStore for PgStore {
                 old // blob to clean up
             }
             VersioningState::Enabled => {
+                // Commit-ordered seq for the delete marker, taken before the
+                // first DML (lock-order rule of next_object_seq).
+                let seq = next_object_seq(&mut tx)
+                    .await
+                    .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+
                 // Mark current latest as not-latest.
                 sqlx_core::query::query(
                     "UPDATE objects SET is_latest = FALSE \
@@ -685,15 +734,16 @@ impl MetadataStore for PgStore {
                     "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, \
                      last_modified, metadata, encryption_algorithm, encryption_key_id, owner, \
                      version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, \
-                     legal_hold_status, storage_class, checksum_algorithm, checksum_value) \
+                     legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq) \
                      VALUES ($1, $2, '', 0, '', NULL, $3, $4, NULL, NULL, 'root', $5, TRUE, TRUE, \
-                     NULL, NULL, NULL, 'STANDARD', NULL, NULL)",
+                     NULL, NULL, NULL, 'STANDARD', NULL, NULL, $6)",
                 )
                 .bind(bucket)
                 .bind(key)
                 .bind(now)
                 .bind(&empty_metadata)
                 .bind(&version_id)
+                .bind(seq)
                 .execute(&mut *tx)
                 .await
                 .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
@@ -727,6 +777,12 @@ impl MetadataStore for PgStore {
             VersioningState::Suspended => {
                 // Delete existing null-version for cleanup.
                 let old_null = fetch_null_version(&mut tx, bucket, key)
+                    .await
+                    .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+
+                // Commit-ordered seq for the delete marker, taken before the
+                // first DML (lock-order rule of next_object_seq).
+                let seq = next_object_seq(&mut tx)
                     .await
                     .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
 
@@ -767,14 +823,15 @@ impl MetadataStore for PgStore {
                     "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, \
                      last_modified, metadata, encryption_algorithm, encryption_key_id, owner, \
                      version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, \
-                     legal_hold_status, storage_class, checksum_algorithm, checksum_value) \
+                     legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq) \
                      VALUES ($1, $2, '', 0, '', NULL, $3, $4, NULL, NULL, 'root', NULL, TRUE, TRUE, \
-                     NULL, NULL, NULL, 'STANDARD', NULL, NULL)",
+                     NULL, NULL, NULL, 'STANDARD', NULL, NULL, $5)",
                 )
                 .bind(bucket)
                 .bind(key)
                 .bind(now)
                 .bind(&empty_metadata)
+                .bind(seq)
                 .execute(&mut *tx)
                 .await
                 .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
@@ -871,22 +928,28 @@ impl MetadataStore for PgStore {
             // converges via the manifest and isn't resurrected by anti-entropy.
             // Single-node: remove the row.
             if cluster_mode {
+                // Commit-ordered seq, taken before the first DML (lock-order
+                // rule of next_object_seq). The WHERE targets one version row.
+                let seq = next_object_seq(&mut tx)
+                    .await
+                    .map_err(|e| ArcaError::Internal(format!("delete_object_version: {e}")))?;
                 let now = Utc::now();
                 if version_id == "null" {
                     sqlx_core::query::query(
-                        "UPDATE objects SET seq = nextval('objects_seq'), is_tombstone = TRUE, is_delete_marker = FALSE, \
+                        "UPDATE objects SET seq = $4, is_tombstone = TRUE, is_delete_marker = FALSE, \
                          blob_id = '', size = 0, last_modified = $3 \
                          WHERE bucket = $1 AND key = $2 AND version_id IS NULL",
                     )
                     .bind(bucket)
                     .bind(key)
                     .bind(now)
+                    .bind(seq)
                     .execute(&mut *tx)
                     .await
                     .map_err(|e| ArcaError::Internal(format!("delete_object_version: {e}")))?;
                 } else {
                     sqlx_core::query::query(
-                        "UPDATE objects SET seq = nextval('objects_seq'), is_tombstone = TRUE, is_delete_marker = FALSE, \
+                        "UPDATE objects SET seq = $5, is_tombstone = TRUE, is_delete_marker = FALSE, \
                          blob_id = '', size = 0, last_modified = $4 \
                          WHERE bucket = $1 AND key = $2 AND version_id = $3",
                     )
@@ -894,6 +957,7 @@ impl MetadataStore for PgStore {
                     .bind(key)
                     .bind(version_id)
                     .bind(now)
+                    .bind(seq)
                     .execute(&mut *tx)
                     .await
                     .map_err(|e| ArcaError::Internal(format!("delete_object_version: {e}")))?;
@@ -980,6 +1044,12 @@ impl MetadataStore for PgStore {
 
                 let should_write = existing.map_or(true, |ex| record.last_modified >= ex);
                 if should_write {
+                    // Commit-ordered seq before the first DML (lock-order rule
+                    // of next_object_seq). Re-stamped on every apply so the
+                    // reconciliation propagates transitively A->B->C.
+                    let seq = next_object_seq(&mut tx)
+                        .await
+                        .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
                     sqlx_core::query::query(
                         "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id = $3",
                     )
@@ -989,7 +1059,7 @@ impl MetadataStore for PgStore {
                     .execute(&mut *tx)
                     .await
                     .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
-                    insert_replicated_row(&mut tx, record, &metadata_json)
+                    insert_replicated_row(&mut tx, record, &metadata_json, seq)
                         .await
                         .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
                 }
@@ -1022,6 +1092,11 @@ impl MetadataStore for PgStore {
                     }
                 };
                 if should_write {
+                    // Commit-ordered seq before the first DML (lock-order rule
+                    // of next_object_seq).
+                    let seq = next_object_seq(&mut tx)
+                        .await
+                        .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
                     sqlx_core::query::query(
                         "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id IS NULL",
                     )
@@ -1030,7 +1105,7 @@ impl MetadataStore for PgStore {
                     .execute(&mut *tx)
                     .await
                     .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
-                    insert_replicated_row(&mut tx, record, &metadata_json)
+                    insert_replicated_row(&mut tx, record, &metadata_json, seq)
                         .await
                         .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
                 }
@@ -1062,16 +1137,23 @@ impl MetadataStore for PgStore {
         // onward and anti-entropy can't resurrect it. The `is_tombstone = FALSE`
         // guard makes re-delivery a no-op (no re-propagation churn). Absent row
         // → no-op; the origin's tombstone still arrives via anti-entropy.
+        //
+        // Commit-ordered seq before the first DML (lock-order rule of
+        // next_object_seq); a re-delivery no-op burns the value (harmless gap).
+        let seq = next_object_seq(&mut tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("apply_remote_version_delete: {e}")))?;
         let now = Utc::now();
         if version_id == "null" {
             sqlx_core::query::query(
-                "UPDATE objects SET seq = nextval('objects_seq'), is_tombstone = TRUE, is_delete_marker = FALSE, blob_id = '', \
+                "UPDATE objects SET seq = $4, is_tombstone = TRUE, is_delete_marker = FALSE, blob_id = '', \
                  size = 0, last_modified = $3 \
                  WHERE bucket = $1 AND key = $2 AND version_id IS NULL AND is_tombstone = FALSE",
             )
             .bind(bucket)
             .bind(key)
             .bind(now)
+            .bind(seq)
             .execute(&mut *tx)
             .await
             .map_err(|e| ArcaError::Internal(format!("apply_remote_version_delete: {e}")))?;
@@ -1085,7 +1167,7 @@ impl MetadataStore for PgStore {
             .map_err(|e| ArcaError::Internal(format!("apply_remote_version_delete: {e}")))?;
         } else {
             sqlx_core::query::query(
-                "UPDATE objects SET seq = nextval('objects_seq'), is_tombstone = TRUE, is_delete_marker = FALSE, blob_id = '', \
+                "UPDATE objects SET seq = $5, is_tombstone = TRUE, is_delete_marker = FALSE, blob_id = '', \
                  size = 0, last_modified = $4 \
                  WHERE bucket = $1 AND key = $2 AND version_id = $3 AND is_tombstone = FALSE",
             )
@@ -1093,6 +1175,7 @@ impl MetadataStore for PgStore {
             .bind(key)
             .bind(version_id)
             .bind(now)
+            .bind(seq)
             .execute(&mut *tx)
             .await
             .map_err(|e| ArcaError::Internal(format!("apply_remote_version_delete: {e}")))?;

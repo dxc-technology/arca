@@ -17,8 +17,8 @@ use std::time::Duration;
 
 use arca_auth::{sign_outbound_request, SignOutboundInput};
 use arca_core::cluster::{
-    ClusterManifest, ClusterManifestRequest, ClusterVersionDelete, ControlOp, ControlSnapshot,
-    CLUSTER_ACCESS_KEY, CLUSTER_REGION, CLUSTER_SIDECAR_HEADER,
+    ClusterManifest, ClusterManifestRequest, ClusterObjectAck, ClusterVersionDelete, ControlOp,
+    ControlSnapshot, CLUSTER_ACCESS_KEY, CLUSTER_REGION, CLUSTER_SIDECAR_HEADER,
 };
 use arca_core::store::{ByteStream, SidecarMeta};
 use arca_core::types::{BlobId, ObjectRecord};
@@ -84,34 +84,52 @@ impl ClusterClient {
 
     /// Replicates a fully-formed object row verbatim to a peer
     /// (`POST /cluster/v1/object`). The peer applies it via
-    /// `MetadataStore::apply_remote_object` (idempotent, LWW).
+    /// `MetadataStore::apply_remote_object` (idempotent, LWW) and returns a
+    /// [`ClusterObjectAck`] self-certifying what it durably holds, which the
+    /// origin counts against the write quorum (review §2.1).
     pub async fn send_object(
         &self,
         endpoint: &str,
         record: &ObjectRecord,
-    ) -> Result<(), ClusterError> {
+    ) -> Result<ClusterObjectAck, ClusterError> {
         let body = serde_json::to_vec(record).map_err(|e| ClusterError::Serde(e.to_string()))?;
-        self.post_json(endpoint, "/cluster/v1/object", body).await
+        let bytes = self
+            .post_json_recv(endpoint, "/cluster/v1/object", body)
+            .await?;
+        Ok(Self::parse_ack(&bytes))
     }
 
     /// Replicates a hard-delete of a single object version to a peer
     /// (`POST /cluster/v1/object/delete`). `version_id == "null"` targets the
-    /// null-version row.
+    /// null-version row. Returns the peer's [`ClusterObjectAck`].
     pub async fn send_version_delete(
         &self,
         endpoint: &str,
         bucket: &str,
         key: &str,
         version_id: &str,
-    ) -> Result<(), ClusterError> {
+    ) -> Result<ClusterObjectAck, ClusterError> {
         let payload = ClusterVersionDelete {
             bucket: bucket.to_string(),
             key: key.to_string(),
             version_id: version_id.to_string(),
         };
         let body = serde_json::to_vec(&payload).map_err(|e| ClusterError::Serde(e.to_string()))?;
-        self.post_json(endpoint, "/cluster/v1/object/delete", body)
-            .await
+        let bytes = self
+            .post_json_recv(endpoint, "/cluster/v1/object/delete", body)
+            .await?;
+        Ok(Self::parse_ack(&bytes))
+    }
+
+    /// Parses a [`ClusterObjectAck`] from a 2xx response body. A peer running a
+    /// pre-ACK version answers `200 OK` with an empty body (rolling-upgrade
+    /// path, decision H10): treat it as a full ACK — the 200 already meant
+    /// "applied", and the legacy contract had no blob self-certification.
+    fn parse_ack(body: &[u8]) -> ClusterObjectAck {
+        serde_json::from_slice(body).unwrap_or(ClusterObjectAck {
+            applied: true,
+            has_blob: true,
+        })
     }
 
     /// Replicates a control-plane operation to a peer (`POST /cluster/v1/op`).

@@ -21,9 +21,17 @@ pub fn s3_error_response(err: S3Error) -> Response {
     let placeholder_id = err.request_id.clone();
     let body = err.to_xml();
 
-    let mut response = Response::builder()
+    let mut builder = Response::builder()
         .status(status)
-        .header("Content-Type", "application/xml")
+        .header("Content-Type", "application/xml");
+    // Every retriable 503 carries a Retry-After hint (review M4): the cluster
+    // quorum/syncing refusals flow through ServiceUnavailable, and well-behaved
+    // clients honor the header instead of hammering. (SlowDown 503s come from
+    // the rate-limit middleware, which sets its own.)
+    if err.code == S3ErrorCode::ServiceUnavailable {
+        builder = builder.header("Retry-After", "5");
+    }
+    let mut response = builder
         .body(axum::body::Body::from(body))
         .expect("build error response");
     response

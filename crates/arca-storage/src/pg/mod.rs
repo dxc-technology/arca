@@ -80,6 +80,11 @@ const MIGRATIONS: &[Migration] = &[
         description: "Add control_tombstones table (cluster control-plane delete convergence)",
         sql: include_str!("migrations/0008_control_tombstones.sql"),
     },
+    Migration {
+        version: 9,
+        description: "Replace the objects_seq sequence with a commit-ordered object_seq counter (review §2.2)",
+        sql: include_str!("migrations/0009_commit_ordered_seq.sql"),
+    },
 ];
 
 impl PgStore {

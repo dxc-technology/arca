@@ -345,3 +345,57 @@ class TestRangeRead:
         s3_client.put_object(Bucket=BUCKET, Key="range.txt", Body=body)
         resp = s3_client.get_object(Bucket=BUCKET, Key="range.txt", Range="bytes=3-6")
         assert resp["Body"].read() == b"3456"
+
+
+# ---------- Concurrent writes (commit-ordered seq counter) ----------
+
+
+class TestConcurrentWrites:
+    """Concurrency smoke test for the commit-ordered object_seq counter
+    (HA hardening review §2.2, pg migration 0009).
+
+    Every object write serializes its final stretch on the single-row counter;
+    this exercises many concurrent writers (puts, overwrites and deletes mixed,
+    matching the put/tombstone lock paths) to catch deadlocks or lost writes in
+    the counter locking. The cross-node manifest ordering itself is covered by
+    the cluster suite; here we pin that the counter cannot wedge or drop rows
+    under the connection pool's parallelism.
+    """
+
+    def test_parallel_puts_and_deletes_all_land(self, s3_client):
+        from concurrent.futures import ThreadPoolExecutor
+
+        keys = [f"concurrent/{i:03d}.bin" for i in range(40)]
+
+        def put(key):
+            s3_client.put_object(Bucket=BUCKET, Key=key, Body=key.encode())
+            return key
+
+        # Phase 1: 40 parallel creates.
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            assert sorted(pool.map(put, keys)) == keys
+
+        # Phase 2: overwrite half and delete a quarter, in parallel (mixes the
+        # insert and delete lock paths against the shared counter row).
+        def overwrite(key):
+            s3_client.put_object(Bucket=BUCKET, Key=key, Body=b"v2:" + key.encode())
+
+        def delete(key):
+            s3_client.delete_object(Bucket=BUCKET, Key=key)
+
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            futures = [pool.submit(overwrite, k) for k in keys[:20]]
+            futures += [pool.submit(delete, k) for k in keys[30:]]
+            for f in futures:
+                f.result()
+
+        # Every surviving object is present with the right content; every
+        # deleted one is gone.
+        listed = set()
+        paginator = s3_client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=BUCKET, Prefix="concurrent/"):
+            listed.update(o["Key"] for o in page.get("Contents", []))
+        assert listed == set(keys[:30])
+        for key in keys[:20]:
+            body = s3_client.get_object(Bucket=BUCKET, Key=key)["Body"].read()
+            assert body == b"v2:" + key.encode()

@@ -38,16 +38,16 @@ The Phase 29 review ([`arca-phase-29-ha-review.md`](https://github.com/dxc-techn
 
 The review's three P0s plus the §2.4 prerequisite. No new test infrastructure required (unit + the existing cluster suite); partition-based verification arrives in R2.
 
-- [ ] **§2.4 Parallel fan-out** — replace the sequential `for endpoint in live_peers()` loops with `futures::future::join_all` collecting `Vec<Result>`: `cluster_meta.rs` (`fan_out_object` and the delete/op fan-outs, lines ~99/114/148), `cluster_blob.rs` (`fan_out`, ~77/107), `cluster_control.rs` (`fan_out_op`). Verify `ClusterClient` has a per-request timeout (reqwest); otherwise add one (default ~10 s).
-- [ ] **§2.1 True quorum (decisions H1, H2, H4)**:
-    - [ ] response of `POST /cluster/v1/object` → JSON `{applied: bool, has_blob: bool}` (handler `handlers/cluster.rs:165-185`); `has_blob` = sidecar present when the row references a blob.
-    - [ ] `ClusterMetadataStore::put_object` (`cluster_meta.rs:227-238`): after the local write, parallel fan-out, `acks = 1 + successes_with_blob`; if `acks < write_quorum` in mode=quorum → error mapped to `503 ServiceUnavailable` with `Retry-After: 5`. Same logic for version-delete/tombstone and delete marker.
-    - [ ] mode=available: unchanged (ACKs ignored).
-    - [ ] pure function `quorum_satisfied(local+acks, write_quorum)` with unit tests; update the module doc-comment (remove the absolute "no divergence", describe the real semantics: durability quorum at ACK time, no rollback, convergence via anti-entropy).
-    - [ ] integration: the existing phases B/C must stay green (2 alive → writes OK; 1 alive → 503).
-- [ ] **§2.2 PG commit-ordered cursor (decision H3)** — pg migration (next free number): `object_seq` table initialized at `MAX(seq)`; replace `nextval('objects_seq')` with `UPDATE object_seq SET v=v+1 RETURNING v` inside the same transaction in all the write paths (`pg/metadata.rs`: put/apply/delete/tombstone); drop the sequence; a comment explaining the commit-order guarantee (mirroring the SQLite comment on `object_seq`). A concurrency smoke test in the PG suite if feasible.
-- [ ] **§2.3 Tombstone-first in `apply_control_merge`** (`control_merge.rs:47-66`): adopt the tombstones BEFORE executing the deletes (for every entity); a unit test verifying the call order (a mock store recording the sequence) and the crash window (tombstone present + row alive = safe state, converges on the next round).
-- [ ] CHANGELOG + update `ha.md` (consistency section: real quorum semantics, no rollback) — the full doc pass remains in R9.
+- [x] **§2.4 Parallel fan-out** — replaced the sequential loops with `futures_util::future::join_all`: `cluster_meta.rs` (`fan_out_object`, `fan_out_version_delete`, `fan_out_op`), `cluster_blob.rs` (`fan_out`), `cluster_control.rs` (`fan_out_op`). `ClusterClient` already had a per-request reqwest timeout (`[cluster].request_timeout_seconds`, default 10 s) — verified, nothing to add.
+- [x] **§2.1 True quorum (decisions H1, H2, H4)**:
+    - [x] response of `POST /cluster/v1/object` (and `/object/delete`) → JSON `ClusterObjectAck {applied, has_blob}`; `has_blob` = sidecar present when the row references a blob, vacuously true otherwise (deletes/markers/tombstones). Legacy peers answering an empty 200 count as a full ack (H10 rolling upgrade, handled in `ClusterClient::parse_ack`).
+    - [x] `ClusterMetadataStore::put_object`: after the local write, parallel fan-out, `acks = 1 + full_acks`; shortfall in mode=quorum → `503 ServiceUnavailable` + `Retry-After: 5` (header added in `s3_error_response` for every ServiceUnavailable). Same enforcement in `delete_object` (marker + version-delete branches) and `delete_object_version`.
+    - [x] mode=available: unchanged (ACKs ignored).
+    - [x] pure function `quorum_satisfied(acks, write_quorum)` in `arca-core::cluster` with unit tests; `cluster_meta.rs` module doc rewritten (admission gate + ACK counting, no rollback, anti-entropy convergence; "no divergence" absolute removed). 8 new unit tests total (quorum_satisfied ×2, control_merge ×2, cluster_meta ×4 incl. a fake-peer ACK server; the old `quorum_mode_writes_with_majority_despite_unreachable_peer` flipped into `quorum_mode_refuses_write_when_acks_below_quorum`).
+    - [x] integration: full `bin/test cluster` green (phases A–F; B: 2 alive → writes OK with real ACKs; C: 1 alive → 503).
+- [x] **§2.2 PG commit-ordered cursor (decision H3)** — pg migration 0009: `object_seq` single-row counter seeded `GREATEST(MAX(seq), objects_seq.last_value)`; all write paths (`put_object` ×3 branches, delete marker ×2, tombstone UPDATEs ×5, `apply_remote_object` ×2) now take the seq via `next_object_seq` (`UPDATE ... RETURNING`) inside the row's transaction; sequence + column DEFAULT dropped. Commit-order guarantee + a uniform seq→rows lock-order rule (deadlock avoidance) documented on the helper. Concurrency smoke test added to the PG suite (40 parallel puts + mixed overwrite/delete) — `bin/test postgres` green (21 tests).
+- [x] **§2.3 Tombstone-first in `apply_control_merge`** (`control_merge.rs`): tombstones adopted BEFORE upserts and deletes (clears stay last); TDD unit test with a recording mock store pinning the order (red on the old code, green after); a comment in `reconcile_peer_control` pins that bucket deletes also run after the adoption.
+- [x] CHANGELOG (Unreleased: Changed ×2, Fixed ×2) + `ha.md` consistency section updated (ACK-time durability quorum, two enforcement layers, no-rollback warning box, LWW scope per mode) — the full doc pass remains in R9.
 
 *Outcome: quorum mode delivers what it promises at ACK time; the PG incremental sync loses no rows; the control merge no longer has the resurrection window.*
 
@@ -113,6 +113,7 @@ The proving ground of the R1 fixes and of everything else. Extends `bin/cluster`
     - [ ] include `multipart_uploads` + `parts` in the reconcile snapshot with a `multipart:<upload_id>` tombstone registered on Complete and Abort (a closed upload must not resurrect).
     - [ ] `ClusterBlobStore::concat` (`cluster_blob.rs:179-186`): pre-check the part sidecars; missing ones are fetched from peers (reusing the repair path) before delegating to `inner.concat`.
     - [ ] tests: abort with a node down → at re-entry the upload does not exist on the node; Complete with a locally missing part → succeeds via fetch-from-peer (unit or targeted integration).
+- [ ] **N1 Object-lock changes invisible to anti-entropy** (found during R1, not in the review): `set_object_retention` / `set_object_legal_hold` UPDATE the row WITHOUT a new `seq` on BOTH backends (`sqlite/metadata.rs:1391-1457`, `pg/metadata.rs` retention/legal-hold UPDATEs), so a peer that was down during a lock change never receives it via the changed-since manifest — only the real-time `replicate_lock_change` fan-out covers it. Fix: stamp a fresh `seq` (next_object_seq) in both backends' lock UPDATEs; the peer's `apply_remote_object` equal-tuple LWW guard (`>=`) already accepts the row with updated lock columns. Add to the R2/R5 catch-up test: a retention change with the node down → reconciled at re-entry.
 - [ ] **M7 Manifest churn**: in `apply_remote_object` (sqlite and pg), a no-op without stamping a new `seq` when the incoming row is identical to the existing one.
 - [ ] **§3.6 SSE-C in the cluster — spike (2 h timebox)**: verify whether wrapping the SSE-C path in `ClusterBlobStore` suffices (`write_sidecar` fan-out + read-repair); if yes implement + test; if not, create **TD-017** in `TECH_DEBT.md` (+ a code marker at `main.rs:166`) and document the limitation in `ha.md` (R9). Either way the outcome must be tracked.
 - [ ] **D12.2 Export/import and `node_id`**: the export omits `node_id` AND the import refuses/skips it (double defense), so an export imported on another node does not rewrite its identity (`admin_export.rs:138-145`, `admin_import.rs:99`).
@@ -140,7 +141,7 @@ The proving ground of the R1 fixes and of everything else. Extends `bin/cluster`
 - [ ] **D3c Rewind detection**: the `ping` (R3) exposes `max_seq`; if the local HWM for that peer exceeds its `max_seq` → reset the HWM to 0 + a warning (covers restore-from-backup without restarting the peers).
 - [ ] **M1 Stuck HWM**: after K=5 consecutive failures on the same `seq` in `apply_remote_object` (`anti_entropy.rs:361-371`), skip the entry with a warning + a counter visible in `/admin/cluster`.
 - [ ] **M2 Repair budget**: `repair_blobs` (`anti_entropy.rs:154-206`) with a per-tick budget (default 100 blobs) + a resume cursor; no more scans monopolizing the worker for hours.
-- [ ] **M4 `Retry-After`**: on ALL cluster 503s (missing quorum, syncing, size_exceeded) — the rate limiter already does it.
+- [ ] **M4 `Retry-After`**: on ALL cluster 503s — since R1 `s3_error_response` adds it to every `ServiceUnavailable`, so the quorum 503 already carries it and the new syncing/size_exceeded 503s inherit it automatically; here just verify they do (the rate limiter already sets its own).
 - [ ] **M8**: `tracing::warn!` on the mtime→now fallback in `fs/blob.rs:703-708`.
 - [ ] Update the console topology card if the new fields are needed (lag, syncing, flags): minimal visualization, the console bulk is R8.
 
@@ -185,10 +186,10 @@ Update the Status column as work proceeds: ⬜ to do, 🔧 in progress, ✅ done
 
 | Finding | Short description | Milestone | Status |
 |---|---|---|---|
-| §2.1 | Quorum = admission gate, not a write quorum | R1 | ⬜ |
-| §2.2 | `seq` cursor race on PostgreSQL | R1 | ⬜ |
-| §2.3 | Deletes before tombstones in the control merge | R1 | ⬜ |
-| §2.4 | Sequential fan-out | R1 | ⬜ |
+| §2.1 | Quorum = admission gate, not a write quorum | R1 | ✅ |
+| §2.2 | `seq` cursor race on PostgreSQL | R1 | ✅ |
+| §2.3 | Deletes before tombstones in the control merge | R1 | ✅ |
+| §2.4 | Sequential fan-out | R1 | ✅ |
 | §3.1 | No anti-replay window | R4 | ⬜ |
 | §3.2 | Tombstone GC blind to liveness | R3 | ⬜ |
 | §3.3 | Workers duplicated on every node | R6 | ⬜ |
@@ -202,10 +203,11 @@ Update the Status column as work proceeds: ⬜ to do, 🔧 in progress, ✅ done
 | M1 | HWM stuck on a failing entry | R7 | ⬜ |
 | M2 | Repair without a budget | R7 | ⬜ |
 | M3 | Membership without eviction | R3 | ⬜ |
-| M4 | 503 without Retry-After | R7 | ⬜ |
+| M4 | 503 without Retry-After | R7 | 🔧 (quorum 503s carry it since R1 — `s3_error_response` adds it to every ServiceUnavailable; R7 verifies syncing/size_exceeded inherit it) |
 | M5 | 1-character secret accepted | R4 | ⬜ |
 | M6 | Path blob_id not validated | R4 | ⬜ |
 | M7 | seq churn on identical rows | R5 | ⬜ |
+| N1 | Lock changes (retention/legal-hold) don't bump `seq` → invisible to anti-entropy (found during R1) | R5 | ⬜ |
 | M8 | Silent mtime fallback | R7 | ⬜ |
 | §5.1 | No available-mode test | R2 | ⬜ |
 | §5.2 | No control-plane catch-up test | R2 | ⬜ |

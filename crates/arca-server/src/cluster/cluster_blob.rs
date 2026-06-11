@@ -71,11 +71,16 @@ impl ClusterBlobStore {
             .collect()
     }
 
-    /// Replicates a blob (raw bytes + sidecar) to every live peer. Best-effort;
-    /// failures are logged and left for anti-entropy (M4) to reconcile.
+    /// Replicates a blob (raw bytes + sidecar) to every live peer IN PARALLEL
+    /// (§2.4). Best-effort: failures are logged and left for anti-entropy to
+    /// reconcile — durability is accounted for at the object-row fan-out, where
+    /// each peer self-certifies blob presence in its ack (decision H2), so a
+    /// peer this fan-out missed simply cannot contribute to the write quorum.
     async fn fan_out(&self, blob_id: &BlobId, meta: &SidecarMeta) {
-        for endpoint in self.live_peers() {
+        let sends = self.live_peers().into_iter().map(|endpoint| async move {
             // Composite blobs have no physical file: ship the sidecar only.
+            // Each send opens its own read of the raw bytes (a ByteStream is
+            // not cloneable; the OS page cache makes the re-reads cheap).
             let body: ByteStream = if meta.composite.is_some() {
                 Box::pin(futures_util::stream::empty::<
                     Result<bytes::Bytes, std::io::Error>,
@@ -85,20 +90,20 @@ impl ClusterBlobStore {
                     Ok(r) => r.stream,
                     Err(e) => {
                         tracing::warn!(error = %e, blob_id = %blob_id.0, "cluster fan-out: read_raw failed");
-                        continue;
+                        return;
                     }
                 }
             };
             if let Err(e) = self.client.send_blob(&endpoint, blob_id, meta, body).await {
-                // TODO(M4): persist a hint so this peer is backfilled on return.
                 tracing::warn!(
                     error = %e,
                     peer = %endpoint,
                     blob_id = %blob_id.0,
-                    "cluster blob fan-out failed (will reconcile via anti-entropy in M4)"
+                    "cluster blob fan-out failed (will reconcile via anti-entropy)"
                 );
             }
-        }
+        });
+        futures_util::future::join_all(sends).await;
     }
 
     /// Attempts to repair a locally-missing blob by fetching it from a live

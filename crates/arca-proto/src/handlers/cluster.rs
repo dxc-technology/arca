@@ -22,8 +22,8 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 
 use arca_core::cluster::{
-    ClusterManifest, ClusterManifestRequest, ClusterVersionDelete, ControlOp, ManifestEntry,
-    CLUSTER_SIDECAR_HEADER,
+    ClusterManifest, ClusterManifestRequest, ClusterObjectAck, ClusterVersionDelete, ControlOp,
+    ManifestEntry, CLUSTER_SIDECAR_HEADER,
 };
 use arca_core::store::SidecarMeta;
 use arca_core::types::{BlobId, ObjectRecord};
@@ -167,6 +167,12 @@ pub async fn get_blob(State(state): State<AppState>, Path(blob_id): Path<String>
 /// The body is a JSON [`ObjectRecord`]; it is applied via
 /// [`arca_core::store::MetadataStore::apply_remote_object`] (idempotent upsert,
 /// LWW conflict resolution, deterministic `is_latest` recompute).
+///
+/// Responds with a [`ClusterObjectAck`] (review §2.1, decision H2): this peer
+/// self-certifies that the row is applied AND that the referenced blob is
+/// durably here (sidecar present — the blob fans out on `write_sidecar` before
+/// the origin sends the row, so a missing sidecar means that fan-out failed).
+/// The origin counts full ACKs against the write quorum.
 pub async fn receive_object(State(state): State<AppState>, body: Bytes) -> Response {
     if state.cluster.is_none() {
         return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster");
@@ -176,7 +182,22 @@ pub async fn receive_object(State(state): State<AppState>, body: Bytes) -> Respo
         Err(e) => return err(StatusCode::BAD_REQUEST, &format!("invalid object json: {e}")),
     };
     match state.metadata.apply_remote_object(&record).await {
-        Ok(()) => StatusCode::OK.into_response(),
+        Ok(()) => {
+            let has_blob = if record.blob_id.0.is_empty() {
+                // Delete markers / tombstones reference no blob: vacuously held.
+                true
+            } else {
+                match &state.cluster_raw_blob {
+                    Some(raw) => matches!(raw.read_sidecar(&record.blob_id).await, Ok(Some(_))),
+                    None => false,
+                }
+            };
+            Json(ClusterObjectAck {
+                applied: true,
+                has_blob,
+            })
+            .into_response()
+        }
         Err(e) => err(
             StatusCode::INTERNAL_SERVER_ERROR,
             &format!("apply_remote_object failed: {e}"),
@@ -188,6 +209,10 @@ pub async fn receive_object(State(state): State<AppState>, body: Bytes) -> Respo
 ///
 /// The body is a JSON [`ClusterVersionDelete`]; applied via
 /// [`arca_core::store::MetadataStore::apply_remote_version_delete`] (idempotent).
+///
+/// Responds with a [`ClusterObjectAck`] so the origin can count delete ACKs
+/// against the write quorum; a delete references no blob, so `has_blob` is
+/// vacuously true (decision H2).
 pub async fn receive_version_delete(State(state): State<AppState>, body: Bytes) -> Response {
     if state.cluster.is_none() {
         return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster");
@@ -201,7 +226,11 @@ pub async fn receive_version_delete(State(state): State<AppState>, body: Bytes) 
         .apply_remote_version_delete(&req.bucket, &req.key, &req.version_id)
         .await
     {
-        Ok(()) => StatusCode::OK.into_response(),
+        Ok(()) => Json(ClusterObjectAck {
+            applied: true,
+            has_blob: true,
+        })
+        .into_response(),
         Err(e) => err(
             StatusCode::INTERNAL_SERVER_ERROR,
             &format!("apply_remote_version_delete failed: {e}"),

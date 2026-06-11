@@ -58,7 +58,7 @@ Every mutation fans out to live peers **in real time** over the internal `/clust
 - **Data plane** — object rows and blob bytes (`PutObject`, multipart, deletes, retention/legal-hold, tags).
 - **Control plane** — buckets, bucket config, credentials, users, teams, grants, server settings.
 
-Real-time fan-out is best-effort. A node that was **down, slow, or unreachable** during a write catches up on its own through several converging mechanisms — this is what makes the cluster self-healing without operator action:
+Real-time fan-out is synchronous (awaited before the client gets its response) and sent to all peers in parallel; in `quorum` mode its acknowledgements decide whether the write is accepted at all (see [Consistency](#consistency-model)), in `available` mode it is best-effort. Either way, a node that was **down, slow, or unreachable** during a write catches up on its own through several converging mechanisms — this is what makes the cluster self-healing without operator action:
 
 1. **Anti-entropy (objects)** — each node periodically pulls every peer's *changed-since* manifest (an indexed, incremental `seq` cursor) and applies the rows it is missing. Cheap enough to run frequently.
 2. **Control-plane reconcile** — the control plane is small, so nodes periodically exchange a full snapshot and merge it last-writer-wins (see [Consistency](#consistency-model)).
@@ -70,8 +70,11 @@ Real-time fan-out is best-effort. A node that was **down, slow, or unreachable**
 
 Two policies, set per cluster with `[cluster].mode`:
 
-- **`quorum` (CP, default)** — a write must reach a **majority** of nodes (`floor(cluster_size/2) + 1`) to be acknowledged. Below majority a node refuses writes with `503 ServiceUnavailable` and stays **read-only**, so the cluster never diverges into conflicting writes. With `cluster_size = 3` the write quorum is `2`: the cluster tolerates losing **one** node and keeps serving reads and writes.
+- **`quorum` (CP, default)** — a write is acknowledged only when a **majority** of nodes (`floor(cluster_size/2) + 1`) durably hold it *at acknowledgement time*: the local copy plus every peer that confirmed, in its replication response, that it applied the row **and** has the blob. Two layers enforce this: a fast admission gate refuses immediately (`503 ServiceUnavailable`, with `Retry-After`) when membership already knows a majority is unreachable, and the fan-out ACK count catches what the gate cannot see — a peer believed alive that did not actually receive the copy. With `cluster_size = 3` the write quorum is `2`: the cluster tolerates losing **one** node and keeps serving reads and writes.
 - **`available` (AP)** — any single node accepts writes and fans out best-effort. Maximum availability, at the cost of accepting writes that may momentarily diverge and converge later.
+
+!!! warning "A quorum error does not undo the write"
+    When a write fails the quorum (`503`), the copy already written on the serving node is **not rolled back** — as in any quorum system without distributed transactions, the error means *"not acknowledged as replicated"*, not *"undone"*. Anti-entropy will propagate that local copy to the peers (it survives), or a client retry simply overwrites it. What the quorum guarantees is the converse: every write acknowledged with `200 OK` is durable on a majority of nodes at that moment.
 
 How a 3-node cluster behaves as nodes are lost (writes need a majority of `2` in `quorum`):
 
@@ -86,7 +89,7 @@ flowchart LR
     classDef warn fill:#ffb30033,stroke:#fb8c00,stroke-width:2px;
 ```
 
-In `quorum` the cluster trades availability for safety at the majority boundary; in `available` it keeps accepting writes the whole way down. Both modes are **eventually consistent** across nodes: replication and reconcile are asynchronous, and conflicts resolve **last-writer-wins (LWW)**. The LWW key is `(last_modified, version_id, blob_id)` — the `blob_id` is a stable tiebreaker so two nodes that wrote the "same" null-version object at the same wall-clock instant still pick the same winner deterministically, without a coordination protocol.
+In `quorum` the cluster trades availability for safety at the majority boundary; in `available` it keeps accepting writes the whole way down. Across nodes both modes converge **eventually**: reads are always served locally, reconcile is asynchronous, and conflicts resolve **last-writer-wins (LWW)**. The LWW key is `(last_modified, version_id, blob_id)` — the `blob_id` is a stable tiebreaker so two nodes that wrote the "same" null-version object at the same wall-clock instant still pick the same winner deterministically, without a coordination protocol. The difference is which writes can conflict at all: in `quorum` mode every *acknowledged* write reached a majority, so two acknowledged writes to the same key cannot be accepted on two disconnected sides of a partition — LWW only ever has to resolve a client-visible conflict in `available` mode (or against writes the client was told did not reach quorum).
 
 > **Read-after-write:** within a single node it is immediate. Across the cluster (through a round-robin load balancer) a read may briefly hit a node that has not yet received the write. Pin a client to one node (LB sticky sessions) if you need read-your-writes through the balancer.
 
