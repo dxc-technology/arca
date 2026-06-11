@@ -829,6 +829,18 @@ impl MetadataStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("purge_tombstones: {e}")))
     }
 
+    async fn current_object_seq(&self) -> Result<u64, ArcaError> {
+        // The counter, not MAX(seq) over rows: purged tombstones make the row
+        // maximum go backwards, which would false-alarm D3c rewind detection.
+        self.read_conn()
+            .call(move |conn| {
+                let v: i64 = conn.query_row("SELECT value FROM object_seq", [], |row| row.get(0))?;
+                Ok(v as u64)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("current_object_seq: {e}")))
+    }
+
     async fn list_referenced_blob_ids(&self) -> Result<Vec<BlobId>, ArcaError> {
         self.read_conn()
             .call(move |conn| {
@@ -3107,6 +3119,31 @@ mod tests {
         }
         let page = store.list_rows_changed_since(0, 2).await.unwrap();
         assert_eq!(page.len(), 2, "limit caps the batch");
+    }
+
+    #[tokio::test]
+    async fn current_object_seq_tracks_the_counter() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        assert_eq!(store.current_object_seq().await.unwrap(), 0, "fresh store");
+
+        store.put_object(&make_record("b", "k1")).await.unwrap();
+        store.put_object(&make_record("b", "k2")).await.unwrap();
+        let after_writes = store.current_object_seq().await.unwrap();
+        let max_listed = store
+            .list_rows_changed_since(0, 100)
+            .await
+            .unwrap()
+            .iter()
+            .map(|(s, _)| *s)
+            .max()
+            .unwrap();
+        assert_eq!(
+            after_writes, max_listed,
+            "counter equals the highest assigned seq"
+        );
+        // Reading must not advance it.
+        assert_eq!(store.current_object_seq().await.unwrap(), after_writes);
     }
 
     #[tokio::test]

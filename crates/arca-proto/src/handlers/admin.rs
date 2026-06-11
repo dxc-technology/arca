@@ -177,6 +177,11 @@ struct ClusterNodeView {
     last_seen: Option<String>,
     /// True for the node serving this request.
     local: bool,
+    /// Whether the node proved possession of the cluster secret on its most
+    /// recent probe (decision H12). A non-authenticated live node — a rogue,
+    /// a drifted-secret node, a legacy version — receives no replication
+    /// fan-out and does not count toward the write quorum.
+    authenticated: bool,
     /// Whether this node's cluster-critical config matches the local node's.
     config_ok: bool,
 }
@@ -199,15 +204,28 @@ struct ClusterAdminResponse {
     /// Whether writes can currently be acknowledged.
     #[serde(skip_serializing_if = "Option::is_none")]
     has_write_quorum: Option<bool>,
-    /// Live nodes (including self).
+    /// Live nodes (including self) — visibility count, drift/auth included.
     #[serde(skip_serializing_if = "Option::is_none")]
     live_node_count: Option<usize>,
+    /// Nodes that count for replication (alive + authenticated +
+    /// config-aligned, including self) — what the write quorum is measured
+    /// against (decisions H12/H7).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    eligible_node_count: Option<usize>,
     /// Total known nodes (including self).
     #[serde(skip_serializing_if = "Option::is_none")]
     node_count: Option<usize>,
     /// False when any live peer's cluster-critical config differs from ours.
     #[serde(skip_serializing_if = "Option::is_none")]
     config_aligned: Option<bool>,
+    /// Decision H6 (D3a): true when more eligible nodes than `cluster_size`
+    /// are live — the write gate is closed (fail-closed) until resized.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    size_exceeded: Option<bool>,
+    /// Review §3.2: true while tombstone GC is skipped because a known peer
+    /// has been unreachable beyond the grace window.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tombstone_gc_blocked: Option<bool>,
     /// Cluster-effective disk capacity (bytes): the MINIMUM total across live
     /// nodes. With full replication the smallest node bounds the cluster.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -237,8 +255,11 @@ pub async fn cluster(State(state): State<AppState>) -> Response {
                 write_quorum: None,
                 has_write_quorum: None,
                 live_node_count: None,
+                eligible_node_count: None,
                 node_count: None,
                 config_aligned: None,
+                size_exceeded: None,
+                tombstone_gc_blocked: None,
                 disk_total_bytes: None,
                 disk_available_bytes: None,
                 nodes: Vec::new(),
@@ -261,6 +282,7 @@ pub async fn cluster(State(state): State<AppState>) -> Response {
         alive: true,
         last_seen: None,
         local: true,
+        authenticated: true, // trivially: it holds its own secret
         config_ok: true,
     });
     // A live peer whose config fingerprint differs is flagged; dead peers are
@@ -273,6 +295,7 @@ pub async fn cluster(State(state): State<AppState>) -> Response {
             alive: p.alive,
             last_seen: p.last_seen.map(|t| t.to_rfc3339()),
             local: false,
+            authenticated: p.authenticated,
             config_ok: p.config_ok,
         });
     }
@@ -293,8 +316,11 @@ pub async fn cluster(State(state): State<AppState>) -> Response {
         write_quorum: snap.write_quorum,
         has_write_quorum: Some(snap.has_write_quorum),
         live_node_count: Some(snap.live_node_count),
+        eligible_node_count: Some(snap.eligible_node_count),
         node_count: Some(node_count),
         config_aligned: Some(config_aligned),
+        size_exceeded: Some(snap.size_exceeded),
+        tombstone_gc_blocked: Some(snap.tombstone_gc_blocked),
         disk_total_bytes,
         disk_available_bytes,
         nodes,

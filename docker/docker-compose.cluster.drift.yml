@@ -1,9 +1,10 @@
 # Overlay for the config-drift detection integration test.
 #
-# Starts arca-3 with a DIFFERENT cluster secret (config-drift.toml). Its
-# config_fingerprint then differs from arca-1/arca-2, which the membership layer
+# Starts arca-3 with a DIFFERENT cluster secret (config-drift.toml). It then
+# rejects arca-1/arca-2's authenticated ping (403), which the membership layer
 # detects and surfaces on /admin/cluster (config_aligned:false, the drifted node
-# config_ok:false) — without the cluster refusing to run.
+# config_ok:false + authenticated:false) and EXCLUDES it from the write quorum —
+# without the cluster refusing to run.
 #
 # Apply on top of the base cluster compose:
 #   docker compose -p arca-cluster \

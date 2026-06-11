@@ -60,13 +60,16 @@ impl ClusterBlobStore {
         }
     }
 
-    /// Endpoints of peers currently considered alive (membership already
-    /// excludes this node).
+    /// Endpoints of peers eligible for replication (membership already
+    /// excludes this node): alive AND authenticated (proved possession of the
+    /// cluster secret — decision H12) AND config-aligned (H7). Blob bytes are
+    /// never shipped to — nor repaired from — a peer that has not proven
+    /// itself (review §3.7(A)).
     fn live_peers(&self) -> Vec<String> {
         self.cluster
             .peers()
             .into_iter()
-            .filter(|p| p.alive)
+            .filter(|p| p.eligible())
             .map(|p| p.endpoint)
             .collect()
     }

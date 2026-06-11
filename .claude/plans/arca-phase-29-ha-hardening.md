@@ -70,17 +70,17 @@ The proving ground of the R1 fixes and of everything else. Extends `bin/cluster`
 
 ## R3 — Membership and quorum integrity (ghost quorum, guards)
 
-- [ ] **D1 / §3.7(A) Authenticate the peer, then gate fan-out AND quorum on it (decision H12)**: it is not enough to sign our outbound probe — the *peer* must prove it holds the secret (or presents a cluster-CA cert) before we trust it, else a rogue receives all fan-out with no secret. Implement the chosen H12 path:
-    - mutual-TLS path (CONFIRMED 2026-06-11, see H12): once R4 wires the shared cluster CA, membership only trusts a peer whose cert validates against it;
-    - secret challenge-response (CONFIRMED 2026-06-11: ships for ALL clusters as the baseline peer-auth layer, not just CA-averse ones — it closes the rogue peer on plain-HTTP deployments too): new `GET /cluster/v1/ping` under `cluster_auth` returning `{node_id, config_fingerprint, disk_total, disk_available, max_seq, nonce_mac}` where `nonce_mac = HMAC(secret, our_nonce)` proves possession to us (`max_seq` also serves D3c in R7); the membership probe sends a fresh nonce and verifies the MAC, with a fallback to `/cluster/v1/health` on 404 (legacy peer, H10, logged).
-    - **`live_peers()` (fan-out target list in `cluster_blob.rs:65`/`cluster_meta.rs:73`) and `has_write_quorum` count only peers that passed peer-authentication AND are `config_ok`** — this is the actual fix for §3.7(A), not just the quorum gate of H7.
-- [ ] **§3.5 / §3.7(B) Minimized public health**: the unauthenticated `/cluster/v1/health` answers only `{status, node_id}` — the `config_fingerprint`, disk stats and `max_seq` move to the authenticated ping. This removes the offline brute-force oracle for the secret (the truncated SHA-256 over mostly-guessable inputs, `cluster.rs:56-77`). Update any consumers (legacy membership, docs).
-- [ ] **H7 Drift out of the quorum**: a peer with `config_ok=false` excluded from `has_write_quorum` (`cluster.rs:775-799`); it stays in `/admin/cluster` with the drift flag; the test phase F extended: with a diverging secret the node must NOT sustain the quorum (3 nodes, 1 drifted → quorum 2 still ok; 2 drifted → 503).
-- [ ] **Failure-detector tolerance (D12.3, plan line 73)**: dead after 2 consecutive ping failures (not 1; `membership.rs:104`), alive at the first success. A comment on the why.
-- [ ] **D3a `cluster_size` guard (decision H6, confirmed: fail-closed, no escape hatch)**: in quorum mode, if the observed live nodes (including self) exceed `cluster_size` → write gate closed (503 with an explicit message) + `size_exceeded: true` in `/admin/cluster` + an error log on transitions.
-- [ ] **§3.2 Liveness guard on the tombstone GC** (`anti_entropy.rs:119-134`): before `purge_tombstones`/`purge_control_tombstones`, verify that every known peer has been seen within the grace window; otherwise skip the purge with a highly visible warning + a `tombstone_gc_blocked` flag in `/admin/cluster`.
-- [ ] **M3 Membership pruning** (`membership.rs:84-161`): remove peers unreachable for more than a configurable period (default = `tombstone_grace_days`); note: pruning also unblocks the §3.2 guard (a removed node does not block the GC forever); the residual risk of a beyond-grace re-entry is already documented (plan note 2-bis).
-- [ ] Unit tests for gates/guards (pure functions where possible); drift test extension (above).
+- [x] **D1 / §3.7(A) Authenticate the peer, then gate fan-out AND quorum on it (decision H12)**: it is not enough to sign our outbound probe — the *peer* must prove it holds the secret (or presents a cluster-CA cert) before we trust it, else a rogue receives all fan-out with no secret. Implement the chosen H12 path:
+    - mutual-TLS path (CONFIRMED 2026-06-11, see H12): **→ R4** — once R4 wires the shared cluster CA, membership only trusts a peer whose cert validates against it (independent second factor on top of the challenge-response below);
+    - [x] secret challenge-response (the baseline peer-auth layer for ALL clusters, plain-HTTP included): new `GET /cluster/v1/ping` under `cluster_auth` returning `{node_id, config_fingerprint, disk_total, disk_available, max_seq, nonce_mac}` where `nonce_mac = HMAC(secret, our_nonce)` (HMAC-SHA256, domain-separated, constant-time verify) proves possession to us (`max_seq` also serves D3c in R7, read from the seq *counter*, not `MAX(seq)` — purged tombstones would make the row maximum go backwards and false-alarm the rewind detection; new `MetadataStore::current_object_seq` on both backends). The membership probe sends a fresh UUID nonce per probe and verifies the MAC. As built, the probe distinguishes: valid MAC → `authenticated`; 200 with missing/bad MAC → alive, untrusted (a rogue answering 200 unconditionally); **403 → the peer rejects our secret: identity recovered via the public health, flagged `config_ok=false`** (this replaces the fingerprint-based detection for wrong-secret drift, since §3.5 removed the public fingerprint); 404 → legacy pre-ping peer (H10), public-health fallback, alive-but-excluded with a once-per-transition warning (consequence, documented in `ha.md`: during a rolling upgrade the first upgraded node refuses writes until a second upgraded node is up — legacy nodes' own fan-out/anti-entropy keep data converging meanwhile); 409 (loop-prevention LoopDetected) → it is this node itself. Probing is now parallel across endpoints (§2.4 spirit: one dead peer must not serialize the tick).
+    - [x] **`live_peers()` (fan-out target list in `cluster_blob.rs`/`cluster_meta.rs`) and `has_write_quorum` count only peers that passed peer-authentication AND are `config_ok`** — `PeerNode::eligible()` is the single predicate; it also gates the control-plane `fan_out_op`, the anti-entropy pulls (manifest, control snapshot, blob repair — pulling from an unauthenticated endpoint is a data-poisoning vector, and a wrong-master-key peer's blobs would be undecryptable), and `min_disk` (a rogue advertising a tiny disk must not close the 507 capacity guard). `/admin/cluster` exposes per-node `authenticated` and the cluster-level `eligible_node_count` (what the quorum is measured against; `live_node_count` stays the visibility count).
+- [x] **§3.5 / §3.7(B) Minimized public health**: the unauthenticated `/cluster/v1/health` answers only `{status, node_id}` — the `config_fingerprint`, disk stats and `max_seq` move to the authenticated ping. This removes the offline brute-force oracle for the secret (the truncated SHA-256 over mostly-guessable inputs). Consumers updated: membership reads the detail from the ping (and still reads it from a *legacy* peer's public health during the upgrade window); the console and tests use `/admin/cluster`, untouched.
+- [x] **H7 Drift out of the quorum**: a peer with `config_ok=false` excluded from `has_write_quorum` (now `ClusterState::write_gate()` over eligible nodes); it stays in `/admin/cluster` with the drift flag; test phase F extended: with a diverging secret the node must NOT sustain the quorum (3 nodes, 1 drifted → quorum 2 still ok and writes succeed; 2 drifted, distinct wrong secrets → the aligned node 503s both object writes and bucket creation while reads keep working — new phase F2 with a second drift overlay on arca-2).
+- [x] **Failure-detector tolerance (D12.3)**: dead after 2 consecutive probe failures (`DEAD_AFTER_FAILURES` in `membership.rs`, with the why), alive at the first success; within the window the last live view is re-emitted. Dead peers now keep `last_seen` (= last successful contact) instead of clearing it — the §3.2 guard, M3 pruning and the admin view all reason about how long a peer has been unseen.
+- [x] **D3a `cluster_size` guard (decision H6, fail-closed, no escape hatch)**: in quorum mode, if the observed ELIGIBLE nodes (including self) exceed `cluster_size` → write gate closed (`WriteGate::SizeExceeded`, distinct 503 message pointing at the resize runbook) + `size_exceeded: true` in `/admin/cluster` + an error log on transitions (in membership, which owns the tick). Counting eligible — not merely alive — nodes is deliberate: an unauthenticated rogue must not be able to close the gate (write-DoS via mDNS registration), while a same-config 4th node is eligible and trips it.
+- [x] **§3.2 Liveness guard on the tombstone GC** (`anti_entropy.rs`): before `purge_tombstones`/`purge_control_tombstones`, verify that every known peer has been seen within the grace window (pure `tombstone_gc_blockers()` in arca-core, unit-tested); otherwise skip the purge with a warning naming the blockers + the `tombstone_gc_blocked` flag in `/admin/cluster`. Soundness: a peer seen within the grace was alive after every purge-eligible tombstone's deletion (so it already pulled it); a tombstone recorded while the peer was already unreachable purges only after the peer has been unseen longer than the grace — which is exactly when the guard blocks.
+- [x] **M3 Membership pruning** (`membership.rs`): remove peers unreachable for more than `[cluster] peer_prune_days` (validated ≥ 1; default = `tombstone_grace_days`); pruning also unblocks the §3.2 guard (a removed node does not block the GC forever); the residual risk of a beyond-grace re-entry is documented (plan note 2-bis + the pruning warn log + `ha.md`). The guard's memory is process-local (membership state): after a restart, peers that never came back are unknown and cannot block — documented limitation, acceptable because the grace ≫ restart frequency.
+- [x] Unit tests for gates/guards: arca-core (MAC roundtrip/tamper, eligibility, quorum/size gates over eligible peers, min_disk eligibility, GC blockers, snapshot flags, legacy-payload serde) + membership (D12.3 transitions, drift verdicts, end-to-end probe against a fake ping peer with real/bogus MACs) + config (prune default/validation) + sqlite (`current_object_seq` tracks the counter). 805 unit tests total (was 780). Drift integration extension above.
 
 *Outcome: the quorum only counts nodes that can really receive replicas; no more ghost quorum; tombstone GC aware of liveness.*
 
@@ -195,18 +195,18 @@ Update the Status column as work proceeds: ⬜ to do, 🔧 in progress, ✅ done
 | §2.3 | Deletes before tombstones in the control merge | R1 | ✅ |
 | §2.4 | Sequential fan-out | R1 | ✅ |
 | §3.1 | No anti-replay window | R4 | ⬜ |
-| §3.2 | Tombstone GC blind to liveness | R3 | ⬜ |
+| §3.2 | Tombstone GC blind to liveness | R3 | ✅ |
 | §3.3 | Workers duplicated on every node | R6 | ⬜ |
 | §3.4 | Cluster endpoints without a body limit | R4 | ⬜ |
-| §3.5 | Public health exposes disk/fingerprint | R3 | ⬜ |
+| §3.5 | Public health exposes disk/fingerprint | R3 | ✅ |
 | §3.6 | SSE-C not replicated | R5 (spike) + R9 (doc) | ⬜ |
-| §3.7(A) | Rogue peer receives all new data with no secret (fan-out authenticates no peer) | R3 (H12: peer auth, gate fan-out+quorum) + R4 (mutual TLS) | ⬜ |
-| §3.7(B) | Secret brute-forceable from public fingerprint; weak secrets allowed | R3 (§3.5 fingerprint off public) + R4 (M5 secret strength) | ⬜ |
+| §3.7(A) | Rogue peer receives all new data with no secret (fan-out authenticates no peer) | R3 (H12: peer auth, gate fan-out+quorum) + R4 (mutual TLS) | 🔧 (R3 half ✅: challenge-response peer auth gates fan-out, anti-entropy pulls, quorum and min_disk; R4 adds the mutual-TLS second factor) |
+| §3.7(B) | Secret brute-forceable from public fingerprint; weak secrets allowed | R3 (§3.5 fingerprint off public) + R4 (M5 secret strength) | 🔧 (R3 half ✅: fingerprint off the public health; R4 adds M5 secret-strength enforcement) |
 | §3.7(C) | Plain-HTTP/unverified-TLS/no-replay enable sniff/MITM/replay | R4 (TD-015 verified TLS + §3.1 anti-replay) | ⬜ |
 | TD-015 | Inter-node TLS accepts invalid certs (now committed, not deferred) | R4 | ⬜ |
 | M1 | HWM stuck on a failing entry | R7 | ⬜ |
 | M2 | Repair without a budget | R7 | ⬜ |
-| M3 | Membership without eviction | R3 | ⬜ |
+| M3 | Membership without eviction | R3 | ✅ |
 | M4 | 503 without Retry-After | R7 | 🔧 (quorum 503s carry it since R1 — `s3_error_response` adds it to every ServiceUnavailable; R7 verifies syncing/size_exceeded inherit it) |
 | M5 | 1-character secret accepted | R4 | ⬜ |
 | M6 | Path blob_id not validated | R4 | ⬜ |
@@ -219,9 +219,9 @@ Update the Status column as work proceeds: ⬜ to do, 🔧 in progress, ✅ done
 | §5.4 | Listed test debt (GC, repair, bootstrap, skew) | R2 (partial: bootstrap in the R7 test; skew stays ➖ documented) | 🔧 (still open after R2: tombstone-GC + blob-repair tests; bootstrap arrives with the R7 readiness test; skew = doc-only in R9) |
 | §5-deploy | Inconsistent HAProxy fall/rise; k8s probes | R9 | ⬜ |
 | §5-doc1/2/3 | Available LWW, runbooks, SSE-C/quorum | R9 | ⬜ |
-| D1 | Ghost quorum (unauthenticated liveness, drift ignored) | R3 | ⬜ |
+| D1 | Ghost quorum (unauthenticated liveness, drift ignored) | R3 | ✅ |
 | D2 | No syncing state (404s/partial listings at re-entry) | R7 | ⬜ |
-| D3a | No nodes > cluster_size guard | R3 | ⬜ |
+| D3a | No nodes > cluster_size guard | R3 | ✅ |
 | D3b | Secret rotation without dual-secret | R4 (+ runbook R9) | ⬜ |
 | D3c | Restore from backup: seq rewind vs HWM | R7 (+ runbook R9) | ⬜ |
 | D4 | Multipart without reconcile; local-only concat | R5 | ⬜ |
@@ -234,7 +234,7 @@ Update the Status column as work proceeds: ⬜ to do, 🔧 in progress, ✅ done
 | D11 | Available RPO undeclared | R9 | ⬜ |
 | D12.1 | Receive side without a node-local key filter | R4 | ⬜ |
 | D12.2 | Export/import rewrites node_id | R5 | ⬜ |
-| D12.3 | Failure detector without tolerance | R3 | ⬜ |
+| D12.3 | Failure detector without tolerance | R3 | ✅ |
 | D12.4 | Non-empty single-node merge undocumented | R9 | ⬜ |
 
 ## Estimate and sequence

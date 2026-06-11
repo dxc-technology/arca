@@ -23,6 +23,7 @@ def pytest_configure(config):
         ("cluster_catchup_verify", "verifies anti-entropy convergence after a node returns"),
         ("cluster_insufficient_storage", "requires the 507 overlay (one tiny-disk node)"),
         ("cluster_config_drift", "requires the drift overlay (one mismatched-secret node)"),
+        ("cluster_config_drift_majority", "requires drift overlays on two nodes (distinct wrong secrets)"),
         ("cluster_partition_before", "seeds state with all 3 up, before a network partition"),
         ("cluster_partition_minority", "requires node 3 partitioned off (process alive, network cut)"),
         ("cluster_partition_healed", "verifies convergence after the partition heals"),

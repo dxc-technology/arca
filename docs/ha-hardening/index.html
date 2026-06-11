@@ -1679,19 +1679,19 @@
 <hr />
 <h2 id="r3-membership-and-quorum-integrity-ghost-quorum-guards">R3 — Membership and quorum integrity (ghost quorum, guards)<a class="headerlink" href="#r3-membership-and-quorum-integrity-ghost-quorum-guards" title="Permanent link">&para;</a></h2>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D1 / §3.7(A) Authenticate the peer, then gate fan-out AND quorum on it (decision H12)</strong>: it is not enough to sign our outbound probe — the <em>peer</em> must prove it holds the secret (or presents a cluster-CA cert) before we trust it, else a rogue receives all fan-out with no secret. Implement the chosen H12 path:<ul>
-<li>mutual-TLS path (CONFIRMED 2026-06-11, see H12): once R4 wires the shared cluster CA, membership only trusts a peer whose cert validates against it;</li>
-<li>secret challenge-response (CONFIRMED 2026-06-11: ships for ALL clusters as the baseline peer-auth layer, not just CA-averse ones — it closes the rogue peer on plain-HTTP deployments too): new <code>GET /cluster/v1/ping</code> under <code>cluster_auth</code> returning <code>{node_id, config_fingerprint, disk_total, disk_available, max_seq, nonce_mac}</code> where <code>nonce_mac = HMAC(secret, our_nonce)</code> proves possession to us (<code>max_seq</code> also serves D3c in R7); the membership probe sends a fresh nonce and verifies the MAC, with a fallback to <code>/cluster/v1/health</code> on 404 (legacy peer, H10, logged).</li>
-<li><strong><code>live_peers()</code> (fan-out target list in <code>cluster_blob.rs:65</code>/<code>cluster_meta.rs:73</code>) and <code>has_write_quorum</code> count only peers that passed peer-authentication AND are <code>config_ok</code></strong> — this is the actual fix for §3.7(A), not just the quorum gate of H7.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>D1 / §3.7(A) Authenticate the peer, then gate fan-out AND quorum on it (decision H12)</strong>: it is not enough to sign our outbound probe — the <em>peer</em> must prove it holds the secret (or presents a cluster-CA cert) before we trust it, else a rogue receives all fan-out with no secret. Implement the chosen H12 path:<ul class="task-list">
+<li>mutual-TLS path (CONFIRMED 2026-06-11, see H12): <strong>→ R4</strong> — once R4 wires the shared cluster CA, membership only trusts a peer whose cert validates against it (independent second factor on top of the challenge-response below);</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> secret challenge-response (the baseline peer-auth layer for ALL clusters, plain-HTTP included): new <code>GET /cluster/v1/ping</code> under <code>cluster_auth</code> returning <code>{node_id, config_fingerprint, disk_total, disk_available, max_seq, nonce_mac}</code> where <code>nonce_mac = HMAC(secret, our_nonce)</code> (HMAC-SHA256, domain-separated, constant-time verify) proves possession to us (<code>max_seq</code> also serves D3c in R7, read from the seq <em>counter</em>, not <code>MAX(seq)</code> — purged tombstones would make the row maximum go backwards and false-alarm the rewind detection; new <code>MetadataStore::current_object_seq</code> on both backends). The membership probe sends a fresh UUID nonce per probe and verifies the MAC. As built, the probe distinguishes: valid MAC → <code>authenticated</code>; 200 with missing/bad MAC → alive, untrusted (a rogue answering 200 unconditionally); <strong>403 → the peer rejects our secret: identity recovered via the public health, flagged <code>config_ok=false</code></strong> (this replaces the fingerprint-based detection for wrong-secret drift, since §3.5 removed the public fingerprint); 404 → legacy pre-ping peer (H10), public-health fallback, alive-but-excluded with a once-per-transition warning (consequence, documented in <code>ha.md</code>: during a rolling upgrade the first upgraded node refuses writes until a second upgraded node is up — legacy nodes' own fan-out/anti-entropy keep data converging meanwhile); 409 (loop-prevention LoopDetected) → it is this node itself. Probing is now parallel across endpoints (§2.4 spirit: one dead peer must not serialize the tick).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong><code>live_peers()</code> (fan-out target list in <code>cluster_blob.rs</code>/<code>cluster_meta.rs</code>) and <code>has_write_quorum</code> count only peers that passed peer-authentication AND are <code>config_ok</code></strong> — <code>PeerNode::eligible()</code> is the single predicate; it also gates the control-plane <code>fan_out_op</code>, the anti-entropy pulls (manifest, control snapshot, blob repair — pulling from an unauthenticated endpoint is a data-poisoning vector, and a wrong-master-key peer's blobs would be undecryptable), and <code>min_disk</code> (a rogue advertising a tiny disk must not close the 507 capacity guard). <code>/admin/cluster</code> exposes per-node <code>authenticated</code> and the cluster-level <code>eligible_node_count</code> (what the quorum is measured against; <code>live_node_count</code> stays the visibility count).</li>
 </ul>
 </li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§3.5 / §3.7(B) Minimized public health</strong>: the unauthenticated <code>/cluster/v1/health</code> answers only <code>{status, node_id}</code> — the <code>config_fingerprint</code>, disk stats and <code>max_seq</code> move to the authenticated ping. This removes the offline brute-force oracle for the secret (the truncated SHA-256 over mostly-guessable inputs, <code>cluster.rs:56-77</code>). Update any consumers (legacy membership, docs).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>H7 Drift out of the quorum</strong>: a peer with <code>config_ok=false</code> excluded from <code>has_write_quorum</code> (<code>cluster.rs:775-799</code>); it stays in <code>/admin/cluster</code> with the drift flag; the test phase F extended: with a diverging secret the node must NOT sustain the quorum (3 nodes, 1 drifted → quorum 2 still ok; 2 drifted → 503).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Failure-detector tolerance (D12.3, plan line 73)</strong>: dead after 2 consecutive ping failures (not 1; <code>membership.rs:104</code>), alive at the first success. A comment on the why.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D3a <code>cluster_size</code> guard (decision H6, confirmed: fail-closed, no escape hatch)</strong>: in quorum mode, if the observed live nodes (including self) exceed <code>cluster_size</code> → write gate closed (503 with an explicit message) + <code>size_exceeded: true</code> in <code>/admin/cluster</code> + an error log on transitions.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§3.2 Liveness guard on the tombstone GC</strong> (<code>anti_entropy.rs:119-134</code>): before <code>purge_tombstones</code>/<code>purge_control_tombstones</code>, verify that every known peer has been seen within the grace window; otherwise skip the purge with a highly visible warning + a <code>tombstone_gc_blocked</code> flag in <code>/admin/cluster</code>.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>M3 Membership pruning</strong> (<code>membership.rs:84-161</code>): remove peers unreachable for more than a configurable period (default = <code>tombstone_grace_days</code>); note: pruning also unblocks the §3.2 guard (a removed node does not block the GC forever); the residual risk of a beyond-grace re-entry is already documented (plan note 2-bis).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Unit tests for gates/guards (pure functions where possible); drift test extension (above).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>§3.5 / §3.7(B) Minimized public health</strong>: the unauthenticated <code>/cluster/v1/health</code> answers only <code>{status, node_id}</code> — the <code>config_fingerprint</code>, disk stats and <code>max_seq</code> move to the authenticated ping. This removes the offline brute-force oracle for the secret (the truncated SHA-256 over mostly-guessable inputs). Consumers updated: membership reads the detail from the ping (and still reads it from a <em>legacy</em> peer's public health during the upgrade window); the console and tests use <code>/admin/cluster</code>, untouched.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>H7 Drift out of the quorum</strong>: a peer with <code>config_ok=false</code> excluded from <code>has_write_quorum</code> (now <code>ClusterState::write_gate()</code> over eligible nodes); it stays in <code>/admin/cluster</code> with the drift flag; test phase F extended: with a diverging secret the node must NOT sustain the quorum (3 nodes, 1 drifted → quorum 2 still ok and writes succeed; 2 drifted, distinct wrong secrets → the aligned node 503s both object writes and bucket creation while reads keep working — new phase F2 with a second drift overlay on arca-2).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>Failure-detector tolerance (D12.3)</strong>: dead after 2 consecutive probe failures (<code>DEAD_AFTER_FAILURES</code> in <code>membership.rs</code>, with the why), alive at the first success; within the window the last live view is re-emitted. Dead peers now keep <code>last_seen</code> (= last successful contact) instead of clearing it — the §3.2 guard, M3 pruning and the admin view all reason about how long a peer has been unseen.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>D3a <code>cluster_size</code> guard (decision H6, fail-closed, no escape hatch)</strong>: in quorum mode, if the observed ELIGIBLE nodes (including self) exceed <code>cluster_size</code> → write gate closed (<code>WriteGate::SizeExceeded</code>, distinct 503 message pointing at the resize runbook) + <code>size_exceeded: true</code> in <code>/admin/cluster</code> + an error log on transitions (in membership, which owns the tick). Counting eligible — not merely alive — nodes is deliberate: an unauthenticated rogue must not be able to close the gate (write-DoS via mDNS registration), while a same-config 4th node is eligible and trips it.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>§3.2 Liveness guard on the tombstone GC</strong> (<code>anti_entropy.rs</code>): before <code>purge_tombstones</code>/<code>purge_control_tombstones</code>, verify that every known peer has been seen within the grace window (pure <code>tombstone_gc_blockers()</code> in arca-core, unit-tested); otherwise skip the purge with a warning naming the blockers + the <code>tombstone_gc_blocked</code> flag in <code>/admin/cluster</code>. Soundness: a peer seen within the grace was alive after every purge-eligible tombstone's deletion (so it already pulled it); a tombstone recorded while the peer was already unreachable purges only after the peer has been unseen longer than the grace — which is exactly when the guard blocks.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>M3 Membership pruning</strong> (<code>membership.rs</code>): remove peers unreachable for more than <code>[cluster] peer_prune_days</code> (validated ≥ 1; default = <code>tombstone_grace_days</code>); pruning also unblocks the §3.2 guard (a removed node does not block the GC forever); the residual risk of a beyond-grace re-entry is documented (plan note 2-bis + the pruning warn log + <code>ha.md</code>). The guard's memory is process-local (membership state): after a restart, peers that never came back are unknown and cannot block — documented limitation, acceptable because the grace ≫ restart frequency.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Unit tests for gates/guards: arca-core (MAC roundtrip/tamper, eligibility, quorum/size gates over eligible peers, min_disk eligibility, GC blockers, snapshot flags, legacy-payload serde) + membership (D12.3 transitions, drift verdicts, end-to-end probe against a fake ping peer with real/bogus MACs) + config (prune default/validation) + sqlite (<code>current_object_seq</code> tracks the counter). 805 unit tests total (was 780). Drift integration extension above.</li>
 </ul>
 <p><em>Outcome: the quorum only counts nodes that can really receive replicas; no more ghost quorum; tombstone GC aware of liveness.</em></p>
 <hr />
@@ -1835,7 +1835,7 @@
 <td>§3.2</td>
 <td>Tombstone GC blind to liveness</td>
 <td>R3</td>
-<td>⬜</td>
+<td>✅</td>
 </tr>
 <tr>
 <td>§3.3</td>
@@ -1853,7 +1853,7 @@
 <td>§3.5</td>
 <td>Public health exposes disk/fingerprint</td>
 <td>R3</td>
-<td>⬜</td>
+<td>✅</td>
 </tr>
 <tr>
 <td>§3.6</td>
@@ -1865,13 +1865,13 @@
 <td>§3.7(A)</td>
 <td>Rogue peer receives all new data with no secret (fan-out authenticates no peer)</td>
 <td>R3 (H12: peer auth, gate fan-out+quorum) + R4 (mutual TLS)</td>
-<td>⬜</td>
+<td>🔧 (R3 half ✅: challenge-response peer auth gates fan-out, anti-entropy pulls, quorum and min_disk; R4 adds the mutual-TLS second factor)</td>
 </tr>
 <tr>
 <td>§3.7(B)</td>
 <td>Secret brute-forceable from public fingerprint; weak secrets allowed</td>
 <td>R3 (§3.5 fingerprint off public) + R4 (M5 secret strength)</td>
-<td>⬜</td>
+<td>🔧 (R3 half ✅: fingerprint off the public health; R4 adds M5 secret-strength enforcement)</td>
 </tr>
 <tr>
 <td>§3.7(C)</td>
@@ -1901,7 +1901,7 @@
 <td>M3</td>
 <td>Membership without eviction</td>
 <td>R3</td>
-<td>⬜</td>
+<td>✅</td>
 </tr>
 <tr>
 <td>M4</td>
@@ -1979,7 +1979,7 @@
 <td>D1</td>
 <td>Ghost quorum (unauthenticated liveness, drift ignored)</td>
 <td>R3</td>
-<td>⬜</td>
+<td>✅</td>
 </tr>
 <tr>
 <td>D2</td>
@@ -1991,7 +1991,7 @@
 <td>D3a</td>
 <td>No nodes &gt; cluster_size guard</td>
 <td>R3</td>
-<td>⬜</td>
+<td>✅</td>
 </tr>
 <tr>
 <td>D3b</td>
@@ -2069,7 +2069,7 @@
 <td>D12.3</td>
 <td>Failure detector without tolerance</td>
 <td>R3</td>
-<td>⬜</td>
+<td>✅</td>
 </tr>
 <tr>
 <td>D12.4</td>

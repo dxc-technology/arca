@@ -789,6 +789,12 @@ pub struct ClusterConfig {
     /// no longer receive the tombstone and could resurrect the deleted object.
     #[serde(default = "default_cluster_tombstone_grace_days")]
     pub tombstone_grace_days: u64,
+    /// How long an unreachable peer stays in membership before it is pruned
+    /// (M3), in days. Defaults to `tombstone_grace_days`: while a dead peer is
+    /// still remembered it blocks tombstone GC (a purge it missed could
+    /// resurrect deletions on its return — review §3.2); once pruned it stops
+    /// blocking, and a later return must be treated as a re-sync.
+    pub peer_prune_days: Option<u64>,
 }
 
 impl ClusterConfig {
@@ -820,6 +826,9 @@ impl ClusterConfig {
             }
             DiscoveryMode::Mdns => {}
         }
+        if self.peer_prune_days == Some(0) {
+            bail!("[cluster] peer_prune_days must be >= 1 when set");
+        }
         Ok(())
     }
 
@@ -837,6 +846,14 @@ impl ClusterConfig {
     /// Tombstone retention as a `Duration` (see [`ClusterConfig::tombstone_grace_days`]).
     pub fn tombstone_grace(&self) -> std::time::Duration {
         std::time::Duration::from_secs(self.tombstone_grace_days * 24 * 60 * 60)
+    }
+
+    /// Effective membership prune window in days (M3): the configured
+    /// `peer_prune_days`, defaulting to `tombstone_grace_days` so a dead peer
+    /// stops blocking tombstone GC exactly when keeping its tombstones can no
+    /// longer help it.
+    pub fn peer_prune_days(&self) -> u64 {
+        self.peer_prune_days.unwrap_or(self.tombstone_grace_days)
     }
 }
 
@@ -1888,6 +1905,36 @@ cluster_size = 3
         assert_eq!(cluster.health_interval_seconds, 5);
         assert_eq!(cluster.anti_entropy_interval_seconds, 30);
         assert_eq!(cluster.request_timeout_seconds, 10);
+        // M3: the prune window defaults to the tombstone grace.
+        assert_eq!(cluster.peer_prune_days, None);
+        assert_eq!(cluster.peer_prune_days(), cluster.tombstone_grace_days);
+    }
+
+    #[test]
+    fn cluster_peer_prune_days_validation_and_override() {
+        let mut cluster = ClusterConfig {
+            enabled: true,
+            cluster_id: "c".to_string(),
+            secret: "s".to_string(),
+            mode: ClusterMode::Quorum,
+            cluster_size: Some(3),
+            discovery: DiscoveryMode::Mdns,
+            advertise_port: None,
+            advertise_addr: None,
+            seeds: vec![],
+            dns_name: None,
+            health_interval_seconds: 5,
+            anti_entropy_interval_seconds: 30,
+            request_timeout_seconds: 10,
+            tombstone_grace_days: 7,
+            peer_prune_days: Some(0),
+        };
+        let err = cluster.validate().unwrap_err().to_string();
+        assert!(err.contains("peer_prune_days"), "got: {err}");
+
+        cluster.peer_prune_days = Some(14);
+        assert!(cluster.validate().is_ok());
+        assert_eq!(cluster.peer_prune_days(), 14, "explicit value wins");
     }
 
     #[test]
@@ -1907,6 +1954,7 @@ cluster_size = 3
             anti_entropy_interval_seconds: 30,
             request_timeout_seconds: 10,
             tombstone_grace_days: 7,
+            peer_prune_days: None,
         };
         let err = cluster.validate().unwrap_err().to_string();
         assert!(err.contains("cluster_size is required"), "got: {err}");
@@ -1929,6 +1977,7 @@ cluster_size = 3
             anti_entropy_interval_seconds: 30,
             request_timeout_seconds: 10,
             tombstone_grace_days: 7,
+            peer_prune_days: None,
         };
         assert!(cluster.validate().is_ok());
         assert_eq!(cluster.write_quorum(), None);
@@ -1951,6 +2000,7 @@ cluster_size = 3
             anti_entropy_interval_seconds: 30,
             request_timeout_seconds: 10,
             tombstone_grace_days: 7,
+            peer_prune_days: None,
         };
         let err = cluster.validate().unwrap_err().to_string();
         assert!(err.contains("seeds is required"), "got: {err}");
@@ -1973,6 +2023,7 @@ cluster_size = 3
             anti_entropy_interval_seconds: 30,
             request_timeout_seconds: 10,
             tombstone_grace_days: 7,
+            peer_prune_days: None,
         };
         let err = cluster.validate().unwrap_err().to_string();
         assert!(err.contains("dns_name is required"), "got: {err}");
@@ -1995,6 +2046,7 @@ cluster_size = 3
             anti_entropy_interval_seconds: 30,
             request_timeout_seconds: 10,
             tombstone_grace_days: 7,
+            peer_prune_days: None,
         };
         let err = cluster.validate().unwrap_err().to_string();
         assert!(err.contains("secret is required"), "got: {err}");
@@ -2019,6 +2071,7 @@ cluster_size = 3
                 anti_entropy_interval_seconds: 30,
                 request_timeout_seconds: 10,
                 tombstone_grace_days: 7,
+                peer_prune_days: None,
             };
             assert_eq!(cluster.write_quorum(), Some(expected), "size={size}");
         }

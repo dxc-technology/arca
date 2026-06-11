@@ -101,7 +101,11 @@ async fn async_main(cli: Cli) -> Result<()> {
             // share.
             let cluster_state = match (config.cluster.as_ref(), cluster_node_id.as_ref()) {
                 (Some(c), Some(node_id)) if c.enabled => Some(std::sync::Arc::new(
-                    arca_core::cluster::ClusterState::new(node_id.clone(), c.write_quorum()),
+                    arca_core::cluster::ClusterState::new(
+                        node_id.clone(),
+                        c.write_quorum(),
+                        c.cluster_size,
+                    ),
                 )),
                 _ => None,
             };

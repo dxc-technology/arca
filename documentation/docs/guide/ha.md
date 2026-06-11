@@ -49,11 +49,13 @@ Nodes find each other through one of three mechanisms (`[cluster].discovery`):
 | `static` | A fixed `seeds` list of endpoints (identical on every node; a node ignores its own entry) | Docker, Kubernetes, or any routed network where multicast is dropped |
 | `dns`    | A headless service name that resolves to all peer IPs | Kubernetes `StatefulSet` + headless `Service` |
 
-Discovery only supplies *candidate endpoints*. A node then health-pings each candidate's `/cluster/v1/health`; the response carries the peer's `node_id`, which is how a node recognises (and ignores) itself and learns who is alive.
+Discovery only supplies *candidate endpoints* — it proves nothing about them. A node then probes each candidate with an **authenticated challenge-response ping** (a signed `GET /cluster/v1/ping` carrying a fresh nonce): the peer must answer with `HMAC(cluster secret, nonce)`, proving it actually holds the secret. Only a peer that passes this challenge becomes **authenticated** and participates in replication; anything else that answers HTTP — a stray process that registered itself over mDNS, a node with a different secret — stays visible as *alive* in the topology but receives no data and counts toward nothing. The public `/cluster/v1/health` only returns `{status, node_id}` (identity, so a node recognises itself and the operator sees who is there — nothing an attacker can use).
+
+A peer is declared dead only after **two consecutive failed probes** (a single missed probe — a GC pause, a dropped packet — does not flap it out of the cluster) and alive again at the first success. A peer that stays unreachable beyond `peer_prune_days` (default: the tombstone grace) is **pruned** from membership entirely; if it ever returns it is re-discovered and re-synced like a new candidate.
 
 ### Replication — real time, then self-healing
 
-Every mutation fans out to live peers **in real time** over the internal `/cluster/v1/*` API (signed with the shared cluster secret, never the public S3 path). That covers both planes:
+Every mutation fans out to the *eligible* peers — alive, authenticated, config-aligned — **in real time** over the internal `/cluster/v1/*` API (signed with the shared cluster secret, never the public S3 path). That covers both planes:
 
 - **Data plane** — object rows and blob bytes (`PutObject`, multipart, deletes, retention/legal-hold, tags).
 - **Control plane** — buckets, bucket config, credentials, users, teams, grants, server settings.
@@ -62,7 +64,7 @@ Real-time fan-out is synchronous (awaited before the client gets its response) a
 
 1. **Anti-entropy (objects)** — each node periodically pulls every peer's *changed-since* manifest (an indexed, incremental `seq` cursor) and applies the rows it is missing. Cheap enough to run frequently.
 2. **Control-plane reconcile** — the control plane is small, so nodes periodically exchange a full snapshot and merge it last-writer-wins (see [Consistency](#consistency-model)).
-3. **Tombstones** — a hard delete leaves a tombstone (a marker, not the row/blob) so the deletion *propagates* and a lagging peer cannot resurrect a deleted object/entity by shipping its stale copy back. Tombstones are invisible to reads and garbage-collected after a grace window.
+3. **Tombstones** — a hard delete leaves a tombstone (a marker, not the row/blob) so the deletion *propagates* and a lagging peer cannot resurrect a deleted object/entity by shipping its stale copy back. Tombstones are invisible to reads and garbage-collected after a grace window — but **only while every known peer has been seen within that window**: if a peer has been unreachable beyond the grace, the purge is skipped (with a warning and a `tombstone_gc_blocked` flag on `/admin/cluster`) so the deletions are still there for it to learn on re-entry. Membership pruning eventually evicts a never-returning peer, unblocking the GC.
 4. **Read-repair** — a `GET` for an object whose bytes are missing locally fetches them from a peer on the spot.
 5. **Blob repair + GC** — on a slower cadence each node proactively fetches blob bytes it has the row for but not the file (durability), and reclaims orphan blobs left after deletes (composite-multipart-aware, so live parts are never deleted).
 
@@ -70,7 +72,7 @@ Real-time fan-out is synchronous (awaited before the client gets its response) a
 
 Two policies, set per cluster with `[cluster].mode`:
 
-- **`quorum` (CP, default)** — a write is acknowledged only when a **majority** of nodes (`floor(cluster_size/2) + 1`) durably hold it *at acknowledgement time*: the local copy plus every peer that confirmed, in its replication response, that it applied the row **and** has the blob. Two layers enforce this: a fast admission gate refuses immediately (`503 ServiceUnavailable`, with `Retry-After`) when membership already knows a majority is unreachable, and the fan-out ACK count catches what the gate cannot see — a peer believed alive that did not actually receive the copy. With `cluster_size = 3` the write quorum is `2`: the cluster tolerates losing **one** node and keeps serving reads and writes.
+- **`quorum` (CP, default)** — a write is acknowledged only when a **majority** of nodes (`floor(cluster_size/2) + 1`) durably hold it *at acknowledgement time*: the local copy plus every peer that confirmed, in its replication response, that it applied the row **and** has the blob. Two layers enforce this: a fast admission gate refuses immediately (`503 ServiceUnavailable`, with `Retry-After`) when membership already knows a majority is unreachable, and the fan-out ACK count catches what the gate cannot see — a peer believed alive that did not actually receive the copy. Only **eligible** nodes count toward the majority: alive, *authenticated* (proved possession of the cluster secret on their last probe) and *config-aligned* — a node that could not correctly hold the replicas cannot vouch for them. The same admission gate also **fails closed when MORE eligible nodes than `cluster_size` are observed** (`size_exceeded` on `/admin/cluster`): the majority is derived from `cluster_size`, so an over-sized membership — say a 4th node started with the 3-node config — would let two disjoint "majorities" accept conflicting writes. With `cluster_size = 3` the write quorum is `2`: the cluster tolerates losing **one** node and keeps serving reads and writes.
 - **`available` (AP)** — any single node accepts writes and fans out best-effort. Maximum availability, at the cost of accepting writes that may momentarily diverge and converge later.
 
 !!! warning "A quorum error does not undo the write"
@@ -145,27 +147,28 @@ The 3 nodes share one symmetric config (`docker/cluster/config.toml`, `mode = "q
 ## Observability
 
 - **Console** — the dashboard **Cluster Topology** card shows the consistency mode (Quorum·W=N / Available), the write status (Writable / Read-only when quorum is lost), and every node with a green/red status dot, the local-node badge, endpoint, and last-seen time. The Server card's *Topology* field summarises it as `Cluster · live/total`.
-- **`GET /admin/cluster`** (admin SigV4) — JSON the console consumes: `mode`, `write_quorum`, `has_write_quorum`, `live_node_count`, `node_count`, and the `nodes` list. Returns `{"enabled": false}` on a single-node deployment.
+- **`GET /admin/cluster`** (admin SigV4) — JSON the console consumes: `mode`, `write_quorum`, `has_write_quorum`, `live_node_count`, `eligible_node_count` (nodes the write quorum is measured against: alive + authenticated + config-aligned), `node_count`, `config_aligned`, `size_exceeded`, `tombstone_gc_blocked`, and the `nodes` list (each with `alive`, `authenticated`, `config_ok`, `last_seen` — kept on dead nodes, showing the last successful contact). Returns `{"enabled": false}` on a single-node deployment.
 - **`GET /admin/health?verbose=1`** (unauthenticated) — liveness plus the cluster snapshot, handy for scripts and load-balancer debugging. The plain `GET /admin/health` (200 / 503-on-drain) is the load-balancer check.
 
 ### Storage capacity (the smallest node wins)
 
 With full replication every node holds a complete copy, so the cluster can only store as much as its **smallest** node: once the node with the least free space fills, new writes can no longer be replicated everywhere. Arca therefore treats the cluster's effective capacity as the **minimum across nodes**, not the sum.
 
-- **Dashboard** — the *Total Storage* card shows the cluster-wide free/total as the minimum over the live nodes (labelled "cluster min"), so a node with a 2 TB disk doesn't mask a peer with only 1 TB. (Nodes gossip their disk stats on `/cluster/v1/health`.)
+- **Dashboard** — the *Total Storage* card shows the cluster-wide free/total as the minimum over the eligible nodes (labelled "cluster min"), so a node with a 2 TB disk doesn't mask a peer with only 1 TB. (Nodes exchange their disk stats on the authenticated ping — an unauthenticated stranger advertising a tiny disk cannot shrink the cluster minimum and block writes.)
 - **Write guard** — a write is refused with `507 Insufficient Storage` if it would not fit on *some* node, even when the receiving node has room: a node with plenty of space still returns 507 when replicating the object would push a peer out of space, because the write could not be durably replicated. This keeps the "every node has a complete copy" invariant. Reads and deletes are never gated (so you can always recover space). The guard is by `Content-Length`; size-unknown streaming uploads fall back to the filesystem's own out-of-space error.
 
 ### Config-drift detection
 
 A symmetric cluster only works if the alignment-critical config is identical on every node, and the dangerous mismatches are *silent*: a wrong `secret` lets a node look alive while every replication request 403s; a different encryption master key makes replicated blobs unreadable on the peer. So nodes actively check it.
 
-Each node computes a **fingerprint** (a one-way hash, exposing nothing sensitive) of the fields that must match — `cluster_id`, `secret`, `mode`, `cluster_size`, and the encryption master-key id — and advertises it on `/cluster/v1/health`. Every node compares each peer's fingerprint to its own. On a mismatch:
+Each node computes a **fingerprint** (a one-way hash) of the fields that must match — `cluster_id`, `secret`, `mode`, `cluster_size`, and the encryption master-key id — and exchanges it on the **authenticated ping** (not the public health: a public fingerprint would hand an attacker an offline brute-force oracle for the secret). A *wrong-secret* node cannot even answer the ping — its `403` is itself the drift signal, and its identity is recovered from the public health so the operator sees *who* is misaligned. On a mismatch:
 
 - it **logs a `WARN`** naming the offending peer (once, on transition — not every tick);
 - the console **Cluster Topology** card shows an amber warning banner and an alert icon on the mismatched node;
-- `GET /admin/cluster` reports `config_aligned: false` and `config_ok: false` on that node.
+- `GET /admin/cluster` reports `config_aligned: false` and `config_ok: false` on that node;
+- the drifted node is **excluded from replication fan-out and the write quorum** — it could not store the replicas correctly anyway (wrong key) or even authenticate them (wrong secret). With 1 of 3 nodes drifted the cluster keeps writing (2 eligible ≥ quorum 2); with 2 of 3 drifted the remaining aligned node refuses writes with `503` until the configs align.
 
-The cluster does **not** refuse to start or auto-isolate the peer — a node can't know its peers' config at startup, and one misconfigured node shouldn't take down the healthy ones. It surfaces the problem loudly and keeps running; you fix the config and the warning clears on its own. (Fields that legitimately differ per node — port, `advertise_addr`, `node_id`, seeds, intervals, storage backend — are deliberately excluded from the fingerprint.)
+The cluster does **not** refuse to start or auto-isolate the peer's process — a node can't know its peers' config at startup, and one misconfigured node shouldn't take down the healthy ones. It surfaces the problem loudly and keeps running; you fix the config and the warning clears on its own. (Fields that legitimately differ per node — port, `advertise_addr`, `node_id`, seeds, intervals, storage backend — are deliberately excluded from the fingerprint.)
 
 ## Production deployment
 
@@ -198,8 +201,9 @@ This section exists so you can judge the approach, not just use it.
 - **Eventual consistency, hand-rolled (Dynamo-style), not Raft.** There is no consensus log. Convergence is LWW + anti-entropy + tombstones. This keeps the data path coordination-free and fast, at the cost of the well-known AP/eventual-consistency caveats. It also means correctness rests on the convergence machinery being right — which is why each piece (manifest, tombstones, reconcile, GC) is unit-tested in isolation.
 - **No hinted-handoff.** Larger clusters (Cassandra et al.) buffer writes for absent nodes. At N=3 with full replication, frequent incremental anti-entropy plus read-repair recover an absent node quickly enough that the extra machinery isn't worth it.
 - **Control-plane catch-up gaps (documented).** Credentials, users, teams, grants and buckets reconcile fully (including deletions, via tombstones). Their *associations and settings* — team memberships, grant attachments, `bucket_config`, bucket tags, server settings — replicate in **real time** but are **not** part of the periodic reconcile yet. A node that was **down during one of those specific changes** may miss it until the entity is touched again. This is a known follow-up, not a data-loss bug.
-- **Tombstone grace vs downtime.** A returning node must come back **within `tombstone_grace_days`** (default 7) to learn of deletions that happened while it was away; past the grace, tombstones are GC'd and a very-long-absent node could resurrect deleted data. Set the grace longer than your worst-case planned downtime.
+- **Tombstone grace vs downtime.** A returning node must come back **within `tombstone_grace_days`** (default 7) to learn of deletions that happened while it was away. The GC liveness guard keeps tombstones around *while the absent node is still remembered* (it blocks the purge and flags `tombstone_gc_blocked`), but once the node is pruned from membership (`peer_prune_days`, default = the grace) the tombstones it never saw are reclaimed — a node returning **beyond** the grace can still resurrect deleted data. Set the grace longer than your worst-case planned downtime. The guard's memory is also process-local: it cannot account for peers that vanished before the current process started.
 - **Clock dependence.** LWW uses wall-clock time; run NTP. A hybrid logical clock is possible future hardening.
+- **Rolling upgrades across the peer-authentication boundary.** A pre-ping (≤ 0.25.x) peer cannot prove possession of the secret, so an upgraded node treats it as alive-but-not-eligible: no fan-out toward it, no quorum contribution. Practical consequence in a 3-node `quorum` cluster: the **first** upgraded node refuses writes (`503`) until a **second** node is upgraded (the load balancer routes around it; legacy nodes keep accepting writes and their own fan-out/anti-entropy keep all data converging). Complete the rolling upgrade promptly rather than running mixed versions for long.
 
 ## TOML configuration reference
 
@@ -220,10 +224,12 @@ dns_name   = "arca-headless"      # discovery = "dns"
 advertise_addr = "10.0.0.1"
 advertise_port = 9000
 
-health_interval_seconds       = 3     # peer health ping cadence
+health_interval_seconds       = 3     # peer probe cadence (authenticated ping)
 anti_entropy_interval_seconds = 5     # reconcile pass cadence
 request_timeout_seconds       = 30    # inter-node HTTP timeout
 tombstone_grace_days          = 7     # MUST exceed worst-case node downtime
+peer_prune_days               = 7     # evict peers unreachable this long
+                                      # (optional; default = tombstone_grace_days)
 ```
 
 ## Related

@@ -17,8 +17,9 @@ use std::time::Duration;
 
 use arca_auth::{sign_outbound_request, SignOutboundInput};
 use arca_core::cluster::{
-    ClusterManifest, ClusterManifestRequest, ClusterObjectAck, ClusterVersionDelete, ControlOp,
-    ControlSnapshot, CLUSTER_ACCESS_KEY, CLUSTER_REGION, CLUSTER_SIDECAR_HEADER,
+    ClusterManifest, ClusterManifestRequest, ClusterObjectAck, ClusterPingResponse,
+    ClusterVersionDelete, ControlOp, ControlSnapshot, CLUSTER_ACCESS_KEY,
+    CLUSTER_PING_NONCE_HEADER, CLUSTER_REGION, CLUSTER_SIDECAR_HEADER,
 };
 use arca_core::store::{ByteStream, SidecarMeta};
 use arca_core::types::{BlobId, ObjectRecord};
@@ -167,6 +168,46 @@ impl ClusterClient {
         let bytes = self
             .get_recv(endpoint, "/cluster/v1/control-snapshot")
             .await?;
+        serde_json::from_slice(&bytes).map_err(|e| ClusterError::Serde(e.to_string()))
+    }
+
+    /// Probes a peer's authenticated ping (`GET /cluster/v1/ping`) with a fresh
+    /// challenge nonce (decision H12). The nonce travels in the signed
+    /// [`CLUSTER_PING_NONCE_HEADER`]; the caller verifies the returned
+    /// `nonce_mac` against the same nonce to authenticate the peer. Non-2xx
+    /// statuses surface as [`ClusterError::Http`] so the membership manager can
+    /// distinguish a legacy peer (404), a secret mismatch (403), and itself
+    /// (409, the loop-prevention answer to our own source header).
+    pub async fn ping(
+        &self,
+        endpoint: &str,
+        nonce: &str,
+    ) -> Result<ClusterPingResponse, ClusterError> {
+        let (url, host, uri_path) = cluster_target(endpoint, "/cluster/v1/ping")?;
+        let datetime = now_iso8601();
+        let mut headers = base_signed_headers(&host, &datetime, None, None, &self.node_id);
+        headers.push((CLUSTER_PING_NONCE_HEADER.to_string(), nonce.to_string()));
+        let auth = self.sign("GET", &uri_path, &headers, &datetime);
+
+        let mut hmap = HeaderMap::new();
+        push_signed_headers(&mut hmap, &headers, &auth);
+
+        let resp = self
+            .http
+            .get(&url)
+            .headers(hmap)
+            .send()
+            .await
+            .map_err(|e| ClusterError::Network(e.to_string()))?;
+        let status = resp.status().as_u16();
+        if !(200..300).contains(&status) {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ClusterError::Http { status, body });
+        }
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| ClusterError::Network(e.to_string()))?;
         serde_json::from_slice(&bytes).map_err(|e| ClusterError::Serde(e.to_string()))
     }
 

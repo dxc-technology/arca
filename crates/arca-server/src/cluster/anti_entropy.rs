@@ -18,7 +18,11 @@
 //!   tombstone GC.
 //! - **Tombstone GC**: drop object AND control tombstones older than the
 //!   configured grace window (which must exceed the longest expected node
-//!   downtime).
+//!   downtime). Guarded by liveness (§3.2): while any known peer has been
+//!   unseen beyond the grace, the purge is skipped (warn + the
+//!   `tombstone_gc_blocked` flag in `/admin/cluster`) so the returning peer
+//!   still finds the tombstones; membership pruning (M3) eventually evicts a
+//!   never-returning peer and unblocks the GC.
 //! - **Blobs** (slower cadence): proactively REPAIR blob bytes missing for local
 //!   object rows (fetch from a peer), then GC orphan blob files no live row /
 //!   in-progress part / non-orphan composite sidecar references and older than
@@ -39,7 +43,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use arca_core::cluster::{plan_blob_gc, plan_control_merge, ClusterState, ManifestEntry};
+use arca_core::cluster::{
+    plan_blob_gc, plan_control_merge, tombstone_gc_blockers, ClusterState, ManifestEntry,
+};
 use arca_core::store::{ControlSnapshotStore, ControlTombstoneStore, MetadataStore, RawBlobOps};
 use arca_core::types::BlobId;
 use chrono::Utc;
@@ -81,7 +87,13 @@ pub fn spawn(
             timer.tick().await;
             tick += 1;
 
-            for peer in cluster.peers().into_iter().filter(|p| p.alive) {
+            // Reconcile only with ELIGIBLE peers (alive + authenticated +
+            // config-aligned, decision H12): pulling a manifest or a control
+            // snapshot from a peer that never proved possession of the secret
+            // would let a rogue endpoint feed us fabricated rows (data
+            // poisoning via LWW), and blobs repaired from a wrong-master-key
+            // node would be undecryptable here.
+            for peer in cluster.peers().into_iter().filter(|p| p.eligible()) {
                 // 1) Objects: pull this peer's changed-since manifest.
                 let since = hwm.get(&peer.node_id).copied().unwrap_or(0);
                 match reconcile_peer_objects(&client, metadata.as_ref(), &peer.endpoint, since)
@@ -116,21 +128,49 @@ pub fn spawn(
                 }
             }
 
-            // 3) Tombstone GC: drop object AND control tombstones past the grace.
+            // 3) Tombstone GC: drop object AND control tombstones past the grace
+            // — but ONLY while every known peer has been seen within it (§3.2
+            // liveness guard). A tombstone purged while a peer is unreachable
+            // beyond the grace would be gone before that peer ever learns of
+            // the deletion; its stale rows would resurrect the data on
+            // re-entry. Membership pruning (M3) eventually removes a
+            // never-returning peer so it cannot block GC forever.
             let grace = chrono::Duration::from_std(tombstone_grace)
                 .unwrap_or_else(|_| chrono::Duration::days(7));
-            let cutoff = Utc::now() - grace;
-            match metadata.purge_tombstones(cutoff).await {
-                Ok(n) if n > 0 => tracing::debug!(purged = n, "anti-entropy: object tombstone GC"),
-                Ok(_) => {}
-                Err(e) => tracing::debug!(error = %e, "anti-entropy: object tombstone GC failed"),
-            }
-            match control_tombstone.purge_control_tombstones(cutoff).await {
-                Ok(n) if n > 0 => {
-                    tracing::debug!(purged = n, "anti-entropy: control tombstone GC")
+            let blockers = tombstone_gc_blockers(&cluster.peers(), Utc::now(), grace);
+            cluster.set_tombstone_gc_blocked(!blockers.is_empty());
+            if !blockers.is_empty() {
+                let who: Vec<String> = blockers
+                    .iter()
+                    .map(|p| format!("{} ({})", p.node_id, p.endpoint))
+                    .collect();
+                tracing::warn!(
+                    blockers = %who.join(", "),
+                    "anti-entropy: SKIPPING tombstone GC — peer(s) unseen beyond the \
+                     tombstone grace window. Deleted data is kept as tombstones so it \
+                     cannot resurrect when they return. Recover or remove the peer(s); \
+                     membership pruning will eventually evict them (peer_prune_days)."
+                );
+            } else {
+                let cutoff = Utc::now() - grace;
+                match metadata.purge_tombstones(cutoff).await {
+                    Ok(n) if n > 0 => {
+                        tracing::debug!(purged = n, "anti-entropy: object tombstone GC")
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::debug!(error = %e, "anti-entropy: object tombstone GC failed")
+                    }
                 }
-                Ok(_) => {}
-                Err(e) => tracing::debug!(error = %e, "anti-entropy: control tombstone GC failed"),
+                match control_tombstone.purge_control_tombstones(cutoff).await {
+                    Ok(n) if n > 0 => {
+                        tracing::debug!(purged = n, "anti-entropy: control tombstone GC")
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::debug!(error = %e, "anti-entropy: control tombstone GC failed")
+                    }
+                }
             }
 
             // 4) Blob scan (slower cadence): proactively fetch bytes for rows
@@ -164,10 +204,13 @@ async fn repair_blobs(
             return;
         }
     };
+    // Repair only from ELIGIBLE peers (H12): bytes fetched from an
+    // unauthenticated endpoint could be fabricated, and a wrong-master-key
+    // peer's bytes would be undecryptable under our key.
     let peers: Vec<String> = cluster
         .peers()
         .into_iter()
-        .filter(|p| p.alive)
+        .filter(|p| p.eligible())
         .map(|p| p.endpoint)
         .collect();
     if peers.is_empty() {

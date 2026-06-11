@@ -389,13 +389,28 @@ run_cluster() {
 
     if [[ $rc -eq 0 ]]; then
         echo "── Phase F: config-drift detection (mismatched secret) ──"
-        # Health is public, so all 3 nodes are still "live" — only the
-        # fingerprint differs, which the drift detector flags.
+        # The liveness probe answers everyone, so all 3 nodes stay "live" —
+        # but the drifted node fails the authenticated ping (403) and is
+        # flagged AND excluded from the quorum (R3, decisions H7/H12).
         local CDRIFT="$C -f docker/docker-compose.cluster.drift.yml"
         $CDRIFT up -d
         wait_live 9001 3 90 || rc=1
         [[ $rc -eq 0 ]] && { $CDRIFT run --rm --no-deps test "$T" -m cluster_config_drift -v "$@" || rc=$?; }
-        $CDRIFT down -v 2>/dev/null || true
+
+        # Second half: de-align arca-2 too (its own distinct wrong secret).
+        # Only arca-2 is recreated — volumes persist, so the object seeded in
+        # the first half is still on arca-1 for the read assertion. With 2 of
+        # 3 nodes drifted the aligned node must refuse writes with 503.
+        if [[ $rc -eq 0 ]]; then
+            echo "── Phase F2: drifted majority (2 of 3 nodes mismatched) ──"
+            local CDRIFT2="$CDRIFT -f docker/docker-compose.cluster.drift2.yml"
+            $CDRIFT2 up -d
+            wait_live 9001 3 90 || rc=1
+            [[ $rc -eq 0 ]] && { $CDRIFT2 run --rm --no-deps test "$T" -m cluster_config_drift_majority -v "$@" || rc=$?; }
+            $CDRIFT2 down -v 2>/dev/null || true
+        else
+            $CDRIFT down -v 2>/dev/null || true
+        fi
     fi
 
     # ── Phases G–H exercise a REAL network partition: bin/cluster partition/heal

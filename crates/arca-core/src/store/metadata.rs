@@ -381,6 +381,19 @@ pub trait MetadataStore: Send + Sync {
         ))
     }
 
+    /// The highest node-local object `seq` assigned so far (the current value
+    /// of the write counter), `0` when no write has ever taken one. Reported
+    /// by the authenticated cluster ping so a peer can detect a seq REWIND
+    /// (this node restored from an older backup while the peer's high-water
+    /// mark still points past it — D3c). Reads the counter, not `MAX(seq)`
+    /// over rows: purged tombstones make the row maximum go backwards, which
+    /// would false-alarm the rewind detection.
+    ///
+    /// Default implementation: `0` (for non-clustered backends).
+    async fn current_object_seq(&self) -> Result<u64, crate::error::ArcaError> {
+        Ok(0)
+    }
+
     /// Removes tombstone rows (hard-deleted versions kept only for cluster
     /// convergence) whose `last_modified` is older than `before`, returning the
     /// number removed. The grace period (`now - before`) MUST exceed the longest

@@ -1,6 +1,7 @@
 //! Cluster (HA) HTTP endpoints (Phase 29).
 //!
-//! - `GET /cluster/v1/health` — public liveness + identity (M1).
+//! - `GET /cluster/v1/health` — public liveness + identity (M1, minimized §3.5).
+//! - `GET /cluster/v1/ping` — authenticated identity/health + challenge MAC (H12).
 //! - `PUT /cluster/v1/blob/{id}` — receive a blob's raw bytes + sidecar verbatim.
 //! - `GET /cluster/v1/blob/{id}` — serve a blob's raw bytes + sidecar (repair).
 //! - `POST /cluster/v1/object` — receive an object row verbatim (LWW upsert).
@@ -22,8 +23,9 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 
 use arca_core::cluster::{
-    ClusterManifest, ClusterManifestRequest, ClusterObjectAck, ClusterVersionDelete, ControlOp,
-    ManifestEntry, CLUSTER_SIDECAR_HEADER,
+    ping_nonce_mac, ClusterManifest, ClusterManifestRequest, ClusterObjectAck,
+    ClusterPingResponse, ClusterVersionDelete, ControlOp, ManifestEntry,
+    CLUSTER_PING_NONCE_HEADER, CLUSTER_SIDECAR_HEADER,
 };
 use arca_core::store::SidecarMeta;
 use arca_core::types::{BlobId, ObjectRecord};
@@ -34,39 +36,67 @@ use crate::state::AppState;
 struct ClusterHealthResponse {
     status: &'static str,
     node_id: String,
-    /// Fingerprint of the cluster-alignment-critical config; peers compare it to
-    /// their own to detect config drift. `null` until set at startup.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    config_fingerprint: Option<String>,
-    /// This node's total disk capacity (bytes); peers track the cluster minimum.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    disk_total: Option<u64>,
-    /// This node's available disk space (bytes).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    disk_available: Option<u64>,
 }
 
 /// `GET /cluster/v1/health` — public liveness + identity for peers.
 ///
-/// Returns this node's `node_id` so a peer's membership manager can identify it
-/// (and skip its own entry). Responds 404 when this node is not part of a
+/// Returns ONLY `{status, node_id}` (review §3.5/§3.7(B)): the config
+/// fingerprint would hand an attacker an offline brute-force oracle for the
+/// cluster secret, and disk stats are nobody's business unauthenticated — that
+/// detail now lives on the authenticated [`ping`]. `node_id` stays public so a
+/// peer's membership manager can identify a node (and recognise itself) before
+/// it can authenticate it. Responds 404 when this node is not part of a
 /// cluster, so a misconfigured probe gets a clear signal.
 pub async fn health(State(state): State<AppState>) -> Response {
     match &state.cluster {
-        Some(cluster) => {
-            let (disk_total, disk_available) =
-                crate::handlers::admin::aggregate_disk_stats(&state.data_dirs);
-            Json(ClusterHealthResponse {
-                status: "ok",
-                node_id: cluster.node_id().to_string(),
-                config_fingerprint: cluster.config_fingerprint(),
-                disk_total,
-                disk_available,
-            })
-            .into_response()
-        }
+        Some(cluster) => Json(ClusterHealthResponse {
+            status: "ok",
+            node_id: cluster.node_id().to_string(),
+        })
+        .into_response(),
         None => (StatusCode::NOT_FOUND, "node is not part of a cluster").into_response(),
     }
+}
+
+/// `GET /cluster/v1/ping` — authenticated peer liveness + challenge-response
+/// (decision H12, review §3.7(A)).
+///
+/// Sits behind `cluster_auth`, so only a holder of the cluster secret can read
+/// the detail that used to be public (fingerprint, disk stats — §3.5). The
+/// prober sends a fresh nonce in [`CLUSTER_PING_NONCE_HEADER`] (signed); the
+/// response's `nonce_mac = HMAC(secret, nonce)` proves to the prober that THIS
+/// node holds the secret — answering 200 alone proves nothing (a rogue
+/// controls its own server), and a recorded MAC is useless against a fresh
+/// nonce. `max_seq` reports the object write cursor for D3c rewind detection.
+pub async fn ping(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    let cluster = match &state.cluster {
+        Some(c) => c,
+        None => {
+            return (StatusCode::NOT_FOUND, "node is not part of a cluster").into_response()
+        }
+    };
+    let nonce_mac = match (
+        headers
+            .get(CLUSTER_PING_NONCE_HEADER)
+            .and_then(|v| v.to_str().ok()),
+        state.cluster_secret.as_deref(),
+    ) {
+        (Some(nonce), Some(secret)) if !nonce.is_empty() => Some(ping_nonce_mac(secret, nonce)),
+        _ => None,
+    };
+    let (disk_total, disk_available) =
+        crate::handlers::admin::aggregate_disk_stats(&state.data_dirs);
+    let max_seq = state.metadata.current_object_seq().await.unwrap_or(0);
+    Json(ClusterPingResponse {
+        status: "ok".to_string(),
+        node_id: cluster.node_id().to_string(),
+        config_fingerprint: cluster.config_fingerprint(),
+        disk_total,
+        disk_available,
+        max_seq,
+        nonce_mac,
+    })
+    .into_response()
 }
 
 /// `PUT /cluster/v1/blob/{blob_id}` — store a blob's raw bytes + sidecar verbatim.

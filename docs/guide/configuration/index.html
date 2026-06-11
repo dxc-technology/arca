@@ -2170,7 +2170,7 @@
 <tr>
 <td><code>cluster.health_interval_seconds</code></td>
 <td><code>5</code></td>
-<td>Interval between peer health pings.</td>
+<td>Interval between peer probes (the authenticated challenge-response ping).</td>
 </tr>
 <tr>
 <td><code>cluster.anti_entropy_interval_seconds</code></td>
@@ -2179,13 +2179,18 @@
 </tr>
 <tr>
 <td><code>cluster.request_timeout_seconds</code></td>
-<td><code>30</code></td>
+<td><code>10</code></td>
 <td>Inter-node HTTP request timeout.</td>
 </tr>
 <tr>
 <td><code>cluster.tombstone_grace_days</code></td>
 <td><code>7</code></td>
 <td>How long a delete tombstone is kept for convergence. MUST exceed the longest expected node downtime.</td>
+</tr>
+<tr>
+<td><code>cluster.peer_prune_days</code></td>
+<td><code>tombstone_grace_days</code></td>
+<td>Evict a peer from membership after it has been unreachable this long (≥ 1). While remembered, an absent peer blocks tombstone GC; once pruned, a return beyond the grace risks resurrecting deleted data.</td>
 </tr>
 </tbody>
 </table>

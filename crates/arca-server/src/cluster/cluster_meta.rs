@@ -51,7 +51,7 @@
 
 use std::sync::Arc;
 
-use arca_core::cluster::{quorum_satisfied, ClusterState, ControlOp};
+use arca_core::cluster::{quorum_satisfied, ClusterState, ControlOp, WriteGate};
 use arca_core::error::ArcaError;
 use arca_core::store::{ControlTombstoneStore, MetadataStore, TOMBSTONE_BUCKET};
 use arca_core::types::{
@@ -62,6 +62,37 @@ use chrono::{DateTime, Utc};
 use futures_util::future::join_all;
 
 use crate::cluster::client::ClusterClient;
+
+/// Maps the cluster admission gate to the client-facing `503` (shared by the
+/// metadata and control-plane decorators). [`WriteGate::NoQuorum`] is the
+/// fail-fast half of the §2.1 quorum (the ACK count is authoritative);
+/// [`WriteGate::SizeExceeded`] is the H6 fail-closed guard against an
+/// over-sized membership (D3a) — two distinct, actionable messages.
+pub(crate) fn check_write_gate(cluster: &ClusterState) -> Result<(), ArcaError> {
+    match cluster.write_gate() {
+        WriteGate::Open => Ok(()),
+        WriteGate::NoQuorum { eligible, quorum } => Err(ArcaError::S3(S3Error::with_message(
+            S3ErrorCode::ServiceUnavailable,
+            format!(
+                "cluster write quorum not available ({eligible} eligible node(s), \
+                 {quorum} required)"
+            ),
+            "/",
+        ))),
+        WriteGate::SizeExceeded {
+            eligible,
+            cluster_size,
+        } => Err(ArcaError::S3(S3Error::with_message(
+            S3ErrorCode::ServiceUnavailable,
+            format!(
+                "cluster size exceeded: {eligible} eligible nodes for cluster_size = \
+                 {cluster_size} — writes are refused to prevent split-brain; remove the \
+                 extra node(s) or resize the cluster (see the HA guide runbook)"
+            ),
+            "/",
+        ))),
+    }
+}
 
 /// Metadata store decorator that replicates object-table mutations to peers
 /// under the configured consistency policy.
@@ -87,30 +118,28 @@ impl ClusterMetadataStore {
         }
     }
 
-    /// Endpoints of peers currently considered alive.
+    /// Endpoints of peers eligible for replication: alive AND authenticated
+    /// (proved possession of the cluster secret — decision H12) AND
+    /// config-aligned (H7). Fanning out to anything less would hand new writes
+    /// to a rogue mDNS registrant or to a node that cannot store them
+    /// correctly (review §3.7(A), D1).
     fn live_peers(&self) -> Vec<String> {
         self.cluster
             .peers()
             .into_iter()
-            .filter(|p| p.alive)
+            .filter(|p| p.eligible())
             .map(|p| p.endpoint)
             .collect()
     }
 
-    /// The consistency-policy admission gate. In `available` mode this is always
-    /// `Ok`; in `quorum` mode it refuses with `503` when too few nodes are live.
+    /// The consistency-policy admission gate. In `available` mode this is
+    /// always `Ok`; in `quorum` mode it refuses with `503` when too few
+    /// ELIGIBLE nodes are live, or — fail-closed, decision H6 — when MORE
+    /// eligible nodes than `cluster_size` are live (split-brain enabler).
     /// Fail-fast only — the authoritative check is the post-fan-out ACK count
     /// ([`Self::enforce_ack_quorum`]), which sees what membership cannot.
     fn check_write_quorum(&self) -> Result<(), ArcaError> {
-        if self.cluster.has_write_quorum() {
-            Ok(())
-        } else {
-            Err(ArcaError::S3(S3Error::with_message(
-                S3ErrorCode::ServiceUnavailable,
-                "cluster write quorum not available (too few live nodes)",
-                "/",
-            )))
-        }
+        check_write_gate(&self.cluster)
     }
 
     /// The durability quorum check (review §2.1, decision H1): `acks` counts
@@ -742,6 +771,11 @@ impl MetadataStore for ClusterMetadataStore {
         // Local maintenance GC; no gate, no fan-out (each node GCs its own).
         self.inner.purge_tombstones(before).await
     }
+
+    async fn current_object_seq(&self) -> Result<u64, ArcaError> {
+        // Read-only; the ping endpoint reports it. No gate, no fan-out.
+        self.inner.current_object_seq().await
+    }
 }
 
 #[cfg(test)]
@@ -807,6 +841,9 @@ mod tests {
             endpoint: endpoint.to_string(),
             alive: true,
             last_seen: None,
+            // These tests model an ELIGIBLE peer (membership authenticated it);
+            // what they exercise is the fan-out/ACK behavior toward it.
+            authenticated: true,
             config_ok: true,
             disk_total: None,
             disk_available: None,
@@ -872,7 +909,7 @@ mod tests {
     async fn quorum_mode_refuses_write_without_majority() {
         let (inner, _dir) = temp_store().await;
         // cluster_size=3 -> write_quorum=2; alone (no live peers) -> 1 < 2 -> read-only.
-        let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
+        let cluster = Arc::new(ClusterState::new("self-node", Some(2), Some(3)));
         let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
         let err = store.put_object(&sample_record()).await.unwrap_err();
         match err {
@@ -886,7 +923,7 @@ mod tests {
         let (inner, _dir) = temp_store().await;
         inner.create_bucket("b").await.unwrap();
         // available mode (write_quorum=None) -> always writable, even solo.
-        let cluster = Arc::new(ClusterState::new("self-node", None));
+        let cluster = Arc::new(ClusterState::new("self-node", None, None));
         let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
         store.put_object(&sample_record()).await.unwrap();
         assert!(store.get_object("b", "k").await.unwrap().is_some());
@@ -900,7 +937,7 @@ mod tests {
     async fn quorum_mode_refuses_write_when_acks_below_quorum() {
         let (inner, _dir) = temp_store().await;
         inner.create_bucket("b").await.unwrap();
-        let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
+        let cluster = Arc::new(ClusterState::new("self-node", Some(2), Some(3)));
         cluster.set_peers(vec![live_peer()]); // gate sees 2 "alive" -> passes
         let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
         // The unreachable peer never ACKs: 1 (local) < 2 -> 503.
@@ -921,7 +958,7 @@ mod tests {
         inner.create_bucket("b").await.unwrap();
         let (endpoint, _peer) =
             spawn_fake_peer(r#"{"applied":true,"has_blob":true}"#).await;
-        let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
+        let cluster = Arc::new(ClusterState::new("self-node", Some(2), Some(3)));
         cluster.set_peers(vec![peer_at(&endpoint)]);
         let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
         store.put_object(&sample_record()).await.unwrap();
@@ -936,7 +973,7 @@ mod tests {
         inner.create_bucket("b").await.unwrap();
         let (endpoint, _peer) =
             spawn_fake_peer(r#"{"applied":true,"has_blob":false}"#).await;
-        let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
+        let cluster = Arc::new(ClusterState::new("self-node", Some(2), Some(3)));
         cluster.set_peers(vec![peer_at(&endpoint)]);
         let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
         let err = store.put_object(&sample_record()).await.unwrap_err();
@@ -953,7 +990,7 @@ mod tests {
         let (inner, _dir) = temp_store().await;
         inner.create_bucket("b").await.unwrap();
         let (endpoint, _peer) = spawn_fake_peer("").await;
-        let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
+        let cluster = Arc::new(ClusterState::new("self-node", Some(2), Some(3)));
         cluster.set_peers(vec![peer_at(&endpoint)]);
         let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
         store.put_object(&sample_record()).await.unwrap();
@@ -965,7 +1002,7 @@ mod tests {
     async fn quorum_mode_refuses_delete_when_acks_below_quorum() {
         let (inner, _dir) = temp_store().await;
         inner.create_bucket("b").await.unwrap();
-        let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
+        let cluster = Arc::new(ClusterState::new("self-node", Some(2), Some(3)));
         cluster.set_peers(vec![live_peer()]);
         let store = ClusterMetadataStore::new(
             inner.clone(),
@@ -989,7 +1026,7 @@ mod tests {
     async fn quorum_mode_refuses_create_bucket_without_majority() {
         let (inner, _dir) = temp_store().await;
         // cluster_size=3 -> quorum=2; alone -> control-plane writes are refused too.
-        let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
+        let cluster = Arc::new(ClusterState::new("self-node", Some(2), Some(3)));
         let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
         let err = store.create_bucket("b").await.unwrap_err();
         match err {
@@ -1001,7 +1038,7 @@ mod tests {
     #[tokio::test]
     async fn available_mode_create_bucket_alone() {
         let (inner, _dir) = temp_store().await;
-        let cluster = Arc::new(ClusterState::new("self-node", None));
+        let cluster = Arc::new(ClusterState::new("self-node", None, None));
         let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
         // available mode: bucket creation succeeds solo; no peers -> no fan-out.
         store.create_bucket("b").await.unwrap();
@@ -1024,7 +1061,7 @@ mod tests {
     async fn available_mode_multipart_and_tags_alone() {
         let (inner, _dir) = temp_store().await;
         inner.create_bucket("b").await.unwrap();
-        let cluster = Arc::new(ClusterState::new("self-node", None));
+        let cluster = Arc::new(ClusterState::new("self-node", None, None));
         let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
 
         // Multipart in-progress state: create -> put_part -> delete, all solo.
@@ -1058,7 +1095,7 @@ mod tests {
     #[tokio::test]
     async fn quorum_mode_refuses_multipart_create_without_majority() {
         let (inner, _dir) = temp_store().await;
-        let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
+        let cluster = Arc::new(ClusterState::new("self-node", Some(2), Some(3)));
         let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
         let err = store
             .create_multipart_upload(&sample_upload())
@@ -1074,7 +1111,7 @@ mod tests {
     async fn available_mode_set_retention_alone() {
         let (inner, _dir) = temp_store().await;
         inner.create_bucket("b").await.unwrap();
-        let cluster = Arc::new(ClusterState::new("self-node", None));
+        let cluster = Arc::new(ClusterState::new("self-node", None, None));
         let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
         store.put_object(&sample_record()).await.unwrap();
         // Sets the lock columns on the current version; replication re-sends the

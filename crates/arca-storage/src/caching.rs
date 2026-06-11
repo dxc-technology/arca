@@ -266,6 +266,12 @@ impl MetadataStore for CachingMetadataStore {
         self.inner.list_rows_changed_since(since, limit).await
     }
 
+    async fn current_object_seq(&self) -> Result<u64, ArcaError> {
+        // Pure read of the write counter; forwarded so the default `0` never
+        // shadows a clustered backend behind the cache.
+        self.inner.current_object_seq().await
+    }
+
     async fn purge_tombstones(
         &self,
         before: chrono::DateTime<chrono::Utc>,

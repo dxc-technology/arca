@@ -1274,6 +1274,16 @@ impl MetadataStore for PgStore {
         Ok(result.rows_affected())
     }
 
+    async fn current_object_seq(&self) -> Result<u64, ArcaError> {
+        // The counter, not MAX(seq) over rows: purged tombstones make the row
+        // maximum go backwards, which would false-alarm D3c rewind detection.
+        let row = sqlx_core::query::query("SELECT value FROM object_seq")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("current_object_seq: {e}")))?;
+        Ok(row.get::<i64, _>("value") as u64)
+    }
+
     async fn list_referenced_blob_ids(&self) -> Result<Vec<BlobId>, ArcaError> {
         let rows = sqlx_core::query::query(
             "SELECT blob_id FROM objects WHERE is_tombstone = FALSE AND blob_id != ''

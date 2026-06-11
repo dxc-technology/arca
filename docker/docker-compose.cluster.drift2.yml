@@ -1,0 +1,19 @@
+# Overlay for the drift-MAJORITY integration test (phase F, second half).
+#
+# Applied ON TOP of the drift overlay (which de-aligns arca-3), it starts
+# arca-2 with yet another cluster secret (config-drift2.toml — different from
+# the aligned secret AND from arca-3's). Two of three nodes are then excluded
+# from the write quorum as drifted (decision H7/H12), so the remaining aligned
+# node (arca-1) must refuse writes with 503.
+#
+# Apply on top of the base + drift cluster compose:
+#   docker compose -p arca-cluster \
+#     -f docker/docker-compose.cluster.yml \
+#     -f docker/docker-compose.cluster.drift.yml \
+#     -f docker/docker-compose.cluster.drift2.yml up -d
+
+services:
+  arca-2:
+    volumes:
+      - arca-2-data:/data
+      - ../docker/cluster/config-drift2.toml:/etc/arca/config.toml:ro

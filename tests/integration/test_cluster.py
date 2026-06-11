@@ -15,6 +15,8 @@ topology it needs via a marker, and the runner selects them with `pytest -m`:
     cluster_catchup_verify all back up (anti-entropy must have converged)
     cluster_insufficient_storage  507 overlay (arca-3 on a tiny tmpfs)
     cluster_config_drift   drift overlay (arca-3 with a mismatched secret)
+    cluster_config_drift_majority  drift overlays on BOTH arca-2 and arca-3
+                           (distinct wrong secrets) — the aligned node must 503
     cluster_partition_before     all 3 up, seeds state for the partition phase
     cluster_partition_minority   arca-3 partitioned off (process ALIVE, network cut)
     cluster_partition_healed     partition healed (convergence + writability back)
@@ -89,6 +91,12 @@ AVAIL_SEED_BODY = b"seeded on all nodes before the split"
 AVAIL_LWW_KEY = "split-brain-object"
 AVAIL_LWW_LOSER = b"written FIRST, on the isolated side - must lose LWW"
 AVAIL_LWW_WINNER = b"written LAST, on the majority side - must win LWW"
+
+# Drift phase: seeded while ONE node is drifted (quorum still holds), then read
+# back while TWO nodes are drifted (writes 503 but reads must keep working).
+DRIFT_BUCKET = "cluster-drift"
+DRIFT_KEY = "written-with-one-drifted-node"
+DRIFT_BODY = b"written with one drifted node excluded from the quorum"
 
 
 # ── Clients ──────────────────────────────────────────────────────────────────
@@ -377,9 +385,80 @@ def test_config_drift_is_detected():
     assert data is not None and data.get("config_aligned") is False, (
         f"expected config_aligned=False, got: {data}"
     )
-    # Exactly the drifted node reports config_ok=False.
+    # Exactly the drifted node reports config_ok=False — and, with a different
+    # secret, it cannot answer the authenticated ping either (R3/H12).
     bad = [n for n in data["nodes"] if n.get("config_ok") is False]
     assert len(bad) >= 1, f"expected at least one node with config_ok=False: {data['nodes']}"
+    assert all(n.get("authenticated") is False for n in bad), (
+        f"a drifted-secret node must not be authenticated: {bad}"
+    )
+
+
+@pytest.mark.cluster_config_drift
+def test_quorum_holds_with_one_drifted_node():
+    """One drifted node of three does NOT break the quorum (H7): the two
+    aligned nodes still are 2 eligible >= write_quorum 2, so writes succeed —
+    while the drifted node is excluded from the count and the fan-out."""
+    # Wait until node 1 sees the drift (so we measure the post-exclusion state,
+    # not a not-yet-noticed one) and reports exactly 2 eligible nodes.
+    deadline = time.time() + 45
+    data = None
+    while time.time() < deadline:
+        data = _admin_get(NODES[1], "/admin/cluster")
+        if data.get("config_aligned") is False and data.get("eligible_node_count") == 2:
+            break
+        time.sleep(2)
+    assert data is not None and data.get("eligible_node_count") == 2, (
+        f"expected 2 eligible nodes (drifted one excluded), got: {data}"
+    )
+    assert data.get("has_write_quorum") is True, f"quorum must hold with 2/3 aligned: {data}"
+
+    node1 = _s3(NODES[1])
+    _ensure_bucket(node1, DRIFT_BUCKET)
+    node1.put_object(Bucket=DRIFT_BUCKET, Key=DRIFT_KEY, Body=DRIFT_BODY)
+    assert node1.get_object(Bucket=DRIFT_BUCKET, Key=DRIFT_KEY)["Body"].read() == DRIFT_BODY
+
+
+# ── Phase: drift-majority overlay (arca-2 AND arca-3 each with its own secret) ─
+
+@pytest.mark.cluster_config_drift_majority
+def test_writes_refused_with_drifted_majority():
+    """With 2 of 3 nodes drifted (each with a DIFFERENT wrong secret), the
+    aligned node alone is 1 eligible < write_quorum 2: it must refuse writes
+    with 503 even though all three processes are alive — a drifted node must
+    not sustain a quorum it cannot correctly participate in (H7/H12)."""
+    deadline = time.time() + 60
+    data = None
+    while time.time() < deadline:
+        data = _admin_get(NODES[1], "/admin/cluster")
+        bad = [n for n in data.get("nodes", []) if n.get("config_ok") is False]
+        if len(bad) >= 2 and data.get("eligible_node_count") == 1:
+            break
+        time.sleep(2)
+    assert data is not None and data.get("eligible_node_count") == 1, (
+        f"expected both drifted nodes excluded (1 eligible), got: {data}"
+    )
+    assert data.get("live_node_count") == 3, (
+        f"all three processes are alive (drift is not death): {data}"
+    )
+    assert data.get("has_write_quorum") is False, f"no quorum from drifted nodes: {data}"
+
+    node1 = _s3(NODES[1])
+    # Data plane: the object write is refused.
+    with pytest.raises(ClientError) as exc:
+        node1.put_object(Bucket=DRIFT_BUCKET, Key="drift-majority-write", Body=b"x")
+    assert _status_code(exc.value) == 503
+    assert exc.value.response["Error"]["Code"] == "ServiceUnavailable"
+
+    # Control plane: bucket creation is gated by the same quorum.
+    with pytest.raises(ClientError) as exc:
+        node1.create_bucket(Bucket="cluster-drift-majority-new")
+    assert _status_code(exc.value) == 503
+
+    # Reads stay un-gated: the object seeded in the one-drifted sub-phase
+    # (same volumes — only arca-2 was recreated) is still served.
+    body = node1.get_object(Bucket=DRIFT_BUCKET, Key=DRIFT_KEY)["Body"].read()
+    assert body == DRIFT_BODY
 
 
 # ── Phase: quorum mode under a REAL network partition (arca-3 isolated) ───────

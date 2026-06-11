@@ -219,13 +219,16 @@ pub fn build_router(state: AppState) -> Router {
         .merge(admin_auth);
 
     // --- Cluster router (Phase 29 HA) ---
-    // Public inter-node health/identity probe used by the membership manager.
+    // Public inter-node liveness/identity probe — minimized to {status, node_id}
+    // (review §3.5): everything else lives on the authenticated ping.
     let cluster_public = Router::new().route("/v1/health", get(cluster::health));
 
-    // Authenticated peer data endpoints: verbatim blob + object-row replication.
+    // Authenticated peer data endpoints: verbatim blob + object-row replication,
+    // plus the H12 challenge-response ping the membership manager probes.
     // The cluster_auth middleware verifies the shared cluster credential and
     // enforces loop prevention; handlers no-op (404/503) when clustering is off.
     let cluster_authed = Router::new()
+        .route("/v1/ping", get(cluster::ping))
         .route(
             "/v1/blob/{blob_id}",
             put(cluster::receive_blob).get(cluster::get_blob),

@@ -144,10 +144,11 @@ The cache is transparent to clients: write operations (create/delete bucket, put
 | `cluster.dns_name` | *(required for dns)* | DNS name resolving to all peers (e.g. a Kubernetes headless Service). |
 | `cluster.advertise_addr` | *(auto)* | Host/IP advertised to peers. Set behind NAT or with multiple interfaces. |
 | `cluster.advertise_port` | `server.port` | Port peers use to reach this node. Set only when it differs from the bind port. |
-| `cluster.health_interval_seconds` | `5` | Interval between peer health pings. |
+| `cluster.health_interval_seconds` | `5` | Interval between peer probes (the authenticated challenge-response ping). |
 | `cluster.anti_entropy_interval_seconds` | `30` | Interval between anti-entropy reconciliation passes. |
-| `cluster.request_timeout_seconds` | `30` | Inter-node HTTP request timeout. |
+| `cluster.request_timeout_seconds` | `10` | Inter-node HTTP request timeout. |
 | `cluster.tombstone_grace_days` | `7` | How long a delete tombstone is kept for convergence. MUST exceed the longest expected node downtime. |
+| `cluster.peer_prune_days` | `tombstone_grace_days` | Evict a peer from membership after it has been unreachable this long (≥ 1). While remembered, an absent peer blocks tombstone GC; once pruned, a return beyond the grace risks resurrecting deleted data. |
 
 When `[cluster]` is enabled, every node holds the full dataset and replicates writes in real time; lagging nodes self-heal via anti-entropy. For an encrypted cluster, set the **same** master key (or KMS) on every node. See the [High Availability guide](ha.md) for the full design, deployment, and operations.
 

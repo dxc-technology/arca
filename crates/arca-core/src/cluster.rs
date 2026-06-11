@@ -13,9 +13,11 @@
 //! `arca-core` (which `arca-proto` and `arca-server` both depend on) rather
 //! than in `arca-server` (which `arca-proto` cannot see).
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
 
 use chrono::{DateTime, Utc};
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -43,6 +45,74 @@ pub const CLUSTER_REGION: &str = "arca";
 /// signed header set, so the wrapped DEK an encrypted sidecar may contain
 /// cannot be tampered with in transit.
 pub const CLUSTER_SIDECAR_HEADER: &str = "x-arca-sidecar";
+
+/// Header carrying the prober's fresh challenge nonce on
+/// `GET /cluster/v1/ping` requests (decision H12). Part of the signed header
+/// set; the peer answers with [`ping_nonce_mac`] over it, proving possession of
+/// the cluster secret to the prober.
+pub const CLUSTER_PING_NONCE_HEADER: &str = "x-arca-cluster-nonce";
+
+/// Domain-separation prefix for the ping challenge MAC, so this HMAC use of the
+/// cluster secret can never collide with another (e.g. SigV4 key derivation).
+const PING_MAC_CONTEXT: &[u8] = b"arca-cluster-ping-v1";
+
+/// Computes the challenge-response MAC a pinged node returns: hex-encoded
+/// HMAC-SHA256 of the prober's nonce, keyed by the shared cluster secret
+/// (decision H12). A correct MAC over a FRESH nonce proves the responder holds
+/// the secret — merely answering 200 proves nothing (a rogue controls its own
+/// server), and a recorded MAC cannot be replayed against a new nonce.
+pub fn ping_nonce_mac(secret: &str, nonce: &str) -> String {
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
+        .expect("HMAC accepts any key length");
+    mac.update(PING_MAC_CONTEXT);
+    mac.update(b"\x1f");
+    mac.update(nonce.as_bytes());
+    hex::encode(mac.finalize().into_bytes())
+}
+
+/// Verifies a peer's challenge-response MAC against the nonce we sent it.
+/// Constant-time on the MAC comparison (via `Mac::verify_slice`); any decode
+/// failure or mismatch is simply "not authenticated".
+pub fn verify_ping_nonce_mac(secret: &str, nonce: &str, mac_hex: &str) -> bool {
+    let Ok(received) = hex::decode(mac_hex) else {
+        return false;
+    };
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
+        .expect("HMAC accepts any key length");
+    mac.update(PING_MAC_CONTEXT);
+    mac.update(b"\x1f");
+    mac.update(nonce.as_bytes());
+    mac.verify_slice(&received).is_ok()
+}
+
+/// Response of the authenticated `GET /cluster/v1/ping` (decision H12, review
+/// §3.5): the peer-facing identity/health detail that used to live on the
+/// public `/cluster/v1/health`. Only an authenticated peer (signed request)
+/// can read it, and `nonce_mac` proves the responder's own possession of the
+/// secret to the prober. `max_seq` reports the node's object write cursor for
+/// restore/rewind detection (D3c). Shared contract between the ping handler
+/// (producer) and the membership prober (consumer).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClusterPingResponse {
+    pub status: String,
+    pub node_id: String,
+    /// Fingerprint of the cluster-alignment-critical config (drift detection).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_fingerprint: Option<String>,
+    /// This node's total disk capacity (bytes); peers track the cluster minimum.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disk_total: Option<u64>,
+    /// This node's available disk space (bytes).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disk_available: Option<u64>,
+    /// Highest node-local object `seq` assigned so far (0 = none yet).
+    #[serde(default)]
+    pub max_seq: u64,
+    /// [`ping_nonce_mac`] over the request's [`CLUSTER_PING_NONCE_HEADER`];
+    /// absent when the request carried no nonce.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nonce_mac: Option<String>,
+}
 
 /// Computes a fingerprint of the cluster-alignment-critical configuration —
 /// the fields that MUST be identical on every node for the cluster to work:
@@ -642,8 +712,18 @@ pub struct PeerNode {
     pub endpoint: String,
     /// Whether the most recent health check succeeded.
     pub alive: bool,
-    /// Timestamp of the last successful health contact, if any.
+    /// Timestamp of the last successful contact, if any. Kept on a DEAD peer
+    /// (the last time it WAS reachable): the tombstone-GC liveness guard
+    /// (review §3.2) and membership pruning (M3) both reason about how long a
+    /// peer has been unseen.
     pub last_seen: Option<DateTime<Utc>>,
+    /// Whether the peer proved possession of the cluster secret on its most
+    /// recent probe — a valid [`ping_nonce_mac`] over our fresh nonce (decision
+    /// H12). A peer that merely answers HTTP (a rogue mDNS registrant, a legacy
+    /// pre-ping node) is alive but NOT authenticated, and is excluded from
+    /// replication fan-out and quorum accounting (see [`PeerNode::eligible`]).
+    #[serde(default)]
+    pub authenticated: bool,
     /// Whether this peer's cluster-critical config matches ours (see
     /// [`config_fingerprint`]). `true` until a live peer reports a differing
     /// fingerprint; a dead peer (no fresh fingerprint) stays `true` (we don't
@@ -659,8 +739,42 @@ pub struct PeerNode {
     pub disk_available: Option<u64>,
 }
 
+impl PeerNode {
+    /// Whether this peer may participate in replication: reachable, proved
+    /// possession of the cluster secret (peer authentication, decision H12),
+    /// and config-aligned (decision H7). This single predicate gates the
+    /// fan-out target list, the write-quorum count, anti-entropy pulls, and
+    /// the capacity minimum — an unauthenticated or drifted peer can neither
+    /// receive replicas nor sustain a quorum (review §3.7(A), D1).
+    pub fn eligible(&self) -> bool {
+        self.alive && self.authenticated && self.config_ok
+    }
+}
+
 fn default_true() -> bool {
     true
+}
+
+/// §3.2 — tombstone-GC liveness guard: the known peers whose last contact is
+/// missing or older than the grace window. While any exist, purging tombstones
+/// is unsafe: a tombstone recorded while such a peer was already unreachable
+/// would be gone before the peer ever learns of the deletion, and its stale
+/// live row would resurrect the object on re-entry. (A peer seen within the
+/// grace necessarily saw — or will pull, it is reachable — every tombstone
+/// older than the grace, so purging those is safe.) Membership pruning (M3)
+/// eventually removes never-returning peers so they cannot block GC forever;
+/// a beyond-grace re-entry after pruning is a documented residual risk.
+pub fn tombstone_gc_blockers(
+    peers: &[PeerNode],
+    now: DateTime<Utc>,
+    grace: chrono::Duration,
+) -> Vec<PeerNode> {
+    let cutoff = now - grace;
+    peers
+        .iter()
+        .filter(|p| !p.alive && p.last_seen.is_none_or(|seen| seen < cutoff))
+        .cloned()
+        .collect()
 }
 
 /// Minimum of two optional values, treating `None` as "unknown" (ignored):
@@ -671,6 +785,23 @@ fn min_opt(a: Option<u64>, b: Option<u64>) -> Option<u64> {
         (Some(x), None) | (None, Some(x)) => Some(x),
         (None, None) => None,
     }
+}
+
+/// Why the cluster write gate is currently closed (or open). Computed by
+/// [`ClusterState::write_gate`]; the store decorators map each variant to a
+/// distinct `503 ServiceUnavailable` message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WriteGate {
+    /// Writes may proceed (subject to the post-fan-out ACK count).
+    Open,
+    /// Quorum mode: too few eligible nodes (authenticated + config-aligned,
+    /// including self) to possibly reach the write quorum.
+    NoQuorum { eligible: usize, quorum: u32 },
+    /// Quorum mode, decision H6 (D3a): MORE eligible nodes than the configured
+    /// `cluster_size`. The write majority is derived from `cluster_size`, so an
+    /// over-sized membership can form two disjoint "majorities" (split-brain).
+    /// A misconfiguration this dangerous fails closed — no escape hatch.
+    SizeExceeded { eligible: usize, cluster_size: u32 },
 }
 
 /// Serializable point-in-time view of the cluster, for the admin API / console.
@@ -685,8 +816,19 @@ pub struct ClusterSnapshot {
     pub write_quorum: Option<u32>,
     /// Whether writes can currently be acknowledged.
     pub has_write_quorum: bool,
-    /// Live nodes reachable for a write, including this node.
+    /// Live nodes reachable at all, including this node (visibility count —
+    /// includes unauthenticated/drifted nodes).
     pub live_node_count: usize,
+    /// Nodes that count for replication (alive + authenticated +
+    /// config-aligned peers, plus this node). This is the number the write
+    /// quorum is measured against.
+    pub eligible_node_count: usize,
+    /// Decision H6 (D3a): true when eligible nodes exceed the configured
+    /// `cluster_size` — the write gate is closed until the operator resizes.
+    pub size_exceeded: bool,
+    /// Review §3.2: true when the anti-entropy worker is skipping tombstone GC
+    /// because a known peer has been unreachable beyond the grace window.
+    pub tombstone_gc_blocked: bool,
     /// All known peers (alive or not).
     pub peers: Vec<PeerNode>,
 }
@@ -701,6 +843,9 @@ pub struct ClusterState {
     /// Durable copies (including self) required to ACK a write. `None` means
     /// "available" mode: any single node may ACK (W=1).
     write_quorum: Option<u32>,
+    /// Configured expected cluster size (quorum mode; `None` in available
+    /// mode). The H6 (D3a) gate refuses writes when eligible nodes exceed it.
+    cluster_size: Option<u32>,
     /// Currently known peers (excluding self).
     peers: RwLock<Vec<PeerNode>>,
     /// This node's own advertised endpoint, learned by the membership manager
@@ -711,18 +856,29 @@ pub struct ClusterState {
     /// set (e.g. before the master key is resolved). Peers' fingerprints are
     /// compared against this to flag config drift.
     config_fingerprint: RwLock<Option<String>>,
+    /// Review §3.2: set by the anti-entropy worker while it is skipping
+    /// tombstone GC because a known peer is unseen beyond the grace window.
+    tombstone_gc_blocked: AtomicBool,
 }
 
 impl ClusterState {
     /// Creates cluster state for this node. `write_quorum` is the majority
-    /// threshold in quorum mode, or `None` in available mode.
-    pub fn new(node_id: impl Into<String>, write_quorum: Option<u32>) -> Self {
+    /// threshold in quorum mode, or `None` in available mode; `cluster_size`
+    /// is the configured expected size (quorum mode only — it drives the H6
+    /// over-size write gate).
+    pub fn new(
+        node_id: impl Into<String>,
+        write_quorum: Option<u32>,
+        cluster_size: Option<u32>,
+    ) -> Self {
         Self {
             node_id: node_id.into(),
             write_quorum,
+            cluster_size,
             peers: RwLock::new(Vec::new()),
             local_endpoint: RwLock::new(None),
             config_fingerprint: RwLock::new(None),
+            tombstone_gc_blocked: AtomicBool::new(false),
         }
     }
 
@@ -743,11 +899,14 @@ impl ClusterState {
     }
 
     /// The cluster's effective disk capacity (bytes), as `(min_total,
-    /// min_available)` over this node and all ALIVE peers. With full replication
-    /// the smallest node bounds what the cluster can store, so the minimum free
-    /// space is what gates writes and is shown in the dashboard. `local_*` are
-    /// this node's own stats (the caller computes them); peers whose stats are
-    /// not known yet (`None`) are skipped.
+    /// min_available)` over this node and all ELIGIBLE peers. With full
+    /// replication the smallest node bounds what the cluster can store, so the
+    /// minimum free space is what gates writes and is shown in the dashboard.
+    /// Only eligible peers count: an unauthenticated node (e.g. a rogue mDNS
+    /// registrant) must not be able to close the capacity guard by advertising
+    /// a tiny disk, and a drifted node does not receive replicas anyway.
+    /// `local_*` are this node's own stats (the caller computes them); peers
+    /// whose stats are not known yet (`None`) are skipped.
     pub fn min_disk(
         &self,
         local_total: Option<u64>,
@@ -755,7 +914,7 @@ impl ClusterState {
     ) -> (Option<u64>, Option<u64>) {
         let mut min_total = local_total;
         let mut min_available = local_available;
-        for p in self.peers().iter().filter(|p| p.alive) {
+        for p in self.peers().iter().filter(|p| p.eligible()) {
             min_total = min_opt(min_total, p.disk_total);
             min_available = min_opt(min_available, p.disk_available);
         }
@@ -803,6 +962,7 @@ impl ClusterState {
     }
 
     /// Number of peers currently considered alive (excluding this node).
+    /// Visibility count: includes unauthenticated and drifted peers.
     pub fn live_peer_count(&self) -> usize {
         self.peers
             .read()
@@ -812,37 +972,91 @@ impl ClusterState {
             .count()
     }
 
-    /// Total nodes currently reachable for a write, including this node.
+    /// Total nodes currently reachable at all, including this node
+    /// (visibility count — NOT what the quorum is measured against).
     pub fn live_node_count(&self) -> usize {
         self.live_peer_count() + 1
     }
 
-    /// Whether a write can currently be acknowledged under the configured
-    /// consistency policy.
+    /// Peers that count for replication: alive AND authenticated AND
+    /// config-aligned (see [`PeerNode::eligible`]).
+    pub fn eligible_peer_count(&self) -> usize {
+        self.peers
+            .read()
+            .expect("cluster peers lock poisoned")
+            .iter()
+            .filter(|p| p.eligible())
+            .count()
+    }
+
+    /// Nodes that count for replication, including this node. The write
+    /// quorum and the H6 size gate are measured against this.
+    pub fn eligible_node_count(&self) -> usize {
+        self.eligible_peer_count() + 1
+    }
+
+    /// The admission write gate under the configured consistency policy
+    /// (decisions H12/H7/H6 — review §3.7(A), D1, D3a).
     ///
-    /// - Available mode (`write_quorum == None`): always `true` (W=1, self).
-    /// - Quorum mode: `true` when live nodes (peers + self) meet the majority.
-    pub fn has_write_quorum(&self) -> bool {
-        match self.write_quorum {
-            None => true,
-            Some(q) => self.live_node_count() >= q as usize,
+    /// - Available mode (`write_quorum == None`): always [`WriteGate::Open`].
+    /// - Quorum mode: counts ELIGIBLE nodes (authenticated + config-aligned
+    ///   peers, plus self) — an unauthenticated rogue or a drifted node can
+    ///   neither sustain a quorum ([`WriteGate::NoQuorum`]) nor hide an
+    ///   over-size membership ([`WriteGate::SizeExceeded`], fail-closed).
+    pub fn write_gate(&self) -> WriteGate {
+        let Some(q) = self.write_quorum else {
+            return WriteGate::Open;
+        };
+        let eligible = self.eligible_node_count();
+        if let Some(size) = self.cluster_size {
+            if eligible > size as usize {
+                return WriteGate::SizeExceeded {
+                    eligible,
+                    cluster_size: size,
+                };
+            }
         }
+        if eligible < q as usize {
+            return WriteGate::NoQuorum {
+                eligible,
+                quorum: q,
+            };
+        }
+        WriteGate::Open
+    }
+
+    /// Whether a write can currently be acknowledged under the configured
+    /// consistency policy (shorthand for `write_gate() == Open`).
+    pub fn has_write_quorum(&self) -> bool {
+        self.write_gate() == WriteGate::Open
+    }
+
+    /// Records whether the anti-entropy worker is currently skipping tombstone
+    /// GC because of an unseen-beyond-grace peer (review §3.2).
+    pub fn set_tombstone_gc_blocked(&self, blocked: bool) {
+        self.tombstone_gc_blocked.store(blocked, Ordering::Relaxed);
+    }
+
+    /// Whether tombstone GC is currently blocked by the §3.2 liveness guard.
+    pub fn tombstone_gc_blocked(&self) -> bool {
+        self.tombstone_gc_blocked.load(Ordering::Relaxed)
     }
 
     /// A serializable snapshot for the admin API / console dashboard.
     pub fn snapshot(&self) -> ClusterSnapshot {
         let peers = self.peers();
         let live_node_count = peers.iter().filter(|p| p.alive).count() + 1;
-        let has_write_quorum = match self.write_quorum {
-            None => true,
-            Some(q) => live_node_count >= q as usize,
-        };
+        let eligible_node_count = peers.iter().filter(|p| p.eligible()).count() + 1;
+        let gate = self.write_gate();
         ClusterSnapshot {
             node_id: self.node_id.clone(),
             local_endpoint: self.local_endpoint(),
             write_quorum: self.write_quorum,
-            has_write_quorum,
+            has_write_quorum: gate == WriteGate::Open,
             live_node_count,
+            eligible_node_count,
+            size_exceeded: matches!(gate, WriteGate::SizeExceeded { .. }),
+            tombstone_gc_blocked: self.tombstone_gc_blocked(),
             peers,
         }
     }
@@ -858,6 +1072,9 @@ mod tests {
             endpoint: format!("https://{node_id}:9000"),
             alive,
             last_seen: None,
+            // Tests model the normal case: a live peer has proven possession
+            // of the secret (eligibility variations get dedicated tests).
+            authenticated: alive,
             config_ok: true,
             disk_total: None,
             disk_available: None,
@@ -887,7 +1104,7 @@ mod tests {
 
     #[test]
     fn min_disk_takes_minimum_over_alive_nodes() {
-        let state = ClusterState::new("self", None);
+        let state = ClusterState::new("self", None, None);
         let mut p1 = peer("n2", true);
         p1.disk_total = Some(2_000);
         p1.disk_available = Some(100); // the bottleneck for free space
@@ -908,7 +1125,7 @@ mod tests {
 
     #[test]
     fn min_disk_skips_unknown_peer_stats() {
-        let state = ClusterState::new("self", None);
+        let state = ClusterState::new("self", None, None);
         state.set_peers(vec![peer("n2", true)]); // disk stats None
         // Peer's unknown stats are ignored; only local counts.
         assert_eq!(state.min_disk(Some(10), Some(5)), (Some(10), Some(5)));
@@ -916,7 +1133,7 @@ mod tests {
 
     #[test]
     fn available_mode_always_has_quorum() {
-        let state = ClusterState::new("self", None);
+        let state = ClusterState::new("self", None, None);
         // No peers, alone: still writable in available mode.
         assert!(state.has_write_quorum());
         assert_eq!(state.live_node_count(), 1);
@@ -925,7 +1142,7 @@ mod tests {
     #[test]
     fn quorum_mode_needs_majority() {
         // cluster_size = 3 → write_quorum = 2.
-        let state = ClusterState::new("self", Some(2));
+        let state = ClusterState::new("self", Some(2), Some(3));
         // Alone (self only) → 1 < 2 → no quorum (read-only).
         assert!(!state.has_write_quorum());
         // One live peer → self + 1 = 2 ≥ 2 → quorum.
@@ -939,7 +1156,7 @@ mod tests {
 
     #[test]
     fn snapshot_reports_state() {
-        let state = ClusterState::new("self", Some(2));
+        let state = ClusterState::new("self", Some(2), Some(3));
         state.set_peers(vec![peer("n2", true), peer("n3", false)]);
         let snap = state.snapshot();
         assert_eq!(snap.node_id, "self");
@@ -951,7 +1168,7 @@ mod tests {
 
     #[test]
     fn peers_roundtrip() {
-        let state = ClusterState::new("self", None);
+        let state = ClusterState::new("self", None, None);
         assert!(state.peers().is_empty());
         state.set_peers(vec![peer("n2", true)]);
         assert_eq!(state.peers().len(), 1);
@@ -1319,5 +1536,233 @@ mod tests {
         assert_eq!(plan.upsert_credentials.len(), 1, "newer create wins");
         assert_eq!(plan.clear_tombstones.len(), 1, "stale local tombstone cleared");
         assert!(plan.delete_credentials.is_empty());
+    }
+
+    // --- ping challenge-response MAC (decision H12) -------------------------
+
+    #[test]
+    fn ping_mac_roundtrip_and_tamper() {
+        let mac = ping_nonce_mac("supersecret", "nonce-123");
+        assert_eq!(mac.len(), 64, "hex-encoded HMAC-SHA256");
+        assert!(verify_ping_nonce_mac("supersecret", "nonce-123", &mac));
+        // Wrong secret, wrong nonce, tampered/garbage MAC: all rejected.
+        assert!(!verify_ping_nonce_mac("other-secret", "nonce-123", &mac));
+        assert!(!verify_ping_nonce_mac("supersecret", "nonce-456", &mac));
+        let tampered = format!("{}{}", &mac[..63], if &mac[63..] == "0" { "1" } else { "0" });
+        assert!(!verify_ping_nonce_mac("supersecret", "nonce-123", &tampered));
+        assert!(!verify_ping_nonce_mac("supersecret", "nonce-123", "not-hex"));
+        assert!(!verify_ping_nonce_mac("supersecret", "nonce-123", ""));
+    }
+
+    #[test]
+    fn ping_mac_is_deterministic_and_nonce_sensitive() {
+        assert_eq!(ping_nonce_mac("s", "n"), ping_nonce_mac("s", "n"));
+        assert_ne!(ping_nonce_mac("s", "n1"), ping_nonce_mac("s", "n2"));
+        assert_ne!(ping_nonce_mac("s1", "n"), ping_nonce_mac("s2", "n"));
+    }
+
+    #[test]
+    fn ping_response_serde_roundtrip_and_legacy_tolerance() {
+        let resp = ClusterPingResponse {
+            status: "ok".to_string(),
+            node_id: "n1".to_string(),
+            config_fingerprint: Some("ab12cd34".to_string()),
+            disk_total: Some(100),
+            disk_available: Some(40),
+            max_seq: 7,
+            nonce_mac: Some("deadbeef".to_string()),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let back: ClusterPingResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.node_id, "n1");
+        assert_eq!(back.max_seq, 7);
+        assert_eq!(back.nonce_mac.as_deref(), Some("deadbeef"));
+        // Additive wire change (H10): a minimal body still parses.
+        let minimal: ClusterPingResponse =
+            serde_json::from_str(r#"{"status":"ok","node_id":"n2"}"#).unwrap();
+        assert_eq!(minimal.node_id, "n2");
+        assert_eq!(minimal.max_seq, 0);
+        assert!(minimal.nonce_mac.is_none());
+    }
+
+    // --- peer eligibility (decisions H12/H7 — §3.7(A), D1) ------------------
+
+    #[test]
+    fn eligible_requires_alive_authenticated_and_aligned() {
+        let mut p = peer("n2", true);
+        assert!(p.eligible());
+        p.authenticated = false; // a rogue / legacy peer: alive, not eligible
+        assert!(!p.eligible());
+        p.authenticated = true;
+        p.config_ok = false; // drifted config: not eligible (H7)
+        assert!(!p.eligible());
+        p.config_ok = true;
+        p.alive = false;
+        assert!(!p.eligible());
+    }
+
+    #[test]
+    fn unauthenticated_peer_does_not_sustain_quorum() {
+        // 3-node quorum cluster: self + 1 eligible peer = quorum 2.
+        let state = ClusterState::new("self", Some(2), Some(3));
+        let mut rogue = peer("rogue", true);
+        rogue.authenticated = false;
+        state.set_peers(vec![rogue]);
+        // The rogue is alive (visible) but must not make the quorum (ghost
+        // quorum, review §3.7(A)): counting it would fan out all new writes
+        // to a node that never proved possession of the secret.
+        assert_eq!(state.live_node_count(), 2);
+        assert_eq!(state.eligible_node_count(), 1);
+        assert!(!state.has_write_quorum());
+        // A real (authenticated) peer restores it.
+        state.set_peers(vec![peer("n2", true)]);
+        assert!(state.has_write_quorum());
+    }
+
+    #[test]
+    fn drifted_peer_does_not_sustain_quorum() {
+        // Decision H7: config_ok=false stays visible but exits the quorum.
+        let state = ClusterState::new("self", Some(2), Some(3));
+        let mut drifted = peer("n2", true);
+        drifted.config_ok = false;
+        state.set_peers(vec![drifted]);
+        assert!(!state.has_write_quorum());
+        assert_eq!(state.eligible_node_count(), 1);
+        assert_eq!(state.live_node_count(), 2, "still visible as alive");
+    }
+
+    // --- cluster_size write gate (decision H6 — D3a) -------------------------
+
+    #[test]
+    fn size_exceeded_closes_the_write_gate() {
+        // cluster_size = 3, quorum = 2, but FOUR eligible nodes are live: two
+        // disjoint pairs could both reach "quorum 2" — split-brain. Fail closed.
+        let state = ClusterState::new("self", Some(2), Some(3));
+        state.set_peers(vec![peer("n2", true), peer("n3", true), peer("n4", true)]);
+        assert_eq!(
+            state.write_gate(),
+            WriteGate::SizeExceeded {
+                eligible: 4,
+                cluster_size: 3
+            }
+        );
+        assert!(!state.has_write_quorum());
+        let snap = state.snapshot();
+        assert!(snap.size_exceeded);
+        assert!(!snap.has_write_quorum);
+
+        // Exactly cluster_size eligible nodes: open.
+        state.set_peers(vec![peer("n2", true), peer("n3", true)]);
+        assert_eq!(state.write_gate(), WriteGate::Open);
+        assert!(!state.snapshot().size_exceeded);
+    }
+
+    #[test]
+    fn size_gate_ignores_non_eligible_extras() {
+        // A 4th node that is alive but NOT authenticated must not close the
+        // gate (otherwise a rogue mDNS registrant could DoS all writes).
+        let state = ClusterState::new("self", Some(2), Some(3));
+        let mut rogue = peer("rogue", true);
+        rogue.authenticated = false;
+        state.set_peers(vec![peer("n2", true), peer("n3", true), rogue]);
+        assert_eq!(state.write_gate(), WriteGate::Open);
+    }
+
+    #[test]
+    fn available_mode_never_size_gates() {
+        // H6 applies to quorum mode only (available mode has no derived
+        // majority to corrupt).
+        let state = ClusterState::new("self", None, None);
+        state.set_peers(vec![
+            peer("n2", true),
+            peer("n3", true),
+            peer("n4", true),
+            peer("n5", true),
+        ]);
+        assert_eq!(state.write_gate(), WriteGate::Open);
+    }
+
+    #[test]
+    fn no_quorum_gate_reports_counts() {
+        let state = ClusterState::new("self", Some(2), Some(3));
+        assert_eq!(
+            state.write_gate(),
+            WriteGate::NoQuorum {
+                eligible: 1,
+                quorum: 2
+            }
+        );
+    }
+
+    // --- min_disk eligibility ------------------------------------------------
+
+    #[test]
+    fn min_disk_ignores_non_eligible_peers() {
+        let state = ClusterState::new("self", None, None);
+        // An unauthenticated "peer" advertising a tiny disk must not drag the
+        // cluster minimum down (capacity-guard DoS).
+        let mut rogue = peer("rogue", true);
+        rogue.authenticated = false;
+        rogue.disk_total = Some(1);
+        rogue.disk_available = Some(1);
+        let mut drifted = peer("n3", true);
+        drifted.config_ok = false;
+        drifted.disk_total = Some(2);
+        drifted.disk_available = Some(2);
+        state.set_peers(vec![rogue, drifted]);
+        assert_eq!(state.min_disk(Some(100), Some(50)), (Some(100), Some(50)));
+    }
+
+    // --- tombstone GC liveness guard (review §3.2) ---------------------------
+
+    #[test]
+    fn gc_blockers_flags_peers_unseen_beyond_grace() {
+        let now = ts(10_000);
+        let grace = chrono::Duration::seconds(1_000);
+
+        let fresh_alive = peer("n2", true);
+        let mut dead_recent = peer("n3", false);
+        dead_recent.last_seen = Some(ts(9_500)); // within grace → safe
+        let mut dead_stale = peer("n4", false);
+        dead_stale.last_seen = Some(ts(8_000)); // beyond grace → blocks
+        let mut dead_unknown = peer("n5", false);
+        dead_unknown.last_seen = None; // never contacted → conservative block
+
+        let blockers = tombstone_gc_blockers(
+            &[fresh_alive, dead_recent, dead_stale, dead_unknown],
+            now,
+            grace,
+        );
+        let ids: Vec<&str> = blockers.iter().map(|p| p.node_id.as_str()).collect();
+        assert_eq!(ids, vec!["n4", "n5"]);
+    }
+
+    #[test]
+    fn gc_blockers_empty_when_all_seen_recently() {
+        let now = ts(10_000);
+        let grace = chrono::Duration::seconds(1_000);
+        let mut dead_recent = peer("n2", false);
+        dead_recent.last_seen = Some(ts(9_999));
+        assert!(tombstone_gc_blockers(&[peer("n3", true), dead_recent], now, grace).is_empty());
+    }
+
+    #[test]
+    fn snapshot_carries_gc_blocked_flag() {
+        let state = ClusterState::new("self", None, None);
+        assert!(!state.snapshot().tombstone_gc_blocked);
+        state.set_tombstone_gc_blocked(true);
+        assert!(state.snapshot().tombstone_gc_blocked);
+        state.set_tombstone_gc_blocked(false);
+        assert!(!state.snapshot().tombstone_gc_blocked);
+    }
+
+    #[test]
+    fn peer_node_deserializes_legacy_payload_as_unauthenticated() {
+        // A payload without the `authenticated` field (pre-R3 producer) must
+        // default to NOT authenticated — the secure default.
+        let json = r#"{"node_id":"n2","endpoint":"http://n2:9000","alive":true,"last_seen":null}"#;
+        let p: PeerNode = serde_json::from_str(json).unwrap();
+        assert!(!p.authenticated);
+        assert!(p.config_ok, "config_ok keeps its benign default");
     }
 }

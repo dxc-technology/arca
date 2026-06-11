@@ -1,7 +1,8 @@
 # Config-drift variant: IDENTICAL to config.toml except for a DIFFERENT cluster
 # secret. Mounted on a single node by the drift integration test to verify that
-# peers detect the mismatch (config_fingerprint differs) and report it via
-# /admin/cluster without refusing to run.
+# peers detect the mismatch (the node 403s the authenticated ping, so it shows
+# config_ok=false and authenticated=false), report it via /admin/cluster, and
+# EXCLUDE it from the write quorum — all without the cluster refusing to run.
 [server]
 bind = "0.0.0.0"
 port = 9000

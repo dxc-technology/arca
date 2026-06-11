@@ -1,0 +1,28 @@
+# Second config-drift variant: IDENTICAL to config.toml except for a cluster
+# secret that differs BOTH from the aligned nodes' secret AND from
+# config-drift.toml's. Mounted on arca-2 (on top of the drift overlay that
+# already de-aligns arca-3) by the drift-majority integration test: with TWO of
+# three nodes drifted, the remaining aligned node must refuse writes with 503
+# (drifted peers are excluded from the write quorum — decision H7/H12). The two
+# drifted secrets must also differ from each other, otherwise arca-2 and arca-3
+# would authenticate each other and form their own eligible pair.
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+
+[cluster]
+enabled = true
+cluster_id = "arca-cluster"
+# DELIBERATELY different from BOTH the aligned secret and config-drift.toml's.
+secret = "drifted-cluster-secret-mismatch-2"
+mode = "quorum"
+cluster_size = 3
+discovery = "static"
+# Cluster-network-only aliases — see config.toml for why.
+seeds = ["arca-1-cluster:9000", "arca-2-cluster:9000", "arca-3-cluster:9000"]
+health_interval_seconds = 3
+anti_entropy_interval_seconds = 5
+request_timeout_seconds = 5

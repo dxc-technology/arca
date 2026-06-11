@@ -23,34 +23,29 @@ use arca_core::store::{
     TOMBSTONE_CREDENTIAL, TOMBSTONE_GRANT, TOMBSTONE_TEAM, TOMBSTONE_USER,
 };
 use arca_core::types::{Credential, Grant, Team, User};
-use arca_core::{S3Error, S3ErrorCode};
 
 use crate::cluster::client::ClusterClient;
+use crate::cluster::cluster_meta::check_write_gate;
 use crate::cluster::identity::NODE_ID_KEY;
 
 /// The consistency-policy admission gate, shared by the identity decorators.
 /// `available` mode is always `Ok`; `quorum` mode refuses with `503` when too
-/// few nodes are live.
+/// few ELIGIBLE nodes are live, or when more eligible nodes than
+/// `cluster_size` are live (H6 fail-closed) — see `check_write_gate`.
 fn check_write_quorum(cluster: &ClusterState) -> Result<(), ArcaError> {
-    if cluster.has_write_quorum() {
-        Ok(())
-    } else {
-        Err(ArcaError::S3(S3Error::with_message(
-            S3ErrorCode::ServiceUnavailable,
-            "cluster write quorum not available (too few live nodes)",
-            "/",
-        )))
-    }
+    check_write_gate(cluster)
 }
 
-/// Fan out a control-plane op to every live peer IN PARALLEL (§2.4).
+/// Fan out a control-plane op to every ELIGIBLE peer IN PARALLEL (§2.4):
+/// alive, authenticated (decision H12 — never hand identity state to a peer
+/// that has not proven possession of the cluster secret) and config-aligned.
 /// Best-effort by design (decision H4): identity mutations are rare and the
 /// anti-entropy control-snapshot reconcile heals what a peer missed.
 async fn fan_out_op(client: &ClusterClient, cluster: &ClusterState, op: &ControlOp) {
     let sends = cluster
         .peers()
         .into_iter()
-        .filter(|p| p.alive)
+        .filter(|p| p.eligible())
         .map(|peer| async move {
             if let Err(e) = client.send_op(&peer.endpoint, op).await {
                 tracing::warn!(
@@ -687,6 +682,7 @@ impl ServerConfigStore for ClusterServerConfigStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arca_core::S3ErrorCode;
     use std::time::Duration;
 
     async fn temp_credentials() -> (Arc<dyn CredentialStore>, tempfile::TempDir) {
@@ -722,7 +718,7 @@ mod tests {
     async fn credential_quorum_gate_refuses_without_majority() {
         let (inner, _dir) = temp_credentials().await;
         // cluster_size=3 -> quorum=2; alone -> identity writes are refused too.
-        let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
+        let cluster = Arc::new(ClusterState::new("self-node", Some(2), Some(3)));
         let store = ClusterCredentialStore::new(inner, client(), cluster, tombstones().await);
         let err = store.put_credential(&sample_credential()).await.unwrap_err();
         match err {
@@ -734,7 +730,7 @@ mod tests {
     #[tokio::test]
     async fn credential_available_mode_writes_alone() {
         let (inner, _dir) = temp_credentials().await;
-        let cluster = Arc::new(ClusterState::new("self-node", None));
+        let cluster = Arc::new(ClusterState::new("self-node", None, None));
         let store = ClusterCredentialStore::new(inner, client(), cluster, tombstones().await);
         // available mode: write succeeds solo; no peers -> no fan-out.
         store.put_credential(&sample_credential()).await.unwrap();
@@ -747,7 +743,7 @@ mod tests {
         let store = Arc::new(arca_storage::SqliteStore::open_in_memory().await.unwrap());
         let creds: Arc<dyn CredentialStore> = store.clone();
         let tomb: Arc<dyn ControlTombstoneStore> = store.clone();
-        let cluster = Arc::new(ClusterState::new("self-node", None)); // available mode
+        let cluster = Arc::new(ClusterState::new("self-node", None, None)); // available mode
         let dec = ClusterCredentialStore::new(creds, client(), cluster, tomb.clone());
 
         dec.put_credential(&sample_credential()).await.unwrap();
@@ -785,7 +781,7 @@ mod tests {
         let (inner, _dir) = temp_server_config().await;
         // No write quorum (alone in a 3-node cluster): cluster-wide settings are
         // refused, but the node-local node_id must still persist for bootstrap.
-        let cluster = Arc::new(ClusterState::new("self-node", Some(2)));
+        let cluster = Arc::new(ClusterState::new("self-node", Some(2), Some(3)));
         let store = ClusterServerConfigStore::new(inner, client(), cluster);
         store
             .set_server_config(NODE_ID_KEY, "abc-123")
@@ -806,7 +802,7 @@ mod tests {
     #[tokio::test]
     async fn server_config_available_mode_writes_alone() {
         let (inner, _dir) = temp_server_config().await;
-        let cluster = Arc::new(ClusterState::new("self-node", None));
+        let cluster = Arc::new(ClusterState::new("self-node", None, None));
         let store = ClusterServerConfigStore::new(inner, client(), cluster);
         // available mode: cluster-wide write succeeds solo; no peers -> no fan-out.
         store.set_server_config("region", "eu-west-1").await.unwrap();
