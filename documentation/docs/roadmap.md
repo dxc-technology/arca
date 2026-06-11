@@ -504,11 +504,12 @@ Remediation of all findings from an in-depth post-release review of the Phase 29
 per-milestone detail, and a finding-by-finding traceability table — is published as a living
 document: see the [HA Hardening plan](ha-hardening.md). The review it stems from is in the
 repository: [arca-phase-29-ha-review.md](https://github.com/dxc-technology/arca/blob/main/.claude/reviews/arca-phase-29-ha-review.md).
+The whole phase ships as a **single release** when all nine milestones are done (plan decision H11).
 
 - [x] R1 — P0 correctness: true write quorum (ACK counting), commit-ordered PostgreSQL manifest cursor, tombstone-first control merge
 - [x] R2 — Cluster test infrastructure: real network partitions, available-mode suite, control-plane catch-up test, flakiness fixes
-- [ ] R3 — Membership and quorum integrity: **peer authentication** (a rogue peer must not receive fan-out without proving secret/CA possession), config drift excluded from quorum, public health minimised, cluster-size guard, tombstone-GC liveness guard
-- [ ] R4 — Inter-node transport security: **verified mutual TLS with a shared cluster CA** (resolves TD-015), anti-replay window, body limits, secret-strength enforcement, dual-secret rotation
+- [ ] R3 — Membership and quorum integrity: **peer authentication** (H12 confirmed: a challenge-response on the cluster secret ships for every cluster — plain-HTTP included — as the baseline layer; the R4 mutual TLS adds the independent second factor), config drift excluded from quorum, public health minimised, fail-closed cluster-size write gate (H6, confirmed), tombstone-GC liveness guard
+- [ ] R4 — Inter-node transport security: **verified mutual TLS with a shared cluster CA** (H12 confirmed: CA provided via config, generator tooling shipped; resolves TD-015), anti-replay window, body limits, secret-strength enforcement, dual-secret rotation
 - [ ] R5 — Reconcile completeness: RBAC join tables and bucket config (resolves TD-016), multipart reconcile, SSE-C replication decision
 - [ ] R6 — Cluster-aware workers: leader gate for the lifecycle and external-replication workers
 - [ ] R7 — Synchronization state and operability: "syncing" readiness, per-peer lag, repair budget, backup-restore rewind detection
