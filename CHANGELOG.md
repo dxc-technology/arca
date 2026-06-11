@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **HA Hardening plan (Phase 29.1).** The remediation plan for the findings of the in-depth Phase 29 HA review is now part of the official roadmap: a new Phase 29.1 section (progress bar, dependency graph, summary table, milestone checklist) plus the full working plan — fixed design decisions, per-milestone detail, and a finding-by-finding traceability table — published as a living page on the documentation site.
+
 ## [0.25.1] — 2026-06-10
 
 ### Changed

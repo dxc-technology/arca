@@ -2,7 +2,7 @@
 
 ## Context
 
-The Phase 29 review (`.claude/reviews/arca-phase-29-ha-review.md`, passes of 2026-06-10 and 2026-06-11) produced the findings: **3 P0s** (§2.1–§2.3), **§2.4 + 9 P1s** (§3.x, D1, D2, D3a, D9), **a series of P2s** (M1–M8, §5, D3b/c, D4–D8) and **P3/doc** (D10–D12). This plan implements ALL of them, organized in 9 milestones (R1–R9) ordered by priority and technical dependency.
+The Phase 29 review ([`arca-phase-29-ha-review.md`](https://github.com/dxc-technology/arca/blob/main/.claude/reviews/arca-phase-29-ha-review.md), passes of 2026-06-10 and 2026-06-11) produced the findings: **3 P0s** (§2.1–§2.3), **§2.4 + 9 P1s** (§3.x, D1, D2, D3a, D9), **a series of P2s** (M1–M8, §5, D3b/c, D4–D8) and **P3/doc** (D10–D12). This plan implements ALL of them, organized in 9 milestones (R1–R9) ordered by priority and technical dependency. It is a living document, published on the documentation site as an annex of the roadmap (Phase 29.1) via a symlink to the canonical file `.claude/plans/arca-phase-29-ha-hardening.md`.
 
 **How to use this document** (process rules, valid for every session):
 
@@ -10,7 +10,7 @@ The Phase 29 review (`.claude/reviews/arca-phase-29-ha-review.md`, passes of 202
 2. Work TDD; every milestone must leave `bin/test unit` and `bin/test cluster` green. After code changes also rebuild the test images (`docker compose -f docker/docker-compose.yml build unit-test test`), otherwise tests run on stale images.
 3. For every completed item: tick the checkbox HERE and in the traceability table, update `CHANGELOG.md` (Unreleased section), update the documentation touched.
 4. If a decision changes the design, update the WHOLE document, not just the touched section (same rule as the Phase 29 plan).
-5. At the end of each milestone: propose to Pietro a commit + possibly a release.
+5. At the end of each milestone: tick the milestone in the roadmap's Phase 29.1 section (`documentation/docs/roadmap.md`), rebuild the site with `bin/docs-build` (this plan is published there via symlink), then propose to Pietro a commit + possibly a release.
 6. The §x.y / Mx / Dx numbers refer to the review; the "plan lines" to `.claude/plans/arca-phase-29-ha.md`.
 
 ## Design decisions (fixed before implementation)

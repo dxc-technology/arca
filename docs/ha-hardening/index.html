@@ -1,0 +1,2104 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Open source S3-compatible object storage server written in Rust">
+      
+      
+      
+        <link rel="canonical" href="https://dxc-technology.github.io/arca/ha-hardening/">
+      
+      
+        <link rel="prev" href="../roadmap/">
+      
+      
+        <link rel="next" href="../changelog/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/logo.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>HA Hardening Plan - Arca</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#arca-ha-hardening-remediation-after-the-phase-29-review" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Arca" class="md-header__button md-logo" aria-label="Arca" data-md-component="logo">
+      
+  <img src="../assets/logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Arca
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              HA Hardening Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/dxc-technology/arca" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    dxc-technology/arca
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Arca" class="md-nav__button md-logo" aria-label="Arca" data-md-component="logo">
+      
+  <img src="../assets/logo.svg" alt="logo">
+
+    </a>
+    Arca
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/dxc-technology/arca" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    dxc-technology/arca
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/access-control/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Access Control
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/tls/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TLS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/encryption/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encryption
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/compression/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compression
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/replication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Replication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/ha/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    High Availability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/connectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Notification Connectors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/console/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Console
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/s3-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    S3 API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/admin-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../operations/recovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Disaster Recovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../operations/monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitoring & Logging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../operations/deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Production Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../operations/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HA Hardening Plan
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HA Hardening Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-decisions-fixed-before-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design decisions (fixed before implementation)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#r1-p0-correctness-true-quorum-pg-cursor-tombstone-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        R1 — P0 correctness (true quorum, PG cursor, tombstone-first)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#r2-cluster-test-infrastructure-real-partitions-available-mode-catch-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        R2 — Cluster test infrastructure (real partitions, available mode, catch-up)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#r3-membership-and-quorum-integrity-ghost-quorum-guards" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        R3 — Membership and quorum integrity (ghost quorum, guards)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#r4-inter-node-transport-security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        R4 — Inter-node transport security
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#r5-reconcile-completeness-td-016-multipart-sse-c" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        R5 — Reconcile completeness (TD-016, multipart, SSE-C)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#r6-cluster-aware-workers-leader-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        R6 — Cluster-aware workers (leader gate)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#r7-synchronization-state-and-operability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        R7 — Synchronization state and operability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#r8-console-per-node-views-behind-the-lb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        R8 — Console: per-node views behind the LB
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#r9-documentation-deploy-and-closure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        R9 — Documentation, deploy and closure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#finding-milestone-traceability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Finding → milestone traceability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#estimate-and-sequence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Estimate and sequence
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#out-of-scope-explicitly-deferred" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Out of scope (explicitly deferred)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tech-debt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Technical Debt
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-decisions-fixed-before-implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design decisions (fixed before implementation)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#r1-p0-correctness-true-quorum-pg-cursor-tombstone-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        R1 — P0 correctness (true quorum, PG cursor, tombstone-first)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#r2-cluster-test-infrastructure-real-partitions-available-mode-catch-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        R2 — Cluster test infrastructure (real partitions, available mode, catch-up)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#r3-membership-and-quorum-integrity-ghost-quorum-guards" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        R3 — Membership and quorum integrity (ghost quorum, guards)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#r4-inter-node-transport-security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        R4 — Inter-node transport security
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#r5-reconcile-completeness-td-016-multipart-sse-c" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        R5 — Reconcile completeness (TD-016, multipart, SSE-C)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#r6-cluster-aware-workers-leader-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        R6 — Cluster-aware workers (leader gate)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#r7-synchronization-state-and-operability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        R7 — Synchronization state and operability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#r8-console-per-node-views-behind-the-lb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        R8 — Console: per-node views behind the LB
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#r9-documentation-deploy-and-closure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        R9 — Documentation, deploy and closure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#finding-milestone-traceability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Finding → milestone traceability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#estimate-and-sequence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Estimate and sequence
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#out-of-scope-explicitly-deferred" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Out of scope (explicitly deferred)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="arca-ha-hardening-remediation-after-the-phase-29-review">Arca — HA Hardening (remediation after the Phase 29 review)<a class="headerlink" href="#arca-ha-hardening-remediation-after-the-phase-29-review" title="Permanent link">&para;</a></h1>
+<h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
+<p>The Phase 29 review (<a href="https://github.com/dxc-technology/arca/blob/main/.claude/reviews/arca-phase-29-ha-review.md"><code>arca-phase-29-ha-review.md</code></a>, passes of 2026-06-10 and 2026-06-11) produced the findings: <strong>3 P0s</strong> (§2.1–§2.3), <strong>§2.4 + 9 P1s</strong> (§3.x, D1, D2, D3a, D9), <strong>a series of P2s</strong> (M1–M8, §5, D3b/c, D4–D8) and <strong>P3/doc</strong> (D10–D12). This plan implements ALL of them, organized in 9 milestones (R1–R9) ordered by priority and technical dependency. It is a living document, published on the documentation site as an annex of the roadmap (Phase 29.1) via a symlink to the canonical file <code>.claude/plans/arca-phase-29-ha-hardening.md</code>.</p>
+<p><strong>How to use this document</strong> (process rules, valid for every session):</p>
+<ol>
+<li>At session start read: <code>CLAUDE.md</code>, this plan, the review. The traceability table at the bottom says what is done and what is not.</li>
+<li>Work TDD; every milestone must leave <code>bin/test unit</code> and <code>bin/test cluster</code> green. After code changes also rebuild the test images (<code>docker compose -f docker/docker-compose.yml build unit-test test</code>), otherwise tests run on stale images.</li>
+<li>For every completed item: tick the checkbox HERE and in the traceability table, update <code>CHANGELOG.md</code> (Unreleased section), update the documentation touched.</li>
+<li>If a decision changes the design, update the WHOLE document, not just the touched section (same rule as the Phase 29 plan).</li>
+<li>At the end of each milestone: tick the milestone in the roadmap's Phase 29.1 section (<code>documentation/docs/roadmap.md</code>), rebuild the site with <code>bin/docs-build</code> (this plan is published there via symlink), then propose to Pietro a commit + possibly a release.</li>
+<li>The §x.y / Mx / Dx numbers refer to the review; the "plan lines" to <code>.claude/plans/arca-phase-29-ha.md</code>.</li>
+</ol>
+<h2 id="design-decisions-fixed-before-implementation">Design decisions (fixed before implementation)<a class="headerlink" href="#design-decisions-fixed-before-implementation" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Decision</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>H1</td>
+<td><strong>True quorum = option A of review §2.1</strong>: count the fan-out ACKs; if <code>1 + ack &lt; write_quorum</code> the write fails with <code>503 ServiceUnavailable</code> + <code>Retry-After</code>. The local copy is NOT rolled back (anti-entropy propagates it): document that an error does not imply undo, as in every quorum system without distributed transactions.</td>
+<td>✅ approved (review + Pietro's ok on the P0s)</td>
+</tr>
+<tr>
+<td>H2</td>
+<td><strong>ACK = row applied + blob present</strong>: the response of <code>POST /cluster/v1/object</code> becomes <code>{applied, has_blob}</code>; the peer self-certifies (sidecar present for rows referencing a blob; for delete markers/tombstones <code>applied</code> suffices). Avoids threading state between <code>write_sidecar</code> and <code>put_object</code>. For composites <code>has_blob</code> = composite sidecar present (the parts already fan out individually; the rest is covered by D4).</td>
+<td>✅ decided in planning</td>
+</tr>
+<tr>
+<td>H3</td>
+<td><strong>PG commit-ordered cursor via counter table</strong> (like SQLite): table <code>object_seq(v BIGINT)</code> updated with <code>UPDATE ... RETURNING</code> in the same transaction as the row. The row lock serializes the assignment until commit → seq order = commit order, no deliverable gaps. Cost: serializes the final stretch of object writes on PG (acceptable; documented). Discarded alternative: a probabilistic guard window.</td>
+<td>✅ decided in planning</td>
+</tr>
+<tr>
+<td>H4</td>
+<td><strong>Scope of the ACK counting</strong>: object data-plane mutations (put_object, version-delete/tombstone, delete marker). Control-plane and tag ops remain best-effort fan-out + reconcile (rare mutations, reconciled; extension possible later).</td>
+<td>✅ decided in planning</td>
+</tr>
+<tr>
+<td>H5</td>
+<td><strong>Symmetric leader gate for the workers</strong>: only the ALIVE node with the lowest <code>node_id</code> (membership + self) runs the worker. Automatic failover at the next tick. A double-execution window during membership disagreement: accepted and documented (idempotent work; for external replication a duplicate delivery is possible inside the window).</td>
+<td>✅ decided in planning</td>
+</tr>
+<tr>
+<td>H6</td>
+<td><strong>D3a = gate, not just a warning</strong>: in quorum mode, if the observed live nodes exceed <code>cluster_size</code>, writes are refused (503 with a clear message) + flag in <code>/admin/cluster</code>. It is a misconfiguration that enables split-brain: the safety mode must fail closed.</td>
+<td>⚠ recommended, confirm with Pietro at the start of R3</td>
+</tr>
+<tr>
+<td>H7</td>
+<td><strong>Drift = out of the quorum</strong>: a peer with <code>config_ok=false</code> does not count toward the quorum (it stays visible in <code>/admin/cluster</code> with the drift flag).</td>
+<td>✅ decided in planning</td>
+</tr>
+<tr>
+<td>H8</td>
+<td><strong>Secret rotation via dual-secret</strong>: optional <code>[cluster] secret_previous</code> key; inbound auth accepts both, outbound uses only <code>secret</code>. Runbook: set <code>secret_previous=old, secret=new</code>, rolling restart, then remove <code>secret_previous</code>.</td>
+<td>✅ decided in planning</td>
+</tr>
+<tr>
+<td>H9</td>
+<td><strong>D6 console via server-side proxy</strong>: a <code>?node=&lt;node_id&gt;</code> parameter on the per-node admin endpoints (audit/metrics/events), internal proxying via <code>ClusterClient</code>. Avoids CORS and browser-unreachable endpoints.</td>
+<td>⚠ recommended, confirm with Pietro at the start of R8</td>
+</tr>
+<tr>
+<td>H10</td>
+<td><strong>Rolling upgrade across mixed versions</strong>: every wire change is additive (new JSON fields ignored by old nodes); the probe uses the new authenticated <code>/cluster/v1/ping</code> with a fallback to the old <code>/cluster/v1/health</code> on 404 (legacy peer, counts as alive with a warning).</td>
+<td>✅ decided in planning</td>
+</tr>
+<tr>
+<td>H11</td>
+<td><strong>Versions</strong>: end of R1+R2 → propose <code>v0.26.0</code> (MINOR: the quorum changes observable behavior). Subsequent milestones group into releases proposed at milestone end; numbers decided with Pietro at that time.</td>
+<td>⚠ proposal</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="r1-p0-correctness-true-quorum-pg-cursor-tombstone-first">R1 — P0 correctness (true quorum, PG cursor, tombstone-first)<a class="headerlink" href="#r1-p0-correctness-true-quorum-pg-cursor-tombstone-first" title="Permanent link">&para;</a></h2>
+<p>The review's three P0s plus the §2.4 prerequisite. No new test infrastructure required (unit + the existing cluster suite); partition-based verification arrives in R2.</p>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§2.4 Parallel fan-out</strong> — replace the sequential <code>for endpoint in live_peers()</code> loops with <code>futures::future::join_all</code> collecting <code>Vec&lt;Result&gt;</code>: <code>cluster_meta.rs</code> (<code>fan_out_object</code> and the delete/op fan-outs, lines ~99/114/148), <code>cluster_blob.rs</code> (<code>fan_out</code>, ~77/107), <code>cluster_control.rs</code> (<code>fan_out_op</code>). Verify <code>ClusterClient</code> has a per-request timeout (reqwest); otherwise add one (default ~10 s).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§2.1 True quorum (decisions H1, H2, H4)</strong>:<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> response of <code>POST /cluster/v1/object</code> → JSON <code>{applied: bool, has_blob: bool}</code> (handler <code>handlers/cluster.rs:165-185</code>); <code>has_blob</code> = sidecar present when the row references a blob.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>ClusterMetadataStore::put_object</code> (<code>cluster_meta.rs:227-238</code>): after the local write, parallel fan-out, <code>acks = 1 + successes_with_blob</code>; if <code>acks &lt; write_quorum</code> in mode=quorum → error mapped to <code>503 ServiceUnavailable</code> with <code>Retry-After: 5</code>. Same logic for version-delete/tombstone and delete marker.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> mode=available: unchanged (ACKs ignored).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> pure function <code>quorum_satisfied(local+acks, write_quorum)</code> with unit tests; update the module doc-comment (remove the absolute "no divergence", describe the real semantics: durability quorum at ACK time, no rollback, convergence via anti-entropy).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> integration: the existing phases B/C must stay green (2 alive → writes OK; 1 alive → 503).</li>
+</ul>
+</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§2.2 PG commit-ordered cursor (decision H3)</strong> — pg migration (next free number): <code>object_seq</code> table initialized at <code>MAX(seq)</code>; replace <code>nextval('objects_seq')</code> with <code>UPDATE object_seq SET v=v+1 RETURNING v</code> inside the same transaction in all the write paths (<code>pg/metadata.rs</code>: put/apply/delete/tombstone); drop the sequence; a comment explaining the commit-order guarantee (mirroring the SQLite comment on <code>object_seq</code>). A concurrency smoke test in the PG suite if feasible.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§2.3 Tombstone-first in <code>apply_control_merge</code></strong> (<code>control_merge.rs:47-66</code>): adopt the tombstones BEFORE executing the deletes (for every entity); a unit test verifying the call order (a mock store recording the sequence) and the crash window (tombstone present + row alive = safe state, converges on the next round).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> CHANGELOG + update <code>ha.md</code> (consistency section: real quorum semantics, no rollback) — the full doc pass remains in R9.</li>
+</ul>
+<p><em>Outcome: quorum mode delivers what it promises at ACK time; the PG incremental sync loses no rows; the control merge no longer has the resurrection window.</em></p>
+<hr />
+<h2 id="r2-cluster-test-infrastructure-real-partitions-available-mode-catch-up">R2 — Cluster test infrastructure (real partitions, available mode, catch-up)<a class="headerlink" href="#r2-cluster-test-infrastructure-real-partitions-available-mode-catch-up" title="Permanent link">&para;</a></h2>
+<p>The proving ground of the R1 fixes and of everything else. Extends <code>bin/cluster</code>, the dedicated compose file and <code>tests/integration/test_cluster.py</code>.</p>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Partition helpers</strong> in <code>bin/cluster</code>: <code>partition &lt;n&gt;</code> / <code>heal &lt;n&gt;</code> via <code>docker network disconnect/connect</code> on the <code>arca-cluster</code> compose project network (both processes stay ALIVE: that is the difference from <code>node-stop</code>).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Quorum window test (verifies §2.1)</strong>: partition 2 peers → the isolated node must refuse writes with 503 <em>even though membership will only notice a few seconds later</em> (the missing ACKs close the window); heal → convergence.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Available-mode overlay (D8, §5.1)</strong>: <code>docker/cluster/config-available.toml</code> (mode=available, everything else identical) + compose overlay; test phases: (a) 1/3 live nodes still writable; (b) partition, writes to the SAME key from both sides, heal → a single LWW winner everywhere, the loser disappears with no errors (also the basis of the doc sentence requested in §5).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Control-plane catch-up test (§5.2)</strong>: node 3 down → create a bucket + a credential via the LB → node 3 up → after one reconcile tick, bucket and credential present when querying <code>ARCA_NODE3_ENDPOINT</code> directly.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Flakiness fixes (§5.3)</strong>: <code>bin/test:315</code> waits ≥ 5 s or polls the LB (HAProxy <code>fall 2 inter 2s</code> ≈ 4 s); phase E: precondition that arca-3 shows alive in the topology before the <code>disk_available_bytes</code> check.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Register any new pytest markers in <code>conftest.py</code>; update the "Integration — HA Cluster" row in the <code>README.md</code> Test Coverage table.</li>
+</ul>
+<p><em>Outcome: every consistency claim is exercised by a reproducible test, partitions included. Propose release <code>v0.26.0</code> (H11).</em></p>
+<hr />
+<h2 id="r3-membership-and-quorum-integrity-ghost-quorum-guards">R3 — Membership and quorum integrity (ghost quorum, guards)<a class="headerlink" href="#r3-membership-and-quorum-integrity-ghost-quorum-guards" title="Permanent link">&para;</a></h2>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D1 Authenticated liveness</strong>: new <code>GET /cluster/v1/ping</code> under <code>cluster_auth</code> answering <code>{node_id, config_fingerprint, disk_total, disk_available, max_seq}</code> (<code>max_seq</code> serves D3c in R7); the membership probe uses the signed <code>ping</code> via <code>ClusterClient</code>, with a fallback to <code>/cluster/v1/health</code> on 404 (legacy peer, H10).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§3.5 Minimized public health</strong>: the unauthenticated <code>/cluster/v1/health</code> answers only <code>{status, node_id}</code> (the rest lives in the authenticated ping). Update any consumers (legacy membership, docs).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>H7 Drift out of the quorum</strong>: a peer with <code>config_ok=false</code> excluded from <code>has_write_quorum</code> (<code>cluster.rs:775-799</code>); it stays in <code>/admin/cluster</code> with the drift flag; the test phase F extended: with a diverging secret the node must NOT sustain the quorum (3 nodes, 1 drifted → quorum 2 still ok; 2 drifted → 503).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Failure-detector tolerance (D12.3, plan line 73)</strong>: dead after 2 consecutive ping failures (not 1; <code>membership.rs:104</code>), alive at the first success. A comment on the why.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D3a <code>cluster_size</code> guard (decision H6, to be confirmed)</strong>: in quorum mode, if the observed live nodes (including self) exceed <code>cluster_size</code> → write gate closed (503 with an explicit message) + <code>size_exceeded: true</code> in <code>/admin/cluster</code> + an error log on transitions.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§3.2 Liveness guard on the tombstone GC</strong> (<code>anti_entropy.rs:119-134</code>): before <code>purge_tombstones</code>/<code>purge_control_tombstones</code>, verify that every known peer has been seen within the grace window; otherwise skip the purge with a highly visible warning + a <code>tombstone_gc_blocked</code> flag in <code>/admin/cluster</code>.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>M3 Membership pruning</strong> (<code>membership.rs:84-161</code>): remove peers unreachable for more than a configurable period (default = <code>tombstone_grace_days</code>); note: pruning also unblocks the §3.2 guard (a removed node does not block the GC forever); the residual risk of a beyond-grace re-entry is already documented (plan note 2-bis).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Unit tests for gates/guards (pure functions where possible); drift test extension (above).</li>
+</ul>
+<p><em>Outcome: the quorum only counts nodes that can really receive replicas; no more ghost quorum; tombstone GC aware of liveness.</em></p>
+<hr />
+<h2 id="r4-inter-node-transport-security">R4 — Inter-node transport security<a class="headerlink" href="#r4-inter-node-transport-security" title="Permanent link">&para;</a></h2>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§3.1 Anti-replay</strong>: in <code>cluster_auth.rs</code> (~138-146), compare <code>x-amz-date</code> with the clock: outside ±15 minutes → 403. Unit tests (inside/outside the window, missing header).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§3.4 Dedicated body limit</strong>: <code>DefaultBodyLimit</code> ~2 MiB on the <code>/cluster/v1/{object,op,manifest,control-snapshot}</code> sub-router (NOT on the blob routes).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>M5</strong>: startup validation <code>secret</code> ≥ 16 characters (clear error in <code>config.rs:800</code>).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>M6</strong>: <code>Uuid::parse_str</code> on the path <code>blob_id</code> in the cluster handlers before <code>write_raw</code>/<code>read_raw</code> (defense in depth).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D12.1 Receive-side filter</strong>: the application of <code>ServerConfigSet/Delete</code> in <code>handlers/cluster.rs:275-279</code> skips node-local keys (shared <code>is_node_local_key</code>, today sender-side only).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>H8/D3b Dual-secret for rotation</strong>: optional <code>[cluster] secret_previous</code>; inbound auth tries both (constant-time on each), outbound and fingerprint use only <code>secret</code>; config validation (≥ 16 chars for previous too); unit tests; runbook in R9.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Evaluate together with TD-015 (inter-node TLS) whether to close that here too (shared CA / pinning) or leave it an explicit TD: decide with Pietro at the start of the milestone.</li>
+</ul>
+<p><em>Outcome: an inter-node surface with a replay window, body limits, validations and secret rotation without downtime.</em></p>
+<hr />
+<h2 id="r5-reconcile-completeness-td-016-multipart-sse-c">R5 — Reconcile completeness (TD-016, multipart, SSE-C)<a class="headerlink" href="#r5-reconcile-completeness-td-016-multipart-sse-c" title="Permanent link">&para;</a></h2>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D9 / TD-016 — extend snapshot + tombstones to the missing families</strong>:<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> migrations (sqlite v22+, next pg): <code>updated_at</code> on <code>user_grants</code>, <code>team_grants</code>, <code>team_members</code>, <code>bucket_config</code>, <code>bucket_tags</code>, <code>server_config</code> (backfill = now or <code>created_at</code> where it exists), maintained in all the write paths including the <code>apply_remote_*</code>.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>control_tombstones</code> registration on detach/remove/delete of: grant attachments (composite key <code>user_id:grant_id</code> etc.), memberships, <code>bucket_config</code>/<code>bucket_tags</code> keys, <code>server_config</code> keys (node-local ones excluded).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> extend <code>ControlSnapshot</code> (additive fields, H10) and <code>build_control_snapshot</code>/<code>apply_*</code>; the snapshot EXCLUDES node-local <code>server_config</code> keys.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> extend <code>plan_control_merge</code> (pure per-family functions, alive-vs-tombstone LWW unit tests for each).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> extend the R2 catch-up test: a grant-attachment revocation and a <code>bucket_config</code> change with the node down → reconciled at re-entry.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> close TD-016 in <code>TECH_DEBT.md</code> + roadmap.</li>
+</ul>
+</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D4 Multipart</strong>:<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> include <code>multipart_uploads</code> + <code>parts</code> in the reconcile snapshot with a <code>multipart:&lt;upload_id&gt;</code> tombstone registered on Complete and Abort (a closed upload must not resurrect).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>ClusterBlobStore::concat</code> (<code>cluster_blob.rs:179-186</code>): pre-check the part sidecars; missing ones are fetched from peers (reusing the repair path) before delegating to <code>inner.concat</code>.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> tests: abort with a node down → at re-entry the upload does not exist on the node; Complete with a locally missing part → succeeds via fetch-from-peer (unit or targeted integration).</li>
+</ul>
+</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>M7 Manifest churn</strong>: in <code>apply_remote_object</code> (sqlite and pg), a no-op without stamping a new <code>seq</code> when the incoming row is identical to the existing one.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§3.6 SSE-C in the cluster — spike (2 h timebox)</strong>: verify whether wrapping the SSE-C path in <code>ClusterBlobStore</code> suffices (<code>write_sidecar</code> fan-out + read-repair); if yes implement + test; if not, create <strong>TD-017</strong> in <code>TECH_DEBT.md</code> (+ a code marker at <code>main.rs:166</code>) and document the limitation in <code>ha.md</code> (R9). Either way the outcome must be tracked.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D12.2 Export/import and <code>node_id</code></strong>: the export omits <code>node_id</code> AND the import refuses/skips it (double defense), so an export imported on another node does not rewrite its identity (<code>admin_export.rs:138-145</code>, <code>admin_import.rs:99</code>).</li>
+</ul>
+<p><em>Outcome: all managed state converges after an absence, multipart included; TD-016 resolved; SSE-C fixed or honestly tracked.</em></p>
+<hr />
+<h2 id="r6-cluster-aware-workers-leader-gate">R6 — Cluster-aware workers (leader gate)<a class="headerlink" href="#r6-cluster-aware-workers-leader-gate" title="Permanent link">&para;</a></h2>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§3.3 / H5</strong>: helper <code>ClusterContext::is_worker_leader()</code> = own <code>node_id</code> is the lowest among the live ones (including self); always true on single-node.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Lifecycle worker</strong> (<code>worker.rs</code>): in a cluster, only the leader runs the tick (debug-level log when skipping). The deletes it produces stay replicated/tombstoned as today.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Phase 28 replication worker</strong> (external S3 destinations): same gate → no more duplicate deliveries to the destination. Document the double-execution window during a leadership change (H5).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Audit of the other workers</strong> (an explicit decision, written in the code or here): retention purge, metrics snapshot, notification delivery = NOT gated (they operate on local tables/events by design); the lifecycle's abort-incomplete-multipart = gated with the lifecycle.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Tests: 3-node cluster with a short-expiry lifecycle rule → the expiry happens exactly once (the leader's audit log, no duplicate delete); stopping the leader → the next node takes the role at the following tick.</li>
+</ul>
+<p><em>Outcome: no work duplicated N times, no duplicate deliveries to external destinations, with automatic failover of the role.</em></p>
+<hr />
+<h2 id="r7-synchronization-state-and-operability">R7 — Synchronization state and operability<a class="headerlink" href="#r7-synchronization-state-and-operability" title="Permanent link">&para;</a></h2>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D2 "Syncing" readiness</strong>: <code>ClusterContext</code> tracks, for every live peer, the completion of the FIRST reconcile pass since startup; until it is complete towards all live peers, <code>/admin/health</code> answers <code>503 {"status":"syncing"}</code> (drain takes precedence; no live peers → degraded <code>ok</code>, to be documented). The LB and the k8s probes see it → a realigning node receives no traffic until it is coherent. Test: a node restarted after downtime with new data → health 503 until catch-up completes, then 200.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Exposed lag</strong>: <code>/admin/cluster</code> (and <code>?verbose=1</code>) with, per peer: last completed reconcile, HWM cursor, <code>first_pass_done</code>.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D3c Rewind detection</strong>: the <code>ping</code> (R3) exposes <code>max_seq</code>; if the local HWM for that peer exceeds its <code>max_seq</code> → reset the HWM to 0 + a warning (covers restore-from-backup without restarting the peers).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>M1 Stuck HWM</strong>: after K=5 consecutive failures on the same <code>seq</code> in <code>apply_remote_object</code> (<code>anti_entropy.rs:361-371</code>), skip the entry with a warning + a counter visible in <code>/admin/cluster</code>.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>M2 Repair budget</strong>: <code>repair_blobs</code> (<code>anti_entropy.rs:154-206</code>) with a per-tick budget (default 100 blobs) + a resume cursor; no more scans monopolizing the worker for hours.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>M4 <code>Retry-After</code></strong>: on ALL cluster 503s (missing quorum, syncing, size_exceeded) — the rate limiter already does it.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>M8</strong>: <code>tracing::warn!</code> on the mtime→now fallback in <code>fs/blob.rs:703-708</code>.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Update the console topology card if the new fields are needed (lag, syncing, flags): minimal visualization, the console bulk is R8.</li>
+</ul>
+<p><em>Outcome: a re-entering node serves no wrong answers; the operator sees lag and anomalies; the worker neither stalls nor monopolizes.</em></p>
+<hr />
+<h2 id="r8-console-per-node-views-behind-the-lb">R8 — Console: per-node views behind the LB<a class="headerlink" href="#r8-console-per-node-views-behind-the-lb" title="Permanent link">&para;</a></h2>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D6 (decision H9, to be confirmed)</strong>: a <code>?node=&lt;node_id&gt;</code> parameter on the per-node admin endpoints (<code>/admin/audit</code>, <code>/admin/metrics/history</code>, notification event log): when present and ≠ self, the node proxies the request to the peer via <code>ClusterClient</code> (short timeout, clear error when the peer is down).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Console: a node selector in the audit/monitoring/events views (populated from <code>/admin/cluster</code>, default "this node via LB" with the source <code>node_id</code> always visible). Go through the frontend-design skill; replicate the existing view filter patterns EXACTLY; a coherence sweep across all the per-node views.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Screenshots + console manual (<code>documentation/docs/guide/console.md</code> + <code>bin/screenshots</code>) if the UI changes visibly.</li>
+</ul>
+<p><em>Outcome: the operator always knows WHICH node they are looking at and can pick it, without depending on round-robin luck.</em></p>
+<hr />
+<h2 id="r9-documentation-deploy-and-closure">R9 — Documentation, deploy and closure<a class="headerlink" href="#r9-documentation-deploy-and-closure" title="Permanent link">&para;</a></h2>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong><code>ha.md</code></strong> (source + <code>docs/</code> via <code>bin/docs-build</code>):<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> the REAL post-R1 quorum semantics (durability ACK, no rollback, error examples) and the available mode one: <em>concurrent writes to the same key are both acknowledged but only the LWW winner survives; the loser is discarded with no error to the client</em> (§5-doc1).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D11</strong>: available-mode RPO note (single-copy window).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D7</strong>: the real read window (partition, not just lag); CP = no conflicting writes, not read linearizability; sticky as a reference configuration.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D5</strong>: the 503-behind-LB behavior and its mitigation (SDK retries; the write-aware option as a future possibility, decide whether to implement it or only document it).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D10</strong>: WORM/Object Lock threat model in the cluster (shared secret = full control; link with TD-015).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§3.6</strong>: the SSE-C limitation (if not fixed in R5).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Operational runbooks (D3, §5-doc2)</strong>: replacing a dead node (empty disk = safe, the syncing readiness protects it); restore from backup (rewind detected by D3c, procedure documented anyway); cluster resize (recommended cold procedure + why rolling is dangerous, the D3a guard); secret rotation (dual-secret, H8); coherent backups (SQLite WAL); forming a cluster from non-empty nodes (D12.4: union+LWW merge, identical master key required, discouraged unless necessary).</li>
+</ul>
+</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Deploy</strong>: align <code>fall/rise</code> across <code>docker/cluster/haproxy.cfg</code>, <code>deploy/haproxy/haproxy.cfg</code> and the <code>ha.md</code> snippet (or motivate the difference in comments); add a commented sticky example (<code>balance source</code> or cookie) in both cfgs; k8s probes with <code>periodSeconds: 5, failureThreshold: 2</code> in <code>arca-cluster.yaml</code> (+ a note that readiness now reflects syncing, D2).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong><code>TECH_DEBT.md</code> + roadmap</strong>: TD-016 resolved (R5); TD-017 SSE-C if open; re-evaluate TD-015 after R4; the roadmap tech-debt section in sync.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Roadmap</strong>: update the Phase 29 section with a line about the post-review hardening (checkbox or note), coherent with the existing format.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Review</strong>: mark the resolved findings in the review (a note at the top pointing to this plan), so review and plan stay coherent.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>README</strong>: Test Coverage table updated (new R2/R5/R6/R7 tests).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>CHANGELOG</strong>: consolidate Unreleased → final release; versions in sync (Cargo.toml, console, roadmap) per <code>RELEASING.md</code>.</li>
+</ul>
+<p><em>Outcome: the system declares exactly what it does, the operator has the runbooks, the debt is tracked, final release proposed.</em></p>
+<hr />
+<h2 id="finding-milestone-traceability">Finding → milestone traceability<a class="headerlink" href="#finding-milestone-traceability" title="Permanent link">&para;</a></h2>
+<p>Update the Status column as work proceeds: ⬜ to do, 🔧 in progress, ✅ done, ➖ decided not to do (with a note).</p>
+<table>
+<thead>
+<tr>
+<th>Finding</th>
+<th>Short description</th>
+<th>Milestone</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>§2.1</td>
+<td>Quorum = admission gate, not a write quorum</td>
+<td>R1</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>§2.2</td>
+<td><code>seq</code> cursor race on PostgreSQL</td>
+<td>R1</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>§2.3</td>
+<td>Deletes before tombstones in the control merge</td>
+<td>R1</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>§2.4</td>
+<td>Sequential fan-out</td>
+<td>R1</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>§3.1</td>
+<td>No anti-replay window</td>
+<td>R4</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>§3.2</td>
+<td>Tombstone GC blind to liveness</td>
+<td>R3</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>§3.3</td>
+<td>Workers duplicated on every node</td>
+<td>R6</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>§3.4</td>
+<td>Cluster endpoints without a body limit</td>
+<td>R4</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>§3.5</td>
+<td>Public health exposes disk/fingerprint</td>
+<td>R3</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>§3.6</td>
+<td>SSE-C not replicated</td>
+<td>R5 (spike) + R9 (doc)</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>M1</td>
+<td>HWM stuck on a failing entry</td>
+<td>R7</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>M2</td>
+<td>Repair without a budget</td>
+<td>R7</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>M3</td>
+<td>Membership without eviction</td>
+<td>R3</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>M4</td>
+<td>503 without Retry-After</td>
+<td>R7</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>M5</td>
+<td>1-character secret accepted</td>
+<td>R4</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>M6</td>
+<td>Path blob_id not validated</td>
+<td>R4</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>M7</td>
+<td>seq churn on identical rows</td>
+<td>R5</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>M8</td>
+<td>Silent mtime fallback</td>
+<td>R7</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>§5.1</td>
+<td>No available-mode test</td>
+<td>R2</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>§5.2</td>
+<td>No control-plane catch-up test</td>
+<td>R2</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>§5.3</td>
+<td>Latent flakiness (wait/phase E)</td>
+<td>R2</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>§5.4</td>
+<td>Listed test debt (GC, repair, bootstrap, skew)</td>
+<td>R2 (partial: bootstrap in the R7 test; skew stays ➖ documented)</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>§5-deploy</td>
+<td>Inconsistent HAProxy fall/rise; k8s probes</td>
+<td>R9</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>§5-doc1/2/3</td>
+<td>Available LWW, runbooks, SSE-C/quorum</td>
+<td>R9</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>D1</td>
+<td>Ghost quorum (unauthenticated liveness, drift ignored)</td>
+<td>R3</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>D2</td>
+<td>No syncing state (404s/partial listings at re-entry)</td>
+<td>R7</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>D3a</td>
+<td>No nodes &gt; cluster_size guard</td>
+<td>R3</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>D3b</td>
+<td>Secret rotation without dual-secret</td>
+<td>R4 (+ runbook R9)</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>D3c</td>
+<td>Restore from backup: seq rewind vs HWM</td>
+<td>R7 (+ runbook R9)</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>D4</td>
+<td>Multipart without reconcile; local-only concat</td>
+<td>R5</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>D5</td>
+<td>LB blind to writability (client-visible 503s)</td>
+<td>R9 (doc; write-aware to be decided)</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>D6</td>
+<td>Console incoherent on per-node views</td>
+<td>R8</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>D7</td>
+<td>Quorum reads weaker than the CP label</td>
+<td>R9 (doc + sticky reference)</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>D8</td>
+<td>No real-partition test</td>
+<td>R2</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>D9</td>
+<td>TD-016 underestimated (RBAC/bucket_config)</td>
+<td>R5</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>D10</td>
+<td>WORM in cluster: trust model undocumented</td>
+<td>R9</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>D11</td>
+<td>Available RPO undeclared</td>
+<td>R9</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>D12.1</td>
+<td>Receive side without a node-local key filter</td>
+<td>R4</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>D12.2</td>
+<td>Export/import rewrites node_id</td>
+<td>R5</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>D12.3</td>
+<td>Failure detector without tolerance</td>
+<td>R3</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>D12.4</td>
+<td>Non-empty single-node merge undocumented</td>
+<td>R9</td>
+<td>⬜</td>
+</tr>
+</tbody>
+</table>
+<h2 id="estimate-and-sequence">Estimate and sequence<a class="headerlink" href="#estimate-and-sequence" title="Permanent link">&para;</a></h2>
+<p>R1 ≈ 2-3 d · R2 ≈ 1-2 d · R3 ≈ 1-2 d · R4 ≈ 1 d · R5 ≈ 2-3 d · R6 ≈ 1 d · R7 ≈ 1-2 d · R8 ≈ 1 d · R9 ≈ 1 d → <strong>~11-16 effective days</strong>. The R1→R9 order is binding only where there is a technical dependency (R2 verifies R1; R3 provides the <code>ping</code> used by R7; the rest can be reordered if needed).</p>
+<h2 id="out-of-scope-explicitly-deferred">Out of scope (explicitly deferred)<a class="headerlink" href="#out-of-scope-explicitly-deferred" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Read-quorum / linearizable reads (stays future hardening, as per the Phase 29 plan).</li>
+<li>HLC instead of NTP+LWW.</li>
+<li>A write-aware health check as the LB default (D5: documented; implemented only if decided in R9).</li>
+<li>Automated clock-skew tests (documented as a limit, the NTP constraint is already in <code>ha.md</code>).</li>
+<li>Erasure coding, sharding, gossip: out of scope as per the Phase 29 plan.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.copy", "content.code.annotate", "navigation.sections", "navigation.top", "search.highlight", "search.share"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

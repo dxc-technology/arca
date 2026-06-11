@@ -44,6 +44,7 @@ continuing from the MVP phases (0–11).
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">27</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">28</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">29</div>
+    <div style="background:#ff9800;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">29.1</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">30</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">31</div>
   </div>
@@ -69,6 +70,7 @@ graph LR
     13 --> 23["23 Performance\n+ Hardening"]
     24["24 PostgreSQL\nBackend"] --> 28
     28 --> 29["29 Multi-Node\nHigh Availability"]
+    29 --> H291["29.1 HA\nHardening"]
     29 --> 30["30 CLI Enhancements\n+ Migration"]
     13 --> 30
     24 --> 30
@@ -92,6 +94,7 @@ graph LR
     style 27 fill:#1565c0,color:#fff
     style 28 fill:#1565c0,color:#fff
     style 29 fill:#1565c0,color:#fff
+    style H291 fill:#e65100,color:#fff
     style 30 fill:#1565c0,color:#fff
     style 31 fill:#1565c0,color:#fff
 
@@ -125,6 +128,7 @@ graph LR
 | 27 | [Transparent Compression](#phase-27-transparent-compression-p2) | P2 | 13 | `v0.21.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 28 | [Replication](#phase-28-replication-p3) | P3 | 17, 24 | `v0.23.0` | <span style="color:#4caf50">&#x2714;</span> |
 | 29 | [Multi-Node High Availability](#phase-29-multi-node-high-availability-p3) | P3 | All prior | `v0.25.0` | <span style="color:#4caf50">&#x2714;</span> |
+| 29.1 | [HA Hardening](#phase-291-ha-hardening-p1) | P1 | 29 | | &#x1F6A7; |
 | 30 | [CLI Enhancements and Migration Tools](#phase-30-cli-enhancements-and-migration-tools-p3) | P3 | 13, 24, 29 | | |
 | 31 | [OpenTelemetry Integration](#phase-31-opentelemetry-integration-p3) | P3 | 18 | | |
 
@@ -490,6 +494,28 @@ High availability beyond single-node: a symmetric, self-configuring, fully-repli
 **Deferred to future phases** (the cluster ships with full replication, not sharding): erasure coding (data + parity shards, e.g. EC:4+2), consistent-hashing / sharding for capacity beyond full replication, S3 Batch Operations API, and `SelectObjectContent` (SQL queries on CSV/JSON).
 
 **Depends on**: All prior phases. Major architecture evolution.
+
+---
+
+### Phase 29.1 — HA Hardening [P1]
+
+Remediation of all findings from an in-depth post-release review of the Phase 29 HA cluster
+(design and implementation, `v0.24.0 → v0.25.1`). The full working plan — fixed design decisions,
+per-milestone detail, and a finding-by-finding traceability table — is published as a living
+document: see the [HA Hardening plan](ha-hardening.md). The review it stems from is in the
+repository: [arca-phase-29-ha-review.md](https://github.com/dxc-technology/arca/blob/main/.claude/reviews/arca-phase-29-ha-review.md).
+
+- [ ] R1 — P0 correctness: true write quorum (ACK counting), commit-ordered PostgreSQL manifest cursor, tombstone-first control merge
+- [ ] R2 — Cluster test infrastructure: real network partitions, available-mode suite, control-plane catch-up test, flakiness fixes
+- [ ] R3 — Membership and quorum integrity: authenticated liveness, config drift excluded from quorum, cluster-size guard, tombstone-GC liveness guard
+- [ ] R4 — Inter-node transport security: anti-replay window, body limits, secret validation, dual-secret rotation
+- [ ] R5 — Reconcile completeness: RBAC join tables and bucket config (resolves TD-016), multipart reconcile, SSE-C replication decision
+- [ ] R6 — Cluster-aware workers: leader gate for the lifecycle and external-replication workers
+- [ ] R7 — Synchronization state and operability: "syncing" readiness, per-peer lag, repair budget, backup-restore rewind detection
+- [ ] R8 — Console: node selector for the per-node views (audit, metrics, events) behind the load balancer
+- [ ] R9 — Documentation and deploy: real consistency semantics, operational runbooks, load-balancer and probe alignment
+
+**Depends on**: Phase 29. Critical for production `[cluster]` deployments: it closes the gap between the consistency guarantees the cluster declares and those it enforces.
 
 ---
 

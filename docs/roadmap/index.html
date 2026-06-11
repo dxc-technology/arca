@@ -16,7 +16,7 @@
         <link rel="prev" href="../operations/troubleshooting/">
       
       
-        <link rel="next" href="../changelog/">
+        <link rel="next" href="../ha-hardening/">
       
       
         
@@ -1385,6 +1385,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#phase-291-ha-hardening-p1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 29.1 — HA Hardening [P1]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#phase-30-cli-enhancements-and-migration-tools-p3" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1608,6 +1619,33 @@
   
 </nav>
       
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ha-hardening/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HA Hardening Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1958,6 +1996,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#phase-291-ha-hardening-p1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 29.1 — HA Hardening [P1]
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#phase-30-cli-enhancements-and-migration-tools-p3" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2251,6 +2300,7 @@ continuing from the MVP phases (0–11).</p>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">27</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">28</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">29</div>
+    <div style="background:#ff9800;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">29.1</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">30</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">31</div>
   </div>
@@ -2274,6 +2324,7 @@ continuing from the MVP phases (0–11).</p>
     13 --&gt; 23["23 Performance\n+ Hardening"]
     24["24 PostgreSQL\nBackend"] --&gt; 28
     28 --&gt; 29["29 Multi-Node\nHigh Availability"]
+    29 --&gt; H291["29.1 HA\nHardening"]
     29 --&gt; 30["30 CLI Enhancements\n+ Migration"]
     13 --&gt; 30
     24 --&gt; 30
@@ -2297,6 +2348,7 @@ continuing from the MVP phases (0–11).</p>
     style 27 fill:#1565c0,color:#fff
     style 28 fill:#1565c0,color:#fff
     style 29 fill:#1565c0,color:#fff
+    style H291 fill:#e65100,color:#fff
     style 30 fill:#1565c0,color:#fff
     style 31 fill:#1565c0,color:#fff
 
@@ -2461,6 +2513,14 @@ continuing from the MVP phases (0–11).</p>
 <td style="text-align: center;">All prior</td>
 <td style="text-align: center;"><code>v0.25.0</code></td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td style="text-align: center;">29.1</td>
+<td><a href="#phase-291-ha-hardening-p1">HA Hardening</a></td>
+<td style="text-align: center;">P1</td>
+<td style="text-align: center;">29</td>
+<td style="text-align: center;"></td>
+<td style="text-align: center;">&#x1F6A7;</td>
 </tr>
 <tr>
 <td style="text-align: center;">30</td>
@@ -2788,6 +2848,25 @@ coexist transparently.</p>
 </ul>
 <p><strong>Deferred to future phases</strong> (the cluster ships with full replication, not sharding): erasure coding (data + parity shards, e.g. EC:4+2), consistent-hashing / sharding for capacity beyond full replication, S3 Batch Operations API, and <code>SelectObjectContent</code> (SQL queries on CSV/JSON).</p>
 <p><strong>Depends on</strong>: All prior phases. Major architecture evolution.</p>
+<hr />
+<h3 id="phase-291-ha-hardening-p1">Phase 29.1 — HA Hardening [P1]<a class="headerlink" href="#phase-291-ha-hardening-p1" title="Permanent link">&para;</a></h3>
+<p>Remediation of all findings from an in-depth post-release review of the Phase 29 HA cluster
+(design and implementation, <code>v0.24.0 → v0.25.1</code>). The full working plan — fixed design decisions,
+per-milestone detail, and a finding-by-finding traceability table — is published as a living
+document: see the <a href="../ha-hardening/">HA Hardening plan</a>. The review it stems from is in the
+repository: <a href="https://github.com/dxc-technology/arca/blob/main/.claude/reviews/arca-phase-29-ha-review.md">arca-phase-29-ha-review.md</a>.</p>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> R1 — P0 correctness: true write quorum (ACK counting), commit-ordered PostgreSQL manifest cursor, tombstone-first control merge</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> R2 — Cluster test infrastructure: real network partitions, available-mode suite, control-plane catch-up test, flakiness fixes</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> R3 — Membership and quorum integrity: authenticated liveness, config drift excluded from quorum, cluster-size guard, tombstone-GC liveness guard</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> R4 — Inter-node transport security: anti-replay window, body limits, secret validation, dual-secret rotation</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> R5 — Reconcile completeness: RBAC join tables and bucket config (resolves TD-016), multipart reconcile, SSE-C replication decision</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> R6 — Cluster-aware workers: leader gate for the lifecycle and external-replication workers</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> R7 — Synchronization state and operability: "syncing" readiness, per-peer lag, repair budget, backup-restore rewind detection</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> R8 — Console: node selector for the per-node views (audit, metrics, events) behind the load balancer</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> R9 — Documentation and deploy: real consistency semantics, operational runbooks, load-balancer and probe alignment</li>
+</ul>
+<p><strong>Depends on</strong>: Phase 29. Critical for production <code>[cluster]</code> deployments: it closes the gap between the consistency guarantees the cluster declares and those it enforces.</p>
 <hr />
 <h3 id="phase-30-cli-enhancements-and-migration-tools-p3">Phase 30 — CLI Enhancements and Migration Tools [P3]<a class="headerlink" href="#phase-30-cli-enhancements-and-migration-tools-p3" title="Permanent link">&para;</a></h3>
 <p>Comprehensive CLI tooling for administration, data migration, and remote S3 operations.</p>

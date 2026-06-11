@@ -65,6 +65,7 @@ nav:
     - Production Deployment: operations/deployment.md
     - Troubleshooting: operations/troubleshooting.md
   - Roadmap: roadmap.md
+  - HA Hardening Plan: ha-hardening.md
   - Changelog: changelog.md
   - Technical Debt: tech-debt.md
 
