@@ -8,6 +8,10 @@ Arca is an open source S3-compatible object storage server written in Rust. It i
 
 The full architecture plan lives in `.claude/plans/arca-s3-mvp-architecture.md`.
 
+## Language
+
+Arca is an international project: **everything committed to the repository must be in English** — code, comments, documentation, commit messages, and the planning/review documents under `.claude/`. Conversations with Pietro may happen in Italian, but no Italian may end up in tracked files.
+
 ## Build & Test
 
 All development happens inside Docker containers — never install libraries on the host.
