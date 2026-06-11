@@ -176,10 +176,13 @@ impl GrantStore for PgStore {
     }
 
     async fn attach_to_user(&self, user_id: &str, grant_id: &str) -> Result<(), ArcaError> {
+        // Refresh updated_at on an idempotent re-attach too: the LWW reconcile
+        // (R5) must see a re-attach as newer than any concurrent detach
+        // tombstone, or the user's intent is lost.
         sqlx_core::query::query(
-            "INSERT INTO user_grants (user_id, grant_id)
-             VALUES ($1, $2)
-             ON CONFLICT (user_id, grant_id) DO NOTHING",
+            "INSERT INTO user_grants (user_id, grant_id, updated_at)
+             VALUES ($1, $2, NOW())
+             ON CONFLICT (user_id, grant_id) DO UPDATE SET updated_at = EXCLUDED.updated_at",
         )
         .bind(user_id)
         .bind(grant_id)
@@ -203,10 +206,11 @@ impl GrantStore for PgStore {
     }
 
     async fn attach_to_team(&self, team_id: &str, grant_id: &str) -> Result<(), ArcaError> {
+        // updated_at refreshed on re-attach — see attach_to_user.
         sqlx_core::query::query(
-            "INSERT INTO team_grants (team_id, grant_id)
-             VALUES ($1, $2)
-             ON CONFLICT (team_id, grant_id) DO NOTHING",
+            "INSERT INTO team_grants (team_id, grant_id, updated_at)
+             VALUES ($1, $2, NOW())
+             ON CONFLICT (team_id, grant_id) DO UPDATE SET updated_at = EXCLUDED.updated_at",
         )
         .bind(team_id)
         .bind(grant_id)

@@ -392,6 +392,18 @@ impl MetadataStore for CachingMetadataStore {
         self.inner.delete_bucket_config(bucket, config_key).await
     }
 
+    async fn apply_bucket_config_at(
+        &self,
+        bucket: &str,
+        config_key: &str,
+        config_value: &str,
+        updated_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), ArcaError> {
+        self.inner
+            .apply_bucket_config_at(bucket, config_key, config_value, updated_at)
+            .await
+    }
+
     // -- Tag operations (delegated) --
 
     async fn get_bucket_tags(
@@ -414,6 +426,15 @@ impl MetadataStore for CachingMetadataStore {
         bucket: &str,
     ) -> Result<bool, ArcaError> {
         self.inner.delete_bucket_tags(bucket).await
+    }
+
+    async fn apply_bucket_tags_at(
+        &self,
+        bucket: &str,
+        tags: &[(String, String)],
+        updated_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), ArcaError> {
+        self.inner.apply_bucket_tags_at(bucket, tags, updated_at).await
     }
 
     async fn get_object_tags(

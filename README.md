@@ -172,7 +172,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 
 | Suite | Tests | Details |
 |-------|------:|---------|
-| Unit tests (Rust) | 819 | arca-auth: 39, arca-core: 227, arca-proto: 44, arca-server: 260, arca-storage: 249 |
+| Unit tests (Rust) | 839 | arca-auth: 39, arca-core: 236, arca-proto: 44, arca-server: 263, arca-storage: 257 |
 | Integration — boto3 | 146 | buckets, objects, list, multipart, copy, folders, auth, admin, credentials, conditional ops |
 | Integration — RBAC | 42 | user/team/grant CRUD, attachments, effective grants, /admin/me (with and without grants), E2E access control |
 | Integration — Versioning | 21 | versioning config, PUT/GET/HEAD/DELETE with versionId, delete markers, batch delete with VersionId, ListVersions, copy |
@@ -189,16 +189,16 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — KMS | 10 | Vault/OpenBAO key fetch, encrypted put/get, headers, ETag, multipart, copy, range, admin info |
 | Integration — TLS | 7 | HTTPS health/info/put/get/multipart, minio client, wrong CA rejection |
 | Integration — PostgreSQL | 21 | buckets, objects, multipart, versioning, tags, lifecycle, copy, range, admin health, concurrent-write smoke (commit-ordered seq) |
-| Integration — Export/Import | 19 | export all/single/multiple sections, secret masking, import dry_run/skip/overwrite, masked credentials, bucket create/skip, round-trip |
+| Integration — Export/Import | 20 | export all/single/multiple sections, secret masking, import dry_run/skip/overwrite, masked credentials, node-identity guard, bucket create/skip, round-trip |
 | Integration — Notifications | 20 | Put/Get config (Topic/Queue/Lambda), filters, webhook delivery, event format, batch delete, admin API, auth token, connector type roundtrip |
 | Integration — Compression | 10 | put/get roundtrip, ETag vs plaintext MD5, MIME skip, small object skip, range reads (intra- and cross-frame), per-bucket ?compression subresource (PUT/GET/DELETE), every algorithm (zstd/lz4/snappy/gzip/brotli/xz), unknown-algorithm rejection |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
 | Integration — Replication | 4 | basic PutObject replication, delete-marker propagation, tag sync, two-way mirror no-loop invariant |
-| Integration — HA Cluster | 26 | 3-node replication to all nodes, read-after-write, write with one node down (quorum), failover read, read-only without quorum (503), anti-entropy catch-up (objects + control plane: bucket, credential), real network partition (isolated node 503s while reads keep working, majority side writes, heal convergence), available mode (split-brain writes to the same key with single LWW winner at heal, 1/3 minority still writable), cluster-wide 507 InsufficientStorage, config-drift detection + drift quorum exclusion (1 drifted node → still writable; drifted majority → 503 while reads keep working) |
+| Integration — HA Cluster | 37 | 3-node replication to all nodes, read-after-write, write with one node down (quorum), failover read, read-only without quorum (503), anti-entropy catch-up (objects + the full control plane: bucket, credential, grant attach/detach, bucket versioning + tag set, Object-Lock retention, multipart abort/complete — including CompleteMultipartUpload on a returned node fetching part bytes from a peer), real network partition (isolated node 503s while reads keep working, majority side writes, heal convergence), available mode (split-brain writes to the same key with single LWW winner at heal, 1/3 minority still writable), cluster-wide 507 InsufficientStorage, config-drift detection + drift quorum exclusion (1 drifted node → still writable; drifted majority → 503 while reads keep working) |
 | Connector integrations | 84 | Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Kafka, AMQP, Elasticsearch, Syslog, SMTP, gRPC — each: delivery, custom destination, delete event, multiple events, payload format, connectivity test |
-| **Arca tests** | **1,488** | **All tests written for this project** |
+| **Arca tests** | **1,520** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 825 | 369 pass, 365 fail, 91 skip — 0 unexpected failures (RGW-only extensions excluded) |
-| **Total** | **2,318** | |
+| **Total** | **2,350** | |
 
 ## License
 

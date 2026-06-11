@@ -1590,7 +1590,7 @@
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R2</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R3</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R4</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R5</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R5</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R6</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R7</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R8</div>
@@ -1754,27 +1754,27 @@
 <hr />
 <h2 id="r5-reconcile-completeness-td-016-multipart-sse-c">R5 — Reconcile completeness (TD-016, multipart, SSE-C)<a class="headerlink" href="#r5-reconcile-completeness-td-016-multipart-sse-c" title="Permanent link">&para;</a></h2>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D9 / TD-016 — extend snapshot + tombstones to the missing families</strong>:<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> migrations (sqlite v22+, next pg): <code>updated_at</code> on <code>user_grants</code>, <code>team_grants</code>, <code>team_members</code>, <code>bucket_config</code>, <code>bucket_tags</code>, <code>server_config</code> (backfill = now or <code>created_at</code> where it exists), maintained in all the write paths including the <code>apply_remote_*</code>.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>control_tombstones</code> registration on detach/remove/delete of: grant attachments (composite key <code>user_id:grant_id</code> etc.), memberships, <code>bucket_config</code>/<code>bucket_tags</code> keys, <code>server_config</code> keys (node-local ones excluded).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> extend <code>ControlSnapshot</code> (additive fields, H10) and <code>build_control_snapshot</code>/<code>apply_*</code>; the snapshot EXCLUDES node-local <code>server_config</code> keys.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> extend <code>plan_control_merge</code> (pure per-family functions, alive-vs-tombstone LWW unit tests for each).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> extend the R2 catch-up test: a grant-attachment revocation and a <code>bucket_config</code> change with the node down → reconciled at re-entry.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> close TD-016 in <code>TECH_DEBT.md</code> + roadmap.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>D9 / TD-016 — extend snapshot + tombstones to the missing families</strong>:<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> migrations sqlite v22 / pg 0010: <code>updated_at</code> added to <code>user_grants</code>, <code>team_grants</code>, <code>team_members</code>, <code>bucket_tags</code> (backfill = now; <code>bucket_config</code> and <code>server_config</code> already carried it). Maintained in all write paths — attach/add refresh <code>updated_at</code> even on the idempotent re-attach (ON CONFLICT DO UPDATE), so a re-attach made while a peer concurrently detached beats the detach tombstone — plus new timestamp-preserving <code>apply_*_at</code> methods for the merge (no <code>now()</code> re-stamp → fixed point, no flapping).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>control_tombstones</code> on detach/remove/delete, recorded by the cluster decorators (origin-side, like the existing families): grant attachments and memberships under [<code>pair_key</code>] composite keys (<code>user:grant</code>, <code>team:grant</code>, <code>team:user</code>), <code>bucket_config</code> under <code>bucket:key</code>, <code>bucket_tags</code> keyed by bucket name ALONE — the whole tag SET is one LWW entity, matching the replace-all semantics of <code>PutBucketTagging</code> (per-key tombstones could not represent "key dropped by a replace"); an empty-set put records the tombstone like an explicit delete — and <code>server_config</code> keys (node-local ones excluded). Set/attach paths clear stale tombstones symmetrically.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>ControlSnapshot</code> extended with <code>#[serde(default)]</code> fields (H10: a pre-R5 snapshot reads as "no information", never as "everything deleted" — pinned by a serde unit test); <code>build_control_snapshot</code> on BOTH backends; node-local <code>server_config</code> keys excluded at build AND ignored on apply (triple defense with D12.1).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>plan_control_merge</code> extended per family with <strong>parent-dead filtering</strong>: parent families (users, teams, grants, buckets, multipart uploads) record which keys stay alive after resolution, and child upserts (attachments, memberships, bucket config/tags, parts) whose parent resolved dead are skipped. This REPLACES per-child cascade tombstones (the local cascade deletes children on every node; the filter stops a stale peer's child rows from resurrecting) and respects the join-table FK constraints on PostgreSQL. Apply order: parents before children. Unit tests per family (detach-vs-stale-attach, re-attach-beats-tombstone, parent-dead filter, set-level tags, node-local skip, legacy snapshot).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> R2 catch-up integration test extended (phases A/B/D): a grant attachment seeded on all 3 nodes is revoked while node 3 is down → gone on node 3 at re-entry (and not resurrected); a versioning flip + a bucket-tag change while down → reconciled.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> TD-016 closed in <code>TECH_DEBT.md</code> + roadmap; the <code>TECHDEBT(TD-016)</code> marker on <code>reconcile_peer_control</code> removed.</li>
 </ul>
 </li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D4 Multipart</strong>:<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> include <code>multipart_uploads</code> + <code>parts</code> in the reconcile snapshot with a <code>multipart:&lt;upload_id&gt;</code> tombstone registered on Complete and Abort (a closed upload must not resurrect).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>ClusterBlobStore::concat</code> (<code>cluster_blob.rs:179-186</code>): pre-check the part sidecars; missing ones are fetched from peers (reusing the repair path) before delegating to <code>inner.concat</code>.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> tests: abort with a node down → at re-entry the upload does not exist on the node; Complete with a locally missing part → succeeds via fetch-from-peer (unit or targeted integration).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>D4 Multipart</strong>:<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>multipart_uploads</code> + <code>parts</code> in the reconcile snapshot (upload keyed by <code>upload_id</code>, alive ts = <code>initiated_at</code>, immutable rows; parts keyed <code>upload_id:part_number</code>, LWW on <code>last_modified</code>, no part tombstones — a part disappears only with its upload or by replacement under the same key); <code>multipart</code> tombstone recorded on <code>delete_multipart_upload</code> (BOTH Complete and Abort end there) so a closed upload cannot resurrect. Applied via the cache-aware metadata handle in <code>reconcile_peer_control</code> (like buckets), reusing <code>apply_remote_multipart_upload</code>/<code>put_part</code>/<code>delete_multipart_upload</code> verbatim (rows carry their own timestamps — no <code>_at</code> variants needed).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <code>ClusterBlobStore::concat</code>: pre-checks each part sidecar and repairs missing parts from peers (shared <code>repair_from_peers</code>, the read-repair path) before delegating to <code>inner.concat</code>. Unit test with a fake blob peer (sidecar in the signed header + raw bytes).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> integration tests (cluster suite): an upload seeded with all 3 up is aborted while node 3 is down → closed on node 3 at re-entry AND not resurrected on nodes 1/2; an upload begun while node 3 was down is <strong>completed directly on node 3</strong> (upload + part rows via the snapshot, part bytes fetched from a peer by the concat pre-check).</li>
 </ul>
 </li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>N1 Object-lock changes invisible to anti-entropy</strong> (found during R1, not in the review): <code>set_object_retention</code> / <code>set_object_legal_hold</code> UPDATE the row WITHOUT a new <code>seq</code> on BOTH backends (<code>sqlite/metadata.rs:1391-1457</code>, <code>pg/metadata.rs</code> retention/legal-hold UPDATEs), so a peer that was down during a lock change never receives it via the changed-since manifest — only the real-time <code>replicate_lock_change</code> fan-out covers it. Fix: stamp a fresh <code>seq</code> (next_object_seq) in both backends' lock UPDATEs; the peer's <code>apply_remote_object</code> equal-tuple LWW guard (<code>&gt;=</code>) already accepts the row with updated lock columns. Add to the R2/R5 catch-up test: a retention change with the node down → reconciled at re-entry.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>M7 Manifest churn</strong>: in <code>apply_remote_object</code> (sqlite and pg), a no-op without stamping a new <code>seq</code> when the incoming row is identical to the existing one.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§3.6 SSE-C in the cluster — spike (2 h timebox)</strong>: verify whether wrapping the SSE-C path in <code>ClusterBlobStore</code> suffices (<code>write_sidecar</code> fan-out + read-repair); if yes implement + test; if not, create <strong>TD-017</strong> in <code>TECH_DEBT.md</code> (+ a code marker at <code>main.rs:166</code>) and document the limitation in <code>ha.md</code> (R9). Either way the outcome must be tracked.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D12.2 Export/import and <code>node_id</code></strong>: the export omits <code>node_id</code> AND the import refuses/skips it (double defense), so an export imported on another node does not rewrite its identity (<code>admin_export.rs:138-145</code>, <code>admin_import.rs:99</code>).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>N1 Object-lock changes invisible to anti-entropy</strong> (found during R1, not in the review): both backends' <code>set_object_retention</code> / <code>set_object_legal_hold</code> now stamp a fresh <code>seq</code> (taken before the row UPDATE, per the lock-order rule) so the changed-since manifest re-delivers the row; the peer's <code>apply_remote_object</code> equal-tuple <code>&gt;=</code> guard accepts it. Unit tests on sqlite (plain + versioned branch); integration test: a retention change with node 3 down → visible on node 3 at re-entry.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>M7 Manifest churn</strong>: <code>apply_remote_object</code> (sqlite and pg) now skips identical incoming rows without a rewrite or a fresh <code>seq</code> — comparison via <code>ObjectRecord::same_replicated_content</code> (PartialEq on normalized clones, <code>is_latest</code> excluded as locally-derived state; a future field joins the comparison automatically). Without this, two caught-up nodes redelivered their whole object tables to each other on EVERY anti-entropy pass (each apply re-stamped a seq the peer then saw as new) — M7 was load-bearing, not cosmetic. The equal-tuple guard still lets lock-only changes through (N1 interplay, unit-tested).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>§3.6 SSE-C in the cluster — spike outcome: FIXED in-scope, no TD-017 needed.</strong> The spike found SSE-C blobs already replicate: the handler's sidecar write goes through the cluster-wrapped <code>BlobStore</code>, whose fan-out ships the customer-key-encrypted on-disk bytes verbatim (peers never see the key), and the proactive blob repair is encryption-agnostic. The real gap was the READ side: <code>get_with_key</code> opens the blob file directly, bypassing the cluster wrapper's read-repair — a node holding the row but not the bytes errored until the next anti-entropy pass. Fix: <code>ClusterSsecBlobStore</code> wraps <code>SsecBlobOps</code> when clustering is enabled, adding the same synchronous read-repair as the plain path (e2e unit test: encrypt on origin, repair ciphertext from a fake peer, decrypt locally).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>D12.2 Export/import and <code>node_id</code></strong>: the export filters node-local keys out of <code>settings</code> AND the import skips them with a warning even when present in an old document (double defense); integration test in the export/import suite.</li>
 </ul>
-<p><em>Outcome: all managed state converges after an absence, multipart included; TD-016 resolved; SSE-C fixed or honestly tracked.</em></p>
+<p><em>Outcome: all managed state converges after an absence, multipart included; TD-016 resolved; SSE-C read-repair shipped (no TD-017). Bonus finding fixed: the M7 churn was a perpetual full-table redelivery loop between caught-up nodes.</em></p>
 <hr />
 <h2 id="r6-cluster-aware-workers-leader-gate">R6 — Cluster-aware workers (leader gate)<a class="headerlink" href="#r6-cluster-aware-workers-leader-gate" title="Permanent link">&para;</a></h2>
 <ul class="task-list">
@@ -1898,7 +1898,7 @@
 <td>§3.6</td>
 <td>SSE-C not replicated</td>
 <td>R5 (spike) + R9 (doc)</td>
-<td>⬜</td>
+<td>✅ (spike outcome: replication already worked via the cluster-wrapped sidecar write; the read side gained <code>ClusterSsecBlobStore</code> synchronous read-repair — no TD-017)</td>
 </tr>
 <tr>
 <td>§3.7(A)</td>
@@ -1964,13 +1964,13 @@
 <td>M7</td>
 <td>seq churn on identical rows</td>
 <td>R5</td>
-<td>⬜</td>
+<td>✅ (identical-row no-op in <code>apply_remote_object</code>, both backends — the churn was a perpetual full-table redelivery ping-pong between caught-up nodes)</td>
 </tr>
 <tr>
 <td>N1</td>
 <td>Lock changes (retention/legal-hold) don't bump <code>seq</code> → invisible to anti-entropy (found during R1)</td>
 <td>R5</td>
-<td>⬜</td>
+<td>✅ (fresh <code>seq</code> stamped in both backends' lock UPDATEs + catch-up integration test)</td>
 </tr>
 <tr>
 <td>M8</td>
@@ -2048,7 +2048,7 @@
 <td>D4</td>
 <td>Multipart without reconcile; local-only concat</td>
 <td>R5</td>
-<td>⬜</td>
+<td>✅ (uploads + parts in the snapshot, <code>multipart</code> tombstone on Complete/Abort, concat repairs missing parts from peers; integration: abort-while-down closes everywhere, Complete succeeds on the returned node)</td>
 </tr>
 <tr>
 <td>D5</td>
@@ -2078,7 +2078,7 @@
 <td>D9</td>
 <td>TD-016 underestimated (RBAC/bucket_config)</td>
 <td>R5</td>
-<td>⬜</td>
+<td>✅ (all 6 families in the snapshot merge with LWW timestamps + tombstones; parent-dead filtering instead of cascade tombstones; TD-016 resolved)</td>
 </tr>
 <tr>
 <td>D10</td>
@@ -2102,7 +2102,7 @@
 <td>D12.2</td>
 <td>Export/import rewrites node_id</td>
 <td>R5</td>
-<td>⬜</td>
+<td>✅ (export omits node-local keys, import refuses them — double defense + integration test)</td>
 </tr>
 <tr>
 <td>D12.3</td>

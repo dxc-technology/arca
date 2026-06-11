@@ -196,7 +196,7 @@ async fn async_main(cli: Cli) -> Result<()> {
             };
 
             // SSE-C blob store (always available).
-            let ssec_blob: Arc<dyn arca_core::store::SsecBlobOps> =
+            let mut ssec_blob: Arc<dyn arca_core::store::SsecBlobOps> =
                 Arc::new(arca_storage::SsecBlobStore::new(fs_blob_store.clone()));
 
             let fs_arc = Arc::new(fs_blob_store.clone());
@@ -419,6 +419,17 @@ async fn async_main(cli: Cli) -> Result<()> {
                         cstate.clone(),
                     )) as Arc<dyn arca_core::store::BlobStore>
                 });
+                // SSE-C blobs replicate like any other (the handler's
+                // write_sidecar goes through the cluster-wrapped BlobStore);
+                // this wrap adds the synchronous read-repair to get_with_key
+                // so a node missing the bytes serves the GET instead of
+                // erroring until the next anti-entropy pass (§3.6).
+                ssec_blob = Arc::new(cluster::cluster_blob::ClusterSsecBlobStore::new(
+                    ssec_blob.clone(),
+                    raw.clone(),
+                    client.clone(),
+                    cstate.clone(),
+                )) as Arc<dyn arca_core::store::SsecBlobOps>;
                 // Wrap the identity stores (credential/user) so their mutations
                 // replicate to peers; keep the inner handles for the receive path.
                 let inner_credentials = credentials.clone();
@@ -454,6 +465,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                     server_config.clone(),
                     client.clone(),
                     cstate.clone(),
+                    stores.control_tombstone.clone(),
                 )) as Arc<dyn arca_core::store::ServerConfigStore>;
 
                 // Keep the inner handle for the control-plane receive path.

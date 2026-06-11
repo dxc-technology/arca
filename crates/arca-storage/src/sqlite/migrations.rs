@@ -460,6 +460,29 @@ const MIGRATIONS: &[Migration] = &[
             );
         ",
     },
+    Migration {
+        version: 22,
+        description: "Add updated_at to grant attachments, memberships and bucket_tags (R5 control reconcile)",
+        // HA hardening R5 (TD-016): these families join the control-snapshot
+        // LWW reconcile, which needs a last-write timestamp per row
+        // (bucket_config and server_config already carry one). The join tables
+        // have no created_at to backfill from, so existing rows backfill to
+        // "now": a pre-upgrade attach loses only against changes made AFTER
+        // the upgrade, and no tombstones exist yet for these families that it
+        // could spuriously beat. The literal DEFAULT '' is a transient
+        // placeholder for the ADD COLUMN step; every writer sets updated_at
+        // explicitly.
+        sql: "
+            ALTER TABLE user_grants ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';
+            UPDATE user_grants SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now');
+            ALTER TABLE team_grants ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';
+            UPDATE team_grants SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now');
+            ALTER TABLE team_members ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';
+            UPDATE team_members SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now');
+            ALTER TABLE bucket_tags ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';
+            UPDATE bucket_tags SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now');
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -533,7 +556,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 21);
+        assert_eq!(version, 22);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -583,12 +606,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 21);
+        assert_eq!(version, 22);
 
-        // Twenty-one migration records
+        // Twenty-two migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 21);
+        assert_eq!(count, 22);
     }
 }

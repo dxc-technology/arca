@@ -142,9 +142,13 @@ impl TeamStore for SqliteStore {
         let uid = user_id.to_string();
         self.conn
             .call(move |conn| {
+                // updated_at refreshed on an idempotent re-add too: the LWW
+                // reconcile (R5) must see it as newer than any concurrent
+                // remove-member tombstone.
                 conn.execute(
-                    "INSERT OR IGNORE INTO team_members (team_id, user_id) VALUES (?1, ?2)",
-                    params![tid, uid],
+                    "INSERT INTO team_members (team_id, user_id, updated_at) VALUES (?1, ?2, ?3)
+                     ON CONFLICT(team_id, user_id) DO UPDATE SET updated_at = excluded.updated_at",
+                    params![tid, uid, chrono::Utc::now().to_rfc3339()],
                 )?;
                 Ok(())
             })

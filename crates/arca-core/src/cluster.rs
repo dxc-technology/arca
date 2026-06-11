@@ -22,8 +22,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::store::control_tombstone::{
-    ControlTombstone, TOMBSTONE_BUCKET, TOMBSTONE_CREDENTIAL, TOMBSTONE_GRANT, TOMBSTONE_TEAM,
-    TOMBSTONE_USER,
+    ControlTombstone, TOMBSTONE_BUCKET, TOMBSTONE_BUCKET_CONFIG, TOMBSTONE_BUCKET_TAGS,
+    TOMBSTONE_CREDENTIAL, TOMBSTONE_GRANT, TOMBSTONE_MULTIPART, TOMBSTONE_SERVER_CONFIG,
+    TOMBSTONE_TEAM, TOMBSTONE_TEAM_GRANT, TOMBSTONE_TEAM_MEMBER, TOMBSTONE_USER,
+    TOMBSTONE_USER_GRANT,
 };
 use crate::types::{
     BlobId, BucketInfo, Credential, Grant, MultipartUploadRecord, ObjectRecord, PartRecord, Team,
@@ -65,6 +67,17 @@ pub const NODE_ID_KEY: &str = "node_id";
 /// rewrite another node's identity.
 pub fn is_node_local_server_config_key(key: &str) -> bool {
     key == NODE_ID_KEY
+}
+
+/// Composite tombstone/merge key for the two-part control families
+/// (`user_grant` = user:grant, `team_grant` = team:grant, `team_member` =
+/// team:user, `bucket_config` = bucket:config_key, `parts` =
+/// upload_id:part_number). The `:` separator is unambiguous here: ids are
+/// server-generated (UUID-shaped), bucket names follow S3 naming (no colon)
+/// and config keys are fixed identifiers. Shared by the tombstone writers and
+/// [`plan_control_merge`] so both sides always encode the same way.
+pub fn pair_key(a: &str, b: &str) -> String {
+    format!("{a}:{b}")
 }
 
 /// Domain-separation prefix for the ping challenge MAC, so this HMAC use of the
@@ -343,21 +356,89 @@ pub struct TimestampedTeam {
     pub updated_at: DateTime<Utc>,
 }
 
+/// A user↔grant attachment with its last-write timestamp (HA hardening R5,
+/// TD-016). The timestamp is a DB column (migration sqlite v22 / pg 0010)
+/// refreshed on every attach — including idempotent re-attaches, so a
+/// re-attach made while a peer concurrently detached still wins LWW.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimestampedUserGrant {
+    pub user_id: String,
+    pub grant_id: String,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// A team↔grant attachment with its last-write timestamp. See
+/// [`TimestampedUserGrant`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimestampedTeamGrant {
+    pub team_id: String,
+    pub grant_id: String,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// A team membership with its last-write timestamp. See
+/// [`TimestampedUserGrant`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimestampedTeamMember {
+    pub team_id: String,
+    pub user_id: String,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// A single bucket-config key/value with its last-write timestamp (the
+/// `bucket_config.updated_at` column, maintained since the table exists).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimestampedBucketConfig {
+    pub bucket: String,
+    pub key: String,
+    pub value: String,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// A bucket's WHOLE tag set as one LWW entity, matching the replace-all
+/// semantics of `PutBucketTagging` / `ControlOp::BucketTags` (per-tag-key LWW
+/// could not represent "key removed by a replace"). `updated_at` is the
+/// newest row timestamp of the set; an empty set never appears here — clearing
+/// the tags records a `bucket_tags` tombstone instead.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimestampedBucketTags {
+    pub bucket: String,
+    pub tags: Vec<(String, String)>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// A cluster-wide server-config key/value with its last-write timestamp.
+/// Node-local keys ([`is_node_local_server_config_key`]) never appear in a
+/// snapshot — excluded at build AND ignored on apply (same double defense as
+/// the real-time D12.1 filter).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimestampedServerConfig {
+    pub key: String,
+    pub value: String,
+    pub updated_at: DateTime<Utc>,
+}
+
 /// Full control-plane state of a node, exchanged via `GET
 /// /cluster/v1/control-snapshot` and merged last-writer-wins by the reconcile
 /// pass (decision 12). Small and bounded (the control plane rarely changes), so
 /// shipping the whole thing each cycle is cheap and lets a long-absent node
 /// bootstrap past tombstone GC.
 ///
-/// SCOPE: exactly the entities that carry a deletion tombstone — credentials,
-/// users, teams, grants, buckets — so every reconciled entity has a defense
-/// against resurrection. Grants travel with their struct-level `updated_at`;
-/// buckets are create/delete-only and reconcile on `created_at`; the rest pair
-/// the entity with its `updated_at` (a DB column, not a struct field).
-/// Memberships/attachments, bucket tags and config (server/bucket) replicate in
-/// real time but are NOT reconciled here — a documented catch-up gap for a node
-/// absent during such a change (follow-up).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// SCOPE: every control-plane family (HA hardening R5 closed TD-016).
+/// Identity parents — credentials, users, teams, grants — plus buckets, the
+/// attachment/membership joins, bucket config/tags, cluster-wide server config
+/// and in-progress multipart uploads with their parts (D4). Grants travel with
+/// their struct-level `updated_at`; buckets are create/delete-only and
+/// reconcile on `created_at`; multipart uploads on `initiated_at` (immutable
+/// rows) and parts on `last_modified`; the remaining families pair the entity
+/// with its `updated_at` DB column. Deletions are represented by tombstones
+/// for every family except parts (a part disappears only with its upload —
+/// parent-dead filtering — or by being replaced under the same key).
+///
+/// The R5 fields are `#[serde(default)]`: a snapshot from a pre-R5 peer
+/// (rolling upgrade, H10) deserializes with the families empty, which the
+/// merge treats as "no information" — nothing is deleted on either side.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ControlSnapshot {
     pub credentials: Vec<TimestampedCredential>,
     pub users: Vec<TimestampedUser>,
@@ -365,6 +446,22 @@ pub struct ControlSnapshot {
     pub grants: Vec<Grant>,
     pub buckets: Vec<BucketInfo>,
     pub tombstones: Vec<ControlTombstone>,
+    #[serde(default)]
+    pub user_grants: Vec<TimestampedUserGrant>,
+    #[serde(default)]
+    pub team_grants: Vec<TimestampedTeamGrant>,
+    #[serde(default)]
+    pub team_members: Vec<TimestampedTeamMember>,
+    #[serde(default)]
+    pub bucket_configs: Vec<TimestampedBucketConfig>,
+    #[serde(default)]
+    pub bucket_tags: Vec<TimestampedBucketTags>,
+    #[serde(default)]
+    pub server_configs: Vec<TimestampedServerConfig>,
+    #[serde(default)]
+    pub multipart_uploads: Vec<MultipartUploadRecord>,
+    #[serde(default)]
+    pub parts: Vec<PartRecord>,
 }
 
 /// The local writes a node must perform to converge with a peer's
@@ -384,6 +481,28 @@ pub struct ControlMergePlan {
     pub delete_teams: Vec<String>,
     pub delete_grants: Vec<String>,
     pub delete_buckets: Vec<String>,
+    /// R5 families. Child upserts (joins, bucket config/tags, parts) are
+    /// already parent-filtered by [`plan_control_merge`]: an entry whose parent
+    /// resolved dead never appears here.
+    pub upsert_user_grants: Vec<TimestampedUserGrant>,
+    pub upsert_team_grants: Vec<TimestampedTeamGrant>,
+    pub upsert_team_members: Vec<TimestampedTeamMember>,
+    pub upsert_bucket_configs: Vec<TimestampedBucketConfig>,
+    pub upsert_bucket_tags: Vec<TimestampedBucketTags>,
+    pub upsert_server_configs: Vec<TimestampedServerConfig>,
+    pub upsert_multipart_uploads: Vec<MultipartUploadRecord>,
+    pub upsert_parts: Vec<PartRecord>,
+    /// Pairs are (user_id, grant_id) / (team_id, grant_id) / (team_id, user_id)
+    /// / (bucket, config_key) respectively.
+    pub delete_user_grants: Vec<(String, String)>,
+    pub delete_team_grants: Vec<(String, String)>,
+    pub delete_team_members: Vec<(String, String)>,
+    pub delete_bucket_configs: Vec<(String, String)>,
+    /// Bucket names whose whole tag set must be cleared.
+    pub delete_bucket_tags: Vec<String>,
+    pub delete_server_configs: Vec<String>,
+    /// Upload ids to delete (cascades the part rows).
+    pub delete_multipart_uploads: Vec<String>,
     /// Peer deletions to adopt locally, recorded with the given `deleted_at`.
     pub adopt_tombstones: Vec<ControlTombstone>,
     /// Local tombstones to clear (the entity is alive again, newer somewhere).
@@ -398,11 +517,26 @@ impl ControlMergePlan {
             && self.upsert_teams.is_empty()
             && self.upsert_grants.is_empty()
             && self.upsert_buckets.is_empty()
+            && self.upsert_user_grants.is_empty()
+            && self.upsert_team_grants.is_empty()
+            && self.upsert_team_members.is_empty()
+            && self.upsert_bucket_configs.is_empty()
+            && self.upsert_bucket_tags.is_empty()
+            && self.upsert_server_configs.is_empty()
+            && self.upsert_multipart_uploads.is_empty()
+            && self.upsert_parts.is_empty()
             && self.delete_credentials.is_empty()
             && self.delete_users.is_empty()
             && self.delete_teams.is_empty()
             && self.delete_grants.is_empty()
             && self.delete_buckets.is_empty()
+            && self.delete_user_grants.is_empty()
+            && self.delete_team_grants.is_empty()
+            && self.delete_team_members.is_empty()
+            && self.delete_bucket_configs.is_empty()
+            && self.delete_bucket_tags.is_empty()
+            && self.delete_server_configs.is_empty()
+            && self.delete_multipart_uploads.is_empty()
             && self.adopt_tombstones.is_empty()
             && self.clear_tombstones.is_empty()
     }
@@ -412,6 +546,12 @@ impl ControlMergePlan {
 /// of its alive/dead timestamps across the two nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct KeyResolution {
+    /// The entity is alive after the merge (kept locally or upserted). Parent
+    /// families record this so child upserts (attachments, memberships, bucket
+    /// config/tags, parts) can be filtered: adopting a child whose parent
+    /// resolved dead would resurrect cascade-deleted rows (and violate the FK
+    /// constraints on the PostgreSQL backend).
+    alive: bool,
     /// Local should adopt the remote payload (remote's alive ts is strictly newer).
     upsert_from_remote: bool,
     /// Local should delete the live entity (it lost to a newer deletion).
@@ -444,6 +584,7 @@ fn resolve_key(
     if dead {
         let dead_at = global_dead.expect("dead implies a deletion timestamp");
         KeyResolution {
+            alive: false,
             upsert_from_remote: false,
             delete_local: local_alive.is_some(),
             // Record locally if missing or stale.
@@ -459,6 +600,10 @@ fn resolve_key(
             _ => false,
         };
         KeyResolution {
+            // "Alive" requires an actual live copy somewhere: a key known only
+            // through tombstones (alive=None on both sides) is not alive even
+            // though the dead-vs-alive comparison did not pick "dead".
+            alive: local_alive.is_some() || remote_alive.is_some(),
             upsert_from_remote,
             delete_local: false,
             adopt_tombstone_at: None,
@@ -484,11 +629,27 @@ fn tombstone_map<'a>(
 /// Computes the local writes needed to converge with `remote` (decision 12):
 /// last-writer-wins per entity, with deletions represented by tombstones so a
 /// peer that still holds a deleted entity cannot resurrect it. Pure: no I/O, so
-/// it is exhaustively unit-tested. Only the tombstoned entity families are in
-/// scope (credentials, users, teams, grants, buckets).
+/// it is exhaustively unit-tested.
+///
+/// Covers every control-plane family (R5/TD-016): the parent families
+/// (credentials, users, teams, grants, buckets, multipart uploads) resolve
+/// first and record which keys stay alive; the child families (grant
+/// attachments, memberships, bucket config/tags, parts) then skip any upsert
+/// whose parent resolved dead. This replaces per-child cascade tombstones: a
+/// parent delete cascades its children on every node locally, and the
+/// parent-dead filter stops a stale peer's child rows from resurrecting
+/// (adopting them would also violate the join-table FK constraints on the
+/// PostgreSQL backend).
 pub fn plan_control_merge(local: &ControlSnapshot, remote: &ControlSnapshot) -> ControlMergePlan {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     let mut plan = ControlMergePlan::default();
+
+    // Parent keys alive after the merge, consulted by the child families below.
+    let mut alive_users: HashSet<String> = HashSet::new();
+    let mut alive_teams: HashSet<String> = HashSet::new();
+    let mut alive_grants: HashSet<String> = HashSet::new();
+    let mut alive_buckets: HashSet<String> = HashSet::new();
+    let mut alive_uploads: HashSet<String> = HashSet::new();
 
     // -- Credentials --
     {
@@ -545,6 +706,9 @@ pub fn plan_control_merge(local: &ControlSnapshot, remote: &ControlSnapshot) -> 
                 r_alive.get(key).map(|u| u.updated_at),
                 r_dead.get(key).copied(),
             );
+            if res.alive {
+                alive_users.insert(key.to_string());
+            }
             if res.upsert_from_remote {
                 plan.upsert_users.push((*r_alive.get(key).unwrap()).clone());
             }
@@ -577,6 +741,9 @@ pub fn plan_control_merge(local: &ControlSnapshot, remote: &ControlSnapshot) -> 
                 r_alive.get(key).map(|t| t.updated_at),
                 r_dead.get(key).copied(),
             );
+            if res.alive {
+                alive_teams.insert(key.to_string());
+            }
             if res.upsert_from_remote {
                 plan.upsert_teams.push((*r_alive.get(key).unwrap()).clone());
             }
@@ -606,6 +773,9 @@ pub fn plan_control_merge(local: &ControlSnapshot, remote: &ControlSnapshot) -> 
                 r_alive.get(key).map(|g| g.updated_at),
                 r_dead.get(key).copied(),
             );
+            if res.alive {
+                alive_grants.insert(key.to_string());
+            }
             if res.upsert_from_remote {
                 plan.upsert_grants.push((*r_alive.get(key).unwrap()).clone());
             }
@@ -635,6 +805,9 @@ pub fn plan_control_merge(local: &ControlSnapshot, remote: &ControlSnapshot) -> 
                 r_alive.get(key).map(|b| b.created_at),
                 r_dead.get(key).copied(),
             );
+            if res.alive {
+                alive_buckets.insert(key.to_string());
+            }
             if res.upsert_from_remote {
                 plan.upsert_buckets.push((*r_alive.get(key).unwrap()).clone());
             }
@@ -642,6 +815,288 @@ pub fn plan_control_merge(local: &ControlSnapshot, remote: &ControlSnapshot) -> 
                 plan.delete_buckets.push(key.to_string());
             }
             apply_tombstone_actions(&mut plan, TOMBSTONE_BUCKET, key, &res);
+        }
+    }
+
+    // -- User↔grant attachments (R5; child of users AND grants) --
+    {
+        let l_alive: HashMap<String, &TimestampedUserGrant> = local
+            .user_grants
+            .iter()
+            .map(|x| (pair_key(&x.user_id, &x.grant_id), x))
+            .collect();
+        let r_alive: HashMap<String, &TimestampedUserGrant> = remote
+            .user_grants
+            .iter()
+            .map(|x| (pair_key(&x.user_id, &x.grant_id), x))
+            .collect();
+        let l_dead = tombstone_map(&local.tombstones, TOMBSTONE_USER_GRANT);
+        let r_dead = tombstone_map(&remote.tombstones, TOMBSTONE_USER_GRANT);
+        for key in union_keys_owned(&l_alive, &r_alive, &l_dead, &r_dead) {
+            let res = resolve_key(
+                l_alive.get(&key).map(|x| x.updated_at),
+                l_dead.get(key.as_str()).copied(),
+                r_alive.get(&key).map(|x| x.updated_at),
+                r_dead.get(key.as_str()).copied(),
+            );
+            if res.upsert_from_remote {
+                let x = *r_alive.get(&key).unwrap();
+                if alive_users.contains(&x.user_id) && alive_grants.contains(&x.grant_id) {
+                    plan.upsert_user_grants.push(x.clone());
+                }
+            }
+            if res.delete_local {
+                let x = *l_alive.get(&key).unwrap();
+                plan.delete_user_grants
+                    .push((x.user_id.clone(), x.grant_id.clone()));
+            }
+            apply_tombstone_actions(&mut plan, TOMBSTONE_USER_GRANT, &key, &res);
+        }
+    }
+
+    // -- Team↔grant attachments (R5; child of teams AND grants) --
+    {
+        let l_alive: HashMap<String, &TimestampedTeamGrant> = local
+            .team_grants
+            .iter()
+            .map(|x| (pair_key(&x.team_id, &x.grant_id), x))
+            .collect();
+        let r_alive: HashMap<String, &TimestampedTeamGrant> = remote
+            .team_grants
+            .iter()
+            .map(|x| (pair_key(&x.team_id, &x.grant_id), x))
+            .collect();
+        let l_dead = tombstone_map(&local.tombstones, TOMBSTONE_TEAM_GRANT);
+        let r_dead = tombstone_map(&remote.tombstones, TOMBSTONE_TEAM_GRANT);
+        for key in union_keys_owned(&l_alive, &r_alive, &l_dead, &r_dead) {
+            let res = resolve_key(
+                l_alive.get(&key).map(|x| x.updated_at),
+                l_dead.get(key.as_str()).copied(),
+                r_alive.get(&key).map(|x| x.updated_at),
+                r_dead.get(key.as_str()).copied(),
+            );
+            if res.upsert_from_remote {
+                let x = *r_alive.get(&key).unwrap();
+                if alive_teams.contains(&x.team_id) && alive_grants.contains(&x.grant_id) {
+                    plan.upsert_team_grants.push(x.clone());
+                }
+            }
+            if res.delete_local {
+                let x = *l_alive.get(&key).unwrap();
+                plan.delete_team_grants
+                    .push((x.team_id.clone(), x.grant_id.clone()));
+            }
+            apply_tombstone_actions(&mut plan, TOMBSTONE_TEAM_GRANT, &key, &res);
+        }
+    }
+
+    // -- Team memberships (R5; child of teams AND users) --
+    {
+        let l_alive: HashMap<String, &TimestampedTeamMember> = local
+            .team_members
+            .iter()
+            .map(|x| (pair_key(&x.team_id, &x.user_id), x))
+            .collect();
+        let r_alive: HashMap<String, &TimestampedTeamMember> = remote
+            .team_members
+            .iter()
+            .map(|x| (pair_key(&x.team_id, &x.user_id), x))
+            .collect();
+        let l_dead = tombstone_map(&local.tombstones, TOMBSTONE_TEAM_MEMBER);
+        let r_dead = tombstone_map(&remote.tombstones, TOMBSTONE_TEAM_MEMBER);
+        for key in union_keys_owned(&l_alive, &r_alive, &l_dead, &r_dead) {
+            let res = resolve_key(
+                l_alive.get(&key).map(|x| x.updated_at),
+                l_dead.get(key.as_str()).copied(),
+                r_alive.get(&key).map(|x| x.updated_at),
+                r_dead.get(key.as_str()).copied(),
+            );
+            if res.upsert_from_remote {
+                let x = *r_alive.get(&key).unwrap();
+                if alive_teams.contains(&x.team_id) && alive_users.contains(&x.user_id) {
+                    plan.upsert_team_members.push(x.clone());
+                }
+            }
+            if res.delete_local {
+                let x = *l_alive.get(&key).unwrap();
+                plan.delete_team_members
+                    .push((x.team_id.clone(), x.user_id.clone()));
+            }
+            apply_tombstone_actions(&mut plan, TOMBSTONE_TEAM_MEMBER, &key, &res);
+        }
+    }
+
+    // -- Bucket config keys (R5; child of buckets) --
+    {
+        let l_alive: HashMap<String, &TimestampedBucketConfig> = local
+            .bucket_configs
+            .iter()
+            .map(|x| (pair_key(&x.bucket, &x.key), x))
+            .collect();
+        let r_alive: HashMap<String, &TimestampedBucketConfig> = remote
+            .bucket_configs
+            .iter()
+            .map(|x| (pair_key(&x.bucket, &x.key), x))
+            .collect();
+        let l_dead = tombstone_map(&local.tombstones, TOMBSTONE_BUCKET_CONFIG);
+        let r_dead = tombstone_map(&remote.tombstones, TOMBSTONE_BUCKET_CONFIG);
+        for key in union_keys_owned(&l_alive, &r_alive, &l_dead, &r_dead) {
+            let res = resolve_key(
+                l_alive.get(&key).map(|x| x.updated_at),
+                l_dead.get(key.as_str()).copied(),
+                r_alive.get(&key).map(|x| x.updated_at),
+                r_dead.get(key.as_str()).copied(),
+            );
+            if res.upsert_from_remote {
+                let x = *r_alive.get(&key).unwrap();
+                if alive_buckets.contains(&x.bucket) {
+                    plan.upsert_bucket_configs.push(x.clone());
+                }
+            }
+            if res.delete_local {
+                let x = *l_alive.get(&key).unwrap();
+                plan.delete_bucket_configs
+                    .push((x.bucket.clone(), x.key.clone()));
+            }
+            apply_tombstone_actions(&mut plan, TOMBSTONE_BUCKET_CONFIG, &key, &res);
+        }
+    }
+
+    // -- Bucket tag sets (R5; child of buckets; the whole set is one entity) --
+    {
+        let l_alive: HashMap<&str, &TimestampedBucketTags> = local
+            .bucket_tags
+            .iter()
+            .map(|x| (x.bucket.as_str(), x))
+            .collect();
+        let r_alive: HashMap<&str, &TimestampedBucketTags> = remote
+            .bucket_tags
+            .iter()
+            .map(|x| (x.bucket.as_str(), x))
+            .collect();
+        let l_dead = tombstone_map(&local.tombstones, TOMBSTONE_BUCKET_TAGS);
+        let r_dead = tombstone_map(&remote.tombstones, TOMBSTONE_BUCKET_TAGS);
+        for key in union_keys(&l_alive, &r_alive, &l_dead, &r_dead) {
+            let key: &str = &key;
+            let res = resolve_key(
+                l_alive.get(key).map(|x| x.updated_at),
+                l_dead.get(key).copied(),
+                r_alive.get(key).map(|x| x.updated_at),
+                r_dead.get(key).copied(),
+            );
+            if res.upsert_from_remote {
+                let x = *r_alive.get(key).unwrap();
+                if alive_buckets.contains(&x.bucket) {
+                    plan.upsert_bucket_tags.push(x.clone());
+                }
+            }
+            if res.delete_local {
+                plan.delete_bucket_tags.push(key.to_string());
+            }
+            apply_tombstone_actions(&mut plan, TOMBSTONE_BUCKET_TAGS, key, &res);
+        }
+    }
+
+    // -- Cluster-wide server config (R5; no parent). Node-local keys are
+    // excluded at snapshot build; filtered again here so even a buggy or
+    // malicious snapshot cannot rewrite another node's identity (the same
+    // double defense as the real-time D12.1 filter). --
+    {
+        let l_alive: HashMap<&str, &TimestampedServerConfig> = local
+            .server_configs
+            .iter()
+            .filter(|x| !is_node_local_server_config_key(&x.key))
+            .map(|x| (x.key.as_str(), x))
+            .collect();
+        let r_alive: HashMap<&str, &TimestampedServerConfig> = remote
+            .server_configs
+            .iter()
+            .filter(|x| !is_node_local_server_config_key(&x.key))
+            .map(|x| (x.key.as_str(), x))
+            .collect();
+        let l_dead = tombstone_map(&local.tombstones, TOMBSTONE_SERVER_CONFIG);
+        let r_dead = tombstone_map(&remote.tombstones, TOMBSTONE_SERVER_CONFIG);
+        for key in union_keys(&l_alive, &r_alive, &l_dead, &r_dead) {
+            let key: &str = &key;
+            if is_node_local_server_config_key(key) {
+                continue;
+            }
+            let res = resolve_key(
+                l_alive.get(key).map(|x| x.updated_at),
+                l_dead.get(key).copied(),
+                r_alive.get(key).map(|x| x.updated_at),
+                r_dead.get(key).copied(),
+            );
+            if res.upsert_from_remote {
+                plan.upsert_server_configs
+                    .push((*r_alive.get(key).unwrap()).clone());
+            }
+            if res.delete_local {
+                plan.delete_server_configs.push(key.to_string());
+            }
+            apply_tombstone_actions(&mut plan, TOMBSTONE_SERVER_CONFIG, key, &res);
+        }
+    }
+
+    // -- Multipart uploads (D4; immutable rows keyed by upload_id, alive ts =
+    // initiated_at; a Complete/Abort records a `multipart` tombstone so a
+    // closed upload cannot resurrect from a peer that missed the close) --
+    {
+        let l_alive: HashMap<&str, &MultipartUploadRecord> = local
+            .multipart_uploads
+            .iter()
+            .map(|x| (x.upload_id.as_str(), x))
+            .collect();
+        let r_alive: HashMap<&str, &MultipartUploadRecord> = remote
+            .multipart_uploads
+            .iter()
+            .map(|x| (x.upload_id.as_str(), x))
+            .collect();
+        let l_dead = tombstone_map(&local.tombstones, TOMBSTONE_MULTIPART);
+        let r_dead = tombstone_map(&remote.tombstones, TOMBSTONE_MULTIPART);
+        for key in union_keys(&l_alive, &r_alive, &l_dead, &r_dead) {
+            let key: &str = &key;
+            let res = resolve_key(
+                l_alive.get(key).map(|x| x.initiated_at),
+                l_dead.get(key).copied(),
+                r_alive.get(key).map(|x| x.initiated_at),
+                r_dead.get(key).copied(),
+            );
+            if res.alive {
+                alive_uploads.insert(key.to_string());
+            }
+            if res.upsert_from_remote {
+                plan.upsert_multipart_uploads
+                    .push((*r_alive.get(key).unwrap()).clone());
+            }
+            if res.delete_local {
+                plan.delete_multipart_uploads.push(key.to_string());
+            }
+            apply_tombstone_actions(&mut plan, TOMBSTONE_MULTIPART, key, &res);
+        }
+    }
+
+    // -- Multipart parts (D4; replace-only children of an upload). No
+    // tombstones: a part disappears only with its upload (parent-dead filter,
+    // delete_multipart_upload cascades the rows) or by being replaced under
+    // the same (upload_id, part_number) key. --
+    {
+        let part_ts =
+            |p: &PartRecord| p.last_modified.unwrap_or(DateTime::<Utc>::MIN_UTC);
+        let l_alive: HashMap<String, &PartRecord> = local
+            .parts
+            .iter()
+            .map(|x| (pair_key(&x.upload_id, &x.part_number.to_string()), x))
+            .collect();
+        for x in &remote.parts {
+            let key = pair_key(&x.upload_id, &x.part_number.to_string());
+            let newer = match l_alive.get(&key) {
+                None => true,
+                Some(l) => part_ts(x) > part_ts(l),
+            };
+            if newer && alive_uploads.contains(&x.upload_id) {
+                plan.upsert_parts.push(x.clone());
+            }
         }
     }
 
@@ -713,6 +1168,23 @@ fn union_keys<A, B, C, D>(
     let mut keys: std::collections::HashSet<String> = std::collections::HashSet::new();
     keys.extend(local_alive.keys().map(|k| k.to_string()));
     keys.extend(remote_alive.keys().map(|k| k.to_string()));
+    keys.extend(local_dead.keys().map(|k| k.to_string()));
+    keys.extend(remote_dead.keys().map(|k| k.to_string()));
+    keys.into_iter().collect()
+}
+
+/// [`union_keys`] for the composite-keyed R5 families, whose alive maps are
+/// keyed by an owned [`pair_key`] (the dead maps stay borrowed: tombstones
+/// store the composite key verbatim).
+fn union_keys_owned<A, B, C, D>(
+    local_alive: &std::collections::HashMap<String, A>,
+    remote_alive: &std::collections::HashMap<String, B>,
+    local_dead: &std::collections::HashMap<&str, C>,
+    remote_dead: &std::collections::HashMap<&str, D>,
+) -> Vec<String> {
+    let mut keys: std::collections::HashSet<String> = std::collections::HashSet::new();
+    keys.extend(local_alive.keys().cloned());
+    keys.extend(remote_alive.keys().cloned());
     keys.extend(local_dead.keys().map(|k| k.to_string()));
     keys.extend(remote_dead.keys().map(|k| k.to_string()));
     keys.into_iter().collect()
@@ -1417,11 +1889,8 @@ mod tests {
     ) -> ControlSnapshot {
         ControlSnapshot {
             credentials,
-            users: vec![],
-            teams: vec![],
-            grants: vec![],
-            buckets: vec![],
             tombstones,
+            ..Default::default()
         }
     }
 
@@ -1551,6 +2020,336 @@ mod tests {
         assert_eq!(plan.upsert_credentials.len(), 1, "newer create wins");
         assert_eq!(plan.clear_tombstones.len(), 1, "stale local tombstone cleared");
         assert!(plan.delete_credentials.is_empty());
+    }
+
+    // --- plan_control_merge: R5 families (TD-016) ----------------------------
+
+    fn tuser(id: &str, updated: i64) -> TimestampedUser {
+        TimestampedUser {
+            user: User {
+                user_id: id.to_string(),
+                username: id.to_string(),
+                description: String::new(),
+                is_root: false,
+                created_at: ts(updated),
+            },
+            updated_at: ts(updated),
+        }
+    }
+
+    fn tgrant(id: &str, updated: i64) -> Grant {
+        Grant {
+            grant_id: id.to_string(),
+            name: id.to_string(),
+            description: String::new(),
+            document: crate::policy::PolicyDocument {
+                version: "2012-10-17".to_string(),
+                statement: vec![],
+            },
+            created_at: ts(updated),
+            updated_at: ts(updated),
+        }
+    }
+
+    fn tteam(id: &str, updated: i64) -> TimestampedTeam {
+        TimestampedTeam {
+            team: Team {
+                team_id: id.to_string(),
+                name: id.to_string(),
+                description: String::new(),
+                created_at: ts(updated),
+            },
+            updated_at: ts(updated),
+        }
+    }
+
+    fn tug(user: &str, grant: &str, updated: i64) -> TimestampedUserGrant {
+        TimestampedUserGrant {
+            user_id: user.to_string(),
+            grant_id: grant.to_string(),
+            updated_at: ts(updated),
+        }
+    }
+
+    fn upload(id: &str, initiated: i64) -> MultipartUploadRecord {
+        MultipartUploadRecord {
+            upload_id: id.to_string(),
+            bucket: "b".to_string(),
+            key: "k".to_string(),
+            content_type: None,
+            initiated_at: ts(initiated),
+            metadata: std::collections::HashMap::new(),
+            checksum_algorithm: None,
+        }
+    }
+
+    fn part(upload_id: &str, n: u32, modified: i64) -> PartRecord {
+        PartRecord {
+            upload_id: upload_id.to_string(),
+            part_number: n,
+            blob_id: BlobId(format!("{upload_id}-{n}")),
+            size: 1,
+            etag: "e".to_string(),
+            checksum_value: None,
+            last_modified: Some(ts(modified)),
+        }
+    }
+
+    #[test]
+    fn merge_user_grant_detach_wins_over_stale_attach() {
+        // Local still holds the attachment; the peer detached it later.
+        let local = ControlSnapshot {
+            users: vec![tuser("u1", 50)],
+            grants: vec![tgrant("g1", 50)],
+            user_grants: vec![tug("u1", "g1", 100)],
+            ..Default::default()
+        };
+        let remote = ControlSnapshot {
+            users: vec![tuser("u1", 50)],
+            grants: vec![tgrant("g1", 50)],
+            tombstones: vec![tomb(TOMBSTONE_USER_GRANT, &pair_key("u1", "g1"), 200)],
+            ..Default::default()
+        };
+        let plan = plan_control_merge(&local, &remote);
+        assert_eq!(
+            plan.delete_user_grants,
+            vec![("u1".to_string(), "g1".to_string())]
+        );
+        assert!(plan
+            .adopt_tombstones
+            .iter()
+            .any(|t| t.entity_type == TOMBSTONE_USER_GRANT));
+        assert!(plan.upsert_user_grants.is_empty());
+    }
+
+    #[test]
+    fn merge_user_grant_reattach_beats_older_tombstone() {
+        // Local detached at 100; the peer re-attached at 200.
+        let local = ControlSnapshot {
+            users: vec![tuser("u1", 50)],
+            grants: vec![tgrant("g1", 50)],
+            tombstones: vec![tomb(TOMBSTONE_USER_GRANT, &pair_key("u1", "g1"), 100)],
+            ..Default::default()
+        };
+        let remote = ControlSnapshot {
+            users: vec![tuser("u1", 50)],
+            grants: vec![tgrant("g1", 50)],
+            user_grants: vec![tug("u1", "g1", 200)],
+            ..Default::default()
+        };
+        let plan = plan_control_merge(&local, &remote);
+        assert_eq!(plan.upsert_user_grants.len(), 1);
+        assert!(plan
+            .clear_tombstones
+            .iter()
+            .any(|t| t.entity_type == TOMBSTONE_USER_GRANT));
+        assert!(plan.delete_user_grants.is_empty());
+    }
+
+    #[test]
+    fn merge_child_upserts_filtered_when_parent_dead() {
+        // The peer still holds an attachment and a membership, but their
+        // parents (grant g1, team t1) are tombstoned NEWER than the children:
+        // adopting the children would resurrect cascade-deleted rows (and
+        // violate the join-table FKs on PostgreSQL).
+        let local = ControlSnapshot {
+            users: vec![tuser("u1", 50)],
+            tombstones: vec![
+                tomb(TOMBSTONE_GRANT, "g1", 300),
+                tomb(TOMBSTONE_TEAM, "t1", 300),
+            ],
+            ..Default::default()
+        };
+        let remote = ControlSnapshot {
+            users: vec![tuser("u1", 50)],
+            grants: vec![tgrant("g1", 100)],
+            teams: vec![tteam("t1", 100)],
+            user_grants: vec![tug("u1", "g1", 100)],
+            team_members: vec![TimestampedTeamMember {
+                team_id: "t1".to_string(),
+                user_id: "u1".to_string(),
+                updated_at: ts(100),
+            }],
+            ..Default::default()
+        };
+        let plan = plan_control_merge(&local, &remote);
+        assert!(plan.upsert_user_grants.is_empty(), "dead grant parent");
+        assert!(plan.upsert_team_members.is_empty(), "dead team parent");
+        // The parents themselves resolve to deletion on the remote side only
+        // (nothing to delete locally), and the children carry no upserts.
+        assert!(plan.upsert_grants.is_empty());
+        assert!(plan.upsert_teams.is_empty());
+    }
+
+    #[test]
+    fn merge_bucket_config_lww_and_parent_filter() {
+        let bucket = || BucketInfo {
+            name: "b".to_string(),
+            created_at: ts(10),
+            owner: "root".to_string(),
+        };
+        let bc = |value: &str, at: i64| TimestampedBucketConfig {
+            bucket: "b".to_string(),
+            key: "versioning".to_string(),
+            value: value.to_string(),
+            updated_at: ts(at),
+        };
+        // Newer remote value wins.
+        let local = ControlSnapshot {
+            buckets: vec![bucket()],
+            bucket_configs: vec![bc("Suspended", 100)],
+            ..Default::default()
+        };
+        let remote = ControlSnapshot {
+            buckets: vec![bucket()],
+            bucket_configs: vec![bc("Enabled", 200)],
+            ..Default::default()
+        };
+        let plan = plan_control_merge(&local, &remote);
+        assert_eq!(plan.upsert_bucket_configs.len(), 1);
+        assert_eq!(plan.upsert_bucket_configs[0].value, "Enabled");
+
+        // Same change, but the bucket is dead → config not adopted.
+        let local_dead = ControlSnapshot {
+            tombstones: vec![tomb(TOMBSTONE_BUCKET, "b", 300)],
+            ..Default::default()
+        };
+        let plan = plan_control_merge(&local_dead, &remote);
+        assert!(plan.upsert_bucket_configs.is_empty(), "dead bucket parent");
+    }
+
+    #[test]
+    fn merge_bucket_tags_are_one_set_level_entity() {
+        let bucket = || BucketInfo {
+            name: "b".to_string(),
+            created_at: ts(10),
+            owner: "root".to_string(),
+        };
+        let tags = |pairs: &[(&str, &str)], at: i64| TimestampedBucketTags {
+            bucket: "b".to_string(),
+            tags: pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            updated_at: ts(at),
+        };
+        // A newer replace wins WHOLE-set: the dropped key disappears with it.
+        let local = ControlSnapshot {
+            buckets: vec![bucket()],
+            bucket_tags: vec![tags(&[("env", "dev"), ("team", "x")], 100)],
+            ..Default::default()
+        };
+        let remote = ControlSnapshot {
+            buckets: vec![bucket()],
+            bucket_tags: vec![tags(&[("env", "prod")], 200)],
+            ..Default::default()
+        };
+        let plan = plan_control_merge(&local, &remote);
+        assert_eq!(plan.upsert_bucket_tags.len(), 1);
+        assert_eq!(plan.upsert_bucket_tags[0].tags, vec![("env".to_string(), "prod".to_string())]);
+
+        // A newer clear (tombstone) deletes the local set.
+        let remote_cleared = ControlSnapshot {
+            buckets: vec![bucket()],
+            tombstones: vec![tomb(TOMBSTONE_BUCKET_TAGS, "b", 200)],
+            ..Default::default()
+        };
+        let plan = plan_control_merge(&local, &remote_cleared);
+        assert_eq!(plan.delete_bucket_tags, vec!["b".to_string()]);
+    }
+
+    #[test]
+    fn merge_server_config_skips_node_local_keys() {
+        // Even a snapshot that (wrongly or maliciously) carries node_id must
+        // not rewrite this node's identity — same double defense as D12.1.
+        let sc = |key: &str, value: &str, at: i64| TimestampedServerConfig {
+            key: key.to_string(),
+            value: value.to_string(),
+            updated_at: ts(at),
+        };
+        let local = ControlSnapshot::default();
+        let remote = ControlSnapshot {
+            server_configs: vec![sc(NODE_ID_KEY, "evil-node", 200), sc("region", "eu-south-1", 200)],
+            ..Default::default()
+        };
+        let plan = plan_control_merge(&local, &remote);
+        assert_eq!(plan.upsert_server_configs.len(), 1, "only the cluster-wide key");
+        assert_eq!(plan.upsert_server_configs[0].key, "region");
+    }
+
+    #[test]
+    fn merge_multipart_close_wins_and_drops_parts() {
+        // Local was down during Complete/Abort: it still holds the upload and
+        // its parts; the peer holds the `multipart` tombstone. The upload must
+        // be deleted (cascading parts) and the peer's part rows — if any were
+        // still in flight — must not be adopted.
+        let local = ControlSnapshot {
+            multipart_uploads: vec![upload("up1", 100)],
+            parts: vec![part("up1", 1, 110)],
+            ..Default::default()
+        };
+        let remote = ControlSnapshot {
+            tombstones: vec![tomb(TOMBSTONE_MULTIPART, "up1", 200)],
+            parts: vec![part("up1", 2, 120)],
+            ..Default::default()
+        };
+        let plan = plan_control_merge(&local, &remote);
+        assert_eq!(plan.delete_multipart_uploads, vec!["up1".to_string()]);
+        assert!(plan.upsert_parts.is_empty(), "closed upload's parts not adopted");
+        assert!(plan
+            .adopt_tombstones
+            .iter()
+            .any(|t| t.entity_type == TOMBSTONE_MULTIPART));
+    }
+
+    #[test]
+    fn merge_multipart_catchup_adopts_upload_and_parts() {
+        // A node that was down during CreateMultipartUpload + UploadPart pulls
+        // both rows at re-entry; a re-uploaded part replaces by newer ts.
+        let local = ControlSnapshot {
+            multipart_uploads: vec![upload("up1", 100)],
+            parts: vec![part("up1", 1, 110)],
+            ..Default::default()
+        };
+        let remote = ControlSnapshot {
+            multipart_uploads: vec![upload("up1", 100), upload("up2", 150)],
+            parts: vec![part("up1", 1, 180), part("up2", 1, 160)],
+            ..Default::default()
+        };
+        let plan = plan_control_merge(&local, &remote);
+        assert_eq!(plan.upsert_multipart_uploads.len(), 1);
+        assert_eq!(plan.upsert_multipart_uploads[0].upload_id, "up2");
+        // Both the re-uploaded part (newer ts) and the new upload's part land.
+        assert_eq!(plan.upsert_parts.len(), 2);
+        // Re-running the same merge after convergence is a no-op for parts
+        // with equal timestamps (ties keep local).
+        let plan2 = plan_control_merge(&remote, &remote);
+        assert!(plan2.upsert_parts.is_empty());
+        assert!(plan2.is_empty());
+    }
+
+    #[test]
+    fn merge_legacy_snapshot_without_r5_families_deletes_nothing() {
+        // Rolling upgrade (H10): a pre-R5 peer's snapshot deserializes with the
+        // new families empty. That must read as "no information", never as
+        // "everything was deleted".
+        let legacy_json = r#"{
+            "credentials": [], "users": [], "teams": [], "grants": [],
+            "buckets": [], "tombstones": []
+        }"#;
+        let remote: ControlSnapshot = serde_json::from_str(legacy_json).unwrap();
+        let local = ControlSnapshot {
+            users: vec![tuser("u1", 50)],
+            grants: vec![tgrant("g1", 50)],
+            user_grants: vec![tug("u1", "g1", 100)],
+            multipart_uploads: vec![upload("up1", 100)],
+            parts: vec![part("up1", 1, 110)],
+            ..Default::default()
+        };
+        let plan = plan_control_merge(&local, &remote);
+        assert!(plan.delete_user_grants.is_empty());
+        assert!(plan.delete_multipart_uploads.is_empty());
+        assert!(plan.adopt_tombstones.is_empty());
     }
 
     // --- ping challenge-response MAC (decision H12) -------------------------

@@ -134,14 +134,19 @@ pub async fn export(
         .unwrap(),
     );
 
-    // Settings
+    // Settings. Node-local keys (node_id) are omitted: an export imported on
+    // another node must never carry this node's identity (D12.2, double
+    // defense together with the import-side skip).
     if has("settings") {
         let pairs = state
             .server_config
             .list_server_config()
             .await
             .map_err(|e| AdminError::internal(e.to_string()))?;
-        let map: HashMap<String, String> = pairs.into_iter().collect();
+        let map: HashMap<String, String> = pairs
+            .into_iter()
+            .filter(|(k, _)| !arca_core::cluster::is_node_local_server_config_key(k))
+            .collect();
         doc.insert("settings".to_string(), serde_json::to_value(map).unwrap());
     }
 

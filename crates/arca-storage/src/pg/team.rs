@@ -151,10 +151,12 @@ impl TeamStore for PgStore {
     }
 
     async fn add_member(&self, team_id: &str, user_id: &str) -> Result<(), ArcaError> {
+        // updated_at refreshed on an idempotent re-add too: the LWW reconcile
+        // (R5) must see it as newer than any concurrent remove-member tombstone.
         sqlx_core::query::query(
-            "INSERT INTO team_members (team_id, user_id)
-             VALUES ($1, $2)
-             ON CONFLICT (team_id, user_id) DO NOTHING",
+            "INSERT INTO team_members (team_id, user_id, updated_at)
+             VALUES ($1, $2, NOW())
+             ON CONFLICT (team_id, user_id) DO UPDATE SET updated_at = EXCLUDED.updated_at",
         )
         .bind(team_id)
         .bind(user_id)

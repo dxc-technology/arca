@@ -44,13 +44,50 @@ pub trait ControlSnapshotStore: Send + Sync {
         updated_at: DateTime<Utc>,
     ) -> Result<(), ArcaError>;
 
+    /// Upserts a user↔grant attachment, preserving `updated_at` verbatim (R5).
+    async fn apply_user_grant_at(
+        &self,
+        user_id: &str,
+        grant_id: &str,
+        updated_at: DateTime<Utc>,
+    ) -> Result<(), ArcaError>;
+
+    /// Upserts a team↔grant attachment, preserving `updated_at` verbatim (R5).
+    async fn apply_team_grant_at(
+        &self,
+        team_id: &str,
+        grant_id: &str,
+        updated_at: DateTime<Utc>,
+    ) -> Result<(), ArcaError>;
+
+    /// Upserts a team membership, preserving `updated_at` verbatim (R5).
+    async fn apply_team_member_at(
+        &self,
+        team_id: &str,
+        user_id: &str,
+        updated_at: DateTime<Utc>,
+    ) -> Result<(), ArcaError>;
+
+    /// Upserts a cluster-wide server-config key, preserving `updated_at`
+    /// verbatim (R5). Callers never pass node-local keys (the merge planner
+    /// filters them).
+    async fn apply_server_config_at(
+        &self,
+        key: &str,
+        value: &str,
+        updated_at: DateTime<Utc>,
+    ) -> Result<(), ArcaError>;
+
     /// Applies the IDENTITY part of a computed merge plan: credential/user/team
-    /// upserts (with preserved timestamps), grant upserts, the corresponding
-    /// deletes, and tombstone adopt/clear. Grants reuse their verbatim upsert
-    /// (their `updated_at` lives in the struct).
+    /// upserts (with preserved timestamps), grant upserts, the R5 identity
+    /// children (attachments, memberships) and cluster-wide server config, the
+    /// corresponding deletes, and tombstone adopt/clear. Grants reuse their
+    /// verbatim upsert (their `updated_at` lives in the struct).
     ///
-    /// Buckets are NOT applied here — the caller applies `plan.upsert_buckets` /
-    /// `plan.delete_buckets` through its `MetadataStore` handle so the metadata
-    /// cache is invalidated (the concrete store would bypass it).
+    /// Buckets — with their children, bucket config and bucket tags — and the
+    /// multipart upload/part rows are NOT applied here: the caller applies them
+    /// through its `MetadataStore` handle so the metadata cache is invalidated
+    /// (the concrete store would bypass it). Multipart needs no `_at` variants:
+    /// its rows carry their own timestamps verbatim.
     async fn apply_control_merge(&self, plan: &ControlMergePlan) -> Result<(), ArcaError>;
 }

@@ -51,13 +51,18 @@
 
 use std::sync::Arc;
 
-use arca_core::cluster::{quorum_satisfied, ClusterState, ControlOp, WriteGate};
+use arca_core::cluster::{pair_key, quorum_satisfied, ClusterState, ControlOp, WriteGate};
 use arca_core::error::ArcaError;
-use arca_core::store::{ControlTombstoneStore, MetadataStore, TOMBSTONE_BUCKET};
+use arca_core::store::{
+    ControlTombstoneStore, MetadataStore, TOMBSTONE_BUCKET, TOMBSTONE_BUCKET_CONFIG,
+    TOMBSTONE_BUCKET_TAGS, TOMBSTONE_MULTIPART,
+};
 use arca_core::types::{
     BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
 };
 use arca_core::{S3Error, S3ErrorCode};
+
+use super::cluster_control::{clear_tombstone, record_tombstone};
 use chrono::{DateTime, Utc};
 use futures_util::future::join_all;
 
@@ -462,6 +467,9 @@ impl MetadataStore for ClusterMetadataStore {
     ) -> Result<(), ArcaError> {
         self.check_write_quorum()?;
         self.inner.create_multipart_upload(record).await?;
+        // upload_id is a fresh UUID, so a stale tombstone for it cannot exist
+        // in practice — cleared anyway for symmetry with the other families.
+        clear_tombstone(&self.tombstones, TOMBSTONE_MULTIPART, &record.upload_id).await;
         self.fan_out_op(&ControlOp::MultipartCreate {
             record: record.clone(),
         })
@@ -496,6 +504,10 @@ impl MetadataStore for ClusterMetadataStore {
     ) -> Result<Vec<PartRecord>, ArcaError> {
         self.check_write_quorum()?;
         let parts = self.inner.delete_multipart_upload(upload_id).await?;
+        // Both Complete and Abort end here: tombstone the upload so a peer
+        // that was down cannot resurrect a closed upload via the snapshot
+        // reconcile (D4).
+        record_tombstone(&self.tombstones, TOMBSTONE_MULTIPART, upload_id).await;
         self.fan_out_op(&ControlOp::MultipartDelete {
             upload_id: upload_id.to_string(),
         })
@@ -562,6 +574,13 @@ impl MetadataStore for ClusterMetadataStore {
         self.inner
             .set_bucket_config(bucket, config_key, config_value)
             .await?;
+        // A set revives the key: drop any stale delete tombstone (R5).
+        clear_tombstone(
+            &self.tombstones,
+            TOMBSTONE_BUCKET_CONFIG,
+            &pair_key(bucket, config_key),
+        )
+        .await;
         self.fan_out_op(&ControlOp::BucketConfigSet {
             bucket: bucket.to_string(),
             key: config_key.to_string(),
@@ -579,6 +598,13 @@ impl MetadataStore for ClusterMetadataStore {
         self.check_write_quorum()?;
         let existed = self.inner.delete_bucket_config(bucket, config_key).await?;
         if existed {
+            // Tombstone so the delete converges via the snapshot reconcile (R5).
+            record_tombstone(
+                &self.tombstones,
+                TOMBSTONE_BUCKET_CONFIG,
+                &pair_key(bucket, config_key),
+            )
+            .await;
             self.fan_out_op(&ControlOp::BucketConfigDelete {
                 bucket: bucket.to_string(),
                 key: config_key.to_string(),
@@ -601,6 +627,15 @@ impl MetadataStore for ClusterMetadataStore {
     ) -> Result<(), ArcaError> {
         self.check_write_quorum()?;
         self.inner.put_bucket_tags(bucket, tags).await?;
+        // The whole tag set is one LWW entity in the snapshot reconcile (R5):
+        // a non-empty replace revives it (drop any stale tombstone); an empty
+        // replace IS a clear (record one — an empty set never travels in the
+        // snapshot).
+        if tags.is_empty() {
+            record_tombstone(&self.tombstones, TOMBSTONE_BUCKET_TAGS, bucket).await;
+        } else {
+            clear_tombstone(&self.tombstones, TOMBSTONE_BUCKET_TAGS, bucket).await;
+        }
         self.fan_out_op(&ControlOp::BucketTags {
             bucket: bucket.to_string(),
             tags: tags.to_vec(),
@@ -613,6 +648,8 @@ impl MetadataStore for ClusterMetadataStore {
         self.check_write_quorum()?;
         let existed = self.inner.delete_bucket_tags(bucket).await?;
         if existed {
+            // Tombstone so the clear converges via the snapshot reconcile (R5).
+            record_tombstone(&self.tombstones, TOMBSTONE_BUCKET_TAGS, bucket).await;
             // Replicate as a tags-replace with an empty set, clearing peers' tags.
             self.fan_out_op(&ControlOp::BucketTags {
                 bucket: bucket.to_string(),
@@ -746,6 +783,29 @@ impl MetadataStore for ClusterMetadataStore {
 
     async fn apply_remote_bucket(&self, info: &BucketInfo) -> Result<(), ArcaError> {
         self.inner.apply_remote_bucket(info).await
+    }
+
+    async fn apply_bucket_config_at(
+        &self,
+        bucket: &str,
+        config_key: &str,
+        config_value: &str,
+        updated_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), ArcaError> {
+        // Reconcile-applied state: no fan-out, no tombstone bookkeeping.
+        self.inner
+            .apply_bucket_config_at(bucket, config_key, config_value, updated_at)
+            .await
+    }
+
+    async fn apply_bucket_tags_at(
+        &self,
+        bucket: &str,
+        tags: &[(String, String)],
+        updated_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), ArcaError> {
+        // Reconcile-applied state: no fan-out, no tombstone bookkeeping.
+        self.inner.apply_bucket_tags_at(bucket, tags, updated_at).await
     }
 
     async fn apply_remote_multipart_upload(

@@ -85,6 +85,11 @@ const MIGRATIONS: &[Migration] = &[
         description: "Replace the objects_seq sequence with a commit-ordered object_seq counter (review §2.2)",
         sql: include_str!("migrations/0009_commit_ordered_seq.sql"),
     },
+    Migration {
+        version: 10,
+        description: "Add updated_at to grant attachments, memberships and bucket_tags (R5 control reconcile)",
+        sql: include_str!("migrations/0010_control_reconcile_families.sql"),
+    },
 ];
 
 impl PgStore {

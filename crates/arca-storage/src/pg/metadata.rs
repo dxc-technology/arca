@@ -281,7 +281,8 @@ fn row_to_bucket_info(row: &sqlx_postgres::PgRow) -> BucketInfo {
 }
 
 /// Converts a PostgreSQL row to a `MultipartUploadRecord`.
-fn row_to_multipart_upload_record(row: &sqlx_postgres::PgRow) -> MultipartUploadRecord {
+// `pub(super)`: the control-snapshot builder reads these tables too (R5/D4).
+pub(super) fn row_to_multipart_upload_record(row: &sqlx_postgres::PgRow) -> MultipartUploadRecord {
     let metadata_json: serde_json::Value = row.get("metadata");
     let metadata: HashMap<String, String> =
         serde_json::from_value(metadata_json).unwrap_or_default();
@@ -298,7 +299,8 @@ fn row_to_multipart_upload_record(row: &sqlx_postgres::PgRow) -> MultipartUpload
 }
 
 /// Converts a PostgreSQL row to a `PartRecord`.
-fn row_to_part_record(row: &sqlx_postgres::PgRow) -> PartRecord {
+// `pub(super)`: the control-snapshot builder reads these tables too (R5/D4).
+pub(super) fn row_to_part_record(row: &sqlx_postgres::PgRow) -> PartRecord {
     PartRecord {
         upload_id: row.get("upload_id"),
         part_number: row.get::<i32, _>("part_number") as u32,
@@ -1028,25 +1030,35 @@ impl MetadataStore for PgStore {
         match &record.version_id {
             // Versioned rows are immutable, keyed by version_id. The LWW guard
             // (incoming >= existing) makes re-delivery and out-of-order delivery
-            // safe and idempotent.
+            // safe and idempotent; the equal-tuple `>=` lets lock-column updates
+            // (N1) through. Identical rows are skipped without a rewrite (M7):
+            // rewriting would stamp a fresh seq and keep two caught-up nodes
+            // redelivering their whole tables to each other forever.
             Some(vid) => {
-                let existing: Option<DateTime<Utc>> = sqlx_core::query::query(
-                    "SELECT last_modified FROM objects \
-                     WHERE bucket = $1 AND key = $2 AND version_id = $3",
-                )
-                .bind(&record.bucket)
-                .bind(&record.key)
-                .bind(vid)
-                .fetch_optional(&mut *tx)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?
-                .map(|row| row.get::<DateTime<Utc>, _>("last_modified"));
+                let sql = format!(
+                    "SELECT {OBJECT_COLUMNS} FROM objects \
+                     WHERE bucket = $1 AND key = $2 AND version_id = $3"
+                );
+                let existing: Option<ObjectRecord> = sqlx_core::query::query(&sql)
+                    .bind(&record.bucket)
+                    .bind(&record.key)
+                    .bind(vid)
+                    .fetch_optional(&mut *tx)
+                    .await
+                    .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?
+                    .map(|row| row_to_object_record(&row));
 
-                let should_write = existing.map_or(true, |ex| record.last_modified >= ex);
+                let should_write = match &existing {
+                    None => true,
+                    Some(ex) => {
+                        record.last_modified >= ex.last_modified
+                            && !record.same_replicated_content(ex)
+                    }
+                };
                 if should_write {
                     // Commit-ordered seq before the first DML (lock-order rule
-                    // of next_object_seq). Re-stamped on every apply so the
-                    // reconciliation propagates transitively A->B->C.
+                    // of next_object_seq). Re-stamped on every effective apply
+                    // so the reconciliation propagates transitively A->B->C.
                     let seq = next_object_seq(&mut tx)
                         .await
                         .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
@@ -1066,29 +1078,28 @@ impl MetadataStore for PgStore {
             }
             // Null-version rows form an LWW register per (bucket, key):
             // unversioned/suspended overwrites resolve by (last_modified, blob_id)
-            // so all nodes converge on one row.
+            // so all nodes converge on one row. Same M7 identical-row skip as
+            // the versioned branch.
             None => {
-                let existing = sqlx_core::query::query(
-                    "SELECT last_modified, blob_id FROM objects \
-                     WHERE bucket = $1 AND key = $2 AND version_id IS NULL",
-                )
-                .bind(&record.bucket)
-                .bind(&record.key)
-                .fetch_optional(&mut *tx)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?
-                .map(|row| {
-                    (
-                        row.get::<DateTime<Utc>, _>("last_modified"),
-                        row.get::<String, _>("blob_id"),
-                    )
-                });
+                let sql = format!(
+                    "SELECT {OBJECT_COLUMNS} FROM objects \
+                     WHERE bucket = $1 AND key = $2 AND version_id IS NULL"
+                );
+                let existing: Option<ObjectRecord> = sqlx_core::query::query(&sql)
+                    .bind(&record.bucket)
+                    .bind(&record.key)
+                    .fetch_optional(&mut *tx)
+                    .await
+                    .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?
+                    .map(|row| row_to_object_record(&row));
 
                 let should_write = match &existing {
                     None => true,
-                    Some((lm, bid)) => {
-                        record.last_modified > *lm
-                            || (record.last_modified == *lm && record.blob_id.0 >= *bid)
+                    Some(ex) => {
+                        let lww = record.last_modified > ex.last_modified
+                            || (record.last_modified == ex.last_modified
+                                && record.blob_id.0 >= ex.blob_id.0);
+                        lww && !record.same_replicated_content(ex)
                     }
                 };
                 if should_write {
@@ -1441,13 +1452,17 @@ impl MetadataStore for PgStore {
             .await
             .map_err(|e| ArcaError::Internal(format!("put_bucket_tags: {e}")))?;
 
+        // One timestamp for the whole set: the control reconcile (R5) treats a
+        // bucket's tags as a single LWW entity (replace-all semantics).
+        let now = Utc::now();
         for (k, v) in tags {
             sqlx_core::query::query(
-                "INSERT INTO bucket_tags (bucket, tag_key, tag_value) VALUES ($1, $2, $3)",
+                "INSERT INTO bucket_tags (bucket, tag_key, tag_value, updated_at) VALUES ($1, $2, $3, $4)",
             )
             .bind(bucket)
             .bind(k)
             .bind(v)
+            .bind(now)
             .execute(&mut *tx)
             .await
             .map_err(|e| ArcaError::Internal(format!("put_bucket_tags: {e}")))?;
@@ -1468,6 +1483,67 @@ impl MetadataStore for PgStore {
             .map_err(|e| ArcaError::Internal(format!("delete_bucket_tags: {e}")))?;
 
         Ok(result.rows_affected() > 0)
+    }
+
+    async fn apply_bucket_config_at(
+        &self,
+        bucket: &str,
+        config_key: &str,
+        config_value: &str,
+        updated_at: DateTime<Utc>,
+    ) -> Result<(), ArcaError> {
+        // Like set_bucket_config, but preserving the source's updated_at (the
+        // R5 reconcile LWW key) instead of stamping now().
+        sqlx_core::query::query(
+            "INSERT INTO bucket_config (bucket, config_key, config_value, updated_at)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (bucket, config_key) DO UPDATE SET
+               config_value = EXCLUDED.config_value,
+               updated_at = EXCLUDED.updated_at",
+        )
+        .bind(bucket)
+        .bind(config_key)
+        .bind(config_value)
+        .bind(updated_at)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("apply_bucket_config_at: {e}")))?;
+        Ok(())
+    }
+
+    async fn apply_bucket_tags_at(
+        &self,
+        bucket: &str,
+        tags: &[(String, String)],
+        updated_at: DateTime<Utc>,
+    ) -> Result<(), ArcaError> {
+        // Like put_bucket_tags, but preserving the source's updated_at.
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("apply_bucket_tags_at: {e}")))?;
+        sqlx_core::query::query("DELETE FROM bucket_tags WHERE bucket = $1")
+            .bind(bucket)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("apply_bucket_tags_at: {e}")))?;
+        for (k, v) in tags {
+            sqlx_core::query::query(
+                "INSERT INTO bucket_tags (bucket, tag_key, tag_value, updated_at) VALUES ($1, $2, $3, $4)",
+            )
+            .bind(bucket)
+            .bind(k)
+            .bind(v)
+            .bind(updated_at)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("apply_bucket_tags_at: {e}")))?;
+        }
+        tx.commit()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("apply_bucket_tags_at: {e}")))?;
+        Ok(())
     }
 
     async fn get_object_tags(
@@ -1811,33 +1887,49 @@ impl MetadataStore for PgStore {
             })
             .transpose()?;
 
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("set_object_retention: {e}")))?;
+        // Fresh seq so the lock change travels via the changed-since manifest
+        // to peers that miss the real-time fan-out (N1). Taken before the row
+        // UPDATE per the next_object_seq lock-order rule.
+        let seq = next_object_seq(&mut tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("set_object_retention: {e}")))?;
         let result = if let Some(vid) = version_id {
             sqlx_core::query::query(
-                "UPDATE objects SET retention_mode = $1, retain_until_date = $2 \
-                 WHERE bucket = $3 AND key = $4 AND version_id = $5",
+                "UPDATE objects SET retention_mode = $1, retain_until_date = $2, seq = $3 \
+                 WHERE bucket = $4 AND key = $5 AND version_id = $6",
             )
             .bind(retention_mode)
             .bind(retain_dt)
+            .bind(seq)
             .bind(bucket)
             .bind(key)
             .bind(vid)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
         } else {
             sqlx_core::query::query(
-                "UPDATE objects SET retention_mode = $1, retain_until_date = $2 \
-                 WHERE bucket = $3 AND key = $4 AND is_latest = TRUE",
+                "UPDATE objects SET retention_mode = $1, retain_until_date = $2, seq = $3 \
+                 WHERE bucket = $4 AND key = $5 AND is_latest = TRUE",
             )
             .bind(retention_mode)
             .bind(retain_dt)
+            .bind(seq)
             .bind(bucket)
             .bind(key)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
         };
 
         let result =
             result.map_err(|e| ArcaError::Internal(format!("set_object_retention: {e}")))?;
+        tx.commit()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("set_object_retention: {e}")))?;
         Ok(result.rows_affected() > 0)
     }
 
@@ -1848,31 +1940,45 @@ impl MetadataStore for PgStore {
         version_id: Option<&str>,
         status: Option<&str>,
     ) -> Result<bool, ArcaError> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("set_object_legal_hold: {e}")))?;
+        // Fresh seq for manifest visibility (N1) — see set_object_retention.
+        let seq = next_object_seq(&mut tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("set_object_legal_hold: {e}")))?;
         let result = if let Some(vid) = version_id {
             sqlx_core::query::query(
-                "UPDATE objects SET legal_hold_status = $1 \
-                 WHERE bucket = $2 AND key = $3 AND version_id = $4",
+                "UPDATE objects SET legal_hold_status = $1, seq = $2 \
+                 WHERE bucket = $3 AND key = $4 AND version_id = $5",
             )
             .bind(status)
+            .bind(seq)
             .bind(bucket)
             .bind(key)
             .bind(vid)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
         } else {
             sqlx_core::query::query(
-                "UPDATE objects SET legal_hold_status = $1 \
-                 WHERE bucket = $2 AND key = $3 AND is_latest = TRUE",
+                "UPDATE objects SET legal_hold_status = $1, seq = $2 \
+                 WHERE bucket = $3 AND key = $4 AND is_latest = TRUE",
             )
             .bind(status)
+            .bind(seq)
             .bind(bucket)
             .bind(key)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
         };
 
         let result =
             result.map_err(|e| ArcaError::Internal(format!("set_object_legal_hold: {e}")))?;
+        tx.commit()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("set_object_legal_hold: {e}")))?;
         Ok(result.rows_affected() > 0)
     }
 

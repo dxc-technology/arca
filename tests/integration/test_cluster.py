@@ -98,6 +98,22 @@ DRIFT_BUCKET = "cluster-drift"
 DRIFT_KEY = "written-with-one-drifted-node"
 DRIFT_BODY = b"written with one drifted node excluded from the quorum"
 
+# R5 (TD-016/D4/N1) catch-up state, seeded with all 3 up (phase A), mutated
+# while node 3 is down (phase B), verified on node 3 after re-entry (phase D).
+# Server-generated ids (user_id, grant_id, upload_id) are recovered in later
+# phases by their deterministic username / grant name / object key.
+R5_USERNAME = "cluster-r5-user"
+R5_GRANT_NAME = "cluster-r5-grant"
+R5_LOCK_BUCKET = "cluster-r5-lock"
+R5_LOCK_KEY = "locked-object"
+R5_LOCK_BODY = b"object-lock guinea pig"
+R5_TAG_KEY = "cluster-r5-env"
+R5_TAG_VALUE = "staging"
+R5_MP_BUCKET = "cluster-r5-mp"
+R5_MP_ABORT_KEY = "mp-aborted-while-node-down"
+R5_MP_CATCHUP_KEY = "mp-created-while-node-down"
+R5_MP_CATCHUP_BODY = b"single part uploaded while node 3 was down"
+
 
 # ── Clients ──────────────────────────────────────────────────────────────────
 
@@ -134,6 +150,45 @@ def _admin_post(endpoint, path, payload):
     resp = requests.post(url, headers=dict(req.headers), data=data, timeout=10)
     resp.raise_for_status()
     return resp.json()
+
+
+def _admin_request(method, endpoint, path, payload=None):
+    """Signed (SigV4) request against an /admin/* endpoint."""
+    url = f"{endpoint}{path}"
+    data = json.dumps(payload) if payload is not None else ""
+    headers = {"Content-Type": "application/json"} if payload is not None else {}
+    req = AWSRequest(method=method, url=url, data=data, headers=headers)
+    S3SigV4Auth(Credentials(ACCESS_KEY, SECRET_KEY), "s3", REGION).add_auth(req)
+    resp = requests.request(method, url, headers=dict(req.headers), data=data, timeout=10)
+    resp.raise_for_status()
+    return resp.json() if resp.content else None
+
+
+def _r5_user_id(endpoint):
+    """Resolves the R5 user's server-generated id by its deterministic username."""
+    users = _admin_get(endpoint, "/admin/users")
+    for u in users:
+        if u.get("username") == R5_USERNAME:
+            return u["user_id"]
+    return None
+
+
+def _r5_grant_id(endpoint):
+    """Resolves the R5 grant's server-generated id by its deterministic name."""
+    grants = _admin_get(endpoint, "/admin/grants")
+    for g in grants:
+        if g.get("name") == R5_GRANT_NAME:
+            return g["grant_id"]
+    return None
+
+
+def _mp_upload_id(client, bucket, key):
+    """Finds the in-progress multipart upload for `key`, if any."""
+    uploads = client.list_multipart_uploads(Bucket=bucket).get("Uploads", [])
+    for u in uploads:
+        if u["Key"] == key:
+            return u["UploadId"]
+    return None
 
 
 def _status_code(err: ClientError) -> int:
@@ -243,6 +298,79 @@ def test_writable_with_quorum():
     assert lb.get_object(Bucket=bucket, Key="k")["Body"].read() == body
 
 
+@pytest.mark.cluster_full
+def test_r5_seed_control_state_everywhere():
+    """Seed the R5 control-plane state with all 3 nodes up.
+
+    A user with an attached grant, an Object-Lock bucket with one object, and
+    an in-progress multipart upload — each verified to have replicated to node
+    3 BEFORE it goes down, so the phase-B mutations (detach, retention change,
+    abort) are real changes node 3 must learn at re-entry via the snapshot
+    reconcile, not state it never had.
+    """
+    # User + grant + attachment via the LB.
+    user = _admin_request("POST", LB, "/admin/users", {"username": R5_USERNAME})
+    grant = _admin_request(
+        "POST",
+        LB,
+        "/admin/grants",
+        {
+            "name": R5_GRANT_NAME,
+            "description": "r5 catch-up grant",
+            "document": {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Action": ["s3:GetObject"],
+                        "Resource": ["arn:aws:s3:::cluster-r5-*/*"],
+                    }
+                ],
+            },
+        },
+    )
+    _admin_request(
+        "PUT", LB, f"/admin/users/{user['user_id']}/grants/{grant['grant_id']}"
+    )
+
+    # Object-Lock bucket (versioned by construction) with one object.
+    lb = _s3(LB)
+    try:
+        lb.create_bucket(Bucket=R5_LOCK_BUCKET, ObjectLockEnabledForBucket=True)
+    except ClientError as e:
+        if e.response["Error"]["Code"] not in ("BucketAlreadyOwnedByYou", "BucketAlreadyExists"):
+            raise
+    lb.put_object(Bucket=R5_LOCK_BUCKET, Key=R5_LOCK_KEY, Body=R5_LOCK_BODY)
+
+    # An in-progress multipart upload with one part, to be aborted in phase B.
+    _ensure_bucket(lb, R5_MP_BUCKET)
+    mp = lb.create_multipart_upload(Bucket=R5_MP_BUCKET, Key=R5_MP_ABORT_KEY)
+    lb.upload_part(
+        Bucket=R5_MP_BUCKET,
+        Key=R5_MP_ABORT_KEY,
+        UploadId=mp["UploadId"],
+        PartNumber=1,
+        Body=b"part to be discarded by the abort",
+    )
+
+    # Everything must be visible on node 3 before the phase ends.
+    node3 = _s3(NODES[3])
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        uid = _r5_user_id(NODES[3])
+        attached = bool(uid) and any(
+            g.get("name") == R5_GRANT_NAME
+            for g in _admin_get(NODES[3], f"/admin/users/{uid}/grants")
+        )
+        mp_seen = _mp_upload_id(node3, R5_MP_BUCKET, R5_MP_ABORT_KEY) is not None
+        if attached and mp_seen:
+            break
+        time.sleep(2)
+    else:
+        pytest.fail("R5 seed state did not replicate to node 3 within 60s")
+    _wait_object(node3, R5_LOCK_BUCKET, R5_LOCK_KEY, R5_LOCK_BODY, timeout=30)
+
+
 @pytest.mark.cluster_two_thirds
 def test_failover_read_after_node_down():
     """An object seeded while all nodes were up is still readable after a failure."""
@@ -273,6 +401,80 @@ def test_control_plane_write_while_node_down():
     _ensure_bucket(lb, CATCHUP_CP_BUCKET)
     created = _admin_post(LB, "/admin/credentials", {"description": CATCHUP_CRED_DESC})
     assert created["access_key_id"]
+
+
+@pytest.mark.cluster_two_thirds
+def test_r5_detach_grant_while_node_down():
+    """Revoke the R5 grant attachment while node 3 is down (TD-016).
+
+    Node 3 holds the attachment: only the user_grant tombstone in the snapshot
+    reconcile can revoke it at re-entry — real-time fan-out cannot reach a dead
+    node, and before R5 this family was not reconciled at all.
+    """
+    uid = _r5_user_id(LB)
+    gid = _r5_grant_id(LB)
+    assert uid and gid, "R5 user/grant must exist from phase A"
+    _admin_request("DELETE", LB, f"/admin/users/{uid}/grants/{gid}")
+
+
+@pytest.mark.cluster_two_thirds
+def test_r5_bucket_config_and_tags_while_node_down():
+    """Change bucket_config (versioning) and the bucket tag set while node 3 is
+    down (TD-016): both families must reach it via the snapshot reconcile."""
+    lb = _s3(LB)
+    lb.put_bucket_versioning(
+        Bucket=CATCHUP_CP_BUCKET, VersioningConfiguration={"Status": "Enabled"}
+    )
+    lb.put_bucket_tagging(
+        Bucket=FAILOVER_BUCKET,
+        Tagging={"TagSet": [{"Key": R5_TAG_KEY, "Value": R5_TAG_VALUE}]},
+    )
+
+
+@pytest.mark.cluster_two_thirds
+def test_r5_retention_change_while_node_down():
+    """Set Object-Lock retention while node 3 is down (N1): the lock UPDATE now
+    stamps a fresh seq, so the changed-since manifest carries it at re-entry."""
+    import datetime
+
+    lb = _s3(LB)
+    lb.put_object_retention(
+        Bucket=R5_LOCK_BUCKET,
+        Key=R5_LOCK_KEY,
+        Retention={
+            "Mode": "GOVERNANCE",
+            "RetainUntilDate": datetime.datetime(2030, 1, 1, tzinfo=datetime.timezone.utc),
+        },
+    )
+
+
+@pytest.mark.cluster_two_thirds
+def test_r5_abort_multipart_while_node_down():
+    """Abort the phase-A multipart upload while node 3 is down (D4): node 3
+    still holds the upload row — only the multipart tombstone can close it at
+    re-entry (and stop it from resurrecting on nodes 1/2)."""
+    lb = _s3(LB)
+    upload_id = _mp_upload_id(lb, R5_MP_BUCKET, R5_MP_ABORT_KEY)
+    assert upload_id, "phase-A multipart upload must still be in progress"
+    lb.abort_multipart_upload(
+        Bucket=R5_MP_BUCKET, Key=R5_MP_ABORT_KEY, UploadId=upload_id
+    )
+
+
+@pytest.mark.cluster_two_thirds
+def test_r5_create_multipart_while_node_down():
+    """Begin a NEW multipart upload while node 3 is down (D4): at re-entry node
+    3 must learn the upload AND its part row from the snapshot, then be able to
+    Complete it by fetching the part bytes from a peer."""
+    lb = _s3(LB)
+    mp = lb.create_multipart_upload(Bucket=R5_MP_BUCKET, Key=R5_MP_CATCHUP_KEY)
+    lb.upload_part(
+        Bucket=R5_MP_BUCKET,
+        Key=R5_MP_CATCHUP_KEY,
+        UploadId=mp["UploadId"],
+        PartNumber=1,
+        Body=R5_MP_CATCHUP_BODY,
+    )
 
 
 # ── Phase: nodes 2 & 3 down (1 of 3 — no quorum) ──────────────────────────────
@@ -327,6 +529,119 @@ def test_credential_catchup_on_returned_node():
     pytest.fail(
         f"credential '{CATCHUP_CRED_DESC}' did not appear on node 3 within 90s: {last}"
     )
+
+
+@pytest.mark.cluster_catchup_verify
+def test_r5_detach_reconciled_on_returned_node():
+    """The grant attachment revoked while node 3 was down is gone on it (TD-016):
+    the user_grant tombstone won over node 3's stale alive row."""
+    deadline = time.time() + 90
+    last = "user not found"
+    while time.time() < deadline:
+        uid = _r5_user_id(NODES[3])
+        if uid:
+            grants = _admin_get(NODES[3], f"/admin/users/{uid}/grants")
+            if not any(g.get("name") == R5_GRANT_NAME for g in grants):
+                return
+            last = f"attachment still present: {[g.get('name') for g in grants]}"
+        time.sleep(2)
+    pytest.fail(f"grant detach did not reconcile to node 3 within 90s: {last}")
+
+
+@pytest.mark.cluster_catchup_verify
+def test_r5_bucket_config_and_tags_reconciled_on_returned_node():
+    """The versioning flip and the bucket tag set changed while node 3 was down
+    arrive via the snapshot reconcile (TD-016)."""
+    node3 = _s3(NODES[3])
+    deadline = time.time() + 90
+    last = "never queried"
+    while time.time() < deadline:
+        try:
+            versioning = node3.get_bucket_versioning(Bucket=CATCHUP_CP_BUCKET).get("Status")
+            tags = {
+                t["Key"]: t["Value"]
+                for t in node3.get_bucket_tagging(Bucket=FAILOVER_BUCKET)["TagSet"]
+            }
+            if versioning == "Enabled" and tags.get(R5_TAG_KEY) == R5_TAG_VALUE:
+                return
+            last = f"versioning={versioning}, tags={tags}"
+        except ClientError as e:
+            last = e.response["Error"].get("Code", str(e))
+        time.sleep(2)
+    pytest.fail(f"bucket config/tags did not reconcile to node 3 within 90s: {last}")
+
+
+@pytest.mark.cluster_catchup_verify
+def test_r5_retention_reconciled_on_returned_node():
+    """The retention set while node 3 was down appears on it (N1): the lock
+    UPDATE stamped a fresh seq, so the changed-since manifest re-delivered the
+    row with the lock columns."""
+    node3 = _s3(NODES[3])
+    deadline = time.time() + 90
+    last = "never queried"
+    while time.time() < deadline:
+        try:
+            retention = node3.get_object_retention(
+                Bucket=R5_LOCK_BUCKET, Key=R5_LOCK_KEY
+            )["Retention"]
+            if retention.get("Mode") == "GOVERNANCE":
+                return
+            last = f"retention={retention}"
+        except ClientError as e:
+            last = e.response["Error"].get("Code", str(e))
+        time.sleep(2)
+    pytest.fail(f"retention change did not reconcile to node 3 within 90s: {last}")
+
+
+@pytest.mark.cluster_catchup_verify
+def test_r5_aborted_multipart_gone_everywhere():
+    """The upload aborted while node 3 was down is closed on it at re-entry and
+    does NOT resurrect on nodes 1/2 from node 3's stale row (D4 tombstone)."""
+    deadline = time.time() + 90
+    while time.time() < deadline:
+        if _mp_upload_id(_s3(NODES[3]), R5_MP_BUCKET, R5_MP_ABORT_KEY) is None:
+            break
+        time.sleep(2)
+    else:
+        pytest.fail("aborted multipart upload still listed on node 3 after 90s")
+    for n in (1, 2):
+        assert _mp_upload_id(_s3(NODES[n]), R5_MP_BUCKET, R5_MP_ABORT_KEY) is None, (
+            f"aborted upload resurrected on node {n}"
+        )
+
+
+@pytest.mark.cluster_catchup_verify
+def test_r5_multipart_completes_on_returned_node():
+    """The upload begun while node 3 was down can be COMPLETED on node 3 (D4):
+    the upload + part rows arrive via the snapshot reconcile, and the part
+    bytes — never fanned out to a dead node — are fetched from a peer by the
+    concat pre-check (or already repaired by anti-entropy)."""
+    node3 = _s3(NODES[3])
+    deadline = time.time() + 90
+    upload_id, parts = None, []
+    while time.time() < deadline:
+        upload_id = _mp_upload_id(node3, R5_MP_BUCKET, R5_MP_CATCHUP_KEY)
+        if upload_id:
+            parts = node3.list_parts(
+                Bucket=R5_MP_BUCKET, Key=R5_MP_CATCHUP_KEY, UploadId=upload_id
+            ).get("Parts", [])
+            if parts:
+                break
+        time.sleep(2)
+    else:
+        pytest.fail(
+            f"multipart catch-up incomplete on node 3 after 90s: "
+            f"upload_id={upload_id}, parts={parts}"
+        )
+    node3.complete_multipart_upload(
+        Bucket=R5_MP_BUCKET,
+        Key=R5_MP_CATCHUP_KEY,
+        UploadId=upload_id,
+        MultipartUpload={
+            "Parts": [{"PartNumber": p["PartNumber"], "ETag": p["ETag"]} for p in parts]
+        },
+    )
+    _wait_object(node3, R5_MP_BUCKET, R5_MP_CATCHUP_KEY, R5_MP_CATCHUP_BODY, timeout=30)
 
 
 # ── Phase: 507 overlay (arca-3 on a tiny tmpfs) ───────────────────────────────

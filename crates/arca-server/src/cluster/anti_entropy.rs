@@ -352,11 +352,10 @@ async fn gc_blobs(metadata: &dyn MetadataStore, raw: &dyn RawBlobOps, grace: Dur
 /// entities + tombstones go through the control-snapshot store; buckets go
 /// through the metadata store so the metadata cache stays coherent.
 ///
-// TECHDEBT(TD-016): this reconcile covers ONLY the 5 tombstoned families
-// (credentials, users, teams, grants, buckets). Memberships/grant-attachments,
-// bucket_config, bucket_tags and server_config replicate in real time but are
-// NOT in the snapshot merge, so a node that was down when one of those changed
-// only heals on the next write that touches it. See TECH_DEBT.md for the fix.
+// Covers EVERY control-plane family (R5 closed TD-016): the 5 original
+// tombstoned families, the grant attachments/memberships, bucket_config,
+// bucket_tags, cluster-wide server_config, and the in-progress multipart
+// uploads with their parts (D4).
 async fn reconcile_peer_control(
     client: &ClusterClient,
     control_snapshot: &dyn ControlSnapshotStore,
@@ -372,19 +371,64 @@ async fn reconcile_peer_control(
     if plan.is_empty() {
         return Ok(());
     }
-    // Identity entities (credentials/users/teams/grants) + tombstones. This
-    // runs BEFORE the bucket deletes below: it adopts ALL tombstones (bucket
-    // ones included) first, so a crash between the two leaves the safe state —
-    // tombstone present, bucket row still alive — which converges on the next
-    // round instead of resurrecting the deleted bucket (review §2.3).
+    // Identity entities (credentials/users/teams/grants, their attachments and
+    // memberships, server_config) + tombstones. This runs BEFORE the
+    // metadata-owned deletes below: it adopts ALL tombstones (bucket and
+    // multipart ones included) first, so a crash between the two leaves the
+    // safe state — tombstone present, row still alive — which converges on the
+    // next round instead of resurrecting the deleted entity (review §2.3).
     control_snapshot
         .apply_control_merge(&plan)
         .await
         .map_err(|e| ClusterError::Serde(format!("apply control merge: {e}")))?;
-    // Buckets via the (cache-aware) metadata store.
+    // Buckets — and their children, bucket config/tags — plus the multipart
+    // rows go via the (cache-aware) metadata store. Order: bucket upserts
+    // before their children's, deletes last (delete_bucket cascades config and
+    // tags locally; delete_multipart_upload cascades part rows).
     for bucket in &plan.upsert_buckets {
         if let Err(e) = metadata.apply_remote_bucket(bucket).await {
             tracing::warn!(bucket = %bucket.name, error = %e, "anti-entropy: bucket upsert failed");
+        }
+    }
+    for x in &plan.upsert_bucket_configs {
+        if let Err(e) = metadata
+            .apply_bucket_config_at(&x.bucket, &x.key, &x.value, x.updated_at)
+            .await
+        {
+            tracing::warn!(bucket = %x.bucket, key = %x.key, error = %e, "anti-entropy: bucket_config upsert failed");
+        }
+    }
+    for x in &plan.upsert_bucket_tags {
+        if let Err(e) = metadata
+            .apply_bucket_tags_at(&x.bucket, &x.tags, x.updated_at)
+            .await
+        {
+            tracing::warn!(bucket = %x.bucket, error = %e, "anti-entropy: bucket_tags upsert failed");
+        }
+    }
+    for record in &plan.upsert_multipart_uploads {
+        if let Err(e) = metadata.apply_remote_multipart_upload(record).await {
+            tracing::warn!(upload_id = %record.upload_id, error = %e, "anti-entropy: multipart upsert failed");
+        }
+    }
+    for part in &plan.upsert_parts {
+        if let Err(e) = metadata.put_part(part).await {
+            tracing::warn!(upload_id = %part.upload_id, part = part.part_number, error = %e, "anti-entropy: part upsert failed");
+        }
+    }
+    for (bucket, key) in &plan.delete_bucket_configs {
+        if let Err(e) = metadata.delete_bucket_config(bucket, key).await {
+            tracing::warn!(bucket = %bucket, key = %key, error = %e, "anti-entropy: bucket_config delete failed");
+        }
+    }
+    for bucket in &plan.delete_bucket_tags {
+        if let Err(e) = metadata.delete_bucket_tags(bucket).await {
+            tracing::warn!(bucket = %bucket, error = %e, "anti-entropy: bucket_tags delete failed");
+        }
+    }
+    for upload_id in &plan.delete_multipart_uploads {
+        if let Err(e) = metadata.delete_multipart_upload(upload_id).await {
+            tracing::warn!(upload_id = %upload_id, error = %e, "anti-entropy: multipart delete failed");
         }
     }
     for name in &plan.delete_buckets {

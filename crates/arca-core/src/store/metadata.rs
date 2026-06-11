@@ -355,6 +355,41 @@ pub trait MetadataStore: Send + Sync {
         ))
     }
 
+    /// Upserts a bucket-config key preserving the given `updated_at` verbatim
+    /// (the LWW key of the control-plane reconcile, R5/TD-016) — unlike
+    /// [`MetadataStore::set_bucket_config`], which stamps `now()`.
+    ///
+    /// Default implementation: unsupported.
+    async fn apply_bucket_config_at(
+        &self,
+        _bucket: &str,
+        _config_key: &str,
+        _config_value: &str,
+        _updated_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), crate::error::ArcaError> {
+        Err(crate::error::ArcaError::Internal(
+            "apply_bucket_config_at: cluster replication is not supported by this backend"
+                .to_string(),
+        ))
+    }
+
+    /// Replaces a bucket's whole tag set preserving the given `updated_at`
+    /// verbatim (R5/TD-016) — unlike [`MetadataStore::put_bucket_tags`], which
+    /// stamps `now()`.
+    ///
+    /// Default implementation: unsupported.
+    async fn apply_bucket_tags_at(
+        &self,
+        _bucket: &str,
+        _tags: &[(String, String)],
+        _updated_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), crate::error::ArcaError> {
+        Err(crate::error::ArcaError::Internal(
+            "apply_bucket_tags_at: cluster replication is not supported by this backend"
+                .to_string(),
+        ))
+    }
+
     /// Returns object rows whose node-local `seq` is strictly greater than
     /// `since`, ordered by ascending `seq`, capped at `limit`, each paired with
     /// its `seq`. This is the cluster anti-entropy changed-since cursor: a peer

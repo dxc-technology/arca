@@ -24,6 +24,20 @@ pub const TOMBSTONE_TEAM: &str = "team";
 pub const TOMBSTONE_GRANT: &str = "grant";
 pub const TOMBSTONE_BUCKET: &str = "bucket";
 
+/// HA hardening R5 (TD-016): the families that previously replicated in real
+/// time only. Two-part keys use [`crate::cluster::pair_key`]; `bucket_tags` is
+/// keyed by bucket name alone (the whole tag SET is one LWW entity, matching
+/// the replace-all semantics of `PutBucketTagging` and `ControlOp::BucketTags`);
+/// `server_config` by config key; `multipart` by upload id (a tombstone marks a
+/// Complete/Abort so a closed upload cannot resurrect, D4).
+pub const TOMBSTONE_USER_GRANT: &str = "user_grant";
+pub const TOMBSTONE_TEAM_GRANT: &str = "team_grant";
+pub const TOMBSTONE_TEAM_MEMBER: &str = "team_member";
+pub const TOMBSTONE_BUCKET_CONFIG: &str = "bucket_config";
+pub const TOMBSTONE_BUCKET_TAGS: &str = "bucket_tags";
+pub const TOMBSTONE_SERVER_CONFIG: &str = "server_config";
+pub const TOMBSTONE_MULTIPART: &str = "multipart";
+
 /// A record that a control-plane entity was deleted.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ControlTombstone {

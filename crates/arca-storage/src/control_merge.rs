@@ -9,17 +9,20 @@
 use arca_core::cluster::ControlMergePlan;
 use arca_core::error::ArcaError;
 use arca_core::store::{
-    ControlSnapshotStore, ControlTombstoneStore, CredentialStore, GrantStore, TeamStore, UserStore,
+    ControlSnapshotStore, ControlTombstoneStore, CredentialStore, GrantStore, ServerConfigStore,
+    TeamStore, UserStore,
 };
 
 /// Applies the IDENTITY part of a computed merge plan (credentials, users,
-/// teams, grants) plus tombstone adopt/clear, via the per-entity store methods.
+/// teams, grants, their attachments/memberships, cluster-wide server config)
+/// plus tombstone adopt/clear, via the per-entity store methods.
 ///
-/// Buckets are deliberately NOT applied here: they live in the metadata store,
-/// which may be wrapped by [`crate::CachingMetadataStore`]. Applying them on the
-/// concrete store would skip cache invalidation, so the reconcile worker applies
-/// `plan.upsert_buckets` / `plan.delete_buckets` through its cache-aware
-/// `MetadataStore` handle instead (the same path the object anti-entropy uses).
+/// Buckets — with bucket config and bucket tags — and the multipart rows are
+/// deliberately NOT applied here: they live in the metadata store, which may be
+/// wrapped by [`crate::CachingMetadataStore`]. Applying them on the concrete
+/// store would skip cache invalidation, so the reconcile worker applies those
+/// plan entries through its cache-aware `MetadataStore` handle instead (the
+/// same path the object anti-entropy uses).
 pub(crate) async fn apply_control_merge_via_traits<S>(
     store: &S,
     plan: &ControlMergePlan,
@@ -30,6 +33,7 @@ where
         + UserStore
         + TeamStore
         + GrantStore
+        + ServerConfigStore
         + ControlTombstoneStore,
 {
     // Tombstones are adopted BEFORE the deletes execute (review §2.3): each
@@ -42,6 +46,8 @@ where
     for t in &plan.adopt_tombstones {
         store.apply_control_tombstone(t).await?;
     }
+    // Parents before children: the join-table upserts reference users, teams
+    // and grants (FK constraints on the PostgreSQL backend).
     for c in &plan.upsert_credentials {
         store.apply_credential_at(&c.credential, c.updated_at).await?;
     }
@@ -53,6 +59,41 @@ where
     }
     for g in &plan.upsert_grants {
         store.apply_remote_grant(g).await?;
+    }
+    for x in &plan.upsert_user_grants {
+        store
+            .apply_user_grant_at(&x.user_id, &x.grant_id, x.updated_at)
+            .await?;
+    }
+    for x in &plan.upsert_team_grants {
+        store
+            .apply_team_grant_at(&x.team_id, &x.grant_id, x.updated_at)
+            .await?;
+    }
+    for x in &plan.upsert_team_members {
+        store
+            .apply_team_member_at(&x.team_id, &x.user_id, x.updated_at)
+            .await?;
+    }
+    for x in &plan.upsert_server_configs {
+        store
+            .apply_server_config_at(&x.key, &x.value, x.updated_at)
+            .await?;
+    }
+    // Child deletes before parent deletes is not required (parent deletes
+    // cascade their join rows; a second delete is a no-op), but running the
+    // narrow ones first keeps the work minimal.
+    for (user_id, grant_id) in &plan.delete_user_grants {
+        store.detach_from_user(user_id, grant_id).await?;
+    }
+    for (team_id, grant_id) in &plan.delete_team_grants {
+        store.detach_from_team(team_id, grant_id).await?;
+    }
+    for (team_id, user_id) in &plan.delete_team_members {
+        store.remove_member(team_id, user_id).await?;
+    }
+    for key in &plan.delete_server_configs {
+        store.delete_server_config(key).await?;
     }
     for k in &plan.delete_credentials {
         store.delete_credential(k).await?;
@@ -126,11 +167,64 @@ mod tests {
             self.log(format!("upsert_team:{}", t.team_id));
             Ok(())
         }
+        async fn apply_user_grant_at(
+            &self,
+            user_id: &str,
+            grant_id: &str,
+            _updated_at: DateTime<Utc>,
+        ) -> Result<(), ArcaError> {
+            self.log(format!("upsert_user_grant:{user_id}:{grant_id}"));
+            Ok(())
+        }
+        async fn apply_team_grant_at(
+            &self,
+            team_id: &str,
+            grant_id: &str,
+            _updated_at: DateTime<Utc>,
+        ) -> Result<(), ArcaError> {
+            self.log(format!("upsert_team_grant:{team_id}:{grant_id}"));
+            Ok(())
+        }
+        async fn apply_team_member_at(
+            &self,
+            team_id: &str,
+            user_id: &str,
+            _updated_at: DateTime<Utc>,
+        ) -> Result<(), ArcaError> {
+            self.log(format!("upsert_team_member:{team_id}:{user_id}"));
+            Ok(())
+        }
+        async fn apply_server_config_at(
+            &self,
+            key: &str,
+            value: &str,
+            _updated_at: DateTime<Utc>,
+        ) -> Result<(), ArcaError> {
+            self.log(format!("upsert_server_config:{key}={value}"));
+            Ok(())
+        }
         async fn apply_control_merge(
             &self,
             _plan: &arca_core::cluster::ControlMergePlan,
         ) -> Result<(), ArcaError> {
             unreachable!("not used by apply_control_merge_via_traits")
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ServerConfigStore for RecordingStore {
+        async fn get_server_config(&self, _key: &str) -> Result<Option<String>, ArcaError> {
+            unreachable!()
+        }
+        async fn set_server_config(&self, _key: &str, _value: &str) -> Result<(), ArcaError> {
+            unreachable!()
+        }
+        async fn delete_server_config(&self, key: &str) -> Result<bool, ArcaError> {
+            self.log(format!("delete_server_config:{key}"));
+            Ok(true)
+        }
+        async fn list_server_config(&self) -> Result<Vec<(String, String)>, ArcaError> {
+            unreachable!()
         }
     }
 
@@ -216,8 +310,9 @@ mod tests {
         async fn add_member(&self, _team: &str, _user: &str) -> Result<(), ArcaError> {
             unreachable!()
         }
-        async fn remove_member(&self, _team: &str, _user: &str) -> Result<bool, ArcaError> {
-            unreachable!()
+        async fn remove_member(&self, team: &str, user: &str) -> Result<bool, ArcaError> {
+            self.log(format!("delete_team_member:{team}:{user}"));
+            Ok(true)
         }
         async fn list_members(&self, _team: &str) -> Result<Vec<User>, ArcaError> {
             unreachable!()
@@ -257,14 +352,16 @@ mod tests {
         async fn attach_to_user(&self, _user: &str, _grant: &str) -> Result<(), ArcaError> {
             unreachable!()
         }
-        async fn detach_from_user(&self, _user: &str, _grant: &str) -> Result<bool, ArcaError> {
-            unreachable!()
+        async fn detach_from_user(&self, user: &str, grant: &str) -> Result<bool, ArcaError> {
+            self.log(format!("delete_user_grant:{user}:{grant}"));
+            Ok(true)
         }
         async fn attach_to_team(&self, _team: &str, _grant: &str) -> Result<(), ArcaError> {
             unreachable!()
         }
-        async fn detach_from_team(&self, _team: &str, _grant: &str) -> Result<bool, ArcaError> {
-            unreachable!()
+        async fn detach_from_team(&self, team: &str, grant: &str) -> Result<bool, ArcaError> {
+            self.log(format!("delete_team_grant:{team}:{grant}"));
+            Ok(true)
         }
         async fn list_user_grants(&self, _user: &str) -> Result<Vec<Grant>, ArcaError> {
             unreachable!()
@@ -392,6 +489,10 @@ mod tests {
             delete_teams: vec!["t-dead".into()],
             delete_grants: vec!["g-dead".into()],
             delete_buckets: vec![],
+            // R5 family deletes also count as "deletes" for the ordering pin.
+            delete_user_grants: vec![("u-dead".into(), "g-dead".into())],
+            delete_team_members: vec![("t-dead".into(), "u-dead".into())],
+            delete_server_configs: vec!["sc-dead".into()],
             adopt_tombstones: vec![
                 tombstone("credential", "ck-dead"),
                 tombstone("user", "u-dead"),
@@ -399,6 +500,7 @@ mod tests {
                 tombstone("grant", "g-dead"),
             ],
             clear_tombstones: vec![tombstone("credential", "ck-new")],
+            ..Default::default()
         };
 
         apply_control_merge_via_traits(&store, &plan).await.unwrap();

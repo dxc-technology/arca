@@ -9,7 +9,7 @@
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R2</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R3</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R4</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R5</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R5</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R6</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R7</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R8</div>
@@ -124,23 +124,23 @@ The proving ground of the R1 fixes and of everything else. Extends `bin/cluster`
 
 ## R5 — Reconcile completeness (TD-016, multipart, SSE-C)
 
-- [ ] **D9 / TD-016 — extend snapshot + tombstones to the missing families**:
-    - [ ] migrations (sqlite v22+, next pg): `updated_at` on `user_grants`, `team_grants`, `team_members`, `bucket_config`, `bucket_tags`, `server_config` (backfill = now or `created_at` where it exists), maintained in all the write paths including the `apply_remote_*`.
-    - [ ] `control_tombstones` registration on detach/remove/delete of: grant attachments (composite key `user_id:grant_id` etc.), memberships, `bucket_config`/`bucket_tags` keys, `server_config` keys (node-local ones excluded).
-    - [ ] extend `ControlSnapshot` (additive fields, H10) and `build_control_snapshot`/`apply_*`; the snapshot EXCLUDES node-local `server_config` keys.
-    - [ ] extend `plan_control_merge` (pure per-family functions, alive-vs-tombstone LWW unit tests for each).
-    - [ ] extend the R2 catch-up test: a grant-attachment revocation and a `bucket_config` change with the node down → reconciled at re-entry.
-    - [ ] close TD-016 in `TECH_DEBT.md` + roadmap.
-- [ ] **D4 Multipart**:
-    - [ ] include `multipart_uploads` + `parts` in the reconcile snapshot with a `multipart:<upload_id>` tombstone registered on Complete and Abort (a closed upload must not resurrect).
-    - [ ] `ClusterBlobStore::concat` (`cluster_blob.rs:179-186`): pre-check the part sidecars; missing ones are fetched from peers (reusing the repair path) before delegating to `inner.concat`.
-    - [ ] tests: abort with a node down → at re-entry the upload does not exist on the node; Complete with a locally missing part → succeeds via fetch-from-peer (unit or targeted integration).
-- [ ] **N1 Object-lock changes invisible to anti-entropy** (found during R1, not in the review): `set_object_retention` / `set_object_legal_hold` UPDATE the row WITHOUT a new `seq` on BOTH backends (`sqlite/metadata.rs:1391-1457`, `pg/metadata.rs` retention/legal-hold UPDATEs), so a peer that was down during a lock change never receives it via the changed-since manifest — only the real-time `replicate_lock_change` fan-out covers it. Fix: stamp a fresh `seq` (next_object_seq) in both backends' lock UPDATEs; the peer's `apply_remote_object` equal-tuple LWW guard (`>=`) already accepts the row with updated lock columns. Add to the R2/R5 catch-up test: a retention change with the node down → reconciled at re-entry.
-- [ ] **M7 Manifest churn**: in `apply_remote_object` (sqlite and pg), a no-op without stamping a new `seq` when the incoming row is identical to the existing one.
-- [ ] **§3.6 SSE-C in the cluster — spike (2 h timebox)**: verify whether wrapping the SSE-C path in `ClusterBlobStore` suffices (`write_sidecar` fan-out + read-repair); if yes implement + test; if not, create **TD-017** in `TECH_DEBT.md` (+ a code marker at `main.rs:166`) and document the limitation in `ha.md` (R9). Either way the outcome must be tracked.
-- [ ] **D12.2 Export/import and `node_id`**: the export omits `node_id` AND the import refuses/skips it (double defense), so an export imported on another node does not rewrite its identity (`admin_export.rs:138-145`, `admin_import.rs:99`).
+- [x] **D9 / TD-016 — extend snapshot + tombstones to the missing families**:
+    - [x] migrations sqlite v22 / pg 0010: `updated_at` added to `user_grants`, `team_grants`, `team_members`, `bucket_tags` (backfill = now; `bucket_config` and `server_config` already carried it). Maintained in all write paths — attach/add refresh `updated_at` even on the idempotent re-attach (ON CONFLICT DO UPDATE), so a re-attach made while a peer concurrently detached beats the detach tombstone — plus new timestamp-preserving `apply_*_at` methods for the merge (no `now()` re-stamp → fixed point, no flapping).
+    - [x] `control_tombstones` on detach/remove/delete, recorded by the cluster decorators (origin-side, like the existing families): grant attachments and memberships under [`pair_key`] composite keys (`user:grant`, `team:grant`, `team:user`), `bucket_config` under `bucket:key`, `bucket_tags` keyed by bucket name ALONE — the whole tag SET is one LWW entity, matching the replace-all semantics of `PutBucketTagging` (per-key tombstones could not represent "key dropped by a replace"); an empty-set put records the tombstone like an explicit delete — and `server_config` keys (node-local ones excluded). Set/attach paths clear stale tombstones symmetrically.
+    - [x] `ControlSnapshot` extended with `#[serde(default)]` fields (H10: a pre-R5 snapshot reads as "no information", never as "everything deleted" — pinned by a serde unit test); `build_control_snapshot` on BOTH backends; node-local `server_config` keys excluded at build AND ignored on apply (triple defense with D12.1).
+    - [x] `plan_control_merge` extended per family with **parent-dead filtering**: parent families (users, teams, grants, buckets, multipart uploads) record which keys stay alive after resolution, and child upserts (attachments, memberships, bucket config/tags, parts) whose parent resolved dead are skipped. This REPLACES per-child cascade tombstones (the local cascade deletes children on every node; the filter stops a stale peer's child rows from resurrecting) and respects the join-table FK constraints on PostgreSQL. Apply order: parents before children. Unit tests per family (detach-vs-stale-attach, re-attach-beats-tombstone, parent-dead filter, set-level tags, node-local skip, legacy snapshot).
+    - [x] R2 catch-up integration test extended (phases A/B/D): a grant attachment seeded on all 3 nodes is revoked while node 3 is down → gone on node 3 at re-entry (and not resurrected); a versioning flip + a bucket-tag change while down → reconciled.
+    - [x] TD-016 closed in `TECH_DEBT.md` + roadmap; the `TECHDEBT(TD-016)` marker on `reconcile_peer_control` removed.
+- [x] **D4 Multipart**:
+    - [x] `multipart_uploads` + `parts` in the reconcile snapshot (upload keyed by `upload_id`, alive ts = `initiated_at`, immutable rows; parts keyed `upload_id:part_number`, LWW on `last_modified`, no part tombstones — a part disappears only with its upload or by replacement under the same key); `multipart` tombstone recorded on `delete_multipart_upload` (BOTH Complete and Abort end there) so a closed upload cannot resurrect. Applied via the cache-aware metadata handle in `reconcile_peer_control` (like buckets), reusing `apply_remote_multipart_upload`/`put_part`/`delete_multipart_upload` verbatim (rows carry their own timestamps — no `_at` variants needed).
+    - [x] `ClusterBlobStore::concat`: pre-checks each part sidecar and repairs missing parts from peers (shared `repair_from_peers`, the read-repair path) before delegating to `inner.concat`. Unit test with a fake blob peer (sidecar in the signed header + raw bytes).
+    - [x] integration tests (cluster suite): an upload seeded with all 3 up is aborted while node 3 is down → closed on node 3 at re-entry AND not resurrected on nodes 1/2; an upload begun while node 3 was down is **completed directly on node 3** (upload + part rows via the snapshot, part bytes fetched from a peer by the concat pre-check).
+- [x] **N1 Object-lock changes invisible to anti-entropy** (found during R1, not in the review): both backends' `set_object_retention` / `set_object_legal_hold` now stamp a fresh `seq` (taken before the row UPDATE, per the lock-order rule) so the changed-since manifest re-delivers the row; the peer's `apply_remote_object` equal-tuple `>=` guard accepts it. Unit tests on sqlite (plain + versioned branch); integration test: a retention change with node 3 down → visible on node 3 at re-entry.
+- [x] **M7 Manifest churn**: `apply_remote_object` (sqlite and pg) now skips identical incoming rows without a rewrite or a fresh `seq` — comparison via `ObjectRecord::same_replicated_content` (PartialEq on normalized clones, `is_latest` excluded as locally-derived state; a future field joins the comparison automatically). Without this, two caught-up nodes redelivered their whole object tables to each other on EVERY anti-entropy pass (each apply re-stamped a seq the peer then saw as new) — M7 was load-bearing, not cosmetic. The equal-tuple guard still lets lock-only changes through (N1 interplay, unit-tested).
+- [x] **§3.6 SSE-C in the cluster — spike outcome: FIXED in-scope, no TD-017 needed.** The spike found SSE-C blobs already replicate: the handler's sidecar write goes through the cluster-wrapped `BlobStore`, whose fan-out ships the customer-key-encrypted on-disk bytes verbatim (peers never see the key), and the proactive blob repair is encryption-agnostic. The real gap was the READ side: `get_with_key` opens the blob file directly, bypassing the cluster wrapper's read-repair — a node holding the row but not the bytes errored until the next anti-entropy pass. Fix: `ClusterSsecBlobStore` wraps `SsecBlobOps` when clustering is enabled, adding the same synchronous read-repair as the plain path (e2e unit test: encrypt on origin, repair ciphertext from a fake peer, decrypt locally).
+- [x] **D12.2 Export/import and `node_id`**: the export filters node-local keys out of `settings` AND the import skips them with a warning even when present in an old document (double defense); integration test in the export/import suite.
 
-*Outcome: all managed state converges after an absence, multipart included; TD-016 resolved; SSE-C fixed or honestly tracked.*
+*Outcome: all managed state converges after an absence, multipart included; TD-016 resolved; SSE-C read-repair shipped (no TD-017). Bonus finding fixed: the M7 churn was a perpetual full-table redelivery loop between caught-up nodes.*
 
 ---
 
@@ -217,7 +217,7 @@ Update the Status column as work proceeds: ⬜ to do, 🔧 in progress, ✅ done
 | §3.3 | Workers duplicated on every node | R6 | ⬜ |
 | §3.4 | Cluster endpoints without a body limit | R4 | ✅ |
 | §3.5 | Public health exposes disk/fingerprint | R3 | ✅ |
-| §3.6 | SSE-C not replicated | R5 (spike) + R9 (doc) | ⬜ |
+| §3.6 | SSE-C not replicated | R5 (spike) + R9 (doc) | ✅ (spike outcome: replication already worked via the cluster-wrapped sidecar write; the read side gained `ClusterSsecBlobStore` synchronous read-repair — no TD-017) |
 | §3.7(A) | Rogue peer receives all new data with no secret (fan-out authenticates no peer) | R3 (H12: peer auth, gate fan-out+quorum) + R4 (mutual TLS) | ✅ (R3: challenge-response peer auth gates fan-out, anti-entropy pulls, quorum and min_disk; R4: mutual-TLS second factor — client certs enforced on `/cluster/v1/*`) |
 | §3.7(B) | Secret brute-forceable from public fingerprint; weak secrets allowed | R3 (§3.5 fingerprint off public) + R4 (M5 secret strength) | ✅ (R3: fingerprint off the public health; R4: M5 floor + placeholder rejection + entropy warning) |
 | §3.7(C) | Plain-HTTP/unverified-TLS/no-replay enable sniff/MITM/replay | R4 (TD-015 verified TLS + §3.1 anti-replay) | ✅ (verified mTLS mandatory over HTTPS; ±15 min replay window; plain-HTTP remains an explicit operator choice documented for trusted segments only) |
@@ -228,8 +228,8 @@ Update the Status column as work proceeds: ⬜ to do, 🔧 in progress, ✅ done
 | M4 | 503 without Retry-After | R7 | 🔧 (quorum 503s carry it since R1 — `s3_error_response` adds it to every ServiceUnavailable; R7 verifies syncing/size_exceeded inherit it) |
 | M5 | 1-character secret accepted | R4 | ✅ |
 | M6 | Path blob_id not validated | R4 | ✅ |
-| M7 | seq churn on identical rows | R5 | ⬜ |
-| N1 | Lock changes (retention/legal-hold) don't bump `seq` → invisible to anti-entropy (found during R1) | R5 | ⬜ |
+| M7 | seq churn on identical rows | R5 | ✅ (identical-row no-op in `apply_remote_object`, both backends — the churn was a perpetual full-table redelivery ping-pong between caught-up nodes) |
+| N1 | Lock changes (retention/legal-hold) don't bump `seq` → invisible to anti-entropy (found during R1) | R5 | ✅ (fresh `seq` stamped in both backends' lock UPDATEs + catch-up integration test) |
 | M8 | Silent mtime fallback | R7 | ⬜ |
 | §5.1 | No available-mode test | R2 | ✅ |
 | §5.2 | No control-plane catch-up test | R2 | ✅ |
@@ -242,16 +242,16 @@ Update the Status column as work proceeds: ⬜ to do, 🔧 in progress, ✅ done
 | D3a | No nodes > cluster_size guard | R3 | ✅ |
 | D3b | Secret rotation without dual-secret | R4 (+ runbook R9) | ✅ (dual-secret shipped + `ha.md` rotation section; R9 consolidates the runbooks) |
 | D3c | Restore from backup: seq rewind vs HWM | R7 (+ runbook R9) | ⬜ |
-| D4 | Multipart without reconcile; local-only concat | R5 | ⬜ |
+| D4 | Multipart without reconcile; local-only concat | R5 | ✅ (uploads + parts in the snapshot, `multipart` tombstone on Complete/Abort, concat repairs missing parts from peers; integration: abort-while-down closes everywhere, Complete succeeds on the returned node) |
 | D5 | LB blind to writability (client-visible 503s) | R9 (doc; write-aware to be decided) | ⬜ |
 | D6 | Console incoherent on per-node views | R8 | ⬜ |
 | D7 | Quorum reads weaker than the CP label | R9 (doc + sticky reference) | ⬜ |
 | D8 | No real-partition test | R2 | ✅ |
-| D9 | TD-016 underestimated (RBAC/bucket_config) | R5 | ⬜ |
+| D9 | TD-016 underestimated (RBAC/bucket_config) | R5 | ✅ (all 6 families in the snapshot merge with LWW timestamps + tombstones; parent-dead filtering instead of cascade tombstones; TD-016 resolved) |
 | D10 | WORM in cluster: trust model undocumented | R9 | ⬜ |
 | D11 | Available RPO undeclared | R9 | ⬜ |
 | D12.1 | Receive side without a node-local key filter | R4 | ✅ |
-| D12.2 | Export/import rewrites node_id | R5 | ⬜ |
+| D12.2 | Export/import rewrites node_id | R5 | ✅ (export omits node-local keys, import refuses them — double defense + integration test) |
 | D12.3 | Failure detector without tolerance | R3 | ✅ |
 | D12.4 | Non-empty single-node merge undocumented | R9 | ⬜ |
 

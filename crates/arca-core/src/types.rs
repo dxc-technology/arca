@@ -39,7 +39,7 @@ pub struct BucketInfo {
 }
 
 /// Metadata about a stored object.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ObjectRecord {
     pub bucket: String,
     pub key: String,
@@ -109,6 +109,28 @@ fn default_standard() -> String {
 
 fn default_true() -> bool {
     true
+}
+
+impl ObjectRecord {
+    /// True when `other` carries the same replicated content as `self`,
+    /// ignoring `is_latest` (derived locally by the apply paths'
+    /// `recompute_is_latest`, not a replicated fact — including it would keep
+    /// two nodes churning while their version sets transiently differ).
+    ///
+    /// Used by `apply_remote_object` to skip the rewrite — and the fresh `seq`
+    /// it would stamp — when a peer redelivers a row this node already holds
+    /// (finding M7): without the skip, two caught-up nodes redeliver their
+    /// whole object tables to each other on every anti-entropy pass, forever.
+    /// Compares via `PartialEq` on normalized clones so a future field is
+    /// included automatically (a missed field would resurface as churn, never
+    /// as a missed update).
+    pub fn same_replicated_content(&self, other: &ObjectRecord) -> bool {
+        let mut a = self.clone();
+        let mut b = other.clone();
+        a.is_latest = false;
+        b.is_latest = false;
+        a == b
+    }
 }
 
 /// Bucket versioning state.

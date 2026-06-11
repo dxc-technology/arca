@@ -230,6 +230,30 @@ class TestImport:
             "DELETE", f"{endpoint}/admin/settings/preview_max_size_mb", creds
         )
 
+    def test_import_skips_node_local_settings(self, endpoint, creds):
+        """node_id is node identity: import must refuse it even in overwrite
+        mode, and a subsequent export must not contain it (D12.2)."""
+        payload = {
+            "settings": {"node_id": "imported-evil-node-id"},
+        }
+        resp = signed_request(
+            "POST",
+            f"{endpoint}/admin/import?mode=overwrite",
+            creds,
+            data=payload,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        # Zero-valued counters are omitted from the JSON.
+        assert body["results"]["settings"]["skipped"] >= 1
+        assert body["results"]["settings"].get("applied", 0) == 0
+
+        export = signed_request(
+            "GET", f"{endpoint}/admin/export?sections=settings", creds
+        )
+        assert export.status_code == 200
+        assert "node_id" not in export.json()["settings"]
+
     def test_import_invalid_mode(self, endpoint, creds):
         """Invalid mode returns 400."""
         resp = signed_request(

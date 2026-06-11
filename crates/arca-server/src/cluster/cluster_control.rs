@@ -16,12 +16,13 @@
 use std::sync::Arc;
 
 use arca_core::cluster::is_node_local_server_config_key as is_node_local_key;
-use arca_core::cluster::{ClusterState, ControlOp};
+use arca_core::cluster::{pair_key, ClusterState, ControlOp};
 use arca_core::error::ArcaError;
 use arca_core::policy::PolicyDocument;
 use arca_core::store::{
     ControlTombstoneStore, CredentialStore, GrantStore, ServerConfigStore, TeamStore, UserStore,
-    TOMBSTONE_CREDENTIAL, TOMBSTONE_GRANT, TOMBSTONE_TEAM, TOMBSTONE_USER,
+    TOMBSTONE_CREDENTIAL, TOMBSTONE_GRANT, TOMBSTONE_SERVER_CONFIG, TOMBSTONE_TEAM,
+    TOMBSTONE_TEAM_GRANT, TOMBSTONE_TEAM_MEMBER, TOMBSTONE_USER, TOMBSTONE_USER_GRANT,
 };
 use arca_core::types::{Credential, Grant, Team, User};
 
@@ -62,7 +63,7 @@ async fn fan_out_op(client: &ClusterClient, cluster: &ClusterState, op: &Control
 /// converges via the control-snapshot reconcile and is not resurrected by a
 /// peer that still holds the live row. Local write, best-effort: the entity is
 /// already deleted; a failure here is logged, not propagated.
-async fn record_tombstone(
+pub(super) async fn record_tombstone(
     tombstones: &Arc<dyn ControlTombstoneStore>,
     entity_type: &str,
     entity_key: &str,
@@ -82,7 +83,7 @@ async fn record_tombstone(
 
 /// Clears any stale tombstone for an entity that is being (re-)created locally,
 /// so the reconcile does not later re-delete the fresh entity. Best-effort.
-async fn clear_tombstone(
+pub(super) async fn clear_tombstone(
     tombstones: &Arc<dyn ControlTombstoneStore>,
     entity_type: &str,
     entity_key: &str,
@@ -391,6 +392,13 @@ impl GrantStore for ClusterGrantStore {
     async fn attach_to_user(&self, user_id: &str, grant_id: &str) -> Result<(), ArcaError> {
         check_write_quorum(&self.cluster)?;
         self.inner.attach_to_user(user_id, grant_id).await?;
+        // An attach revives the pair: drop any stale detach tombstone (R5).
+        clear_tombstone(
+            &self.tombstones,
+            TOMBSTONE_USER_GRANT,
+            &pair_key(user_id, grant_id),
+        )
+        .await;
         fan_out_op(
             &self.client,
             &self.cluster,
@@ -407,6 +415,14 @@ impl GrantStore for ClusterGrantStore {
         check_write_quorum(&self.cluster)?;
         let existed = self.inner.detach_from_user(user_id, grant_id).await?;
         if existed {
+            // Tombstone so the detach converges via the snapshot reconcile and
+            // a peer that was down cannot resurrect the attachment (R5).
+            record_tombstone(
+                &self.tombstones,
+                TOMBSTONE_USER_GRANT,
+                &pair_key(user_id, grant_id),
+            )
+            .await;
             fan_out_op(
                 &self.client,
                 &self.cluster,
@@ -423,6 +439,12 @@ impl GrantStore for ClusterGrantStore {
     async fn attach_to_team(&self, team_id: &str, grant_id: &str) -> Result<(), ArcaError> {
         check_write_quorum(&self.cluster)?;
         self.inner.attach_to_team(team_id, grant_id).await?;
+        clear_tombstone(
+            &self.tombstones,
+            TOMBSTONE_TEAM_GRANT,
+            &pair_key(team_id, grant_id),
+        )
+        .await;
         fan_out_op(
             &self.client,
             &self.cluster,
@@ -439,6 +461,12 @@ impl GrantStore for ClusterGrantStore {
         check_write_quorum(&self.cluster)?;
         let existed = self.inner.detach_from_team(team_id, grant_id).await?;
         if existed {
+            record_tombstone(
+                &self.tombstones,
+                TOMBSTONE_TEAM_GRANT,
+                &pair_key(team_id, grant_id),
+            )
+            .await;
             fan_out_op(
                 &self.client,
                 &self.cluster,
@@ -555,6 +583,13 @@ impl TeamStore for ClusterTeamStore {
     async fn add_member(&self, team_id: &str, user_id: &str) -> Result<(), ArcaError> {
         check_write_quorum(&self.cluster)?;
         self.inner.add_member(team_id, user_id).await?;
+        // An add revives the membership: drop any stale remove tombstone (R5).
+        clear_tombstone(
+            &self.tombstones,
+            TOMBSTONE_TEAM_MEMBER,
+            &pair_key(team_id, user_id),
+        )
+        .await;
         fan_out_op(
             &self.client,
             &self.cluster,
@@ -571,6 +606,13 @@ impl TeamStore for ClusterTeamStore {
         check_write_quorum(&self.cluster)?;
         let existed = self.inner.remove_member(team_id, user_id).await?;
         if existed {
+            // Tombstone so the removal converges via the snapshot reconcile (R5).
+            record_tombstone(
+                &self.tombstones,
+                TOMBSTONE_TEAM_MEMBER,
+                &pair_key(team_id, user_id),
+            )
+            .await;
             fan_out_op(
                 &self.client,
                 &self.cluster,
@@ -607,6 +649,7 @@ pub struct ClusterServerConfigStore {
     inner: Arc<dyn ServerConfigStore>,
     client: ClusterClient,
     cluster: Arc<ClusterState>,
+    tombstones: Arc<dyn ControlTombstoneStore>,
 }
 
 impl ClusterServerConfigStore {
@@ -614,11 +657,13 @@ impl ClusterServerConfigStore {
         inner: Arc<dyn ServerConfigStore>,
         client: ClusterClient,
         cluster: Arc<ClusterState>,
+        tombstones: Arc<dyn ControlTombstoneStore>,
     ) -> Self {
         Self {
             inner,
             client,
             cluster,
+            tombstones,
         }
     }
 }
@@ -636,6 +681,8 @@ impl ServerConfigStore for ClusterServerConfigStore {
         }
         check_write_quorum(&self.cluster)?;
         self.inner.set_server_config(key, value).await?;
+        // A set revives the key: drop any stale delete tombstone (R5).
+        clear_tombstone(&self.tombstones, TOMBSTONE_SERVER_CONFIG, key).await;
         fan_out_op(
             &self.client,
             &self.cluster,
@@ -655,6 +702,8 @@ impl ServerConfigStore for ClusterServerConfigStore {
         check_write_quorum(&self.cluster)?;
         let existed = self.inner.delete_server_config(key).await?;
         if existed {
+            // Tombstone so the delete converges via the snapshot reconcile (R5).
+            record_tombstone(&self.tombstones, TOMBSTONE_SERVER_CONFIG, key).await;
             fan_out_op(
                 &self.client,
                 &self.cluster,
@@ -776,7 +825,7 @@ mod tests {
         // No write quorum (alone in a 3-node cluster): cluster-wide settings are
         // refused, but the node-local node_id must still persist for bootstrap.
         let cluster = Arc::new(ClusterState::new("self-node", Some(2), Some(3)));
-        let store = ClusterServerConfigStore::new(inner, client(), cluster);
+        let store = ClusterServerConfigStore::new(inner, client(), cluster, tombstones().await);
         store
             .set_server_config(NODE_ID_KEY, "abc-123")
             .await
@@ -797,7 +846,7 @@ mod tests {
     async fn server_config_available_mode_writes_alone() {
         let (inner, _dir) = temp_server_config().await;
         let cluster = Arc::new(ClusterState::new("self-node", None, None));
-        let store = ClusterServerConfigStore::new(inner, client(), cluster);
+        let store = ClusterServerConfigStore::new(inner, client(), cluster, tombstones().await);
         // available mode: cluster-wide write succeeds solo; no peers -> no fan-out.
         store.set_server_config("region", "eu-west-1").await.unwrap();
         assert_eq!(

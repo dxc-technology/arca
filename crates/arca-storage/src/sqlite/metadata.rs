@@ -616,19 +616,31 @@ impl MetadataStore for SqliteStore {
                 match &record.version_id {
                     // Versioned rows are immutable, keyed by version_id. The LWW
                     // guard (incoming >= existing) makes re-delivery and
-                    // out-of-order delivery safe and idempotent.
+                    // out-of-order delivery safe and idempotent; the equal-tuple
+                    // `>=` lets lock-column updates (N1) through. Identical rows
+                    // are skipped without a rewrite (M7): rewriting would stamp
+                    // a fresh seq and keep two caught-up nodes redelivering
+                    // their whole tables to each other forever.
                     Some(vid) => {
-                        let existing_lm: Option<String> = match tx.query_row(
-                            "SELECT last_modified FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
+                        let sql = format!(
+                            "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3"
+                        );
+                        let existing: Option<ObjectRecord> = match tx.query_row(
+                            &sql,
                             params![record.bucket, record.key, vid],
-                            |row| row.get(0),
+                            |row| Ok(row_to_object_record(row)),
                         ) {
-                            Ok(v) => Some(v),
+                            Ok(rec) => Some(rec?),
                             Err(rusqlite::Error::QueryReturnedNoRows) => None,
                             Err(e) => return Err(e.into()),
                         };
-                        let incoming = record.last_modified.to_rfc3339();
-                        let should_write = existing_lm.as_ref().map_or(true, |ex| incoming >= *ex);
+                        let should_write = match &existing {
+                            None => true,
+                            Some(ex) => {
+                                record.last_modified >= ex.last_modified
+                                    && !record.same_replicated_content(ex)
+                            }
+                        };
                         if should_write {
                             tx.execute(
                                 "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
@@ -640,22 +652,27 @@ impl MetadataStore for SqliteStore {
                     // Null-version rows form an LWW register per (bucket, key):
                     // unversioned/suspended overwrites resolve by
                     // (last_modified, blob_id) so all nodes converge on one row.
+                    // Same M7 identical-row skip as the versioned branch.
                     None => {
-                        let existing: Option<(String, String)> = match tx.query_row(
-                            "SELECT last_modified, blob_id FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
+                        let sql = format!(
+                            "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL"
+                        );
+                        let existing: Option<ObjectRecord> = match tx.query_row(
+                            &sql,
                             params![record.bucket, record.key],
-                            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                            |row| Ok(row_to_object_record(row)),
                         ) {
-                            Ok(v) => Some(v),
+                            Ok(rec) => Some(rec?),
                             Err(rusqlite::Error::QueryReturnedNoRows) => None,
                             Err(e) => return Err(e.into()),
                         };
-                        let incoming_lm = record.last_modified.to_rfc3339();
-                        let incoming_blob = record.blob_id.0.clone();
                         let should_write = match &existing {
                             None => true,
-                            Some((lm, bid)) => {
-                                incoming_lm > *lm || (incoming_lm == *lm && incoming_blob >= *bid)
+                            Some(ex) => {
+                                let lww = record.last_modified > ex.last_modified
+                                    || (record.last_modified == ex.last_modified
+                                        && record.blob_id.0 >= ex.blob_id.0);
+                                lww && !record.same_replicated_content(ex)
                             }
                         };
                         if should_write {
@@ -995,6 +1012,60 @@ impl MetadataStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("delete_bucket_config: {e}")))
     }
 
+    async fn apply_bucket_config_at(
+        &self,
+        bucket: &str,
+        config_key: &str,
+        config_value: &str,
+        updated_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), ArcaError> {
+        // Like set_bucket_config, but preserving the source's updated_at (the
+        // R5 reconcile LWW key) instead of stamping now().
+        let bucket = bucket.to_string();
+        let config_key = config_key.to_string();
+        let config_value = config_value.to_string();
+        let ts = updated_at.to_rfc3339();
+        self.conn
+            .call(move |conn| {
+                conn.execute(
+                    "INSERT INTO bucket_config (bucket, config_key, config_value, updated_at)
+                     VALUES (?1, ?2, ?3, ?4)
+                     ON CONFLICT(bucket, config_key) DO UPDATE SET config_value = ?3, updated_at = ?4",
+                    params![bucket, config_key, config_value, ts],
+                )?;
+                Ok(())
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("apply_bucket_config_at: {e}")))
+    }
+
+    async fn apply_bucket_tags_at(
+        &self,
+        bucket: &str,
+        tags: &[(String, String)],
+        updated_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), ArcaError> {
+        // Like put_bucket_tags, but preserving the source's updated_at.
+        let bucket = bucket.to_string();
+        let tags = tags.to_vec();
+        let ts = updated_at.to_rfc3339();
+        self.conn
+            .call(move |conn| {
+                let tx = conn.transaction()?;
+                tx.execute("DELETE FROM bucket_tags WHERE bucket = ?1", params![bucket])?;
+                for (k, v) in &tags {
+                    tx.execute(
+                        "INSERT INTO bucket_tags (bucket, tag_key, tag_value, updated_at) VALUES (?1, ?2, ?3, ?4)",
+                        params![bucket, k, v, ts],
+                    )?;
+                }
+                tx.commit()?;
+                Ok(())
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("apply_bucket_tags_at: {e}")))
+    }
+
     // -- Tag operations --
 
     async fn get_bucket_tags(
@@ -1029,10 +1100,14 @@ impl MetadataStore for SqliteStore {
             .call(move |conn| {
                 let tx = conn.transaction()?;
                 tx.execute("DELETE FROM bucket_tags WHERE bucket = ?1", params![bucket])?;
+                // One timestamp for the whole set: the control reconcile (R5)
+                // treats a bucket's tags as a single LWW entity (replace-all
+                // semantics), keyed by MAX(updated_at) — equal here by design.
+                let now = chrono::Utc::now().to_rfc3339();
                 for (k, v) in &tags {
                     tx.execute(
-                        "INSERT INTO bucket_tags (bucket, tag_key, tag_value) VALUES (?1, ?2, ?3)",
-                        params![bucket, k, v],
+                        "INSERT INTO bucket_tags (bucket, tag_key, tag_value, updated_at) VALUES (?1, ?2, ?3, ?4)",
+                        params![bucket, k, v, now],
                     )?;
                 }
                 tx.commit()?;
@@ -1416,19 +1491,25 @@ impl MetadataStore for SqliteStore {
 
         self.conn
             .call(move |conn| {
+                let tx = conn.transaction()?;
+                // Fresh seq so the lock change travels via the changed-since
+                // manifest to peers that miss the real-time fan-out (N1). Taken
+                // before the row UPDATE per the next_object_seq lock-order rule.
+                let seq = next_object_seq(&tx)?;
                 let rows = if let Some(ref vid) = version_id {
-                    conn.execute(
-                        "UPDATE objects SET retention_mode = ?1, retain_until_date = ?2 \
-                         WHERE bucket = ?3 AND key = ?4 AND version_id = ?5",
-                        params![retention_mode, retain_until_date, bucket, key, vid],
+                    tx.execute(
+                        "UPDATE objects SET retention_mode = ?1, retain_until_date = ?2, seq = ?3 \
+                         WHERE bucket = ?4 AND key = ?5 AND version_id = ?6",
+                        params![retention_mode, retain_until_date, seq, bucket, key, vid],
                     )?
                 } else {
-                    conn.execute(
-                        "UPDATE objects SET retention_mode = ?1, retain_until_date = ?2 \
-                         WHERE bucket = ?3 AND key = ?4 AND is_latest = 1",
-                        params![retention_mode, retain_until_date, bucket, key],
+                    tx.execute(
+                        "UPDATE objects SET retention_mode = ?1, retain_until_date = ?2, seq = ?3 \
+                         WHERE bucket = ?4 AND key = ?5 AND is_latest = 1",
+                        params![retention_mode, retain_until_date, seq, bucket, key],
                     )?
                 };
+                tx.commit()?;
                 Ok(rows > 0)
             })
             .await
@@ -1449,19 +1530,23 @@ impl MetadataStore for SqliteStore {
 
         self.conn
             .call(move |conn| {
+                let tx = conn.transaction()?;
+                // Fresh seq for manifest visibility (N1) — see set_object_retention.
+                let seq = next_object_seq(&tx)?;
                 let rows = if let Some(ref vid) = version_id {
-                    conn.execute(
-                        "UPDATE objects SET legal_hold_status = ?1 \
-                         WHERE bucket = ?2 AND key = ?3 AND version_id = ?4",
-                        params![status, bucket, key, vid],
+                    tx.execute(
+                        "UPDATE objects SET legal_hold_status = ?1, seq = ?2 \
+                         WHERE bucket = ?3 AND key = ?4 AND version_id = ?5",
+                        params![status, seq, bucket, key, vid],
                     )?
                 } else {
-                    conn.execute(
-                        "UPDATE objects SET legal_hold_status = ?1 \
-                         WHERE bucket = ?2 AND key = ?3 AND is_latest = 1",
-                        params![status, bucket, key],
+                    tx.execute(
+                        "UPDATE objects SET legal_hold_status = ?1, seq = ?2 \
+                         WHERE bucket = ?3 AND key = ?4 AND is_latest = 1",
+                        params![status, seq, bucket, key],
                     )?
                 };
+                tx.commit()?;
                 Ok(rows > 0)
             })
             .await
@@ -1864,7 +1949,8 @@ fn row_to_bucket_info(row: &rusqlite::Row) -> Result<BucketInfo, rusqlite::Error
 /// Converts a SQLite row to a `MultipartUploadRecord`.
 ///
 /// Expects columns: upload_id, bucket, key, content_type, initiated_at, metadata.
-fn row_to_multipart_upload_record(
+/// `pub(super)`: the control-snapshot builder reads these tables too (R5/D4).
+pub(super) fn row_to_multipart_upload_record(
     row: &rusqlite::Row,
 ) -> Result<MultipartUploadRecord, rusqlite::Error> {
     let initiated_at_str: String = row.get(4)?;
@@ -1898,7 +1984,8 @@ fn row_to_multipart_upload_record(
 /// Converts a SQLite row to a `PartRecord`.
 ///
 /// Expects columns: upload_id, part_number, blob_id, size, etag, checksum_value, last_modified.
-fn row_to_part_record(row: &rusqlite::Row) -> Result<PartRecord, rusqlite::Error> {
+/// `pub(super)`: the control-snapshot builder reads these tables too (R5/D4).
+pub(super) fn row_to_part_record(row: &rusqlite::Row) -> Result<PartRecord, rusqlite::Error> {
     let checksum_value: Option<String> = row.get(5).unwrap_or(None);
     let last_modified_str: Option<String> = row.get(6).unwrap_or(None);
     let last_modified = last_modified_str.and_then(|s| {
@@ -3147,6 +3234,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn lock_changes_stamp_a_fresh_seq() {
+        // N1: retention/legal-hold UPDATEs must advance the row's seq so a peer
+        // that was down during the lock change pulls it via changed-since
+        // (real-time fan-out is otherwise the only path that carries it).
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        store.put_object(&make_record("b", "k")).await.unwrap();
+        let baseline = store.current_object_seq().await.unwrap();
+
+        assert!(store
+            .set_object_retention("b", "k", None, Some("GOVERNANCE"), Some("2030-01-01T00:00:00Z"))
+            .await
+            .unwrap());
+        let after_retention = store.list_rows_changed_since(baseline, 100).await.unwrap();
+        assert_eq!(after_retention.len(), 1, "retention change must be manifest-visible");
+        assert_eq!(after_retention[0].1.retention_mode.as_deref(), Some("GOVERNANCE"));
+
+        let mid = store.current_object_seq().await.unwrap();
+        assert!(store.set_object_legal_hold("b", "k", None, Some("ON")).await.unwrap());
+        let after_hold = store.list_rows_changed_since(mid, 100).await.unwrap();
+        assert_eq!(after_hold.len(), 1, "legal-hold change must be manifest-visible");
+        assert_eq!(after_hold[0].1.legal_hold_status.as_deref(), Some("ON"));
+    }
+
+    #[tokio::test]
+    async fn lock_changes_stamp_a_fresh_seq_on_versioned_rows() {
+        // Same N1 guarantee for the explicit version_id branch. Seeded via
+        // apply_remote_object (verbatim insert): put_object generates its own
+        // version ids.
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut rec = make_record("b", "k");
+        rec.version_id = Some("v1".to_string());
+        store.apply_remote_object(&rec).await.unwrap();
+        let baseline = store.current_object_seq().await.unwrap();
+
+        assert!(store
+            .set_object_retention("b", "k", Some("v1"), Some("COMPLIANCE"), Some("2031-01-01T00:00:00Z"))
+            .await
+            .unwrap());
+        assert!(store.set_object_legal_hold("b", "k", Some("v1"), Some("OFF")).await.unwrap());
+        let changed = store.list_rows_changed_since(baseline, 100).await.unwrap();
+        // Two lock updates on the same row → the row appears once, at the
+        // newest seq, carrying both columns.
+        assert_eq!(changed.len(), 1);
+        assert_eq!(changed[0].1.retention_mode.as_deref(), Some("COMPLIANCE"));
+        assert_eq!(changed[0].1.legal_hold_status.as_deref(), Some("OFF"));
+    }
+
+    #[tokio::test]
     async fn changed_since_includes_remote_applied_rows() {
         // apply_remote_object must also stamp seq, so a row this node learned
         // from a peer is itself pulled by a third node's changed-since scan
@@ -3166,6 +3303,63 @@ mod tests {
         let remote_seq = all.iter().find(|(_, r)| r.key == "remote").unwrap().0;
         let local_seq = all.iter().find(|(_, r)| r.key == "local").unwrap().0;
         assert!(remote_seq > local_seq);
+    }
+
+    #[tokio::test]
+    async fn apply_remote_object_noops_on_identical_rows() {
+        // M7: re-applying a row a node already holds must not rewrite it nor
+        // stamp a fresh seq, otherwise two caught-up nodes redeliver their
+        // whole object tables to each other on every anti-entropy pass.
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+
+        let mut versioned = make_record("b", "k");
+        versioned.version_id = Some("v1".to_string());
+        store.apply_remote_object(&versioned).await.unwrap();
+        let after_first = store.current_object_seq().await.unwrap();
+        store.apply_remote_object(&versioned).await.unwrap();
+        assert_eq!(
+            store.current_object_seq().await.unwrap(),
+            after_first,
+            "identical versioned re-apply must be a no-op"
+        );
+
+        let null_version = make_record("b", "nv");
+        store.apply_remote_object(&null_version).await.unwrap();
+        let after_nv = store.current_object_seq().await.unwrap();
+        store.apply_remote_object(&null_version).await.unwrap();
+        assert_eq!(
+            store.current_object_seq().await.unwrap(),
+            after_nv,
+            "identical null-version re-apply must be a no-op"
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_remote_object_still_applies_lock_only_changes() {
+        // N1+M7 interplay: a row equal on the LWW tuple (last_modified,
+        // blob_id) but with changed lock columns must still be applied — the
+        // equal-tuple `>=` guard exists for exactly this case.
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut rec = make_record("b", "k");
+        rec.version_id = Some("v1".to_string());
+        store.apply_remote_object(&rec).await.unwrap();
+        let seq_before = store.current_object_seq().await.unwrap();
+
+        let mut locked = rec.clone();
+        locked.retention_mode = Some("GOVERNANCE".to_string());
+        locked.retain_until_date =
+            Some(chrono::DateTime::parse_from_rfc3339("2031-01-01T00:00:00Z")
+                .unwrap()
+                .with_timezone(&chrono::Utc));
+        store.apply_remote_object(&locked).await.unwrap();
+        assert!(
+            store.current_object_seq().await.unwrap() > seq_before,
+            "lock-only change must be applied and re-stamped"
+        );
+        let got = store.get_object_version("b", "k", "v1").await.unwrap().unwrap();
+        assert_eq!(got.retention_mode.as_deref(), Some("GOVERNANCE"));
     }
 
     /// A store with cluster mode on, so hard deletes tombstone instead of remove.

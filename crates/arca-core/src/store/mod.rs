@@ -25,8 +25,10 @@ pub use blob::{
 pub use connector::{ConnectorRegistry, DeliveryResult, NotificationConnector, TestResult};
 pub use control_snapshot::ControlSnapshotStore;
 pub use control_tombstone::{
-    ControlTombstone, ControlTombstoneStore, TOMBSTONE_BUCKET, TOMBSTONE_CREDENTIAL,
-    TOMBSTONE_GRANT, TOMBSTONE_TEAM, TOMBSTONE_USER,
+    ControlTombstone, ControlTombstoneStore, TOMBSTONE_BUCKET, TOMBSTONE_BUCKET_CONFIG,
+    TOMBSTONE_BUCKET_TAGS, TOMBSTONE_CREDENTIAL, TOMBSTONE_GRANT, TOMBSTONE_MULTIPART,
+    TOMBSTONE_SERVER_CONFIG, TOMBSTONE_TEAM, TOMBSTONE_TEAM_GRANT, TOMBSTONE_TEAM_MEMBER,
+    TOMBSTONE_USER, TOMBSTONE_USER_GRANT,
 };
 pub use credential::CredentialStore;
 pub use grant::GrantStore;
