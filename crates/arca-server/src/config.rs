@@ -751,8 +751,15 @@ pub struct ClusterConfig {
     /// cluster (used as the discovery filter).
     pub cluster_id: String,
     /// Shared secret authenticating inter-node `/cluster/v1/*` requests
-    /// (identical on every node).
+    /// (identical on every node). Must be a high-entropy value of at least 16
+    /// characters (M5/§3.7(B)); the shipped placeholders are refused.
     pub secret: String,
+    /// Previous shared secret, accepted INBOUND only, for zero-downtime
+    /// rotation (H8/D3b). Outbound requests, the ping challenge MAC and the
+    /// config fingerprint always use `secret`. Runbook: set `secret_previous`
+    /// to the old value and `secret` to the new one on every node, rolling
+    /// restart, then remove `secret_previous`.
+    pub secret_previous: Option<String>,
     /// Consistency policy: "quorum" (CP, default) or "available" (AP).
     #[serde(default)]
     pub mode: ClusterMode,
@@ -795,6 +802,74 @@ pub struct ClusterConfig {
     /// resurrect deletions on its return — review §3.2); once pruned it stops
     /// blocking, and a later return must be treated as a re-sync.
     pub peer_prune_days: Option<u64>,
+    /// Inter-node mutual TLS (R4/H12 — resolves TD-015). REQUIRED when the
+    /// cluster runs over HTTPS (`[server.tls]` enabled): there is no insecure
+    /// fallback. Meaningless (and rejected) without `[server.tls]`.
+    pub tls: Option<ClusterTlsConfig>,
+}
+
+/// Inter-node mutual-TLS material (`[cluster.tls]`, decision H12).
+///
+/// The CA is operator-distributed: every node gets the same `ca_file` plus its
+/// own cert/key signed by that CA (`arca tls generate-cluster` mints the whole
+/// set). Outbound inter-node clients verify peer server certificates against
+/// the CA (on top of the system roots) and present `cert_file` as their client
+/// identity; the listener requests client certificates, and the
+/// `/cluster/v1/*` routes refuse requests that did not present one signed by
+/// the CA. Paths are used as given (absolute paths recommended).
+#[derive(Debug, Clone, Deserialize)]
+pub struct ClusterTlsConfig {
+    /// Cluster CA certificate (PEM): the trust anchor for both directions.
+    pub ca_file: String,
+    /// This node's certificate (PEM), signed by the cluster CA.
+    pub cert_file: String,
+    /// This node's private key (PEM).
+    pub key_file: String,
+}
+
+impl ClusterTlsConfig {
+    pub fn validate(&self) -> Result<()> {
+        for (name, value) in [
+            ("ca_file", &self.ca_file),
+            ("cert_file", &self.cert_file),
+            ("key_file", &self.key_file),
+        ] {
+            if value.trim().is_empty() {
+                bail!("[cluster.tls] {name} is required and must be non-empty");
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Shipped placeholder secrets (M5/§3.7(B)): they appear verbatim in the
+/// reference configs and deploy manifests, so they are the first guess of any
+/// attacker. Startup refuses them outright.
+const PLACEHOLDER_CLUSTER_SECRETS: &[&str] =
+    &["dev-cluster-secret-change-me", "CHANGEME-CLUSTER-SECRET"];
+
+/// M5/§3.7(B): the cluster secret keys ALL inter-node authentication (the
+/// SigV4 signatures and the peer challenge MAC), so a guessable value hands an
+/// attacker the whole cluster. Hard floor enforced here; the softer
+/// "looks low-entropy" heuristic is [`ClusterConfig::secret_looks_low_entropy`].
+fn validate_cluster_secret(value: &str, field: &str) -> Result<()> {
+    if value.trim().is_empty() {
+        bail!("[cluster] {field} is required and must be non-empty");
+    }
+    if PLACEHOLDER_CLUSTER_SECRETS.contains(&value) {
+        bail!(
+            "[cluster] {field} is the shipped placeholder — set a real secret \
+             (e.g. `openssl rand -hex 32`), identical on every node"
+        );
+    }
+    if value.len() < 16 {
+        bail!(
+            "[cluster] {field} is too short ({} chars): use at least 16, ideally a \
+             high-entropy random value (e.g. `openssl rand -hex 32`)",
+            value.len()
+        );
+    }
+    Ok(())
 }
 
 impl ClusterConfig {
@@ -803,8 +878,15 @@ impl ClusterConfig {
         if self.cluster_id.trim().is_empty() {
             bail!("[cluster] cluster_id is required and must be non-empty");
         }
-        if self.secret.trim().is_empty() {
-            bail!("[cluster] secret is required and must be non-empty");
+        validate_cluster_secret(&self.secret, "secret")?;
+        if let Some(prev) = &self.secret_previous {
+            validate_cluster_secret(prev, "secret_previous")?;
+            if prev == &self.secret {
+                bail!(
+                    "[cluster] secret_previous equals secret — remove it \
+                     (it only exists to bridge a rotation)"
+                );
+            }
         }
         if self.mode == ClusterMode::Quorum {
             match self.cluster_size {
@@ -829,7 +911,29 @@ impl ClusterConfig {
         if self.peer_prune_days == Some(0) {
             bail!("[cluster] peer_prune_days must be >= 1 when set");
         }
+        if let Some(tls) = &self.tls {
+            tls.validate()?;
+        }
         Ok(())
+    }
+
+    /// M5 heuristic for the "secret looks low-entropy" warning: fewer than 8
+    /// distinct characters, or a single character class (only lowercase, only
+    /// digits, ...). The caller logs the warning — config loads before tracing
+    /// is initialized in `serve`, so it cannot be emitted here.
+    pub fn secret_looks_low_entropy(&self) -> bool {
+        let s = &self.secret;
+        let distinct = s.chars().collect::<std::collections::BTreeSet<_>>().len();
+        let classes = [
+            s.chars().any(|c| c.is_ascii_lowercase()),
+            s.chars().any(|c| c.is_ascii_uppercase()),
+            s.chars().any(|c| c.is_ascii_digit()),
+            s.chars().any(|c| !c.is_ascii_alphanumeric()),
+        ]
+        .iter()
+        .filter(|set| **set)
+        .count();
+        distinct < 8 || classes < 2
     }
 
     /// Number of durable copies (including the local node) required to
@@ -974,10 +1078,40 @@ pub fn load_config(path: &Path) -> Result<Config> {
     if let Some(cluster) = &config.cluster {
         if cluster.enabled {
             cluster.validate()?;
+            validate_cluster_transport(config.server.tls.as_ref(), cluster)?;
         }
     }
     config.storage.validate()?;
     Ok(config)
+}
+
+/// R4 (decision H12, resolves TD-015): inter-node TLS is VERIFIED — there is
+/// no insecure fallback. A cluster over HTTPS therefore requires the
+/// `[cluster.tls]` material (fail closed, confirmed 2026-06-11); without
+/// `[server.tls]` that material is meaningless. The existing `[server.tls]
+/// ca_file` (global, REQUIRED client certs for every connection) and the
+/// cluster CA (client certs optional at the TLS layer, enforced on
+/// `/cluster/v1/*` only) need conflicting listener policies, so the
+/// combination is rejected until someone actually needs it.
+fn validate_cluster_transport(server_tls: Option<&TlsConfig>, cluster: &ClusterConfig) -> Result<()> {
+    match (server_tls, &cluster.tls) {
+        (Some(_), None) => bail!(
+            "[cluster] over HTTPS requires [cluster.tls]: inter-node clients verify \
+             peer certificates against a shared cluster CA (TD-015 — no insecure \
+             fallback). Generate the material with `arca tls generate-cluster` and \
+             set ca_file/cert_file/key_file on every node"
+        ),
+        (None, Some(_)) => bail!(
+            "[cluster.tls] requires [server.tls]: cluster certificates ride the \
+             same listener as the S3 API"
+        ),
+        (Some(tls), Some(_)) if tls.ca_file.is_some() => bail!(
+            "[server.tls] ca_file (global client mTLS) and [cluster.tls] are \
+             mutually exclusive: the listener can enforce only one \
+             client-certificate policy"
+        ),
+        _ => Ok(()),
+    }
 }
 
 #[cfg(test)]
@@ -1910,12 +2044,14 @@ cluster_size = 3
         assert_eq!(cluster.peer_prune_days(), cluster.tombstone_grace_days);
     }
 
-    #[test]
-    fn cluster_peer_prune_days_validation_and_override() {
-        let mut cluster = ClusterConfig {
+    /// Baseline VALID cluster config for the validation tests; each case
+    /// overrides only the field under test (functional update syntax).
+    fn test_cluster_config() -> ClusterConfig {
+        ClusterConfig {
             enabled: true,
             cluster_id: "c".to_string(),
-            secret: "s".to_string(),
+            secret: "unit-test-cluster-secret-1f2e3d".to_string(),
+            secret_previous: None,
             mode: ClusterMode::Quorum,
             cluster_size: Some(3),
             discovery: DiscoveryMode::Mdns,
@@ -1927,7 +2063,24 @@ cluster_size = 3
             anti_entropy_interval_seconds: 30,
             request_timeout_seconds: 10,
             tombstone_grace_days: 7,
+            peer_prune_days: None,
+            tls: None,
+        }
+    }
+
+    fn test_cluster_tls() -> ClusterTlsConfig {
+        ClusterTlsConfig {
+            ca_file: "/certs/cluster/arca-cluster-ca.crt".to_string(),
+            cert_file: "/certs/cluster/node.crt".to_string(),
+            key_file: "/certs/cluster/node.key".to_string(),
+        }
+    }
+
+    #[test]
+    fn cluster_peer_prune_days_validation_and_override() {
+        let mut cluster = ClusterConfig {
             peer_prune_days: Some(0),
+            ..test_cluster_config()
         };
         let err = cluster.validate().unwrap_err().to_string();
         assert!(err.contains("peer_prune_days"), "got: {err}");
@@ -1940,21 +2093,8 @@ cluster_size = 3
     #[test]
     fn cluster_quorum_requires_cluster_size() {
         let cluster = ClusterConfig {
-            enabled: true,
-            cluster_id: "c".to_string(),
-            secret: "s".to_string(),
-            mode: ClusterMode::Quorum,
             cluster_size: None,
-            discovery: DiscoveryMode::Mdns,
-            advertise_port: None,
-            advertise_addr: None,
-            seeds: vec![],
-            dns_name: None,
-            health_interval_seconds: 5,
-            anti_entropy_interval_seconds: 30,
-            request_timeout_seconds: 10,
-            tombstone_grace_days: 7,
-            peer_prune_days: None,
+            ..test_cluster_config()
         };
         let err = cluster.validate().unwrap_err().to_string();
         assert!(err.contains("cluster_size is required"), "got: {err}");
@@ -1963,21 +2103,9 @@ cluster_size = 3
     #[test]
     fn cluster_available_mode_ignores_cluster_size() {
         let cluster = ClusterConfig {
-            enabled: true,
-            cluster_id: "c".to_string(),
-            secret: "s".to_string(),
             mode: ClusterMode::Available,
             cluster_size: None,
-            discovery: DiscoveryMode::Mdns,
-            advertise_port: None,
-            advertise_addr: None,
-            seeds: vec![],
-            dns_name: None,
-            health_interval_seconds: 5,
-            anti_entropy_interval_seconds: 30,
-            request_timeout_seconds: 10,
-            tombstone_grace_days: 7,
-            peer_prune_days: None,
+            ..test_cluster_config()
         };
         assert!(cluster.validate().is_ok());
         assert_eq!(cluster.write_quorum(), None);
@@ -1986,21 +2114,8 @@ cluster_size = 3
     #[test]
     fn cluster_static_discovery_requires_seeds() {
         let cluster = ClusterConfig {
-            enabled: true,
-            cluster_id: "c".to_string(),
-            secret: "s".to_string(),
-            mode: ClusterMode::Available,
-            cluster_size: None,
             discovery: DiscoveryMode::Static,
-            advertise_port: None,
-            advertise_addr: None,
-            seeds: vec![],
-            dns_name: None,
-            health_interval_seconds: 5,
-            anti_entropy_interval_seconds: 30,
-            request_timeout_seconds: 10,
-            tombstone_grace_days: 7,
-            peer_prune_days: None,
+            ..test_cluster_config()
         };
         let err = cluster.validate().unwrap_err().to_string();
         assert!(err.contains("seeds is required"), "got: {err}");
@@ -2009,21 +2124,8 @@ cluster_size = 3
     #[test]
     fn cluster_dns_discovery_requires_dns_name() {
         let cluster = ClusterConfig {
-            enabled: true,
-            cluster_id: "c".to_string(),
-            secret: "s".to_string(),
-            mode: ClusterMode::Available,
-            cluster_size: None,
             discovery: DiscoveryMode::Dns,
-            advertise_port: None,
-            advertise_addr: None,
-            seeds: vec![],
-            dns_name: None,
-            health_interval_seconds: 5,
-            anti_entropy_interval_seconds: 30,
-            request_timeout_seconds: 10,
-            tombstone_grace_days: 7,
-            peer_prune_days: None,
+            ..test_cluster_config()
         };
         let err = cluster.validate().unwrap_err().to_string();
         assert!(err.contains("dns_name is required"), "got: {err}");
@@ -2032,21 +2134,8 @@ cluster_size = 3
     #[test]
     fn cluster_empty_secret_fails() {
         let cluster = ClusterConfig {
-            enabled: true,
-            cluster_id: "c".to_string(),
             secret: "   ".to_string(),
-            mode: ClusterMode::Available,
-            cluster_size: None,
-            discovery: DiscoveryMode::Mdns,
-            advertise_port: None,
-            advertise_addr: None,
-            seeds: vec![],
-            dns_name: None,
-            health_interval_seconds: 5,
-            anti_entropy_interval_seconds: 30,
-            request_timeout_seconds: 10,
-            tombstone_grace_days: 7,
-            peer_prune_days: None,
+            ..test_cluster_config()
         };
         let err = cluster.validate().unwrap_err().to_string();
         assert!(err.contains("secret is required"), "got: {err}");
@@ -2057,24 +2146,148 @@ cluster_size = 3
         // Majority = floor(n/2)+1: 1→1, 2→2, 3→2, 4→3, 5→3.
         for (size, expected) in [(1, 1), (2, 2), (3, 2), (4, 3), (5, 3)] {
             let cluster = ClusterConfig {
-                enabled: true,
-                cluster_id: "c".to_string(),
-                secret: "s".to_string(),
-                mode: ClusterMode::Quorum,
                 cluster_size: Some(size),
-                discovery: DiscoveryMode::Mdns,
-                advertise_port: None,
-                advertise_addr: None,
-                seeds: vec![],
-                dns_name: None,
-                health_interval_seconds: 5,
-                anti_entropy_interval_seconds: 30,
-                request_timeout_seconds: 10,
-                tombstone_grace_days: 7,
-                peer_prune_days: None,
+                ..test_cluster_config()
             };
             assert_eq!(cluster.write_quorum(), Some(expected), "size={size}");
         }
+    }
+
+    #[test]
+    fn cluster_secret_strength_enforced() {
+        // Shipped placeholders are refused outright (M5/§3.7(B)).
+        for placeholder in ["dev-cluster-secret-change-me", "CHANGEME-CLUSTER-SECRET"] {
+            let cluster = ClusterConfig {
+                secret: placeholder.to_string(),
+                ..test_cluster_config()
+            };
+            let err = cluster.validate().unwrap_err().to_string();
+            assert!(err.contains("placeholder"), "got: {err}");
+        }
+        // Below the 16-char floor.
+        let cluster = ClusterConfig {
+            secret: "short-secret".to_string(),
+            ..test_cluster_config()
+        };
+        let err = cluster.validate().unwrap_err().to_string();
+        assert!(err.contains("too short"), "got: {err}");
+        // Exactly 16 chars passes the floor.
+        let cluster = ClusterConfig {
+            secret: "0123456789abcdef".to_string(),
+            ..test_cluster_config()
+        };
+        assert!(cluster.validate().is_ok());
+    }
+
+    #[test]
+    fn cluster_secret_previous_validated() {
+        // The previous secret gets the same floor as the current one (H8).
+        let cluster = ClusterConfig {
+            secret_previous: Some("short".to_string()),
+            ..test_cluster_config()
+        };
+        let err = cluster.validate().unwrap_err().to_string();
+        assert!(err.contains("secret_previous"), "got: {err}");
+
+        // Equal to the current secret: pointless, refused.
+        let base = test_cluster_config();
+        let cluster = ClusterConfig {
+            secret_previous: Some(base.secret.clone()),
+            ..base
+        };
+        let err = cluster.validate().unwrap_err().to_string();
+        assert!(err.contains("secret_previous equals secret"), "got: {err}");
+
+        // A genuine rotation pair validates.
+        let cluster = ClusterConfig {
+            secret_previous: Some("previous-cluster-secret-0a1b2c".to_string()),
+            ..test_cluster_config()
+        };
+        assert!(cluster.validate().is_ok());
+    }
+
+    #[test]
+    fn cluster_secret_entropy_heuristic() {
+        let weak = ClusterConfig {
+            secret: "aaaaaaaaaaaaaaaaaaaa".to_string(),
+            ..test_cluster_config()
+        };
+        assert!(weak.secret_looks_low_entropy(), "single repeated char");
+
+        let single_class = ClusterConfig {
+            secret: "abcdefghijklmnop".to_string(),
+            ..test_cluster_config()
+        };
+        assert!(single_class.secret_looks_low_entropy(), "one character class");
+
+        // `openssl rand -hex` output shape: two classes, many distinct chars.
+        let strong = ClusterConfig {
+            secret: "3f9c2a71d4e8b605a1c7".to_string(),
+            ..test_cluster_config()
+        };
+        assert!(!strong.secret_looks_low_entropy());
+    }
+
+    #[test]
+    fn cluster_tls_requires_all_files_and_server_tls() {
+        // An empty member is refused.
+        let cluster = ClusterConfig {
+            tls: Some(ClusterTlsConfig {
+                ca_file: "".to_string(),
+                ..test_cluster_tls()
+            }),
+            ..test_cluster_config()
+        };
+        let err = cluster.validate().unwrap_err().to_string();
+        assert!(err.contains("[cluster.tls] ca_file"), "got: {err}");
+
+        // [cluster.tls] without [server.tls] is meaningless.
+        let cluster = ClusterConfig {
+            tls: Some(test_cluster_tls()),
+            ..test_cluster_config()
+        };
+        let err = validate_cluster_transport(None, &cluster)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("requires [server.tls]"), "got: {err}");
+    }
+
+    #[test]
+    fn cluster_over_https_requires_cluster_tls() {
+        let server_tls = TlsConfig {
+            cert_dir: Some("/certs".to_string()),
+            cert_file: None,
+            key_file: None,
+            ca_file: None,
+        };
+
+        // Fail closed (R4/TD-015): an HTTPS cluster without the cluster CA
+        // material refuses to start, pointing at the generator.
+        let err = validate_cluster_transport(Some(&server_tls), &test_cluster_config())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("arca tls generate-cluster"), "got: {err}");
+
+        // With the material it validates...
+        let cluster = ClusterConfig {
+            tls: Some(test_cluster_tls()),
+            ..test_cluster_config()
+        };
+        assert!(validate_cluster_transport(Some(&server_tls), &cluster).is_ok());
+
+        // ...unless the global client-mTLS CA is also set (one listener cannot
+        // hold two client-certificate policies).
+        let conflicted = TlsConfig {
+            ca_file: Some("/certs/clients-ca.crt".to_string()),
+            ..server_tls
+        };
+        let err = validate_cluster_transport(Some(&conflicted), &cluster)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("mutually exclusive"), "got: {err}");
+
+        // A plain-HTTP cluster is untouched.
+        assert!(validate_cluster_transport(None, &test_cluster_config()).is_ok());
     }
 
     #[test]
@@ -2090,7 +2303,7 @@ data_dir = "/data"
 [cluster]
 enabled = true
 cluster_id = "arca-prod"
-secret = "s"
+secret = "parse-test-cluster-secret-0a1b2c"
 mode = "available"
 discovery = "static"
 seeds = ["arca-2:9000", "arca-3:9000"]

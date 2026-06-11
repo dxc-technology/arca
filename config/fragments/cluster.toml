@@ -9,6 +9,8 @@
 [cluster]
 enabled = true
 cluster_id = "arca-dev"
-secret = "dev-cluster-secret-change-me"
+# DEV value (passes the M5 strength floor); generate your own for anything real:
+# `openssl rand -hex 32`.
+secret = "arca-dev-cluster-secret-7b4e90c2"
 mode = "available"
 discovery = "mdns"

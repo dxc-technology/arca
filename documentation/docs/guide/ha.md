@@ -97,7 +97,7 @@ In `quorum` the cluster trades availability for safety at the majority boundary;
 
 ## Prerequisites
 
-- **Same `[cluster].secret` on every node.** It authenticates all inter-node traffic. There is no per-node credential.
+- **Same `[cluster].secret` on every node.** It authenticates all inter-node traffic. There is no per-node credential. It must be a **high-entropy value of at least 16 characters** (generate it: `openssl rand -hex 32`) — startup refuses shorter secrets and the placeholders shipped in the reference configs, and warns when the value looks low-entropy. To change it without downtime, see [Rotating the cluster secret](#rotating-the-cluster-secret).
 - **Same encryption master key / same KMS on every node**, *if* encryption is enabled. Replication ships the encrypted bytes verbatim, so every node must be able to unwrap them. (SSE-C needs nothing special — the bytes are opaque and the nonce travels in the sidecar.)
 - **Synchronized clocks (NTP).** LWW compares wall-clock timestamps; severe skew can pick the wrong winner on null-version rows. The `blob_id` tiebreaker mitigates ties, but NTP is still required.
 - **Full connectivity between nodes** on the cluster port, plus the same `cluster_id`. `mdns` additionally needs a shared L2 subnet; otherwise use `static` or `dns`.
@@ -193,6 +193,32 @@ For an active/passive VIP, pair HAProxy with keepalived. In Kubernetes, run a `S
 
 The balancer is a single point of failure unless it is itself redundant (keepalived VIP, multiple ingress replicas, or a managed cloud LB). The Arca *cluster* survives node loss; make sure the entry point does too.
 
+### Inter-node transport security (TLS + mutual TLS)
+
+The challenge-response peer authentication above stops a rogue endpoint everywhere, including plain-HTTP clusters — but on a network you do not fully trust, plain HTTP still exposes inter-node traffic to sniffing, and a sniffed signed request used to be replayable. Two R4 hardenings close this:
+
+- **Anti-replay window.** Every `/cluster/v1/*` request must carry an `x-amz-date` within ±15 minutes of the receiving node's clock (the timestamp is signed, so it cannot be refreshed without the secret). NTP — already a prerequisite — keeps legitimate peers well inside the window.
+- **Verified mutual TLS with a cluster CA.** When the cluster runs over HTTPS, the `[cluster.tls]` section is **required** (the node refuses to start without it — there is no "accept invalid certificates" fallback): every node gets the same operator-distributed CA plus its own CA-signed cert/key. Inter-node clients verify the peer's certificate against that CA *and* present the node certificate as their client identity; the listener verifies any presented client certificate, and the `/cluster/v1/*` routes refuse requests whose connection did not present one. S3 clients on the same port are untouched — for them the client certificate is simply never requested as mandatory. The result is an independent second factor: pushing or pulling cluster data requires the secret **and** a CA-signed key.
+
+Mint the whole material set with the shipped generator (one `--node` per node, SANs covering every name/IP peers dial — the seeds entries, the advertised address):
+
+```console
+$ arca tls generate-cluster --output-dir /etc/arca/certs/cluster \
+    --node arca-1=arca-1.internal,10.0.0.1 \
+    --node arca-2=arca-2.internal,10.0.0.2 \
+    --node arca-3=arca-3.internal,10.0.0.3
+```
+
+Copy `arca-cluster-ca.crt` (and each node's own cert/key) to the nodes and point both `[server.tls]` and `[cluster.tls]` at them — see the TOML reference below. Keep `arca-cluster-ca.key` offline: it is only needed to mint certificates for new nodes. The same node certificate serves the S3 listener too, so S3 clients must trust the CA (`aws --ca-bundle arca-cluster-ca.crt`); if you prefer a public certificate for S3 clients, keep it in `[server.tls]` — the peers' clients trust the cluster CA *in addition to* the system roots, so both layouts work. Operators with their own PKI can supply equivalent material (a dedicated CA; per-node certs with serverAuth + clientAuth) instead of using the generator.
+
+### Rotating the cluster secret
+
+The optional `[cluster] secret_previous` makes a secret rotation a rolling operation instead of a full-cluster restart:
+
+1. On every node set `secret_previous` to the current secret and `secret` to the new one.
+2. Rolling-restart the nodes. Inbound authentication accepts both secrets, so replication keeps flowing in both directions across the window; outbound signing always uses the new secret. Expect transient `config_ok: false` flags while versions of the config coexist (the drift fingerprint includes the secret): nodes already on the new secret form the writable majority as soon as there are enough of them, exactly like a rolling upgrade.
+3. When all nodes run the new secret, remove `secret_previous` (no restart urgency: it is inert once nothing signs with it, but leaving the old secret valid forever defeats the rotation).
+
 ## Design trade-offs (and honest limitations)
 
 This section exists so you can judge the approach, not just use it.
@@ -203,7 +229,7 @@ This section exists so you can judge the approach, not just use it.
 - **Control-plane catch-up gaps (documented).** Credentials, users, teams, grants and buckets reconcile fully (including deletions, via tombstones). Their *associations and settings* — team memberships, grant attachments, `bucket_config`, bucket tags, server settings — replicate in **real time** but are **not** part of the periodic reconcile yet. A node that was **down during one of those specific changes** may miss it until the entity is touched again. This is a known follow-up, not a data-loss bug.
 - **Tombstone grace vs downtime.** A returning node must come back **within `tombstone_grace_days`** (default 7) to learn of deletions that happened while it was away. The GC liveness guard keeps tombstones around *while the absent node is still remembered* (it blocks the purge and flags `tombstone_gc_blocked`), but once the node is pruned from membership (`peer_prune_days`, default = the grace) the tombstones it never saw are reclaimed — a node returning **beyond** the grace can still resurrect deleted data. Set the grace longer than your worst-case planned downtime. The guard's memory is also process-local: it cannot account for peers that vanished before the current process started.
 - **Clock dependence.** LWW uses wall-clock time; run NTP. A hybrid logical clock is possible future hardening.
-- **Rolling upgrades across the peer-authentication boundary.** A pre-ping (≤ 0.25.x) peer cannot prove possession of the secret, so an upgraded node treats it as alive-but-not-eligible: no fan-out toward it, no quorum contribution. Practical consequence in a 3-node `quorum` cluster: the **first** upgraded node refuses writes (`503`) until a **second** node is upgraded (the load balancer routes around it; legacy nodes keep accepting writes and their own fan-out/anti-entropy keep all data converging). Complete the rolling upgrade promptly rather than running mixed versions for long.
+- **Rolling upgrades across the peer-authentication boundary.** A pre-ping (≤ 0.25.x) peer cannot prove possession of the secret, so an upgraded node treats it as alive-but-not-eligible: no fan-out toward it, no quorum contribution. Practical consequence in a 3-node `quorum` cluster: the **first** upgraded node refuses writes (`503`) until a **second** node is upgraded (the load balancer routes around it; legacy nodes keep accepting writes and their own fan-out/anti-entropy keep all data converging). On an **HTTPS** cluster the upgrade also introduces `[cluster.tls]` (mandatory), and the upgraded node additionally rejects inbound cluster requests from peers that present no client certificate — so legacy pushes toward it fail until those peers are upgraded too, and it catches up via anti-entropy afterwards. Complete the rolling upgrade promptly rather than running mixed versions for long.
 
 ## TOML configuration reference
 
@@ -211,7 +237,10 @@ This section exists so you can judge the approach, not just use it.
 [cluster]
 enabled    = true
 cluster_id = "arca-prod"          # only nodes sharing this id form a cluster
-secret     = "change-me"          # shared inter-node auth secret (identical everywhere)
+# Shared inter-node auth secret (identical everywhere): >= 16 chars, high
+# entropy — generate with `openssl rand -hex 32`. Placeholders are refused.
+secret     = "f3a91c0e7b2d485f9a6c1e8d0b7f42a3"
+# secret_previous = "..."         # only during a rotation — see the runbook above
 mode       = "quorum"             # "quorum" (CP, default) | "available" (AP)
 cluster_size = 3                  # required in quorum mode → write quorum = 2
 
@@ -230,6 +259,15 @@ request_timeout_seconds       = 30    # inter-node HTTP timeout
 tombstone_grace_days          = 7     # MUST exceed worst-case node downtime
 peer_prune_days               = 7     # evict peers unreachable this long
                                       # (optional; default = tombstone_grace_days)
+
+# REQUIRED when the cluster runs over HTTPS ([server.tls] enabled): the
+# operator-distributed cluster CA + this node's CA-signed cert/key, used to
+# verify peers and to authenticate this node to them (mutual TLS). Mint the
+# material with `arca tls generate-cluster`.
+[cluster.tls]
+ca_file   = "/etc/arca/certs/cluster/arca-cluster-ca.crt"   # same on every node
+cert_file = "/etc/arca/certs/cluster/arca-1.crt"            # this node's own
+key_file  = "/etc/arca/certs/cluster/arca-1.key"
 ```
 
 ## Related

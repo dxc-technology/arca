@@ -34,7 +34,7 @@ use arca_core::cluster::{verify_ping_nonce_mac, ClusterState, PeerNode, WriteGat
 use chrono::{DateTime, Utc};
 use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 
-use crate::cluster::client::{ClusterClient, ClusterError};
+use crate::cluster::client::{ClusterClient, ClusterError, ClusterTlsMaterial};
 use crate::config::{ClusterConfig, DiscoveryMode};
 
 /// mDNS service type for Arca cluster nodes.
@@ -49,7 +49,18 @@ const DEAD_AFTER_FAILURES: u32 = 2;
 
 /// Spawns the membership manager as detached background task(s) that run for
 /// the lifetime of the process, periodically refreshing `state`.
-pub fn spawn(config: &ClusterConfig, state: Arc<ClusterState>, scheme: &str, advertise_port: u16) {
+///
+/// `tls` is the verified inter-node TLS material when `[cluster.tls]` is
+/// configured (mandatory over HTTPS — config validation enforces it): both
+/// probe clients then verify peer certificates against the cluster CA and
+/// present this node's client identity.
+pub fn spawn(
+    config: &ClusterConfig,
+    state: Arc<ClusterState>,
+    scheme: &str,
+    advertise_port: u16,
+    tls: Option<ClusterTlsMaterial>,
+) {
     let discovery = config.discovery;
     let cluster_id = config.cluster_id.clone();
     let seeds = config.seeds.clone();
@@ -59,11 +70,14 @@ pub fn spawn(config: &ClusterConfig, state: Arc<ClusterState>, scheme: &str, adv
     let request_timeout = Duration::from_secs(config.request_timeout_seconds.max(1));
     let prune_after = chrono::Duration::days(config.peer_prune_days() as i64);
     let secret = config.secret.clone();
+    let secret_previous = config.secret_previous.clone();
     let scheme = scheme.to_string();
     let self_node_id = state.node_id().to_string();
 
-    // Signed client for the authenticated ping probe (H12).
-    let ping_client = match ClusterClient::new(&self_node_id, &secret, request_timeout) {
+    // Signed client for the authenticated ping probe (H12). Verified TLS when
+    // [cluster.tls] is configured (R4 — TD-015 resolved).
+    let ping_client = match ClusterClient::new(&self_node_id, &secret, request_timeout, tls.as_ref())
+    {
         Ok(c) => c,
         Err(e) => {
             tracing::error!(error = %e, "cluster membership: failed to build ping client; membership disabled");
@@ -71,16 +85,21 @@ pub fn spawn(config: &ClusterConfig, state: Arc<ClusterState>, scheme: &str, adv
         }
     };
 
-    // Plain HTTP client for the public-health fallback (legacy peers, H10, and
-    // identity recovery on a 403).
-    // TECHDEBT(TD-015): under clustered TLS, peers use self-signed certs; until
-    // R4 wires the shared cluster CA, accept invalid certs for this lightweight
-    // probe (it only reads node_id and, from legacy peers, their health detail).
+    // Plain client for the public-health fallback (legacy peers, H10, and
+    // identity recovery on a 403). Same verified-TLS posture as the ping
+    // client: certificate verification is never disabled.
     let health_client = {
-        let mut builder = reqwest::Client::builder().timeout(request_timeout);
-        if scheme == "https" {
-            builder = builder.danger_accept_invalid_certs(true);
-        }
+        let builder = reqwest::Client::builder().timeout(request_timeout);
+        let builder = match &tls {
+            Some(material) => match material.apply(builder) {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::error!(error = %e, "cluster membership: invalid [cluster.tls] material; membership disabled");
+                    return;
+                }
+            },
+            None => builder,
+        };
         match builder.build() {
             Ok(c) => c,
             Err(e) => {
@@ -138,9 +157,16 @@ pub fn spawn(config: &ClusterConfig, state: Arc<ClusterState>, scheme: &str, adv
                 let ping_client = ping_client.clone();
                 let health_client = health_client.clone();
                 let secret = secret.clone();
+                let secret_previous = secret_previous.clone();
                 async move {
-                    let outcome =
-                        probe_peer(&ping_client, &health_client, &secret, &endpoint).await;
+                    let outcome = probe_peer(
+                        &ping_client,
+                        &health_client,
+                        &secret,
+                        secret_previous.as_deref(),
+                        &endpoint,
+                    )
+                    .await;
                     (endpoint, outcome)
                 }
             });
@@ -304,19 +330,26 @@ enum ProbeOutcome {
 /// Probes one endpoint: authenticated ping first (with a fresh challenge
 /// nonce), falling back to the public health probe to identify peers that
 /// cannot answer it (legacy 404, secret-mismatch 403).
+///
+/// `secret_previous` (H8) keeps a rotation tolerant on the verify side too: a
+/// peer normally MACs the challenge with the secret OUR request verified
+/// under, but accepting a MAC keyed by either rotation secret costs nothing
+/// and shields mixed-version windows.
 async fn probe_peer(
     ping_client: &ClusterClient,
     health_client: &reqwest::Client,
     secret: &str,
+    secret_previous: Option<&str>,
     endpoint: &str,
 ) -> ProbeOutcome {
     let nonce = uuid::Uuid::new_v4().simple().to_string();
     match ping_client.ping(endpoint, &nonce).await {
         Ok(resp) => {
-            let proven = resp
-                .nonce_mac
-                .as_deref()
-                .is_some_and(|mac| verify_ping_nonce_mac(secret, &nonce, mac));
+            let proven = resp.nonce_mac.as_deref().is_some_and(|mac| {
+                verify_ping_nonce_mac(secret, &nonce, mac)
+                    || secret_previous
+                        .is_some_and(|prev| verify_ping_nonce_mac(prev, &nonce, mac))
+            });
             ProbeOutcome::Contact(ContactInfo {
                 node_id: resp.node_id,
                 auth: if proven {
@@ -817,9 +850,9 @@ mod tests {
     #[tokio::test]
     async fn probe_authenticates_peer_with_correct_mac() {
         let (endpoint, _h) = spawn_fake_ping_peer("shared-secret", false).await;
-        let ping = ClusterClient::new("self-node", "shared-secret", Duration::from_secs(2)).unwrap();
+        let ping = ClusterClient::new("self-node", "shared-secret", Duration::from_secs(2), None).unwrap();
         let health = reqwest::Client::new();
-        match probe_peer(&ping, &health, "shared-secret", &endpoint).await {
+        match probe_peer(&ping, &health, "shared-secret", None, &endpoint).await {
             ProbeOutcome::Contact(info) => {
                 assert_eq!(info.node_id, "fake-peer");
                 assert_eq!(info.auth, AuthState::Proven);
@@ -833,9 +866,35 @@ mod tests {
         // The fake answers 200 with a bogus MAC — exactly what a rogue that
         // ignores the challenge would do. It must NOT become authenticated.
         let (endpoint, _h) = spawn_fake_ping_peer("shared-secret", true).await;
-        let ping = ClusterClient::new("self-node", "shared-secret", Duration::from_secs(2)).unwrap();
+        let ping = ClusterClient::new("self-node", "shared-secret", Duration::from_secs(2), None).unwrap();
         let health = reqwest::Client::new();
-        match probe_peer(&ping, &health, "shared-secret", &endpoint).await {
+        match probe_peer(&ping, &health, "shared-secret", None, &endpoint).await {
+            ProbeOutcome::Contact(info) => {
+                assert_eq!(info.auth, AuthState::BadMac);
+            }
+            _ => panic!("expected a contact"),
+        }
+    }
+
+    #[tokio::test]
+    async fn probe_accepts_mac_keyed_by_previous_secret_during_rotation() {
+        // H8 belt-and-braces: a peer normally MACs the challenge with the
+        // secret OUR request verified under (so the current secret suffices),
+        // but a peer that keys the MAC with the other rotation secret — e.g. a
+        // different/older echo implementation in a mixed-version window — must
+        // not be flagged as failing the challenge while `secret_previous` is
+        // configured. This pins the prober's accept-either behavior.
+        let (endpoint, _h) = spawn_fake_ping_peer("old-secret", false).await;
+        let ping = ClusterClient::new("self-node", "old-secret", Duration::from_secs(2), None).unwrap();
+        let health = reqwest::Client::new();
+        match probe_peer(&ping, &health, "new-secret", Some("old-secret"), &endpoint).await {
+            ProbeOutcome::Contact(info) => {
+                assert_eq!(info.auth, AuthState::Proven);
+            }
+            _ => panic!("expected a contact"),
+        }
+        // Without the previous secret the same MAC is unverifiable.
+        match probe_peer(&ping, &health, "new-secret", None, &endpoint).await {
             ProbeOutcome::Contact(info) => {
                 assert_eq!(info.auth, AuthState::BadMac);
             }
@@ -845,12 +904,12 @@ mod tests {
 
     #[tokio::test]
     async fn probe_unreachable_endpoint_is_failure() {
-        let ping = ClusterClient::new("self-node", "s", Duration::from_millis(300)).unwrap();
+        let ping = ClusterClient::new("self-node", "s", Duration::from_millis(300), None).unwrap();
         let health = reqwest::Client::builder()
             .timeout(Duration::from_millis(300))
             .build()
             .unwrap();
-        match probe_peer(&ping, &health, "s", "http://127.0.0.1:1").await {
+        match probe_peer(&ping, &health, "s", None, "http://127.0.0.1:1").await {
             ProbeOutcome::Failure => {}
             _ => panic!("expected a failure"),
         }

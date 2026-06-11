@@ -130,28 +130,59 @@ fn load_key(path: &Path) -> Result<rustls::pki_types::PrivateKeyDer<'static>> {
     bail!("no private key found in {}", path.display());
 }
 
+/// Builds a WebPki client verifier rooted at `ca_path`. With
+/// `allow_unauthenticated`, a connection presenting NO certificate proceeds
+/// (a presented-but-invalid certificate still fails the handshake).
+fn client_verifier(
+    ca_path: &Path,
+    allow_unauthenticated: bool,
+) -> Result<Arc<dyn rustls::server::danger::ClientCertVerifier>> {
+    let ca_data = std::fs::read(ca_path)
+        .with_context(|| format!("reading CA file: {}", ca_path.display()))?;
+    let mut ca_cursor = &ca_data[..];
+    let mut root_store = rustls::RootCertStore::empty();
+    for cert in rustls_pemfile::certs(&mut ca_cursor) {
+        let cert = cert.with_context(|| format!("parsing CA cert from {}", ca_path.display()))?;
+        root_store.add(cert)?;
+    }
+    let builder = rustls::server::WebPkiClientVerifier::builder(Arc::new(root_store));
+    let builder = if allow_unauthenticated {
+        builder.allow_unauthenticated()
+    } else {
+        builder
+    };
+    builder.build().context("building client certificate verifier")
+}
+
 /// Build a rustls `ServerConfig` from resolved cert/key/ca paths.
-pub fn load_rustls_config(paths: &ResolvedPaths) -> Result<Arc<RustlsServerConfig>> {
+///
+/// `cluster_ca` is the `[cluster.tls]` CA (R4): when set — and the stricter
+/// global `[tls].ca_file` is not (config validation rejects the combination) —
+/// client certificates are REQUESTED and validated against it, but remain
+/// optional at the TLS layer because S3 clients share this listener; the
+/// `/cluster/v1/*` routes enforce presence at the route layer via the
+/// `ClusterPeerCertVerified` request extension.
+pub fn load_rustls_config(
+    paths: &ResolvedPaths,
+    cluster_ca: Option<&Path>,
+) -> Result<Arc<RustlsServerConfig>> {
     let certs = load_certs(&paths.cert_path)?;
     let key = load_key(&paths.key_path)?;
 
     let mut config = if let Some(ca_path) = &paths.ca_path {
-        // mTLS: require client certificate signed by the CA.
-        let ca_data = std::fs::read(ca_path)
-            .with_context(|| format!("reading CA file: {}", ca_path.display()))?;
-        let mut ca_cursor = &ca_data[..];
-        let mut root_store = rustls::RootCertStore::empty();
-        for cert in rustls_pemfile::certs(&mut ca_cursor) {
-            let cert = cert.with_context(|| format!("parsing CA cert from {}", ca_path.display()))?;
-            root_store.add(cert)?;
-        }
-        let verifier = rustls::server::WebPkiClientVerifier::builder(Arc::new(root_store))
-            .build()
-            .context("building mTLS client verifier")?;
+        // [tls].ca_file mTLS: client certificate REQUIRED on every connection.
+        let verifier = client_verifier(ca_path, false)?;
         RustlsServerConfig::builder()
             .with_client_cert_verifier(verifier)
             .with_single_cert(certs, key)
             .context("building TLS config with mTLS")?
+    } else if let Some(ca_path) = cluster_ca {
+        // R4 cluster mTLS: optional at the TLS layer, enforced per-route.
+        let verifier = client_verifier(ca_path, true)?;
+        RustlsServerConfig::builder()
+            .with_client_cert_verifier(verifier)
+            .with_single_cert(certs, key)
+            .context("building TLS config with cluster mTLS")?
     } else {
         RustlsServerConfig::builder()
             .with_no_client_auth()
@@ -175,13 +206,21 @@ pub fn load_rustls_config(paths: &ResolvedPaths) -> Result<Arc<RustlsServerConfi
 pub struct TlsReloader {
     state: ArcSwap<Arc<RustlsServerConfig>>,
     tls_config: TlsConfig,
+    /// `[cluster.tls]` CA path (R4), kept so a SIGHUP reload rebuilds the same
+    /// optional client-certificate policy.
+    cluster_ca: Option<PathBuf>,
 }
 
 impl TlsReloader {
-    pub fn new(initial: Arc<RustlsServerConfig>, tls_config: TlsConfig) -> Self {
+    pub fn new(
+        initial: Arc<RustlsServerConfig>,
+        tls_config: TlsConfig,
+        cluster_ca: Option<PathBuf>,
+    ) -> Self {
         Self {
             state: ArcSwap::from_pointee(initial),
             tls_config,
+            cluster_ca,
         }
     }
 
@@ -195,7 +234,7 @@ impl TlsReloader {
     /// Err on failure (old config remains active).
     pub fn reload(&self) -> Result<()> {
         let paths = self.tls_config.resolve_paths()?;
-        let new_config = load_rustls_config(&paths)?;
+        let new_config = load_rustls_config(&paths, self.cluster_ca.as_deref())?;
         self.state.store(Arc::new(new_config));
         Ok(())
     }
@@ -299,14 +338,31 @@ async fn serve_tls_connection(
         }
     };
 
+    // R4: did the connection present a client certificate? The verifier
+    // already validated any presented certificate against the configured CA
+    // during the handshake (an invalid one fails the accept above), so
+    // presence here means "CA-signed client identity". Stamped on every
+    // request of the connection; `cluster_auth` requires it on
+    // `/cluster/v1/*` when `[cluster.tls]` is configured.
+    let peer_cert_verified = tls_stream
+        .get_ref()
+        .1
+        .peer_certificates()
+        .is_some_and(|certs| !certs.is_empty());
+
     let io = TokioIo::new(tls_stream);
 
     // Bridge tower::Service → hyper::Service.
     // First map Request<Incoming> → Request<axum::body::Body>, then wrap
     // in TowerToHyperService for hyper_util compatibility.
     let tower_svc = tower::ServiceBuilder::new()
-        .map_request(|req: http::Request<hyper::body::Incoming>| {
-            req.map(axum::body::Body::new)
+        .map_request(move |req: http::Request<hyper::body::Incoming>| {
+            let mut req = req.map(axum::body::Body::new);
+            if peer_cert_verified {
+                req.extensions_mut()
+                    .insert(arca_proto::middleware::cluster_auth::ClusterPeerCertVerified);
+            }
+            req
         })
         .service(app);
     let service = hyper_util::service::TowerToHyperService::new(tower_svc);
@@ -407,7 +463,7 @@ mod tests {
             key_path: dir.path().join("server.key"),
             ca_path: None,
         };
-        let config = load_rustls_config(&paths).unwrap();
+        let config = load_rustls_config(&paths, None).unwrap();
         assert_eq!(config.alpn_protocols, vec![b"h2".to_vec(), b"http/1.1".to_vec()]);
     }
 
@@ -436,7 +492,7 @@ mod tests {
             key_path: dir.path().join("server.key"),
             ca_path: None,
         };
-        load_rustls_config(&paths).unwrap();
+        load_rustls_config(&paths, None).unwrap();
     }
 
     #[test]
@@ -449,7 +505,7 @@ mod tests {
             key_path: dir.path().join("server.key"),
             ca_path: None,
         };
-        assert!(load_rustls_config(&paths).is_err());
+        assert!(load_rustls_config(&paths, None).is_err());
     }
 
     #[test]
@@ -462,7 +518,7 @@ mod tests {
             key_path: dir.path().join("nonexistent.key"),
             ca_path: None,
         };
-        assert!(load_rustls_config(&paths).is_err());
+        assert!(load_rustls_config(&paths, None).is_err());
     }
 
     #[test]
@@ -476,7 +532,7 @@ mod tests {
             key_path: dir.path().join("bad.key"),
             ca_path: None,
         };
-        assert!(load_rustls_config(&paths).is_err());
+        assert!(load_rustls_config(&paths, None).is_err());
     }
 
     #[test]
@@ -504,7 +560,7 @@ mod tests {
             key_path: dir.path().join("server.key"),
             ca_path: Some(dir.path().join("ca.crt")),
         };
-        let config = load_rustls_config(&paths).unwrap();
+        let config = load_rustls_config(&paths, None).unwrap();
         // mTLS config should still have ALPN set
         assert_eq!(config.alpn_protocols, vec![b"h2".to_vec(), b"http/1.1".to_vec()]);
     }
@@ -519,7 +575,7 @@ mod tests {
             key_path: dir.path().join("server.key"),
             ca_path: None,
         };
-        let initial = load_rustls_config(&paths).unwrap();
+        let initial = load_rustls_config(&paths, None).unwrap();
 
         let tls_config = TlsConfig {
             cert_dir: None,
@@ -528,7 +584,7 @@ mod tests {
             ca_file: None,
         };
 
-        let reloader = TlsReloader::new(initial, tls_config);
+        let reloader = TlsReloader::new(initial, tls_config, None);
 
         // Generate new cert + key and overwrite
         let new_key = rcgen::KeyPair::generate().unwrap();
@@ -544,5 +600,124 @@ mod tests {
         reloader.reload().unwrap();
         let after = Arc::as_ptr(&reloader.current());
         assert_ne!(before, after);
+    }
+
+    /// R4 end-to-end over real sockets: with the cluster CA configured the
+    /// listener accepts BOTH bare-TLS and client-cert connections (optional at
+    /// the TLS layer, as S3 clients share the port), surfaces the verified
+    /// client identity to the accept loop (the signal `serve_tls_connection`
+    /// turns into the `ClusterPeerCertVerified` extension), refuses a client
+    /// certificate minted by a foreign CA, and is itself refused by a client
+    /// that does not trust the cluster CA — i.e. certificate verification is
+    /// real in both directions (TD-015 resolved). Uses material from the
+    /// SHIPPED `arca tls generate-cluster` generator.
+    #[tokio::test]
+    async fn cluster_mtls_optional_client_auth_end_to_end() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let dir = tempfile::tempdir().unwrap();
+        crate::tls_generate::generate_cluster(
+            dir.path(),
+            &["node-a=127.0.0.1".to_string(), "node-b=127.0.0.1".to_string()],
+            7,
+        )
+        .unwrap();
+        let ca_path = dir.path().join("arca-cluster-ca.crt");
+
+        // Listener: node-a's cert + optional client verification vs the CA.
+        let paths = ResolvedPaths {
+            cert_path: dir.path().join("node-a.crt"),
+            key_path: dir.path().join("node-a.key"),
+            ca_path: None,
+        };
+        let server_config = load_rustls_config(&paths, Some(&ca_path)).unwrap();
+        let acceptor = tokio_rustls::TlsAcceptor::from(server_config);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        // Minimal HTTP/1.1 responder reporting whether the handshake carried a
+        // (validated) client certificate.
+        tokio::spawn(async move {
+            loop {
+                let Ok((tcp, _)) = listener.accept().await else { break };
+                let acceptor = acceptor.clone();
+                tokio::spawn(async move {
+                    let Ok(mut tls) = acceptor.accept(tcp).await else { return };
+                    let presented = tls
+                        .get_ref()
+                        .1
+                        .peer_certificates()
+                        .is_some_and(|c| !c.is_empty());
+                    let mut buf = [0u8; 4096];
+                    let _ = tls.read(&mut buf).await;
+                    let body = if presented { "cert" } else { "nocert" };
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    let _ = tls.write_all(resp.as_bytes()).await;
+                    let _ = tls.shutdown().await;
+                });
+            }
+        });
+
+        let url = format!("https://127.0.0.1:{}/", addr.port());
+        let ca_pem = std::fs::read(&ca_path).unwrap();
+        let ca = || reqwest::Certificate::from_pem(&ca_pem).unwrap();
+
+        // (1) No client cert: the connection succeeds and the server sees no
+        // client identity (this is every S3 client).
+        let plain = reqwest::Client::builder()
+            .add_root_certificate(ca())
+            .http1_only()
+            .build()
+            .unwrap();
+        let body = plain.get(&url).send().await.unwrap().text().await.unwrap();
+        assert_eq!(body, "nocert");
+
+        // (2) node-b's CA-signed identity: accepted, identity visible.
+        let mut identity_pem = std::fs::read(dir.path().join("node-b.crt")).unwrap();
+        identity_pem.push(b'\n');
+        identity_pem.extend_from_slice(&std::fs::read(dir.path().join("node-b.key")).unwrap());
+        let with_cert = reqwest::Client::builder()
+            .add_root_certificate(ca())
+            .identity(reqwest::Identity::from_pem(&identity_pem).unwrap())
+            .http1_only()
+            .build()
+            .unwrap();
+        let body = with_cert.get(&url).send().await.unwrap().text().await.unwrap();
+        assert_eq!(body, "cert");
+
+        // (3) A client identity minted by a FOREIGN CA fails the handshake —
+        // presented-but-invalid is rejected even though presence is optional.
+        let foreign = tempfile::tempdir().unwrap();
+        crate::tls_generate::generate_cluster(
+            foreign.path(),
+            &["rogue=127.0.0.1".to_string()],
+            7,
+        )
+        .unwrap();
+        let mut rogue_pem = std::fs::read(foreign.path().join("rogue.crt")).unwrap();
+        rogue_pem.push(b'\n');
+        rogue_pem.extend_from_slice(&std::fs::read(foreign.path().join("rogue.key")).unwrap());
+        let rogue = reqwest::Client::builder()
+            .add_root_certificate(ca())
+            .identity(reqwest::Identity::from_pem(&rogue_pem).unwrap())
+            .http1_only()
+            .build()
+            .unwrap();
+        assert!(
+            rogue.get(&url).send().await.is_err(),
+            "a foreign-CA client certificate must fail the handshake"
+        );
+
+        // (4) A client that does NOT trust the cluster CA refuses the server
+        // certificate — outbound verification is really on (TD-015).
+        let untrusting = reqwest::Client::builder().http1_only().build().unwrap();
+        assert!(
+            untrusting.get(&url).send().await.is_err(),
+            "the server certificate must not verify without the cluster CA"
+        );
     }
 }

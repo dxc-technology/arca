@@ -136,7 +136,8 @@ The cache is transparent to clients: write operations (create/delete bucket, put
 |---------|---------|-------------|
 | `cluster.enabled` | `false` | Enable multi-node clustering. The section must be identical on every node. |
 | `cluster.cluster_id` | *(required)* | Logical cluster name; only nodes sharing it form a cluster. |
-| `cluster.secret` | *(required)* | Shared secret authenticating inter-node requests. Identical on every node. |
+| `cluster.secret` | *(required)* | Shared secret authenticating inter-node requests. Identical on every node. At least 16 characters, high entropy (`openssl rand -hex 32`); the shipped placeholders are refused at startup. |
+| `cluster.secret_previous` | *(none)* | Previous secret, accepted inbound-only during a rotation (set the old value here and the new one in `secret`, rolling restart, then remove). Same strength floor. |
 | `cluster.mode` | `quorum` | `quorum` (CP — majority required to write) or `available` (AP — always writable). |
 | `cluster.cluster_size` | *(required for quorum)* | Number of nodes; derives the write majority. |
 | `cluster.discovery` | `mdns` | Peer discovery: `mdns` (LAN), `static` (seed list), or `dns` (resolve a name to all peers). |
@@ -149,8 +150,11 @@ The cache is transparent to clients: write operations (create/delete bucket, put
 | `cluster.request_timeout_seconds` | `10` | Inter-node HTTP request timeout. |
 | `cluster.tombstone_grace_days` | `7` | How long a delete tombstone is kept for convergence. MUST exceed the longest expected node downtime. |
 | `cluster.peer_prune_days` | `tombstone_grace_days` | Evict a peer from membership after it has been unreachable this long (≥ 1). While remembered, an absent peer blocks tombstone GC; once pruned, a return beyond the grace risks resurrecting deleted data. |
+| `cluster.tls.ca_file` | *(required over HTTPS)* | Cluster CA certificate (PEM), identical on every node. The whole `[cluster.tls]` section is REQUIRED when `[server.tls]` is enabled (verified mutual TLS between nodes — no insecure fallback) and rejected when it is not. Mint the material with `arca tls generate-cluster`. |
+| `cluster.tls.cert_file` | *(with `ca_file`)* | This node's certificate (PEM), signed by the cluster CA. Presented to peers as the client identity; `/cluster/v1/*` refuses requests without one. |
+| `cluster.tls.key_file` | *(with `ca_file`)* | This node's private key (PEM). |
 
-When `[cluster]` is enabled, every node holds the full dataset and replicates writes in real time; lagging nodes self-heal via anti-entropy. For an encrypted cluster, set the **same** master key (or KMS) on every node. See the [High Availability guide](ha.md) for the full design, deployment, and operations.
+When `[cluster]` is enabled, every node holds the full dataset and replicates writes in real time; lagging nodes self-heal via anti-entropy. For an encrypted cluster, set the **same** master key (or KMS) on every node. See the [High Availability guide](ha.md) for the full design, deployment, and operations, including [inter-node transport security](ha.md#inter-node-transport-security-tls-mutual-tls) and the [secret rotation runbook](ha.md#rotating-the-cluster-secret).
 
 ### Example
 

@@ -872,6 +872,28 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#inter-node-transport-security-tls-mutual-tls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inter-node transport security (TLS + mutual TLS)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rotating-the-cluster-secret" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rotating the cluster secret
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1642,6 +1664,28 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#inter-node-transport-security-tls-mutual-tls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inter-node transport security (TLS + mutual TLS)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rotating-the-cluster-secret" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rotating the cluster secret
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1796,7 +1840,7 @@ them, and any node that takes a write replicates it to the others.</p>
 </blockquote>
 <h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Same <code>[cluster].secret</code> on every node.</strong> It authenticates all inter-node traffic. There is no per-node credential.</li>
+<li><strong>Same <code>[cluster].secret</code> on every node.</strong> It authenticates all inter-node traffic. There is no per-node credential. It must be a <strong>high-entropy value of at least 16 characters</strong> (generate it: <code>openssl rand -hex 32</code>) — startup refuses shorter secrets and the placeholders shipped in the reference configs, and warns when the value looks low-entropy. To change it without downtime, see <a href="#rotating-the-cluster-secret">Rotating the cluster secret</a>.</li>
 <li><strong>Same encryption master key / same KMS on every node</strong>, <em>if</em> encryption is enabled. Replication ships the encrypted bytes verbatim, so every node must be able to unwrap them. (SSE-C needs nothing special — the bytes are opaque and the nonce travels in the sidecar.)</li>
 <li><strong>Synchronized clocks (NTP).</strong> LWW compares wall-clock timestamps; severe skew can pick the wrong winner on null-version rows. The <code>blob_id</code> tiebreaker mitigates ties, but NTP is still required.</li>
 <li><strong>Full connectivity between nodes</strong> on the cluster port, plus the same <code>cluster_id</code>. <code>mdns</code> additionally needs a shared L2 subnet; otherwise use <code>static</code> or <code>dns</code>.</li>
@@ -1881,6 +1925,26 @@ them, and any node that takes a write replicates it to the others.</p>
 <p>For an active/passive VIP, pair HAProxy with keepalived. In Kubernetes, run a <code>StatefulSet</code> of 3 replicas with a headless <code>Service</code> and <code>discovery = "dns"</code> pointed at it; front it with a normal <code>Service</code> / Ingress.</p>
 <h3 id="a-note-on-the-load-balancer-being-a-spof">A note on the load balancer being a SPOF<a class="headerlink" href="#a-note-on-the-load-balancer-being-a-spof" title="Permanent link">&para;</a></h3>
 <p>The balancer is a single point of failure unless it is itself redundant (keepalived VIP, multiple ingress replicas, or a managed cloud LB). The Arca <em>cluster</em> survives node loss; make sure the entry point does too.</p>
+<h3 id="inter-node-transport-security-tls-mutual-tls">Inter-node transport security (TLS + mutual TLS)<a class="headerlink" href="#inter-node-transport-security-tls-mutual-tls" title="Permanent link">&para;</a></h3>
+<p>The challenge-response peer authentication above stops a rogue endpoint everywhere, including plain-HTTP clusters — but on a network you do not fully trust, plain HTTP still exposes inter-node traffic to sniffing, and a sniffed signed request used to be replayable. Two R4 hardenings close this:</p>
+<ul>
+<li><strong>Anti-replay window.</strong> Every <code>/cluster/v1/*</code> request must carry an <code>x-amz-date</code> within ±15 minutes of the receiving node's clock (the timestamp is signed, so it cannot be refreshed without the secret). NTP — already a prerequisite — keeps legitimate peers well inside the window.</li>
+<li><strong>Verified mutual TLS with a cluster CA.</strong> When the cluster runs over HTTPS, the <code>[cluster.tls]</code> section is <strong>required</strong> (the node refuses to start without it — there is no "accept invalid certificates" fallback): every node gets the same operator-distributed CA plus its own CA-signed cert/key. Inter-node clients verify the peer's certificate against that CA <em>and</em> present the node certificate as their client identity; the listener verifies any presented client certificate, and the <code>/cluster/v1/*</code> routes refuse requests whose connection did not present one. S3 clients on the same port are untouched — for them the client certificate is simply never requested as mandatory. The result is an independent second factor: pushing or pulling cluster data requires the secret <strong>and</strong> a CA-signed key.</li>
+</ul>
+<p>Mint the whole material set with the shipped generator (one <code>--node</code> per node, SANs covering every name/IP peers dial — the seeds entries, the advertised address):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="gp">$ </span>arca<span class="w"> </span>tls<span class="w"> </span>generate-cluster<span class="w"> </span>--output-dir<span class="w"> </span>/etc/arca/certs/cluster<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span>--node<span class="w"> </span>arca-1<span class="o">=</span>arca-1.internal,10.0.0.1<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span>--node<span class="w"> </span>arca-2<span class="o">=</span>arca-2.internal,10.0.0.2<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span>--node<span class="w"> </span>arca-3<span class="o">=</span>arca-3.internal,10.0.0.3
+</code></pre></div>
+<p>Copy <code>arca-cluster-ca.crt</code> (and each node's own cert/key) to the nodes and point both <code>[server.tls]</code> and <code>[cluster.tls]</code> at them — see the TOML reference below. Keep <code>arca-cluster-ca.key</code> offline: it is only needed to mint certificates for new nodes. The same node certificate serves the S3 listener too, so S3 clients must trust the CA (<code>aws --ca-bundle arca-cluster-ca.crt</code>); if you prefer a public certificate for S3 clients, keep it in <code>[server.tls]</code> — the peers' clients trust the cluster CA <em>in addition to</em> the system roots, so both layouts work. Operators with their own PKI can supply equivalent material (a dedicated CA; per-node certs with serverAuth + clientAuth) instead of using the generator.</p>
+<h3 id="rotating-the-cluster-secret">Rotating the cluster secret<a class="headerlink" href="#rotating-the-cluster-secret" title="Permanent link">&para;</a></h3>
+<p>The optional <code>[cluster] secret_previous</code> makes a secret rotation a rolling operation instead of a full-cluster restart:</p>
+<ol>
+<li>On every node set <code>secret_previous</code> to the current secret and <code>secret</code> to the new one.</li>
+<li>Rolling-restart the nodes. Inbound authentication accepts both secrets, so replication keeps flowing in both directions across the window; outbound signing always uses the new secret. Expect transient <code>config_ok: false</code> flags while versions of the config coexist (the drift fingerprint includes the secret): nodes already on the new secret form the writable majority as soon as there are enough of them, exactly like a rolling upgrade.</li>
+<li>When all nodes run the new secret, remove <code>secret_previous</code> (no restart urgency: it is inert once nothing signs with it, but leaving the old secret valid forever defeats the rotation).</li>
+</ol>
 <h2 id="design-trade-offs-and-honest-limitations">Design trade-offs (and honest limitations)<a class="headerlink" href="#design-trade-offs-and-honest-limitations" title="Permanent link">&para;</a></h2>
 <p>This section exists so you can judge the approach, not just use it.</p>
 <ul>
@@ -1890,31 +1954,43 @@ them, and any node that takes a write replicates it to the others.</p>
 <li><strong>Control-plane catch-up gaps (documented).</strong> Credentials, users, teams, grants and buckets reconcile fully (including deletions, via tombstones). Their <em>associations and settings</em> — team memberships, grant attachments, <code>bucket_config</code>, bucket tags, server settings — replicate in <strong>real time</strong> but are <strong>not</strong> part of the periodic reconcile yet. A node that was <strong>down during one of those specific changes</strong> may miss it until the entity is touched again. This is a known follow-up, not a data-loss bug.</li>
 <li><strong>Tombstone grace vs downtime.</strong> A returning node must come back <strong>within <code>tombstone_grace_days</code></strong> (default 7) to learn of deletions that happened while it was away. The GC liveness guard keeps tombstones around <em>while the absent node is still remembered</em> (it blocks the purge and flags <code>tombstone_gc_blocked</code>), but once the node is pruned from membership (<code>peer_prune_days</code>, default = the grace) the tombstones it never saw are reclaimed — a node returning <strong>beyond</strong> the grace can still resurrect deleted data. Set the grace longer than your worst-case planned downtime. The guard's memory is also process-local: it cannot account for peers that vanished before the current process started.</li>
 <li><strong>Clock dependence.</strong> LWW uses wall-clock time; run NTP. A hybrid logical clock is possible future hardening.</li>
-<li><strong>Rolling upgrades across the peer-authentication boundary.</strong> A pre-ping (≤ 0.25.x) peer cannot prove possession of the secret, so an upgraded node treats it as alive-but-not-eligible: no fan-out toward it, no quorum contribution. Practical consequence in a 3-node <code>quorum</code> cluster: the <strong>first</strong> upgraded node refuses writes (<code>503</code>) until a <strong>second</strong> node is upgraded (the load balancer routes around it; legacy nodes keep accepting writes and their own fan-out/anti-entropy keep all data converging). Complete the rolling upgrade promptly rather than running mixed versions for long.</li>
+<li><strong>Rolling upgrades across the peer-authentication boundary.</strong> A pre-ping (≤ 0.25.x) peer cannot prove possession of the secret, so an upgraded node treats it as alive-but-not-eligible: no fan-out toward it, no quorum contribution. Practical consequence in a 3-node <code>quorum</code> cluster: the <strong>first</strong> upgraded node refuses writes (<code>503</code>) until a <strong>second</strong> node is upgraded (the load balancer routes around it; legacy nodes keep accepting writes and their own fan-out/anti-entropy keep all data converging). On an <strong>HTTPS</strong> cluster the upgrade also introduces <code>[cluster.tls]</code> (mandatory), and the upgraded node additionally rejects inbound cluster requests from peers that present no client certificate — so legacy pushes toward it fail until those peers are upgraded too, and it catches up via anti-entropy afterwards. Complete the rolling upgrade promptly rather than running mixed versions for long.</li>
 </ul>
 <h2 id="toml-configuration-reference">TOML configuration reference<a class="headerlink" href="#toml-configuration-reference" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">[cluster]</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">enabled</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">cluster_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;arca-prod&quot;</span><span class="w">          </span><span class="c1"># only nodes sharing this id form a cluster</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">secret</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;change-me&quot;</span><span class="w">          </span><span class="c1"># shared inter-node auth secret (identical everywhere)</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">mode</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;quorum&quot;</span><span class="w">             </span><span class="c1"># &quot;quorum&quot; (CP, default) | &quot;available&quot; (AP)</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="n">cluster_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="w">                  </span><span class="c1"># required in quorum mode → write quorum = 2</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="n">discovery</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;static&quot;</span><span class="w">             </span><span class="c1"># &quot;mdns&quot; (default) | &quot;static&quot; | &quot;dns&quot;</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="n">seeds</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;arca-1:9000&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;arca-2:9000&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;arca-3:9000&quot;</span><span class="p">]</span><span class="w">  </span><span class="c1"># discovery = &quot;static&quot;</span>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="n">dns_name</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;arca-headless&quot;</span><span class="w">      </span><span class="c1"># discovery = &quot;dns&quot;</span>
-<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>
-<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="c1"># Optional: what this node advertises to peers (defaults: auto-detected addr,</span>
-<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="c1"># [server].port). Set only behind NAT / port remapping.</span>
-<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="n">advertise_addr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;10.0.0.1&quot;</span>
-<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="n">advertise_port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">9000</span>
-<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>
-<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="n">health_interval_seconds</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="w">     </span><span class="c1"># peer probe cadence (authenticated ping)</span>
-<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="n">anti_entropy_interval_seconds</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">5</span><span class="w">     </span><span class="c1"># reconcile pass cadence</span>
-<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="n">request_timeout_seconds</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="mi">30</span><span class="w">    </span><span class="c1"># inter-node HTTP timeout</span>
-<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="n">tombstone_grace_days</span><span class="w">          </span><span class="o">=</span><span class="w"> </span><span class="mi">7</span><span class="w">     </span><span class="c1"># MUST exceed worst-case node downtime</span>
-<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="n">peer_prune_days</span><span class="w">               </span><span class="o">=</span><span class="w"> </span><span class="mi">7</span><span class="w">     </span><span class="c1"># evict peers unreachable this long</span>
-<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="w">                                      </span><span class="c1"># (optional; default = tombstone_grace_days)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">[cluster]</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">enabled</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">cluster_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;arca-prod&quot;</span><span class="w">          </span><span class="c1"># only nodes sharing this id form a cluster</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># Shared inter-node auth secret (identical everywhere): &gt;= 16 chars, high</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="c1"># entropy — generate with `openssl rand -hex 32`. Placeholders are refused.</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="n">secret</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;f3a91c0e7b2d485f9a6c1e8d0b7f42a3&quot;</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="c1"># secret_previous = &quot;...&quot;         # only during a rotation — see the runbook above</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="n">mode</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;quorum&quot;</span><span class="w">             </span><span class="c1"># &quot;quorum&quot; (CP, default) | &quot;available&quot; (AP)</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="n">cluster_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="w">                  </span><span class="c1"># required in quorum mode → write quorum = 2</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="n">discovery</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;static&quot;</span><span class="w">             </span><span class="c1"># &quot;mdns&quot; (default) | &quot;static&quot; | &quot;dns&quot;</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="n">seeds</span><span class="w">      </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;arca-1:9000&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;arca-2:9000&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;arca-3:9000&quot;</span><span class="p">]</span><span class="w">  </span><span class="c1"># discovery = &quot;static&quot;</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="n">dns_name</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;arca-headless&quot;</span><span class="w">      </span><span class="c1"># discovery = &quot;dns&quot;</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a><span class="c1"># Optional: what this node advertises to peers (defaults: auto-detected addr,</span>
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a><span class="c1"># [server].port). Set only behind NAT / port remapping.</span>
+<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a><span class="n">advertise_addr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;10.0.0.1&quot;</span>
+<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a><span class="n">advertise_port</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">9000</span>
+<a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>
+<a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a><span class="n">health_interval_seconds</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="w">     </span><span class="c1"># peer probe cadence (authenticated ping)</span>
+<a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a><span class="n">anti_entropy_interval_seconds</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">5</span><span class="w">     </span><span class="c1"># reconcile pass cadence</span>
+<a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a><span class="n">request_timeout_seconds</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="mi">30</span><span class="w">    </span><span class="c1"># inter-node HTTP timeout</span>
+<a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a><span class="n">tombstone_grace_days</span><span class="w">          </span><span class="o">=</span><span class="w"> </span><span class="mi">7</span><span class="w">     </span><span class="c1"># MUST exceed worst-case node downtime</span>
+<a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a><span class="n">peer_prune_days</span><span class="w">               </span><span class="o">=</span><span class="w"> </span><span class="mi">7</span><span class="w">     </span><span class="c1"># evict peers unreachable this long</span>
+<a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a><span class="w">                                      </span><span class="c1"># (optional; default = tombstone_grace_days)</span>
+<a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a>
+<a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a><span class="c1"># REQUIRED when the cluster runs over HTTPS ([server.tls] enabled): the</span>
+<a id="__codelineno-5-28" name="__codelineno-5-28" href="#__codelineno-5-28"></a><span class="c1"># operator-distributed cluster CA + this node&#39;s CA-signed cert/key, used to</span>
+<a id="__codelineno-5-29" name="__codelineno-5-29" href="#__codelineno-5-29"></a><span class="c1"># verify peers and to authenticate this node to them (mutual TLS). Mint the</span>
+<a id="__codelineno-5-30" name="__codelineno-5-30" href="#__codelineno-5-30"></a><span class="c1"># material with `arca tls generate-cluster`.</span>
+<a id="__codelineno-5-31" name="__codelineno-5-31" href="#__codelineno-5-31"></a><span class="k">[cluster.tls]</span>
+<a id="__codelineno-5-32" name="__codelineno-5-32" href="#__codelineno-5-32"></a><span class="n">ca_file</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs/cluster/arca-cluster-ca.crt&quot;</span><span class="w">   </span><span class="c1"># same on every node</span>
+<a id="__codelineno-5-33" name="__codelineno-5-33" href="#__codelineno-5-33"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs/cluster/arca-1.crt&quot;</span><span class="w">            </span><span class="c1"># this node&#39;s own</span>
+<a id="__codelineno-5-34" name="__codelineno-5-34" href="#__codelineno-5-34"></a><span class="n">key_file</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs/cluster/arca-1.key&quot;</span>
 </code></pre></div>
 <h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">&para;</a></h2>
 <ul>

@@ -128,6 +128,16 @@ pub struct AppState {
     /// used by the `cluster_auth` middleware to verify inter-node requests.
     /// `Some` only when clustering is enabled.
     pub cluster_secret: Option<String>,
+    /// Previous cluster secret, accepted INBOUND ONLY during a rotation
+    /// (decision H8): `cluster_auth` tries it after the current secret, so a
+    /// rolling restart onto a new secret never interrupts replication.
+    /// Outbound signing and the config fingerprint always use the current one.
+    pub cluster_secret_previous: Option<String>,
+    /// True when inter-node mutual TLS is configured (`[cluster.tls]`, R4):
+    /// `cluster_auth` then refuses `/cluster/v1/*` requests whose TLS session
+    /// did not present a client certificate signed by the cluster CA (the
+    /// accept loop records that as a request extension).
+    pub cluster_mtls: bool,
     /// The control-plane stores below the cluster decorators, applied by the
     /// `/cluster/v1/op` receive handler without re-fan-out. `Some` only when
     /// clustering is enabled (all inner handles are present together).

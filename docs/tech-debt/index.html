@@ -1405,14 +1405,6 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>crates/arca-server/src/recover.rs:206</code>, <code>crates/arca-server/src/fsck.rs</code> (<code>orphaned_sidecars</code> collection, around line 112)</td>
 </tr>
 <tr>
-<td>TD-015</td>
-<td>Cluster inter-node TLS cert verification</td>
-<td>The cluster membership health-probe and the cluster transport client build their <code>reqwest</code> clients with <code>danger_accept_invalid_certs(true)</code> so peers presenting self-signed certs under clustered TLS can be reached. Inter-node requests are authenticated by SigV4 + the shared <code>[cluster].secret</code> (signed headers), not by TLS, so accepting the cert does <strong>not</strong> weaken request authentication. <strong>Severity revised 2026-06-11 (review §3.7): the risk is NOT confidentiality-only.</strong> TLS does not authenticate the peer, and the fan-out push direction authenticates no peer at all (<code>live_peers()</code> filters on <code>alive</code> only; membership admits an mDNS peer on a <code>cluster_id</code> match), so a rogue peer can receive all new data with no secret. Verified mutual TLS with a shared cluster CA is the cleanest fix for both: a node would verify a peer's CA-signed cert before fanning out, closing §3.7(A) and the passive-sniff / active-MITM exposure §3.7(C). Now a <strong>committed</strong> item, not deferred.</td>
-<td>Distribute a shared cluster CA via config, build the cluster <code>reqwest</code> clients with that root, verify the peer cert before adding it to membership / fanning out, and drop <code>danger_accept_invalid_certs</code>. Scheduled in the HA hardening plan R4 (<code>.claude/plans/arca-phase-29-ha-hardening.md</code>).</td>
-<td>None</td>
-<td><code>crates/arca-server/src/cluster/membership.rs</code>, <code>crates/arca-server/src/cluster/client.rs</code></td>
-</tr>
-<tr>
 <td>TD-016</td>
 <td>Cluster control-plane reconcile is partial</td>
 <td>The anti-entropy worker reconciles (full-snapshot LWW + tombstones) ONLY the 5 tombstoned control-plane families: credentials, users, teams, grants, buckets. Memberships / grant-attachments (<code>team_members</code>, <code>user_grants</code>, <code>team_grants</code>), <code>bucket_config</code>, <code>bucket_tags</code>, and <code>server_config</code> replicate in REAL TIME (best-effort fan-out) but are NOT part of the snapshot reconcile. So a node that was down/unreachable when one of those changed can stay diverged on it until the next write touches that entity — real-time replication is the only path that heals them. At N=3 with brief outages this is low-risk, but it breaks the "a returning node fully self-heals" guarantee for those families (Phase 29 HA, M4).</td>
@@ -1488,6 +1480,12 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>TD-008</td>
 <td>Content-Type source</td>
 <td>Verified: Content-Type captured from CreateMultipartUpload matches AWS behavior. Clients set it at init time. Phase 22</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-015</td>
+<td>Cluster inter-node TLS cert verification</td>
+<td>Verified mutual TLS with an operator-distributed cluster CA (<code>[cluster.tls]</code> — REQUIRED when the cluster runs over HTTPS, no insecure fallback): inter-node <code>reqwest</code> clients trust the CA and present the node's CA-signed client identity; <code>danger_accept_invalid_certs</code> removed from <code>membership.rs</code> and <code>client.rs</code>. The listener requests client certificates (optional at the TLS layer — S3 clients share the port) and <code>/cluster/v1/*</code> refuses requests without a CA-verified one. Material minted by <code>arca tls generate-cluster</code>. HA hardening R4 (decision H12)</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>

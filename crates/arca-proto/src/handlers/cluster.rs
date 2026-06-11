@@ -68,18 +68,30 @@ pub async fn health(State(state): State<AppState>) -> Response {
 /// node holds the secret — answering 200 alone proves nothing (a rogue
 /// controls its own server), and a recorded MAC is useless against a fresh
 /// nonce. `max_seq` reports the object write cursor for D3c rewind detection.
-pub async fn ping(State(state): State<AppState>, headers: HeaderMap) -> Response {
+pub async fn ping(
+    State(state): State<AppState>,
+    matched: Option<axum::Extension<crate::middleware::cluster_auth::MatchedClusterSecret>>,
+    headers: HeaderMap,
+) -> Response {
     let cluster = match &state.cluster {
         Some(c) => c,
         None => {
             return (StatusCode::NOT_FOUND, "node is not part of a cluster").into_response()
         }
     };
+    // H8: MAC the challenge with the secret that verified THIS request — the
+    // prober signed with it and verifies the response against it, so during a
+    // rotation a peer probing with the old secret still gets a MAC it can
+    // check. Falls back to the current secret (the extension is always set by
+    // cluster_auth in practice).
+    let mac_secret = matched
+        .map(|ext| ext.0 .0.to_string())
+        .or_else(|| state.cluster_secret.clone());
     let nonce_mac = match (
         headers
             .get(CLUSTER_PING_NONCE_HEADER)
             .and_then(|v| v.to_str().ok()),
-        state.cluster_secret.as_deref(),
+        mac_secret.as_deref(),
     ) {
         (Some(nonce), Some(secret)) if !nonce.is_empty() => Some(ping_nonce_mac(secret, nonce)),
         _ => None,
@@ -115,13 +127,16 @@ pub async fn receive_blob(
         Some(r) => r.clone(),
         None => return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster"),
     };
+    let blob_id = match parse_blob_id(&blob_id) {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
 
     let headers = request.headers().clone();
     let sidecar = match decode_sidecar(&headers) {
         Ok(s) => s,
         Err(resp) => return resp,
     };
-    let blob_id = BlobId(blob_id);
 
     // Composite blobs have no file of their own; only the sidecar is stored.
     if sidecar.composite.is_none() {
@@ -154,7 +169,10 @@ pub async fn get_blob(State(state): State<AppState>, Path(blob_id): Path<String>
         Some(r) => r.clone(),
         None => return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster"),
     };
-    let blob_id = BlobId(blob_id);
+    let blob_id = match parse_blob_id(&blob_id) {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
 
     let sidecar = match raw.read_sidecar(&blob_id).await {
         Ok(Some(s)) => s,
@@ -331,11 +349,25 @@ pub async fn receive_op(State(state): State<AppState>, body: Bytes) -> Response 
         ControlOp::TeamMemberRemove { team_id, user_id } => {
             teams.remove_member(&team_id, &user_id).await.map(|_| ())
         }
+        // D12.1: node-local keys (the node identity) must never be applied
+        // from a peer — the sender already filters them, but a buggy or older
+        // peer must not be able to rewrite THIS node's identity. Dropping the
+        // op is the correct outcome, so answer 200 (Ok), not an error.
         ControlOp::ServerConfigSet { key, value } => {
-            server_config.set_server_config(&key, &value).await
+            if arca_core::cluster::is_node_local_server_config_key(&key) {
+                tracing::warn!(key = %key, "dropping replicated node-local server_config set");
+                Ok(())
+            } else {
+                server_config.set_server_config(&key, &value).await
+            }
         }
         ControlOp::ServerConfigDelete { key } => {
-            server_config.delete_server_config(&key).await.map(|_| ())
+            if arca_core::cluster::is_node_local_server_config_key(&key) {
+                tracing::warn!(key = %key, "dropping replicated node-local server_config delete");
+                Ok(())
+            } else {
+                server_config.delete_server_config(&key).await.map(|_| ())
+            }
         }
         ControlOp::ObjectTags {
             bucket,
@@ -424,6 +456,16 @@ pub async fn control_snapshot(State(state): State<AppState>) -> Response {
             StatusCode::INTERNAL_SERVER_ERROR,
             &format!("control snapshot failed: {e}"),
         ),
+    }
+}
+
+/// M6: blob ids are UUIDs minted by this codebase — refuse anything else
+/// before the value reaches the blob layer, where it becomes a file name
+/// (defense in depth on top of the storage layer's own path handling).
+fn parse_blob_id(raw: &str) -> Result<BlobId, Response> {
+    match uuid::Uuid::parse_str(raw) {
+        Ok(_) => Ok(BlobId(raw.to_string())),
+        Err(_) => Err(err(StatusCode::BAD_REQUEST, "invalid blob id (not a UUID)")),
     }
 }
 

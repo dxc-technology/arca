@@ -148,6 +148,21 @@ pub enum TlsAction {
         #[arg(long, default_value = "365")]
         days: u32,
     },
+
+    /// Generate a cluster CA + per-node certificates for inter-node mTLS ([cluster.tls])
+    GenerateCluster {
+        /// Output directory for certificate files
+        #[arg(long, default_value = "/etc/arca/certs/cluster")]
+        output_dir: PathBuf,
+        /// One per node: `name` or `name=san1,san2,...` — the SANs must cover
+        /// every DNS name/IP peers use to reach the node (seeds entries,
+        /// advertised addresses); they default to the name itself
+        #[arg(long = "node", required = true)]
+        nodes: Vec<String>,
+        /// Node certificate validity in days (the CA lasts twice as long)
+        #[arg(long, default_value = "365")]
+        days: u32,
+    },
 }
 
 #[derive(Subcommand)]

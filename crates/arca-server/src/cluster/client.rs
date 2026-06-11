@@ -47,6 +47,47 @@ pub enum ClusterError {
     Serde(String),
 }
 
+/// PEM material for VERIFIED inter-node TLS (`[cluster.tls]`, R4/H12 —
+/// resolves TD-015): the cluster CA joins the trust roots of every inter-node
+/// client, and this node's CA-signed cert+key is presented as the client
+/// identity (the peer's route layer requires it). Loaded once at startup,
+/// shared by the transport client and the membership prober.
+#[derive(Clone)]
+pub struct ClusterTlsMaterial {
+    /// Cluster CA certificate (PEM).
+    ca_pem: Vec<u8>,
+    /// This node's certificate + private key, concatenated PEM — the shape
+    /// `reqwest::Identity::from_pem` expects with the rustls backend.
+    identity_pem: Vec<u8>,
+}
+
+impl ClusterTlsMaterial {
+    /// Reads the `[cluster.tls]` files into memory.
+    pub fn load(cfg: &crate::config::ClusterTlsConfig) -> anyhow::Result<Self> {
+        use anyhow::Context;
+        let ca_pem = std::fs::read(&cfg.ca_file)
+            .with_context(|| format!("reading [cluster.tls] ca_file: {}", cfg.ca_file))?;
+        let cert = std::fs::read(&cfg.cert_file)
+            .with_context(|| format!("reading [cluster.tls] cert_file: {}", cfg.cert_file))?;
+        let key = std::fs::read(&cfg.key_file)
+            .with_context(|| format!("reading [cluster.tls] key_file: {}", cfg.key_file))?;
+        let mut identity_pem = cert;
+        identity_pem.push(b'\n');
+        identity_pem.extend_from_slice(&key);
+        Ok(Self { ca_pem, identity_pem })
+    }
+
+    /// Applies the material to a `reqwest` builder: trust the cluster CA (on
+    /// top of the system roots, so a publicly-signed listener cert keeps
+    /// working) and present this node's client identity. Certificate
+    /// verification stays ON — that is the point of R4.
+    pub fn apply(&self, builder: reqwest::ClientBuilder) -> reqwest::Result<reqwest::ClientBuilder> {
+        let ca = reqwest::Certificate::from_pem(&self.ca_pem)?;
+        let identity = reqwest::Identity::from_pem(&self.identity_pem)?;
+        Ok(builder.add_root_certificate(ca).identity(identity))
+    }
+}
+
 /// Signed transport to a single cluster peer's `/cluster/v1/*` endpoints.
 /// Cheap to clone (shares the underlying `reqwest::Client` connection pool).
 #[derive(Clone)]
@@ -60,20 +101,24 @@ pub struct ClusterClient {
 
 impl ClusterClient {
     /// Builds a client signing as this node, with the given request timeout.
+    /// `tls` carries the verified inter-node TLS material when `[cluster.tls]`
+    /// is configured (mandatory over HTTPS); peer certificates are ALWAYS
+    /// verified — the TD-015 accept-invalid-certs accommodation is gone.
     pub fn new(
         node_id: impl Into<String>,
         secret: impl Into<String>,
         timeout: Duration,
+        tls: Option<&ClusterTlsMaterial>,
     ) -> Result<Self, ClusterError> {
-        // TECHDEBT(TD-015): peers may present self-signed certs under clustered
-        // TLS; until the shared cluster CA is wired, accept invalid certs for
-        // these inter-node requests. Authentication is provided by SigV4 + the
-        // shared secret (signed headers), not by TLS — TLS is confidentiality
-        // only here, so accepting the cert does not weaken request auth.
-        let http = reqwest::Client::builder()
+        let mut builder = reqwest::Client::builder()
             .timeout(timeout)
-            .danger_accept_invalid_certs(true)
-            .user_agent(concat!("arca-cluster/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("arca-cluster/", env!("CARGO_PKG_VERSION")));
+        if let Some(tls) = tls {
+            builder = tls
+                .apply(builder)
+                .map_err(|e| ClusterError::Network(e.to_string()))?;
+        }
+        let http = builder
             .build()
             .map_err(|e| ClusterError::Network(e.to_string()))?;
         Ok(Self {
@@ -486,7 +531,7 @@ mod tests {
     /// the client↔server SigV4 agreement (region, service, signed headers).
     #[test]
     fn signature_verifies_with_shared_secret() {
-        let client = ClusterClient::new("node-a", "supersecret", Duration::from_secs(5)).unwrap();
+        let client = ClusterClient::new("node-a", "supersecret", Duration::from_secs(5), None).unwrap();
         let (_url, host, uri_path) =
             cluster_target("http://node-b:9000", "/cluster/v1/object").unwrap();
         let datetime = "20260531T120000Z".to_string();
@@ -514,7 +559,7 @@ mod tests {
     /// authorizing an inter-node request.
     #[test]
     fn signature_rejected_with_wrong_secret() {
-        let client = ClusterClient::new("node-a", "supersecret", Duration::from_secs(5)).unwrap();
+        let client = ClusterClient::new("node-a", "supersecret", Duration::from_secs(5), None).unwrap();
         let (_url, host, uri_path) =
             cluster_target("http://node-b:9000", "/cluster/v1/object").unwrap();
         let datetime = "20260531T120000Z".to_string();
@@ -539,7 +584,7 @@ mod tests {
     /// verifies; a tampered sidecar value then breaks verification.
     #[test]
     fn blob_sidecar_header_is_signed() {
-        let client = ClusterClient::new("node-a", "s3cr3t", Duration::from_secs(5)).unwrap();
+        let client = ClusterClient::new("node-a", "s3cr3t", Duration::from_secs(5), None).unwrap();
         let (_url, host, uri_path) = cluster_target(
             "http://node-b:9000",
             "/cluster/v1/blob/550e8400-e29b-41d4-a716-446655440000",

@@ -2130,7 +2130,12 @@
 <tr>
 <td><code>cluster.secret</code></td>
 <td><em>(required)</em></td>
-<td>Shared secret authenticating inter-node requests. Identical on every node.</td>
+<td>Shared secret authenticating inter-node requests. Identical on every node. At least 16 characters, high entropy (<code>openssl rand -hex 32</code>); the shipped placeholders are refused at startup.</td>
+</tr>
+<tr>
+<td><code>cluster.secret_previous</code></td>
+<td><em>(none)</em></td>
+<td>Previous secret, accepted inbound-only during a rotation (set the old value here and the new one in <code>secret</code>, rolling restart, then remove). Same strength floor.</td>
 </tr>
 <tr>
 <td><code>cluster.mode</code></td>
@@ -2192,9 +2197,24 @@
 <td><code>tombstone_grace_days</code></td>
 <td>Evict a peer from membership after it has been unreachable this long (≥ 1). While remembered, an absent peer blocks tombstone GC; once pruned, a return beyond the grace risks resurrecting deleted data.</td>
 </tr>
+<tr>
+<td><code>cluster.tls.ca_file</code></td>
+<td><em>(required over HTTPS)</em></td>
+<td>Cluster CA certificate (PEM), identical on every node. The whole <code>[cluster.tls]</code> section is REQUIRED when <code>[server.tls]</code> is enabled (verified mutual TLS between nodes — no insecure fallback) and rejected when it is not. Mint the material with <code>arca tls generate-cluster</code>.</td>
+</tr>
+<tr>
+<td><code>cluster.tls.cert_file</code></td>
+<td><em>(with <code>ca_file</code>)</em></td>
+<td>This node's certificate (PEM), signed by the cluster CA. Presented to peers as the client identity; <code>/cluster/v1/*</code> refuses requests without one.</td>
+</tr>
+<tr>
+<td><code>cluster.tls.key_file</code></td>
+<td><em>(with <code>ca_file</code>)</em></td>
+<td>This node's private key (PEM).</td>
+</tr>
 </tbody>
 </table>
-<p>When <code>[cluster]</code> is enabled, every node holds the full dataset and replicates writes in real time; lagging nodes self-heal via anti-entropy. For an encrypted cluster, set the <strong>same</strong> master key (or KMS) on every node. See the <a href="../ha/">High Availability guide</a> for the full design, deployment, and operations.</p>
+<p>When <code>[cluster]</code> is enabled, every node holds the full dataset and replicates writes in real time; lagging nodes self-heal via anti-entropy. For an encrypted cluster, set the <strong>same</strong> master key (or KMS) on every node. See the <a href="../ha/">High Availability guide</a> for the full design, deployment, and operations, including <a href="../ha/#inter-node-transport-security-tls-mutual-tls">inter-node transport security</a> and the <a href="../ha/#rotating-the-cluster-secret">secret rotation runbook</a>.</p>
 <h3 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">[server]</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">bind</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;0.0.0.0&quot;</span>

@@ -15,6 +15,7 @@
 
 use std::sync::Arc;
 
+use arca_core::cluster::is_node_local_server_config_key as is_node_local_key;
 use arca_core::cluster::{ClusterState, ControlOp};
 use arca_core::error::ArcaError;
 use arca_core::policy::PolicyDocument;
@@ -26,7 +27,6 @@ use arca_core::types::{Credential, Grant, Team, User};
 
 use crate::cluster::client::ClusterClient;
 use crate::cluster::cluster_meta::check_write_gate;
-use crate::cluster::identity::NODE_ID_KEY;
 
 /// The consistency-policy admission gate, shared by the identity decorators.
 /// `available` mode is always `Ok`; `quorum` mode refuses with `503` when too
@@ -597,19 +597,12 @@ impl TeamStore for ClusterTeamStore {
     }
 }
 
-/// Returns true for `server_config` keys that are NODE-LOCAL and must never be
-/// replicated to peers. Currently only the loop-prevention `node_id` identity:
-/// replicating it would overwrite a peer's own identity. Every other setting
-/// (region, retention windows, log level, preview limits, lifecycle interval)
-/// is cluster-wide and replicates.
-fn is_node_local_key(key: &str) -> bool {
-    key == NODE_ID_KEY
-}
-
 /// Server-config store decorator: replicates cluster-wide instance settings to
-/// peers. Node-local keys (see [`is_node_local_key`]) are persisted locally
-/// only — they skip both the quorum gate and the fan-out, so node identity
-/// bootstrap works even when the cluster has no write quorum.
+/// peers. Node-local keys (see
+/// [`arca_core::cluster::is_node_local_server_config_key`], shared with the
+/// D12.1 receive-side filter) are persisted locally only — they skip both the
+/// quorum gate and the fan-out, so node identity bootstrap works even when the
+/// cluster has no write quorum.
 pub struct ClusterServerConfigStore {
     inner: Arc<dyn ServerConfigStore>,
     client: ClusterClient,
@@ -682,6 +675,7 @@ impl ServerConfigStore for ClusterServerConfigStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arca_core::cluster::NODE_ID_KEY;
     use arca_core::S3ErrorCode;
     use std::time::Duration;
 
@@ -699,7 +693,7 @@ mod tests {
     }
 
     fn client() -> ClusterClient {
-        ClusterClient::new("self-node", "secret", Duration::from_secs(1)).unwrap()
+        ClusterClient::new("self-node", "secret", Duration::from_secs(1), None).unwrap()
     }
 
     fn sample_credential() -> Credential {

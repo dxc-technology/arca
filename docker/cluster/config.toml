@@ -15,9 +15,10 @@ data_dir = "/data"
 [cluster]
 enabled = true
 cluster_id = "arca-cluster"
-# Shared secret authenticating inter-node /cluster/v1/* requests. DEV value —
-# change for any real deployment.
-secret = "dev-cluster-secret-change-me"
+# Shared secret authenticating inter-node /cluster/v1/* requests. DEV value
+# (passes the M5 strength floor) — change for any real deployment
+# (`openssl rand -hex 32`).
+secret = "arca-itest-cluster-secret-3f9c2a71"
 # CP policy: a write needs a majority (2 of 3) of live nodes to be acknowledged.
 mode = "quorum"
 cluster_size = 3

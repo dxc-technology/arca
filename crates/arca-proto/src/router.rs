@@ -227,17 +227,25 @@ pub fn build_router(state: AppState) -> Router {
     // plus the H12 challenge-response ping the membership manager probes.
     // The cluster_auth middleware verifies the shared cluster credential and
     // enforces loop prevention; handlers no-op (404/503) when clustering is off.
+    //
+    // §3.4: the JSON endpoints carry small payloads (rows, control ops, manifest
+    // cursors) — cap their bodies explicitly at 2 MiB instead of relying on the
+    // framework default, so an authenticated-but-compromised peer cannot make a
+    // receiver buffer arbitrary JSON. The blob route is added AFTER the
+    // route_layer call, so it is deliberately NOT capped: blob bodies are
+    // legitimately object-sized and stream to disk.
     let cluster_authed = Router::new()
         .route("/v1/ping", get(cluster::ping))
-        .route(
-            "/v1/blob/{blob_id}",
-            put(cluster::receive_blob).get(cluster::get_blob),
-        )
         .route("/v1/object", post(cluster::receive_object))
         .route("/v1/object/delete", post(cluster::receive_version_delete))
         .route("/v1/op", post(cluster::receive_op))
         .route("/v1/manifest", post(cluster::manifest))
         .route("/v1/control-snapshot", get(cluster::control_snapshot))
+        .route_layer(axum::extract::DefaultBodyLimit::max(2 * 1024 * 1024))
+        .route(
+            "/v1/blob/{blob_id}",
+            put(cluster::receive_blob).get(cluster::get_blob),
+        )
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::cluster_auth::cluster_auth_middleware,

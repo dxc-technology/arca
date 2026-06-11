@@ -14,6 +14,7 @@
 
 use axum::extract::State;
 use axum::response::Response;
+use chrono::{DateTime, Utc};
 use http::StatusCode;
 
 use arca_auth::{parse_authorization, verify_request, VerifyInput};
@@ -21,6 +22,41 @@ use arca_core::cluster::CLUSTER_ACCESS_KEY;
 use arca_core::s3::replication::REPLICATION_SOURCE_HEADER;
 
 use crate::state::AppState;
+
+/// §3.1 anti-replay window: a signed cluster request is accepted only when its
+/// `x-amz-date` lies within this many seconds of this node's clock (either
+/// direction). Without it, a captured signed request (e.g. a blob GET sniffed
+/// off a plain-HTTP segment) stays replayable forever. ±15 minutes matches the
+/// AWS SigV4 convention and is generous against NTP drift (the HA guide
+/// already mandates NTP on cluster nodes).
+const REPLAY_WINDOW_SECS: i64 = 15 * 60;
+
+/// Returns true when `amz_date` (SigV4 `YYYYMMDDTHHMMSSZ`) falls within
+/// [`REPLAY_WINDOW_SECS`] of `now`. Unparseable timestamps are rejected — the
+/// signature already covers the header, so a legitimate peer always sends the
+/// canonical format.
+fn within_replay_window(amz_date: &str, now: DateTime<Utc>) -> bool {
+    match chrono::NaiveDateTime::parse_from_str(amz_date, "%Y%m%dT%H%M%SZ") {
+        Ok(t) => (now - t.and_utc()).num_seconds().abs() <= REPLAY_WINDOW_SECS,
+        Err(_) => false,
+    }
+}
+
+/// Request extension recorded by the TLS accept loop when the connection
+/// presented a client certificate that validated against the cluster CA
+/// (R4/H12). Presenting one is OPTIONAL at the TLS layer — S3 clients share
+/// the same listener — so [`cluster_auth_middleware`] enforces it here, on the
+/// cluster routes only, whenever `[cluster.tls]` is configured.
+#[derive(Clone, Copy, Debug)]
+pub struct ClusterPeerCertVerified;
+
+/// Request extension: the cluster secret that verified THIS request — the
+/// current one or, during a rotation, `secret_previous` (decision H8). The
+/// ping handler MACs its challenge nonce with this value: the prober signed
+/// the request with the same secret and verifies the response against it, so
+/// no rotation state produces a spurious failed-challenge verdict.
+#[derive(Clone)]
+pub struct MatchedClusterSecret(pub std::sync::Arc<str>);
 
 /// Axum middleware: verify the shared cluster signature + loop prevention.
 ///
@@ -52,6 +88,23 @@ pub async fn cluster_auth_middleware(
             )
         }
     };
+
+    // R4 (H12): when inter-node mTLS is configured, the TLS layer has already
+    // validated any PRESENTED client certificate against the cluster CA — but
+    // presenting one is optional there (S3 clients share the listener), so the
+    // requirement is enforced here, on the cluster routes only.
+    if state.cluster_mtls
+        && request
+            .extensions()
+            .get::<ClusterPeerCertVerified>()
+            .is_none()
+    {
+        return json_error(
+            StatusCode::FORBIDDEN,
+            "AccessDenied",
+            "client certificate signed by the cluster CA is required on cluster endpoints",
+        );
+    }
 
     // Verify against the ORIGINAL URI (NormalizeLayer strips trailing slashes
     // after saving it), exactly as admin_auth does.
@@ -145,6 +198,17 @@ pub async fn cluster_auth_middleware(
         return json_error(StatusCode::FORBIDDEN, "AccessDenied", "missing x-amz-date");
     }
 
+    // §3.1 anti-replay: reject signed requests whose timestamp is outside the
+    // window. The signature covers x-amz-date, so an attacker cannot refresh
+    // the timestamp of a captured request without breaking it.
+    if !within_replay_window(&request_datetime, Utc::now()) {
+        return json_error(
+            StatusCode::FORBIDDEN,
+            "AccessDenied",
+            "request time too far from server time (anti-replay window)",
+        );
+    }
+
     let payload_hash = request
         .headers()
         .get("x-amz-content-sha256")
@@ -152,24 +216,47 @@ pub async fn cluster_auth_middleware(
         .unwrap_or("UNSIGNED-PAYLOAD")
         .to_string();
 
-    let input = VerifyInput {
-        method: &method,
-        uri_path: &uri_path,
-        query_string: &query_string,
-        headers: &headers,
-        payload_hash: &payload_hash,
-        auth: &parsed,
-        secret_access_key: &secret,
-        request_datetime: &request_datetime,
-    };
-
-    if verify_request(&input).is_err() {
+    // H8 dual-secret: try the current secret first, then (during a rotation)
+    // the previous one. Each attempt is a full constant-time verification;
+    // outbound signing always uses the current secret, so accepting the
+    // previous one INBOUND is what lets a rolling restart onto a new secret
+    // keep replication flowing in both directions.
+    let mut matched: Option<&str> = None;
+    for candidate in std::iter::once(secret.as_str()).chain(
+        state
+            .cluster_secret_previous
+            .as_deref()
+            .filter(|p| !p.is_empty()),
+    ) {
+        let input = VerifyInput {
+            method: &method,
+            uri_path: &uri_path,
+            query_string: &query_string,
+            headers: &headers,
+            payload_hash: &payload_hash,
+            auth: &parsed,
+            secret_access_key: candidate,
+            request_datetime: &request_datetime,
+        };
+        if verify_request(&input).is_ok() {
+            matched = Some(candidate);
+            break;
+        }
+    }
+    let Some(matched) = matched else {
         return json_error(
             StatusCode::FORBIDDEN,
             "SignatureDoesNotMatch",
             "The request signature we calculated does not match the signature you provided.",
         );
-    }
+    };
+
+    // Let the ping handler MAC its challenge with the secret that actually
+    // verified this request (H8 — see [`MatchedClusterSecret`]).
+    let mut request = request;
+    request
+        .extensions_mut()
+        .insert(MatchedClusterSecret(std::sync::Arc::from(matched)));
 
     next.run(request).await
 }
@@ -185,4 +272,42 @@ fn json_error(status: StatusCode, error: &str, message: &str) -> Response {
         .header("Content-Type", "application/json")
         .body(axum::body::Body::from(body.to_string()))
         .expect("build JSON error response")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(iso: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(iso).unwrap().with_timezone(&Utc)
+    }
+
+    #[test]
+    fn replay_window_accepts_fresh_and_boundary_timestamps() {
+        let now = at("2026-06-11T12:00:00Z");
+        assert!(within_replay_window("20260611T120000Z", now));
+        // Exactly ±15 minutes is still inside (<=).
+        assert!(within_replay_window("20260611T114500Z", now));
+        assert!(within_replay_window("20260611T121500Z", now));
+    }
+
+    #[test]
+    fn replay_window_rejects_stale_and_future_timestamps() {
+        let now = at("2026-06-11T12:00:00Z");
+        // One second beyond the window, both directions.
+        assert!(!within_replay_window("20260611T114459Z", now));
+        assert!(!within_replay_window("20260611T121501Z", now));
+        // A captured request replayed the next day.
+        assert!(!within_replay_window("20260610T120000Z", now));
+    }
+
+    #[test]
+    fn replay_window_rejects_malformed_timestamps() {
+        let now = at("2026-06-11T12:00:00Z");
+        assert!(!within_replay_window("", now));
+        assert!(!within_replay_window("not-a-date", now));
+        // Missing the trailing Z / wrong shape.
+        assert!(!within_replay_window("20260611T120000", now));
+        assert!(!within_replay_window("2026-06-11T12:00:00Z", now));
+    }
 }

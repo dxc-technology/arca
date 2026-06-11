@@ -13,9 +13,11 @@ data_dir = "/data"
 [cluster]
 enabled = true
 cluster_id = "arca-cluster"
-# Shared secret authenticating inter-node /cluster/v1/* requests. DEV value —
-# change for any real deployment.
-secret = "dev-cluster-secret-change-me"
+# Shared secret authenticating inter-node /cluster/v1/* requests. DEV value
+# (passes the M5 strength floor) — change for any real deployment
+# (`openssl rand -hex 32`). Same value as config.toml: the overlay changes
+# ONLY the consistency mode.
+secret = "arca-itest-cluster-secret-3f9c2a71"
 # AP policy: always writable, best-effort replication, LWW convergence.
 mode = "available"
 cluster_size = 3

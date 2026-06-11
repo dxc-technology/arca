@@ -16,7 +16,9 @@ data_dir = "/var/lib/arca"
 enabled = true
 cluster_id = "arca-prod"
 # Shared secret authenticating inter-node /cluster/v1/* requests. CHANGE IT and
-# keep it identical on every node.
+# keep it identical on every node. Generate a high-entropy value, e.g.
+# `openssl rand -hex 32` — Arca refuses to start with this placeholder or with
+# a secret shorter than 16 characters (M5).
 secret = "CHANGEME-CLUSTER-SECRET"
 mode = "quorum"          # quorum (CP, majority to write) or available (AP)
 cluster_size = 3         # number of nodes; derives the write majority

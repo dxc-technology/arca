@@ -1,5 +1,23 @@
 # Arca — HA Hardening (remediation after the Phase 29 review)
 
+### Progress Overview
+
+<!-- hardening-progress-bar -->
+<div style="padding:12px 0">
+  <div style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid rgba(128,128,128,.3)">
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em">R1</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R2</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R3</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R4</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R5</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R6</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R7</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R8</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R9</div>
+  </div>
+</div>
+<!-- /hardening-progress-bar -->
+
 ## Context
 
 The Phase 29 review ([`arca-phase-29-ha-review.md`](https://github.com/dxc-technology/arca/blob/main/.claude/reviews/arca-phase-29-ha-review.md), passes of 2026-06-10 and 2026-06-11) produced the findings: **3 P0s** (§2.1–§2.3), **§2.4 + 9 P1s** (§3.x, D1, D2, D3a, D9), a **security-critical chain** (§3.7), **a series of P2s** (M1–M8, §5, D3b/c, D4–D8) and **P3/doc** (D10–D12). This plan implements ALL of them, organized in 9 milestones (R1–R9) ordered by priority and technical dependency. It is a living document, published on the documentation site as an annex of the roadmap (Phase 29.1) via a symlink to the canonical file `.claude/plans/arca-phase-29-ha-hardening.md`.
@@ -12,7 +30,7 @@ The Phase 29 review ([`arca-phase-29-ha-review.md`](https://github.com/dxc-techn
 2. Work TDD; every milestone must leave `bin/test unit` and `bin/test cluster` green. After code changes also rebuild the test images (`docker compose -f docker/docker-compose.yml build unit-test test`), otherwise tests run on stale images.
 3. For every completed item: tick the checkbox HERE and in the traceability table, update `CHANGELOG.md` (Unreleased section), update the documentation touched.
 4. If a decision changes the design, update the WHOLE document, not just the touched section (same rule as the Phase 29 plan).
-5. At the end of each milestone: tick the milestone in the roadmap's Phase 29.1 section (`documentation/docs/roadmap.md`), rebuild the site with `bin/docs-build` (this plan is published there via symlink), then propose to Pietro a commit + possibly a release.
+5. At the end of each milestone: turn the milestone's cell green in the progress bar at the top of THIS document, tick the milestone in the roadmap's Phase 29.1 section (`documentation/docs/roadmap.md`), rebuild the site with `bin/docs-build` (this plan is published there via symlink), then propose to Pietro a commit + possibly a release.
 6. The §x.y / Mx / Dx numbers refer to the review; the "plan lines" to `.claude/plans/arca-phase-29-ha.md`.
 
 ## Design decisions (fixed before implementation)
@@ -88,19 +106,19 @@ The proving ground of the R1 fixes and of everything else. Extends `bin/cluster`
 
 ## R4 — Inter-node transport security
 
-- [ ] **§3.7(C) / TD-015 Verified inter-node TLS with a shared cluster CA (committed, not "evaluate")**: build the membership probe and `ClusterClient` `reqwest` clients against a shared cluster CA root and DROP `danger_accept_invalid_certs` (`membership.rs:50`, `client.rs:74`). This is the H12 path confirmed by Pietro (2026-06-11): verifying the peer's CA-signed cert authenticates the *receiver* of a fan-out (closes §3.7(A) robustly) AND restores confidentiality against passive sniffing / active MITM on the cluster LAN (§3.7(C)). Design as confirmed:
-    - CA distributed via config (`[cluster]` CA path alongside `secret`) + per-node cert/key signed by it; verification in BOTH directions (client verifies server cert, server verifies client cert on cluster routes).
-    - **Shipped generator tooling** for operators without a PKI: mint the cluster CA + per-node certs reusing the existing rcgen `tls-init` generator (distinct DistinguishedName CA vs nodes, `pem` feature — known gotchas).
-    - **Single-port constraint**: S3 clients share the listener with `/cluster/v1/*`, so the client cert is *requested but optional* at the TLS layer and **enforced at the route layer** on the cluster endpoints (we control the accept loop with tokio-rustls; expose the verified peer cert to handlers via request extensions).
-    - K8s-style auto-enrollment rejected for now (see H12 rationale); document the CA + cert distribution in the R9 runbook. Resolves TD-015 in `TECH_DEBT.md` + roadmap.
-- [ ] **§3.1 / §3.7(C) Anti-replay**: in `cluster_auth.rs` (~138-146), compare `x-amz-date` with the clock: outside ±15 minutes → 403. Unit tests (inside/outside the window, missing header).
-- [ ] **§3.4 Dedicated body limit**: `DefaultBodyLimit` ~2 MiB on the `/cluster/v1/{object,op,manifest,control-snapshot}` sub-router (NOT on the blob routes).
-- [ ] **M5 / §3.7(B) Secret strength (security-critical, not cosmetic)**: startup validation `secret` length ≥ 16 chars AND reject the shipped placeholders (`dev-cluster-secret-change-me`, `CHANGEME-CLUSTER-SECRET`); warn if it looks low-entropy; document that it must be a high-entropy random value (clear errors in `config.rs:800`). Pairs with §3.5 (removing the public fingerprint oracle) and the CA path above.
-- [ ] **M6**: `Uuid::parse_str` on the path `blob_id` in the cluster handlers before `write_raw`/`read_raw` (defense in depth).
-- [ ] **D12.1 Receive-side filter**: the application of `ServerConfigSet/Delete` in `handlers/cluster.rs:275-279` skips node-local keys (shared `is_node_local_key`, today sender-side only).
-- [ ] **H8/D3b Dual-secret for rotation**: optional `[cluster] secret_previous`; inbound auth tries both (constant-time on each), outbound and fingerprint use only `secret`; config validation (≥ 16 chars for previous too); unit tests; runbook in R9.
+- [x] **§3.7(C) / TD-015 Verified inter-node TLS with a shared cluster CA (committed, not "evaluate")**: the membership probe and `ClusterClient` `reqwest` clients verify peers against the cluster CA (added on top of the system roots, so a publicly-signed listener cert also works) and present the node's CA-signed client identity; `danger_accept_invalid_certs` DROPPED from both (`membership.rs`, `client.rs`). This is the H12 path confirmed by Pietro (2026-06-11): verifying the peer's CA-signed cert authenticates the *receiver* of a fan-out (closes §3.7(A) robustly) AND restores confidentiality against passive sniffing / active MITM on the cluster LAN (§3.7(C)). As built:
+    - [x] CA distributed via config: new `[cluster.tls] ca_file/cert_file/key_file` (all three together); verification in BOTH directions (client verifies server cert, server verifies client cert on cluster routes). **Fail closed (Pietro, 2026-06-11): a cluster over HTTPS REFUSES TO START without `[cluster.tls]`** — no insecure fallback, the accept-invalid-certs path is gone from the codebase; plain-HTTP clusters unaffected (R3 challenge-response stays their baseline). `[cluster.tls]` without `[server.tls]` is rejected; the combination with the global `[tls].ca_file` (required-for-all client mTLS) is rejected too — one listener cannot hold two client-cert policies (documented; support deferred until someone needs it).
+    - [x] **Shipped generator tooling**: `arca tls generate-cluster --node name=san1,san2,... [--node ...]` mints the cluster CA + per-node certs (distinct DistinguishedName CA vs nodes, `pem` feature, serverAuth+clientAuth EKUs so the same pair serves listener and client identity) and prints the config snippets.
+    - [x] **Single-port constraint**: client cert *requested but optional* at the TLS layer (`WebPkiClientVerifier::allow_unauthenticated`) and **enforced at the route layer**: the tokio-rustls accept loop records the verified presence as the `ClusterPeerCertVerified` request extension; `cluster_auth` 403s `/cluster/v1/*` without it when `[cluster.tls]` is on. In-process e2e test (real rustls handshake + reqwest): bare-TLS ok+unmarked, CA-signed identity ok+marked, foreign-CA identity fails the handshake, CA-untrusting client refused.
+    - [x] K8s-style auto-enrollment rejected (see H12 rationale); CA + cert distribution documented in `ha.md` (runbook consolidation stays in R9). TD-015 resolved in `TECH_DEBT.md` + roadmap.
+- [x] **§3.1 / §3.7(C) Anti-replay**: in `cluster_auth.rs`, `x-amz-date` compared with the clock: outside ±15 minutes → 403 (unparseable → 403). Unit tests (fresh/boundary, stale/future, malformed).
+- [x] **§3.4 Dedicated body limit**: explicit `DefaultBodyLimit::max(2 MiB)` on the `/cluster/v1/{ping,object,object/delete,op,manifest,control-snapshot}` routes (NOT on the blob route, which streams to disk).
+- [x] **M5 / §3.7(B) Secret strength (security-critical, not cosmetic)**: startup validation `secret` length ≥ 16 chars AND reject the shipped placeholders (`dev-cluster-secret-change-me`, `CHANGEME-CLUSTER-SECRET`); low-entropy heuristic warning (< 8 distinct chars or a single character class — emitted at cluster startup: config loads before tracing init); docs say `openssl rand -hex 32`. Dev/test cluster configs updated to a floor-compliant dev secret; deploy manifests keep `CHANGEME-CLUSTER-SECRET`, which now fails fast with a clear error until replaced.
+- [x] **M6**: `Uuid::parse_str` on the path `blob_id` in the cluster handlers before `write_raw`/`read_raw` (defense in depth; the raw string is kept verbatim as the blob id — no canonicalization).
+- [x] **D12.1 Receive-side filter**: `ServerConfigSet/Delete` application in `handlers/cluster.rs` drops node-local keys as a no-op 200 with a warning; the predicate moved to `arca_core::cluster::is_node_local_server_config_key` (with `NODE_ID_KEY`), shared by sender and receiver.
+- [x] **H8/D3b Dual-secret for rotation**: optional `[cluster] secret_previous`; inbound auth tries current then previous (full constant-time verification each), outbound and fingerprint use only `secret`; config validation (≥ 16 chars for previous too; equal to current rejected). As built, the ping handler MACs the challenge with the secret that verified the request (stashed by `cluster_auth` as the `MatchedClusterSecret` extension), so a prober on either rotation side can always verify the response with its own current secret; the prober additionally accepts a MAC keyed by either rotation secret (belt-and-braces for mixed-version echo variants). Rotation window documented in `ha.md` (transient drift flags — the fingerprint includes the secret); runbook consolidation in R9.
 
-*Outcome: an inter-node surface with authenticated peers (verified TLS), a replay window, body limits, strong-secret enforcement and secret rotation without downtime — closing the §3.7 security chain together with R3.*
+*Outcome: an inter-node surface with authenticated peers (verified TLS), a replay window, body limits, strong-secret enforcement and secret rotation without downtime — closing the §3.7 security chain together with R3. Note: the cluster integration suite runs plain-HTTP, so the mTLS chain is covered by the in-process e2e handshake test (and unit tests); a TLS-cluster compose overlay remains a possible §5.4 extension.*
 
 ---
 
@@ -194,22 +212,22 @@ Update the Status column as work proceeds: ⬜ to do, 🔧 in progress, ✅ done
 | §2.2 | `seq` cursor race on PostgreSQL | R1 | ✅ |
 | §2.3 | Deletes before tombstones in the control merge | R1 | ✅ |
 | §2.4 | Sequential fan-out | R1 | ✅ |
-| §3.1 | No anti-replay window | R4 | ⬜ |
+| §3.1 | No anti-replay window | R4 | ✅ |
 | §3.2 | Tombstone GC blind to liveness | R3 | ✅ |
 | §3.3 | Workers duplicated on every node | R6 | ⬜ |
-| §3.4 | Cluster endpoints without a body limit | R4 | ⬜ |
+| §3.4 | Cluster endpoints without a body limit | R4 | ✅ |
 | §3.5 | Public health exposes disk/fingerprint | R3 | ✅ |
 | §3.6 | SSE-C not replicated | R5 (spike) + R9 (doc) | ⬜ |
-| §3.7(A) | Rogue peer receives all new data with no secret (fan-out authenticates no peer) | R3 (H12: peer auth, gate fan-out+quorum) + R4 (mutual TLS) | 🔧 (R3 half ✅: challenge-response peer auth gates fan-out, anti-entropy pulls, quorum and min_disk; R4 adds the mutual-TLS second factor) |
-| §3.7(B) | Secret brute-forceable from public fingerprint; weak secrets allowed | R3 (§3.5 fingerprint off public) + R4 (M5 secret strength) | 🔧 (R3 half ✅: fingerprint off the public health; R4 adds M5 secret-strength enforcement) |
-| §3.7(C) | Plain-HTTP/unverified-TLS/no-replay enable sniff/MITM/replay | R4 (TD-015 verified TLS + §3.1 anti-replay) | ⬜ |
-| TD-015 | Inter-node TLS accepts invalid certs (now committed, not deferred) | R4 | ⬜ |
+| §3.7(A) | Rogue peer receives all new data with no secret (fan-out authenticates no peer) | R3 (H12: peer auth, gate fan-out+quorum) + R4 (mutual TLS) | ✅ (R3: challenge-response peer auth gates fan-out, anti-entropy pulls, quorum and min_disk; R4: mutual-TLS second factor — client certs enforced on `/cluster/v1/*`) |
+| §3.7(B) | Secret brute-forceable from public fingerprint; weak secrets allowed | R3 (§3.5 fingerprint off public) + R4 (M5 secret strength) | ✅ (R3: fingerprint off the public health; R4: M5 floor + placeholder rejection + entropy warning) |
+| §3.7(C) | Plain-HTTP/unverified-TLS/no-replay enable sniff/MITM/replay | R4 (TD-015 verified TLS + §3.1 anti-replay) | ✅ (verified mTLS mandatory over HTTPS; ±15 min replay window; plain-HTTP remains an explicit operator choice documented for trusted segments only) |
+| TD-015 | Inter-node TLS accepts invalid certs (now committed, not deferred) | R4 | ✅ |
 | M1 | HWM stuck on a failing entry | R7 | ⬜ |
 | M2 | Repair without a budget | R7 | ⬜ |
 | M3 | Membership without eviction | R3 | ✅ |
 | M4 | 503 without Retry-After | R7 | 🔧 (quorum 503s carry it since R1 — `s3_error_response` adds it to every ServiceUnavailable; R7 verifies syncing/size_exceeded inherit it) |
-| M5 | 1-character secret accepted | R4 | ⬜ |
-| M6 | Path blob_id not validated | R4 | ⬜ |
+| M5 | 1-character secret accepted | R4 | ✅ |
+| M6 | Path blob_id not validated | R4 | ✅ |
 | M7 | seq churn on identical rows | R5 | ⬜ |
 | N1 | Lock changes (retention/legal-hold) don't bump `seq` → invisible to anti-entropy (found during R1) | R5 | ⬜ |
 | M8 | Silent mtime fallback | R7 | ⬜ |
@@ -222,7 +240,7 @@ Update the Status column as work proceeds: ⬜ to do, 🔧 in progress, ✅ done
 | D1 | Ghost quorum (unauthenticated liveness, drift ignored) | R3 | ✅ |
 | D2 | No syncing state (404s/partial listings at re-entry) | R7 | ⬜ |
 | D3a | No nodes > cluster_size guard | R3 | ✅ |
-| D3b | Secret rotation without dual-secret | R4 (+ runbook R9) | ⬜ |
+| D3b | Secret rotation without dual-secret | R4 (+ runbook R9) | ✅ (dual-secret shipped + `ha.md` rotation section; R9 consolidates the runbooks) |
 | D3c | Restore from backup: seq rewind vs HWM | R7 (+ runbook R9) | ⬜ |
 | D4 | Multipart without reconcile; local-only concat | R5 | ⬜ |
 | D5 | LB blind to writability (client-visible 503s) | R9 (doc; write-aware to be decided) | ⬜ |
@@ -232,7 +250,7 @@ Update the Status column as work proceeds: ⬜ to do, 🔧 in progress, ✅ done
 | D9 | TD-016 underestimated (RBAC/bucket_config) | R5 | ⬜ |
 | D10 | WORM in cluster: trust model undocumented | R9 | ⬜ |
 | D11 | Available RPO undeclared | R9 | ⬜ |
-| D12.1 | Receive side without a node-local key filter | R4 | ⬜ |
+| D12.1 | Receive side without a node-local key filter | R4 | ✅ |
 | D12.2 | Export/import rewrites node_id | R5 | ⬜ |
 | D12.3 | Failure detector without tolerance | R3 | ✅ |
 | D12.4 | Non-empty single-node merge undocumented | R9 | ⬜ |

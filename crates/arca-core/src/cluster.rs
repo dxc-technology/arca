@@ -52,6 +52,21 @@ pub const CLUSTER_SIDECAR_HEADER: &str = "x-arca-sidecar";
 /// the cluster secret to the prober.
 pub const CLUSTER_PING_NONCE_HEADER: &str = "x-arca-cluster-nonce";
 
+/// `server_config` key holding this node's persistent cluster identity
+/// (loop-prevention source id). Written once at first start, never replicated.
+pub const NODE_ID_KEY: &str = "node_id";
+
+/// Returns true for `server_config` keys that are NODE-LOCAL and must never be
+/// replicated to peers — currently only [`NODE_ID_KEY`]: replicating it would
+/// overwrite a peer's own identity. Every other setting (region, retention
+/// windows, log level, preview limits, lifecycle interval) is cluster-wide.
+/// Applied on BOTH sides — the sender's fan-out skips these keys, and the
+/// receive handler drops them (D12.1) — so one buggy or older peer cannot
+/// rewrite another node's identity.
+pub fn is_node_local_server_config_key(key: &str) -> bool {
+    key == NODE_ID_KEY
+}
+
 /// Domain-separation prefix for the ping challenge MAC, so this HMAC use of the
 /// cluster secret can never collide with another (e.g. SigV4 key derivation).
 const PING_MAC_CONTEXT: &[u8] = b"arca-cluster-ping-v1";

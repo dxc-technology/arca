@@ -822,7 +822,7 @@ mod tests {
     }
 
     fn client() -> ClusterClient {
-        ClusterClient::new("self-node", "secret", Duration::from_secs(1)).unwrap()
+        ClusterClient::new("self-node", "secret", Duration::from_secs(1), None).unwrap()
     }
 
     /// A standalone in-memory tombstone store for decorator construction in

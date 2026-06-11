@@ -50,7 +50,9 @@ stringData:
     [cluster]
     enabled = true
     cluster_id = "arca-prod"
-    # Shared secret authenticating inter-node /cluster/v1/* requests. CHANGE IT.
+    # Shared secret authenticating inter-node /cluster/v1/* requests. CHANGE IT:
+    # generate a high-entropy value (`openssl rand -hex 32`) — Arca refuses to
+    # start with this placeholder or with a secret shorter than 16 characters.
     secret = "CHANGEME-CLUSTER-SECRET"
     mode = "quorum"          # quorum (CP, majority to write) or available (AP)
     cluster_size = 3         # keep in sync with the StatefulSet replicas

@@ -1147,6 +1147,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#progress-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Progress Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#context" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1389,6 +1400,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#progress-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Progress Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#context" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1560,6 +1582,23 @@
 
 
 <h1 id="arca-ha-hardening-remediation-after-the-phase-29-review">Arca — HA Hardening (remediation after the Phase 29 review)<a class="headerlink" href="#arca-ha-hardening-remediation-after-the-phase-29-review" title="Permanent link">&para;</a></h1>
+<h3 id="progress-overview">Progress Overview<a class="headerlink" href="#progress-overview" title="Permanent link">&para;</a></h3>
+<!-- hardening-progress-bar -->
+<div style="padding:12px 0">
+  <div style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid rgba(128,128,128,.3)">
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em">R1</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R2</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R3</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R4</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R5</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R6</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R7</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R8</div>
+    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R9</div>
+  </div>
+</div>
+<!-- /hardening-progress-bar -->
+
 <h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
 <p>The Phase 29 review (<a href="https://github.com/dxc-technology/arca/blob/main/.claude/reviews/arca-phase-29-ha-review.md"><code>arca-phase-29-ha-review.md</code></a>, passes of 2026-06-10 and 2026-06-11) produced the findings: <strong>3 P0s</strong> (§2.1–§2.3), <strong>§2.4 + 9 P1s</strong> (§3.x, D1, D2, D3a, D9), a <strong>security-critical chain</strong> (§3.7), <strong>a series of P2s</strong> (M1–M8, §5, D3b/c, D4–D8) and <strong>P3/doc</strong> (D10–D12). This plan implements ALL of them, organized in 9 milestones (R1–R9) ordered by priority and technical dependency. It is a living document, published on the documentation site as an annex of the roadmap (Phase 29.1) via a symlink to the canonical file <code>.claude/plans/arca-phase-29-ha-hardening.md</code>.</p>
 <blockquote>
@@ -1571,7 +1610,7 @@
 <li>Work TDD; every milestone must leave <code>bin/test unit</code> and <code>bin/test cluster</code> green. After code changes also rebuild the test images (<code>docker compose -f docker/docker-compose.yml build unit-test test</code>), otherwise tests run on stale images.</li>
 <li>For every completed item: tick the checkbox HERE and in the traceability table, update <code>CHANGELOG.md</code> (Unreleased section), update the documentation touched.</li>
 <li>If a decision changes the design, update the WHOLE document, not just the touched section (same rule as the Phase 29 plan).</li>
-<li>At the end of each milestone: tick the milestone in the roadmap's Phase 29.1 section (<code>documentation/docs/roadmap.md</code>), rebuild the site with <code>bin/docs-build</code> (this plan is published there via symlink), then propose to Pietro a commit + possibly a release.</li>
+<li>At the end of each milestone: turn the milestone's cell green in the progress bar at the top of THIS document, tick the milestone in the roadmap's Phase 29.1 section (<code>documentation/docs/roadmap.md</code>), rebuild the site with <code>bin/docs-build</code> (this plan is published there via symlink), then propose to Pietro a commit + possibly a release.</li>
 <li>The §x.y / Mx / Dx numbers refer to the review; the "plan lines" to <code>.claude/plans/arca-phase-29-ha.md</code>.</li>
 </ol>
 <h2 id="design-decisions-fixed-before-implementation">Design decisions (fixed before implementation)<a class="headerlink" href="#design-decisions-fixed-before-implementation" title="Permanent link">&para;</a></h2>
@@ -1697,21 +1736,21 @@
 <hr />
 <h2 id="r4-inter-node-transport-security">R4 — Inter-node transport security<a class="headerlink" href="#r4-inter-node-transport-security" title="Permanent link">&para;</a></h2>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§3.7(C) / TD-015 Verified inter-node TLS with a shared cluster CA (committed, not "evaluate")</strong>: build the membership probe and <code>ClusterClient</code> <code>reqwest</code> clients against a shared cluster CA root and DROP <code>danger_accept_invalid_certs</code> (<code>membership.rs:50</code>, <code>client.rs:74</code>). This is the H12 path confirmed by Pietro (2026-06-11): verifying the peer's CA-signed cert authenticates the <em>receiver</em> of a fan-out (closes §3.7(A) robustly) AND restores confidentiality against passive sniffing / active MITM on the cluster LAN (§3.7(C)). Design as confirmed:<ul>
-<li>CA distributed via config (<code>[cluster]</code> CA path alongside <code>secret</code>) + per-node cert/key signed by it; verification in BOTH directions (client verifies server cert, server verifies client cert on cluster routes).</li>
-<li><strong>Shipped generator tooling</strong> for operators without a PKI: mint the cluster CA + per-node certs reusing the existing rcgen <code>tls-init</code> generator (distinct DistinguishedName CA vs nodes, <code>pem</code> feature — known gotchas).</li>
-<li><strong>Single-port constraint</strong>: S3 clients share the listener with <code>/cluster/v1/*</code>, so the client cert is <em>requested but optional</em> at the TLS layer and <strong>enforced at the route layer</strong> on the cluster endpoints (we control the accept loop with tokio-rustls; expose the verified peer cert to handlers via request extensions).</li>
-<li>K8s-style auto-enrollment rejected for now (see H12 rationale); document the CA + cert distribution in the R9 runbook. Resolves TD-015 in <code>TECH_DEBT.md</code> + roadmap.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>§3.7(C) / TD-015 Verified inter-node TLS with a shared cluster CA (committed, not "evaluate")</strong>: the membership probe and <code>ClusterClient</code> <code>reqwest</code> clients verify peers against the cluster CA (added on top of the system roots, so a publicly-signed listener cert also works) and present the node's CA-signed client identity; <code>danger_accept_invalid_certs</code> DROPPED from both (<code>membership.rs</code>, <code>client.rs</code>). This is the H12 path confirmed by Pietro (2026-06-11): verifying the peer's CA-signed cert authenticates the <em>receiver</em> of a fan-out (closes §3.7(A) robustly) AND restores confidentiality against passive sniffing / active MITM on the cluster LAN (§3.7(C)). As built:<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> CA distributed via config: new <code>[cluster.tls] ca_file/cert_file/key_file</code> (all three together); verification in BOTH directions (client verifies server cert, server verifies client cert on cluster routes). <strong>Fail closed (Pietro, 2026-06-11): a cluster over HTTPS REFUSES TO START without <code>[cluster.tls]</code></strong> — no insecure fallback, the accept-invalid-certs path is gone from the codebase; plain-HTTP clusters unaffected (R3 challenge-response stays their baseline). <code>[cluster.tls]</code> without <code>[server.tls]</code> is rejected; the combination with the global <code>[tls].ca_file</code> (required-for-all client mTLS) is rejected too — one listener cannot hold two client-cert policies (documented; support deferred until someone needs it).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>Shipped generator tooling</strong>: <code>arca tls generate-cluster --node name=san1,san2,... [--node ...]</code> mints the cluster CA + per-node certs (distinct DistinguishedName CA vs nodes, <code>pem</code> feature, serverAuth+clientAuth EKUs so the same pair serves listener and client identity) and prints the config snippets.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>Single-port constraint</strong>: client cert <em>requested but optional</em> at the TLS layer (<code>WebPkiClientVerifier::allow_unauthenticated</code>) and <strong>enforced at the route layer</strong>: the tokio-rustls accept loop records the verified presence as the <code>ClusterPeerCertVerified</code> request extension; <code>cluster_auth</code> 403s <code>/cluster/v1/*</code> without it when <code>[cluster.tls]</code> is on. In-process e2e test (real rustls handshake + reqwest): bare-TLS ok+unmarked, CA-signed identity ok+marked, foreign-CA identity fails the handshake, CA-untrusting client refused.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> K8s-style auto-enrollment rejected (see H12 rationale); CA + cert distribution documented in <code>ha.md</code> (runbook consolidation stays in R9). TD-015 resolved in <code>TECH_DEBT.md</code> + roadmap.</li>
 </ul>
 </li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§3.1 / §3.7(C) Anti-replay</strong>: in <code>cluster_auth.rs</code> (~138-146), compare <code>x-amz-date</code> with the clock: outside ±15 minutes → 403. Unit tests (inside/outside the window, missing header).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§3.4 Dedicated body limit</strong>: <code>DefaultBodyLimit</code> ~2 MiB on the <code>/cluster/v1/{object,op,manifest,control-snapshot}</code> sub-router (NOT on the blob routes).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>M5 / §3.7(B) Secret strength (security-critical, not cosmetic)</strong>: startup validation <code>secret</code> length ≥ 16 chars AND reject the shipped placeholders (<code>dev-cluster-secret-change-me</code>, <code>CHANGEME-CLUSTER-SECRET</code>); warn if it looks low-entropy; document that it must be a high-entropy random value (clear errors in <code>config.rs:800</code>). Pairs with §3.5 (removing the public fingerprint oracle) and the CA path above.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>M6</strong>: <code>Uuid::parse_str</code> on the path <code>blob_id</code> in the cluster handlers before <code>write_raw</code>/<code>read_raw</code> (defense in depth).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D12.1 Receive-side filter</strong>: the application of <code>ServerConfigSet/Delete</code> in <code>handlers/cluster.rs:275-279</code> skips node-local keys (shared <code>is_node_local_key</code>, today sender-side only).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>H8/D3b Dual-secret for rotation</strong>: optional <code>[cluster] secret_previous</code>; inbound auth tries both (constant-time on each), outbound and fingerprint use only <code>secret</code>; config validation (≥ 16 chars for previous too); unit tests; runbook in R9.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>§3.1 / §3.7(C) Anti-replay</strong>: in <code>cluster_auth.rs</code>, <code>x-amz-date</code> compared with the clock: outside ±15 minutes → 403 (unparseable → 403). Unit tests (fresh/boundary, stale/future, malformed).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>§3.4 Dedicated body limit</strong>: explicit <code>DefaultBodyLimit::max(2 MiB)</code> on the <code>/cluster/v1/{ping,object,object/delete,op,manifest,control-snapshot}</code> routes (NOT on the blob route, which streams to disk).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>M5 / §3.7(B) Secret strength (security-critical, not cosmetic)</strong>: startup validation <code>secret</code> length ≥ 16 chars AND reject the shipped placeholders (<code>dev-cluster-secret-change-me</code>, <code>CHANGEME-CLUSTER-SECRET</code>); low-entropy heuristic warning (&lt; 8 distinct chars or a single character class — emitted at cluster startup: config loads before tracing init); docs say <code>openssl rand -hex 32</code>. Dev/test cluster configs updated to a floor-compliant dev secret; deploy manifests keep <code>CHANGEME-CLUSTER-SECRET</code>, which now fails fast with a clear error until replaced.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>M6</strong>: <code>Uuid::parse_str</code> on the path <code>blob_id</code> in the cluster handlers before <code>write_raw</code>/<code>read_raw</code> (defense in depth; the raw string is kept verbatim as the blob id — no canonicalization).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>D12.1 Receive-side filter</strong>: <code>ServerConfigSet/Delete</code> application in <code>handlers/cluster.rs</code> drops node-local keys as a no-op 200 with a warning; the predicate moved to <code>arca_core::cluster::is_node_local_server_config_key</code> (with <code>NODE_ID_KEY</code>), shared by sender and receiver.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>H8/D3b Dual-secret for rotation</strong>: optional <code>[cluster] secret_previous</code>; inbound auth tries current then previous (full constant-time verification each), outbound and fingerprint use only <code>secret</code>; config validation (≥ 16 chars for previous too; equal to current rejected). As built, the ping handler MACs the challenge with the secret that verified the request (stashed by <code>cluster_auth</code> as the <code>MatchedClusterSecret</code> extension), so a prober on either rotation side can always verify the response with its own current secret; the prober additionally accepts a MAC keyed by either rotation secret (belt-and-braces for mixed-version echo variants). Rotation window documented in <code>ha.md</code> (transient drift flags — the fingerprint includes the secret); runbook consolidation in R9.</li>
 </ul>
-<p><em>Outcome: an inter-node surface with authenticated peers (verified TLS), a replay window, body limits, strong-secret enforcement and secret rotation without downtime — closing the §3.7 security chain together with R3.</em></p>
+<p><em>Outcome: an inter-node surface with authenticated peers (verified TLS), a replay window, body limits, strong-secret enforcement and secret rotation without downtime — closing the §3.7 security chain together with R3. Note: the cluster integration suite runs plain-HTTP, so the mTLS chain is covered by the in-process e2e handshake test (and unit tests); a TLS-cluster compose overlay remains a possible §5.4 extension.</em></p>
 <hr />
 <h2 id="r5-reconcile-completeness-td-016-multipart-sse-c">R5 — Reconcile completeness (TD-016, multipart, SSE-C)<a class="headerlink" href="#r5-reconcile-completeness-td-016-multipart-sse-c" title="Permanent link">&para;</a></h2>
 <ul class="task-list">
@@ -1829,7 +1868,7 @@
 <td>§3.1</td>
 <td>No anti-replay window</td>
 <td>R4</td>
-<td>⬜</td>
+<td>✅</td>
 </tr>
 <tr>
 <td>§3.2</td>
@@ -1847,7 +1886,7 @@
 <td>§3.4</td>
 <td>Cluster endpoints without a body limit</td>
 <td>R4</td>
-<td>⬜</td>
+<td>✅</td>
 </tr>
 <tr>
 <td>§3.5</td>
@@ -1865,25 +1904,25 @@
 <td>§3.7(A)</td>
 <td>Rogue peer receives all new data with no secret (fan-out authenticates no peer)</td>
 <td>R3 (H12: peer auth, gate fan-out+quorum) + R4 (mutual TLS)</td>
-<td>🔧 (R3 half ✅: challenge-response peer auth gates fan-out, anti-entropy pulls, quorum and min_disk; R4 adds the mutual-TLS second factor)</td>
+<td>✅ (R3: challenge-response peer auth gates fan-out, anti-entropy pulls, quorum and min_disk; R4: mutual-TLS second factor — client certs enforced on <code>/cluster/v1/*</code>)</td>
 </tr>
 <tr>
 <td>§3.7(B)</td>
 <td>Secret brute-forceable from public fingerprint; weak secrets allowed</td>
 <td>R3 (§3.5 fingerprint off public) + R4 (M5 secret strength)</td>
-<td>🔧 (R3 half ✅: fingerprint off the public health; R4 adds M5 secret-strength enforcement)</td>
+<td>✅ (R3: fingerprint off the public health; R4: M5 floor + placeholder rejection + entropy warning)</td>
 </tr>
 <tr>
 <td>§3.7(C)</td>
 <td>Plain-HTTP/unverified-TLS/no-replay enable sniff/MITM/replay</td>
 <td>R4 (TD-015 verified TLS + §3.1 anti-replay)</td>
-<td>⬜</td>
+<td>✅ (verified mTLS mandatory over HTTPS; ±15 min replay window; plain-HTTP remains an explicit operator choice documented for trusted segments only)</td>
 </tr>
 <tr>
 <td>TD-015</td>
 <td>Inter-node TLS accepts invalid certs (now committed, not deferred)</td>
 <td>R4</td>
-<td>⬜</td>
+<td>✅</td>
 </tr>
 <tr>
 <td>M1</td>
@@ -1913,13 +1952,13 @@
 <td>M5</td>
 <td>1-character secret accepted</td>
 <td>R4</td>
-<td>⬜</td>
+<td>✅</td>
 </tr>
 <tr>
 <td>M6</td>
 <td>Path blob_id not validated</td>
 <td>R4</td>
-<td>⬜</td>
+<td>✅</td>
 </tr>
 <tr>
 <td>M7</td>
@@ -1997,7 +2036,7 @@
 <td>D3b</td>
 <td>Secret rotation without dual-secret</td>
 <td>R4 (+ runbook R9)</td>
-<td>⬜</td>
+<td>✅ (dual-secret shipped + <code>ha.md</code> rotation section; R9 consolidates the runbooks)</td>
 </tr>
 <tr>
 <td>D3c</td>
@@ -2057,7 +2096,7 @@
 <td>D12.1</td>
 <td>Receive side without a node-local key filter</td>
 <td>R4</td>
-<td>⬜</td>
+<td>✅</td>
 </tr>
 <tr>
 <td>D12.2</td>

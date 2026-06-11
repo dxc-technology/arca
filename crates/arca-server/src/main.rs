@@ -110,16 +110,45 @@ async fn async_main(cli: Cli) -> Result<()> {
                 _ => None,
             };
 
+            // R4: verified inter-node TLS material ([cluster.tls]) — loaded
+            // once and shared by the membership prober and the transport
+            // client. Config validation makes it mandatory over HTTPS, so a
+            // load failure here aborts startup (fail closed).
+            let cluster_tls_material = match config
+                .cluster
+                .as_ref()
+                .filter(|c| c.enabled)
+                .and_then(|c| c.tls.as_ref())
+            {
+                Some(t) => Some(cluster::client::ClusterTlsMaterial::load(t)?),
+                None => None,
+            };
+
             // Start the membership manager (peer discovery + health pings) when
             // clustering is enabled. Detached task; refreshes cluster_state.
             if let (Some(c), Some(cstate)) = (config.cluster.as_ref(), cluster_state.clone()) {
+                // M5: the hard floor (length, placeholders) is enforced by
+                // config validation; the softer heuristic only warns, here
+                // because tracing was not yet initialized at config load.
+                if c.secret_looks_low_entropy() {
+                    tracing::warn!(
+                        "[cluster] secret looks low-entropy: prefer a random value \
+                         (e.g. `openssl rand -hex 32`) — it keys ALL inter-node authentication"
+                    );
+                }
                 let scheme = if config.server.tls.is_some() {
                     "https"
                 } else {
                     "http"
                 };
                 let advertise_port = c.advertise_port.unwrap_or(config.server.port);
-                cluster::membership::spawn(c, cstate, scheme, advertise_port);
+                cluster::membership::spawn(
+                    c,
+                    cstate,
+                    scheme,
+                    advertise_port,
+                    cluster_tls_material.clone(),
+                );
             }
 
             // Apply DB-stored log level if set (console setting has precedence over config file).
@@ -370,6 +399,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                     node_id,
                     c.secret.clone(),
                     request_timeout,
+                    cluster_tls_material.as_ref(),
                 )
                 .map_err(|e| anyhow::anyhow!("failed to build cluster client: {e}"))?;
                 let raw: Arc<dyn arca_core::store::RawBlobOps> = fs_arc.clone();
@@ -536,6 +566,16 @@ async fn async_main(cli: Cli) -> Result<()> {
                     .as_ref()
                     .filter(|c| c.enabled)
                     .map(|c| c.secret.clone()),
+                cluster_secret_previous: config
+                    .cluster
+                    .as_ref()
+                    .filter(|c| c.enabled)
+                    .and_then(|c| c.secret_previous.clone()),
+                cluster_mtls: config
+                    .cluster
+                    .as_ref()
+                    .filter(|c| c.enabled)
+                    .is_some_and(|c| c.tls.is_some()),
                 cluster_inner,
                 // Only populate when the user explicitly set `journal_retention_days`
                 // in TOML. The ReplicationConfig Default gives 30, so we can't distinguish
@@ -728,8 +768,20 @@ async fn async_main(cli: Cli) -> Result<()> {
                 }
                 Some(tls_config) => {
                     let paths = tls_config.resolve_paths()?;
-                    let server_config = tls::load_rustls_config(&paths)?;
-                    let reloader = Arc::new(tls::TlsReloader::new(server_config, tls_config.clone()));
+                    // R4: the cluster CA (when clustered over HTTPS) makes the
+                    // listener request — and verify — optional client certs.
+                    let cluster_ca = config
+                        .cluster
+                        .as_ref()
+                        .filter(|c| c.enabled)
+                        .and_then(|c| c.tls.as_ref())
+                        .map(|t| std::path::PathBuf::from(&t.ca_file));
+                    let server_config = tls::load_rustls_config(&paths, cluster_ca.as_deref())?;
+                    let reloader = Arc::new(tls::TlsReloader::new(
+                        server_config,
+                        tls_config.clone(),
+                        cluster_ca,
+                    ));
 
                     // SIGHUP handler for certificate reload.
                     #[cfg(unix)]
@@ -886,6 +938,13 @@ async fn async_main(cli: Cli) -> Result<()> {
                     days,
                 } => {
                     tls_generate::generate(&output_dir, &sans, days)?;
+                }
+                TlsAction::GenerateCluster {
+                    output_dir,
+                    nodes,
+                    days,
+                } => {
+                    tls_generate::generate_cluster(&output_dir, &nodes, days)?;
                 }
             }
         }
