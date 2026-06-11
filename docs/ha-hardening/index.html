@@ -1561,7 +1561,10 @@
 
 <h1 id="arca-ha-hardening-remediation-after-the-phase-29-review">Arca — HA Hardening (remediation after the Phase 29 review)<a class="headerlink" href="#arca-ha-hardening-remediation-after-the-phase-29-review" title="Permanent link">&para;</a></h1>
 <h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
-<p>The Phase 29 review (<a href="https://github.com/dxc-technology/arca/blob/main/.claude/reviews/arca-phase-29-ha-review.md"><code>arca-phase-29-ha-review.md</code></a>, passes of 2026-06-10 and 2026-06-11) produced the findings: <strong>3 P0s</strong> (§2.1–§2.3), <strong>§2.4 + 9 P1s</strong> (§3.x, D1, D2, D3a, D9), <strong>a series of P2s</strong> (M1–M8, §5, D3b/c, D4–D8) and <strong>P3/doc</strong> (D10–D12). This plan implements ALL of them, organized in 9 milestones (R1–R9) ordered by priority and technical dependency. It is a living document, published on the documentation site as an annex of the roadmap (Phase 29.1) via a symlink to the canonical file <code>.claude/plans/arca-phase-29-ha-hardening.md</code>.</p>
+<p>The Phase 29 review (<a href="https://github.com/dxc-technology/arca/blob/main/.claude/reviews/arca-phase-29-ha-review.md"><code>arca-phase-29-ha-review.md</code></a>, passes of 2026-06-10 and 2026-06-11) produced the findings: <strong>3 P0s</strong> (§2.1–§2.3), <strong>§2.4 + 9 P1s</strong> (§3.x, D1, D2, D3a, D9), a <strong>security-critical chain</strong> (§3.7), <strong>a series of P2s</strong> (M1–M8, §5, D3b/c, D4–D8) and <strong>P3/doc</strong> (D10–D12). This plan implements ALL of them, organized in 9 milestones (R1–R9) ordered by priority and technical dependency. It is a living document, published on the documentation site as an annex of the roadmap (Phase 29.1) via a symlink to the canonical file <code>.claude/plans/arca-phase-29-ha-hardening.md</code>.</p>
+<blockquote>
+<p><strong>Security workstream (review §3.7).</strong> The single most important security gap — a rogue peer receiving all new data with no secret, because the fan-out push direction authenticates no peer — plus its amplifiers (brute-forceable fingerprint, weak secrets allowed, plain-HTTP/unverified-TLS/no-replay) is spread across R3 (peer authentication of liveness + fan-out gating; fingerprint off the public endpoint) and R4 (verified inter-node TLS / TD-015; secret strength; anti-replay). On a deployment whose cluster network is <strong>not</strong> a trusted, isolated segment, treat the peer-authentication half (decision H12) with <strong>P0 urgency</strong> and consider pulling R4's TLS item forward to sit beside R3. The secret itself is well handled where it is used (never on the wire, HMAC-keyed SigV4, isolated credential); the gap is that authenticating <em>peers</em> — not just <em>requests</em> — was never designed.</p>
+</blockquote>
 <p><strong>How to use this document</strong> (process rules, valid for every session):</p>
 <ol>
 <li>At session start read: <code>CLAUDE.md</code>, this plan, the review. The traceability table at the bottom says what is done and what is not.</li>
@@ -1636,6 +1639,11 @@
 <td><strong>Versions</strong>: end of R1+R2 → propose <code>v0.26.0</code> (MINOR: the quorum changes observable behavior). Subsequent milestones group into releases proposed at milestone end; numbers decided with Pietro at that time.</td>
 <td>⚠ proposal</td>
 </tr>
+<tr>
+<td>H12</td>
+<td><strong>Authenticate the peer, not just the request (closes review §3.7).</strong> Today the cluster authenticates the <em>sender</em> of every <code>/cluster/v1/*</code> request (inbound, via <code>cluster_auth</code>) but never the <em>receiver</em> of a fan-out: <code>live_peers()</code> filters on <code>alive</code> only, and membership admits an mDNS peer on a <code>cluster_id</code> match alone — so a rogue peer receives all new writes with no secret. Fix, in order of preference: <strong>(1) mutual TLS with a shared cluster CA</strong> — a node verifies the peer's CA-signed cert before adding it to membership / fanning out (also resolves TD-015 and the cleartext/MITM exposure). <strong>(2) Secret-only fallback</strong> (CA-averse deployments): an app-layer challenge-response where the peer proves possession of the secret over a fresh nonce before being counted live — NOT merely "a signed <code>/ping</code>" (a rogue controls its own server and can return 200 unconditionally; the peer must prove possession <em>to us</em>). Either way, <code>live_peers()</code> (fan-out) AND the quorum count only authenticated <strong>and</strong> <code>config_ok</code> peers.</td>
+<td>✅ decided in planning (recommend the mutual-TLS path; confirm with Pietro at the start of R4)</td>
+</tr>
 </tbody>
 </table>
 <hr />
@@ -1671,8 +1679,13 @@
 <hr />
 <h2 id="r3-membership-and-quorum-integrity-ghost-quorum-guards">R3 — Membership and quorum integrity (ghost quorum, guards)<a class="headerlink" href="#r3-membership-and-quorum-integrity-ghost-quorum-guards" title="Permanent link">&para;</a></h2>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D1 Authenticated liveness</strong>: new <code>GET /cluster/v1/ping</code> under <code>cluster_auth</code> answering <code>{node_id, config_fingerprint, disk_total, disk_available, max_seq}</code> (<code>max_seq</code> serves D3c in R7); the membership probe uses the signed <code>ping</code> via <code>ClusterClient</code>, with a fallback to <code>/cluster/v1/health</code> on 404 (legacy peer, H10).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§3.5 Minimized public health</strong>: the unauthenticated <code>/cluster/v1/health</code> answers only <code>{status, node_id}</code> (the rest lives in the authenticated ping). Update any consumers (legacy membership, docs).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D1 / §3.7(A) Authenticate the peer, then gate fan-out AND quorum on it (decision H12)</strong>: it is not enough to sign our outbound probe — the <em>peer</em> must prove it holds the secret (or presents a cluster-CA cert) before we trust it, else a rogue receives all fan-out with no secret. Implement the chosen H12 path:<ul>
+<li>mutual-TLS path (preferred): once R4 wires the shared cluster CA, membership only trusts a peer whose cert validates against it;</li>
+<li>secret-only fallback: new <code>GET /cluster/v1/ping</code> under <code>cluster_auth</code> returning <code>{node_id, config_fingerprint, disk_total, disk_available, max_seq, nonce_mac}</code> where <code>nonce_mac = HMAC(secret, our_nonce)</code> proves possession to us (<code>max_seq</code> also serves D3c in R7); the membership probe sends a fresh nonce and verifies the MAC, with a fallback to <code>/cluster/v1/health</code> on 404 (legacy peer, H10, logged).</li>
+<li><strong><code>live_peers()</code> (fan-out target list in <code>cluster_blob.rs:65</code>/<code>cluster_meta.rs:73</code>) and <code>has_write_quorum</code> count only peers that passed peer-authentication AND are <code>config_ok</code></strong> — this is the actual fix for §3.7(A), not just the quorum gate of H7.</li>
+</ul>
+</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§3.5 / §3.7(B) Minimized public health</strong>: the unauthenticated <code>/cluster/v1/health</code> answers only <code>{status, node_id}</code> — the <code>config_fingerprint</code>, disk stats and <code>max_seq</code> move to the authenticated ping. This removes the offline brute-force oracle for the secret (the truncated SHA-256 over mostly-guessable inputs, <code>cluster.rs:56-77</code>). Update any consumers (legacy membership, docs).</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>H7 Drift out of the quorum</strong>: a peer with <code>config_ok=false</code> excluded from <code>has_write_quorum</code> (<code>cluster.rs:775-799</code>); it stays in <code>/admin/cluster</code> with the drift flag; the test phase F extended: with a diverging secret the node must NOT sustain the quorum (3 nodes, 1 drifted → quorum 2 still ok; 2 drifted → 503).</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Failure-detector tolerance (D12.3, plan line 73)</strong>: dead after 2 consecutive ping failures (not 1; <code>membership.rs:104</code>), alive at the first success. A comment on the why.</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D3a <code>cluster_size</code> guard (decision H6, to be confirmed)</strong>: in quorum mode, if the observed live nodes (including self) exceed <code>cluster_size</code> → write gate closed (503 with an explicit message) + <code>size_exceeded: true</code> in <code>/admin/cluster</code> + an error log on transitions.</li>
@@ -1684,15 +1697,15 @@
 <hr />
 <h2 id="r4-inter-node-transport-security">R4 — Inter-node transport security<a class="headerlink" href="#r4-inter-node-transport-security" title="Permanent link">&para;</a></h2>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§3.1 Anti-replay</strong>: in <code>cluster_auth.rs</code> (~138-146), compare <code>x-amz-date</code> with the clock: outside ±15 minutes → 403. Unit tests (inside/outside the window, missing header).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§3.7(C) / TD-015 Verified inter-node TLS with a shared cluster CA (committed, not "evaluate")</strong>: build the membership probe and <code>ClusterClient</code> <code>reqwest</code> clients against a shared cluster CA root and DROP <code>danger_accept_invalid_certs</code> (<code>membership.rs:50</code>, <code>client.rs:74</code>). This is the preferred H12 path: verifying the peer's CA-signed cert authenticates the <em>receiver</em> of a fan-out (closes §3.7(A) robustly) AND restores confidentiality against passive sniffing / active MITM on the cluster LAN (§3.7(C)). Distribute the CA via config (path) alongside <code>secret</code>; document in the R9 runbook. Resolves TD-015 in <code>TECH_DEBT.md</code> + roadmap. (If Pietro prefers the secret-only posture, this becomes the challenge-response of H12/R3 instead, and TD-015 stays open with its risk note updated.)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§3.1 / §3.7(C) Anti-replay</strong>: in <code>cluster_auth.rs</code> (~138-146), compare <code>x-amz-date</code> with the clock: outside ±15 minutes → 403. Unit tests (inside/outside the window, missing header).</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§3.4 Dedicated body limit</strong>: <code>DefaultBodyLimit</code> ~2 MiB on the <code>/cluster/v1/{object,op,manifest,control-snapshot}</code> sub-router (NOT on the blob routes).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>M5</strong>: startup validation <code>secret</code> ≥ 16 characters (clear error in <code>config.rs:800</code>).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>M5 / §3.7(B) Secret strength (security-critical, not cosmetic)</strong>: startup validation <code>secret</code> length ≥ 16 chars AND reject the shipped placeholders (<code>dev-cluster-secret-change-me</code>, <code>CHANGEME-CLUSTER-SECRET</code>); warn if it looks low-entropy; document that it must be a high-entropy random value (clear errors in <code>config.rs:800</code>). Pairs with §3.5 (removing the public fingerprint oracle) and the CA path above.</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>M6</strong>: <code>Uuid::parse_str</code> on the path <code>blob_id</code> in the cluster handlers before <code>write_raw</code>/<code>read_raw</code> (defense in depth).</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D12.1 Receive-side filter</strong>: the application of <code>ServerConfigSet/Delete</code> in <code>handlers/cluster.rs:275-279</code> skips node-local keys (shared <code>is_node_local_key</code>, today sender-side only).</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>H8/D3b Dual-secret for rotation</strong>: optional <code>[cluster] secret_previous</code>; inbound auth tries both (constant-time on each), outbound and fingerprint use only <code>secret</code>; config validation (≥ 16 chars for previous too); unit tests; runbook in R9.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Evaluate together with TD-015 (inter-node TLS) whether to close that here too (shared CA / pinning) or leave it an explicit TD: decide with Pietro at the start of the milestone.</li>
 </ul>
-<p><em>Outcome: an inter-node surface with a replay window, body limits, validations and secret rotation without downtime.</em></p>
+<p><em>Outcome: an inter-node surface with authenticated peers (verified TLS), a replay window, body limits, strong-secret enforcement and secret rotation without downtime — closing the §3.7 security chain together with R3.</em></p>
 <hr />
 <h2 id="r5-reconcile-completeness-td-016-multipart-sse-c">R5 — Reconcile completeness (TD-016, multipart, SSE-C)<a class="headerlink" href="#r5-reconcile-completeness-td-016-multipart-sse-c" title="Permanent link">&para;</a></h2>
 <ul class="task-list">
@@ -1839,6 +1852,30 @@
 <td>§3.6</td>
 <td>SSE-C not replicated</td>
 <td>R5 (spike) + R9 (doc)</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>§3.7(A)</td>
+<td>Rogue peer receives all new data with no secret (fan-out authenticates no peer)</td>
+<td>R3 (H12: peer auth, gate fan-out+quorum) + R4 (mutual TLS)</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>§3.7(B)</td>
+<td>Secret brute-forceable from public fingerprint; weak secrets allowed</td>
+<td>R3 (§3.5 fingerprint off public) + R4 (M5 secret strength)</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>§3.7(C)</td>
+<td>Plain-HTTP/unverified-TLS/no-replay enable sniff/MITM/replay</td>
+<td>R4 (TD-015 verified TLS + §3.1 anti-replay)</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>TD-015</td>
+<td>Inter-node TLS accepts invalid certs (now committed, not deferred)</td>
+<td>R4</td>
 <td>⬜</td>
 </tr>
 <tr>

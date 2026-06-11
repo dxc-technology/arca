@@ -2,7 +2,9 @@
 
 ## Context
 
-The Phase 29 review ([`arca-phase-29-ha-review.md`](https://github.com/dxc-technology/arca/blob/main/.claude/reviews/arca-phase-29-ha-review.md), passes of 2026-06-10 and 2026-06-11) produced the findings: **3 P0s** (§2.1–§2.3), **§2.4 + 9 P1s** (§3.x, D1, D2, D3a, D9), **a series of P2s** (M1–M8, §5, D3b/c, D4–D8) and **P3/doc** (D10–D12). This plan implements ALL of them, organized in 9 milestones (R1–R9) ordered by priority and technical dependency. It is a living document, published on the documentation site as an annex of the roadmap (Phase 29.1) via a symlink to the canonical file `.claude/plans/arca-phase-29-ha-hardening.md`.
+The Phase 29 review ([`arca-phase-29-ha-review.md`](https://github.com/dxc-technology/arca/blob/main/.claude/reviews/arca-phase-29-ha-review.md), passes of 2026-06-10 and 2026-06-11) produced the findings: **3 P0s** (§2.1–§2.3), **§2.4 + 9 P1s** (§3.x, D1, D2, D3a, D9), a **security-critical chain** (§3.7), **a series of P2s** (M1–M8, §5, D3b/c, D4–D8) and **P3/doc** (D10–D12). This plan implements ALL of them, organized in 9 milestones (R1–R9) ordered by priority and technical dependency. It is a living document, published on the documentation site as an annex of the roadmap (Phase 29.1) via a symlink to the canonical file `.claude/plans/arca-phase-29-ha-hardening.md`.
+
+> **Security workstream (review §3.7).** The single most important security gap — a rogue peer receiving all new data with no secret, because the fan-out push direction authenticates no peer — plus its amplifiers (brute-forceable fingerprint, weak secrets allowed, plain-HTTP/unverified-TLS/no-replay) is spread across R3 (peer authentication of liveness + fan-out gating; fingerprint off the public endpoint) and R4 (verified inter-node TLS / TD-015; secret strength; anti-replay). On a deployment whose cluster network is **not** a trusted, isolated segment, treat the peer-authentication half (decision H12) with **P0 urgency** and consider pulling R4's TLS item forward to sit beside R3. The secret itself is well handled where it is used (never on the wire, HMAC-keyed SigV4, isolated credential); the gap is that authenticating *peers* — not just *requests* — was never designed.
 
 **How to use this document** (process rules, valid for every session):
 
@@ -28,6 +30,7 @@ The Phase 29 review ([`arca-phase-29-ha-review.md`](https://github.com/dxc-techn
 | H9 | **D6 console via server-side proxy**: a `?node=<node_id>` parameter on the per-node admin endpoints (audit/metrics/events), internal proxying via `ClusterClient`. Avoids CORS and browser-unreachable endpoints. | ⚠ recommended, confirm with Pietro at the start of R8 |
 | H10 | **Rolling upgrade across mixed versions**: every wire change is additive (new JSON fields ignored by old nodes); the probe uses the new authenticated `/cluster/v1/ping` with a fallback to the old `/cluster/v1/health` on 404 (legacy peer, counts as alive with a warning). | ✅ decided in planning |
 | H11 | **Versions**: end of R1+R2 → propose `v0.26.0` (MINOR: the quorum changes observable behavior). Subsequent milestones group into releases proposed at milestone end; numbers decided with Pietro at that time. | ⚠ proposal |
+| H12 | **Authenticate the peer, not just the request (closes review §3.7).** Today the cluster authenticates the *sender* of every `/cluster/v1/*` request (inbound, via `cluster_auth`) but never the *receiver* of a fan-out: `live_peers()` filters on `alive` only, and membership admits an mDNS peer on a `cluster_id` match alone — so a rogue peer receives all new writes with no secret. Fix, in order of preference: **(1) mutual TLS with a shared cluster CA** — a node verifies the peer's CA-signed cert before adding it to membership / fanning out (also resolves TD-015 and the cleartext/MITM exposure). **(2) Secret-only fallback** (CA-averse deployments): an app-layer challenge-response where the peer proves possession of the secret over a fresh nonce before being counted live — NOT merely "a signed `/ping`" (a rogue controls its own server and can return 200 unconditionally; the peer must prove possession *to us*). Either way, `live_peers()` (fan-out) AND the quorum count only authenticated **and** `config_ok` peers. | ✅ decided in planning (recommend the mutual-TLS path; confirm with Pietro at the start of R4) |
 
 ---
 
@@ -67,8 +70,11 @@ The proving ground of the R1 fixes and of everything else. Extends `bin/cluster`
 
 ## R3 — Membership and quorum integrity (ghost quorum, guards)
 
-- [ ] **D1 Authenticated liveness**: new `GET /cluster/v1/ping` under `cluster_auth` answering `{node_id, config_fingerprint, disk_total, disk_available, max_seq}` (`max_seq` serves D3c in R7); the membership probe uses the signed `ping` via `ClusterClient`, with a fallback to `/cluster/v1/health` on 404 (legacy peer, H10).
-- [ ] **§3.5 Minimized public health**: the unauthenticated `/cluster/v1/health` answers only `{status, node_id}` (the rest lives in the authenticated ping). Update any consumers (legacy membership, docs).
+- [ ] **D1 / §3.7(A) Authenticate the peer, then gate fan-out AND quorum on it (decision H12)**: it is not enough to sign our outbound probe — the *peer* must prove it holds the secret (or presents a cluster-CA cert) before we trust it, else a rogue receives all fan-out with no secret. Implement the chosen H12 path:
+    - mutual-TLS path (preferred): once R4 wires the shared cluster CA, membership only trusts a peer whose cert validates against it;
+    - secret-only fallback: new `GET /cluster/v1/ping` under `cluster_auth` returning `{node_id, config_fingerprint, disk_total, disk_available, max_seq, nonce_mac}` where `nonce_mac = HMAC(secret, our_nonce)` proves possession to us (`max_seq` also serves D3c in R7); the membership probe sends a fresh nonce and verifies the MAC, with a fallback to `/cluster/v1/health` on 404 (legacy peer, H10, logged).
+    - **`live_peers()` (fan-out target list in `cluster_blob.rs:65`/`cluster_meta.rs:73`) and `has_write_quorum` count only peers that passed peer-authentication AND are `config_ok`** — this is the actual fix for §3.7(A), not just the quorum gate of H7.
+- [ ] **§3.5 / §3.7(B) Minimized public health**: the unauthenticated `/cluster/v1/health` answers only `{status, node_id}` — the `config_fingerprint`, disk stats and `max_seq` move to the authenticated ping. This removes the offline brute-force oracle for the secret (the truncated SHA-256 over mostly-guessable inputs, `cluster.rs:56-77`). Update any consumers (legacy membership, docs).
 - [ ] **H7 Drift out of the quorum**: a peer with `config_ok=false` excluded from `has_write_quorum` (`cluster.rs:775-799`); it stays in `/admin/cluster` with the drift flag; the test phase F extended: with a diverging secret the node must NOT sustain the quorum (3 nodes, 1 drifted → quorum 2 still ok; 2 drifted → 503).
 - [ ] **Failure-detector tolerance (D12.3, plan line 73)**: dead after 2 consecutive ping failures (not 1; `membership.rs:104`), alive at the first success. A comment on the why.
 - [ ] **D3a `cluster_size` guard (decision H6, to be confirmed)**: in quorum mode, if the observed live nodes (including self) exceed `cluster_size` → write gate closed (503 with an explicit message) + `size_exceeded: true` in `/admin/cluster` + an error log on transitions.
@@ -82,15 +88,15 @@ The proving ground of the R1 fixes and of everything else. Extends `bin/cluster`
 
 ## R4 — Inter-node transport security
 
-- [ ] **§3.1 Anti-replay**: in `cluster_auth.rs` (~138-146), compare `x-amz-date` with the clock: outside ±15 minutes → 403. Unit tests (inside/outside the window, missing header).
+- [ ] **§3.7(C) / TD-015 Verified inter-node TLS with a shared cluster CA (committed, not "evaluate")**: build the membership probe and `ClusterClient` `reqwest` clients against a shared cluster CA root and DROP `danger_accept_invalid_certs` (`membership.rs:50`, `client.rs:74`). This is the preferred H12 path: verifying the peer's CA-signed cert authenticates the *receiver* of a fan-out (closes §3.7(A) robustly) AND restores confidentiality against passive sniffing / active MITM on the cluster LAN (§3.7(C)). Distribute the CA via config (path) alongside `secret`; document in the R9 runbook. Resolves TD-015 in `TECH_DEBT.md` + roadmap. (If Pietro prefers the secret-only posture, this becomes the challenge-response of H12/R3 instead, and TD-015 stays open with its risk note updated.)
+- [ ] **§3.1 / §3.7(C) Anti-replay**: in `cluster_auth.rs` (~138-146), compare `x-amz-date` with the clock: outside ±15 minutes → 403. Unit tests (inside/outside the window, missing header).
 - [ ] **§3.4 Dedicated body limit**: `DefaultBodyLimit` ~2 MiB on the `/cluster/v1/{object,op,manifest,control-snapshot}` sub-router (NOT on the blob routes).
-- [ ] **M5**: startup validation `secret` ≥ 16 characters (clear error in `config.rs:800`).
+- [ ] **M5 / §3.7(B) Secret strength (security-critical, not cosmetic)**: startup validation `secret` length ≥ 16 chars AND reject the shipped placeholders (`dev-cluster-secret-change-me`, `CHANGEME-CLUSTER-SECRET`); warn if it looks low-entropy; document that it must be a high-entropy random value (clear errors in `config.rs:800`). Pairs with §3.5 (removing the public fingerprint oracle) and the CA path above.
 - [ ] **M6**: `Uuid::parse_str` on the path `blob_id` in the cluster handlers before `write_raw`/`read_raw` (defense in depth).
 - [ ] **D12.1 Receive-side filter**: the application of `ServerConfigSet/Delete` in `handlers/cluster.rs:275-279` skips node-local keys (shared `is_node_local_key`, today sender-side only).
 - [ ] **H8/D3b Dual-secret for rotation**: optional `[cluster] secret_previous`; inbound auth tries both (constant-time on each), outbound and fingerprint use only `secret`; config validation (≥ 16 chars for previous too); unit tests; runbook in R9.
-- [ ] Evaluate together with TD-015 (inter-node TLS) whether to close that here too (shared CA / pinning) or leave it an explicit TD: decide with Pietro at the start of the milestone.
 
-*Outcome: an inter-node surface with a replay window, body limits, validations and secret rotation without downtime.*
+*Outcome: an inter-node surface with authenticated peers (verified TLS), a replay window, body limits, strong-secret enforcement and secret rotation without downtime — closing the §3.7 security chain together with R3.*
 
 ---
 
@@ -189,6 +195,10 @@ Update the Status column as work proceeds: ⬜ to do, 🔧 in progress, ✅ done
 | §3.4 | Cluster endpoints without a body limit | R4 | ⬜ |
 | §3.5 | Public health exposes disk/fingerprint | R3 | ⬜ |
 | §3.6 | SSE-C not replicated | R5 (spike) + R9 (doc) | ⬜ |
+| §3.7(A) | Rogue peer receives all new data with no secret (fan-out authenticates no peer) | R3 (H12: peer auth, gate fan-out+quorum) + R4 (mutual TLS) | ⬜ |
+| §3.7(B) | Secret brute-forceable from public fingerprint; weak secrets allowed | R3 (§3.5 fingerprint off public) + R4 (M5 secret strength) | ⬜ |
+| §3.7(C) | Plain-HTTP/unverified-TLS/no-replay enable sniff/MITM/replay | R4 (TD-015 verified TLS + §3.1 anti-replay) | ⬜ |
+| TD-015 | Inter-node TLS accepts invalid certs (now committed, not deferred) | R4 | ⬜ |
 | M1 | HWM stuck on a failing entry | R7 | ⬜ |
 | M2 | Repair without a budget | R7 | ⬜ |
 | M3 | Membership without eviction | R3 | ⬜ |

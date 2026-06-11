@@ -507,15 +507,17 @@ repository: [arca-phase-29-ha-review.md](https://github.com/dxc-technology/arca/
 
 - [ ] R1 — P0 correctness: true write quorum (ACK counting), commit-ordered PostgreSQL manifest cursor, tombstone-first control merge
 - [ ] R2 — Cluster test infrastructure: real network partitions, available-mode suite, control-plane catch-up test, flakiness fixes
-- [ ] R3 — Membership and quorum integrity: authenticated liveness, config drift excluded from quorum, cluster-size guard, tombstone-GC liveness guard
-- [ ] R4 — Inter-node transport security: anti-replay window, body limits, secret validation, dual-secret rotation
+- [ ] R3 — Membership and quorum integrity: **peer authentication** (a rogue peer must not receive fan-out without proving secret/CA possession), config drift excluded from quorum, public health minimised, cluster-size guard, tombstone-GC liveness guard
+- [ ] R4 — Inter-node transport security: **verified mutual TLS with a shared cluster CA** (resolves TD-015), anti-replay window, body limits, secret-strength enforcement, dual-secret rotation
 - [ ] R5 — Reconcile completeness: RBAC join tables and bucket config (resolves TD-016), multipart reconcile, SSE-C replication decision
 - [ ] R6 — Cluster-aware workers: leader gate for the lifecycle and external-replication workers
 - [ ] R7 — Synchronization state and operability: "syncing" readiness, per-peer lag, repair budget, backup-restore rewind detection
 - [ ] R8 — Console: node selector for the per-node views (audit, metrics, events) behind the load balancer
 - [ ] R9 — Documentation and deploy: real consistency semantics, operational runbooks, load-balancer and probe alignment
 
-**Depends on**: Phase 29. Critical for production `[cluster]` deployments: it closes the gap between the consistency guarantees the cluster declares and those it enforces.
+It also closes a **security workstream** (review §3.7): the cluster authenticates the *sender* of every replication request but never the *receiver* of a fan-out, so a rogue peer discovered over mDNS can receive all newly written data without holding the shared secret. R3 (peer authentication, public-health minimisation) and R4 (verified inter-node TLS, secret-strength enforcement, anti-replay) close it; on an untrusted cluster network this carries P0 urgency.
+
+**Depends on**: Phase 29. Critical for production `[cluster]` deployments: it closes the gap between the consistency guarantees the cluster declares and those it enforces, and the inter-node trust gaps found in review §3.7.
 
 ---
 
@@ -826,5 +828,5 @@ Remaining items:
 - **Multipart Content-Type** (TD-008): Captured at init time — verify against AWS semantics
 - **SSE-C multipart** (TD-010): SSE-C headers rejected on multipart uploads — needs per-part encryption tracking
 - **Composite blobs in `recover` / `fsck`** (TD-014): the multipart Complete optimisation produces composite sidecars with no on-disk blob file. `arca recover` aborts on them as orphans, `arca fsck` reports false-positive `orphaned_sidecars`. Runtime S3 reads/writes are unaffected — only the recovery and integrity-check tools need teaching how to walk composites.
-- **Cluster inter-node TLS** (TD-015): the cluster health-probe and transport clients accept invalid TLS certs so peers with self-signed certs are reachable. Inter-node requests are authenticated by SigV4 + the shared cluster secret (not TLS), so request auth is unaffected — the residual risk is confidentiality only. Fix: distribute a shared cluster CA (or pin peer fingerprints) and drop `danger_accept_invalid_certs`. Phase 29.
+- **Cluster inter-node TLS** (TD-015): the cluster health-probe and transport clients accept invalid TLS certs so peers with self-signed certs are reachable. Inter-node requests are authenticated by SigV4 + the shared cluster secret (not TLS), so request auth is unaffected. **Severity revised (review §3.7): not confidentiality-only** — because TLS does not authenticate the peer and the fan-out push direction authenticates no peer either, a rogue peer can receive all new data without the secret. Fix: verified mutual TLS with a shared cluster CA (verify the peer cert before fanning out) and drop `danger_accept_invalid_certs`. Committed in the HA hardening plan (Phase 29.1, R4).
 - **Partial cluster control-plane reconcile** (TD-016): anti-entropy reconciles only the 5 tombstoned families (credentials, users, teams, grants, buckets). Memberships/grant-attachments, `bucket_config`, `bucket_tags` and `server_config` replicate in real time but are not in the snapshot merge, so a node that was offline when one changed only heals on the next write touching it. Fix: extend the control snapshot + LWW merge (and tombstones) to those families. Phase 29.
