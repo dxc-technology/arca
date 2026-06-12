@@ -1182,7 +1182,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0260-2026-06-12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.26.0 — 2026-06-12
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.26.0 — 2026-06-12">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2641,7 +2652,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0260-2026-06-12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.26.0 — 2026-06-12
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.26.0 — 2026-06-12">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -4051,7 +4073,8 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.25.1...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.26.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="0260-2026-06-12"><a href="https://github.com/dxc-technology/arca/compare/v0.25.1...v0.26.0">0.26.0</a> — 2026-06-12<a class="headerlink" href="#0260-2026-06-12" title="Permanent link">&para;</a></h2>
 <h3 id="security">Security<a class="headerlink" href="#security" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Verified inter-node mutual TLS with a cluster CA (Phase 29.1 R4, review §3.7(C), decision H12 — resolves TD-015).</strong> Inter-node TLS no longer accepts invalid certificates: the <code>danger_accept_invalid_certs</code> accommodation is gone. A new <code>[cluster.tls]</code> section distributes an operator-owned cluster CA plus this node's CA-signed cert/key (mint everything with the new <code>arca tls generate-cluster</code>): outbound cluster clients verify peer certificates against the CA and present the node cert as their client identity, while the listener requests client certificates — optional at the TLS layer, because S3 clients share the single port — and <code>/cluster/v1/*</code> refuses any request whose connection did not present one signed by the cluster CA. This is the independent second factor on top of the R3 challenge-response (an attacker now needs the secret AND a CA-signed key), and it closes the passive-sniffing / active-MITM exposure on the cluster network. <strong>Breaking</strong>: a cluster running over HTTPS now refuses to start without <code>[cluster.tls]</code> (fail closed — there is no insecure fallback); plain-HTTP clusters are unaffected (the R3 peer authentication remains their baseline; use TLS on any network you do not fully trust).</li>

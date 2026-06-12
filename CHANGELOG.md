@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0] — 2026-06-12
+
 ### Security
 
 - **Verified inter-node mutual TLS with a cluster CA (Phase 29.1 R4, review §3.7(C), decision H12 — resolves TD-015).** Inter-node TLS no longer accepts invalid certificates: the `danger_accept_invalid_certs` accommodation is gone. A new `[cluster.tls]` section distributes an operator-owned cluster CA plus this node's CA-signed cert/key (mint everything with the new `arca tls generate-cluster`): outbound cluster clients verify peer certificates against the CA and present the node cert as their client identity, while the listener requests client certificates — optional at the TLS layer, because S3 clients share the single port — and `/cluster/v1/*` refuses any request whose connection did not present one signed by the cluster CA. This is the independent second factor on top of the R3 challenge-response (an attacker now needs the secret AND a CA-signed key), and it closes the passive-sniffing / active-MITM exposure on the cluster network. **Breaking**: a cluster running over HTTPS now refuses to start without `[cluster.tls]` (fail closed — there is no insecure fallback); plain-HTTP clusters are unaffected (the R3 peer authentication remains their baseline; use TLS on any network you do not fully trust).
@@ -704,7 +706,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.25.1...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/dxc-technology/arca/compare/v0.25.1...v0.26.0
 [0.25.1]: https://github.com/dxc-technology/arca/compare/v0.25.0...v0.25.1
 [0.25.0]: https://github.com/dxc-technology/arca/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/dxc-technology/arca/compare/v0.23.1...v0.24.0
