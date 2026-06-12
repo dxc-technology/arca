@@ -188,7 +188,7 @@ dependencies = [
 
 [[package]]
 name = "arca-auth"
-version = "0.26.0"
+version = "0.26.1"
 dependencies = [
  "chrono",
  "form_urlencoded",
@@ -201,7 +201,7 @@ dependencies = [
 
 [[package]]
 name = "arca-core"
-version = "0.26.0"
+version = "0.26.1"
 dependencies = [
  "async-trait",
  "bytes",
@@ -222,7 +222,7 @@ dependencies = [
 
 [[package]]
 name = "arca-proto"
-version = "0.26.0"
+version = "0.26.1"
 dependencies = [
  "arca-auth",
  "arca-core",
@@ -255,7 +255,7 @@ dependencies = [
 
 [[package]]
 name = "arca-server"
-version = "0.26.0"
+version = "0.26.1"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -314,7 +314,7 @@ dependencies = [
 
 [[package]]
 name = "arca-storage"
-version = "0.26.0"
+version = "0.26.1"
 dependencies = [
  "arca-core",
  "async-trait",

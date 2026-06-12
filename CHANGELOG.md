@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.1] — 2026-06-12
+
 ### Security
 
 - **`time` 0.3.41 → 0.3.47 — CVE-2026-25727 fix picked up (resolves TD-011).** The Docker builder moved from `rust:1.85-alpine` to `rust:alpine` (currently Rust 1.96), unblocking the `time` versions that contain the stack-exhaustion fix; the MSRV pins (`home`, `serde_with`, `darling`) became unnecessary and were removed from the Dockerfile. `time` 0.3.48 remains excluded for a non-security reason (a coherence clash with `rcgen` — tracked as TD-017).
@@ -730,7 +732,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.26.1...HEAD
+[0.26.1]: https://github.com/dxc-technology/arca/compare/v0.26.0...v0.26.1
 [0.26.0]: https://github.com/dxc-technology/arca/compare/v0.25.1...v0.26.0
 [0.25.1]: https://github.com/dxc-technology/arca/compare/v0.25.0...v0.25.1
 [0.25.0]: https://github.com/dxc-technology/arca/compare/v0.24.0...v0.25.0
