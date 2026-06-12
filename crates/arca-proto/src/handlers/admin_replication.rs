@@ -21,20 +21,30 @@ use arca_core::store::replication::JournalFilter;
 use axum::extract::{Path, Query, State};
 use axum::response::IntoResponse;
 use axum::Json;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::admin::AdminError;
+use crate::handlers::admin_proxy::{self, REPLICATION_JOURNAL_FAMILY};
 use crate::state::AppState;
 
 const CREDENTIAL_PREFIX: &str = "replication.credentials.";
 
-#[derive(Deserialize)]
+/// Query parameters for GET /admin/replication/journal. Also the JSON body of
+/// the proxied `POST /cluster/v1/admin/replication-journal` (`node` never
+/// forwarded) — the journal is strictly node-local (each entry is recorded by
+/// the node that served the originating S3 write), hence the `?node=` selector
+/// (review D6, decision H9).
+#[derive(Serialize, Deserialize)]
 pub struct ListJournalQuery {
     pub bucket: Option<String>,
     pub status: Option<String>,
     pub rule_id: Option<String>,
     pub offset: Option<u32>,
     pub limit: Option<u32>,
+    /// `?node=` selector (review D6): absent/self = local, a peer's id =
+    /// proxy, `all` = merged view.
+    #[serde(skip_serializing, default)]
+    pub node: Option<String>,
 }
 
 impl ListJournalQuery {
@@ -49,11 +59,12 @@ impl ListJournalQuery {
     }
 }
 
-/// GET /admin/replication/journal — list journal entries.
-pub async fn list_journal(
-    State(state): State<AppState>,
-    Query(q): Query<ListJournalQuery>,
-) -> Result<impl IntoResponse, AdminError> {
+/// This node's own journal page — shared by the admin handler and the
+/// `/cluster/v1/admin/replication-journal` receive handler.
+pub(crate) async fn journal_page(
+    state: &AppState,
+    q: &ListJournalQuery,
+) -> Result<serde_json::Value, AdminError> {
     let filter = q.to_filter();
     let entries = state
         .replication_store
@@ -65,10 +76,28 @@ pub async fn list_journal(
         .count_journal(&filter)
         .await
         .map_err(|e| AdminError::internal(e.to_string()))?;
-    Ok(Json(serde_json::json!({
+    Ok(serde_json::json!({
         "entries": entries,
         "total": total,
-    })))
+    }))
+}
+
+/// GET /admin/replication/journal — list journal entries.
+pub async fn list_journal(
+    State(state): State<AppState>,
+    Query(q): Query<ListJournalQuery>,
+) -> Result<impl IntoResponse, AdminError> {
+    let limit = q.limit.unwrap_or(100) as usize;
+    let page = admin_proxy::dispatch(
+        &state,
+        &REPLICATION_JOURNAL_FAMILY,
+        q.node.as_deref(),
+        &q,
+        limit,
+        || journal_page(&state, &q),
+    )
+    .await?;
+    Ok(Json(page))
 }
 
 /// GET /admin/replication/credentials — list stored destination credentials.

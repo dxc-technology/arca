@@ -36,6 +36,8 @@ def pytest_configure(config):
         ("cluster_syncing_seed", "requires all 3 up; seeds state for the R7 readiness phase"),
         ("cluster_syncing_while_down", "requires node 3 down; writes its catch-up data"),
         ("cluster_syncing_readiness", "requires node 3 just restarted (no wait): observes 503 syncing, then 200 with the data present"),
+        ("cluster_node_views_full", "requires all 3 up; verifies the R8 ?node= admin proxy and merged view"),
+        ("cluster_node_views_degraded", "requires node 3 down; verifies ?node= errors and merged-view degradation"),
     ]:
         config.addinivalue_line("markers", f"{name}: {desc}")
 

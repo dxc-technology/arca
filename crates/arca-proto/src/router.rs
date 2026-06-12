@@ -241,6 +241,22 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/op", post(cluster::receive_op))
         .route("/v1/manifest", post(cluster::manifest))
         .route("/v1/control-snapshot", get(cluster::control_snapshot))
+        // Admin proxy receive routes (review D6, decision H9): serve THIS
+        // node's node-local admin pages (audit, metrics history, notification
+        // events, replication journal) to a peer proxying a console `?node=`
+        // query. Query filters travel as small JSON bodies (like the manifest
+        // request, keeping the signed payload UNSIGNED-PAYLOAD), so the 2 MiB
+        // cap applies.
+        .route("/v1/admin/audit", post(cluster::admin_audit))
+        .route("/v1/admin/metrics-history", post(cluster::admin_metrics_history))
+        .route(
+            "/v1/admin/notification-events",
+            post(cluster::admin_notification_events),
+        )
+        .route(
+            "/v1/admin/replication-journal",
+            post(cluster::admin_replication_journal),
+        )
         .route_layer(axum::extract::DefaultBodyLimit::max(2 * 1024 * 1024))
         .route(
             "/v1/blob/{blob_id}",

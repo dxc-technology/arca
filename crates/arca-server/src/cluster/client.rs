@@ -352,6 +352,24 @@ impl ClusterClient {
         Ok((sidecar, stream))
     }
 
+    /// Proxies a node-local admin query to a peer's `/cluster/v1/admin/*`
+    /// receive route (review D6, decision H9): POSTs the JSON-encoded filter
+    /// and returns the peer's page bytes. Same transport discipline as the
+    /// manifest pull — the filter travels in the body, never in a signed
+    /// query string.
+    pub async fn admin_query(
+        &self,
+        endpoint: &str,
+        path: &str,
+        body: Vec<u8>,
+    ) -> Result<Vec<u8>, ClusterError> {
+        debug_assert!(
+            path.starts_with("/cluster/v1/admin/"),
+            "admin_query is only for the admin proxy routes"
+        );
+        self.post_json_recv(endpoint, path, body).await
+    }
+
     /// Signs and sends a JSON body via POST to a fixed cluster path, returning
     /// the raw `reqwest::Response` for the caller to interpret.
     async fn send_post(
@@ -469,6 +487,40 @@ impl ClusterClient {
             let body = resp.text().await.unwrap_or_default();
             Err(ClusterError::Http { status, body })
         }
+    }
+}
+
+/// [`arca_core::cluster::ClusterAdminProxy`] over the cluster transport
+/// (review D6, decision H9). `arca-proto` consumes the trait object because it
+/// cannot see [`ClusterClient`] — the same dependency rationale as
+/// `RawBlobOps`.
+pub struct ClusterAdminProxyImpl {
+    client: ClusterClient,
+}
+
+impl ClusterAdminProxyImpl {
+    pub fn new(client: ClusterClient) -> Self {
+        Self { client }
+    }
+}
+
+#[async_trait::async_trait]
+impl arca_core::cluster::ClusterAdminProxy for ClusterAdminProxyImpl {
+    async fn admin_query(
+        &self,
+        endpoint: &str,
+        path: &str,
+        body: Vec<u8>,
+    ) -> Result<Vec<u8>, arca_core::cluster::ClusterProxyError> {
+        self.client
+            .admin_query(endpoint, path, body)
+            .await
+            .map_err(|e| match e {
+                ClusterError::Http { status, body } => {
+                    arca_core::cluster::ClusterProxyError::Http { status, body }
+                }
+                other => arca_core::cluster::ClusterProxyError::Unreachable(other.to_string()),
+            })
     }
 }
 

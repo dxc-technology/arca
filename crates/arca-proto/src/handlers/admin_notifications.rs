@@ -1,39 +1,51 @@
 //! Admin API handlers for notification events.
+//!
+//! The event log is node-local (events are recorded by the node that served
+//! the originating S3 write), so the list endpoint accepts the `?node=`
+//! selector (review D6, decision H9) via [`admin_proxy::dispatch`].
 
 use axum::extract::{Query, State};
 use axum::response::IntoResponse;
 use axum::Json;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use arca_core::store::notification::NotificationEventFilter;
 
 use crate::handlers::admin::AdminError;
+use crate::handlers::admin_proxy::{self, NOTIFICATION_EVENTS_FAMILY};
 use crate::state::AppState;
 
-/// Query parameters for GET /admin/notifications/events.
-#[derive(Debug, Deserialize)]
+/// Query parameters for GET /admin/notifications/events. Also the JSON body of
+/// the proxied `POST /cluster/v1/admin/notification-events` (`node` never
+/// forwarded).
+#[derive(Debug, Serialize, Deserialize)]
 pub struct NotificationEventQueryParams {
     pub bucket: Option<String>,
     pub event_name: Option<String>,
     pub delivery_status: Option<String>,
     pub offset: Option<u32>,
     pub limit: Option<u32>,
+    /// `?node=` selector (review D6): absent/self = local, a peer's id =
+    /// proxy, `all` = merged view.
+    #[serde(skip_serializing, default)]
+    pub node: Option<String>,
 }
 
-/// GET /admin/notifications/events — list notification events with optional filters.
-pub async fn list_notification_events(
-    State(state): State<AppState>,
-    Query(params): Query<NotificationEventQueryParams>,
-) -> Result<impl IntoResponse, AdminError> {
+/// This node's own notification-event page — shared by the admin handler and
+/// the `/cluster/v1/admin/notification-events` receive handler.
+pub(crate) async fn notification_events_page(
+    state: &AppState,
+    params: &NotificationEventQueryParams,
+) -> Result<serde_json::Value, AdminError> {
     let store = state
         .notification_store
         .as_ref()
         .ok_or_else(|| AdminError::bad_request("Notification store is not available"))?;
 
     let filter = NotificationEventFilter {
-        bucket: params.bucket,
-        event_name: params.event_name,
-        delivery_status: params.delivery_status,
+        bucket: params.bucket.clone(),
+        event_name: params.event_name.clone(),
+        delivery_status: params.delivery_status.clone(),
         offset: params.offset.unwrap_or(0),
         limit: params.limit.unwrap_or(100).min(1000),
     };
@@ -48,12 +60,30 @@ pub async fn list_notification_events(
         .await
         .map_err(|e| AdminError::internal(e.to_string()))?;
 
-    Ok(Json(serde_json::json!({
+    Ok(serde_json::json!({
         "entries": entries,
         "total": total,
         "offset": filter.offset,
         "limit": filter.limit,
-    })))
+    }))
+}
+
+/// GET /admin/notifications/events — list notification events with optional filters.
+pub async fn list_notification_events(
+    State(state): State<AppState>,
+    Query(params): Query<NotificationEventQueryParams>,
+) -> Result<impl IntoResponse, AdminError> {
+    let limit = params.limit.unwrap_or(100).min(1000) as usize;
+    let page = admin_proxy::dispatch(
+        &state,
+        &NOTIFICATION_EVENTS_FAMILY,
+        params.node.as_deref(),
+        &params,
+        limit,
+        || notification_events_page(&state, &params),
+    )
+    .await?;
+    Ok(Json(page))
 }
 
 /// GET /admin/notifications/events/count — count notification events.

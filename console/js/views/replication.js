@@ -1,4 +1,5 @@
 import { api } from '../api.js';
+import { nodeSelectorMixin } from '../node-selector.js?v=node-views-2';
 
 // ==================== REPLICATION — SHARED ====================
 
@@ -38,6 +39,10 @@ async function extractS3Error(resp) {
 // side detail panel, auto-refresh, pagination.
 export function replicationView() {
   return {
+    // Cluster node selector (R8): the journal is node-local (each entry is
+    // recorded by the node that served the originating S3 write).
+    ...nodeSelectorMixin('repl'),
+
     _rawEntries: [],
     _rawTotal: 0,
 
@@ -194,18 +199,24 @@ export function replicationView() {
         const params = new URLSearchParams();
         params.set('limit', '1000');
         params.set('offset', '0');
-        const data = await api.adminGet('/replication/journal?' + params.toString());
+        const data = await api.adminGet('/replication/journal?' + params.toString() + this.nodeQuery());
         this._rawEntries = data.entries || [];
         this._rawTotal = data.total || 0;
+        this.captureNodeMeta(data);
       } catch (e) {
         console.error('Failed to load replication journal:', e);
         this._rawEntries = [];
         this._rawTotal = 0;
+        this.captureNodeMeta({});
+        if (this.selectedNode) {
+          this.$dispatch('show-toast', { message: this.nodeErrorMessage(e), type: 'error' });
+        }
       }
       this.loading = false;
     },
 
     init() {
+      this.loadNodes();
       this.load();
       this.autoRefresh = setInterval(() => this.load(), 30000);
       this.$watch('selectedBuckets', () => this._saveFilters());

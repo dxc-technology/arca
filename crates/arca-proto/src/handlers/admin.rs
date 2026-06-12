@@ -58,6 +58,45 @@ impl AdminError {
             message: msg.into(),
         }
     }
+
+    /// 503 — a known resource is temporarily not usable (e.g. an ineligible
+    /// cluster node targeted by `?node=`).
+    pub fn unavailable(msg: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            error: "ServiceUnavailable",
+            message: msg.into(),
+        }
+    }
+
+    /// 502 — a proxied cluster peer misbehaved or could not be reached.
+    pub fn bad_gateway(msg: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::BAD_GATEWAY,
+            error: "BadGateway",
+            message: msg.into(),
+        }
+    }
+
+    /// A peer's own 4xx admin error, forwarded with its original status so the
+    /// console sees the peer's semantics (e.g. 400 "audit not enabled there").
+    pub fn peer(status: StatusCode, msg: impl Into<String>) -> Self {
+        Self {
+            status,
+            error: "PeerError",
+            message: msg.into(),
+        }
+    }
+
+    /// The HTTP status this error answers with.
+    pub fn status_code(&self) -> StatusCode {
+        self.status
+    }
+
+    /// The human-readable message.
+    pub fn message(&self) -> &str {
+        &self.message
+    }
 }
 
 impl IntoResponse for AdminError {

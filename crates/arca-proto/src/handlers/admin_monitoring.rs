@@ -1,18 +1,26 @@
 //! Admin API handlers for audit log and metrics history.
+//!
+//! Both stores are strictly node-local, so the list endpoints accept the
+//! `?node=` selector (review D6, decision H9) and route through
+//! [`admin_proxy::dispatch`]: local data, one eligible peer (server-side
+//! proxy), or the timestamp-merged all-nodes view.
 
 use axum::extract::{Query, State};
 use axum::response::IntoResponse;
 use axum::Json;
 use http::StatusCode;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use arca_core::store::audit::AuditFilter;
 
 use crate::handlers::admin::AdminError;
+use crate::handlers::admin_proxy::{self, AUDIT_FAMILY, METRICS_HISTORY_FAMILY};
 use crate::state::AppState;
 
-/// Query parameters for GET /admin/audit.
-#[derive(Debug, Deserialize)]
+/// Query parameters for GET /admin/audit. Also the JSON body of the proxied
+/// `POST /cluster/v1/admin/audit` — `node` is `skip_serializing` so a
+/// forwarded query can never re-proxy.
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AuditQueryParams {
     pub bucket: Option<String>,
     pub operation: Option<String>,
@@ -21,22 +29,28 @@ pub struct AuditQueryParams {
     pub to: Option<String>,
     pub offset: Option<u32>,
     pub limit: Option<u32>,
+    /// `?node=` selector (review D6): absent/self = local, a peer's id =
+    /// proxy, `all` = merged view.
+    #[serde(skip_serializing, default)]
+    pub node: Option<String>,
 }
 
-/// GET /admin/audit — list audit log entries with optional filters.
-pub async fn list_audit(
-    State(state): State<AppState>,
-    Query(params): Query<AuditQueryParams>,
-) -> Result<impl IntoResponse, AdminError> {
+/// This node's own audit page — the family's single source of truth, shared by
+/// the admin handler (Local branch) and the `/cluster/v1/admin/audit` receive
+/// handler serving proxied queries from peers.
+pub(crate) async fn audit_page(
+    state: &AppState,
+    params: &AuditQueryParams,
+) -> Result<serde_json::Value, AdminError> {
     let audit_store = state
         .audit_store
         .as_ref()
         .ok_or_else(|| AdminError::bad_request("Audit logging is not enabled"))?;
 
     let filter = AuditFilter {
-        bucket: params.bucket,
-        operation: params.operation,
-        user_id: params.user_id,
+        bucket: params.bucket.clone(),
+        operation: params.operation.clone(),
+        user_id: params.user_id.clone(),
         from: params
             .from
             .as_deref()
@@ -59,12 +73,30 @@ pub async fn list_audit(
         .await
         .map_err(|e| AdminError::internal(e.to_string()))?;
 
-    Ok(Json(serde_json::json!({
+    Ok(serde_json::json!({
         "entries": entries,
         "total": total,
         "offset": filter.offset,
         "limit": filter.limit,
-    })))
+    }))
+}
+
+/// GET /admin/audit — list audit log entries with optional filters.
+pub async fn list_audit(
+    State(state): State<AppState>,
+    Query(params): Query<AuditQueryParams>,
+) -> Result<impl IntoResponse, AdminError> {
+    let limit = params.limit.unwrap_or(100).min(1000) as usize;
+    let page = admin_proxy::dispatch(
+        &state,
+        &AUDIT_FAMILY,
+        params.node.as_deref(),
+        &params,
+        limit,
+        || audit_page(&state, &params),
+    )
+    .await?;
+    Ok(Json(page))
 }
 
 /// GET /admin/audit/stats — audit summary counts.
@@ -123,19 +155,25 @@ pub async fn clear_audit(
     ))
 }
 
-/// Query parameters for GET /admin/metrics/history.
-#[derive(Debug, Deserialize)]
+/// Query parameters for GET /admin/metrics/history. Also the JSON body of the
+/// proxied `POST /cluster/v1/admin/metrics-history` (`node` never forwarded).
+#[derive(Debug, Serialize, Deserialize)]
 pub struct MetricsHistoryParams {
     pub from: Option<String>,
     pub to: Option<String>,
     pub limit: Option<u32>,
+    /// `?node=` selector (review D6): absent/self = local, a peer's id =
+    /// proxy, `all` = merged view.
+    #[serde(skip_serializing, default)]
+    pub node: Option<String>,
 }
 
-/// GET /admin/metrics/history — historical metrics snapshots.
-pub async fn metrics_history(
-    State(state): State<AppState>,
-    Query(params): Query<MetricsHistoryParams>,
-) -> Result<impl IntoResponse, AdminError> {
+/// This node's own metrics-history page — shared by the admin handler and the
+/// `/cluster/v1/admin/metrics-history` receive handler.
+pub(crate) async fn metrics_history_page(
+    state: &AppState,
+    params: &MetricsHistoryParams,
+) -> Result<serde_json::Value, AdminError> {
     let metrics_store = state
         .metrics_store
         .as_ref()
@@ -150,8 +188,26 @@ pub async fn metrics_history(
         .await
         .map_err(|e| AdminError::internal(e.to_string()))?;
 
-    Ok(Json(serde_json::json!({
+    Ok(serde_json::json!({
         "snapshots": snapshots,
         "count": snapshots.len(),
-    })))
+    }))
+}
+
+/// GET /admin/metrics/history — historical metrics snapshots.
+pub async fn metrics_history(
+    State(state): State<AppState>,
+    Query(params): Query<MetricsHistoryParams>,
+) -> Result<impl IntoResponse, AdminError> {
+    let limit = params.limit.unwrap_or(500).min(5000) as usize;
+    let page = admin_proxy::dispatch(
+        &state,
+        &METRICS_HISTORY_FAMILY,
+        params.node.as_deref(),
+        &params,
+        limit,
+        || metrics_history_page(&state, &params),
+    )
+    .await?;
+    Ok(Json(page))
 }

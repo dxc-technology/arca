@@ -1,4 +1,5 @@
 import { api } from '../api.js';
+import { nodeSelectorMixin } from '../node-selector.js?v=node-views-2';
 
 // ==================== NOTIFICATIONS VIEW ====================
 // Global notification event log viewer (admin only).
@@ -6,6 +7,9 @@ import { api } from '../api.js';
 // side panel detail, pagination bar, clear-all with confirmation.
 export function notificationsView() {
   return {
+    // Cluster node selector (R8): the event log is node-local.
+    ...nodeSelectorMixin('notif'),
+
     _rawEntries: [],
     _rawTotal: 0,
 
@@ -140,18 +144,24 @@ export function notificationsView() {
         const params = new URLSearchParams();
         params.set('limit', '1000');
         params.set('offset', '0');
-        const data = await api.adminGet('/notifications/events?' + params.toString());
+        const data = await api.adminGet('/notifications/events?' + params.toString() + this.nodeQuery());
         this._rawEntries = data.entries || [];
         this._rawTotal = data.total || 0;
+        this.captureNodeMeta(data);
       } catch (e) {
         console.error('Failed to load notification events:', e);
         this._rawEntries = [];
         this._rawTotal = 0;
+        this.captureNodeMeta({});
+        if (this.selectedNode) {
+          this.$dispatch('show-toast', { message: this.nodeErrorMessage(e), type: 'error' });
+        }
       }
       this.loading = false;
     },
 
     init() {
+      this.loadNodes();
       this.load();
       this.autoRefresh = setInterval(() => this.load(), 30000);
       this.$watch('selectedBuckets', () => this._saveFilters());

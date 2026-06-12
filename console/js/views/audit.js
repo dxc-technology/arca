@@ -1,4 +1,5 @@
 import { api } from '../api.js';
+import { nodeSelectorMixin } from '../node-selector.js?v=node-views-2';
 
 // Operations grouped by category
 const OP_CATEGORIES = {
@@ -29,6 +30,9 @@ const OP_PRESETS = {
 // ==================== AUDIT LOG VIEW ====================
 export function auditView() {
   return {
+    // Cluster node selector (R8): the audit log is node-local.
+    ...nodeSelectorMixin('audit'),
+
     // Raw data from server
     _rawEntries: [],
     _rawTotal: 0,
@@ -236,14 +240,26 @@ export function auditView() {
         // Date range is sent server-side for efficiency
         if (this.filterFrom) params.set('from', new Date(this.filterFrom).toISOString());
         if (this.filterTo) params.set('to', new Date(this.filterTo).toISOString());
-        const data = await api.adminGet('/audit?' + params.toString());
+        const data = await api.adminGet('/audit?' + params.toString() + this.nodeQuery());
         this._rawEntries = data.entries || [];
         this._rawTotal = data.total || 0;
-      } catch (e) { console.error('Failed to load audit log:', e); }
+        this.captureNodeMeta(data);
+      } catch (e) {
+        console.error('Failed to load audit log:', e);
+        // Stale rows from another node would be misleading: clear, and say
+        // which node failed (a proxied peer can be down or ineligible).
+        this._rawEntries = [];
+        this._rawTotal = 0;
+        this.captureNodeMeta({});
+        if (this.selectedNode) {
+          this.$dispatch('show-toast', { message: this.nodeErrorMessage(e), type: 'error' });
+        }
+      }
       this.loading = false;
     },
 
     init() {
+      this.loadNodes();
       this.load();
       this.autoRefresh = setInterval(() => this.load(), 30000);
       // Auto-persist column filters whenever they change

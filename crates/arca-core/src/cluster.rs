@@ -216,6 +216,49 @@ pub fn quorum_satisfied(acks: usize, write_quorum: Option<u32>) -> bool {
     }
 }
 
+/// Error of a [`ClusterAdminProxy`] query (review D6, decision H9).
+#[derive(Debug)]
+pub enum ClusterProxyError {
+    /// The peer answered with a non-2xx HTTP status — its own admin-layer
+    /// error (e.g. "audit logging is not enabled" on that node), or a 404
+    /// from a pre-R8 peer that has no `/cluster/v1/admin/*` routes yet.
+    Http { status: u16, body: String },
+    /// The peer could not be reached at all (network error / timeout).
+    Unreachable(String),
+}
+
+impl std::fmt::Display for ClusterProxyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Http { status, body } => write!(f, "peer returned HTTP {status}: {body}"),
+            Self::Unreachable(e) => write!(f, "peer unreachable: {e}"),
+        }
+    }
+}
+
+/// Signed transport for proxying node-local admin queries to a peer (review
+/// D6, decision H9): the console's per-node views (audit log, metrics history,
+/// notification events, replication journal) reach a specific node THROUGH
+/// whichever node the LB picked, via `POST /cluster/v1/admin/*` on the peer —
+/// browsers cannot reach cluster nodes directly in the typical deployment
+/// (only the LB is exposed), and the cluster credential never leaves the
+/// server side.
+///
+/// Implemented in `arca-server` on top of the cluster transport client (which
+/// `arca-proto` cannot see — same dependency rationale as `RawBlobOps`).
+#[async_trait::async_trait]
+pub trait ClusterAdminProxy: Send + Sync {
+    /// POSTs `body` (a JSON-encoded query filter) to `path` (a fixed
+    /// `/cluster/v1/admin/*` route) on the peer at `endpoint`, returning the
+    /// raw response body bytes on success.
+    async fn admin_query(
+        &self,
+        endpoint: &str,
+        path: &str,
+        body: Vec<u8>,
+    ) -> Result<Vec<u8>, ClusterProxyError>;
+}
+
 /// Body of `POST /cluster/v1/op`: a replicated control-plane mutation applied
 /// idempotently by the receiving node. Shared contract between the cluster
 /// client (sender) and the receive handler.

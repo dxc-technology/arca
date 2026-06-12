@@ -554,6 +554,25 @@ run_cluster() {
         $C down -v 2>/dev/null || true
     fi
 
+    if [[ $rc -eq 0 ]]; then
+        echo "── Phase K: per-node admin views (R8, review D6 — ?node= proxy) ──"
+        # The audit/metrics/events/journal stores are strictly node-local;
+        # ?node=<id> proxies the query server-side to that peer, ?node=all
+        # merges every eligible node's page. Second half stops node 3 to
+        # verify the degraded behaviors (503 on a dead target, merged view
+        # shrinking to the eligible nodes).
+        $C up -d
+        wait_live 9001 3 90 || rc=1
+        [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_node_views_full -v "$@" || rc=$?; }
+        if [[ $rc -eq 0 ]]; then
+            $C stop arca-3
+            wait_live 9001 2 60 || rc=1
+            [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_node_views_degraded -v "$@" || rc=$?; }
+        fi
+        dump_logs_on_failure $rc $C
+        $C down -v 2>/dev/null || true
+    fi
+
     trap - EXIT
     cleanup_cluster
     return $rc

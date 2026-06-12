@@ -39,3 +39,12 @@ request_timeout_seconds = 5
 # expiry within seconds (default: 3600). Not part of the drift fingerprint.
 [lifecycle]
 interval_seconds = 5
+
+# Audit + metrics enabled so the R8 per-node view tests (review D6, decision
+# H9) can assert that `?node=` really reaches a specific node's own data: both
+# stores are strictly node-local. Not part of the drift fingerprint.
+[monitoring.audit]
+enabled = true
+
+[monitoring.metrics]
+enabled = true

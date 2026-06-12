@@ -459,6 +459,68 @@ pub async fn control_snapshot(State(state): State<AppState>) -> Response {
     }
 }
 
+/// Generic receive side of the admin proxy (review D6, decision H9): parses
+/// the forwarded query filter from the body and serves THIS node's page via
+/// the same function the local admin handler uses. Behind `cluster_auth`
+/// (+ the mTLS marker when `[cluster.tls]` is on) like every peer endpoint;
+/// errors come back as the admin `{"error","message"}` JSON the proxying side
+/// surfaces to the console.
+macro_rules! admin_proxy_receiver {
+    ($(#[$doc:meta])* $name:ident, $params:ty, $page:path) => {
+        $(#[$doc])*
+        pub async fn $name(State(state): State<AppState>, body: Bytes) -> Response {
+            if state.cluster.is_none() {
+                return err(StatusCode::SERVICE_UNAVAILABLE, "node is not part of a cluster");
+            }
+            let params: $params = match serde_json::from_slice(&body) {
+                Ok(p) => p,
+                Err(e) => {
+                    return err(
+                        StatusCode::BAD_REQUEST,
+                        &format!("invalid admin query json: {e}"),
+                    )
+                }
+            };
+            match $page(&state, &params).await {
+                Ok(page) => Json(page).into_response(),
+                Err(e) => e.into_response(),
+            }
+        }
+    };
+}
+
+admin_proxy_receiver!(
+    /// `POST /cluster/v1/admin/audit` — serve this node's audit page to a peer
+    /// proxying a `?node=` console query.
+    admin_audit,
+    crate::handlers::admin_monitoring::AuditQueryParams,
+    crate::handlers::admin_monitoring::audit_page
+);
+
+admin_proxy_receiver!(
+    /// `POST /cluster/v1/admin/metrics-history` — serve this node's metrics
+    /// history to a peer proxying a `?node=` console query.
+    admin_metrics_history,
+    crate::handlers::admin_monitoring::MetricsHistoryParams,
+    crate::handlers::admin_monitoring::metrics_history_page
+);
+
+admin_proxy_receiver!(
+    /// `POST /cluster/v1/admin/notification-events` — serve this node's
+    /// notification event log to a peer proxying a `?node=` console query.
+    admin_notification_events,
+    crate::handlers::admin_notifications::NotificationEventQueryParams,
+    crate::handlers::admin_notifications::notification_events_page
+);
+
+admin_proxy_receiver!(
+    /// `POST /cluster/v1/admin/replication-journal` — serve this node's
+    /// replication journal to a peer proxying a `?node=` console query.
+    admin_replication_journal,
+    crate::handlers::admin_replication::ListJournalQuery,
+    crate::handlers::admin_replication::journal_page
+);
+
 /// M6: blob ids are UUIDs minted by this codebase — refuse anything else
 /// before the value reaches the blob layer, where it becomes a file name
 /// (defense in depth on top of the storage layer's own path handling).

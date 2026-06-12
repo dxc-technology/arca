@@ -371,6 +371,11 @@ async fn async_main(cli: Cli) -> Result<()> {
             // /cluster/v1/op receive path applies control-plane ops without
             // re-fanning them out.
             let mut cluster_inner: Option<arca_proto::ClusterInnerStores> = None;
+            // Signed transport for the console's `?node=` admin proxy (review
+            // D6, decision H9) — handed to arca-proto as a trait object.
+            let mut cluster_admin_proxy: Option<
+                Arc<dyn arca_core::cluster::ClusterAdminProxy>,
+            > = None;
             // Anti-entropy worker handle, kept alive for the process lifetime
             // (spawned below when clustering is enabled).
             let mut _anti_entropy_worker: Option<worker::BackgroundWorker> = None;
@@ -488,6 +493,10 @@ async fn async_main(cli: Cli) -> Result<()> {
                     c.blob_repair_budget(),
                 ));
 
+                cluster_admin_proxy = Some(Arc::new(
+                    cluster::client::ClusterAdminProxyImpl::new(client.clone()),
+                ));
+
                 let cluster_meta: Arc<dyn arca_core::store::MetadataStore> =
                     Arc::new(cluster::cluster_meta::ClusterMetadataStore::new(
                         metadata,
@@ -590,6 +599,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                     .filter(|c| c.enabled)
                     .is_some_and(|c| c.tls.is_some()),
                 cluster_inner,
+                cluster_admin_proxy,
                 // Only populate when the user explicitly set `journal_retention_days`
                 // in TOML. The ReplicationConfig Default gives 30, so we can't distinguish
                 // "user chose 30" from "not set" via the struct alone — require an explicit

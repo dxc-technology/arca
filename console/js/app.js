@@ -8,10 +8,10 @@ import { usersView, userDetailView } from './views/users.js?v=eff-grants-refresh
 import { teamsView, teamDetailView } from './views/teams.js';
 import { grantsView, grantDetailView } from './views/grants.js';
 import { settingsView } from './views/settings.js';
-import { auditView } from './views/audit.js';
-import { monitoringView } from './views/monitoring.js';
-import { notificationsView, bucketNotificationEditor } from './views/notifications.js';
-import { replicationView, bucketReplicationEditor, replicationCredentials } from './views/replication.js?v=repl-creds-5';
+import { auditView } from './views/audit.js?v=node-views-2';
+import { monitoringView } from './views/monitoring.js?v=node-views-2';
+import { notificationsView, bucketNotificationEditor } from './views/notifications.js?v=node-views-2';
+import { replicationView, bucketReplicationEditor, replicationCredentials } from './views/replication.js?v=node-views-2';
 
 // ==================== SHARED SVG ICONS ====================
 // Centralized SVG strings for consistent use across views.

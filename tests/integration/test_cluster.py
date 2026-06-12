@@ -30,6 +30,10 @@ topology it needs via a marker, and the runner selects them with `pytest -m`:
     cluster_syncing_while_down   node 3 down; writes the data it must catch up on
     cluster_syncing_readiness    node 3 JUST restarted (no wait): 503 syncing must
                                  hold until the catch-up completes, then 200
+    cluster_node_views_full      all 3 up; verifies the R8 ?node= admin proxy
+                                 (specific peer, self, all-merged, unknown node)
+    cluster_node_views_degraded  node 3 down; ?node=<dead> answers 503 and the
+                                 merged view shrinks to the eligible nodes
 
 The partition markers rely on the compose dual-network design: `bin/cluster
 partition <n>` cuts a node off the `cluster` network (inter-node traffic — the
@@ -1145,3 +1149,159 @@ def test_restarted_node_syncs_before_reporting_ready():
         assert sync["first_pass_done"] is True
         assert sync["skipped_entries"] == 0
         assert "hwm" in sync
+
+
+# ── Phase: per-node admin views (R8, review D6, decision H9) ──────────────────
+#
+# The audit log, metrics history, notification event log, and replication
+# journal are strictly NODE-LOCAL (each node records what IT served). Behind
+# the LB the console cannot choose which node answers, so those endpoints
+# accept `?node=<node_id>` (server-side proxy to that peer over the signed
+# cluster transport) and `?node=all` (parallel fan-out to every eligible node,
+# rows merged newest-first and labeled with their source node). Only ELIGIBLE
+# peers are valid targets, consistent with every other H12 gate.
+
+NODEVIEW_BUCKET_PREFIX = "cluster-nodeview"
+NODEVIEW_FAMILIES = [
+    "/admin/audit",
+    "/admin/metrics/history",
+    "/admin/notifications/events",
+    "/admin/replication/journal",
+]
+
+
+def _admin_get_status(endpoint, path):
+    """Signed (SigV4) GET against an /admin/* endpoint, returning
+    (status_code, parsed JSON) WITHOUT raising on non-2xx."""
+    url = f"{endpoint}{path}"
+    req = AWSRequest(method="GET", url=url, data="")
+    S3SigV4Auth(Credentials(ACCESS_KEY, SECRET_KEY), "s3", REGION).add_auth(req)
+    resp = requests.get(url, headers=dict(req.headers), timeout=10)
+    return resp.status_code, resp.json()
+
+
+def _node_id_of(n):
+    """The persistent node_id of cluster node `n` (asked directly)."""
+    return _admin_get(NODES[n], "/admin/cluster")["node_id"]
+
+
+def _audit_creates(entries, bucket):
+    """The CreateBucket audit rows for `bucket` among `entries`."""
+    return [
+        e
+        for e in entries
+        if e.get("operation") == "CreateBucket" and e.get("bucket") == bucket
+    ]
+
+
+@pytest.mark.cluster_node_views_full
+def test_node_views_seed_distinct_audit_trails():
+    """Create a distinct bucket via each node DIRECTLY: the bucket itself
+    replicates cluster-wide (control plane), but the CreateBucket AUDIT row
+    stays only on the node that served the request — the per-node views below
+    rely on exactly this asymmetry."""
+    for n, endpoint in NODES.items():
+        _s3(endpoint).create_bucket(Bucket=f"{NODEVIEW_BUCKET_PREFIX}-{n}")
+    # Each node's own audit log must hold its own create (batched writer —
+    # poll briefly) and the buckets must exist everywhere.
+    for n, endpoint in NODES.items():
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            page = _admin_get(endpoint, "/admin/audit?limit=1000")
+            if _audit_creates(page["entries"], f"{NODEVIEW_BUCKET_PREFIX}-{n}"):
+                break
+            time.sleep(0.5)
+        else:
+            raise AssertionError(f"node {n} never audited its own CreateBucket")
+
+
+@pytest.mark.cluster_node_views_full
+def test_node_view_proxies_to_specific_peer():
+    """?node=<peer id> on node 1 returns THAT node's audit log: it contains the
+    create the peer served and NOT the one node 1 served (audit is node-local,
+    so presence of the wrong row would mean the proxy did not really leave
+    this node)."""
+    for n in (2, 3):
+        peer_id = _node_id_of(n)
+        page = _admin_get(NODES[1], f"/admin/audit?limit=1000&node={peer_id}")
+        assert page["node"] == peer_id
+        assert _audit_creates(page["entries"], f"{NODEVIEW_BUCKET_PREFIX}-{n}"), (
+            f"node {n}'s own CreateBucket missing from its proxied audit page"
+        )
+        assert not _audit_creates(page["entries"], f"{NODEVIEW_BUCKET_PREFIX}-1"), (
+            "a row audited on node 1 leaked into a page proxied from a peer"
+        )
+
+
+@pytest.mark.cluster_node_views_full
+def test_node_view_self_id_is_served_locally():
+    """?node=<own id> short-circuits to the local page (labeled with the id)."""
+    self_id = _node_id_of(1)
+    page = _admin_get(NODES[1], f"/admin/audit?limit=1000&node={self_id}")
+    assert page["node"] == self_id
+    assert _audit_creates(page["entries"], f"{NODEVIEW_BUCKET_PREFIX}-1")
+
+
+@pytest.mark.cluster_node_views_full
+def test_node_view_merged_all_nodes():
+    """?node=all merges every node's page: one source per node (no errors),
+    every row labeled with its node, rows ordered newest-first, and the three
+    per-node CreateBucket rows all present with the right labels."""
+    ids = {n: _node_id_of(n) for n in NODES}
+    page = _admin_get(NODES[1], "/admin/audit?limit=1000&node=all")
+    assert page["node"] == "all"
+    sources = {s["node_id"]: s for s in page["sources"]}
+    assert set(sources) == set(ids.values()), f"expected 3 sources, got {sources}"
+    assert not any("error" in s for s in sources.values())
+
+    entries = page["entries"]
+    assert all(e.get("node") for e in entries), "merged rows must carry a node label"
+    stamps = [e["timestamp"] for e in entries]
+    assert stamps == sorted(stamps, reverse=True), "merged rows must be newest-first"
+    for n, node_id in ids.items():
+        creates = _audit_creates(entries, f"{NODEVIEW_BUCKET_PREFIX}-{n}")
+        assert creates, f"merged view is missing node {n}'s CreateBucket"
+        assert all(e["node"] == node_id for e in creates)
+
+
+@pytest.mark.cluster_node_views_full
+def test_node_view_unknown_node_is_404():
+    status, body = _admin_get_status(NODES[1], "/admin/audit?node=no-such-node")
+    assert status == 404, f"expected 404 for an unknown node, got {status}: {body}"
+
+
+@pytest.mark.cluster_node_views_full
+def test_node_view_all_families_proxy():
+    """All four node-local families answer a proxied ?node=<peer id> query with
+    the peer's label (metrics history and the event/journal lists may be empty
+    here — the mechanics, not the content, are under test)."""
+    peer_id = _node_id_of(2)
+    for path in NODEVIEW_FAMILIES:
+        page = _admin_get(NODES[1], f"{path}?node={peer_id}")
+        assert page["node"] == peer_id, f"{path} did not label its source node"
+
+
+@pytest.mark.cluster_node_views_degraded
+def test_node_view_dead_peer_is_unavailable():
+    """A stopped node is no longer an eligible target: ?node=<its id> answers
+    503 with a clear message instead of hanging on a dead endpoint."""
+    cluster = _admin_get(NODES[1], "/admin/cluster")
+    dead = [n["node_id"] for n in cluster["nodes"] if not n["alive"]]
+    assert dead, "expected node 3 to be seen as dead"
+    status, body = _admin_get_status(NODES[1], f"/admin/audit?node={dead[0]}")
+    assert status == 503, f"expected 503 for a dead node, got {status}: {body}"
+    assert "eligible" in body.get("message", ""), f"unhelpful error: {body}"
+
+
+@pytest.mark.cluster_node_views_degraded
+def test_node_view_merged_shrinks_to_eligible_nodes():
+    """?node=all with node 3 down merges the two eligible nodes — the dead one
+    is excluded from the fan-out (it could only time out), not reported as an
+    error source."""
+    page = _admin_get(NODES[1], "/admin/audit?limit=1000&node=all")
+    sources = {s["node_id"]: s for s in page["sources"]}
+    assert len(sources) == 2, f"expected 2 sources with node 3 down, got {sources}"
+    assert not any("error" in s for s in sources.values())
+    # Both surviving nodes' seed rows are still in the merged page.
+    for n in (1, 2):
+        assert _audit_creates(page["entries"], f"{NODEVIEW_BUCKET_PREFIX}-{n}")

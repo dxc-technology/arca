@@ -1,9 +1,14 @@
 import { api } from '../api.js';
 import { formatBytes } from '../app.js';
+import { nodeSelectorMixin } from '../node-selector.js?v=node-views-2';
 
 // ==================== MONITORING VIEW ====================
 export function monitoringView() {
   return {
+    // Cluster node selector (R8): the metrics history is node-local. With
+    // "All nodes" selected the charts draw one series per node.
+    ...nodeSelectorMixin('monitoring'),
+
     snapshots: [],
     loading: true,
     timeRange: '24h',
@@ -11,6 +16,11 @@ export function monitoringView() {
     customTo: '',
     datePickerOpen: false,
     formatBytes,
+
+    init() {
+      this.loadNodes();
+      this.load();
+    },
 
     async load() {
       this.loading = true;
@@ -20,11 +30,17 @@ export function monitoringView() {
         if (from) params.set('from', from);
         if (to) params.set('to', to);
         params.set('limit', '600');
-        const data = await api.adminGet('/metrics/history?' + params.toString());
+        const data = await api.adminGet('/metrics/history?' + params.toString() + this.nodeQuery());
         // Reverse so oldest is first (for charting)
         this.snapshots = (data.snapshots || []).reverse();
+        this.captureNodeMeta(data);
       } catch (e) {
         console.error('Failed to load metrics history:', e);
+        this.snapshots = [];
+        this.captureNodeMeta({});
+        if (this.selectedNode) {
+          this.$dispatch('show-toast', { message: this.nodeErrorMessage(e), type: 'error' });
+        }
       }
       this.loading = false;
     },
@@ -143,13 +159,39 @@ export function monitoringView() {
       return ticks.length > 6 ? ticks.filter((_, i) => i % 2 === 0) : ticks;
     },
 
-    // SVG chart with axes
-    sparkline(key, color) {
-      if (this.snapshots.length < 2) return '';
+    // One chart series per node when the merged view is active, otherwise the
+    // single (whichever node answered) series. Each group keeps its own time
+    // order; the merged rows interleave nodes, so they are split here.
+    get nodeSeries() {
+      if (!this.merged()) return [{ node: null, snapshots: this.snapshots }];
+      const groups = new Map();
+      for (const s of this.snapshots) {
+        const k = s.node || '?';
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k).push(s);
+      }
+      return [...groups.entries()].map(([node, snapshots]) => ({ node, snapshots }));
+    },
 
-      const values = this.snapshots.map(s => Number(s[key]) || 0);
-      const timestamps = this.snapshots.map(s => s.timestamp);
-      const max = Math.max(...values, 1);
+    // Legend entries (merged view only): node id + its stable color.
+    get legendNodes() {
+      if (!this.merged()) return [];
+      return this.nodeSeries
+        .filter(s => s.node)
+        .map(s => ({ node: s.node, color: this.nodeColor(s.node) }));
+    },
+
+    // SVG chart with axes. X is mapped by TIMESTAMP (not sample index) so
+    // multiple per-node series share one honest time axis.
+    sparkline(key, color) {
+      const series = this.nodeSeries.filter(s => s.snapshots.length >= 2);
+      if (series.length === 0) return '';
+
+      const all = series.flatMap(s => s.snapshots);
+      const times = all.map(s => new Date(s.timestamp).getTime());
+      const tMin = Math.min(...times);
+      const tSpan = Math.max(1, Math.max(...times) - tMin);
+      const max = Math.max(...all.map(s => Number(s[key]) || 0), 1);
 
       // Chart dimensions with margins for labels
       const totalW = 600, totalH = 120;
@@ -161,23 +203,20 @@ export function monitoringView() {
       const yTicks = this._yTicks(max);
       const yMax = yTicks[yTicks.length - 1] || max;
 
-      // Data points mapped to chart area
-      const pts = values.map((v, i) => {
-        const x = ml + (i / (values.length - 1)) * w;
-        const y = mt + h - (v / yMax) * h;
-        return { x, y };
+      const toPts = (snaps) => snaps.map(s => {
+        const x = ml + ((new Date(s.timestamp).getTime() - tMin) / tSpan) * w;
+        const y = mt + h - ((Number(s[key]) || 0) / yMax) * h;
+        return `${x},${y}`;
       });
-      const polyPoints = pts.map(p => `${p.x},${p.y}`).join(' ');
-      const areaPoints = `${pts[0].x},${mt + h} ${polyPoints} ${pts[pts.length - 1].x},${mt + h}`;
 
-      // X-axis: pick ~5 evenly spaced time labels
-      const xTickCount = Math.min(5, this.snapshots.length);
+      // X-axis: ~5 evenly spaced time labels over the shared time domain.
+      const xTickCount = Math.min(5, all.length);
       const xTicks = [];
       for (let i = 0; i < xTickCount; i++) {
-        const idx = Math.round(i * (this.snapshots.length - 1) / (xTickCount - 1));
+        const frac = xTickCount === 1 ? 0 : i / (xTickCount - 1);
         xTicks.push({
-          x: ml + (idx / (values.length - 1)) * w,
-          label: this._formatXTick(timestamps[idx]),
+          x: ml + frac * w,
+          label: this._formatXTick(new Date(tMin + frac * tSpan).toISOString()),
         });
       }
 
@@ -201,9 +240,17 @@ export function monitoringView() {
         svg += `<text x="${tick.x}" y="${mt + h + 14}" text-anchor="${anchor}" fill="#94a3b8" font-size="8.5" font-family="DM Sans, system-ui">${tick.label}</text>`;
       }
 
-      // Area fill + line
-      svg += `<polygon points="${areaPoints}" fill="${color}" opacity="0.12"/>`;
-      svg += `<polyline points="${polyPoints}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round"/>`;
+      // One line per series; the area fill only makes sense for a single
+      // series (stacked tints would be unreadable).
+      for (const s of series) {
+        const lineColor = s.node ? this.nodeColor(s.node) : color;
+        const pts = toPts(s.snapshots);
+        if (series.length === 1) {
+          const area = `${pts[0].split(',')[0]},${mt + h} ${pts.join(' ')} ${pts[pts.length - 1].split(',')[0]},${mt + h}`;
+          svg += `<polygon points="${area}" fill="${lineColor}" opacity="0.12"/>`;
+        }
+        svg += `<polyline points="${pts.join(' ')}" fill="none" stroke="${lineColor}" stroke-width="1.5" stroke-linejoin="round"/>`;
+      }
 
       svg += '</svg>';
       return svg;

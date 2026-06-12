@@ -437,6 +437,19 @@ A visual breakdown of the policy statements, color-coded by effect: green for Al
 
 Shows which users and teams have this grant attached. Click a user or team name to navigate to their detail page.
 
+## Per-Node Views in a Cluster
+
+The Audit Log, Monitoring, Notification Events, and Replication Journal views show **node-local** data: each cluster node records only what it served. Behind a load balancer, the answer would come from whichever node the LB picked — so on clustered deployments these four views gain a **Node** selector in their toolbar (it does not appear on single-node deployments):
+
+- **This node (via LB)** — the default: data from whichever node serves the request. A monospace badge next to the selector (`via 1a2b3c4d`) always names the node that actually answered.
+- **A specific node** — the query is proxied server-side to that node over the secure inter-node channel; the browser never needs to reach cluster nodes directly. Only eligible (alive, authenticated, config-aligned) nodes are listed; if the target goes down, the view shows a clear error instead of stale rows.
+- **All nodes** — the merged view: rows from every eligible node, newest first, each row labeled with a color-coded badge of its source node (the same color identifies the node everywhere, charts included). A chip reports how many nodes were merged, and a red chip appears if some node failed to answer. In Monitoring, each chart draws **one series per node** with a legend.
+
+Pagination of the merged view is approximate by design: each node is asked for the same page window and the newest rows across nodes are kept, so deep pages may interleave imperfectly.
+
+!!! note
+    Destructive or mutating actions (**Clear All**, journal **Retry**) are disabled while a node is selected — they operate on the node serving the request, not the one being viewed. Switch back to "This node (via LB)" to use them.
+
 ## Audit Log
 
 ![Audit Log](../assets/screenshots/console-audit-log.png)

@@ -142,6 +142,11 @@ pub struct AppState {
     /// `/cluster/v1/op` receive handler without re-fan-out. `Some` only when
     /// clustering is enabled (all inner handles are present together).
     pub cluster_inner: Option<ClusterInnerStores>,
+    /// Signed transport for proxying node-local admin queries (`?node=` on the
+    /// audit/metrics/events/journal endpoints — review D6, decision H9) to a
+    /// peer's `/cluster/v1/admin/*` routes. `Some` only when clustering is
+    /// enabled.
+    pub cluster_admin_proxy: Option<Arc<dyn arca_core::cluster::ClusterAdminProxy>>,
     /// Replication journal retention days from the TOML config file
     /// (locks the value, makes it read-only from the console). When absent,
     /// the console can set it via `replication_retention_days` in server_config

@@ -65,7 +65,7 @@
        The ?v=... query param is fingerprinted per console version so browser
        caches never pin stale code across console upgrades. Keep this in sync
        with window.ARCA_CONSOLE_VERSION above. -->
-  <script type="module" src="/js/app.js?v=0.24.0-preview-newtab"></script>
+  <script type="module" src="/js/app.js?v=node-views-2"></script>
 
   <!-- Alpine.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -3833,12 +3833,26 @@
               <div class="flex items-center gap-3">
                 <span class="text-xs text-vault-muted" x-text="total + ' entries'"></span>
                 <button x-show="hasAnyFilter" @click="clearAllFilters()" class="text-xs text-vault-muted hover:text-vault-text transition">Clear filters</button>
-                <button @click="showClearModal = true; clearConfirmText = ''" class="px-2.5 py-1 rounded-lg text-xs border border-red-500/30 text-red-400 hover:bg-red-500/10 transition">Clear All</button>
+                <button @click="showClearModal = true; clearConfirmText = ''" :disabled="!!selectedNode" :title="selectedNode ? 'Clear All operates on the node serving the request — switch back to the default node view first' : ''" class="px-2.5 py-1 rounded-lg text-xs border border-red-500/30 text-red-400 hover:bg-red-500/10 transition disabled:opacity-30 disabled:pointer-events-none">Clear All</button>
               </div>
             </div>
 
             <!-- Pagination bar -->
             <div class="flex flex-wrap items-center justify-end gap-3 mb-4">
+              <!-- Cluster node selector (R8): the audit log is node-local -->
+              <div x-show="clusterEnabled" x-cloak class="flex items-center gap-1.5 mr-auto">
+                <span class="text-[11px] text-vault-muted">Node</span>
+                <select :value="selectedNode" @change="setNode($event.target.value)" class="px-2 py-1 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-xs focus:outline-none focus:border-vault-accent/50 transition">
+                  <option value="">This node (via LB)</option>
+                  <template x-for="n in selectableNodes()" :key="n.node_id">
+                    <option :value="n.node_id" x-text="shortNode(n.node_id)"></option>
+                  </template>
+                  <option value="all">All nodes</option>
+                </select>
+                <span x-show="respondingNode && !merged()" class="font-mono text-[10px] px-1.5 py-0.5 rounded" :style="nodeBadgeStyle(respondingNode)" :title="'Served by node ' + respondingNode" x-text="'via ' + shortNode(respondingNode)"></span>
+                <span x-show="merged() && mergedSources.length" class="text-[10px] px-1.5 py-0.5 rounded bg-vault-border/20 text-vault-muted" x-text="(mergedSources.length - mergedErrors().length) + ' nodes merged'"></span>
+                <span x-show="mergedErrors().length" class="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400" :title="mergedErrors().map(s => shortNode(s.node_id) + ': ' + s.error).join('\n')" x-text="mergedErrors().length + ' failed'"></span>
+              </div>
               <div class="flex items-center gap-3 flex-shrink-0">
                 <div class="flex items-center gap-1.5">
                   <span class="text-[11px] text-vault-muted">Show</span>
@@ -3871,6 +3885,8 @@
               <table class="w-full text-sm min-w-[700px]">
                 <thead>
                   <tr class="text-left text-[11px] uppercase tracking-wider text-vault-muted border-b border-vault-border/30">
+                    <!-- NODE header (merged all-nodes view only) -->
+                    <th class="px-4 py-3 w-[90px]" x-show="merged()" x-cloak>Node</th>
                     <!-- TIME header (date range popover) -->
                     <th class="px-4 py-3 w-[180px]">
                       <div class="col-filter" :class="{ active: filterFrom || filterTo }" @click.outside="timeOpen = false">
@@ -4053,6 +4069,9 @@
                   <template x-for="entry in filteredEntries" :key="entry.id">
                     <tr @click="selectEntry(entry)" class="border-b border-vault-border/10 hover:bg-white/[0.02] cursor-pointer transition"
                       :class="selectedEntry?.id === entry.id ? 'bg-vault-accent/5' : ''">
+                      <td class="px-4 py-2.5" x-show="merged()" x-cloak>
+                        <span class="font-mono text-[10px] px-1.5 py-0.5 rounded" :style="nodeBadgeStyle(entry.node)" :title="entry.node" x-text="shortNode(entry.node)"></span>
+                      </td>
                       <td class="px-4 py-2.5 text-xs text-vault-muted whitespace-nowrap" x-text="formatTime(entry.timestamp)"></td>
                       <td class="px-4 py-2.5">
                         <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-vault-border/20" x-text="entry.operation"></span>
@@ -4106,6 +4125,10 @@
                     <div>
                       <div class="text-xs text-vault-muted mb-1">Operation</div>
                       <div class="text-sm font-mono" x-text="selectedEntry.operation"></div>
+                    </div>
+                    <div x-show="selectedEntry.node">
+                      <div class="text-xs text-vault-muted mb-1">Node</div>
+                      <div class="text-sm font-mono break-all" x-text="selectedEntry.node"></div>
                     </div>
                     <div>
                       <div class="text-xs text-vault-muted mb-1">Timestamp</div>
@@ -4195,10 +4218,23 @@
 
         <!-- ==================== MONITORING ==================== -->
         <template x-if="view === 'monitoring'">
-          <div class="p-6 max-w-6xl" x-data="monitoringView" x-init="load()">
-            <div class="flex items-center justify-between mb-6">
+          <div class="p-6 max-w-6xl" x-data="monitoringView" x-init="init()">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-6">
               <h2 class="text-xl font-semibold tracking-tight">Monitoring</h2>
-              <div class="flex items-center gap-1 relative">
+              <div class="flex flex-wrap items-center gap-1 relative">
+                <!-- Cluster node selector (R8): the metrics history is node-local -->
+                <div x-show="clusterEnabled" x-cloak class="flex items-center gap-1.5 mr-2">
+                  <span class="text-[11px] text-vault-muted">Node</span>
+                  <select :value="selectedNode" @change="setNode($event.target.value)" class="px-2 py-1 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-xs focus:outline-none focus:border-vault-accent/50 transition">
+                    <option value="">This node (via LB)</option>
+                    <template x-for="n in selectableNodes()" :key="n.node_id">
+                      <option :value="n.node_id" x-text="shortNode(n.node_id)"></option>
+                    </template>
+                    <option value="all">All nodes</option>
+                  </select>
+                  <span x-show="respondingNode && !merged()" class="font-mono text-[10px] px-1.5 py-0.5 rounded" :style="nodeBadgeStyle(respondingNode)" :title="'Served by node ' + respondingNode" x-text="'via ' + shortNode(respondingNode)"></span>
+                  <span x-show="mergedErrors().length" class="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400" :title="mergedErrors().map(s => shortNode(s.node_id) + ': ' + s.error).join('\n')" x-text="mergedErrors().length + ' failed'"></span>
+                </div>
                 <template x-for="r in ['1h','6h','24h','2d','7d','30d','6m','1y']">
                   <button @click="setRange(r)" :class="timeRange === r ? 'bg-vault-accent/20 text-vault-accent border-vault-accent/30' : 'text-vault-muted border-vault-border hover:text-vault-text'"
                     class="px-2.5 py-1 rounded-lg text-xs border transition" x-text="r"></button>
@@ -4221,6 +4257,17 @@
                   </div>
                 </div>
               </div>
+            </div>
+
+            <!-- Per-node series legend (merged all-nodes view) -->
+            <div x-show="merged() && legendNodes.length" x-cloak class="flex flex-wrap items-center gap-3 -mt-3 mb-4">
+              <span class="text-[10px] text-vault-muted uppercase tracking-wider">One series per node:</span>
+              <template x-for="l in legendNodes" :key="l.node">
+                <span class="flex items-center gap-1.5 text-[10px] text-vault-muted font-mono" :title="l.node">
+                  <span class="w-2 h-2 rounded-full" :style="'background:' + l.color"></span>
+                  <span x-text="shortNode(l.node)"></span>
+                </span>
+              </template>
             </div>
 
             <div x-show="loading" class="flex justify-center py-16">
@@ -4281,12 +4328,26 @@
               <div class="flex items-center gap-3">
                 <span class="text-xs text-vault-muted" x-text="total + ' entries'"></span>
                 <button x-show="hasAnyFilter" @click="clearAllFilters()" class="text-xs text-vault-muted hover:text-vault-text transition">Clear filters</button>
-                <button @click="showClearModal = true; clearConfirmText = ''" class="px-2.5 py-1 rounded-lg text-xs border border-red-500/30 text-red-400 hover:bg-red-500/10 transition">Clear All</button>
+                <button @click="showClearModal = true; clearConfirmText = ''" :disabled="!!selectedNode" :title="selectedNode ? 'Clear All operates on the node serving the request — switch back to the default node view first' : ''" class="px-2.5 py-1 rounded-lg text-xs border border-red-500/30 text-red-400 hover:bg-red-500/10 transition disabled:opacity-30 disabled:pointer-events-none">Clear All</button>
               </div>
             </div>
 
             <!-- Pagination bar -->
             <div class="flex flex-wrap items-center justify-end gap-3 mb-4">
+              <!-- Cluster node selector (R8): the event log is node-local -->
+              <div x-show="clusterEnabled" x-cloak class="flex items-center gap-1.5 mr-auto">
+                <span class="text-[11px] text-vault-muted">Node</span>
+                <select :value="selectedNode" @change="setNode($event.target.value)" class="px-2 py-1 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-xs focus:outline-none focus:border-vault-accent/50 transition">
+                  <option value="">This node (via LB)</option>
+                  <template x-for="n in selectableNodes()" :key="n.node_id">
+                    <option :value="n.node_id" x-text="shortNode(n.node_id)"></option>
+                  </template>
+                  <option value="all">All nodes</option>
+                </select>
+                <span x-show="respondingNode && !merged()" class="font-mono text-[10px] px-1.5 py-0.5 rounded" :style="nodeBadgeStyle(respondingNode)" :title="'Served by node ' + respondingNode" x-text="'via ' + shortNode(respondingNode)"></span>
+                <span x-show="merged() && mergedSources.length" class="text-[10px] px-1.5 py-0.5 rounded bg-vault-border/20 text-vault-muted" x-text="(mergedSources.length - mergedErrors().length) + ' nodes merged'"></span>
+                <span x-show="mergedErrors().length" class="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400" :title="mergedErrors().map(s => shortNode(s.node_id) + ': ' + s.error).join('\n')" x-text="mergedErrors().length + ' failed'"></span>
+              </div>
               <div class="flex items-center gap-3 flex-shrink-0">
                 <div class="flex items-center gap-1.5">
                   <span class="text-[11px] text-vault-muted">Show</span>
@@ -4318,6 +4379,7 @@
             <div x-show="!loading" class="glass rounded-xl overflow-x-auto">
               <table class="w-full text-sm" style="min-width:900px;table-layout:fixed">
                 <colgroup>
+                  <col :style="merged() ? 'width:90px' : 'width:0px'">
                   <col style="width:160px">
                   <col style="width:160px">
                   <col style="width:100px">
@@ -4328,6 +4390,8 @@
                 </colgroup>
                 <thead>
                   <tr class="text-left text-[11px] uppercase tracking-wider text-vault-muted border-b border-vault-border/30">
+                    <!-- NODE header (merged all-nodes view only) -->
+                    <th class="px-4 py-3" x-show="merged()" x-cloak>Node</th>
                     <!-- TIME header (date range popover, same as audit) -->
                     <th class="px-4 py-3 w-[180px]">
                       <div class="col-filter" :class="{ active: filterFrom || filterTo }" @click.outside="timeOpen = false">
@@ -4459,6 +4523,9 @@
                   <template x-for="entry in pagedEntries" :key="entry.id">
                     <tr @click="selectEntry(entry)" class="border-b border-vault-border/10 hover:bg-white/[0.02] cursor-pointer transition"
                       :class="selectedEntry?.id === entry.id ? 'bg-vault-accent/5' : ''">
+                      <td class="px-4 py-2.5" x-show="merged()" x-cloak>
+                        <span class="font-mono text-[10px] px-1.5 py-0.5 rounded" :style="nodeBadgeStyle(entry.node)" :title="entry.node" x-text="shortNode(entry.node)"></span>
+                      </td>
                       <td class="px-4 py-2.5 text-xs text-vault-muted whitespace-nowrap" x-text="formatTime(entry.event_time)"></td>
                       <td class="px-4 py-2.5">
                         <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-vault-border/20" x-text="entry.event_name.replace('s3:','')"></span>
@@ -4524,6 +4591,7 @@
                 <template x-if="selectedEntry">
                   <div class="space-y-4 text-sm">
                     <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Event</span><span class="font-mono text-xs" x-text="selectedEntry.event_name"></span></div>
+                    <div x-show="selectedEntry.node"><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Node</span><span class="font-mono text-xs break-all" x-text="selectedEntry.node"></span></div>
                     <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Time</span><span x-text="formatTime(selectedEntry.event_time)"></span></div>
                     <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Bucket</span><span x-text="selectedEntry.bucket"></span></div>
                     <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Key</span><span class="font-mono text-xs break-all" x-text="selectedEntry.key"></span></div>
@@ -4737,12 +4805,26 @@
                   <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182"/></svg>
                   Reload
                 </button>
-                <button @click="showClearModal = true; clearConfirmText = ''" class="px-2.5 py-1 rounded-lg text-xs border border-red-500/30 text-red-400 hover:bg-red-500/10 transition">Clear All</button>
+                <button @click="showClearModal = true; clearConfirmText = ''" :disabled="!!selectedNode" :title="selectedNode ? 'Clear All operates on the node serving the request — switch back to the default node view first' : ''" class="px-2.5 py-1 rounded-lg text-xs border border-red-500/30 text-red-400 hover:bg-red-500/10 transition disabled:opacity-30 disabled:pointer-events-none">Clear All</button>
               </div>
             </div>
 
             <!-- Pagination bar (top) -->
             <div class="flex flex-wrap items-center justify-end gap-3 mb-4">
+              <!-- Cluster node selector (R8): the journal is node-local -->
+              <div x-show="clusterEnabled" x-cloak class="flex items-center gap-1.5 mr-auto">
+                <span class="text-[11px] text-vault-muted">Node</span>
+                <select :value="selectedNode" @change="setNode($event.target.value)" class="px-2 py-1 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-xs focus:outline-none focus:border-vault-accent/50 transition">
+                  <option value="">This node (via LB)</option>
+                  <template x-for="n in selectableNodes()" :key="n.node_id">
+                    <option :value="n.node_id" x-text="shortNode(n.node_id)"></option>
+                  </template>
+                  <option value="all">All nodes</option>
+                </select>
+                <span x-show="respondingNode && !merged()" class="font-mono text-[10px] px-1.5 py-0.5 rounded" :style="nodeBadgeStyle(respondingNode)" :title="'Served by node ' + respondingNode" x-text="'via ' + shortNode(respondingNode)"></span>
+                <span x-show="merged() && mergedSources.length" class="text-[10px] px-1.5 py-0.5 rounded bg-vault-border/20 text-vault-muted" x-text="(mergedSources.length - mergedErrors().length) + ' nodes merged'"></span>
+                <span x-show="mergedErrors().length" class="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400" :title="mergedErrors().map(s => shortNode(s.node_id) + ': ' + s.error).join('\n')" x-text="mergedErrors().length + ' failed'"></span>
+              </div>
               <div class="flex items-center gap-3 flex-shrink-0">
                 <div class="flex items-center gap-1.5">
                   <span class="text-[11px] text-vault-muted">Show</span>
@@ -4773,6 +4855,7 @@
             <div x-show="!loading" class="glass rounded-xl overflow-x-auto">
               <table class="w-full text-sm" style="min-width:1080px;table-layout:fixed">
                 <colgroup>
+                  <col :style="merged() ? 'width:90px' : 'width:0px'">
                   <col style="width:170px">
                   <col style="width:130px">
                   <col style="width:auto;min-width:160px">
@@ -4785,6 +4868,8 @@
                 </colgroup>
                 <thead>
                   <tr class="text-left text-[11px] uppercase tracking-wider text-vault-muted border-b border-vault-border/30">
+                    <!-- NODE header (merged all-nodes view only) -->
+                    <th class="px-4 py-3" x-show="merged()" x-cloak>Node</th>
                     <!-- TIME -->
                     <th class="px-4 py-3">
                       <div class="col-filter" :class="{ active: filterFrom || filterTo }" @click.outside="timeOpen = false">
@@ -4934,6 +5019,9 @@
                   <template x-for="entry in pagedEntries" :key="entry.id">
                     <tr @click="selectEntry(entry)" class="border-b border-vault-border/10 hover:bg-white/[0.02] cursor-pointer transition"
                       :class="selectedEntry?.id === entry.id ? 'bg-vault-accent/5' : ''">
+                      <td class="px-4 py-2.5" x-show="merged()" x-cloak>
+                        <span class="font-mono text-[10px] px-1.5 py-0.5 rounded" :style="nodeBadgeStyle(entry.node)" :title="entry.node" x-text="shortNode(entry.node)"></span>
+                      </td>
                       <td class="px-4 py-2.5 text-xs text-vault-muted whitespace-nowrap" x-text="formatTime(entry.created_at)"></td>
                       <td class="px-4 py-2.5 text-xs text-vault-text truncate" :title="entry.bucket" x-text="entry.bucket || '\u2014'"></td>
                       <td class="px-4 py-2.5 text-xs text-vault-muted max-w-[260px] truncate font-mono" :title="entry.key" x-text="entry.key || '\u2014'"></td>
@@ -4950,7 +5038,8 @@
                       </td>
                       <td class="px-4 py-2.5 text-xs text-right text-vault-muted" x-text="entry.attempts"></td>
                       <td class="px-4 py-2.5 text-right">
-                        <button x-show="entry.status === 'failed'" @click.stop="retryEntry(entry.id)" :disabled="retrying[entry.id]"
+                        <button x-show="entry.status === 'failed'" @click.stop="retryEntry(entry.id)" :disabled="retrying[entry.id] || !!selectedNode"
+                          :title="selectedNode ? 'Retry runs on the node serving the request — switch back to the default node view first' : ''"
                           class="px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-500/15 text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 transition disabled:opacity-40"
                           x-text="retrying[entry.id] ? '…' : 'Retry'"></button>
                       </td>
@@ -5023,10 +5112,12 @@
                       <span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Last error</span>
                       <pre class="p-2.5 bg-red-500/5 border border-red-500/20 rounded-lg text-[11px] text-red-400 whitespace-pre-wrap break-all" x-text="selectedEntry.last_error"></pre>
                     </div>
+                    <div x-show="selectedEntry.node"><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Node</span><span class="font-mono text-xs break-all" x-text="selectedEntry.node"></span></div>
                     <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Entry ID</span><span class="font-mono text-[10px] text-vault-muted break-all" x-text="selectedEntry.id"></span></div>
 
                     <div x-show="selectedEntry.status === 'failed'" class="pt-3 border-t border-vault-border/30">
-                      <button @click="retryEntry(selectedEntry.id)" :disabled="retrying[selectedEntry.id]"
+                      <button @click="retryEntry(selectedEntry.id)" :disabled="retrying[selectedEntry.id] || !!selectedNode"
+                        :title="selectedNode ? 'Retry runs on the node serving the request \u2014 switch back to the default node view first' : ''"
                         class="w-full px-3 py-2 rounded-lg bg-amber-500/15 text-amber-400 border border-amber-500/30 text-sm font-medium hover:bg-amber-500/25 transition disabled:opacity-40"
                         x-text="retrying[selectedEntry.id] ? 'Retrying\u2026' : 'Retry delivery now'"></button>
                     </div>
