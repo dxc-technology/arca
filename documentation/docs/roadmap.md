@@ -1,8 +1,27 @@
 # Roadmap
 
-## MVP Status: COMPLETE
+## MVP
 
-The Arca MVP is complete. All 12 phases (0–11) have been implemented, tested, and verified. The server implements 15 S3 operations with 100% pass rate on implemented features against the Ceph s3-tests compatibility suite (270/829 passing — all 468 failures are in unimplemented feature categories).
+<!-- mvp-progress-bar -->
+<div style="padding:12px 0">
+  <div style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid rgba(128,128,128,.3)">
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em">0</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">1</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">2</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">3</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">4</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">5</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">6</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">7</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">8</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">9</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">10</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">11</div>
+  </div>
+</div>
+<!-- /mvp-progress-bar -->
+
+The Arca MVP (Minimum Viable Product) is complete. All 12 phases (0–11) have been implemented, tested, and verified. The server implements 15 S3 operations with 100% pass rate on implemented features against the Ceph s3-tests compatibility suite (270/829 passing — all 468 failures are in unimplemented feature categories).
 
 ---
 
@@ -26,27 +45,27 @@ continuing from the MVP phases (0–11).
 <!-- post-mvp-progress-bar -->
 <div style="padding:12px 0">
   <div style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid rgba(128,128,128,.3)">
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em">12</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">13</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">14</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">15</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">16</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">17</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">18</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">19</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">20</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">21</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">22</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">23</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">24</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">25</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">26</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">27</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">28</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">29</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">29.1</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">30</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">31</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em">12</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">13</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">14</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">15</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">16</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">17</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">18</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">19</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">20</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">21</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">22</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">23</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">24</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">25</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">26</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">27</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">28</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">29</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">29.1</div>
+    <div style="background:transparent;color:inherit;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">30</div>
+    <div style="background:transparent;color:inherit;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">31</div>
   </div>
 </div>
 <!-- /post-mvp-progress-bar -->
@@ -590,18 +609,18 @@ Each phase built on the previous one and ended with verification: unit tests, bo
 <!-- progress-bar -->
 <div style="padding:12px 0">
   <div style="display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid rgba(128,128,128,.3)">
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em">0</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">1</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">2</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">3</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">4</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">5</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">6</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">7</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">8</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">9</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">10</div>
-    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(255,255,255,.3)">11</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em">0</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">1</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">2</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">3</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">4</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">5</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">6</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">7</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">8</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">9</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">10</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(255,255,255,.3)">11</div>
   </div>
 </div>
 <!-- /progress-bar -->
