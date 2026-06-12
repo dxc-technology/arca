@@ -13,6 +13,7 @@ pub struct Config {
     pub monitoring: Option<MonitoringConfig>,
     pub notifications: Option<NotificationsConfig>,
     pub replication: Option<ReplicationConfig>,
+    pub lifecycle: Option<LifecycleWorkerConfig>,
     pub cluster: Option<ClusterConfig>,
 }
 
@@ -634,6 +635,36 @@ impl Default for NotificationsConfig {
     }
 }
 
+/// Lifecycle evaluation worker configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LifecycleWorkerConfig {
+    /// How often the worker evaluates lifecycle rules, in seconds.
+    /// The interval is fixed at startup.
+    #[serde(default = "default_lifecycle_interval")]
+    pub interval_seconds: u64,
+}
+
+impl Default for LifecycleWorkerConfig {
+    fn default() -> Self {
+        Self {
+            interval_seconds: default_lifecycle_interval(),
+        }
+    }
+}
+
+impl LifecycleWorkerConfig {
+    pub fn validate(&self) -> Result<()> {
+        if self.interval_seconds == 0 {
+            bail!("[lifecycle] interval_seconds must be at least 1");
+        }
+        Ok(())
+    }
+}
+
+fn default_lifecycle_interval() -> u64 {
+    3600
+}
+
 /// Replication worker configuration.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ReplicationConfig {
@@ -1074,6 +1105,9 @@ pub fn load_config(path: &Path) -> Result<Config> {
     }
     if let Some(enc) = &config.encryption {
         enc.validate()?;
+    }
+    if let Some(lifecycle) = &config.lifecycle {
+        lifecycle.validate()?;
     }
     if let Some(cluster) = &config.cluster {
         if cluster.enabled {
@@ -1720,6 +1754,7 @@ data_dir = "/data"
             monitoring: None,
             notifications: None,
             replication: None,
+            lifecycle: None,
             cluster: None,
         }
     }
@@ -2088,6 +2123,19 @@ cluster_size = 3
         cluster.peer_prune_days = Some(14);
         assert!(cluster.validate().is_ok());
         assert_eq!(cluster.peer_prune_days(), 14, "explicit value wins");
+    }
+
+    #[test]
+    fn lifecycle_worker_config_default_and_validation() {
+        let lifecycle = LifecycleWorkerConfig::default();
+        assert_eq!(lifecycle.interval_seconds, 3600);
+        assert!(lifecycle.validate().is_ok());
+
+        let zero = LifecycleWorkerConfig {
+            interval_seconds: 0,
+        };
+        let err = zero.validate().unwrap_err().to_string();
+        assert!(err.contains("interval_seconds"), "got: {err}");
     }
 
     #[test]

@@ -444,6 +444,7 @@ mod tests {
             monitoring: None,
             notifications: None,
             replication: None,
+            lifecycle: None,
             cluster: None,
         }
     }

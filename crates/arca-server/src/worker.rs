@@ -3,6 +3,27 @@
 //! Provides a simple `BackgroundWorker` abstraction for spawning periodic
 //! tasks, used by the metrics snapshot, retention purge, and lifecycle
 //! evaluation workers.
+//!
+//! # Cluster awareness (R6, review §3.3, decision H5)
+//!
+//! In a cluster the workers fall into two classes, audited one by one:
+//!
+//! - **Leader-gated** — work that reads REPLICATED state and would be
+//!   duplicated N times if every node ran it. Only the worker leader (lowest
+//!   `node_id` among eligible nodes, [`arca_core::cluster::ClusterState::is_worker_leader`])
+//!   runs the tick; the others skip it. Today this is the **lifecycle
+//!   evaluator** alone (expirations, noncurrent-version deletes and stale
+//!   multipart aborts — including `AbortIncompleteMultipartUpload`, which is
+//!   part of the same tick). Its deletes go through the cluster-decorated
+//!   stores, so they replicate and tombstone exactly like client deletes.
+//! - **NOT gated, by design** — work over strictly NODE-LOCAL state, which
+//!   every node must keep doing for itself: the **metrics snapshot** (this
+//!   node's gauges), the **retention purge** (this node's audit/metrics/
+//!   notification/journal tables), and the **notification delivery worker**
+//!   (its queue is fed by the S3 handlers of THIS node only — each S3 event
+//!   exists on exactly one node, so deliveries are already exactly-once).
+//!   The Phase 28 replication worker is also not gated; see
+//!   `replicator::worker` for why (its journal is node-local too).
 
 use std::future::Future;
 use std::sync::Arc;
@@ -318,6 +339,11 @@ async fn resolve_retention(
 ///
 /// Periodically evaluates lifecycle rules on all buckets: expires objects,
 /// deletes noncurrent versions, and aborts stale multipart uploads.
+///
+/// In a cluster the tick is leader-gated (decision H5, review §3.3): the
+/// object table is fully replicated, so without the gate every node would
+/// expire the same objects — ×N² delete fan-out, duplicate audit entries and
+/// races between concurrent deleters.
 pub fn spawn_lifecycle_worker(
     state: &AppState,
     config_interval_seconds: Option<u64>,
@@ -325,10 +351,10 @@ pub fn spawn_lifecycle_worker(
     let metadata = state.metadata.clone();
     let blob = state.blob.clone();
     let audit_store: Option<Arc<dyn AuditStore>> = state.audit_store.clone();
+    let cluster = state.cluster.clone();
 
-    // Resolve interval: TOML config > DB setting > 3600s (1 hour) default.
-    // The interval is fixed at spawn time; changing the DB setting requires
-    // a server restart to take effect.
+    // Resolve interval: TOML `[lifecycle] interval_seconds` > 3600s (1 hour)
+    // default. The interval is fixed at spawn time.
     let interval_secs = config_interval_seconds.unwrap_or(3600);
     let interval = Duration::from_secs(interval_secs);
 
@@ -339,7 +365,16 @@ pub fn spawn_lifecycle_worker(
             let metadata = metadata.clone();
             let blob = blob.clone();
             let audit_store = audit_store.clone();
+            let cluster = cluster.clone();
             async move {
+                if let Some(ref cluster) = cluster {
+                    if !cluster.is_worker_leader() {
+                        tracing::debug!(
+                            "lifecycle: not the worker leader, skipping tick"
+                        );
+                        return;
+                    }
+                }
                 evaluate_lifecycle_rules(
                     metadata.as_ref(),
                     blob.as_ref(),

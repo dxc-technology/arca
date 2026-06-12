@@ -226,6 +226,12 @@ struct ClusterAdminResponse {
     /// has been unreachable beyond the grace window.
     #[serde(skip_serializing_if = "Option::is_none")]
     tombstone_gc_blocked: Option<bool>,
+    /// Decision H5 (review §3.3): true when THIS node holds the worker-leader
+    /// role (lowest `node_id` among eligible nodes) and runs the
+    /// cluster-singleton background work (the lifecycle evaluator). In a
+    /// stable cluster exactly one node reports `true`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    worker_leader: Option<bool>,
     /// Cluster-effective disk capacity (bytes): the MINIMUM total across live
     /// nodes. With full replication the smallest node bounds the cluster.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -260,6 +266,7 @@ pub async fn cluster(State(state): State<AppState>) -> Response {
                 config_aligned: None,
                 size_exceeded: None,
                 tombstone_gc_blocked: None,
+                worker_leader: None,
                 disk_total_bytes: None,
                 disk_available_bytes: None,
                 nodes: Vec::new(),
@@ -321,6 +328,7 @@ pub async fn cluster(State(state): State<AppState>) -> Response {
         config_aligned: Some(config_aligned),
         size_exceeded: Some(snap.size_exceeded),
         tombstone_gc_blocked: Some(snap.tombstone_gc_blocked),
+        worker_leader: Some(snap.worker_leader),
         disk_total_bytes,
         disk_available_bytes,
         nodes,

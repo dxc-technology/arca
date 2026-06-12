@@ -307,6 +307,20 @@ _node_live() {
         | jq -r '.cluster.live_node_count // empty' 2>/dev/null
 }
 
+# Node number (1-3) of the current worker leader (R6, decision H5), found by
+# asking each node whether it claims the role via verbose health.
+_leader_node() {
+    local n
+    for n in 1 2 3; do
+        if [[ "$(curl -fsS "http://localhost:$((9000 + n))/admin/health?verbose=1" 2>/dev/null \
+            | jq -r '.cluster.worker_leader // empty' 2>/dev/null)" == "true" ]]; then
+            echo "$n"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Wait until the node on host port $1 reports exactly $2 live nodes.
 wait_live() {
     local port="$1" want="$2" max="${3:-90}"
@@ -334,6 +348,18 @@ run_cluster() {
         docker compose -p arca-cluster -f docker/docker-compose.cluster.yml down -v 2>/dev/null || true
     }
     trap cleanup_cluster EXIT
+
+    # On a phase failure, preserve the node logs BEFORE `down -v` destroys
+    # them — needed to diagnose the rare anti-entropy flakes (M1 class, see
+    # the hardening plan): by the time a human looks, the volumes are gone.
+    dump_logs_on_failure() {
+        local rc="$1"; shift
+        if [[ "$rc" -ne 0 ]]; then
+            local out="/tmp/arca-cluster-failure-$(date +%Y%m%d-%H%M%S).log"
+            "$@" logs --no-color --timestamps > "$out" 2>&1 || true
+            echo "Cluster phase failed — node logs preserved at $out" >&2
+        fi
+    }
 
     # Start from a clean slate (tear down any cluster left running).
     $C down -v 2>/dev/null || true
@@ -376,6 +402,7 @@ run_cluster() {
     fi
 
     # Fresh volumes for the special-topology phases.
+    dump_logs_on_failure $rc $C
     $C down -v 2>/dev/null || true
 
     if [[ $rc -eq 0 ]]; then
@@ -384,6 +411,7 @@ run_cluster() {
         $C507 up -d
         wait_live 9001 3 90 || rc=1
         [[ $rc -eq 0 ]] && { $C507 run --rm --no-deps test "$T" -m cluster_insufficient_storage -v "$@" || rc=$?; }
+        dump_logs_on_failure $rc $C507
         $C507 down -v 2>/dev/null || true
     fi
 
@@ -407,8 +435,10 @@ run_cluster() {
             $CDRIFT2 up -d
             wait_live 9001 3 90 || rc=1
             [[ $rc -eq 0 ]] && { $CDRIFT2 run --rm --no-deps test "$T" -m cluster_config_drift_majority -v "$@" || rc=$?; }
+            dump_logs_on_failure $rc $CDRIFT2
             $CDRIFT2 down -v 2>/dev/null || true
         else
+            dump_logs_on_failure $rc $CDRIFT
             $CDRIFT down -v 2>/dev/null || true
         fi
     fi
@@ -437,6 +467,7 @@ run_cluster() {
             wait_live 9001 3 90 || rc=1
             [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_partition_healed -v "$@" || rc=$?; }
         fi
+        dump_logs_on_failure $rc $C
         $C down -v 2>/dev/null || true
     fi
 
@@ -460,7 +491,31 @@ run_cluster() {
             wait_live 9001 1 60 || rc=1
             [[ $rc -eq 0 ]] && { $CAVAIL run --rm --no-deps test "$T" -m cluster_available_minority -v "$@" || rc=$?; }
         fi
+        dump_logs_on_failure $rc $CAVAIL
         $CAVAIL down -v 2>/dev/null || true
+    fi
+
+    if [[ $rc -eq 0 ]]; then
+        echo "── Phase I: worker-leader gate (lifecycle exactly-once + failover) ──"
+        # The leader is the node with the lowest node_id — random UUIDs, so
+        # WHICH container holds the role differs per run: it is discovered via
+        # verbose health, then stopped to verify the failover.
+        $C up -d
+        wait_live 9001 3 90 || rc=1
+        [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_leader_full -v "$@" || rc=$?; }
+        if [[ $rc -eq 0 ]]; then
+            local leader survivor
+            leader="$(_leader_node)" || rc=1
+            if [[ $rc -eq 0 ]]; then
+                echo "Stopping the worker leader (arca-$leader)..."
+                $C stop "arca-$leader"
+                survivor=$(( leader == 1 ? 9002 : 9001 ))
+                wait_live "$survivor" 2 60 || rc=1
+                [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_leader_failover -v "$@" || rc=$?; }
+            fi
+        fi
+        dump_logs_on_failure $rc $C
+        $C down -v 2>/dev/null || true
     fi
 
     trap - EXIT

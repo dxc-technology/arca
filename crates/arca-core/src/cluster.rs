@@ -1316,6 +1316,11 @@ pub struct ClusterSnapshot {
     /// Review §3.2: true when the anti-entropy worker is skipping tombstone GC
     /// because a known peer has been unreachable beyond the grace window.
     pub tombstone_gc_blocked: bool,
+    /// Decision H5 (review §3.3): true when THIS node currently holds the
+    /// worker-leader role (lowest `node_id` among eligible nodes) and so runs
+    /// the cluster-singleton background work. In a stable cluster exactly one
+    /// node reports `true`.
+    pub worker_leader: bool,
     /// All known peers (alive or not).
     pub peers: Vec<PeerNode>,
 }
@@ -1518,6 +1523,29 @@ impl ClusterState {
         self.write_gate() == WriteGate::Open
     }
 
+    /// Decision H5 (review §3.3) — the symmetric worker-leader gate: this
+    /// node runs the cluster-singleton background work (the lifecycle
+    /// evaluator) iff it has the lowest `node_id` among the ELIGIBLE nodes
+    /// (authenticated + config-aligned peers, plus self). Counting eligible —
+    /// not merely alive — nodes is deliberate: an unauthenticated rogue or a
+    /// drifted peer with a low `node_id` must not be able to steal the role
+    /// and silence the workers cluster-wide (the same rationale that gates
+    /// the quorum and `min_disk` on eligibility — review §3.7(A), D1).
+    ///
+    /// Trivially true single-node (no peers). Failover is automatic: when the
+    /// leader dies, the next-lowest eligible node observes it at its next
+    /// membership tick and takes the role. During a membership disagreement
+    /// two nodes can briefly both claim it — a double-execution window H5
+    /// explicitly accepts (the gated work is idempotent and converges).
+    pub fn is_worker_leader(&self) -> bool {
+        self.peers
+            .read()
+            .expect("cluster peers lock poisoned")
+            .iter()
+            .filter(|p| p.eligible())
+            .all(|p| p.node_id.as_str() > self.node_id.as_str())
+    }
+
     /// Records whether the anti-entropy worker is currently skipping tombstone
     /// GC because of an unseen-beyond-grace peer (review §3.2).
     pub fn set_tombstone_gc_blocked(&self, blocked: bool) {
@@ -1544,6 +1572,7 @@ impl ClusterState {
             eligible_node_count,
             size_exceeded: matches!(gate, WriteGate::SizeExceeded { .. }),
             tombstone_gc_blocked: self.tombstone_gc_blocked(),
+            worker_leader: self.is_worker_leader(),
             peers,
         }
     }
@@ -1660,6 +1689,62 @@ mod tests {
         state.set_peers(vec![peer("n2", true)]);
         assert_eq!(state.peers().len(), 1);
         assert_eq!(state.peers()[0].node_id, "n2");
+    }
+
+    #[test]
+    fn worker_leader_single_node() {
+        // No peers at all: trivially the leader (single-node deployments
+        // and a freshly started node that has not discovered anyone yet).
+        let state = ClusterState::new("self", None, None);
+        assert!(state.is_worker_leader());
+    }
+
+    #[test]
+    fn worker_leader_is_lowest_eligible_node_id() {
+        // "b" leads while every eligible peer sorts above it...
+        let state = ClusterState::new("b", Some(2), Some(3));
+        state.set_peers(vec![peer("c", true), peer("d", true)]);
+        assert!(state.is_worker_leader());
+        // ...and yields as soon as a lower-id eligible peer appears.
+        state.set_peers(vec![peer("a", true), peer("c", true)]);
+        assert!(!state.is_worker_leader());
+    }
+
+    #[test]
+    fn worker_leader_failover_to_next_lowest() {
+        // "b" is not the leader while "a" is eligible; when "a" dies, the
+        // role moves to "b" at the next membership tick.
+        let state = ClusterState::new("b", Some(2), Some(3));
+        state.set_peers(vec![peer("a", true), peer("c", true)]);
+        assert!(!state.is_worker_leader());
+        state.set_peers(vec![peer("a", false), peer("c", true)]);
+        assert!(state.is_worker_leader());
+    }
+
+    #[test]
+    fn worker_leader_ignores_ineligible_lower_peer() {
+        // A lower-id peer that is alive but NOT eligible (an unauthenticated
+        // rogue, a drifted node) must not steal the leadership and silence
+        // the workers cluster-wide.
+        let state = ClusterState::new("b", Some(2), Some(3));
+        let mut rogue = peer("a", true);
+        rogue.authenticated = false;
+        state.set_peers(vec![rogue, peer("c", true)]);
+        assert!(state.is_worker_leader());
+
+        let mut drifted = peer("a", true);
+        drifted.config_ok = false;
+        state.set_peers(vec![drifted, peer("c", true)]);
+        assert!(state.is_worker_leader());
+    }
+
+    #[test]
+    fn snapshot_reports_worker_leader() {
+        let state = ClusterState::new("b", Some(2), Some(3));
+        state.set_peers(vec![peer("c", true)]);
+        assert!(state.snapshot().worker_leader);
+        state.set_peers(vec![peer("a", true)]);
+        assert!(!state.snapshot().worker_leader);
     }
 
     #[test]

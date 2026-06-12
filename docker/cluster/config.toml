@@ -34,3 +34,8 @@ anti_entropy_interval_seconds = 5
 # Snappy fan-out/probe timeout so writes aimed at an unreachable peer fail fast
 # during partition tests (not part of the config-drift fingerprint).
 request_timeout_seconds = 5
+
+# Short lifecycle-evaluation interval so the R6 worker-leader tests observe an
+# expiry within seconds (default: 3600). Not part of the drift fingerprint.
+[lifecycle]
+interval_seconds = 5

@@ -23,3 +23,8 @@ seeds = ["arca-1-cluster:9000", "arca-2-cluster:9000", "arca-3-cluster:9000"]
 health_interval_seconds = 3
 anti_entropy_interval_seconds = 5
 request_timeout_seconds = 5
+
+# Short lifecycle-evaluation interval so the R6 worker-leader tests observe an
+# expiry within seconds (default: 3600). Not part of the drift fingerprint.
+[lifecycle]
+interval_seconds = 5

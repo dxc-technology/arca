@@ -31,6 +31,8 @@ def pytest_configure(config):
         ("cluster_available_split", "requires the available overlay with node 3 partitioned"),
         ("cluster_available_converged", "verifies LWW convergence after the available-mode split heals"),
         ("cluster_available_minority", "requires the available overlay with only node 1 up"),
+        ("cluster_leader_full", "requires all 3 up; verifies the R6 worker-leader gate"),
+        ("cluster_leader_failover", "requires the worker leader stopped; verifies role failover"),
     ]:
         config.addinivalue_line("markers", f"{name}: {desc}")
 

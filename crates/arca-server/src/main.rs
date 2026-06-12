@@ -706,7 +706,10 @@ async fn async_main(cli: Cli) -> Result<()> {
                 .unwrap_or(60);
             let _metrics_worker = worker::spawn_metrics_worker(&state, metrics_interval);
             let _retention_worker = worker::spawn_retention_worker(&state);
-            let _lifecycle_worker = worker::spawn_lifecycle_worker(&state, None);
+            let _lifecycle_worker = worker::spawn_lifecycle_worker(
+                &state,
+                config.lifecycle.as_ref().map(|l| l.interval_seconds),
+            );
             let _notification_worker = if let Some(ref notif_store) = state.notification_store {
                 let region = state.config_region.clone().unwrap_or_else(|| "us-east-1".to_string());
                 Some(worker::spawn_notification_worker(

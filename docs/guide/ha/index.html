@@ -744,6 +744,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#background-workers-one-leader-for-shared-work-every-node-for-its-own" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Background workers — one leader for shared work, every node for its own
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1536,6 +1547,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#background-workers-one-leader-for-shared-work-every-node-for-its-own" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Background workers — one leader for shared work, every node for its own
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1838,6 +1860,16 @@ them, and any node that takes a write replicates it to the others.</p>
 <blockquote>
 <p><strong>Read-after-write:</strong> within a single node it is immediate. Across the cluster (through a round-robin load balancer) a read may briefly hit a node that has not yet received the write. Pin a client to one node (LB sticky sessions) if you need read-your-writes through the balancer.</p>
 </blockquote>
+<h3 id="background-workers-one-leader-for-shared-work-every-node-for-its-own">Background workers — one leader for shared work, every node for its own<a class="headerlink" href="#background-workers-one-leader-for-shared-work-every-node-for-its-own" title="Permanent link">&para;</a></h3>
+<p>Arca runs several periodic background workers. In a cluster they fall into two classes, audited individually (hardening R6):</p>
+<ul>
+<li><strong>Cluster-singleton (leader-gated)</strong> — the <strong>lifecycle evaluator</strong> (expirations, noncurrent-version deletes, stale-multipart aborts) reads the <em>fully replicated</em> object table, so running it everywhere would mean every node deleting the same objects: N× the delete fan-out, duplicate audit entries, races between concurrent deleters. Only the <strong>worker leader</strong> runs the tick: the node with the lowest <code>node_id</code> among the <em>eligible</em> nodes (alive + authenticated + config-aligned — the same predicate that gates the quorum, so an unauthenticated rogue cannot steal the role and silence the workers). The role needs no election protocol: every node computes it locally from its membership view, and when the leader dies the next-lowest eligible node picks the work up at its next membership tick — automatic failover, no coordination. During a brief membership disagreement two nodes can both claim the role; the resulting double execution is harmless (the deletes are idempotent and converge). Each node reports its claim as <code>worker_leader</code> on <code>/admin/cluster</code>; in a stable cluster exactly one node says <code>true</code>.</li>
+<li><strong>Per-node (deliberately NOT gated)</strong> — workers that operate on strictly node-local state, which every node must keep doing for itself: the metrics snapshot (this node's gauges), the retention purge (this node's audit/metrics/notification/journal tables), the notification delivery worker (its queue is fed only by the S3 events this node served), and the <a href="../replication/">bucket replication</a> worker — see the note below.</li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Bucket replication in a cluster: per-node journal</p>
+<p>The Phase 28 replication worker delivers to <em>external</em> S3 destinations from a journal that is <strong>node-local by design</strong>: an entry is recorded only on the node that served the client write, and never by the cluster replication paths — so each S3 write is journaled exactly once cluster-wide and <strong>duplicate deliveries to the destination cannot occur</strong>, with no leader needed. The flip side is an RPO caveat: a node lost <em>for good</em> takes its still-pending journal entries with it, and those objects reach the external destination only when they are written again. A node that merely restarts loses nothing (the journal is on disk).</p>
+</div>
 <h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Same <code>[cluster].secret</code> on every node.</strong> It authenticates all inter-node traffic. There is no per-node credential. It must be a <strong>high-entropy value of at least 16 characters</strong> (generate it: <code>openssl rand -hex 32</code>) — startup refuses shorter secrets and the placeholders shipped in the reference configs, and warns when the value looks low-entropy. To change it without downtime, see <a href="#rotating-the-cluster-secret">Rotating the cluster secret</a>.</li>
@@ -1891,7 +1923,7 @@ them, and any node that takes a write replicates it to the others.</p>
 <h2 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Console</strong> — the dashboard <strong>Cluster Topology</strong> card shows the consistency mode (Quorum·W=N / Available), the write status (Writable / Read-only when quorum is lost), and every node with a green/red status dot, the local-node badge, endpoint, and last-seen time. The Server card's <em>Topology</em> field summarises it as <code>Cluster · live/total</code>.</li>
-<li><strong><code>GET /admin/cluster</code></strong> (admin SigV4) — JSON the console consumes: <code>mode</code>, <code>write_quorum</code>, <code>has_write_quorum</code>, <code>live_node_count</code>, <code>eligible_node_count</code> (nodes the write quorum is measured against: alive + authenticated + config-aligned), <code>node_count</code>, <code>config_aligned</code>, <code>size_exceeded</code>, <code>tombstone_gc_blocked</code>, and the <code>nodes</code> list (each with <code>alive</code>, <code>authenticated</code>, <code>config_ok</code>, <code>last_seen</code> — kept on dead nodes, showing the last successful contact). Returns <code>{"enabled": false}</code> on a single-node deployment.</li>
+<li><strong><code>GET /admin/cluster</code></strong> (admin SigV4) — JSON the console consumes: <code>mode</code>, <code>write_quorum</code>, <code>has_write_quorum</code>, <code>live_node_count</code>, <code>eligible_node_count</code> (nodes the write quorum is measured against: alive + authenticated + config-aligned), <code>node_count</code>, <code>config_aligned</code>, <code>size_exceeded</code>, <code>tombstone_gc_blocked</code>, <code>worker_leader</code> (whether THIS node runs the <a href="#background-workers-one-leader-for-shared-work-every-node-for-its-own">cluster-singleton background work</a> — exactly one node says <code>true</code> in a stable cluster), and the <code>nodes</code> list (each with <code>alive</code>, <code>authenticated</code>, <code>config_ok</code>, <code>last_seen</code> — kept on dead nodes, showing the last successful contact). Returns <code>{"enabled": false}</code> on a single-node deployment.</li>
 <li><strong><code>GET /admin/health?verbose=1</code></strong> (unauthenticated) — liveness plus the cluster snapshot, handy for scripts and load-balancer debugging. The plain <code>GET /admin/health</code> (200 / 503-on-drain) is the load-balancer check.</li>
 </ul>
 <h3 id="storage-capacity-the-smallest-node-wins">Storage capacity (the smallest node wins)<a class="headerlink" href="#storage-capacity-the-smallest-node-wins" title="Permanent link">&para;</a></h3>

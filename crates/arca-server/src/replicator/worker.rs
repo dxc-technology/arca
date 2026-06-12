@@ -4,6 +4,20 @@
 //! elapsed, delivers each to its destination endpoint via the outbound S3
 //! client, and updates the entry's status plus the object's
 //! `replication_status` column.
+//!
+//! # Deliberately NOT leader-gated in a cluster (R6, review §3.3)
+//!
+//! The journal is strictly node-local: entries are inserted only by
+//! `arca_proto::replication::maybe_emit`, called from the S3 handlers of the
+//! node that served the client write — the cluster receive paths
+//! (`/cluster/v1/*`, anti-entropy) never emit. Each S3 write is therefore
+//! journaled exactly once cluster-wide, on the serving node, and duplicate
+//! deliveries to the external destination cannot occur. Gating this worker
+//! on the H5 leader would instead orphan every entry journaled on a
+//! non-leader node. Confirmed with the review findings on 2026-06-12.
+//! Caveat (documented in `ha.md`): a node lost for good takes its pending
+//! journal entries with it — those objects reach the external destination
+//! only when re-written.
 
 use std::sync::Arc;
 use std::time::Duration;

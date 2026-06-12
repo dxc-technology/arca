@@ -130,6 +130,12 @@ The cache is transparent to clients: write operations (create/delete bucket, put
 | `monitoring.metrics.retention_days` | *(console-managed)* | Days to retain metrics snapshots. When set in TOML, the value is locked. |
 | `monitoring.metrics.interval_seconds` | `60` | How often to snapshot gauge metrics (seconds). |
 
+### Lifecycle Worker
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `lifecycle.interval_seconds` | `3600` | How often the background worker evaluates bucket lifecycle rules (expirations, noncurrent-version deletes, stale-multipart aborts), in seconds (≥ 1). Fixed at startup. In a cluster only the [worker leader](ha.md#background-workers-one-leader-for-shared-work-every-node-for-its-own) runs the evaluation. |
+
 ### Cluster (High Availability)
 
 | Setting | Default | Description |

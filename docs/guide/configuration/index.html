@@ -676,6 +676,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#lifecycle-worker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lifecycle Worker
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#cluster-high-availability" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1629,6 +1640,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#lifecycle-worker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lifecycle Worker
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#cluster-high-availability" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2104,6 +2126,23 @@
 <td><code>monitoring.metrics.interval_seconds</code></td>
 <td><code>60</code></td>
 <td>How often to snapshot gauge metrics (seconds).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="lifecycle-worker">Lifecycle Worker<a class="headerlink" href="#lifecycle-worker" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>lifecycle.interval_seconds</code></td>
+<td><code>3600</code></td>
+<td>How often the background worker evaluates bucket lifecycle rules (expirations, noncurrent-version deletes, stale-multipart aborts), in seconds (≥ 1). Fixed at startup. In a cluster only the <a href="../ha/#background-workers-one-leader-for-shared-work-every-node-for-its-own">worker leader</a> runs the evaluation.</td>
 </tr>
 </tbody>
 </table>

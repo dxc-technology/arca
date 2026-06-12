@@ -888,3 +888,159 @@ def test_available_minority_still_writable():
     body = b"accepted with two nodes down (available mode)"
     node1.put_object(Bucket=AVAIL_BUCKET, Key="minority-write", Body=body)
     assert node1.get_object(Bucket=AVAIL_BUCKET, Key="minority-write")["Body"].read() == body
+
+
+# ── Phase: worker-leader gate (R6, decision H5) ───────────────────────────────
+#
+# The lifecycle evaluator is a cluster-singleton: only the node with the lowest
+# node_id among the ELIGIBLE nodes runs the tick. The cluster configs set
+# [lifecycle] interval_seconds = 5 so an expiry is observable within seconds.
+# The runner stops the leader container between the two sub-phases (it finds it
+# via /admin/health?verbose=1 → .cluster.worker_leader).
+
+LEADER_BUCKET = "cluster-leader-lifecycle"
+LEADER_KEY_FULL = "expires-with-all-nodes-up"
+LEADER_KEY_FAILOVER = "expires-after-leader-failover"
+# Any past date makes the rule expire immediately (Days: 0 is rejected).
+LEADER_EXPIRE_DATE = "2020-01-01T00:00:00Z"
+
+
+def _verbose_health(endpoint):
+    """The /admin/health?verbose=1 JSON, or None if the node is unreachable."""
+    try:
+        resp = requests.get(f"{endpoint}/admin/health?verbose=1", timeout=5)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.RequestException:
+        return None
+
+
+def _leader_claims():
+    """Maps node number → worker_leader claim, for the reachable nodes only."""
+    claims = {}
+    for n, endpoint in NODES.items():
+        health = _verbose_health(endpoint)
+        if health is not None and health.get("cluster"):
+            claims[n] = health["cluster"]["worker_leader"]
+    return claims
+
+
+def _expiry_audit_count(key):
+    """Total Lifecycle::ExpireObject audit entries for `key` across the
+    reachable nodes. The audit log is node-local and the expiring node is the
+    only one that writes the entry (peers apply the replicated delete without
+    auditing), so this counts how many nodes ran the expiry.
+
+    The `::` in the operation value MUST be pre-encoded: SigV4 signs the
+    canonical (percent-encoded) query, so a raw `:` sent on the wire makes the
+    server compute a different canonical string -> SignatureDoesNotMatch."""
+    total = 0
+    for endpoint in NODES.values():
+        try:
+            page = _admin_get(
+                endpoint,
+                "/admin/audit?operation=Lifecycle%3A%3AExpireObject"
+                f"&bucket={LEADER_BUCKET}&limit=1000",
+            )
+        except (requests.ConnectionError, requests.Timeout):
+            continue  # a stopped node has no audit log to count
+        total += sum(1 for e in page["entries"] if e.get("key") == key)
+    return total
+
+
+def _assert_exactly_one_expiry(key):
+    """The audit entry lands right AFTER the replicated delete, so poll for it;
+    then re-check after a full lifecycle interval, so a second node expiring on
+    its own tick (a broken gate) is caught rather than raced past."""
+    deadline = time.time() + 15
+    while time.time() < deadline and _expiry_audit_count(key) < 1:
+        time.sleep(1)
+    count = _expiry_audit_count(key)
+    assert count == 1, f"expected exactly one expiry audit entry, got {count}"
+    time.sleep(7)  # > the 5s [lifecycle] interval of the test configs
+    count = _expiry_audit_count(key)
+    assert count == 1, f"a second node also expired {key}: {count} audit entries"
+
+
+def _put_and_wait_expiry(key):
+    """PUT an object into the lifecycle bucket via a live node, then poll until
+    the (already-past-date) rule expires it everywhere that is reachable."""
+    live = [n for n, h in ((n, _verbose_health(e)) for n, e in NODES.items()) if h]
+    assert live, "no reachable node"
+    client = _s3(NODES[live[0]])
+    _wait_put(client, LEADER_BUCKET, key, b"doomed by the lifecycle rule")
+
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        gone = True
+        for n in live:
+            try:
+                _s3(NODES[n]).head_object(Bucket=LEADER_BUCKET, Key=key)
+                gone = False
+            except ClientError as e:
+                if _status_code(e) != 404:
+                    gone = False
+        if gone:
+            return
+        time.sleep(2)
+    pytest.fail(f"{LEADER_BUCKET}/{key} was not expired within 60s")
+
+
+@pytest.mark.cluster_leader_full
+def test_exactly_one_worker_leader():
+    """With all 3 nodes up and eligible, exactly one claims the worker-leader
+    role, and it is the node with the lowest node_id."""
+    claims = _leader_claims()
+    assert len(claims) == 3, f"expected 3 reachable nodes, got {claims}"
+    leaders = [n for n, is_leader in claims.items() if is_leader]
+    assert len(leaders) == 1, f"expected exactly one leader, got {claims}"
+
+    node_ids = {
+        n: _verbose_health(e)["cluster"]["node_id"] for n, e in NODES.items()
+    }
+    assert node_ids[leaders[0]] == min(node_ids.values()), (
+        f"leader {leaders[0]} should hold the lowest node_id: {node_ids}"
+    )
+
+
+@pytest.mark.cluster_leader_full
+def test_lifecycle_expiry_happens_exactly_once():
+    """An already-expired lifecycle rule deletes the object ONCE cluster-wide:
+    only the leader evaluates the rule (its audit log records the expiry), and
+    its delete replicates to the peers without further evaluation."""
+    lb = _s3(LB)
+    _ensure_bucket(lb, LEADER_BUCKET)
+    lb.put_bucket_lifecycle_configuration(
+        Bucket=LEADER_BUCKET,
+        LifecycleConfiguration={
+            "Rules": [
+                {
+                    "ID": "expire-immediately",
+                    "Status": "Enabled",
+                    "Filter": {"Prefix": ""},
+                    "Expiration": {"Date": LEADER_EXPIRE_DATE},
+                }
+            ]
+        },
+    )
+    _put_and_wait_expiry(LEADER_KEY_FULL)
+    _assert_exactly_one_expiry(LEADER_KEY_FULL)
+
+
+@pytest.mark.cluster_leader_failover
+def test_new_leader_elected_after_leader_stop():
+    """With the previous leader stopped, exactly one of the survivors takes
+    the role (the next-lowest eligible node_id) at its membership tick."""
+    claims = _leader_claims()
+    assert len(claims) == 2, f"expected 2 reachable nodes, got {claims}"
+    leaders = [n for n, is_leader in claims.items() if is_leader]
+    assert len(leaders) == 1, f"expected exactly one leader, got {claims}"
+
+
+@pytest.mark.cluster_leader_failover
+def test_failover_expiry_happens_exactly_once():
+    """The lifecycle singleton keeps working after the leader is gone: a new
+    object in the same (already-configured) bucket is expired exactly once,
+    by the new leader."""
+    _put_and_wait_expiry(LEADER_KEY_FAILOVER)
+    _assert_exactly_one_expiry(LEADER_KEY_FAILOVER)
