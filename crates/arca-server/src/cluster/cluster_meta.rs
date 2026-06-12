@@ -39,8 +39,10 @@
 //! tags, and in-progress multipart state (upload + part rows) — so a peer that
 //! receives an object row, or that is load-balanced a later part / Complete for
 //! an upload begun elsewhere, can serve and finish it. Retention and legal-hold
-//! replicate by re-sending the mutated object row (the LWW `>=` guard applies an
-//! equal-tuple row, carrying the updated lock columns).
+//! replicate by re-sending the mutated object row: its `last_modified` does not
+//! change (S3 semantics), so the apply guards order it by the row's
+//! `lock_updated_at` — the dedicated lock-state LWW dimension (N1 delivery, N2
+//! ordering) — and a stale lock-free copy can never clobber a newer lock state.
 //!
 //! The IDENTITY control plane (credentials, users, teams, grants, server_config)
 //! has its own store decorators in `cluster_control.rs` and reuses the same
@@ -869,6 +871,7 @@ mod tests {
             checksum_algorithm: None,
             checksum_value: None,
             replication_status: None,
+            lock_updated_at: None,
         }
     }
 
@@ -907,6 +910,7 @@ mod tests {
             config_ok: true,
             disk_total: None,
             disk_available: None,
+            max_seq: None,
         }
     }
 

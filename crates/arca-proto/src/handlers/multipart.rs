@@ -449,6 +449,7 @@ pub async fn complete_multipart_upload(
         checksum_algorithm: None,
         checksum_value: None,
         replication_status: None,
+        lock_updated_at: None,
     };
     let (old, version_id) = match state.metadata.put_object(&record).await {
         Ok(r) => r,

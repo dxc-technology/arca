@@ -128,6 +128,7 @@ pub async fn run_recover(config: &Config, dry_run: bool, skip_verify: bool) -> R
             checksum_algorithm: None,
             checksum_value: None,
             replication_status: None,
+            lock_updated_at: None,
         };
         store.put_object(&record).await?;
         object_count += 1;

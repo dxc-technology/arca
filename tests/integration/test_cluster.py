@@ -24,6 +24,12 @@ topology it needs via a marker, and the runner selects them with `pytest -m`:
     cluster_available_split      available overlay, arca-3 partitioned (split brain)
     cluster_available_converged  available overlay, split healed (LWW winner only)
     cluster_available_minority   available overlay, only node 1 up (still writable)
+    cluster_leader_full          all 3 up; verifies the R6 worker-leader gate
+    cluster_leader_failover      worker leader stopped; verifies role failover
+    cluster_syncing_seed         all 3 up, seeds state for the readiness phase
+    cluster_syncing_while_down   node 3 down; writes the data it must catch up on
+    cluster_syncing_readiness    node 3 JUST restarted (no wait): 503 syncing must
+                                 hold until the catch-up completes, then 200
 
 The partition markers rely on the compose dual-network design: `bin/cluster
 partition <n>` cuts a node off the `cluster` network (inter-node traffic — the
@@ -1044,3 +1050,98 @@ def test_failover_expiry_happens_exactly_once():
     by the new leader."""
     _put_and_wait_expiry(LEADER_KEY_FAILOVER)
     _assert_exactly_one_expiry(LEADER_KEY_FAILOVER)
+
+
+# ── Phase: syncing readiness (R7, review D2) ──────────────────────────────────
+#
+# A node returning from downtime must not serve stale 404s/partial listings:
+# /admin/health answers 503 {"status":"syncing"} until its first anti-entropy
+# pass toward every eligible peer completes, so the LB keeps it out of rotation
+# exactly while it could give wrong answers. The runner restarts arca-3 and
+# starts this sub-phase IMMEDIATELY (no wait_live), so the polling below can
+# observe the syncing window (membership 3s + anti-entropy tick 5s in the test
+# configs) before it closes.
+
+SYNC_BUCKET = "cluster-syncing"
+SYNC_SEED_KEY = "seeded-before-downtime"
+SYNC_SEED_BODY = b"seeded on all three nodes before the downtime"
+SYNC_CATCHUP_KEY = "written-while-node-3-was-down"
+SYNC_CATCHUP_BODY = b"node 3 must already hold this when its health turns 200"
+
+
+@pytest.mark.cluster_syncing_seed
+def test_syncing_seed_data_on_all_nodes():
+    """Seed an object with all 3 nodes up; verify it reached node 3."""
+    lb = _s3(LB)
+    _ensure_bucket(lb, SYNC_BUCKET)
+    lb.put_object(Bucket=SYNC_BUCKET, Key=SYNC_SEED_KEY, Body=SYNC_SEED_BODY)
+    _wait_object(_s3(NODES[3]), SYNC_BUCKET, SYNC_SEED_KEY, SYNC_SEED_BODY)
+
+
+@pytest.mark.cluster_syncing_while_down
+def test_syncing_write_catchup_data_while_node_down():
+    """With node 3 down, write the object it will have to catch up on."""
+    lb = _s3(LB)
+    lb.put_object(Bucket=SYNC_BUCKET, Key=SYNC_CATCHUP_KEY, Body=SYNC_CATCHUP_BODY)
+    assert (
+        lb.get_object(Bucket=SYNC_BUCKET, Key=SYNC_CATCHUP_KEY)["Body"].read()
+        == SYNC_CATCHUP_BODY
+    )
+
+
+@pytest.mark.cluster_syncing_readiness
+def test_restarted_node_syncs_before_reporting_ready():
+    """From the instant node 3 restarts: every health answer before the first
+    200 must be a 503 "syncing" (with the M4 Retry-After hint), the verbose
+    health must stay inspectable (200) meanwhile, and the moment the plain
+    health turns 200 the catch-up object must ALREADY be readable on the node
+    — readiness implies correctness, not just liveness."""
+    deadline = time.time() + 120
+    saw_syncing = False
+    ready = False
+    while time.time() < deadline:
+        try:
+            resp = requests.get(f"{NODES[3]}/admin/health", timeout=2)
+        except requests.RequestException:
+            time.sleep(0.2)  # still booting — connection errors are fine
+            continue
+        if resp.status_code == 200:
+            ready = True
+            break
+        assert resp.status_code == 503, f"unexpected health status {resp.status_code}"
+        body = resp.json()
+        assert body.get("status") == "syncing", f"unexpected 503 body: {body}"
+        assert resp.headers.get("Retry-After") == "5", "M4: retriable 503 must hint a delay"
+        if not saw_syncing:
+            saw_syncing = True
+            # The verbose health never 503s: an operator/console can always
+            # inspect the node; the status field carries the state.
+            verbose = _verbose_health(NODES[3])
+            assert verbose is not None and verbose["status"] == "syncing"
+            assert verbose["cluster"]["syncing"] is True
+        time.sleep(0.2)
+    assert ready, "node 3 never reported ready within 120s"
+    assert saw_syncing, "the syncing window was never observed (raced past it?)"
+
+    # Readiness implies correctness: the data written during the downtime is
+    # already there the moment the health says ok — no polling allowed here.
+    node3 = _s3(NODES[3])
+    assert (
+        node3.get_object(Bucket=SYNC_BUCKET, Key=SYNC_CATCHUP_KEY)["Body"].read()
+        == SYNC_CATCHUP_BODY
+    )
+    assert (
+        node3.get_object(Bucket=SYNC_BUCKET, Key=SYNC_SEED_KEY)["Body"].read()
+        == SYNC_SEED_BODY
+    )
+
+    # The admin topology now reports the sync state: not syncing, first pass
+    # done toward every peer, per-peer cursors exposed (D2 — exposed lag).
+    cluster = _admin_get(NODES[3], "/admin/cluster")
+    assert cluster["syncing"] is False
+    peer_syncs = [n["sync"] for n in cluster["nodes"] if not n["local"]]
+    assert peer_syncs, "expected per-peer sync detail in /admin/cluster"
+    for sync in peer_syncs:
+        assert sync["first_pass_done"] is True
+        assert sync["skipped_entries"] == 0
+        assert "hwm" in sync

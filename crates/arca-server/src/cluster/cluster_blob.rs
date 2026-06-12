@@ -348,6 +348,7 @@ mod tests {
             config_ok: true,
             disk_total: None,
             disk_available: None,
+            max_seq: None,
         }
     }
 

@@ -485,6 +485,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                     stores.control_tombstone.clone(),
                     std::time::Duration::from_secs(c.anti_entropy_interval_seconds.max(1)),
                     c.tombstone_grace(),
+                    c.blob_repair_budget(),
                 ));
 
                 let cluster_meta: Arc<dyn arca_core::store::MetadataStore> =

@@ -326,10 +326,21 @@ wait_live() {
     local port="$1" want="$2" max="${3:-90}"
     echo "Waiting for the cluster to report $want live node(s) on :$port..."
     for _ in $(seq 1 "$max"); do
-        # Membership convergence on one node does not mean HAProxy has caught
-        # up: with `fall 2 inter 2s` it takes up to ~4s to evict a dead node
-        # from rotation, so give the LB a 5s margin before tests hit it.
-        [[ "$(_node_live "$port")" == "$want" ]] && { sleep 5; return 0; }
+        if [[ "$(_node_live "$port")" == "$want" ]]; then
+            # Membership convergence on one node does not mean the LB has any
+            # ready backend yet: since R7 (review D2) a node answers 503
+            # "syncing" on /admin/health until its first anti-entropy pass, so
+            # on a cold cluster start ALL nodes can be briefly out of rotation.
+            # Wait until the LB actually routes a health check...
+            for _ in $(seq 1 60); do
+                curl -fsS -o /dev/null "http://localhost:9000/admin/health" 2>/dev/null && break
+                sleep 1
+            done
+            # ...then the eviction margin: with `fall 2 inter 2s` HAProxy takes
+            # up to ~4s to drop a DEAD node from rotation.
+            sleep 5
+            return 0
+        fi
         sleep 1
     done
     echo "Timed out waiting for live==$want on :$port" >&2
@@ -513,6 +524,31 @@ run_cluster() {
                 wait_live "$survivor" 2 60 || rc=1
                 [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_leader_failover -v "$@" || rc=$?; }
             fi
+        fi
+        dump_logs_on_failure $rc $C
+        $C down -v 2>/dev/null || true
+    fi
+
+    if [[ $rc -eq 0 ]]; then
+        echo "── Phase J: syncing readiness (R7, review D2) ──"
+        # A node restarted after downtime must answer 503 "syncing" on
+        # /admin/health until its first anti-entropy pass toward every peer
+        # completes — and the moment it answers 200, the data written during
+        # its downtime must already be readable on it.
+        $C up -d
+        wait_live 9001 3 90 || rc=1
+        [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_syncing_seed -v "$@" || rc=$?; }
+        if [[ $rc -eq 0 ]]; then
+            $C stop arca-3
+            wait_live 9001 2 60 || rc=1
+            [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_syncing_while_down -v "$@" || rc=$?; }
+        fi
+        if [[ $rc -eq 0 ]]; then
+            $C start arca-3
+            # No wait_live here, on purpose: the runner must observe the
+            # syncing window on the restarted node BEFORE its first pass
+            # completes (test configs: 3s membership + 5s anti-entropy tick).
+            $C run --rm --no-deps test "$T" -m cluster_syncing_readiness -v "$@" || rc=$?
         fi
         dump_logs_on_failure $rc $C
         $C down -v 2>/dev/null || true

@@ -27,7 +27,7 @@ fn get_versioning_state(conn: &Connection, bucket: &str) -> VersioningState {
 }
 
 /// Column list for all object SELECT queries (20 columns).
-const OBJECT_COLUMNS: &str = "bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status, is_tombstone";
+const OBJECT_COLUMNS: &str = "bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status, is_tombstone, lock_updated_at";
 
 #[async_trait::async_trait]
 impl MetadataStore for SqliteStore {
@@ -441,6 +441,7 @@ impl MetadataStore for SqliteStore {
                             checksum_algorithm: None,
                             checksum_value: None,
                             replication_status: None,
+                            lock_updated_at: None,
                         })
                     }
                     VersioningState::Suspended => {
@@ -614,13 +615,20 @@ impl MetadataStore for SqliteStore {
                     serde_json::to_string(&record.metadata).unwrap_or_else(|_| "{}".to_string());
 
                 match &record.version_id {
-                    // Versioned rows are immutable, keyed by version_id. The LWW
-                    // guard (incoming >= existing) makes re-delivery and
-                    // out-of-order delivery safe and idempotent; the equal-tuple
-                    // `>=` lets lock-column updates (N1) through. Identical rows
-                    // are skipped without a rewrite (M7): rewriting would stamp
-                    // a fresh seq and keep two caught-up nodes redelivering
-                    // their whole tables to each other forever.
+                    // Versioned rows are immutable, keyed by version_id, except
+                    // for the lock columns (retention/legal hold), which mutate
+                    // in place WITHOUT bumping last_modified. The LWW guard is
+                    // therefore: strictly newer last_modified wins; on a tie —
+                    // same version, possibly different lock state — strictly
+                    // newer lock_updated_at wins (N1 delivery + N2 ordering).
+                    // A plain `>=` here let the tie pass in BOTH directions: a
+                    // node re-pulling a peer's full manifest after a restart
+                    // re-applied the stale lock-free copy over a newer lock
+                    // state, and the rewrite's fresh seq propagated the
+                    // regression cluster-wide (N2). Identical rows are skipped
+                    // without a rewrite (M7): rewriting would stamp a fresh
+                    // seq and keep two caught-up nodes redelivering their
+                    // whole tables to each other forever.
                     Some(vid) => {
                         let sql = format!(
                             "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3"
@@ -637,8 +645,10 @@ impl MetadataStore for SqliteStore {
                         let should_write = match &existing {
                             None => true,
                             Some(ex) => {
-                                record.last_modified >= ex.last_modified
-                                    && !record.same_replicated_content(ex)
+                                let newer = record.last_modified > ex.last_modified
+                                    || (record.last_modified == ex.last_modified
+                                        && record.lock_updated_at > ex.lock_updated_at);
+                                newer && !record.same_replicated_content(ex)
                             }
                         };
                         if should_write {
@@ -651,7 +661,9 @@ impl MetadataStore for SqliteStore {
                     }
                     // Null-version rows form an LWW register per (bucket, key):
                     // unversioned/suspended overwrites resolve by
-                    // (last_modified, blob_id) so all nodes converge on one row.
+                    // (last_modified, blob_id), with lock_updated_at as the
+                    // final tiebreak for the same physical row whose lock state
+                    // changed in place (N1/N2 — see the versioned branch).
                     // Same M7 identical-row skip as the versioned branch.
                     None => {
                         let sql = format!(
@@ -671,7 +683,10 @@ impl MetadataStore for SqliteStore {
                             Some(ex) => {
                                 let lww = record.last_modified > ex.last_modified
                                     || (record.last_modified == ex.last_modified
-                                        && record.blob_id.0 >= ex.blob_id.0);
+                                        && record.blob_id.0 > ex.blob_id.0)
+                                    || (record.last_modified == ex.last_modified
+                                        && record.blob_id == ex.blob_id
+                                        && record.lock_updated_at > ex.lock_updated_at);
                                 lww && !record.same_replicated_content(ex)
                             }
                         };
@@ -1495,18 +1510,22 @@ impl MetadataStore for SqliteStore {
                 // Fresh seq so the lock change travels via the changed-since
                 // manifest to peers that miss the real-time fan-out (N1). Taken
                 // before the row UPDATE per the next_object_seq lock-order rule.
+                // lock_updated_at orders the lock state across nodes (N2): the
+                // row's last_modified does not change here, so without it a
+                // stale equal-timestamp copy applied later would clobber this.
                 let seq = next_object_seq(&tx)?;
+                let lock_updated_at = chrono::Utc::now().to_rfc3339();
                 let rows = if let Some(ref vid) = version_id {
                     tx.execute(
-                        "UPDATE objects SET retention_mode = ?1, retain_until_date = ?2, seq = ?3 \
-                         WHERE bucket = ?4 AND key = ?5 AND version_id = ?6",
-                        params![retention_mode, retain_until_date, seq, bucket, key, vid],
+                        "UPDATE objects SET retention_mode = ?1, retain_until_date = ?2, seq = ?3, lock_updated_at = ?4 \
+                         WHERE bucket = ?5 AND key = ?6 AND version_id = ?7",
+                        params![retention_mode, retain_until_date, seq, lock_updated_at, bucket, key, vid],
                     )?
                 } else {
                     tx.execute(
-                        "UPDATE objects SET retention_mode = ?1, retain_until_date = ?2, seq = ?3 \
-                         WHERE bucket = ?4 AND key = ?5 AND is_latest = 1",
-                        params![retention_mode, retain_until_date, seq, bucket, key],
+                        "UPDATE objects SET retention_mode = ?1, retain_until_date = ?2, seq = ?3, lock_updated_at = ?4 \
+                         WHERE bucket = ?5 AND key = ?6 AND is_latest = 1",
+                        params![retention_mode, retain_until_date, seq, lock_updated_at, bucket, key],
                     )?
                 };
                 tx.commit()?;
@@ -1531,19 +1550,21 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;
-                // Fresh seq for manifest visibility (N1) — see set_object_retention.
+                // Fresh seq for manifest visibility (N1) and lock_updated_at
+                // for the lock-state LWW (N2) — see set_object_retention.
                 let seq = next_object_seq(&tx)?;
+                let lock_updated_at = chrono::Utc::now().to_rfc3339();
                 let rows = if let Some(ref vid) = version_id {
                     tx.execute(
-                        "UPDATE objects SET legal_hold_status = ?1, seq = ?2 \
-                         WHERE bucket = ?3 AND key = ?4 AND version_id = ?5",
-                        params![status, seq, bucket, key, vid],
+                        "UPDATE objects SET legal_hold_status = ?1, seq = ?2, lock_updated_at = ?3 \
+                         WHERE bucket = ?4 AND key = ?5 AND version_id = ?6",
+                        params![status, seq, lock_updated_at, bucket, key, vid],
                     )?
                 } else {
                     tx.execute(
-                        "UPDATE objects SET legal_hold_status = ?1, seq = ?2 \
-                         WHERE bucket = ?3 AND key = ?4 AND is_latest = 1",
-                        params![status, seq, bucket, key],
+                        "UPDATE objects SET legal_hold_status = ?1, seq = ?2, lock_updated_at = ?3 \
+                         WHERE bucket = ?4 AND key = ?5 AND is_latest = 1",
+                        params![status, seq, lock_updated_at, bucket, key],
                     )?
                 };
                 tx.commit()?;
@@ -1806,10 +1827,11 @@ fn insert_object_row(
     metadata_json: &str,
 ) -> Result<(), rusqlite::Error> {
     let retain_until_str = record.retain_until_date.map(|dt| dt.to_rfc3339());
+    let lock_updated_str = record.lock_updated_at.map(|dt| dt.to_rfc3339());
     let seq = next_object_seq(conn)?;
     conn.execute(
-        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq, is_tombstone)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
+        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq, is_tombstone, lock_updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
         params![
             record.bucket,
             record.key,
@@ -1833,6 +1855,7 @@ fn insert_object_row(
             record.checksum_value,
             seq,
             record.is_tombstone as i32,
+            lock_updated_str,
         ],
     )?;
     Ok(())
@@ -1875,10 +1898,11 @@ fn insert_replicated_row(
     metadata_json: &str,
 ) -> Result<(), rusqlite::Error> {
     let retain_until_str = record.retain_until_date.map(|dt| dt.to_rfc3339());
+    let lock_updated_str = record.lock_updated_at.map(|dt| dt.to_rfc3339());
     let seq = next_object_seq(conn)?;
     conn.execute(
-        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status, seq, is_tombstone)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
+        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status, seq, is_tombstone, lock_updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
         params![
             record.bucket,
             record.key,
@@ -1902,6 +1926,7 @@ fn insert_replicated_row(
             record.replication_status,
             seq,
             record.is_tombstone as i32,
+            lock_updated_str,
         ],
     )?;
     Ok(())
@@ -2046,6 +2071,12 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
     let checksum_value: Option<String> = row.get(19).unwrap_or(None);
     let replication_status: Option<String> = row.get(20).unwrap_or(None);
     let is_tombstone: bool = row.get::<_, i32>(21).unwrap_or(0) != 0;
+    let lock_updated_at_str: Option<String> = row.get(22).unwrap_or(None);
+    let lock_updated_at = lock_updated_at_str.and_then(|s| {
+        DateTime::parse_from_rfc3339(&s)
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .ok()
+    });
 
     Ok(ObjectRecord {
         bucket: row.get(0)?,
@@ -2070,6 +2101,7 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
         checksum_algorithm,
         checksum_value,
         replication_status,
+        lock_updated_at,
     })
 }
 
@@ -2105,6 +2137,7 @@ mod tests {
             checksum_algorithm: None,
             checksum_value: None,
             replication_status: None,
+            lock_updated_at: None,
         }
     }
 
@@ -3337,9 +3370,11 @@ mod tests {
 
     #[tokio::test]
     async fn apply_remote_object_still_applies_lock_only_changes() {
-        // N1+M7 interplay: a row equal on the LWW tuple (last_modified,
-        // blob_id) but with changed lock columns must still be applied — the
-        // equal-tuple `>=` guard exists for exactly this case.
+        // N1+N2+M7 interplay: a row equal on the LWW tuple (last_modified,
+        // blob_id) but with a NEWER lock state (lock_updated_at) must still be
+        // applied — the equal-timestamp lock tiebreak exists for exactly this
+        // case (set_object_retention stamps lock_updated_at, so the fanned-out
+        // / manifest row always carries it).
         let store = test_store().await;
         store.create_bucket("b").await.unwrap();
         let mut rec = make_record("b", "k");
@@ -3353,6 +3388,7 @@ mod tests {
             Some(chrono::DateTime::parse_from_rfc3339("2031-01-01T00:00:00Z")
                 .unwrap()
                 .with_timezone(&chrono::Utc));
+        locked.lock_updated_at = Some(chrono::Utc::now());
         store.apply_remote_object(&locked).await.unwrap();
         assert!(
             store.current_object_seq().await.unwrap() > seq_before,
@@ -3360,6 +3396,87 @@ mod tests {
         );
         let got = store.get_object_version("b", "k", "v1").await.unwrap().unwrap();
         assert_eq!(got.retention_mode.as_deref(), Some("GOVERNANCE"));
+    }
+
+    #[tokio::test]
+    async fn apply_remote_object_stale_copy_cannot_clobber_newer_lock_state() {
+        // N2 regression (the phase-D retention clobber): after a lock change,
+        // re-applying the STALE pre-lock copy of the same version (same
+        // last_modified, no lock columns, no lock_updated_at) — exactly what a
+        // restarted peer redelivers from its full manifest — must be a no-op,
+        // not a clobber. The old `>=` guard let it through in both directions.
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut stale = make_record("b", "k");
+        stale.version_id = Some("v1".to_string());
+        store.apply_remote_object(&stale).await.unwrap();
+
+        // The local lock change (stamps seq + lock_updated_at).
+        assert!(store
+            .set_object_retention("b", "k", None, Some("GOVERNANCE"), Some("2031-01-01T00:00:00Z"))
+            .await
+            .unwrap());
+        let seq_after_lock = store.current_object_seq().await.unwrap();
+
+        // The stale copy comes back (e.g. pulled from a peer that never
+        // learned the lock change): it must NOT win.
+        store.apply_remote_object(&stale).await.unwrap();
+        let got = store.get_object_version("b", "k", "v1").await.unwrap().unwrap();
+        assert_eq!(
+            got.retention_mode.as_deref(),
+            Some("GOVERNANCE"),
+            "a stale equal-timestamp copy must not clobber a newer lock state"
+        );
+        assert_eq!(
+            store.current_object_seq().await.unwrap(),
+            seq_after_lock,
+            "the rejected stale copy must not stamp a fresh seq (no churn, no propagation)"
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_remote_object_stale_copy_cannot_clobber_lock_on_null_version() {
+        // N2, null-version branch: same regression for unversioned objects —
+        // the (last_modified, blob_id) register ties, and lock_updated_at must
+        // break the tie instead of the old blob_id `>=` pass-through.
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let stale = make_record("b", "k"); // version_id = None
+        store.apply_remote_object(&stale).await.unwrap();
+
+        assert!(store
+            .set_object_legal_hold("b", "k", None, Some("ON"))
+            .await
+            .unwrap());
+
+        store.apply_remote_object(&stale).await.unwrap();
+        let got = store.get_object("b", "k").await.unwrap().unwrap();
+        assert_eq!(
+            got.legal_hold_status.as_deref(),
+            Some("ON"),
+            "a stale equal-register copy must not clobber a newer legal hold"
+        );
+    }
+
+    #[tokio::test]
+    async fn lock_updates_stamp_lock_updated_at() {
+        // N2: both lock mutations must record WHEN the lock state changed —
+        // the LWW dimension the apply guards order ties by.
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        store.put_object(&make_record("b", "k")).await.unwrap();
+        assert!(store.get_object("b", "k").await.unwrap().unwrap().lock_updated_at.is_none());
+
+        store
+            .set_object_retention("b", "k", None, Some("GOVERNANCE"), Some("2031-01-01T00:00:00Z"))
+            .await
+            .unwrap();
+        let after_retention = store.get_object("b", "k").await.unwrap().unwrap().lock_updated_at;
+        assert!(after_retention.is_some());
+
+        store.set_object_legal_hold("b", "k", None, Some("ON")).await.unwrap();
+        let after_hold = store.get_object("b", "k").await.unwrap().unwrap().lock_updated_at;
+        assert!(after_hold > after_retention, "each lock change refreshes the stamp");
     }
 
     /// A store with cluster mode on, so hard deletes tombstone instead of remove.

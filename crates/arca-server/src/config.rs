@@ -833,6 +833,12 @@ pub struct ClusterConfig {
     /// resurrect deletions on its return — review §3.2); once pruned it stops
     /// blocking, and a later return must be treated as a re-sync.
     pub peer_prune_days: Option<u64>,
+    /// Review M2: maximum blob repairs (peer fetches) attempted per
+    /// anti-entropy tick by the proactive blob-repair sweep (default 100).
+    /// A sweep that exhausts the budget resumes where it left off on the NEXT
+    /// tick, so one huge repair backlog cannot monopolize the worker for hours
+    /// while still draining at `budget / anti_entropy_interval` per node.
+    pub blob_repair_budget: Option<u32>,
     /// Inter-node mutual TLS (R4/H12 — resolves TD-015). REQUIRED when the
     /// cluster runs over HTTPS (`[server.tls]` enabled): there is no insecure
     /// fallback. Meaningless (and rejected) without `[server.tls]`.
@@ -942,6 +948,9 @@ impl ClusterConfig {
         if self.peer_prune_days == Some(0) {
             bail!("[cluster] peer_prune_days must be >= 1 when set");
         }
+        if self.blob_repair_budget == Some(0) {
+            bail!("[cluster] blob_repair_budget must be >= 1 when set");
+        }
         if let Some(tls) = &self.tls {
             tls.validate()?;
         }
@@ -989,6 +998,12 @@ impl ClusterConfig {
     /// longer help it.
     pub fn peer_prune_days(&self) -> u64 {
         self.peer_prune_days.unwrap_or(self.tombstone_grace_days)
+    }
+
+    /// Effective per-tick blob-repair budget (M2; see
+    /// [`ClusterConfig::blob_repair_budget`]).
+    pub fn blob_repair_budget(&self) -> u32 {
+        self.blob_repair_budget.unwrap_or(100)
     }
 }
 
@@ -2099,6 +2114,7 @@ cluster_size = 3
             request_timeout_seconds: 10,
             tombstone_grace_days: 7,
             peer_prune_days: None,
+            blob_repair_budget: None,
             tls: None,
         }
     }
@@ -2123,6 +2139,23 @@ cluster_size = 3
         cluster.peer_prune_days = Some(14);
         assert!(cluster.validate().is_ok());
         assert_eq!(cluster.peer_prune_days(), 14, "explicit value wins");
+    }
+
+    #[test]
+    fn cluster_blob_repair_budget_validation_and_default() {
+        let mut cluster = ClusterConfig {
+            blob_repair_budget: Some(0),
+            ..test_cluster_config()
+        };
+        let err = cluster.validate().unwrap_err().to_string();
+        assert!(err.contains("blob_repair_budget"), "got: {err}");
+
+        cluster.blob_repair_budget = None;
+        assert!(cluster.validate().is_ok());
+        assert_eq!(cluster.blob_repair_budget(), 100, "M2 default");
+        cluster.blob_repair_budget = Some(5);
+        assert!(cluster.validate().is_ok());
+        assert_eq!(cluster.blob_repair_budget(), 5, "explicit value wins");
     }
 
     #[test]

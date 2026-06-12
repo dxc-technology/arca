@@ -1592,7 +1592,7 @@
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R4</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R5</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R6</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R7</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R7</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R8</div>
     <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R9</div>
   </div>
@@ -1788,14 +1788,15 @@
 <hr />
 <h2 id="r7-synchronization-state-and-operability">R7 — Synchronization state and operability<a class="headerlink" href="#r7-synchronization-state-and-operability" title="Permanent link">&para;</a></h2>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D2 "Syncing" readiness</strong>: <code>ClusterContext</code> tracks, for every live peer, the completion of the FIRST reconcile pass since startup; until it is complete towards all live peers, <code>/admin/health</code> answers <code>503 {"status":"syncing"}</code> (drain takes precedence; no live peers → degraded <code>ok</code>, to be documented). The LB and the k8s probes see it → a realigning node receives no traffic until it is coherent. Test: a node restarted after downtime with new data → health 503 until catch-up completes, then 200.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Exposed lag</strong>: <code>/admin/cluster</code> (and <code>?verbose=1</code>) with, per peer: last completed reconcile, HWM cursor, <code>first_pass_done</code>.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D3c Rewind detection</strong>: the <code>ping</code> (R3) exposes <code>max_seq</code>; if the local HWM for that peer exceeds its <code>max_seq</code> → reset the HWM to 0 + a warning (covers restore-from-backup without restarting the peers).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>M1 Stuck HWM</strong>: after K=5 consecutive failures on the same <code>seq</code> in <code>apply_remote_object</code> (<code>anti_entropy.rs:361-371</code>), skip the entry with a warning + a counter visible in <code>/admin/cluster</code>.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>M2 Repair budget</strong>: <code>repair_blobs</code> (<code>anti_entropy.rs:154-206</code>) with a per-tick budget (default 100 blobs) + a resume cursor; no more scans monopolizing the worker for hours.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>M4 <code>Retry-After</code></strong>: on ALL cluster 503s — since R1 <code>s3_error_response</code> adds it to every <code>ServiceUnavailable</code>, so the quorum 503 already carries it and the new syncing/size_exceeded 503s inherit it automatically; here just verify they do (the rate limiter already sets its own).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>M8</strong>: <code>tracing::warn!</code> on the mtime→now fallback in <code>fs/blob.rs:703-708</code>.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Update the console topology card if the new fields are needed (lag, syncing, flags): minimal visualization, the console bulk is R8.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>D2 "Syncing" readiness</strong>: <code>ClusterState</code> (the codebase's <code>ClusterContext</code>) tracks, per peer, the completion of the FIRST full reconcile pass since startup (objects drained to the manifest end + control snapshot merged, recorded by the anti-entropy worker as <code>PeerSyncStatus.first_pass_done</code>); until it is complete toward every <strong>eligible</strong> peer (not merely live — a rogue/drifted peer is never reconciled from, so requiring a pass toward it would deadlock readiness), the plain <code>/admin/health</code> answers <code>503 {"status":"syncing"}</code> + <code>Retry-After: 5</code> (drain takes precedence; no eligible peers → degraded <code>ok</code>, documented in <code>ha.md</code>; <code>?verbose=1</code> stays 200 with <code>status: "syncing"</code>). The LB and the k8s probes see it → a realigning node receives no traffic until it is coherent. As built, the per-peer HWM moved from the worker's local map into <code>ClusterState</code> so the endpoints can expose it; sync entries are pruned with membership (M3) and survive a peer's death (a returning peer resumes incrementally). Documented consequence: a brand-new peer joining flips the established nodes to syncing for up to one anti-entropy tick. Integration: new phase J (<code>bin/test cluster</code>) — a node restarted after downtime holds 503-syncing (observed by polling started right after <code>start</code>, no wait_live) and the catch-up object must be readable the INSTANT the health turns 200 (readiness implies correctness, no polling allowed); <code>wait_live</code> also gained an LB-routes-200 guard (on a cold cluster start ALL nodes briefly sync → HAProxy could have zero backends when tests begin).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>Exposed lag</strong>: <code>/admin/cluster</code> with, per peer, <code>sync: {hwm, lag, last_reconcile, first_pass_done, skipped_entries}</code> (<code>lag</code> = peer's ping-reported <code>max_seq</code> − HWM) + the node-level <code>syncing</code> flag (also in the verbose-health cluster snapshot).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>D3c Rewind detection</strong>: the ping's <code>max_seq</code> now travels <code>ContactInfo → PeerNode.max_seq</code> (None for legacy/dead peers); per-tick check via the pure <code>sync_rewound()</code> (arca-core) → HWM reset to 0 + warning. As built, with a <strong>freshness guard</strong> beyond the plan: probe and reconcile run on independent cadences, so the report must be NEWER than the last HWM advance (<code>peer.last_seen &gt; hwm_at</code>) — otherwise a peer under sustained writes false-alarms with a stale ping taken before the rows we just pulled (a genuine restore keeps reporting the rewound counter, so detection is only deferred to the first post-reconcile probe, never lost).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>M1 Stuck HWM</strong>: after K=5 consecutive passes failing on the same <code>seq</code> (<code>STUCK_SKIP_AFTER</code>, pure <code>StuckTracker</code> unit-tested per peer/reset/progress), the entry is skipped with a warning + <code>skipped_entries</code> per peer in <code>/admin/cluster</code>. <code>apply_entries</code>/<code>reconcile_peer_objects</code> now return the failing seq alongside the cursor.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>M2 Repair budget</strong>: <code>repair_blobs</code> with a per-tick budget (new <code>[cluster] blob_repair_budget</code>, default 100, validated ≥ 1) + a resume cursor (sorted blob-id order; <code>None</code> = sweep complete). Budget counts peer FETCHES (the local existence stats are cheap); checked only BETWEEN blob ids so one composite is always processed to completion (bounded overshoot — a composite with more unfetchable parts than the whole budget cannot stall the sweep's progress). A mid-flight sweep continues on EVERY tick (only complete sweeps wait for the slow 10-tick cadence), so a backlog drains at <code>budget/interval</code>. Unit test with a fake blob peer: budget 2 over 4 missing blobs → exactly 2 fetched + cursor, resume completes.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>M4 <code>Retry-After</code></strong>: verified and pinned by unit tests in <code>error_response.rs</code> (every <code>ServiceUnavailable</code> carries <code>Retry-After: 5</code>; non-503s carry none — covers quorum, size-gate and any future cluster 503 in one place); the new syncing health 503 sets it explicitly.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>M8</strong>: <code>tracing::warn!</code> on the mtime→now fallback in <code>fs/blob.rs</code> (<code>walk_files</code>), naming the file and the consequence (a filesystem without mtimes never reclaims blobs).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>N2 — equal-timestamp LWW clobber erases Object-Lock state cluster-wide (found during R7; THE root cause of the known phase-D retention flake, which was previously mislabeled M1-class).</strong> Lock changes (N1) keep <code>last_modified</code> unchanged (S3 semantics), so two copies of the same version can differ ONLY in lock state while their whole LWW key ties — and the N1 <code>&gt;=</code> equal-tuple guard passed the tie in BOTH directions: whichever copy was applied LAST won. Reproduced and confirmed at the bit level (rowid/seq-counter forensics on the preserved DBs): node 2 serves the retention PUT while node 3 is down (lock row stamped, audit-confirmed); at phase-D re-entry node 2 restarts, its in-memory HWM resets to 0, it re-pulls node 3's FULL manifest and re-applies the STALE lock-free copy over its own newer lock state (DELETE+INSERT, rowid reused = max+1, fresh seq); the fresh seq then propagates the regression — node 1 sees the clobbered row as "new" and loses its copy too. Final state: retention silently GONE on all three nodes (data loss of WORM state). No apply ever failed, so the M1 skip could never have fixed it. <strong>Fix: a dedicated LWW dimension for the lock state</strong> — new <code>objects.lock_updated_at</code> column (sqlite migration v23 / pg 0011, NULL = never changed; <code>ObjectRecord.lock_updated_at</code> serde-default → H10-additive on the wire), stamped by <code>set_object_retention</code>/<code>set_object_legal_hold</code> on both backends; <code>apply_remote_object</code> guards become <em>strictly newer <code>last_modified</code>, OR tie + strictly newer <code>lock_updated_at</code></em> (versioned branch; the null-version register adds it as the final tiebreak after <code>blob_id</code>, whose own <code>&gt;=</code> had the same bidirectional hole). <code>Option</code> ordering (<code>None &lt; Some</code>) makes any post-upgrade lock change beat a never-locked copy; <code>same_replicated_content</code> includes the new field automatically (M7 no-op intact). Unit tests: stale-copy-cannot-clobber (versioned + null-version), lock-only change still applies, both mutations stamp. The phase-D retention integration test is the e2e regression test — it caught the bug.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> Console topology card, minimal per plan: an amber "syncing" notice (exact replica of the config-drift warning pattern) + per-node amber <code>sync lag N</code> / <code>N skipped</code> lines (shown only when non-zero) in the node list's right column.</li>
 </ul>
 <p><em>Outcome: a re-entering node serves no wrong answers; the operator sees lag and anomalies; the worker neither stalls nor monopolizes.</em></p>
 <hr />
@@ -1928,13 +1929,13 @@
 <td>M1</td>
 <td>HWM stuck on a failing entry</td>
 <td>R7</td>
-<td>⬜</td>
+<td>✅ (skip after 5 consecutive failures on the same seq, warning + per-peer <code>skipped_entries</code> in <code>/admin/cluster</code>)</td>
 </tr>
 <tr>
 <td>M2</td>
 <td>Repair without a budget</td>
 <td>R7</td>
-<td>⬜</td>
+<td>✅ (<code>[cluster] blob_repair_budget</code> default 100 fetches/tick + resume cursor; mid-flight sweeps continue every tick)</td>
 </tr>
 <tr>
 <td>M3</td>
@@ -1946,7 +1947,7 @@
 <td>M4</td>
 <td>503 without Retry-After</td>
 <td>R7</td>
-<td>🔧 (quorum 503s carry it since R1 — <code>s3_error_response</code> adds it to every ServiceUnavailable; R7 verifies syncing/size_exceeded inherit it)</td>
+<td>✅ (pinned by unit tests on <code>s3_error_response</code>: every ServiceUnavailable carries it, non-503s do not; the syncing health 503 sets it explicitly)</td>
 </tr>
 <tr>
 <td>M5</td>
@@ -1973,10 +1974,16 @@
 <td>✅ (fresh <code>seq</code> stamped in both backends' lock UPDATEs + catch-up integration test)</td>
 </tr>
 <tr>
+<td>N2</td>
+<td>Equal-timestamp LWW clobber erases lock state cluster-wide: the N1 <code>&gt;=</code> guard passes the tie in both directions, so a restarted peer's stale full-manifest re-pull silently deletes retention/legal-hold everywhere (found during R7 — the real root cause of the phase-D retention flake)</td>
+<td>R7</td>
+<td>✅ (<code>lock_updated_at</code> LWW dimension on both backends — sqlite v23 / pg 0011 — stamped by lock mutations, strict tiebreak in <code>apply_remote_object</code>; unit + phase-D integration regression)</td>
+</tr>
+<tr>
 <td>M8</td>
 <td>Silent mtime fallback</td>
 <td>R7</td>
-<td>⬜</td>
+<td>✅ (warning on the fallback, naming the file and the never-reclaims consequence)</td>
 </tr>
 <tr>
 <td>§5.1</td>
@@ -2000,7 +2007,7 @@
 <td>§5.4</td>
 <td>Listed test debt (GC, repair, bootstrap, skew)</td>
 <td>R2 (partial: bootstrap in the R7 test; skew stays ➖ documented)</td>
-<td>🔧 (still open after R2: tombstone-GC + blob-repair tests; bootstrap arrives with the R7 readiness test; skew = doc-only in R9)</td>
+<td>🔧 (bootstrap covered by the R7 phase-J readiness test; still open: tombstone-GC + blob-repair integration tests; skew = doc-only in R9)</td>
 </tr>
 <tr>
 <td>§5-deploy</td>
@@ -2024,7 +2031,7 @@
 <td>D2</td>
 <td>No syncing state (404s/partial listings at re-entry)</td>
 <td>R7</td>
-<td>⬜</td>
+<td>✅ (first-pass readiness gate on <code>/admin/health</code>, per-peer sync detail in <code>/admin/cluster</code>, console notice, phase J integration test)</td>
 </tr>
 <tr>
 <td>D3a</td>
@@ -2042,7 +2049,7 @@
 <td>D3c</td>
 <td>Restore from backup: seq rewind vs HWM</td>
 <td>R7 (+ runbook R9)</td>
-<td>⬜</td>
+<td>✅ (ping <code>max_seq</code> → <code>PeerNode</code>, <code>sync_rewound()</code> with a ping-fresher-than-last-advance guard, automatic HWM reset; restore runbook stays in R9)</td>
 </tr>
 <tr>
 <td>D4</td>

@@ -16,7 +16,7 @@ use super::PgStore;
 const OBJECT_COLUMNS: &str = "bucket, key, blob_id, size, etag, content_type, last_modified, \
     metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, \
     is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, \
-    checksum_algorithm, checksum_value, replication_status";
+    checksum_algorithm, checksum_value, replication_status, lock_updated_at";
 
 /// Reads the bucket versioning state from `bucket_config`.
 /// Called inside a transaction context.
@@ -114,8 +114,8 @@ async fn insert_object_row(
         "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, \
          metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, \
          is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, \
-         checksum_algorithm, checksum_value, seq) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)",
+         checksum_algorithm, checksum_value, seq, lock_updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)",
     )
     .bind(&record.bucket)
     .bind(&record.key)
@@ -138,6 +138,7 @@ async fn insert_object_row(
     .bind(&record.checksum_algorithm)
     .bind(&record.checksum_value)
     .bind(seq)
+    .bind(record.lock_updated_at)
     .execute(&mut **tx)
     .await?;
     Ok(())
@@ -159,9 +160,9 @@ async fn insert_replicated_row(
         "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, \
          metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, \
          is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, \
-         checksum_algorithm, checksum_value, replication_status, is_tombstone, seq) \
+         checksum_algorithm, checksum_value, replication_status, is_tombstone, seq, lock_updated_at) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, FALSE, $13, $14, $15, $16, \
-         $17, $18, $19, $20, $21, $22)",
+         $17, $18, $19, $20, $21, $22, $23)",
     )
     .bind(&record.bucket)
     .bind(&record.key)
@@ -185,6 +186,7 @@ async fn insert_replicated_row(
     .bind(&record.replication_status)
     .bind(record.is_tombstone)
     .bind(seq)
+    .bind(record.lock_updated_at)
     .execute(&mut **tx)
     .await?;
     Ok(())
@@ -268,6 +270,7 @@ fn row_to_object_record(row: &sqlx_postgres::PgRow) -> ObjectRecord {
         checksum_value: row.get("checksum_value"),
         replication_status: row.try_get("replication_status").unwrap_or(None),
         is_tombstone: row.try_get("is_tombstone").unwrap_or(false),
+        lock_updated_at: row.try_get("lock_updated_at").unwrap_or(None),
     }
 }
 
@@ -774,6 +777,7 @@ impl MetadataStore for PgStore {
                     checksum_algorithm: None,
                     checksum_value: None,
                     replication_status: None,
+                    lock_updated_at: None,
                 })
             }
             VersioningState::Suspended => {
@@ -1028,12 +1032,19 @@ impl MetadataStore for PgStore {
             serde_json::to_value(&record.metadata).unwrap_or_else(|_| serde_json::json!({}));
 
         match &record.version_id {
-            // Versioned rows are immutable, keyed by version_id. The LWW guard
-            // (incoming >= existing) makes re-delivery and out-of-order delivery
-            // safe and idempotent; the equal-tuple `>=` lets lock-column updates
-            // (N1) through. Identical rows are skipped without a rewrite (M7):
-            // rewriting would stamp a fresh seq and keep two caught-up nodes
-            // redelivering their whole tables to each other forever.
+            // Versioned rows are immutable, keyed by version_id, except for
+            // the lock columns (retention/legal hold), which mutate in place
+            // WITHOUT bumping last_modified. The LWW guard is therefore:
+            // strictly newer last_modified wins; on a tie — same version,
+            // possibly different lock state — strictly newer lock_updated_at
+            // wins (N1 delivery + N2 ordering). A plain `>=` here let the tie
+            // pass in BOTH directions: a node re-pulling a peer's full
+            // manifest after a restart re-applied the stale lock-free copy
+            // over a newer lock state, and the rewrite's fresh seq propagated
+            // the regression cluster-wide (N2). Identical rows are skipped
+            // without a rewrite (M7): rewriting would stamp a fresh seq and
+            // keep two caught-up nodes redelivering their whole tables to
+            // each other forever.
             Some(vid) => {
                 let sql = format!(
                     "SELECT {OBJECT_COLUMNS} FROM objects \
@@ -1051,8 +1062,10 @@ impl MetadataStore for PgStore {
                 let should_write = match &existing {
                     None => true,
                     Some(ex) => {
-                        record.last_modified >= ex.last_modified
-                            && !record.same_replicated_content(ex)
+                        let newer = record.last_modified > ex.last_modified
+                            || (record.last_modified == ex.last_modified
+                                && record.lock_updated_at > ex.lock_updated_at);
+                        newer && !record.same_replicated_content(ex)
                     }
                 };
                 if should_write {
@@ -1077,9 +1090,11 @@ impl MetadataStore for PgStore {
                 }
             }
             // Null-version rows form an LWW register per (bucket, key):
-            // unversioned/suspended overwrites resolve by (last_modified, blob_id)
-            // so all nodes converge on one row. Same M7 identical-row skip as
-            // the versioned branch.
+            // unversioned/suspended overwrites resolve by (last_modified,
+            // blob_id), with lock_updated_at as the final tiebreak for the
+            // same physical row whose lock state changed in place (N1/N2 —
+            // see the versioned branch). Same M7 identical-row skip as the
+            // versioned branch.
             None => {
                 let sql = format!(
                     "SELECT {OBJECT_COLUMNS} FROM objects \
@@ -1098,7 +1113,10 @@ impl MetadataStore for PgStore {
                     Some(ex) => {
                         let lww = record.last_modified > ex.last_modified
                             || (record.last_modified == ex.last_modified
-                                && record.blob_id.0 >= ex.blob_id.0);
+                                && record.blob_id.0 > ex.blob_id.0)
+                            || (record.last_modified == ex.last_modified
+                                && record.blob_id == ex.blob_id
+                                && record.lock_updated_at > ex.lock_updated_at);
                         lww && !record.same_replicated_content(ex)
                     }
                 };
@@ -1894,18 +1912,23 @@ impl MetadataStore for PgStore {
             .map_err(|e| ArcaError::Internal(format!("set_object_retention: {e}")))?;
         // Fresh seq so the lock change travels via the changed-since manifest
         // to peers that miss the real-time fan-out (N1). Taken before the row
-        // UPDATE per the next_object_seq lock-order rule.
+        // UPDATE per the next_object_seq lock-order rule. lock_updated_at
+        // orders the lock state across nodes (N2): last_modified does not
+        // change here, so without it a stale equal-timestamp copy applied
+        // later would clobber this.
         let seq = next_object_seq(&mut tx)
             .await
             .map_err(|e| ArcaError::Internal(format!("set_object_retention: {e}")))?;
+        let lock_updated_at = Utc::now();
         let result = if let Some(vid) = version_id {
             sqlx_core::query::query(
-                "UPDATE objects SET retention_mode = $1, retain_until_date = $2, seq = $3 \
-                 WHERE bucket = $4 AND key = $5 AND version_id = $6",
+                "UPDATE objects SET retention_mode = $1, retain_until_date = $2, seq = $3, lock_updated_at = $4 \
+                 WHERE bucket = $5 AND key = $6 AND version_id = $7",
             )
             .bind(retention_mode)
             .bind(retain_dt)
             .bind(seq)
+            .bind(lock_updated_at)
             .bind(bucket)
             .bind(key)
             .bind(vid)
@@ -1913,12 +1936,13 @@ impl MetadataStore for PgStore {
             .await
         } else {
             sqlx_core::query::query(
-                "UPDATE objects SET retention_mode = $1, retain_until_date = $2, seq = $3 \
-                 WHERE bucket = $4 AND key = $5 AND is_latest = TRUE",
+                "UPDATE objects SET retention_mode = $1, retain_until_date = $2, seq = $3, lock_updated_at = $4 \
+                 WHERE bucket = $5 AND key = $6 AND is_latest = TRUE",
             )
             .bind(retention_mode)
             .bind(retain_dt)
             .bind(seq)
+            .bind(lock_updated_at)
             .bind(bucket)
             .bind(key)
             .execute(&mut *tx)
@@ -1945,17 +1969,20 @@ impl MetadataStore for PgStore {
             .begin()
             .await
             .map_err(|e| ArcaError::Internal(format!("set_object_legal_hold: {e}")))?;
-        // Fresh seq for manifest visibility (N1) — see set_object_retention.
+        // Fresh seq for manifest visibility (N1) and lock_updated_at for the
+        // lock-state LWW (N2) — see set_object_retention.
         let seq = next_object_seq(&mut tx)
             .await
             .map_err(|e| ArcaError::Internal(format!("set_object_legal_hold: {e}")))?;
+        let lock_updated_at = Utc::now();
         let result = if let Some(vid) = version_id {
             sqlx_core::query::query(
-                "UPDATE objects SET legal_hold_status = $1, seq = $2 \
-                 WHERE bucket = $3 AND key = $4 AND version_id = $5",
+                "UPDATE objects SET legal_hold_status = $1, seq = $2, lock_updated_at = $3 \
+                 WHERE bucket = $4 AND key = $5 AND version_id = $6",
             )
             .bind(status)
             .bind(seq)
+            .bind(lock_updated_at)
             .bind(bucket)
             .bind(key)
             .bind(vid)
@@ -1963,11 +1990,12 @@ impl MetadataStore for PgStore {
             .await
         } else {
             sqlx_core::query::query(
-                "UPDATE objects SET legal_hold_status = $1, seq = $2 \
-                 WHERE bucket = $3 AND key = $4 AND is_latest = TRUE",
+                "UPDATE objects SET legal_hold_status = $1, seq = $2, lock_updated_at = $3 \
+                 WHERE bucket = $4 AND key = $5 AND is_latest = TRUE",
             )
             .bind(status)
             .bind(seq)
+            .bind(lock_updated_at)
             .bind(bucket)
             .bind(key)
             .execute(&mut *tx)

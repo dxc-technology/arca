@@ -1,0 +1,11 @@
+-- HA hardening R7 (finding N2): retention/legal-hold changes are the only
+-- in-place row updates that do not bump last_modified (matching S3), so two
+-- copies of the same version can differ ONLY in lock state while their LWW key
+-- ties. Without an ordering, whichever copy is applied later wins: a node
+-- re-pulling a peer's full manifest after a restart re-applies the stale
+-- lock-free copy over a newer lock state, and the rewrite's fresh seq
+-- propagates the regression cluster-wide. Lock mutations now stamp this column
+-- and the apply guards use it as the equal-timestamp tiebreak. NULL = the lock
+-- state never changed; existing rows stay NULL (any post-upgrade lock change
+-- beats them).
+ALTER TABLE objects ADD COLUMN lock_updated_at TIMESTAMPTZ;

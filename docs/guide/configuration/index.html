@@ -2237,6 +2237,11 @@
 <td>Evict a peer from membership after it has been unreachable this long (≥ 1). While remembered, an absent peer blocks tombstone GC; once pruned, a return beyond the grace risks resurrecting deleted data.</td>
 </tr>
 <tr>
+<td><code>cluster.blob_repair_budget</code></td>
+<td><code>100</code></td>
+<td>Maximum blob fetches per anti-entropy tick by the proactive blob-repair sweep (≥ 1). An unfinished sweep resumes on the next tick, so a large repair backlog drains steadily without monopolizing the worker.</td>
+</tr>
+<tr>
 <td><code>cluster.tls.ca_file</code></td>
 <td><em>(required over HTTPS)</em></td>
 <td>Cluster CA certificate (PEM), identical on every node. The whole <code>[cluster.tls]</code> section is REQUIRED when <code>[server.tls]</code> is enabled (verified mutual TLS between nodes — no insecure fallback) and rejected when it is not. Mint the material with <code>arca tls generate-cluster</code>.</td>

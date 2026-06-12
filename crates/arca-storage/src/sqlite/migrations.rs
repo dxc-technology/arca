@@ -483,6 +483,23 @@ const MIGRATIONS: &[Migration] = &[
             UPDATE bucket_tags SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now');
         ",
     },
+    Migration {
+        version: 23,
+        description: "Add lock_updated_at to objects (N2: lock-state LWW dimension)",
+        // HA hardening R7 (finding N2): retention/legal-hold changes are the
+        // only in-place row updates that do not bump last_modified (matching
+        // S3), so two copies of the same version can differ ONLY in lock state
+        // while their LWW key ties. Without an ordering, whichever copy is
+        // applied later wins: a node re-pulling a peer's full manifest after a
+        // restart re-applies the stale lock-free copy over a newer lock state,
+        // and the rewrite's fresh seq propagates the regression cluster-wide.
+        // Lock mutations now stamp this column and the apply guards use it as
+        // the equal-timestamp tiebreak. NULL = the lock state never changed;
+        // existing rows stay NULL (any post-upgrade lock change beats them).
+        sql: "
+            ALTER TABLE objects ADD COLUMN lock_updated_at TEXT;
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -556,7 +573,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 22);
+        assert_eq!(version, 23);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -606,12 +623,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 22);
+        assert_eq!(version, 23);
 
-        // Twenty-two migration records
+        // Twenty-three migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 22);
+        assert_eq!(count, 23);
     }
 }

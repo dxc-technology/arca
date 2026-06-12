@@ -34,17 +34,37 @@
 //! plus read-repair instead of the hinted-handoff machinery large clusters need
 //! (their reconciliation is expensive and runs rarely).
 //!
-//! The high-water mark is per-peer and **in-memory**: this node's view of how
+//! The high-water mark is per-peer and **in-memory** (now carried by
+//! [`ClusterState`] as part of the per-peer [`PeerSyncStatus`], so the
+//! health/admin endpoints can expose it — review D2): this node's view of how
 //! far it has consumed each peer's `seq`. It is node-local and must never be
 //! replicated (it is meaningless elsewhere). On restart it resets to 0, costing
 //! one extra full manifest pass per peer — idempotent, then incremental.
+//!
+//! R7 operability additions:
+//! - **Syncing readiness (D2)**: the completion of the first full pass toward
+//!   each peer is recorded in [`ClusterState`]; until every eligible peer has
+//!   one, `/admin/health` reports `syncing` (503) and the LB keeps this node
+//!   out of rotation, so a re-entering node serves no stale 404s/listings.
+//! - **Rewind detection (D3c)**: a peer restored from backup reports (via the
+//!   authenticated ping) a `max_seq` below our HWM — detected per-tick
+//!   ([`arca_core::cluster::sync_rewound`]) and answered by resetting the HWM
+//!   to 0 (one idempotent full re-pull).
+//! - **Stuck-HWM skip (M1)**: a manifest entry that persistently fails to
+//!   apply is skipped after [`STUCK_SKIP_AFTER`] consecutive passes (warn +
+//!   `skipped_entries` evidence in `/admin/cluster`) instead of blocking that
+//!   peer's incremental sync forever.
+//! - **Repair budget (M2)**: the proactive blob-repair sweep attempts at most
+//!   `[cluster] blob_repair_budget` peer fetches per tick, resuming where it
+//!   left off on the next tick, so a huge backlog cannot monopolize the worker.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use arca_core::cluster::{
-    plan_blob_gc, plan_control_merge, tombstone_gc_blockers, ClusterState, ManifestEntry,
+    plan_blob_gc, plan_control_merge, sync_rewound, tombstone_gc_blockers, ClusterState,
+    ManifestEntry,
 };
 use arca_core::store::{ControlSnapshotStore, ControlTombstoneStore, MetadataStore, RawBlobOps};
 use arca_core::types::BlobId;
@@ -62,6 +82,14 @@ const MANIFEST_BATCH: u32 = 500;
 /// on-access correctness between sweeps).
 const BLOB_SCAN_EVERY_TICKS: u64 = 10;
 
+/// M1 — skip a manifest entry after this many CONSECUTIVE passes failed to
+/// apply the same `seq`. Below the threshold a failure is treated as transient
+/// (the safe default: the unapplied tail is simply retried next tick); past it
+/// the entry is blocking that peer's whole incremental sync — a liveness
+/// problem worse than the one skipped row, which converges anyway the next
+/// time the key changes on the peer (and is counted as operator evidence).
+const STUCK_SKIP_AFTER: u32 = 5;
+
 /// Spawns the anti-entropy worker. It runs for the lifetime of the returned
 /// handle, which the caller keeps alive.
 #[allow(clippy::too_many_arguments)]
@@ -74,14 +102,17 @@ pub fn spawn(
     control_tombstone: Arc<dyn ControlTombstoneStore>,
     interval: Duration,
     tombstone_grace: Duration,
+    blob_repair_budget: u32,
 ) -> BackgroundWorker {
     let handle = tokio::spawn(async move {
-        // Per-peer high-water mark: highest seq applied from each peer node.
-        let mut hwm: HashMap<String, u64> = HashMap::new();
         let mut timer = tokio::time::interval(interval.max(Duration::from_secs(1)));
         timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         timer.tick().await; // skip the immediate first tick
         let mut tick: u64 = 0;
+        // M1: per-peer (failing seq, consecutive-failure count).
+        let mut stuck = StuckTracker::default();
+        // M2: where the budget-bounded blob-repair sweep resumes mid-flight.
+        let mut repair_cursor: Option<BlobId> = None;
 
         loop {
             timer.tick().await;
@@ -94,13 +125,54 @@ pub fn spawn(
             // poisoning via LWW), and blobs repaired from a wrong-master-key
             // node would be undecryptable here.
             for peer in cluster.peers().into_iter().filter(|p| p.eligible()) {
+                // 0) D3c — restore/rewind detection: the peer's ping-reported
+                // seq counter fell below what we already consumed (it was
+                // restored from a backup). Reset the HWM: its post-restore
+                // writes re-use seq values below the old HWM and would
+                // otherwise stay invisible here until OUR next restart.
+                let sync = cluster.peer_sync(&peer.node_id);
+                if sync_rewound(sync.hwm, sync.hwm_at, peer.max_seq, peer.last_seen) {
+                    tracing::warn!(
+                        peer = %peer.endpoint,
+                        peer_node_id = %peer.node_id,
+                        hwm = sync.hwm,
+                        peer_max_seq = peer.max_seq.unwrap_or(0),
+                        "anti-entropy: peer's object-seq counter REWOUND below our \
+                         high-water mark (restored from backup?) — resetting the HWM \
+                         and re-pulling its full manifest (idempotent)"
+                    );
+                    cluster.reset_sync_hwm(&peer.node_id);
+                }
+
                 // 1) Objects: pull this peer's changed-since manifest.
-                let since = hwm.get(&peer.node_id).copied().unwrap_or(0);
+                let since = cluster.peer_sync(&peer.node_id).hwm;
+                let mut objects_caught_up = false;
                 match reconcile_peer_objects(&client, metadata.as_ref(), &peer.endpoint, since)
                     .await
                 {
-                    Ok(cursor) => {
-                        hwm.insert(peer.node_id, cursor);
+                    Ok(outcome) => {
+                        let mut cursor = outcome.cursor;
+                        // M1: a pass that keeps dying on the SAME entry is
+                        // skipped past after STUCK_SKIP_AFTER attempts.
+                        if stuck.observe(&peer.node_id, outcome.failed_seq) {
+                            let seq = outcome.failed_seq.unwrap_or(cursor);
+                            tracing::warn!(
+                                peer = %peer.endpoint,
+                                peer_node_id = %peer.node_id,
+                                seq,
+                                attempts = STUCK_SKIP_AFTER,
+                                "anti-entropy: SKIPPING a manifest entry that persistently \
+                                 fails to apply — that key may not converge on this node \
+                                 until it changes again on the peer (counted as \
+                                 skipped_entries in /admin/cluster)"
+                            );
+                            cluster.record_skipped_entry(&peer.node_id);
+                            cursor = seq;
+                        }
+                        if cursor > since {
+                            cluster.set_sync_hwm(&peer.node_id, cursor, Utc::now());
+                        }
+                        objects_caught_up = outcome.caught_up;
                     }
                     Err(e) => {
                         tracing::debug!(
@@ -112,7 +184,7 @@ pub fn spawn(
                 }
 
                 // 2) Control plane: pull this peer's snapshot and merge LWW.
-                if let Err(e) = reconcile_peer_control(
+                match reconcile_peer_control(
                     &client,
                     control_snapshot.as_ref(),
                     metadata.as_ref(),
@@ -120,11 +192,21 @@ pub fn spawn(
                 )
                 .await
                 {
-                    tracing::debug!(
-                        peer = %peer.endpoint,
-                        error = %e,
-                        "anti-entropy: control reconcile failed (retried next tick)"
-                    );
+                    Ok(()) => {
+                        // D2: a FULL pass (objects caught up + control merged)
+                        // completed — stamp it; the first one per peer flips
+                        // this node's readiness toward that peer.
+                        if objects_caught_up {
+                            cluster.record_reconcile_complete(&peer.node_id, Utc::now());
+                        }
+                    }
+                    Err(e) => {
+                        tracing::debug!(
+                            peer = %peer.endpoint,
+                            error = %e,
+                            "anti-entropy: control reconcile failed (retried next tick)"
+                        );
+                    }
                 }
             }
 
@@ -176,8 +258,22 @@ pub fn spawn(
             // 4) Blob scan (slower cadence): proactively fetch bytes for rows
             // whose blob is missing locally (so durability does not wait for a
             // GET to trigger the lazy read-repair), then reclaim orphan blobs.
+            // M2: the repair sweep is budget-bounded; while one is mid-flight
+            // (cursor set) it continues on EVERY tick — only complete sweeps
+            // wait for the slower cadence — so a big backlog drains at
+            // `budget / interval` without monopolizing any single tick.
+            if tick % BLOB_SCAN_EVERY_TICKS == 0 || repair_cursor.is_some() {
+                repair_cursor = repair_blobs(
+                    &client,
+                    metadata.as_ref(),
+                    raw.as_ref(),
+                    &cluster,
+                    repair_cursor.take(),
+                    blob_repair_budget,
+                )
+                .await;
+            }
             if tick % BLOB_SCAN_EVERY_TICKS == 0 {
-                repair_blobs(&client, metadata.as_ref(), raw.as_ref(), &cluster).await;
                 // Reuse the tombstone grace: like a tombstone, an orphan blob
                 // must outlive the max reconcile lag before it is safe to reclaim.
                 gc_blobs(metadata.as_ref(), raw.as_ref(), tombstone_grace).await;
@@ -187,23 +283,65 @@ pub fn spawn(
     BackgroundWorker::from_handle(handle)
 }
 
+/// M1 — per-peer stuck-entry bookkeeping: counts consecutive reconcile passes
+/// that failed at the same manifest `seq`. [`StuckTracker::observe`] returns
+/// `true` when the entry has hit [`STUCK_SKIP_AFTER`] and should be skipped
+/// NOW (the streak resets — a later failure on the same seq starts over).
+#[derive(Default)]
+struct StuckTracker(HashMap<String, (u64, u32)>);
+
+impl StuckTracker {
+    fn observe(&mut self, node_id: &str, failed_seq: Option<u64>) -> bool {
+        let Some(seq) = failed_seq else {
+            // A clean pass (or a different failure mode): no streak to keep.
+            self.0.remove(node_id);
+            return false;
+        };
+        let entry = self.0.entry(node_id.to_string()).or_insert((seq, 0));
+        if entry.0 != seq {
+            // Progress was made and a DIFFERENT entry now fails: new streak.
+            *entry = (seq, 1);
+            return false;
+        }
+        entry.1 += 1;
+        if entry.1 >= STUCK_SKIP_AFTER {
+            self.0.remove(node_id);
+            return true;
+        }
+        false
+    }
+}
+
 /// Proactively repairs locally-missing blob bytes: for every blob_id referenced
 /// by metadata, if the physical file is absent, fetch it (or, for a composite,
-/// its missing parts) from a live peer. Bounded by the referenced-blob count;
-/// runs on a slower cadence than the incremental reconcile.
+/// its missing parts) from a live peer.
+///
+/// M2 — budget-bounded: at most `budget` peer fetches are attempted per call
+/// (the local existence checks are cheap stats and are not budgeted; network
+/// fetches are what monopolize the worker). The sweep iterates the referenced
+/// ids in sorted order so `resume` (the last fully-processed id of the
+/// previous call) makes it restartable: the return value is `Some(cursor)`
+/// when the budget ran out mid-sweep — pass it back next tick — or `None`
+/// when the sweep completed. The budget is only checked BETWEEN blob ids: one
+/// composite is always processed to completion (bounded overshoot), so a
+/// composite with more permanently-unfetchable parts than the whole budget
+/// cannot stall the sweep's progress forever.
 async fn repair_blobs(
     client: &ClusterClient,
     metadata: &dyn MetadataStore,
     raw: &dyn RawBlobOps,
     cluster: &ClusterState,
-) {
-    let referenced = match metadata.list_referenced_blob_ids().await {
+    resume: Option<BlobId>,
+    budget: u32,
+) -> Option<BlobId> {
+    let mut referenced = match metadata.list_referenced_blob_ids().await {
         Ok(v) => v,
         Err(e) => {
             tracing::debug!(error = %e, "blob repair: listing referenced blobs failed");
-            return;
+            return None;
         }
     };
+    referenced.sort_unstable_by(|a, b| a.0.cmp(&b.0));
     // Repair only from ELIGIBLE peers (H12): bytes fetched from an
     // unauthenticated endpoint could be fabricated, and a wrong-master-key
     // peer's bytes would be undecryptable under our key.
@@ -214,38 +352,61 @@ async fn repair_blobs(
         .map(|p| p.endpoint)
         .collect();
     if peers.is_empty() {
-        return;
+        return None;
     }
 
     let mut repaired = 0u64;
+    let mut attempts = 0u32;
+    let mut cursor = resume;
     for blob_id in &referenced {
+        if let Some(ref c) = cursor {
+            if blob_id.0 <= c.0 {
+                continue; // already processed by the previous call(s)
+            }
+        }
+        if attempts >= budget {
+            tracing::debug!(
+                attempts,
+                repaired,
+                "blob repair: per-tick budget exhausted; sweep resumes next tick"
+            );
+            if repaired > 0 {
+                tracing::info!(repaired, "blob repair: fetched missing blobs from peers");
+            }
+            return cursor;
+        }
         // Present locally → nothing to do. On a stat error, skip (conservative:
         // never attempt a repair we cannot first confirm is missing).
         if raw.exists(blob_id).await.unwrap_or(true) {
+            cursor = Some(blob_id.clone());
             continue;
         }
         match raw.read_sidecar(blob_id).await {
             // Composite blob: it has no file of its own; repair any missing parts.
             Ok(Some(meta)) if meta.composite.is_some() => {
                 for part in meta.composite.unwrap() {
-                    if !raw.exists(&part.blob_id).await.unwrap_or(true)
-                        && fetch_and_store(client, raw, &peers, &part.blob_id).await
-                    {
-                        repaired += 1;
+                    if !raw.exists(&part.blob_id).await.unwrap_or(true) {
+                        attempts += 1;
+                        if fetch_and_store(client, raw, &peers, &part.blob_id).await {
+                            repaired += 1;
+                        }
                     }
                 }
             }
             // Normal blob (or sidecar also missing) → fetch it from a peer.
             _ => {
+                attempts += 1;
                 if fetch_and_store(client, raw, &peers, blob_id).await {
                     repaired += 1;
                 }
             }
         }
+        cursor = Some(blob_id.clone());
     }
     if repaired > 0 {
         tracing::info!(repaired, "blob repair: fetched missing blobs from peers");
     }
+    None
 }
 
 /// Fetches one blob (raw bytes + sidecar) from the first live peer that has it
@@ -439,33 +600,56 @@ async fn reconcile_peer_control(
     Ok(())
 }
 
+/// What one object-reconcile pass toward a peer achieved.
+struct ObjectsReconcileOutcome {
+    /// The high-water mark reached (highest `seq` successfully applied).
+    cursor: u64,
+    /// Whether the peer's manifest was drained to the end with every entry
+    /// applied — the "objects half" of a completed full pass (D2).
+    caught_up: bool,
+    /// The `seq` of the entry whose apply failed, when one did (feeds the M1
+    /// stuck-entry tracker).
+    failed_seq: Option<u64>,
+}
+
 /// Pulls a peer's manifest from `since`, applying each batch in `seq` order,
 /// until a short batch (caught up) or no progress (a failing entry, retried
-/// next tick). Returns the high-water mark reached.
+/// next tick).
 async fn reconcile_peer_objects(
     client: &ClusterClient,
     metadata: &dyn MetadataStore,
     endpoint: &str,
     since: u64,
-) -> Result<u64, ClusterError> {
+) -> Result<ObjectsReconcileOutcome, ClusterError> {
     let mut cursor = since;
     loop {
         let manifest = client.fetch_manifest(endpoint, cursor, MANIFEST_BATCH).await?;
         let batch_len = manifest.entries.len();
-        let new_cursor = apply_entries(metadata, &manifest.entries, cursor).await;
+        let (new_cursor, failed_seq) = apply_entries(metadata, &manifest.entries, cursor).await;
         let progressed = new_cursor > cursor;
         cursor = new_cursor;
-        if batch_len < MANIFEST_BATCH as usize || !progressed {
-            break;
+        if failed_seq.is_some() || !progressed {
+            return Ok(ObjectsReconcileOutcome {
+                cursor,
+                caught_up: failed_seq.is_none() && batch_len < MANIFEST_BATCH as usize,
+                failed_seq,
+            });
+        }
+        if batch_len < MANIFEST_BATCH as usize {
+            return Ok(ObjectsReconcileOutcome { cursor, caught_up: true, failed_seq: None });
         }
     }
-    Ok(cursor)
 }
 
 /// Applies manifest entries in ascending `seq` order, stopping at the first
 /// failure so the unapplied tail is retried on the next pass. Returns the
-/// highest `seq` successfully applied (or `floor` if none applied).
-async fn apply_entries(metadata: &dyn MetadataStore, entries: &[ManifestEntry], floor: u64) -> u64 {
+/// highest `seq` successfully applied (or `floor` if none applied) and the
+/// failing entry's `seq`, if any (M1 evidence).
+async fn apply_entries(
+    metadata: &dyn MetadataStore,
+    entries: &[ManifestEntry],
+    floor: u64,
+) -> (u64, Option<u64>) {
     let mut cursor = floor;
     for entry in entries {
         match metadata.apply_remote_object(&entry.record).await {
@@ -476,11 +660,11 @@ async fn apply_entries(metadata: &dyn MetadataStore, entries: &[ManifestEntry], 
                     error = %e,
                     "anti-entropy: apply_remote_object failed; will retry"
                 );
-                break;
+                return (cursor, Some(entry.seq));
             }
         }
     }
-    cursor
+    (cursor, None)
 }
 
 #[cfg(test)]
@@ -517,6 +701,7 @@ mod tests {
             checksum_algorithm: None,
             checksum_value: None,
             replication_status: None,
+            lock_updated_at: None,
         }
     }
 
@@ -528,8 +713,9 @@ mod tests {
             ManifestEntry { seq: 5, record: rec("k1", 1000) },
             ManifestEntry { seq: 9, record: rec("k2", 1000) },
         ];
-        let cursor = apply_entries(m.as_ref(), &entries, 0).await;
+        let (cursor, failed) = apply_entries(m.as_ref(), &entries, 0).await;
         assert_eq!(cursor, 9, "cursor advances to the last applied seq");
+        assert_eq!(failed, None);
         assert!(m.get_object("b", "k1").await.unwrap().is_some());
         assert!(m.get_object("b", "k2").await.unwrap().is_some());
     }
@@ -537,7 +723,7 @@ mod tests {
     #[tokio::test]
     async fn apply_entries_empty_returns_floor() {
         let m = store().await;
-        assert_eq!(apply_entries(m.as_ref(), &[], 7).await, 7);
+        assert_eq!(apply_entries(m.as_ref(), &[], 7).await, (7, None));
     }
 
     #[tokio::test]
@@ -559,6 +745,52 @@ mod tests {
             m.get_object("b", "k").await.unwrap().is_none(),
             "the tombstone must win and the object read as deleted"
         );
+    }
+
+    // --- M1: stuck-entry skip decision ---------------------------------------
+
+    #[test]
+    fn stuck_tracker_skips_after_consecutive_failures_on_same_seq() {
+        let mut t = StuckTracker::default();
+        for attempt in 1..STUCK_SKIP_AFTER {
+            assert!(
+                !t.observe("n2", Some(42)),
+                "attempt {attempt} below the threshold must not skip"
+            );
+        }
+        assert!(t.observe("n2", Some(42)), "threshold reached: skip now");
+        // The streak was consumed: a fresh failure on the same seq starts over.
+        assert!(!t.observe("n2", Some(42)));
+    }
+
+    #[test]
+    fn stuck_tracker_resets_on_progress_or_different_seq() {
+        let mut t = StuckTracker::default();
+        for _ in 0..STUCK_SKIP_AFTER - 1 {
+            assert!(!t.observe("n2", Some(42)));
+        }
+        // A clean pass clears the streak entirely.
+        assert!(!t.observe("n2", None));
+        for _ in 0..STUCK_SKIP_AFTER - 1 {
+            assert!(!t.observe("n2", Some(42)));
+        }
+        // A DIFFERENT failing seq means progress was made: new streak.
+        assert!(!t.observe("n2", Some(99)));
+        for _ in 0..STUCK_SKIP_AFTER - 2 {
+            assert!(!t.observe("n2", Some(99)));
+        }
+        assert!(t.observe("n2", Some(99)));
+    }
+
+    #[test]
+    fn stuck_tracker_tracks_peers_independently() {
+        let mut t = StuckTracker::default();
+        for _ in 0..STUCK_SKIP_AFTER - 1 {
+            assert!(!t.observe("n2", Some(42)));
+            assert!(!t.observe("n3", Some(42)));
+        }
+        assert!(t.observe("n2", Some(42)));
+        assert!(t.observe("n3", Some(42)));
     }
 
     // --- blob GC (composite data-loss guard) --------------------------------
@@ -649,6 +881,106 @@ mod tests {
             !fs.exists(&BlobId("p2".into())).await.unwrap(),
             "orphan composite's part reclaimed"
         );
+    }
+
+    // --- M2: budget-bounded, resumable blob-repair sweep ---------------------
+
+    /// Minimal HTTP/1.1 peer answering every GET with `200 OK`, a plain
+    /// sidecar in the cluster sidecar header and one byte of body — what
+    /// `ClusterClient::fetch_blob` consumes for repair (same fake as the
+    /// cluster_blob tests).
+    async fn spawn_repair_peer() -> (String, tokio::task::JoinHandle<()>) {
+        use base64::engine::general_purpose::STANDARD as BASE64;
+        use base64::Engine;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let sidecar_b64 = BASE64.encode(serde_json::to_vec(&plain_sidecar()).unwrap());
+        let handle = tokio::spawn(async move {
+            loop {
+                let Ok((mut sock, _)) = listener.accept().await else {
+                    break;
+                };
+                let sidecar_b64 = sidecar_b64.clone();
+                tokio::spawn(async move {
+                    let mut buf = Vec::new();
+                    let mut tmp = [0u8; 4096];
+                    loop {
+                        let n = sock.read(&mut tmp).await.unwrap_or(0);
+                        if n == 0 {
+                            break;
+                        }
+                        buf.extend_from_slice(&tmp[..n]);
+                        if buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                            break;
+                        }
+                    }
+                    let head = format!(
+                        "HTTP/1.1 200 OK\r\ncontent-type: application/octet-stream\r\n\
+                         {}: {sidecar_b64}\r\ncontent-length: 1\r\nconnection: close\r\n\r\nx",
+                        arca_core::cluster::CLUSTER_SIDECAR_HEADER,
+                    );
+                    let _ = sock.write_all(head.as_bytes()).await;
+                    let _ = sock.shutdown().await;
+                });
+            }
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    fn eligible_peer_at(endpoint: &str) -> arca_core::cluster::PeerNode {
+        arca_core::cluster::PeerNode {
+            node_id: "peer-2".to_string(),
+            endpoint: endpoint.to_string(),
+            alive: true,
+            last_seen: None,
+            authenticated: true,
+            config_ok: true,
+            disk_total: None,
+            disk_available: None,
+            max_seq: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn repair_budget_bounds_fetches_and_cursor_resumes_the_sweep() {
+        use crate::cluster::client::ClusterClient;
+
+        let dir = tempfile::tempdir().unwrap();
+        let fs = arca_storage::FsBlobStore::new(dir.path().join("blobs"), 2)
+            .await
+            .unwrap();
+        let m = store().await;
+        m.create_bucket("b").await.unwrap();
+        // Four referenced blobs, none present locally → four repairs needed.
+        for k in ["k1", "k2", "k3", "k4"] {
+            m.put_object(&rec(k, 1000)).await.unwrap();
+        }
+
+        let (endpoint, _h) = spawn_repair_peer().await;
+        let cluster = ClusterState::new("self", None, None);
+        cluster.set_peers(vec![eligible_peer_at(&endpoint)]);
+        let client =
+            ClusterClient::new("self", "secret", Duration::from_secs(2), None).unwrap();
+
+        // Budget 2: the first call repairs exactly two and returns a cursor.
+        let cursor = repair_blobs(&client, m.as_ref(), &fs, &cluster, None, 2).await;
+        assert!(cursor.is_some(), "budget exhausted mid-sweep → resumable cursor");
+        let mut present = 0;
+        for k in ["k1", "k2", "k3", "k4"] {
+            if fs.exists(&BlobId(format!("blob-{k}"))).await.unwrap() {
+                present += 1;
+            }
+        }
+        assert_eq!(present, 2, "exactly the budgeted number of fetches");
+
+        // Resuming completes the sweep (no re-fetch of the repaired ones:
+        // the cursor skips them) and reports completion with None.
+        let cursor = repair_blobs(&client, m.as_ref(), &fs, &cluster, cursor, 2).await;
+        assert_eq!(cursor.map(|c| c.0), None, "sweep completed");
+        for k in ["k1", "k2", "k3", "k4"] {
+            assert!(fs.exists(&BlobId(format!("blob-{k}"))).await.unwrap(), "{k} repaired");
+        }
     }
 
     #[tokio::test]

@@ -66,7 +66,27 @@ Real-time fan-out is synchronous (awaited before the client gets its response) a
 2. **Control-plane reconcile** — the control plane is small, so nodes periodically exchange a full snapshot and merge it last-writer-wins (see [Consistency](#consistency-model)).
 3. **Tombstones** — a hard delete leaves a tombstone (a marker, not the row/blob) so the deletion *propagates* and a lagging peer cannot resurrect a deleted object/entity by shipping its stale copy back. Tombstones are invisible to reads and garbage-collected after a grace window — but **only while every known peer has been seen within that window**: if a peer has been unreachable beyond the grace, the purge is skipped (with a warning and a `tombstone_gc_blocked` flag on `/admin/cluster`) so the deletions are still there for it to learn on re-entry. Membership pruning eventually evicts a never-returning peer, unblocking the GC.
 4. **Read-repair** — a `GET` for an object whose bytes are missing locally fetches them from a peer on the spot.
-5. **Blob repair + GC** — on a slower cadence each node proactively fetches blob bytes it has the row for but not the file (durability), and reclaims orphan blobs left after deletes (composite-multipart-aware, so live parts are never deleted).
+5. **Blob repair + GC** — on a slower cadence each node proactively fetches blob bytes it has the row for but not the file (durability), and reclaims orphan blobs left after deletes (composite-multipart-aware, so live parts are never deleted). The repair sweep is **budget-bounded** (`[cluster] blob_repair_budget`, default 100 fetches per anti-entropy tick, resuming where it left off), so one huge backlog cannot monopolize the worker — between budget slices, lazy read-repair still covers anything a client actually asks for.
+
+### Node re-entry: the syncing readiness gate
+
+A node returning from downtime (or replaced with an empty disk) re-enters knowing *less* than its peers: until its first anti-entropy pass completes it would answer `404` for objects it has not pulled yet and return partial listings — wrong answers given with full confidence. So a clustered node tracks the completion of its **first reconcile pass toward every eligible peer since startup**, and until then:
+
+- the plain `GET /admin/health` answers **`503 {"status":"syncing"}`** (with a `Retry-After` hint) — the load balancer and the Kubernetes readiness probe keep the node **out of rotation** exactly while it could mislead clients;
+- `/admin/cluster` (and the console topology card) reports `syncing: true`, plus the per-peer pull state — see [Observability](#observability);
+- the node still **serves S3 requests** if something reaches it directly (reads of what it does have, writes, replication traffic): the gate informs the balancer, it does not lock the API;
+- `GET /admin/health?verbose=1` keeps answering `200` with `status: "syncing"`, so an operator can always inspect the node.
+
+The moment the health turns `200`, the node's answers are as complete as its peers'. Three caveats, by design:
+
+- **A graceful shutdown drain takes precedence** — a node that is both draining and syncing reports `draining`.
+- **No eligible peers → `ok`, not `syncing`** (single-node cluster, every peer down or drifted): there is nothing to sync from, and a degraded-but-serving node beats a permanently dark one.
+- **A brand-new peer joining flips the established nodes to `syncing` for up to one anti-entropy tick** — having never pulled from it, they cannot yet know it holds nothing they lack. The window closes at their next pass (an empty manifest is drained instantly).
+
+Two anomalies in the same area are detected and handled rather than left to rot:
+
+- **Restore from backup (seq rewind).** Each node advertises its object write cursor on the authenticated ping; if a peer's cursor is observed *below* what this node already consumed from it, the peer was restored from a backup — its post-restore writes would otherwise stay invisible to the incremental sync until this node restarts. The high-water mark is reset (one idempotent full re-pull, logged as a warning), automatically.
+- **A poison manifest entry.** A row that persistently fails to apply would otherwise block that peer's whole incremental sync forever. After 5 consecutive failed passes on the same entry the node **skips it** with a warning and counts it as `skipped_entries` on `/admin/cluster` — a non-zero count is operator evidence that some key may not converge on this node until it changes again on the peer.
 
 ### Consistency model
 
@@ -91,7 +111,7 @@ flowchart LR
     classDef warn fill:#ffb30033,stroke:#fb8c00,stroke-width:2px;
 ```
 
-In `quorum` the cluster trades availability for safety at the majority boundary; in `available` it keeps accepting writes the whole way down. Across nodes both modes converge **eventually**: reads are always served locally, reconcile is asynchronous, and conflicts resolve **last-writer-wins (LWW)**. The LWW key is `(last_modified, version_id, blob_id)` — the `blob_id` is a stable tiebreaker so two nodes that wrote the "same" null-version object at the same wall-clock instant still pick the same winner deterministically, without a coordination protocol. The difference is which writes can conflict at all: in `quorum` mode every *acknowledged* write reached a majority, so two acknowledged writes to the same key cannot be accepted on two disconnected sides of a partition — LWW only ever has to resolve a client-visible conflict in `available` mode (or against writes the client was told did not reach quorum).
+In `quorum` the cluster trades availability for safety at the majority boundary; in `available` it keeps accepting writes the whole way down. Across nodes both modes converge **eventually**: reads are always served locally, reconcile is asynchronous, and conflicts resolve **last-writer-wins (LWW)**. The LWW key is `(last_modified, version_id, blob_id)` — the `blob_id` is a stable tiebreaker so two nodes that wrote the "same" null-version object at the same wall-clock instant still pick the same winner deterministically, without a coordination protocol. Object Lock changes (retention, legal hold) are the one in-place mutation that does *not* bump `last_modified` (matching S3), so they carry their own LWW dimension: a per-row lock-change timestamp that orders two copies of the same version whose key ties — a stale lock-free copy re-applied by a returning node can never overwrite a newer lock state. The difference is which writes can conflict at all: in `quorum` mode every *acknowledged* write reached a majority, so two acknowledged writes to the same key cannot be accepted on two disconnected sides of a partition — LWW only ever has to resolve a client-visible conflict in `available` mode (or against writes the client was told did not reach quorum).
 
 > **Read-after-write:** within a single node it is immediate. Across the cluster (through a round-robin load balancer) a read may briefly hit a node that has not yet received the write. Pin a client to one node (LB sticky sessions) if you need read-your-writes through the balancer.
 
@@ -156,9 +176,9 @@ The 3 nodes share one symmetric config (`docker/cluster/config.toml`, `mode = "q
 
 ## Observability
 
-- **Console** — the dashboard **Cluster Topology** card shows the consistency mode (Quorum·W=N / Available), the write status (Writable / Read-only when quorum is lost), and every node with a green/red status dot, the local-node badge, endpoint, and last-seen time. The Server card's *Topology* field summarises it as `Cluster · live/total`.
-- **`GET /admin/cluster`** (admin SigV4) — JSON the console consumes: `mode`, `write_quorum`, `has_write_quorum`, `live_node_count`, `eligible_node_count` (nodes the write quorum is measured against: alive + authenticated + config-aligned), `node_count`, `config_aligned`, `size_exceeded`, `tombstone_gc_blocked`, `worker_leader` (whether THIS node runs the [cluster-singleton background work](#background-workers-one-leader-for-shared-work-every-node-for-its-own) — exactly one node says `true` in a stable cluster), and the `nodes` list (each with `alive`, `authenticated`, `config_ok`, `last_seen` — kept on dead nodes, showing the last successful contact). Returns `{"enabled": false}` on a single-node deployment.
-- **`GET /admin/health?verbose=1`** (unauthenticated) — liveness plus the cluster snapshot, handy for scripts and load-balancer debugging. The plain `GET /admin/health` (200 / 503-on-drain) is the load-balancer check.
+- **Console** — the dashboard **Cluster Topology** card shows the consistency mode (Quorum·W=N / Available), the write status (Writable / Read-only when quorum is lost), an amber notice while the node is [syncing](#node-re-entry-the-syncing-readiness-gate), and every node with a green/red status dot, the local-node badge, endpoint, last-seen time, and amber per-node `sync lag` / `skipped` indicators when non-zero. The Server card's *Topology* field summarises it as `Cluster · live/total`.
+- **`GET /admin/cluster`** (admin SigV4) — JSON the console consumes: `mode`, `write_quorum`, `has_write_quorum`, `live_node_count`, `eligible_node_count` (nodes the write quorum is measured against: alive + authenticated + config-aligned), `node_count`, `config_aligned`, `size_exceeded`, `tombstone_gc_blocked`, `worker_leader` (whether THIS node runs the [cluster-singleton background work](#background-workers-one-leader-for-shared-work-every-node-for-its-own) — exactly one node says `true` in a stable cluster), `syncing` (the [readiness gate](#node-re-entry-the-syncing-readiness-gate)), and the `nodes` list (each with `alive`, `authenticated`, `config_ok`, `last_seen` — kept on dead nodes, showing the last successful contact — and, on peers, `sync`: this node's pull state toward the peer — `hwm` cursor, `lag` still to pull, `last_reconcile`, `first_pass_done`, `skipped_entries`). Returns `{"enabled": false}` on a single-node deployment.
+- **`GET /admin/health?verbose=1`** (unauthenticated) — liveness plus the cluster snapshot, handy for scripts and load-balancer debugging; it always answers `200`, with the state in `status` (`ok` / `syncing` / `draining`). The plain `GET /admin/health` (200, or 503 on drain/sync) is the load-balancer check.
 
 ### Storage capacity (the smallest node wins)
 
@@ -184,7 +204,7 @@ The cluster does **not** refuse to start or auto-isolate the peer's process — 
 
 ### Load balancer
 
-Put any L7/L4 balancer in front and health-check `GET /admin/health` (200 = up, 503 = draining → out of rotation). The reference HAProxy backend:
+Put any L7/L4 balancer in front and health-check `GET /admin/health` (200 = up; 503 = draining or [syncing](#node-re-entry-the-syncing-readiness-gate) → out of rotation). The reference HAProxy backend:
 
 ```haproxy
 backend arca_nodes
@@ -269,6 +289,8 @@ request_timeout_seconds       = 30    # inter-node HTTP timeout
 tombstone_grace_days          = 7     # MUST exceed worst-case node downtime
 peer_prune_days               = 7     # evict peers unreachable this long
                                       # (optional; default = tombstone_grace_days)
+blob_repair_budget            = 100   # max blob fetches per repair tick
+                                      # (optional; the sweep resumes next tick)
 
 # REQUIRED when the cluster runs over HTTPS ([server.tls] enabled): the
 # operator-distributed cluster CA + this node's CA-signed cert/key, used to

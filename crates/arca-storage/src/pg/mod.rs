@@ -90,6 +90,11 @@ const MIGRATIONS: &[Migration] = &[
         description: "Add updated_at to grant attachments, memberships and bucket_tags (R5 control reconcile)",
         sql: include_str!("migrations/0010_control_reconcile_families.sql"),
     },
+    Migration {
+        version: 11,
+        description: "Add lock_updated_at to objects (N2: lock-state LWW dimension)",
+        sql: include_str!("migrations/0011_lock_updated_at.sql"),
+    },
 ];
 
 impl PgStore {

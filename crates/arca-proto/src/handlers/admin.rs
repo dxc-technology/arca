@@ -133,33 +133,49 @@ pub struct CreateCredentialRequest {
 
 /// GET /admin/health — unauthenticated health check.
 ///
-/// Default: 200 `{"status": "ok"}`, or 503 `{"status": "draining"}` during the
-/// graceful shutdown drain window (so load balancers stop routing traffic).
-/// This default shape is what the LB health check consumes and is unchanged.
+/// Default: 200 `{"status": "ok"}`, or a 503 with the reason during the two
+/// not-ready windows — `{"status": "draining"}` while the graceful-shutdown
+/// drain runs (drain takes precedence), `{"status": "syncing"}` while a
+/// clustered node has not completed its first anti-entropy pass toward every
+/// eligible peer since startup (review D2: until then it could answer stale
+/// 404s / partial listings, so the LB / k8s readiness probe must keep it out
+/// of rotation). With no eligible peers there is nothing to sync from and the
+/// node reports `ok` (degraded-but-serving). This default shape is what the LB
+/// health check consumes.
 ///
 /// `?verbose=1` returns a 200 with the cluster topology + write-quorum status
 /// for operators / the console (`cluster` is null on single-node). It does not
-/// 503 on drain so an inspector always gets the detail; the `status`/`draining`
-/// fields convey the drain state.
+/// 503 on drain/sync so an inspector always gets the detail; the `status`
+/// field conveys the state.
 pub async fn health(State(state): State<AppState>, Query(q): Query<HealthQuery>) -> Response {
     let draining = *state.draining.borrow();
+    let syncing = state.cluster.as_ref().is_some_and(|c| c.is_syncing());
+    let status = if draining {
+        "draining"
+    } else if syncing {
+        "syncing"
+    } else {
+        "ok"
+    };
     let verbose = matches!(q.verbose.as_deref(), Some("1") | Some("true") | Some(""));
 
     if verbose {
         let body = VerboseHealthResponse {
-            status: if draining { "draining" } else { "ok" },
+            status,
             draining,
             cluster: state.cluster.as_ref().map(|c| c.snapshot()),
         };
         return Json(body).into_response();
     }
 
-    if draining {
+    if draining || syncing {
         return Response::builder()
             .status(StatusCode::SERVICE_UNAVAILABLE)
             .header("Content-Type", "application/json")
-            .body(Body::from(r#"{"status":"draining"}"#))
-            .expect("build draining response");
+            // M4: like every retriable cluster 503 (see s3_error_response).
+            .header("Retry-After", "5")
+            .body(Body::from(format!(r#"{{"status":"{status}"}}"#)))
+            .expect("build not-ready response");
     }
     Json(HealthResponse { status: "ok" }).into_response()
 }
@@ -184,6 +200,34 @@ struct ClusterNodeView {
     authenticated: bool,
     /// Whether this node's cluster-critical config matches the local node's.
     config_ok: bool,
+    /// This node's anti-entropy pull status toward the peer (review D2/M1);
+    /// `null` for the local node (a node does not sync from itself).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sync: Option<NodeSyncView>,
+}
+
+/// Per-peer anti-entropy pull status in the `GET /admin/cluster` view: how far
+/// THIS node has consumed the peer's changes (review D2 — exposed lag; M1 —
+/// skipped-entry evidence).
+#[derive(Serialize)]
+struct NodeSyncView {
+    /// High-water mark: the highest peer `seq` applied by the incremental
+    /// object reconcile (in-memory; resets on restart).
+    hwm: u64,
+    /// Entries still to pull: the peer's ping-reported write cursor minus the
+    /// HWM. `null` until the peer reports one (legacy peer, never probed).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lag: Option<u64>,
+    /// Completion time of the last full reconcile pass (RFC3339).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_reconcile: Option<String>,
+    /// Whether the first full pass since this node's startup completed (the
+    /// D2 readiness signal; `false` contributes to `syncing`).
+    first_pass_done: bool,
+    /// M1: manifest entries skipped after persistent apply failures — a
+    /// non-zero count means some key may not converge here until it changes
+    /// again on the peer.
+    skipped_entries: u64,
 }
 
 /// Console-friendly cluster topology for `GET /admin/cluster`. `enabled` is
@@ -232,6 +276,12 @@ struct ClusterAdminResponse {
     /// stable cluster exactly one node reports `true`.
     #[serde(skip_serializing_if = "Option::is_none")]
     worker_leader: Option<bool>,
+    /// Review D2: true while this node has not completed its first
+    /// anti-entropy pass toward every eligible peer since startup — it may
+    /// still be missing rows and `/admin/health` answers 503 to keep it out
+    /// of LB rotation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    syncing: Option<bool>,
     /// Cluster-effective disk capacity (bytes): the MINIMUM total across live
     /// nodes. With full replication the smallest node bounds the cluster.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -251,8 +301,8 @@ struct ClusterAdminResponse {
 /// then peers) with per-node liveness — the data the console topology widget
 /// renders with status colours/icons.
 pub async fn cluster(State(state): State<AppState>) -> Response {
-    let snap = match state.cluster.as_ref() {
-        Some(c) => c.snapshot(),
+    let (snap, sync_map) = match state.cluster.as_ref() {
+        Some(c) => (c.snapshot(), c.sync_status()),
         None => {
             return Json(ClusterAdminResponse {
                 enabled: false,
@@ -267,6 +317,7 @@ pub async fn cluster(State(state): State<AppState>) -> Response {
                 size_exceeded: None,
                 tombstone_gc_blocked: None,
                 worker_leader: None,
+                syncing: None,
                 disk_total_bytes: None,
                 disk_available_bytes: None,
                 nodes: Vec::new(),
@@ -291,11 +342,13 @@ pub async fn cluster(State(state): State<AppState>) -> Response {
         local: true,
         authenticated: true, // trivially: it holds its own secret
         config_ok: true,
+        sync: None, // a node does not sync from itself
     });
     // A live peer whose config fingerprint differs is flagged; dead peers are
     // not judged (config_ok stays true).
     let config_aligned = snap.peers.iter().all(|p| !p.alive || p.config_ok);
     for p in &snap.peers {
+        let sync = sync_map.get(&p.node_id).cloned().unwrap_or_default();
         nodes.push(ClusterNodeView {
             node_id: p.node_id.clone(),
             endpoint: Some(p.endpoint.clone()),
@@ -304,6 +357,13 @@ pub async fn cluster(State(state): State<AppState>) -> Response {
             local: false,
             authenticated: p.authenticated,
             config_ok: p.config_ok,
+            sync: Some(NodeSyncView {
+                hwm: sync.hwm,
+                lag: p.max_seq.map(|m| m.saturating_sub(sync.hwm)),
+                last_reconcile: sync.last_reconcile.map(|t| t.to_rfc3339()),
+                first_pass_done: sync.first_pass_done,
+                skipped_entries: sync.skipped_entries,
+            }),
         });
     }
     let node_count = nodes.len();
@@ -329,6 +389,7 @@ pub async fn cluster(State(state): State<AppState>) -> Response {
         size_exceeded: Some(snap.size_exceeded),
         tombstone_gc_blocked: Some(snap.tombstone_gc_blocked),
         worker_leader: Some(snap.worker_leader),
+        syncing: Some(snap.syncing),
         disk_total_bytes,
         disk_available_bytes,
         nodes,

@@ -207,6 +207,7 @@ pub fn spawn(
                             config_ok,
                             disk_total: info.disk_total,
                             disk_available: info.disk_available,
+                            max_seq: info.max_seq,
                         });
                     }
                     ProbeOutcome::Failure => {
@@ -315,6 +316,9 @@ struct ContactInfo {
     fingerprint: Option<String>,
     disk_total: Option<u64>,
     disk_available: Option<u64>,
+    /// The peer's object write cursor, reported by the authenticated ping
+    /// (D3c rewind detection). `None` from the legacy public-health fallback.
+    max_seq: Option<u64>,
 }
 
 /// The result of probing one endpoint.
@@ -360,6 +364,7 @@ async fn probe_peer(
                 fingerprint: resp.config_fingerprint,
                 disk_total: resp.disk_total,
                 disk_available: resp.disk_available,
+                max_seq: Some(resp.max_seq),
             })
         }
         // 409 LoopDetected: the receiver saw OUR node id in the source header —
@@ -376,6 +381,7 @@ async fn probe_peer(
                     fingerprint: h.fingerprint,
                     disk_total: h.disk_total,
                     disk_available: h.disk_available,
+                    max_seq: None,
                 }),
                 None => ProbeOutcome::Failure,
             }
@@ -391,6 +397,7 @@ async fn probe_peer(
                     fingerprint: h.fingerprint,
                     disk_total: h.disk_total,
                     disk_available: h.disk_available,
+                    max_seq: None,
                 }),
                 None => ProbeOutcome::Failure,
             }
@@ -435,6 +442,7 @@ fn emit_peer(ps: &ProbeState) -> Option<PeerNode> {
         config_ok: true, // no fresh evidence to judge a dead peer
         disk_total: None,
         disk_available: None,
+        max_seq: None, // a stale cursor must not feed the D3c rewind check
     })
 }
 
@@ -691,6 +699,7 @@ mod tests {
             fingerprint: Some("ab12cd34".to_string()),
             disk_total: Some(100),
             disk_available: Some(40),
+            max_seq: Some(3),
         }
     }
 
@@ -710,6 +719,7 @@ mod tests {
             config_ok,
             disk_total: info.disk_total,
             disk_available: info.disk_available,
+            max_seq: info.max_seq,
         });
     }
 
@@ -740,6 +750,7 @@ mod tests {
         assert_eq!(dead.last_seen, Some(ts(100)));
         assert_eq!(dead.disk_total, None);
         assert_eq!(dead.disk_available, None);
+        assert_eq!(dead.max_seq, None, "stale seq cursor dropped with the stats");
         assert!(dead.config_ok, "a dead peer is not judged for drift");
 
         // First success: alive again immediately.
@@ -856,6 +867,7 @@ mod tests {
             ProbeOutcome::Contact(info) => {
                 assert_eq!(info.node_id, "fake-peer");
                 assert_eq!(info.auth, AuthState::Proven);
+                assert_eq!(info.max_seq, Some(3), "ping seq cursor surfaced (D3c)");
             }
             _ => panic!("expected an authenticated contact"),
         }

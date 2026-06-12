@@ -774,6 +774,14 @@
                     </div>
                   </template>
 
+                  <!-- Syncing notice: this node is catching up with its peers (D2) -->
+                  <template x-if="cluster.syncing === true">
+                    <div class="mb-4 flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-400">
+                      <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
+                      <span>This node is synchronizing with its peers (first anti-entropy pass in progress). It is kept out of load-balancer rotation until aligned.</span>
+                    </div>
+                  </template>
+
                   <!-- Node list -->
                   <div class="rounded-lg border border-vault-border/40 divide-y divide-vault-border/30 overflow-hidden">
                     <template x-for="n in cluster.nodes" :key="n.node_id">
@@ -796,6 +804,12 @@
                         <div class="text-right flex-shrink-0">
                           <div class="text-xs font-semibold" :class="n.alive ? 'text-green-400' : 'text-red-400'" x-text="n.alive ? 'Online' : 'Offline'"></div>
                           <div class="text-[10px] text-vault-muted/60" x-show="!n.local" x-text="n.last_seen ? relativeTime(n.last_seen) : 'never seen'"></div>
+                          <div class="text-[10px] text-amber-400" x-show="n.sync && n.sync.lag > 0"
+                            :title="'Entries this node still has to pull from the peer'"
+                            x-text="n.sync ? ('sync lag ' + n.sync.lag) : ''"></div>
+                          <div class="text-[10px] text-amber-400" x-show="n.sync && n.sync.skipped_entries > 0"
+                            :title="'Manifest entries skipped after persistent apply failures — these keys may not converge here until they change again on the peer'"
+                            x-text="n.sync ? (n.sync.skipped_entries + ' skipped') : ''"></div>
                         </div>
                       </div>
                     </template>

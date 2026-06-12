@@ -1224,6 +1224,13 @@ pub struct PeerNode {
     /// Peer's available disk space (bytes), as it reported via health.
     #[serde(default)]
     pub disk_available: Option<u64>,
+    /// Highest object `seq` the peer reported on its most recent successful
+    /// probe ([`ClusterPingResponse::max_seq`]). `None` for a legacy (pre-ping)
+    /// peer or a dead one. Feeds the D3c restore/rewind detection
+    /// ([`sync_rewound`]): a peer restored from backup reports a counter lower
+    /// than the high-water mark this node already consumed.
+    #[serde(default)]
+    pub max_seq: Option<u64>,
 }
 
 impl PeerNode {
@@ -1262,6 +1269,68 @@ pub fn tombstone_gc_blockers(
         .filter(|p| !p.alive && p.last_seen.is_none_or(|seen| seen < cutoff))
         .cloned()
         .collect()
+}
+
+/// This node's anti-entropy pull-synchronization status toward ONE peer
+/// (review D2 — syncing readiness; M1 — stuck-entry evidence). Node-local and
+/// in-memory, like the high-water mark itself: it describes how far THIS node
+/// has consumed a peer's changes since its own startup, so it resets on
+/// restart (costing one extra idempotent full pass) and must never be
+/// replicated.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct PeerSyncStatus {
+    /// High-water mark: the highest peer `seq` the incremental object
+    /// reconcile has applied.
+    pub hwm: u64,
+    /// When the HWM last advanced. Freshness anchor for the D3c rewind check
+    /// ([`sync_rewound`]): a peer-reported `max_seq` older than this may
+    /// legitimately predate rows already pulled.
+    pub hwm_at: Option<DateTime<Utc>>,
+    /// Completion time of the most recent FULL reconcile pass toward the peer
+    /// (objects caught up + control snapshot merged).
+    pub last_reconcile: Option<DateTime<Utc>>,
+    /// Whether at least one full pass completed since this node started. The
+    /// D2 readiness gate: until true for every eligible peer, this node may
+    /// still be missing rows and `/admin/health` reports `syncing`.
+    pub first_pass_done: bool,
+    /// M1: manifest entries skipped after persistently failing to apply
+    /// (operator evidence — a skipped entry means that key may not converge
+    /// here until it changes again on the peer).
+    pub skipped_entries: u64,
+}
+
+/// D3c — restore/rewind detection: whether a peer's reported object-seq
+/// counter ([`PeerNode::max_seq`], from the authenticated ping) has rewound
+/// below the high-water mark this node already consumed from it. That happens
+/// when the peer was restored from a backup: its post-restore writes re-use
+/// seq values below our HWM and would stay invisible to the incremental sync
+/// until this node restarts. The caller's remedy is to reset the HWM to 0 (one
+/// idempotent full re-pull).
+///
+/// The freshness guard (`peer_last_seen > hwm_at`) avoids the false alarm
+/// under sustained writes: probe and reconcile run on independent cadences, so
+/// a ping report taken BEFORE our last HWM advance may legitimately be lower
+/// than the HWM without any rewind having happened. A genuine restore keeps
+/// reporting the rewound counter on every later ping, so the detection is only
+/// deferred to the first probe after the last reconcile, never lost.
+pub fn sync_rewound(
+    hwm: u64,
+    hwm_at: Option<DateTime<Utc>>,
+    peer_max_seq: Option<u64>,
+    peer_last_seen: Option<DateTime<Utc>>,
+) -> bool {
+    let (Some(max_seq), Some(seen)) = (peer_max_seq, peer_last_seen) else {
+        return false; // legacy peer / never contacted: nothing to judge
+    };
+    if max_seq >= hwm {
+        return false;
+    }
+    match hwm_at {
+        Some(at) => seen > at,
+        // hwm > 0 with no recorded advance time cannot happen (they are set
+        // together); be conservative and trust the report if it ever does.
+        None => true,
+    }
 }
 
 /// Minimum of two optional values, treating `None` as "unknown" (ignored):
@@ -1321,6 +1390,10 @@ pub struct ClusterSnapshot {
     /// the cluster-singleton background work. In a stable cluster exactly one
     /// node reports `true`.
     pub worker_leader: bool,
+    /// Review D2: true while this node has not completed its first anti-entropy
+    /// pass toward every eligible peer since startup — it may still be missing
+    /// rows and should not receive LB traffic (`/admin/health` answers 503).
+    pub syncing: bool,
     /// All known peers (alive or not).
     pub peers: Vec<PeerNode>,
 }
@@ -1351,6 +1424,10 @@ pub struct ClusterState {
     /// Review §3.2: set by the anti-entropy worker while it is skipping
     /// tombstone GC because a known peer is unseen beyond the grace window.
     tombstone_gc_blocked: AtomicBool,
+    /// Review D2/D3c/M1: per-peer pull-sync status (keyed by peer `node_id`),
+    /// written by the anti-entropy worker and read by the health/admin
+    /// endpoints. In-memory by design, like the HWM it carries.
+    sync: RwLock<std::collections::HashMap<String, PeerSyncStatus>>,
 }
 
 impl ClusterState {
@@ -1371,6 +1448,7 @@ impl ClusterState {
             local_endpoint: RwLock::new(None),
             config_fingerprint: RwLock::new(None),
             tombstone_gc_blocked: AtomicBool::new(false),
+            sync: RwLock::new(std::collections::HashMap::new()),
         }
     }
 
@@ -1440,9 +1518,91 @@ impl ClusterState {
         self.write_quorum
     }
 
-    /// Replaces the known peer set (called by the membership manager).
+    /// Replaces the known peer set (called by the membership manager). Sync
+    /// statuses of peers no longer known (pruned by M3) are dropped with them;
+    /// a dead-but-remembered peer keeps its entry, so a returning node resumes
+    /// from its incremental HWM instead of a full re-pull.
     pub fn set_peers(&self, peers: Vec<PeerNode>) {
+        self.sync
+            .write()
+            .expect("cluster sync lock poisoned")
+            .retain(|id, _| peers.iter().any(|p| p.node_id == *id));
         *self.peers.write().expect("cluster peers lock poisoned") = peers;
+    }
+
+    /// This node's pull-sync status toward one peer (zeroed default when the
+    /// peer was never reconciled from).
+    pub fn peer_sync(&self, node_id: &str) -> PeerSyncStatus {
+        self.sync
+            .read()
+            .expect("cluster sync lock poisoned")
+            .get(node_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// All per-peer pull-sync statuses, keyed by peer `node_id` (for the
+    /// admin topology view).
+    pub fn sync_status(&self) -> std::collections::HashMap<String, PeerSyncStatus> {
+        self.sync
+            .read()
+            .expect("cluster sync lock poisoned")
+            .clone()
+    }
+
+    /// Records an object-reconcile HWM advance toward a peer (`at` anchors the
+    /// D3c freshness guard — see [`sync_rewound`]).
+    pub fn set_sync_hwm(&self, node_id: &str, hwm: u64, at: DateTime<Utc>) {
+        let mut sync = self.sync.write().expect("cluster sync lock poisoned");
+        let entry = sync.entry(node_id.to_string()).or_default();
+        entry.hwm = hwm;
+        entry.hwm_at = Some(at);
+    }
+
+    /// D3c: resets a peer's HWM to 0 after its seq counter was observed to
+    /// rewind (restore from backup) — the next pass re-pulls its full
+    /// manifest (idempotent).
+    pub fn reset_sync_hwm(&self, node_id: &str) {
+        let mut sync = self.sync.write().expect("cluster sync lock poisoned");
+        let entry = sync.entry(node_id.to_string()).or_default();
+        entry.hwm = 0;
+        entry.hwm_at = None;
+    }
+
+    /// Marks a completed FULL reconcile pass toward a peer (objects caught up
+    /// + control snapshot merged): stamps `last_reconcile` and latches
+    /// `first_pass_done` (the D2 readiness signal).
+    pub fn record_reconcile_complete(&self, node_id: &str, at: DateTime<Utc>) {
+        let mut sync = self.sync.write().expect("cluster sync lock poisoned");
+        let entry = sync.entry(node_id.to_string()).or_default();
+        entry.last_reconcile = Some(at);
+        entry.first_pass_done = true;
+    }
+
+    /// M1: counts a manifest entry skipped after persistent apply failures
+    /// (operator evidence in `/admin/cluster`).
+    pub fn record_skipped_entry(&self, node_id: &str) {
+        let mut sync = self.sync.write().expect("cluster sync lock poisoned");
+        sync.entry(node_id.to_string()).or_default().skipped_entries += 1;
+    }
+
+    /// Review D2 — the readiness gate: true while any ELIGIBLE peer lacks a
+    /// completed first reconcile pass since this node started. Until then this
+    /// node may answer 404s / partial listings for data it has not pulled yet,
+    /// so `/admin/health` reports `syncing` (503) and the LB keeps it out of
+    /// rotation. Eligible — not merely alive — peers gate it for the same
+    /// reason they gate the quorum: a rogue or drifted peer is never
+    /// reconciled from, so requiring a pass toward it would deadlock
+    /// readiness. With no eligible peers (cluster of one, full outage) the
+    /// node reports ready: degraded-but-serving beats permanently dark.
+    pub fn is_syncing(&self) -> bool {
+        let sync = self.sync.read().expect("cluster sync lock poisoned");
+        self.peers
+            .read()
+            .expect("cluster peers lock poisoned")
+            .iter()
+            .filter(|p| p.eligible())
+            .any(|p| !sync.get(&p.node_id).is_some_and(|s| s.first_pass_done))
     }
 
     /// A clone of all known peers (alive or not).
@@ -1573,6 +1733,7 @@ impl ClusterState {
             size_exceeded: matches!(gate, WriteGate::SizeExceeded { .. }),
             tombstone_gc_blocked: self.tombstone_gc_blocked(),
             worker_leader: self.is_worker_leader(),
+            syncing: self.is_syncing(),
             peers,
         }
     }
@@ -1594,6 +1755,7 @@ mod tests {
             config_ok: true,
             disk_total: None,
             disk_available: None,
+            max_seq: None,
         }
     }
 
@@ -1916,6 +2078,7 @@ mod tests {
             checksum_algorithm: None,
             checksum_value: None,
             replication_status: None,
+            lock_updated_at: None,
         };
         let manifest = ClusterManifest {
             entries: vec![ManifestEntry { seq: 7, record }],
@@ -2663,5 +2826,96 @@ mod tests {
         let p: PeerNode = serde_json::from_str(json).unwrap();
         assert!(!p.authenticated);
         assert!(p.config_ok, "config_ok keeps its benign default");
+        assert_eq!(p.max_seq, None, "no seq report from a legacy payload");
+    }
+
+    // --- syncing readiness (review D2) ---------------------------------------
+
+    #[test]
+    fn syncing_until_first_pass_completes_toward_every_eligible_peer() {
+        let state = ClusterState::new("self", Some(2), Some(3));
+        // No peers at all: degraded-but-ready, never syncing.
+        assert!(!state.is_syncing());
+        assert!(!state.snapshot().syncing);
+
+        state.set_peers(vec![peer("n2", true), peer("n3", true)]);
+        assert!(state.is_syncing(), "eligible peers never reconciled from");
+        assert!(state.snapshot().syncing);
+
+        state.record_reconcile_complete("n2", ts(100));
+        assert!(state.is_syncing(), "one eligible peer still pending");
+        state.record_reconcile_complete("n3", ts(101));
+        assert!(!state.is_syncing(), "first pass done toward every eligible peer");
+        assert!(!state.snapshot().syncing);
+
+        // first_pass_done is latched: later passes only refresh last_reconcile.
+        state.record_reconcile_complete("n2", ts(200));
+        let s = state.peer_sync("n2");
+        assert!(s.first_pass_done);
+        assert_eq!(s.last_reconcile, Some(ts(200)));
+    }
+
+    #[test]
+    fn syncing_ignores_non_eligible_peers() {
+        // A rogue/drifted/dead peer is never reconciled from: requiring a pass
+        // toward it would deadlock readiness forever.
+        let state = ClusterState::new("self", None, None);
+        let mut rogue = peer("rogue", true);
+        rogue.authenticated = false;
+        let mut drifted = peer("n3", true);
+        drifted.config_ok = false;
+        state.set_peers(vec![rogue, drifted, peer("n4", false)]);
+        assert!(!state.is_syncing());
+    }
+
+    #[test]
+    fn sync_hwm_roundtrip_skip_counter_and_prune() {
+        let state = ClusterState::new("self", None, None);
+        state.set_peers(vec![peer("n2", true), peer("n3", true)]);
+
+        assert_eq!(state.peer_sync("n2").hwm, 0, "zeroed default");
+        state.set_sync_hwm("n2", 42, ts(100));
+        assert_eq!(state.peer_sync("n2").hwm, 42);
+        assert_eq!(state.peer_sync("n2").hwm_at, Some(ts(100)));
+
+        state.record_skipped_entry("n2");
+        state.record_skipped_entry("n2");
+        assert_eq!(state.peer_sync("n2").skipped_entries, 2);
+
+        state.reset_sync_hwm("n2");
+        let s = state.peer_sync("n2");
+        assert_eq!(s.hwm, 0);
+        assert_eq!(s.hwm_at, None);
+        assert_eq!(s.skipped_entries, 2, "reset touches only the HWM");
+
+        // A dead-but-known peer keeps its status; an unknown one is pruned.
+        state.set_sync_hwm("n3", 7, ts(100));
+        state.set_peers(vec![peer("n2", true), peer("n3", false)]);
+        assert_eq!(state.peer_sync("n3").hwm, 7, "dead peer keeps its HWM");
+        state.set_peers(vec![peer("n2", true)]);
+        assert_eq!(state.peer_sync("n3").hwm, 0, "pruned peer's status dropped");
+        assert_eq!(state.sync_status().len(), 1);
+    }
+
+    // --- restore/rewind detection (review D3c) --------------------------------
+
+    #[test]
+    fn rewind_detected_only_on_fresh_lower_report() {
+        // Genuine rewind: the peer's report is FRESHER than our last HWM
+        // advance and still lower than the HWM.
+        assert!(sync_rewound(100, Some(ts(50)), Some(40), Some(ts(60))));
+        // Stale report: taken before our last advance — under sustained writes
+        // this is routine, not a rewind.
+        assert!(!sync_rewound(100, Some(ts(50)), Some(40), Some(ts(40))));
+        // Equal timestamps: not strictly fresher → not judged.
+        assert!(!sync_rewound(100, Some(ts(50)), Some(40), Some(ts(50))));
+        // Counter at or above the HWM: normal operation.
+        assert!(!sync_rewound(100, Some(ts(50)), Some(100), Some(ts(60))));
+        assert!(!sync_rewound(100, Some(ts(50)), Some(500), Some(ts(60))));
+        // Nothing reported / never contacted: nothing to judge.
+        assert!(!sync_rewound(100, Some(ts(50)), None, Some(ts(60))));
+        assert!(!sync_rewound(100, Some(ts(50)), Some(40), None));
+        // Fresh start (hwm 0): a rewind below 0 is impossible.
+        assert!(!sync_rewound(0, None, Some(0), Some(ts(60))));
     }
 }

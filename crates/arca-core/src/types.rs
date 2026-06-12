@@ -101,6 +101,18 @@ pub struct ObjectRecord {
     /// `None` for objects that have never been subject to replication.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub replication_status: Option<String>,
+    /// When the Object Lock state (retention/legal hold) of this row last
+    /// changed; `None` if never. Lock mutations are the only in-place row
+    /// updates that do NOT bump `last_modified` (matching S3:
+    /// PutObjectRetention does not change Last-Modified), so the cluster LWW
+    /// needs this extra dimension to order two copies of the same version
+    /// whose `last_modified` ties: without it a stale lock-free copy
+    /// re-applied after a node restart silently clobbers a newer lock state
+    /// and the clobber's fresh `seq` propagates the regression cluster-wide
+    /// (finding N2, Phase 29.1 R7). `Option` ordering (`None < Some`) makes a
+    /// row that ever saw a lock change beat one that never did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lock_updated_at: Option<DateTime<Utc>>,
 }
 
 fn default_standard() -> String {

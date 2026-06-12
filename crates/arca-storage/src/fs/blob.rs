@@ -700,12 +700,22 @@ fn walk_files(
                 out.extend(walk_files(entry.path()).await?);
             } else if ft.is_file() {
                 let name = entry.file_name().to_string_lossy().to_string();
-                let mtime = entry
-                    .metadata()
-                    .await
-                    .ok()
-                    .and_then(|m| m.modified().ok())
-                    .unwrap_or_else(std::time::SystemTime::now);
+                let mtime = match entry.metadata().await.ok().and_then(|m| m.modified().ok()) {
+                    Some(t) => t,
+                    None => {
+                        // Falling back to `now` is the safe direction for the
+                        // GC (a blob that always looks fresh is never
+                        // reclaimed) — but silently so on a filesystem without
+                        // mtimes the GC would never collect anything (M8).
+                        tracing::warn!(
+                            file = %name,
+                            "blob walk: file mtime unreadable; treating it as just \
+                             written — if this filesystem cannot report mtimes, blob \
+                             GC will never reclaim anything here"
+                        );
+                        std::time::SystemTime::now()
+                    }
+                };
                 out.push((name, mtime));
             }
         }

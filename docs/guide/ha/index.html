@@ -734,6 +734,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#node-re-entry-the-syncing-readiness-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Node re-entry: the syncing readiness gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#consistency-model" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1537,6 +1548,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#node-re-entry-the-syncing-readiness-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Node re-entry: the syncing readiness gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#consistency-model" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1835,8 +1857,27 @@ them, and any node that takes a write replicates it to the others.</p>
 <li><strong>Control-plane reconcile</strong> — the control plane is small, so nodes periodically exchange a full snapshot and merge it last-writer-wins (see <a href="#consistency-model">Consistency</a>).</li>
 <li><strong>Tombstones</strong> — a hard delete leaves a tombstone (a marker, not the row/blob) so the deletion <em>propagates</em> and a lagging peer cannot resurrect a deleted object/entity by shipping its stale copy back. Tombstones are invisible to reads and garbage-collected after a grace window — but <strong>only while every known peer has been seen within that window</strong>: if a peer has been unreachable beyond the grace, the purge is skipped (with a warning and a <code>tombstone_gc_blocked</code> flag on <code>/admin/cluster</code>) so the deletions are still there for it to learn on re-entry. Membership pruning eventually evicts a never-returning peer, unblocking the GC.</li>
 <li><strong>Read-repair</strong> — a <code>GET</code> for an object whose bytes are missing locally fetches them from a peer on the spot.</li>
-<li><strong>Blob repair + GC</strong> — on a slower cadence each node proactively fetches blob bytes it has the row for but not the file (durability), and reclaims orphan blobs left after deletes (composite-multipart-aware, so live parts are never deleted).</li>
+<li><strong>Blob repair + GC</strong> — on a slower cadence each node proactively fetches blob bytes it has the row for but not the file (durability), and reclaims orphan blobs left after deletes (composite-multipart-aware, so live parts are never deleted). The repair sweep is <strong>budget-bounded</strong> (<code>[cluster] blob_repair_budget</code>, default 100 fetches per anti-entropy tick, resuming where it left off), so one huge backlog cannot monopolize the worker — between budget slices, lazy read-repair still covers anything a client actually asks for.</li>
 </ol>
+<h3 id="node-re-entry-the-syncing-readiness-gate">Node re-entry: the syncing readiness gate<a class="headerlink" href="#node-re-entry-the-syncing-readiness-gate" title="Permanent link">&para;</a></h3>
+<p>A node returning from downtime (or replaced with an empty disk) re-enters knowing <em>less</em> than its peers: until its first anti-entropy pass completes it would answer <code>404</code> for objects it has not pulled yet and return partial listings — wrong answers given with full confidence. So a clustered node tracks the completion of its <strong>first reconcile pass toward every eligible peer since startup</strong>, and until then:</p>
+<ul>
+<li>the plain <code>GET /admin/health</code> answers <strong><code>503 {"status":"syncing"}</code></strong> (with a <code>Retry-After</code> hint) — the load balancer and the Kubernetes readiness probe keep the node <strong>out of rotation</strong> exactly while it could mislead clients;</li>
+<li><code>/admin/cluster</code> (and the console topology card) reports <code>syncing: true</code>, plus the per-peer pull state — see <a href="#observability">Observability</a>;</li>
+<li>the node still <strong>serves S3 requests</strong> if something reaches it directly (reads of what it does have, writes, replication traffic): the gate informs the balancer, it does not lock the API;</li>
+<li><code>GET /admin/health?verbose=1</code> keeps answering <code>200</code> with <code>status: "syncing"</code>, so an operator can always inspect the node.</li>
+</ul>
+<p>The moment the health turns <code>200</code>, the node's answers are as complete as its peers'. Three caveats, by design:</p>
+<ul>
+<li><strong>A graceful shutdown drain takes precedence</strong> — a node that is both draining and syncing reports <code>draining</code>.</li>
+<li><strong>No eligible peers → <code>ok</code>, not <code>syncing</code></strong> (single-node cluster, every peer down or drifted): there is nothing to sync from, and a degraded-but-serving node beats a permanently dark one.</li>
+<li><strong>A brand-new peer joining flips the established nodes to <code>syncing</code> for up to one anti-entropy tick</strong> — having never pulled from it, they cannot yet know it holds nothing they lack. The window closes at their next pass (an empty manifest is drained instantly).</li>
+</ul>
+<p>Two anomalies in the same area are detected and handled rather than left to rot:</p>
+<ul>
+<li><strong>Restore from backup (seq rewind).</strong> Each node advertises its object write cursor on the authenticated ping; if a peer's cursor is observed <em>below</em> what this node already consumed from it, the peer was restored from a backup — its post-restore writes would otherwise stay invisible to the incremental sync until this node restarts. The high-water mark is reset (one idempotent full re-pull, logged as a warning), automatically.</li>
+<li><strong>A poison manifest entry.</strong> A row that persistently fails to apply would otherwise block that peer's whole incremental sync forever. After 5 consecutive failed passes on the same entry the node <strong>skips it</strong> with a warning and counts it as <code>skipped_entries</code> on <code>/admin/cluster</code> — a non-zero count is operator evidence that some key may not converge on this node until it changes again on the peer.</li>
+</ul>
 <h3 id="consistency-model">Consistency model<a class="headerlink" href="#consistency-model" title="Permanent link">&para;</a></h3>
 <p>Two policies, set per cluster with <code>[cluster].mode</code>:</p>
 <ul>
@@ -1856,7 +1897,7 @@ them, and any node that takes a write replicates it to the others.</p>
 
     classDef ok fill:#66bb6a33,stroke:#43a047,stroke-width:2px;
     classDef warn fill:#ffb30033,stroke:#fb8c00,stroke-width:2px;</code></pre>
-<p>In <code>quorum</code> the cluster trades availability for safety at the majority boundary; in <code>available</code> it keeps accepting writes the whole way down. Across nodes both modes converge <strong>eventually</strong>: reads are always served locally, reconcile is asynchronous, and conflicts resolve <strong>last-writer-wins (LWW)</strong>. The LWW key is <code>(last_modified, version_id, blob_id)</code> — the <code>blob_id</code> is a stable tiebreaker so two nodes that wrote the "same" null-version object at the same wall-clock instant still pick the same winner deterministically, without a coordination protocol. The difference is which writes can conflict at all: in <code>quorum</code> mode every <em>acknowledged</em> write reached a majority, so two acknowledged writes to the same key cannot be accepted on two disconnected sides of a partition — LWW only ever has to resolve a client-visible conflict in <code>available</code> mode (or against writes the client was told did not reach quorum).</p>
+<p>In <code>quorum</code> the cluster trades availability for safety at the majority boundary; in <code>available</code> it keeps accepting writes the whole way down. Across nodes both modes converge <strong>eventually</strong>: reads are always served locally, reconcile is asynchronous, and conflicts resolve <strong>last-writer-wins (LWW)</strong>. The LWW key is <code>(last_modified, version_id, blob_id)</code> — the <code>blob_id</code> is a stable tiebreaker so two nodes that wrote the "same" null-version object at the same wall-clock instant still pick the same winner deterministically, without a coordination protocol. Object Lock changes (retention, legal hold) are the one in-place mutation that does <em>not</em> bump <code>last_modified</code> (matching S3), so they carry their own LWW dimension: a per-row lock-change timestamp that orders two copies of the same version whose key ties — a stale lock-free copy re-applied by a returning node can never overwrite a newer lock state. The difference is which writes can conflict at all: in <code>quorum</code> mode every <em>acknowledged</em> write reached a majority, so two acknowledged writes to the same key cannot be accepted on two disconnected sides of a partition — LWW only ever has to resolve a client-visible conflict in <code>available</code> mode (or against writes the client was told did not reach quorum).</p>
 <blockquote>
 <p><strong>Read-after-write:</strong> within a single node it is immediate. Across the cluster (through a round-robin load balancer) a read may briefly hit a node that has not yet received the write. Pin a client to one node (LB sticky sessions) if you need read-your-writes through the balancer.</p>
 </blockquote>
@@ -1922,9 +1963,9 @@ them, and any node that takes a write replicates it to the others.</p>
 <p>The 3 nodes share one symmetric config (<code>docker/cluster/config.toml</code>, <code>mode = "quorum"</code>, <code>discovery = "static"</code>) — Docker's bridge network drops multicast, hence static seeds.</p>
 <h2 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Console</strong> — the dashboard <strong>Cluster Topology</strong> card shows the consistency mode (Quorum·W=N / Available), the write status (Writable / Read-only when quorum is lost), and every node with a green/red status dot, the local-node badge, endpoint, and last-seen time. The Server card's <em>Topology</em> field summarises it as <code>Cluster · live/total</code>.</li>
-<li><strong><code>GET /admin/cluster</code></strong> (admin SigV4) — JSON the console consumes: <code>mode</code>, <code>write_quorum</code>, <code>has_write_quorum</code>, <code>live_node_count</code>, <code>eligible_node_count</code> (nodes the write quorum is measured against: alive + authenticated + config-aligned), <code>node_count</code>, <code>config_aligned</code>, <code>size_exceeded</code>, <code>tombstone_gc_blocked</code>, <code>worker_leader</code> (whether THIS node runs the <a href="#background-workers-one-leader-for-shared-work-every-node-for-its-own">cluster-singleton background work</a> — exactly one node says <code>true</code> in a stable cluster), and the <code>nodes</code> list (each with <code>alive</code>, <code>authenticated</code>, <code>config_ok</code>, <code>last_seen</code> — kept on dead nodes, showing the last successful contact). Returns <code>{"enabled": false}</code> on a single-node deployment.</li>
-<li><strong><code>GET /admin/health?verbose=1</code></strong> (unauthenticated) — liveness plus the cluster snapshot, handy for scripts and load-balancer debugging. The plain <code>GET /admin/health</code> (200 / 503-on-drain) is the load-balancer check.</li>
+<li><strong>Console</strong> — the dashboard <strong>Cluster Topology</strong> card shows the consistency mode (Quorum·W=N / Available), the write status (Writable / Read-only when quorum is lost), an amber notice while the node is <a href="#node-re-entry-the-syncing-readiness-gate">syncing</a>, and every node with a green/red status dot, the local-node badge, endpoint, last-seen time, and amber per-node <code>sync lag</code> / <code>skipped</code> indicators when non-zero. The Server card's <em>Topology</em> field summarises it as <code>Cluster · live/total</code>.</li>
+<li><strong><code>GET /admin/cluster</code></strong> (admin SigV4) — JSON the console consumes: <code>mode</code>, <code>write_quorum</code>, <code>has_write_quorum</code>, <code>live_node_count</code>, <code>eligible_node_count</code> (nodes the write quorum is measured against: alive + authenticated + config-aligned), <code>node_count</code>, <code>config_aligned</code>, <code>size_exceeded</code>, <code>tombstone_gc_blocked</code>, <code>worker_leader</code> (whether THIS node runs the <a href="#background-workers-one-leader-for-shared-work-every-node-for-its-own">cluster-singleton background work</a> — exactly one node says <code>true</code> in a stable cluster), <code>syncing</code> (the <a href="#node-re-entry-the-syncing-readiness-gate">readiness gate</a>), and the <code>nodes</code> list (each with <code>alive</code>, <code>authenticated</code>, <code>config_ok</code>, <code>last_seen</code> — kept on dead nodes, showing the last successful contact — and, on peers, <code>sync</code>: this node's pull state toward the peer — <code>hwm</code> cursor, <code>lag</code> still to pull, <code>last_reconcile</code>, <code>first_pass_done</code>, <code>skipped_entries</code>). Returns <code>{"enabled": false}</code> on a single-node deployment.</li>
+<li><strong><code>GET /admin/health?verbose=1</code></strong> (unauthenticated) — liveness plus the cluster snapshot, handy for scripts and load-balancer debugging; it always answers <code>200</code>, with the state in <code>status</code> (<code>ok</code> / <code>syncing</code> / <code>draining</code>). The plain <code>GET /admin/health</code> (200, or 503 on drain/sync) is the load-balancer check.</li>
 </ul>
 <h3 id="storage-capacity-the-smallest-node-wins">Storage capacity (the smallest node wins)<a class="headerlink" href="#storage-capacity-the-smallest-node-wins" title="Permanent link">&para;</a></h3>
 <p>With full replication every node holds a complete copy, so the cluster can only store as much as its <strong>smallest</strong> node: once the node with the least free space fills, new writes can no longer be replicated everywhere. Arca therefore treats the cluster's effective capacity as the <strong>minimum across nodes</strong>, not the sum.</p>
@@ -1944,7 +1985,7 @@ them, and any node that takes a write replicates it to the others.</p>
 <p>The cluster does <strong>not</strong> refuse to start or auto-isolate the peer's process — a node can't know its peers' config at startup, and one misconfigured node shouldn't take down the healthy ones. It surfaces the problem loudly and keeps running; you fix the config and the warning clears on its own. (Fields that legitimately differ per node — port, <code>advertise_addr</code>, <code>node_id</code>, seeds, intervals, storage backend — are deliberately excluded from the fingerprint.)</p>
 <h2 id="production-deployment">Production deployment<a class="headerlink" href="#production-deployment" title="Permanent link">&para;</a></h2>
 <h3 id="load-balancer">Load balancer<a class="headerlink" href="#load-balancer" title="Permanent link">&para;</a></h3>
-<p>Put any L7/L4 balancer in front and health-check <code>GET /admin/health</code> (200 = up, 503 = draining → out of rotation). The reference HAProxy backend:</p>
+<p>Put any L7/L4 balancer in front and health-check <code>GET /admin/health</code> (200 = up; 503 = draining or <a href="#node-re-entry-the-syncing-readiness-gate">syncing</a> → out of rotation). The reference HAProxy backend:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>backend arca_nodes
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    balance roundrobin
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    option httpchk
@@ -2014,15 +2055,17 @@ them, and any node that takes a write replicates it to the others.</p>
 <a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a><span class="n">tombstone_grace_days</span><span class="w">          </span><span class="o">=</span><span class="w"> </span><span class="mi">7</span><span class="w">     </span><span class="c1"># MUST exceed worst-case node downtime</span>
 <a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a><span class="n">peer_prune_days</span><span class="w">               </span><span class="o">=</span><span class="w"> </span><span class="mi">7</span><span class="w">     </span><span class="c1"># evict peers unreachable this long</span>
 <a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a><span class="w">                                      </span><span class="c1"># (optional; default = tombstone_grace_days)</span>
-<a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a>
-<a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a><span class="c1"># REQUIRED when the cluster runs over HTTPS ([server.tls] enabled): the</span>
-<a id="__codelineno-5-28" name="__codelineno-5-28" href="#__codelineno-5-28"></a><span class="c1"># operator-distributed cluster CA + this node&#39;s CA-signed cert/key, used to</span>
-<a id="__codelineno-5-29" name="__codelineno-5-29" href="#__codelineno-5-29"></a><span class="c1"># verify peers and to authenticate this node to them (mutual TLS). Mint the</span>
-<a id="__codelineno-5-30" name="__codelineno-5-30" href="#__codelineno-5-30"></a><span class="c1"># material with `arca tls generate-cluster`.</span>
-<a id="__codelineno-5-31" name="__codelineno-5-31" href="#__codelineno-5-31"></a><span class="k">[cluster.tls]</span>
-<a id="__codelineno-5-32" name="__codelineno-5-32" href="#__codelineno-5-32"></a><span class="n">ca_file</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs/cluster/arca-cluster-ca.crt&quot;</span><span class="w">   </span><span class="c1"># same on every node</span>
-<a id="__codelineno-5-33" name="__codelineno-5-33" href="#__codelineno-5-33"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs/cluster/arca-1.crt&quot;</span><span class="w">            </span><span class="c1"># this node&#39;s own</span>
-<a id="__codelineno-5-34" name="__codelineno-5-34" href="#__codelineno-5-34"></a><span class="n">key_file</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs/cluster/arca-1.key&quot;</span>
+<a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a><span class="n">blob_repair_budget</span><span class="w">            </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span><span class="w">   </span><span class="c1"># max blob fetches per repair tick</span>
+<a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a><span class="w">                                      </span><span class="c1"># (optional; the sweep resumes next tick)</span>
+<a id="__codelineno-5-28" name="__codelineno-5-28" href="#__codelineno-5-28"></a>
+<a id="__codelineno-5-29" name="__codelineno-5-29" href="#__codelineno-5-29"></a><span class="c1"># REQUIRED when the cluster runs over HTTPS ([server.tls] enabled): the</span>
+<a id="__codelineno-5-30" name="__codelineno-5-30" href="#__codelineno-5-30"></a><span class="c1"># operator-distributed cluster CA + this node&#39;s CA-signed cert/key, used to</span>
+<a id="__codelineno-5-31" name="__codelineno-5-31" href="#__codelineno-5-31"></a><span class="c1"># verify peers and to authenticate this node to them (mutual TLS). Mint the</span>
+<a id="__codelineno-5-32" name="__codelineno-5-32" href="#__codelineno-5-32"></a><span class="c1"># material with `arca tls generate-cluster`.</span>
+<a id="__codelineno-5-33" name="__codelineno-5-33" href="#__codelineno-5-33"></a><span class="k">[cluster.tls]</span>
+<a id="__codelineno-5-34" name="__codelineno-5-34" href="#__codelineno-5-34"></a><span class="n">ca_file</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs/cluster/arca-cluster-ca.crt&quot;</span><span class="w">   </span><span class="c1"># same on every node</span>
+<a id="__codelineno-5-35" name="__codelineno-5-35" href="#__codelineno-5-35"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs/cluster/arca-1.crt&quot;</span><span class="w">            </span><span class="c1"># this node&#39;s own</span>
+<a id="__codelineno-5-36" name="__codelineno-5-36" href="#__codelineno-5-36"></a><span class="n">key_file</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs/cluster/arca-1.key&quot;</span>
 </code></pre></div>
 <h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">&para;</a></h2>
 <ul>
