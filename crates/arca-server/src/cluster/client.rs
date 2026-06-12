@@ -110,6 +110,7 @@ impl ClusterClient {
         timeout: Duration,
         tls: Option<&ClusterTlsMaterial>,
     ) -> Result<Self, ClusterError> {
+        crate::crypto::ensure_default_crypto_provider();
         let mut builder = reqwest::Client::builder()
             .timeout(timeout)
             .user_agent(concat!("arca-cluster/", env!("CARGO_PKG_VERSION")));

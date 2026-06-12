@@ -26,7 +26,7 @@ use crate::control_merge::apply_control_merge_via_traits;
 /// Reads a `primary_key -> updated_at` map from a control table.
 async fn updated_at_map(
     store: &PgStore,
-    sql: &str,
+    sql: &'static str,
 ) -> Result<HashMap<String, DateTime<Utc>>, ArcaError> {
     let rows = sqlx_core::query::query(sql)
         .fetch_all(&store.pool)

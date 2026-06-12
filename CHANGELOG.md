@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **`time` 0.3.41 → 0.3.47 — CVE-2026-25727 fix picked up (resolves TD-011).** The Docker builder moved from `rust:1.85-alpine` to `rust:alpine` (currently Rust 1.96), unblocking the `time` versions that contain the stack-exhaustion fix; the MSRV pins (`home`, `serde_with`, `darling`) became unnecessary and were removed from the Dockerfile. `time` 0.3.48 remains excluded for a non-security reason (a coherence clash with `rcgen` — tracked as TD-017).
+- **`rustls-pemfile` retired (resolves TD-012, RUSTSEC-2025-0134).** PEM parsing migrated to `rustls-pki-types` (`PemObject`), which is maintained as part of the rustls project; the unmaintained dependency is gone from the workspace.
+
+### Changed
+
+- **Full dependency refresh — every crate brought to its latest version.** The lockfile had never been systematically refreshed since the project started; this pass updates all ~540 locked packages and bumps 23 declared majors/minors, with the code migrated where APIs changed:
+    - `sqlx` 0.8 → 0.9 (PostgreSQL/MySQL): dynamically composed queries now go through the new `AssertSqlSafe` audit opt-in (all of Arca's dynamic SQL is fixed fragments + bind parameters, audited by construction).
+    - `redis` 0.27 → 1.2: connection-info overrides moved to the new builder setters.
+    - `lapin` 2.5 → 4.10 (AMQP): native tokio integration — the `tokio-executor-trait`/`tokio-reactor-trait` shims are gone from the workspace.
+    - `tonic`/`prost` 0.12/0.13 → 0.14 (gRPC): prost codegen moved to the new `tonic-prost`/`tonic-prost-build` crates; TLS features renamed (`tls-ring`).
+    - `quick-xml` 0.36 → 0.40: entity references now arrive as separate reader events — the manual `DeleteObjects` parser accumulates text fragments and resolves character/predefined entities itself.
+    - RustCrypto digest 0.11 ecosystem (`sha2` 0.11, `md-5` 0.11, `hmac` 0.13), `rand` 0.10, `rcgen` 0.14 (issuer-based signing API), `reqwest` 0.13 (TLS roots via the platform verifier), `brotli` 8, `lz4_flex` 0.13, `governor` 0.10, `async-nats` 0.49, `rumqttc` 0.25, `rdkafka` 0.39, `mongodb` 3.7, `thiserror` 2, `toml` 1.
+    - Known constraints handled: `rusqlite` stays at 0.37 (the latest `tokio-rusqlite` requires `^0.37`); `time` pinned at 0.3.47 (TD-017, see Security).
+    - The integration-test image moved to `python:3-slim`; its Python dependencies and the console's CDN libraries already float to latest by construction.
+- **Process-default crypto provider hardened.** The refreshed graph compiles more than one rustls crypto provider (lapin's TLS stack brings `aws-lc-rs` alongside Arca's `ring`), so every constructor that builds TLS machinery (cluster client, membership prober, Vault client, replicator, webhook/Elasticsearch connectors, the rustls config loader) now installs the `ring` process default idempotently — previously only `main()` did, which left non-`main` entry points (and unit tests) able to hit the multi-provider ambiguity panic.
+
+### Fixed
+
+- **Generated certificates now pass modern strict TLS verification.** OpenSSL in strict mode — the default for Python 3.13+ clients — refuses CA-issued certificates without an Authority Key Identifier and CA certificates without the KeyUsage (keyCertSign) extension. `arca tls generate` and `arca tls generate-cluster` now emit both, so freshly minted material works with current AWS SDKs, curl and browsers out of the box. (Surfaced by the refreshed integration-test image; previously generated certificates keep working with clients that do not enforce strict mode — regenerate them to be future-proof.)
+- **Cold Docker builds produced empty workspace crates.** The builder's dependency-caching layer compiles dummy crates whose cargo fingerprints are newer than the COPY'd real sources' mtimes, so on a cold build (fresh cache, first build, right after `docker builder prune`) cargo considered the real sources unchanged and linked the empty dummies — hundreds of `unresolved import` errors. The real sources are now touched after the COPY; warm builds are unaffected (unchanged context = layer-cache hits all the way). Reproduced on both the old and new toolchain — a latent defect exposed by the cache prune, not by the dependency refresh.
+- **Integration tests aligned with current S3/SDK semantics** (no server changes — the server was right): checksum assertions now request `ChecksumMode=ENABLED` on HEAD/GET as S3 requires; suspending versioning on an Object-Lock bucket expects AWS's real `409 InvalidBucketState` (not 400); the notification event-log test signs with `S3SigV4Auth` like every other admin test (the generic `SigV4Auth` signs the payload hash over http but never sends `x-amz-content-sha256`, which the server rightly rejects).
+
 ## [0.26.0] — 2026-06-12
 
 ### Security

@@ -89,6 +89,7 @@ pub fn spawn(
     // identity recovery on a 403). Same verified-TLS posture as the ping
     // client: certificate verification is never disabled.
     let health_client = {
+        crate::crypto::ensure_default_crypto_provider();
         let builder = reqwest::Client::builder().timeout(request_timeout);
         let builder = match &tls {
             Some(material) => match material.apply(builder) {

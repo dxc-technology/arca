@@ -5,6 +5,7 @@ mod cluster;
 mod config;
 mod connector;
 mod credential;
+mod crypto;
 mod compress_existing;
 mod fsck;
 mod recover;
@@ -33,11 +34,10 @@ use cli::{Cli, ClusterAction, Command, CredentialAction, EncryptionAction, LogFo
 pub type NormalizedApp = NormalizeService<Router>;
 
 fn main() -> Result<()> {
-    // Install the `ring` rustls crypto provider as the process-wide default.
-    // tonic (gRPC connector) and lettre (SMTP connector) both pull in `rustls`
-    // without forcing a crypto backend, so we install one explicitly. Ignore
-    // errors if it has already been set (e.g. by a dependency).
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    // Install the `ring` rustls crypto provider as the process-wide default
+    // (see crates/arca-server/src/crypto.rs — the TLS-building constructors
+    // also call this, so every entry point is covered).
+    crypto::ensure_default_crypto_provider();
 
     let cli = Cli::parse();
 

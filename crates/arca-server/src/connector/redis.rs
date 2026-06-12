@@ -36,25 +36,28 @@ impl RedisConnector {
         properties: &HashMap<String, String>,
     ) -> Result<redis::aio::MultiplexedConnection, redis::RedisError> {
         // Build connection info from destination URL, optionally overriding password.
-        let mut info: redis::ConnectionInfo = destination.parse()?;
+        let info: redis::ConnectionInfo = destination.parse()?;
 
+        // redis 1.x made the connection-info fields private: overrides go
+        // through the consuming builder setters.
+        let mut redis_settings = info.redis_settings().clone();
         if let Some(password) = properties.get("password").filter(|p| !p.is_empty()) {
-            info.redis.password = Some(password.clone());
+            redis_settings = redis_settings.set_password(password);
         }
-
         if let Some(db) = properties.get("db").and_then(|d| d.parse::<i64>().ok()) {
-            info.redis.db = db;
+            redis_settings = redis_settings.set_db(db);
         }
+        let info = info.set_redis_settings(redis_settings);
 
         let client = redis::Client::open(info)?;
         tokio::time::timeout(
             self.timeout,
-            client.get_multiplexed_tokio_connection(),
+            client.get_multiplexed_async_connection(),
         )
         .await
         .map_err(|_| {
             redis::RedisError::from((
-                redis::ErrorKind::IoError,
+                redis::ErrorKind::Io,
                 "connection timeout",
             ))
         })?

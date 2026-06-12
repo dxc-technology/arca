@@ -151,7 +151,7 @@ impl AuditStore for PgStore {
             next = param_idx + 1,
         );
 
-        let mut query = sqlx_core::query::query(&sql);
+        let mut query = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()));
         if let Some(ref b) = bucket {
             query = query.bind(b);
         }
@@ -216,7 +216,7 @@ impl AuditStore for PgStore {
 
         let sql = format!("SELECT COUNT(*) FROM audit_log {where_clause}");
 
-        let mut query = sqlx_core::query::query(&sql);
+        let mut query = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()));
         if let Some(ref b) = bucket {
             query = query.bind(b);
         }

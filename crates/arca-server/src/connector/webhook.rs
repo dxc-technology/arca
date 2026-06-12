@@ -16,6 +16,7 @@ pub struct WebhookConnector {
 impl WebhookConnector {
     /// Create a new webhook connector with the given HTTP timeout.
     pub fn new(timeout: Duration) -> Self {
+        crate::crypto::ensure_default_crypto_provider();
         let client = reqwest::Client::builder()
             .timeout(timeout)
             .build()

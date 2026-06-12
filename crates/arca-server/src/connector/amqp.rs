@@ -52,9 +52,9 @@ impl AmqpConnector {
 
     /// Connect to the AMQP broker with timeout.
     async fn connect(&self, destination: &str) -> Result<Connection, String> {
-        let conn_props = ConnectionProperties::default()
-            .with_executor(tokio_executor_trait::Tokio::current())
-            .with_reactor(tokio_reactor_trait::Tokio);
+        // lapin 4 integrates with tokio natively: the executor/reactor
+        // trait shims of lapin 2 are gone.
+        let conn_props = ConnectionProperties::default();
 
         tokio::time::timeout(self.timeout, Connection::connect(destination, conn_props))
             .await
@@ -120,7 +120,7 @@ impl NotificationConnector for AmqpConnector {
                 ..ExchangeDeclareOptions::default()
             };
             if let Err(e) = channel
-                .exchange_declare(exchange, ExchangeKind::Topic, opts, FieldTable::default())
+                .exchange_declare(exchange.into(), ExchangeKind::Topic, opts, FieldTable::default())
                 .await
             {
                 return DeliveryResult {
@@ -139,7 +139,7 @@ impl NotificationConnector for AmqpConnector {
                 ..QueueDeclareOptions::default()
             };
             if let Err(e) = channel
-                .queue_declare(routing_key, opts, FieldTable::default())
+                .queue_declare(routing_key.into(), opts, FieldTable::default())
                 .await
             {
                 return DeliveryResult {
@@ -157,8 +157,8 @@ impl NotificationConnector for AmqpConnector {
 
         let confirm = match channel
             .basic_publish(
-                exchange,
-                routing_key,
+                exchange.into(),
+                routing_key.into(),
                 BasicPublishOptions::default(),
                 payload.as_bytes(),
                 props,

@@ -76,7 +76,7 @@ impl MetricsStore for PgStore {
         // Count total matching rows to decide if downsampling is needed
         let count_sql =
             format!("SELECT COUNT(*)::bigint FROM metrics_snapshot {where_clause}");
-        let mut count_query = sqlx_core::query::query(&count_sql);
+        let mut count_query = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(count_sql.as_str()));
         if let Some(f) = from {
             count_query = count_query.bind(f);
         }
@@ -110,7 +110,7 @@ impl MetricsStore for PgStore {
             )
         };
 
-        let mut query = sqlx_core::query::query(&sql);
+        let mut query = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()));
         if let Some(f) = from {
             query = query.bind(f);
         }

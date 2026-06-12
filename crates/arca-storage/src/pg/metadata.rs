@@ -55,7 +55,7 @@ async fn fetch_latest_object(
     let sql = format!(
         "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = $1 AND key = $2 AND is_latest = TRUE"
     );
-    let row = sqlx_core::query::query(&sql)
+    let row = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
         .bind(bucket)
         .bind(key)
         .fetch_optional(&mut **tx)
@@ -72,7 +72,7 @@ async fn fetch_null_version(
     let sql = format!(
         "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = $1 AND key = $2 AND version_id IS NULL AND is_tombstone = FALSE"
     );
-    let row = sqlx_core::query::query(&sql)
+    let row = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
         .bind(bucket)
         .bind(key)
         .fetch_optional(&mut **tx)
@@ -565,7 +565,7 @@ impl MetadataStore for PgStore {
             "SELECT {OBJECT_COLUMNS} FROM objects \
              WHERE bucket = $1 AND key = $2 AND is_latest = TRUE AND is_delete_marker = FALSE"
         );
-        let row = sqlx_core::query::query(&sql)
+        let row = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
             .bind(bucket)
             .bind(key)
             .fetch_optional(&self.pool)
@@ -584,7 +584,7 @@ impl MetadataStore for PgStore {
             "SELECT {OBJECT_COLUMNS} FROM objects \
              WHERE bucket = $1 AND key = $2 AND is_latest = TRUE"
         );
-        let row = sqlx_core::query::query(&sql)
+        let row = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
             .bind(bucket)
             .bind(key)
             .fetch_optional(&self.pool)
@@ -627,7 +627,7 @@ impl MetadataStore for PgStore {
         sql.push_str(" ORDER BY key");
         sql.push_str(&format!(" LIMIT {max_keys}"));
 
-        let mut query = sqlx_core::query::query(&sql).bind(bucket);
+        let mut query = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str())).bind(bucket);
         if let Some(ref pattern) = prefix_pattern {
             query = query.bind(pattern.clone());
         }
@@ -866,7 +866,7 @@ impl MetadataStore for PgStore {
                 "SELECT {OBJECT_COLUMNS} FROM objects \
                  WHERE bucket = $1 AND key = $2 AND version_id IS NULL AND is_tombstone = FALSE"
             );
-            sqlx_core::query::query(&sql)
+            sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
                 .bind(bucket)
                 .bind(key)
                 .fetch_optional(&self.pool)
@@ -876,7 +876,7 @@ impl MetadataStore for PgStore {
                 "SELECT {OBJECT_COLUMNS} FROM objects \
                  WHERE bucket = $1 AND key = $2 AND version_id = $3 AND is_tombstone = FALSE"
             );
-            sqlx_core::query::query(&sql)
+            sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
                 .bind(bucket)
                 .bind(key)
                 .bind(version_id)
@@ -907,7 +907,7 @@ impl MetadataStore for PgStore {
                 "SELECT {OBJECT_COLUMNS} FROM objects \
                  WHERE bucket = $1 AND key = $2 AND version_id IS NULL AND is_tombstone = FALSE"
             );
-            let row = sqlx_core::query::query(&sql)
+            let row = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
                 .bind(bucket)
                 .bind(key)
                 .fetch_optional(&mut *tx)
@@ -919,7 +919,7 @@ impl MetadataStore for PgStore {
                 "SELECT {OBJECT_COLUMNS} FROM objects \
                  WHERE bucket = $1 AND key = $2 AND version_id = $3 AND is_tombstone = FALSE"
             );
-            let row = sqlx_core::query::query(&sql)
+            let row = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
                 .bind(bucket)
                 .bind(key)
                 .bind(version_id)
@@ -1050,7 +1050,7 @@ impl MetadataStore for PgStore {
                     "SELECT {OBJECT_COLUMNS} FROM objects \
                      WHERE bucket = $1 AND key = $2 AND version_id = $3"
                 );
-                let existing: Option<ObjectRecord> = sqlx_core::query::query(&sql)
+                let existing: Option<ObjectRecord> = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
                     .bind(&record.bucket)
                     .bind(&record.key)
                     .bind(vid)
@@ -1100,7 +1100,7 @@ impl MetadataStore for PgStore {
                     "SELECT {OBJECT_COLUMNS} FROM objects \
                      WHERE bucket = $1 AND key = $2 AND version_id IS NULL"
                 );
-                let existing: Option<ObjectRecord> = sqlx_core::query::query(&sql)
+                let existing: Option<ObjectRecord> = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
                     .bind(&record.bucket)
                     .bind(&record.key)
                     .fetch_optional(&mut *tx)
@@ -1277,7 +1277,7 @@ impl MetadataStore for PgStore {
             "SELECT {OBJECT_COLUMNS}, seq FROM objects \
              WHERE seq > $1 ORDER BY seq ASC LIMIT $2"
         );
-        let rows = sqlx_core::query::query(&sql)
+        let rows = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
             .bind(since as i64)
             .bind(limit as i64)
             .fetch_all(&self.pool)
@@ -1361,7 +1361,7 @@ impl MetadataStore for PgStore {
         sql.push_str(" ORDER BY key ASC, last_modified DESC");
         sql.push_str(&format!(" LIMIT {max_keys}"));
 
-        let mut query = sqlx_core::query::query(&sql).bind(bucket);
+        let mut query = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str())).bind(bucket);
         if let Some(ref pattern) = prefix_pattern {
             query = query.bind(pattern.clone());
         }
@@ -1865,7 +1865,7 @@ impl MetadataStore for PgStore {
         sql.push_str(" ORDER BY key, upload_id");
         sql.push_str(&format!(" LIMIT {max_uploads}"));
 
-        let mut query = sqlx_core::query::query(&sql).bind(bucket);
+        let mut query = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str())).bind(bucket);
         if let Some(ref pattern) = prefix_pattern {
             query = query.bind(pattern.clone());
         }
@@ -2061,7 +2061,7 @@ impl MetadataStore for PgStore {
 
         sql.push_str(&format!(" ORDER BY key LIMIT {max_keys}"));
 
-        let mut query = sqlx_core::query::query(&sql).bind(bucket).bind(cutoff);
+        let mut query = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str())).bind(bucket).bind(cutoff);
         if let Some(ref pattern) = prefix_pattern {
             query = query.bind(pattern.clone());
         }
@@ -2117,7 +2117,7 @@ impl MetadataStore for PgStore {
             " ORDER BY key, last_modified DESC LIMIT {max_keys}"
         ));
 
-        let mut query = sqlx_core::query::query(&sql).bind(bucket).bind(cutoff);
+        let mut query = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str())).bind(bucket).bind(cutoff);
         if let Some(ref pattern) = prefix_pattern {
             query = query.bind(pattern.clone());
         }
@@ -2148,7 +2148,7 @@ impl MetadataStore for PgStore {
              ORDER BY key, upload_id \
              LIMIT {max_uploads}"
         );
-        let rows = sqlx_core::query::query(&sql)
+        let rows = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
             .bind(bucket)
             .bind(cutoff)
             .fetch_all(&self.pool)

@@ -427,7 +427,11 @@ class TestNotificationAdminApi:
 
         credentials = botocore.credentials.Credentials(access_key, secret_key)
         request = AWSRequest(method="GET", url=admin_url)
-        botocore.auth.SigV4Auth(credentials, "s3", "us-east-1").add_auth(request)
+        # S3SigV4Auth, not the generic SigV4Auth: the S3 flavour sends the
+        # x-amz-content-sha256 header it signed with. The generic one signs
+        # the real payload hash over http but never sends the header, and the
+        # server (which then assumes UNSIGNED-PAYLOAD) correctly answers 403.
+        botocore.auth.S3SigV4Auth(credentials, "s3", "us-east-1").add_auth(request)
 
         resp = requests.get(admin_url, headers=dict(request.headers), timeout=10)
         assert resp.status_code == 200

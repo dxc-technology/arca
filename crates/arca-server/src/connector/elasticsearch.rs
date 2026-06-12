@@ -19,6 +19,7 @@ pub struct ElasticsearchConnector {
 impl ElasticsearchConnector {
     /// Create a new Elasticsearch connector with the given timeout.
     pub fn new(timeout: Duration) -> Self {
+        crate::crypto::ensure_default_crypto_provider();
         let client = reqwest::Client::builder()
             .timeout(timeout)
             .connect_timeout(timeout)

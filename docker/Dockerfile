@@ -1,5 +1,5 @@
 # Stage 1: Build (Alpine for static musl linking — binary runs in scratch)
-FROM rust:1.85-alpine AS builder
+FROM rust:alpine AS builder
 
 RUN apk add --no-cache musl-dev perl cmake make g++ curl-dev linux-headers zlib-dev zlib-static protobuf-dev protoc
 
@@ -23,21 +23,17 @@ RUN mkdir -p crates/arca-core/src && echo "" > crates/arca-core/src/lib.rs && \
 # Build dependencies only (cached layer)
 RUN cargo build --release --workspace 2>/dev/null || true
 
-# Pin transitive dependencies that exceed our Rust version (1.85).
-# home 0.5.12 requires Rust 1.88; pin to 0.5.11.
-RUN cargo update -p home --precise 0.5.11 2>/dev/null || true
-# serde_with 3.13+ requires Rust 1.88 (pulled by mongodb); pin to 3.12.0.
-RUN cargo update -p serde_with --precise 3.12.0 2>/dev/null || true
-# darling 0.21+ requires Rust 1.88 (pulled by serde_with); pin to 0.20.10.
-RUN cargo update -p darling --precise 0.20.10 2>/dev/null || true
-RUN cargo update -p darling_core --precise 0.20.10 2>/dev/null || true
-RUN cargo update -p darling_macro --precise 0.20.10 2>/dev/null || true
-
-# Copy real source code. Cargo's mtime-vs-target/ tracking then rebuilds
-# only the crates whose sources actually changed since the previous layer.
-# (If the build cache ever gets stuck, clear it manually with
-# `docker builder prune` — do NOT reintroduce a blanket `touch` here.)
+# Copy real source code, then mark it newer than the dummy-build artifacts.
+# The touch is REQUIRED for correctness, not a cache hack: COPY preserves the
+# context's mtimes, which on a cold build (fresh cache) are OLDER than the
+# dummy layer's fingerprints just built above — cargo would consider the real
+# sources unchanged and link the empty dummy crates (hundreds of
+# "unresolved import" errors). On warm builds it costs nothing: an unchanged
+# context makes COPY a cache hit, so the touch and build layers are cache
+# hits too; a changed context rebuilds only the workspace crates, never the
+# dependency layer.
 COPY crates/ crates/
+RUN find crates -name '*.rs' -exec touch {} +
 
 # Git commit hash, passed from bin/build, baked into the binary via env!()
 ARG ARCA_GIT_COMMIT=unknown

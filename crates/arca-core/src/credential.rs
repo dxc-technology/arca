@@ -1,7 +1,7 @@
 //! Credential generation utilities.
 
 use crate::types::Credential;
-use rand::Rng;
+use rand::RngExt;
 
 /// Characters used in access key IDs (uppercase ASCII + digits).
 const KEY_CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -18,10 +18,10 @@ const SECRET_KEY_LEN: usize = 40;
 
 /// Generates a random string of the given length from the given character set.
 fn random_string(charset: &[u8], len: usize) -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     (0..len)
         .map(|_| {
-            let idx = rng.gen_range(0..charset.len());
+            let idx = rng.random_range(0..charset.len());
             charset[idx] as char
         })
         .collect()

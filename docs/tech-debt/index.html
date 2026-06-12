@@ -1381,20 +1381,12 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>multipart.rs</code>, <code>object.rs</code></td>
 </tr>
 <tr>
-<td>TD-011</td>
-<td><code>time</code> crate CVE</td>
-<td><code>time</code> pinned to 0.3.41 (CVE-2026-25727: stack exhaustion via RFC 2822 parsing, CVSS 6.5). Not exploitable in Arca (only uses <code>OffsetDateTime</code>/<code>Duration</code> for cert generation, never RFC 2822 parsing). Fix requires <code>time</code> &gt;= 0.3.47 which needs Rust &gt;= 1.88</td>
-<td>Upgrade Rust toolchain to &gt;= 1.88, unpin <code>time</code> in <code>Cargo.toml</code></td>
+<td>TD-017</td>
+<td><code>time</code> pinned to =0.3.47</td>
+<td><code>time</code> 0.3.48 adds <code>From</code> impls that clash (E0119 coherence error) with <code>rcgen</code>'s blanket <code>From</code> conversions whenever time's <code>parsing</code>/<code>formatting</code> features are enabled elsewhere in the graph (they are, via transitive deps). 0.3.47 already contains the CVE-2026-25727 fix, so no security exposure — this is a freshness pin only</td>
+<td>Unpin when rcgen or time resolves the conflict upstream (track rcgen releases past 0.14.8)</td>
 <td>None</td>
-<td><code>Cargo.toml</code>, <code>tls_generate.rs</code></td>
-</tr>
-<tr>
-<td>TD-012</td>
-<td><code>rustls-pemfile</code> unmaintained</td>
-<td><code>rustls-pemfile</code> 2.2.0 is unmaintained (RUSTSEC-2025-0134). PEM parsing functionality moved to <code>rustls-pki-types</code>. No security vulnerability, just maintenance risk</td>
-<td>Migrate PEM parsing from <code>rustls-pemfile</code> to <code>rustls-pki-types</code></td>
-<td>None</td>
-<td><code>tls.rs</code>, <code>Cargo.toml</code></td>
+<td><code>Cargo.toml</code></td>
 </tr>
 <tr>
 <td>TD-014</td>
@@ -1484,6 +1476,18 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>TD-016</td>
 <td>Cluster control-plane reconcile was partial</td>
 <td>The anti-entropy snapshot reconcile now covers EVERY control-plane family: grant attachments (<code>user_grants</code>, <code>team_grants</code>) and team memberships (per-row <code>updated_at</code>, migrations sqlite v22 / pg 0010, composite-key tombstones on detach/remove), <code>bucket_config</code> per-key LWW, <code>bucket_tags</code> as one set-level entity per bucket, <code>server_config</code> per-key LWW (node-local keys excluded at build AND on apply), plus in-progress multipart uploads and parts (D4). Child upserts are parent-filtered in <code>plan_control_merge</code> (a row whose parent resolved deleted is never adopted — replaces cascade tombstones and respects the PG join-table FKs). A returning node now fully self-heals on all families. HA hardening R5 (review D9/D4)</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-011</td>
+<td><code>time</code> crate CVE</td>
+<td>Docker builder moved from <code>rust:1.85-alpine</code> to <code>rust:alpine</code> (currently 1.96); <code>time</code> updated to 0.3.47, which contains the CVE-2026-25727 fix. The MSRV pins for <code>home</code>/<code>serde_with</code>/<code>darling</code> in the Dockerfile became unnecessary and were removed. (0.3.48+ stays excluded for a non-security reason — see TD-017.) Dependency refresh, 2026-06-12</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-012</td>
+<td><code>rustls-pemfile</code> unmaintained</td>
+<td>PEM parsing migrated to <code>rustls-pki-types</code> (<code>PemObject</code>: <code>pem_slice_iter</code> / <code>from_pem_slice</code>) in <code>tls.rs</code> and <code>tls_generate.rs</code>; the <code>rustls-pemfile</code> dependency is gone from the workspace. Dependency refresh, 2026-06-12</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>

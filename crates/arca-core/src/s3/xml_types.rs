@@ -88,6 +88,11 @@ pub fn parse_delete_objects(xml: &str) -> Result<DeleteObjectsBody, quick_xml::D
     let mut current_last_modified_time: Option<String> = None;
     let mut current_if_match_size: Option<String> = None;
     let mut inside_tag: Option<String> = None;
+    // Accumulated text of the current element. Since quick-xml 0.37 entity
+    // references arrive as separate `GeneralRef` events between `Text`
+    // fragments (text is no longer "unescaped" as a whole), so the value of
+    // an element like `<Key>a&amp;b</Key>` must be assembled incrementally.
+    let mut text = String::new();
     let mut buf = Vec::new();
 
     loop {
@@ -95,23 +100,56 @@ pub fn parse_delete_objects(xml: &str) -> Result<DeleteObjectsBody, quick_xml::D
             Ok(Event::Start(e)) => {
                 let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
                 inside_tag = Some(name);
+                text.clear();
             }
             Ok(Event::Text(e)) => {
-                if let Some(ref tag) = inside_tag {
-                    let text = e.unescape().map_err(|e| quick_xml::DeError::InvalidXml(e.into()))?.to_string();
-                    match tag.as_str() {
-                        "Key" => current_key = Some(text),
-                        "VersionId" => current_version_id = Some(text),
-                        "ETag" => current_etag = Some(text),
-                        "LastModifiedTime" => current_last_modified_time = Some(text),
-                        "Size" => current_if_match_size = Some(text),
-                        "Quiet" => quiet = text.trim() == "true",
-                        _ => {}
+                if inside_tag.is_some() {
+                    text.push_str(
+                        &e.xml10_content()
+                            .map_err(|e| quick_xml::DeError::InvalidXml(e.into()))?,
+                    );
+                }
+            }
+            Ok(Event::GeneralRef(r)) => {
+                if inside_tag.is_some() {
+                    if let Some(ch) = r
+                        .resolve_char_ref()
+                        .map_err(quick_xml::DeError::InvalidXml)?
+                    {
+                        text.push(ch);
+                    } else {
+                        match r.decode()
+                            .map_err(|e| quick_xml::DeError::InvalidXml(e.into()))?
+                            .as_ref()
+                        {
+                            "lt" => text.push('<'),
+                            "gt" => text.push('>'),
+                            "amp" => text.push('&'),
+                            "apos" => text.push('\''),
+                            "quot" => text.push('"'),
+                            other => {
+                                return Err(quick_xml::DeError::Custom(format!(
+                                    "unknown entity reference: &{other};"
+                                )))
+                            }
+                        }
                     }
                 }
             }
             Ok(Event::End(e)) => {
                 let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                if inside_tag.as_deref() == Some(name.as_str()) {
+                    let value = std::mem::take(&mut text);
+                    match name.as_str() {
+                        "Key" => current_key = Some(value),
+                        "VersionId" => current_version_id = Some(value),
+                        "ETag" => current_etag = Some(value),
+                        "LastModifiedTime" => current_last_modified_time = Some(value),
+                        "Size" => current_if_match_size = Some(value),
+                        "Quiet" => quiet = value.trim() == "true",
+                        _ => {}
+                    }
+                }
                 if name == "Object" {
                     if let Some(key) = current_key.take() {
                         objects.push(DeleteObject {
@@ -124,6 +162,7 @@ pub fn parse_delete_objects(xml: &str) -> Result<DeleteObjectsBody, quick_xml::D
                     }
                 }
                 inside_tag = None;
+                text.clear();
             }
             Ok(Event::Eof) => break,
             Err(e) => return Err(quick_xml::DeError::InvalidXml(e.into())),

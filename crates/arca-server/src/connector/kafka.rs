@@ -96,9 +96,12 @@ impl NotificationConnector for KafkaConnector {
             .key("arca");
 
         match producer.send(record, self.timeout).await {
-            Ok((partition, offset)) => DeliveryResult {
+            Ok(delivery) => DeliveryResult {
                 success: true,
-                status_info: format!("produced to '{topic}' (partition={partition}, offset={offset})"),
+                status_info: format!(
+                    "produced to '{topic}' (partition={}, offset={})",
+                    delivery.partition, delivery.offset
+                ),
                 error: None,
             },
             Err((e, _)) => DeliveryResult {

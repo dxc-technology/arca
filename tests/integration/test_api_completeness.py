@@ -136,7 +136,8 @@ class TestChecksum:
                 ChecksumSHA256=sha,
             )
 
-            head = s3_client.head_object(Bucket=bucket, Key="cksum.txt")
+            # S3 returns checksums only when asked: ChecksumMode=ENABLED
+            head = s3_client.head_object(Bucket=bucket, Key="cksum.txt", ChecksumMode="ENABLED")
             assert head.get("ChecksumSHA256") == sha
         finally:
             cleanup_bucket(s3_client, bucket)
@@ -156,7 +157,7 @@ class TestChecksum:
                 ChecksumCRC32=crc_b64,
             )
 
-            head = s3_client.head_object(Bucket=bucket, Key="crc.txt")
+            head = s3_client.head_object(Bucket=bucket, Key="crc.txt", ChecksumMode="ENABLED")
             assert head.get("ChecksumCRC32") == crc_b64
         finally:
             cleanup_bucket(s3_client, bucket)
@@ -174,7 +175,7 @@ class TestChecksum:
                 ChecksumSHA256=sha,
             )
 
-            resp = s3_client.get_object(Bucket=bucket, Key="getck.txt")
+            resp = s3_client.get_object(Bucket=bucket, Key="getck.txt", ChecksumMode="ENABLED")
             assert resp.get("ChecksumSHA256") == sha
         finally:
             cleanup_bucket(s3_client, bucket)

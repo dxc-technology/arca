@@ -31,7 +31,7 @@ hyper = { workspace = true }
 http = { workspace = true }
 rustls = { workspace = true }
 tokio-rustls = { workspace = true }
-rustls-pemfile = { workspace = true }
+rustls-pki-types = { workspace = true }
 arc-swap = { workspace = true }
 hyper-util = { workspace = true }
 rcgen = { workspace = true }
@@ -49,11 +49,10 @@ sqlx-postgres = { workspace = true }
 sqlx-mysql = { workspace = true }
 mongodb = { workspace = true }
 lapin = { workspace = true }
-tokio-executor-trait = { workspace = true }
-tokio-reactor-trait = { workspace = true }
 rdkafka = { workspace = true }
 lettre = { workspace = true }
 tonic = { workspace = true }
+tonic-prost = { workspace = true }
 prost = { workspace = true }
 bytes = { workspace = true }
 tokio-stream = { workspace = true }
@@ -63,7 +62,7 @@ futures-util = { workspace = true }
 thiserror = { workspace = true }
 
 [build-dependencies]
-tonic-build = { workspace = true }
+tonic-prost-build = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

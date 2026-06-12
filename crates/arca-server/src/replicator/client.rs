@@ -59,6 +59,7 @@ pub struct OutboundClient {
 
 impl OutboundClient {
     pub fn new(source_id: impl Into<String>, timeout: Duration) -> Result<Self, OutboundError> {
+        crate::crypto::ensure_default_crypto_provider();
         let http = reqwest::Client::builder()
             .timeout(timeout)
             .user_agent(concat!("arca-replication/", env!("CARGO_PKG_VERSION")))

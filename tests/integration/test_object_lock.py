@@ -91,8 +91,9 @@ class TestObjectLockConfig:
                     Bucket=bucket,
                     VersioningConfiguration={"Status": "Suspended"},
                 )
-            # Should be rejected (InvalidArgument or similar)
-            assert exc_info.value.response["ResponseMetadata"]["HTTPStatusCode"] == 400
+            # AWS rejects this with 409 InvalidBucketState
+            assert exc_info.value.response["ResponseMetadata"]["HTTPStatusCode"] == 409
+            assert exc_info.value.response["Error"]["Code"] == "InvalidBucketState"
         finally:
             cleanup_bucket(s3_client, bucket)
 

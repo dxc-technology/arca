@@ -141,7 +141,7 @@ impl ReplicationStore for PgStore {
             idx + 1
         );
 
-        let mut q = sqlx_core::query::query(&sql);
+        let mut q = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()));
         if let Some(ref b) = bucket {
             q = q.bind(b);
         }
@@ -189,7 +189,7 @@ impl ReplicationStore for PgStore {
         };
         let sql = format!("SELECT COUNT(*) FROM replication_journal {where_clause}");
 
-        let mut q = sqlx_core::query::query(&sql);
+        let mut q = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()));
         if let Some(ref b) = bucket {
             q = q.bind(b);
         }

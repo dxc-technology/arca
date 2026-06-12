@@ -165,6 +165,7 @@ async fn approle_login(client: &reqwest::Client, kms: &KmsConfig) -> Result<Stri
 
 /// Builds an HTTP client with optional TLS configuration.
 fn build_http_client(kms: &KmsConfig) -> Result<reqwest::Client> {
+    crate::crypto::ensure_default_crypto_provider();
     let mut builder = reqwest::Client::builder();
 
     if kms.tls_skip_verify {

@@ -87,7 +87,7 @@ impl NotificationConnector for PostgresqlConnector {
 
         // Ensure the target table exists.
         let ddl = db_common::create_table_ddl_postgres(&table);
-        if let Err(e) = conn.execute(sqlx_core::query::query(&ddl)).await {
+        if let Err(e) = conn.execute(sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(ddl.as_str()))).await {
             return DeliveryResult {
                 success: false,
                 status_info: "DDL error".to_string(),
@@ -100,7 +100,7 @@ impl NotificationConnector for PostgresqlConnector {
             "INSERT INTO {table} (id, event_name, bucket, key, event_time, payload) \
              VALUES ($1, $2, $3, $4, $5, $6)"
         );
-        match sqlx_core::query::query(&insert_sql)
+        match sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(insert_sql.as_str()))
             .bind(&fields.id)
             .bind(&fields.event_name)
             .bind(&fields.bucket)
@@ -143,7 +143,7 @@ impl NotificationConnector for PostgresqlConnector {
 
         // Ensure the target table exists.
         let ddl = db_common::create_table_ddl_postgres(&table);
-        if let Err(e) = conn.execute(sqlx_core::query::query(&ddl)).await {
+        if let Err(e) = conn.execute(sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(ddl.as_str()))).await {
             return TestResult {
                 success: false,
                 status_info: "DDL error".to_string(),

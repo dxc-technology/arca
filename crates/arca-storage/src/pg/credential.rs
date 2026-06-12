@@ -107,7 +107,7 @@ impl CredentialStore for PgStore {
         );
 
         // Build query with dynamic bindings.
-        let mut query = sqlx_core::query::query(&sql);
+        let mut query = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()));
         if let Some(a) = active {
             query = query.bind(a);
         }

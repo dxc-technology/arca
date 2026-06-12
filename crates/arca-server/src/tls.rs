@@ -7,6 +7,8 @@ use std::sync::Arc;
 use anyhow::{bail, Context, Result};
 use arc_swap::ArcSwap;
 use hyper_util::rt::TokioIo;
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::ServerConfig as RustlsServerConfig;
 use tokio::net::TcpListener;
 use tokio::task::JoinSet;
@@ -43,18 +45,10 @@ pub fn detect_pem_files(dir: &Path) -> Result<(PathBuf, PathBuf)> {
         let data = std::fs::read(&path)
             .with_context(|| format!("reading {}", path.display()))?;
 
-        let mut has_key = false;
-        let mut has_cert = false;
-        let mut cursor = &data[..];
-        while let Ok(Some(item)) = rustls_pemfile::read_one(&mut cursor) {
-            match item {
-                rustls_pemfile::Item::Pkcs1Key(_)
-                | rustls_pemfile::Item::Pkcs8Key(_)
-                | rustls_pemfile::Item::Sec1Key(_) => has_key = true,
-                rustls_pemfile::Item::X509Certificate(_) => has_cert = true,
-                _ => {}
-            }
-        }
+        // TD-012 resolved: PEM classification via rustls-pki-types
+        // (PrivateKeyDer matches PKCS#1, PKCS#8 and SEC1 sections).
+        let has_key = PrivateKeyDer::pem_slice_iter(&data).any(|item| item.is_ok());
+        let has_cert = CertificateDer::pem_slice_iter(&data).any(|item| item.is_ok());
 
         if has_key {
             key_files.push(path.clone());
@@ -104,8 +98,7 @@ pub fn detect_pem_files(dir: &Path) -> Result<(PathBuf, PathBuf)> {
 fn load_certs(path: &Path) -> Result<Vec<rustls::pki_types::CertificateDer<'static>>> {
     let data = std::fs::read(path)
         .with_context(|| format!("reading cert file: {}", path.display()))?;
-    let mut cursor = &data[..];
-    let certs: Vec<_> = rustls_pemfile::certs(&mut cursor)
+    let certs: Vec<_> = CertificateDer::pem_slice_iter(&data)
         .collect::<std::result::Result<Vec<_>, _>>()
         .with_context(|| format!("parsing certs from {}", path.display()))?;
     if certs.is_empty() {
@@ -118,16 +111,8 @@ fn load_certs(path: &Path) -> Result<Vec<rustls::pki_types::CertificateDer<'stat
 fn load_key(path: &Path) -> Result<rustls::pki_types::PrivateKeyDer<'static>> {
     let data = std::fs::read(path)
         .with_context(|| format!("reading key file: {}", path.display()))?;
-    let mut cursor = &data[..];
-    while let Ok(Some(item)) = rustls_pemfile::read_one(&mut cursor) {
-        match item {
-            rustls_pemfile::Item::Pkcs1Key(k) => return Ok(k.into()),
-            rustls_pemfile::Item::Pkcs8Key(k) => return Ok(k.into()),
-            rustls_pemfile::Item::Sec1Key(k) => return Ok(k.into()),
-            _ => continue,
-        }
-    }
-    bail!("no private key found in {}", path.display());
+    PrivateKeyDer::from_pem_slice(&data)
+        .with_context(|| format!("no private key found in {}", path.display()))
 }
 
 /// Builds a WebPki client verifier rooted at `ca_path`. With
@@ -139,9 +124,8 @@ fn client_verifier(
 ) -> Result<Arc<dyn rustls::server::danger::ClientCertVerifier>> {
     let ca_data = std::fs::read(ca_path)
         .with_context(|| format!("reading CA file: {}", ca_path.display()))?;
-    let mut ca_cursor = &ca_data[..];
     let mut root_store = rustls::RootCertStore::empty();
-    for cert in rustls_pemfile::certs(&mut ca_cursor) {
+    for cert in CertificateDer::pem_slice_iter(&ca_data) {
         let cert = cert.with_context(|| format!("parsing CA cert from {}", ca_path.display()))?;
         root_store.add(cert)?;
     }
@@ -166,6 +150,7 @@ pub fn load_rustls_config(
     paths: &ResolvedPaths,
     cluster_ca: Option<&Path>,
 ) -> Result<Arc<RustlsServerConfig>> {
+    crate::crypto::ensure_default_crypto_provider();
     let certs = load_certs(&paths.cert_path)?;
     let key = load_key(&paths.key_path)?;
 
@@ -477,8 +462,9 @@ mod tests {
 
         let server_key = rcgen::KeyPair::generate().unwrap();
         let server_params = rcgen::CertificateParams::new(vec!["localhost".into()]).unwrap();
+        let ca_issuer = rcgen::Issuer::from_params(&ca_params, &ca_key);
         let server_cert = server_params
-            .signed_by(&server_key, &ca_cert, &ca_key)
+            .signed_by(&server_key, &ca_issuer)
             .unwrap();
 
         // Write chain: server cert + CA cert
@@ -546,8 +532,9 @@ mod tests {
         // Create server cert signed by CA
         let server_key = rcgen::KeyPair::generate().unwrap();
         let server_params = rcgen::CertificateParams::new(vec!["localhost".into()]).unwrap();
+        let ca_issuer = rcgen::Issuer::from_params(&ca_params, &ca_key);
         let server_cert = server_params
-            .signed_by(&server_key, &ca_cert, &ca_key)
+            .signed_by(&server_key, &ca_issuer)
             .unwrap();
 
         let dir = tempfile::tempdir().unwrap();

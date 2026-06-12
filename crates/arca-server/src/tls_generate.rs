@@ -28,6 +28,12 @@ pub fn generate(output_dir: &Path, sans: &str, days: u32) -> Result<()> {
     ca_dn.push(rcgen::DnType::OrganizationName, "Arca");
     ca_params.distinguished_name = ca_dn;
     ca_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+    // OpenSSL strict verification (the default from Python 3.13) refuses a CA
+    // certificate without the KeyUsage extension asserting keyCertSign.
+    ca_params.key_usages = vec![
+        rcgen::KeyUsagePurpose::KeyCertSign,
+        rcgen::KeyUsagePurpose::CrlSign,
+    ];
     ca_params.not_after = time::OffsetDateTime::now_utc()
         + time::Duration::days(i64::from(days) * 2);
     let ca_cert = ca_params
@@ -44,10 +50,15 @@ pub fn generate(output_dir: &Path, sans: &str, days: u32) -> Result<()> {
     server_dn.push(rcgen::DnType::OrganizationName, "Arca");
     server_params.distinguished_name = server_dn;
     server_params.subject_alt_names = san_types;
+    // Modern verifiers (OpenSSL 3.x strict mode, as shipped by current
+    // Python/curl) refuse CA-issued certs without an Authority Key
+    // Identifier; rcgen does not emit it by default.
+    server_params.use_authority_key_identifier_extension = true;
     server_params.not_after = time::OffsetDateTime::now_utc()
         + time::Duration::days(i64::from(days));
+    let ca_issuer = rcgen::Issuer::from_params(&ca_params, &ca_key);
     let server_cert = server_params
-        .signed_by(&server_key, &ca_cert, &ca_key)
+        .signed_by(&server_key, &ca_issuer)
         .context("signing server certificate")?;
 
     // --- Write files ---
@@ -110,6 +121,12 @@ pub fn generate_cluster(output_dir: &Path, nodes: &[String], days: u32) -> Resul
     ca_dn.push(rcgen::DnType::OrganizationName, "Arca");
     ca_params.distinguished_name = ca_dn;
     ca_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+    // OpenSSL strict verification (the default from Python 3.13) refuses a CA
+    // certificate without the KeyUsage extension asserting keyCertSign.
+    ca_params.key_usages = vec![
+        rcgen::KeyUsagePurpose::KeyCertSign,
+        rcgen::KeyUsagePurpose::CrlSign,
+    ];
     ca_params.not_after =
         time::OffsetDateTime::now_utc() + time::Duration::days(i64::from(days) * 2);
     let ca_cert = ca_params
@@ -124,6 +141,7 @@ pub fn generate_cluster(output_dir: &Path, nodes: &[String], days: u32) -> Resul
         .with_context(|| format!("writing {}", ca_key_path.display()))?;
 
     // --- Per-node certificates ---
+    let ca_issuer = rcgen::Issuer::from_params(&ca_params, &ca_key);
     for (name, sans) in &specs {
         let key = KeyPair::generate()
             .with_context(|| format!("generating key pair for node {name}"))?;
@@ -140,10 +158,12 @@ pub fn generate_cluster(output_dir: &Path, nodes: &[String], days: u32) -> Resul
             rcgen::ExtendedKeyUsagePurpose::ServerAuth,
             rcgen::ExtendedKeyUsagePurpose::ClientAuth,
         ];
+        // Same AKI rationale as the server certificate above.
+        params.use_authority_key_identifier_extension = true;
         params.not_after =
             time::OffsetDateTime::now_utc() + time::Duration::days(i64::from(days));
         let cert = params
-            .signed_by(&key, &ca_cert, &ca_key)
+            .signed_by(&key, &ca_issuer)
             .with_context(|| format!("signing certificate for node {name}"))?;
 
         let cert_path = output_dir.join(format!("{name}.crt"));
@@ -272,17 +292,13 @@ mod tests {
         }
 
         // The node cert + CA parse as certificates, the keys as private keys.
+        use rustls::pki_types::pem::PemObject;
         let cert_data = std::fs::read(dir.path().join("arca-1.crt")).unwrap();
-        let mut cursor = &cert_data[..];
-        let certs: Vec<_> = rustls_pemfile::certs(&mut cursor)
+        let certs: Vec<_> = rustls::pki_types::CertificateDer::pem_slice_iter(&cert_data)
             .collect::<std::result::Result<Vec<_>, _>>()
             .unwrap();
         assert_eq!(certs.len(), 1);
         let key_data = std::fs::read(dir.path().join("arca-1.key")).unwrap();
-        let mut cursor = &key_data[..];
-        assert!(matches!(
-            rustls_pemfile::read_one(&mut cursor),
-            Ok(Some(rustls_pemfile::Item::Pkcs8Key(_)))
-        ));
+        assert!(rustls::pki_types::PrivatePkcs8KeyDer::from_pem_slice(&key_data).is_ok());
     }
 }
