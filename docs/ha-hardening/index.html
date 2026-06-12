@@ -1665,8 +1665,8 @@
 </tr>
 <tr>
 <td>H9</td>
-<td><strong>D6 console via server-side proxy</strong>: a <code>?node=&lt;node_id&gt;</code> parameter on the per-node admin endpoints (audit/metrics/events), internal proxying via <code>ClusterClient</code>. Avoids CORS and browser-unreachable endpoints.</td>
-<td>⚠ recommended, confirm with Pietro at the start of R8</td>
+<td><strong>D6 console via server-side proxy</strong>: a <code>?node=&lt;node_id&gt;</code> parameter on the per-node admin endpoints, internal proxying via <code>ClusterClient</code>. Avoids CORS and browser-unreachable endpoints (typical deployment: only the LB is exposed). As confirmed, three refinements: <strong>(a)</strong> transport = server-side proxy (direct browser-to-node calls rejected); <strong>(b)</strong> scope = ALL FOUR node-local view families — audit log, metrics history, notification event log, AND the Phase 28 replication journal (node-local by design, same behind-the-LB problem, added beyond the original plan); <strong>(c)</strong> the node selector also offers an <strong>"All nodes"</strong> merged view (entries from every live node fused by timestamp, each labeled with its source node), not just single-node selection.</td>
+<td>✅ confirmed by Pietro (2026-06-12): proxy + all 4 views + "All nodes" merge</td>
 </tr>
 <tr>
 <td>H10</td>
@@ -1801,12 +1801,14 @@
 <p><em>Outcome: a re-entering node serves no wrong answers; the operator sees lag and anomalies; the worker neither stalls nor monopolizes.</em></p>
 <hr />
 <h2 id="r8-console-per-node-views-behind-the-lb">R8 — Console: per-node views behind the LB<a class="headerlink" href="#r8-console-per-node-views-behind-the-lb" title="Permanent link">&para;</a></h2>
+<p>Decision H9 confirmed by Pietro (2026-06-12) on all three axes: server-side proxy; all FOUR node-local view families (the replication journal joins the original three); an "All nodes" merged option in the selector.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D6 (decision H9, to be confirmed)</strong>: a <code>?node=&lt;node_id&gt;</code> parameter on the per-node admin endpoints (<code>/admin/audit</code>, <code>/admin/metrics/history</code>, notification event log): when present and ≠ self, the node proxies the request to the peer via <code>ClusterClient</code> (short timeout, clear error when the peer is down).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Console: a node selector in the audit/monitoring/events views (populated from <code>/admin/cluster</code>, default "this node via LB" with the source <code>node_id</code> always visible). Go through the frontend-design skill; replicate the existing view filter patterns EXACTLY; a coherence sweep across all the per-node views.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D6 (decision H9)</strong>: a <code>?node=&lt;node_id&gt;</code> parameter on the four node-local admin endpoint families — <code>/admin/audit</code>, <code>/admin/metrics/history</code>, the notification event log, and the replication journal: when present and ≠ self, the node proxies the request to the peer via <code>ClusterClient</code> (short timeout, clear error when the peer is down; only ELIGIBLE peers are valid targets, consistent with every other H12 gate).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong><code>?node=all</code> merged view</strong>: the entry node fans the same query out to every eligible peer (plus itself), merges the entries by timestamp and labels each with its source <code>node_id</code>. Pagination is per-source-page (the merge returns the newest page-size entries across nodes); document the approximation honestly in the API/manual rather than building cross-node cursors.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Console: a node selector in the audit/monitoring/events/replication-journal views (populated from <code>/admin/cluster</code>: live nodes + "All nodes"; default "this node via LB" with the source <code>node_id</code> always visible; in the merged view every row shows its node). Go through the frontend-design skill; replicate the existing view filter patterns EXACTLY; a coherence sweep across all the per-node views.</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Screenshots + console manual (<code>documentation/docs/guide/console.md</code> + <code>bin/screenshots</code>) if the UI changes visibly.</li>
 </ul>
-<p><em>Outcome: the operator always knows WHICH node they are looking at and can pick it, without depending on round-robin luck.</em></p>
+<p><em>Outcome: the operator always knows WHICH node they are looking at and can pick it (or see all of them merged), without depending on round-robin luck.</em></p>
 <hr />
 <h2 id="r9-documentation-deploy-and-closure">R9 — Documentation, deploy and closure<a class="headerlink" href="#r9-documentation-deploy-and-closure" title="Permanent link">&para;</a></h2>
 <ul class="task-list">
