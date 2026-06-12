@@ -573,6 +573,65 @@ run_cluster() {
         $C down -v 2>/dev/null || true
     fi
 
+    if [[ $rc -eq 0 ]]; then
+        echo "── Phase L: proactive blob repair + tombstone-GC liveness guard (§5.4) ──"
+        # gc overlay: identical config with tombstone_grace_seconds = 20, so the
+        # §3.2 guard is observable within the run. First half: the seeded
+        # object's payload file is deleted straight from node 3's volume and
+        # must come back via the PROACTIVE repair sweep — the volume is polled
+        # shell-side, never with a GET, which would trigger the lazy
+        # read-repair and mask the sweep under test. Second half: an object
+        # deleted while node 3 is down beyond the grace must block tombstone
+        # GC on the survivors and stay deleted everywhere at node 3's return.
+        local CGC="$C -f docker/docker-compose.cluster.gc.yml"
+        local VOL="arca-cluster_arca-3-data"
+        $CGC up -d
+        wait_live 9001 3 90 || rc=1
+        [[ $rc -eq 0 ]] && { $CGC run --rm --no-deps test "$T" -m cluster_blob_repair_seed -v "$@" || rc=$?; }
+        if [[ $rc -eq 0 ]]; then
+            local blob
+            blob="$(docker run --rm -v $VOL:/data alpine find /data/blobs -type f ! -name '*.meta')"
+            if [[ -z "$blob" || "$(wc -l <<<"$blob")" -ne 1 ]]; then
+                echo "Expected exactly one payload blob on arca-3, got:" "$blob"
+                rc=1
+            else
+                echo "Deleting $blob from arca-3's volume..."
+                docker run --rm -v $VOL:/data alpine rm "$blob" || rc=1
+                # The sweep runs every 10 anti-entropy ticks (5s each in the
+                # test config): allow two full cadences plus the fetch.
+                local waited=0 restored=1
+                while [[ $rc -eq 0 && $waited -lt 120 ]]; do
+                    if docker run --rm -v $VOL:/data alpine test -f "$blob" 2>/dev/null; then
+                        restored=0
+                        break
+                    fi
+                    sleep 5
+                    waited=$((waited + 5))
+                done
+                if [[ $rc -eq 0 && $restored -ne 0 ]]; then
+                    echo "Proactive blob repair did not restore $blob within 120s"
+                    rc=1
+                elif [[ $rc -eq 0 ]]; then
+                    echo "Blob restored by the proactive repair sweep after ~${waited}s."
+                fi
+            fi
+            [[ $rc -eq 0 ]] && { $CGC run --rm --no-deps test "$T" -m cluster_blob_repair_verify -v "$@" || rc=$?; }
+        fi
+        [[ $rc -eq 0 ]] && { $CGC run --rm --no-deps test "$T" -m cluster_gc_seed -v "$@" || rc=$?; }
+        if [[ $rc -eq 0 ]]; then
+            $CGC stop arca-3
+            wait_live 9001 2 60 || rc=1
+            [[ $rc -eq 0 ]] && { $CGC run --rm --no-deps test "$T" -m cluster_gc_blocked -v "$@" || rc=$?; }
+        fi
+        if [[ $rc -eq 0 ]]; then
+            $CGC start arca-3
+            wait_live 9001 3 90 || rc=1
+            [[ $rc -eq 0 ]] && { $CGC run --rm --no-deps test "$T" -m cluster_gc_recovered -v "$@" || rc=$?; }
+        fi
+        dump_logs_on_failure $rc $CGC
+        $CGC down -v 2>/dev/null || true
+    fi
+
     trap - EXIT
     cleanup_cluster
     return $rc

@@ -93,7 +93,7 @@ Two anomalies in the same area are detected and handled rather than left to rot:
 Two policies, set per cluster with `[cluster].mode`:
 
 - **`quorum` (CP, default)** — a write is acknowledged only when a **majority** of nodes (`floor(cluster_size/2) + 1`) durably hold it *at acknowledgement time*: the local copy plus every peer that confirmed, in its replication response, that it applied the row **and** has the blob. Two layers enforce this: a fast admission gate refuses immediately (`503 ServiceUnavailable`, with `Retry-After`) when membership already knows a majority is unreachable, and the fan-out ACK count catches what the gate cannot see — a peer believed alive that did not actually receive the copy. Only **eligible** nodes count toward the majority: alive, *authenticated* (proved possession of the cluster secret on their last probe) and *config-aligned* — a node that could not correctly hold the replicas cannot vouch for them. The same admission gate also **fails closed when MORE eligible nodes than `cluster_size` are observed** (`size_exceeded` on `/admin/cluster`): the majority is derived from `cluster_size`, so an over-sized membership — say a 4th node started with the 3-node config — would let two disjoint "majorities" accept conflicting writes. With `cluster_size = 3` the write quorum is `2`: the cluster tolerates losing **one** node and keeps serving reads and writes.
-- **`available` (AP)** — any single node accepts writes and fans out best-effort. Maximum availability, at the cost of accepting writes that may momentarily diverge and converge later.
+- **`available` (AP)** — any single node accepts writes and fans out best-effort. Maximum availability, at the cost of two consequences that must be stated plainly. **Conflicts are silent**: concurrent writes to the same key on disconnected nodes are *both* acknowledged with `200 OK`, but only the LWW winner survives the merge — the losing write is discarded with no error ever reported to its client. **Durability is single-copy until the fan-out lands (RPO > 0)**: the acknowledgement requires only the local copy, so with peers down or partitioned away, acknowledged writes accumulate on one disk; losing that disk before anti-entropy replicates them loses them permanently. Choose `available` only where both are acceptable (caches, ingest buffers, data reproducible upstream).
 
 !!! warning "A quorum error does not undo the write"
     When a write fails the quorum (`503`), the copy already written on the serving node is **not rolled back** — as in any quorum system without distributed transactions, the error means *"not acknowledged as replicated"*, not *"undone"*. Anti-entropy will propagate that local copy to the peers (it survives), or a client retry simply overwrites it. What the quorum guarantees is the converse: every write acknowledged with `200 OK` is durable on a majority of nodes at that moment.
@@ -113,7 +113,7 @@ flowchart LR
 
 In `quorum` the cluster trades availability for safety at the majority boundary; in `available` it keeps accepting writes the whole way down. Across nodes both modes converge **eventually**: reads are always served locally, reconcile is asynchronous, and conflicts resolve **last-writer-wins (LWW)**. The LWW key is `(last_modified, version_id, blob_id)` — the `blob_id` is a stable tiebreaker so two nodes that wrote the "same" null-version object at the same wall-clock instant still pick the same winner deterministically, without a coordination protocol. Object Lock changes (retention, legal hold) are the one in-place mutation that does *not* bump `last_modified` (matching S3), so they carry their own LWW dimension: a per-row lock-change timestamp that orders two copies of the same version whose key ties — a stale lock-free copy re-applied by a returning node can never overwrite a newer lock state. The difference is which writes can conflict at all: in `quorum` mode every *acknowledged* write reached a majority, so two acknowledged writes to the same key cannot be accepted on two disconnected sides of a partition — LWW only ever has to resolve a client-visible conflict in `available` mode (or against writes the client was told did not reach quorum).
 
-> **Read-after-write:** within a single node it is immediate. Across the cluster (through a round-robin load balancer) a read may briefly hit a node that has not yet received the write. Pin a client to one node (LB sticky sessions) if you need read-your-writes through the balancer.
+> **What quorum mode does and does not promise about reads.** Reads are always served by the node that receives them (R = 1, by design — the read path stays coordination-free). With W = majority and R = 1, a read is not guaranteed to intersect the write majority: **quorum mode prevents conflicting *writes*; it does not make *reads* linearizable.** Concretely, the staleness window has two very different sizes. In normal operation it is the fan-out lag — writes replicate synchronously, so a read through a round-robin balancer only rarely beats its write to a node. **During a partition, though, a minority node keeps serving reads** (deliberately — see the load-balancer section) **and its data ages for the partition's whole duration**: a client routed there reads stale values with full confidence, even in quorum mode. If you need read-your-writes through the balancer, pin each client to one node — the shipped HAProxy configs carry a commented `balance source` sticky alternative as the reference.
 
 ### Background workers — one leader for shared work, every node for its own
 
@@ -178,7 +178,7 @@ The 3 nodes share one symmetric config (`docker/cluster/config.toml`, `mode = "q
 
 - **Console** — the dashboard **Cluster Topology** card shows the consistency mode (Quorum·W=N / Available), the write status (Writable / Read-only when quorum is lost), an amber notice while the node is [syncing](#node-re-entry-the-syncing-readiness-gate), and every node with a green/red status dot, the local-node badge, endpoint, last-seen time, and amber per-node `sync lag` / `skipped` indicators when non-zero. The Server card's *Topology* field summarises it as `Cluster · live/total`.
 - **`GET /admin/cluster`** (admin SigV4) — JSON the console consumes: `mode`, `write_quorum`, `has_write_quorum`, `live_node_count`, `eligible_node_count` (nodes the write quorum is measured against: alive + authenticated + config-aligned), `node_count`, `config_aligned`, `size_exceeded`, `tombstone_gc_blocked`, `worker_leader` (whether THIS node runs the [cluster-singleton background work](#background-workers-one-leader-for-shared-work-every-node-for-its-own) — exactly one node says `true` in a stable cluster), `syncing` (the [readiness gate](#node-re-entry-the-syncing-readiness-gate)), and the `nodes` list (each with `alive`, `authenticated`, `config_ok`, `last_seen` — kept on dead nodes, showing the last successful contact — and, on peers, `sync`: this node's pull state toward the peer — `hwm` cursor, `lag` still to pull, `last_reconcile`, `first_pass_done`, `skipped_entries`). Returns `{"enabled": false}` on a single-node deployment.
-- **`GET /admin/health?verbose=1`** (unauthenticated) — liveness plus the cluster snapshot, handy for scripts and load-balancer debugging; it always answers `200`, with the state in `status` (`ok` / `syncing` / `draining`). The plain `GET /admin/health` (200, or 503 on drain/sync) is the load-balancer check.
+- **`GET /admin/health?verbose=1`** (unauthenticated) — liveness plus the cluster snapshot, handy for scripts and load-balancer debugging; it always answers `200`, with the state in `status` (`ok` / `syncing` / `draining` / `read_only`). The plain `GET /admin/health` (200, or 503 on drain/sync) is the load-balancer check; `GET /admin/health?writable=1` is its write-aware variant (also 503 — `read_only` — while the write gate is closed), for a [separate write pool](#load-balancer).
 
 ### Per-node views (audit, metrics, events, replication journal)
 
@@ -216,20 +216,25 @@ The cluster does **not** refuse to start or auto-isolate the peer's process — 
 
 ### Load balancer
 
-Put any L7/L4 balancer in front and health-check `GET /admin/health` (200 = up; 503 = draining or [syncing](#node-re-entry-the-syncing-readiness-gate) → out of rotation). The reference HAProxy backend:
+Put any L7/L4 balancer in front and health-check `GET /admin/health` (200 = up; 503 = draining or [syncing](#node-re-entry-the-syncing-readiness-gate) → out of rotation). The reference HAProxy backend (matching `deploy/haproxy/haproxy.cfg`; `fall 3 rise 2` rides out a transient blip without flapping the pool — the test/demo config under `docker/cluster/` uses a faster `fall 2 rise 1` instead):
 
 ```haproxy
 backend arca_nodes
-    balance roundrobin
+    balance roundrobin          # or `balance source` for sticky read-your-writes
     option httpchk
     http-check send meth GET uri /admin/health
     http-check expect status 200
-    server arca-1 10.0.0.1:9000 check inter 2s fall 2 rise 1
-    server arca-2 10.0.0.2:9000 check inter 2s fall 2 rise 1
-    server arca-3 10.0.0.3:9000 check inter 2s fall 2 rise 1
+    server arca-1 10.0.0.1:9000 check inter 2s fall 3 rise 2
+    server arca-2 10.0.0.2:9000 check inter 2s fall 3 rise 2
+    server arca-3 10.0.0.3:9000 check inter 2s fall 3 rise 2
 ```
 
-For an active/passive VIP, pair HAProxy with keepalived. In Kubernetes, run a `StatefulSet` of 3 replicas with a headless `Service` and `discovery = "dns"` pointed at it; front it with a normal `Service` / Ingress.
+**A read-only node stays in rotation — and what that costs.** A node that lost the write quorum still answers 200 on the default health check, *on purpose*: it can serve every read, and evicting it would throw that capacity away. The cost surfaces on the write path: while the cluster is degraded, a round-robin balancer keeps routing ~1/N of the writes to the read-only node, and each one fails with `503 ServiceUnavailable` (+ `Retry-After`) **at the client**. In practice the AWS SDKs mask this — they retry 5xx by default, and the retried request lands on a writable node — but a thin client without retries sees the failures. Two mitigations, choose per deployment:
+
+- **SDK retries** (default posture): nothing to configure; accept the retried-write latency during degradation.
+- **A write-aware pool**: `GET /admin/health?writable=1` additionally answers `503 {"status":"read_only"}` while the node's write gate is closed (quorum lost, size exceeded). Health-check a *second* balancer pool with it and route write methods (`PUT`/`POST`/`DELETE`) there: read-only nodes drop out of the write pool while staying in the default one for reads. Both shipped HAProxy configs carry this as a commented `arca_writable` backend. (Single-node deployments and `available` mode always answer 200 — the gate never closes there.)
+
+For an active/passive VIP, pair HAProxy with keepalived. In Kubernetes, run a `StatefulSet` of 3 replicas with a headless `Service` and `discovery = "dns"` pointed at it; front it with a normal `Service` / Ingress. The shipped manifest's readiness probe runs every 5s with `failureThreshold: 2` (a crashed pod receives traffic for ~10s at most) and — since readiness reflects [syncing](#node-re-entry-the-syncing-readiness-gate) — the liveness probe deliberately uses `?verbose=1`, which always answers 200 on a live process: a pod must not be killed for being mid-catch-up.
 
 ### A note on the load balancer being a SPOF
 
@@ -253,6 +258,45 @@ $ arca tls generate-cluster --output-dir /etc/arca/certs/cluster \
 
 Copy `arca-cluster-ca.crt` (and each node's own cert/key) to the nodes and point both `[server.tls]` and `[cluster.tls]` at them — see the TOML reference below. Keep `arca-cluster-ca.key` offline: it is only needed to mint certificates for new nodes. The same node certificate serves the S3 listener too, so S3 clients must trust the CA (`aws --ca-bundle arca-cluster-ca.crt`); if you prefer a public certificate for S3 clients, keep it in `[server.tls]` — the peers' clients trust the cluster CA *in addition to* the system roots, so both layouts work. Operators with their own PKI can supply equivalent material (a dedicated CA; per-node certs with serverAuth + clientAuth) instead of using the generator.
 
+### Object Lock (WORM) in a cluster: the trust model
+
+Object Lock (retention, legal hold) enforcement happens where the client request lands: the origin node refuses the delete/overwrite of a locked version, and what it *replicates* is applied by its peers **verbatim** — the receive path re-runs no lock checks (correct between trusted peers: re-deriving the verdict on every node would just re-run the same code on the same replicated state). The consequence belongs in your threat model:
+
+- **Compliance-mode immutability rests on the integrity of the cluster surface, not on any single node.** An actor holding the cluster secret (and, over HTTPS, a cluster-CA-signed key) can speak `/cluster/v1/*` directly and replicate a tombstone for a locked object — every node applies it, cluster-wide, bypassing the S3-level enforcement entirely. The same is true of root access on any one node (it holds a full copy and the secret in its config).
+- This is not weaker than single-node Arca in kind — root on a single node could always edit the database under the lock — but the cluster **widens the surface**: N machines, a shared secret, and a network protocol now stand behind the WORM guarantee.
+- Posture for compliance deployments: treat `[cluster].secret` and the cluster CA key as regulated-material credentials (generation, storage, rotation — see the runbook below); run the cluster network as an isolated segment **and** enable mutual TLS anyway (defense in depth: the secret alone must not be sufficient from outside the segment); restrict and audit OS access to every node, because each one is a complete copy of the WORM store.
+
+## Operational runbooks
+
+The procedures an operator actually performs over a cluster's life. Each one leans on machinery described above (the syncing gate, rewind detection, the D3a size guard, dual-secret auth) — the runbook is the order of operations.
+
+### Replacing a dead node
+
+A node is gone for good (hardware loss, decommission). Replacing it with an **empty disk is safe by construction** — an empty node has nothing stale to resurrect, and the [syncing readiness gate](#node-re-entry-the-syncing-readiness-gate) keeps it out of rotation until it holds everything its peers do:
+
+1. Provision the new machine with the **same, byte-identical config** (symmetry invariant — there is no per-node config to adapt) and an **empty data directory**. Do *not* seed it from the dead node's disk or backup; that is the [restore](#restoring-a-node-from-backup) procedure, with different caveats.
+2. Start it. It generates a fresh `node_id`, is discovered like any candidate, authenticates, and starts pulling. `/admin/health` answers `503 syncing` — the LB sends it nothing — while `/admin/cluster` on any peer shows the pull progressing (`sync.hwm` against the peers' cursors).
+3. The moment its health turns `200`, the node is as complete as its peers. Done.
+4. The dead node's entry lingers in membership (visible, dead) and **blocks tombstone GC** (`tombstone_gc_blocked`) until `peer_prune_days` evicts it — expected and harmless. If the old machine could ever come back (it was not destroyed), wipe it or keep it off the network: a node returning *beyond* the tombstone grace can resurrect deletions (see [trade-offs](#design-trade-offs-and-honest-limitations)).
+
+### Restoring a node from backup
+
+Restoring rewinds the node's write cursor (`seq`), and the peers' incremental sync would normally never look backwards. The cluster detects this on its own: each node advertises its cursor on the authenticated ping, and a peer observing it *below* what it already consumed resets its high-water mark and re-pulls in full (one idempotent pass, logged as a warning). So the procedure is plain:
+
+1. Stop the node (if it still runs); restore the data directory from the backup; start it.
+2. It re-enters syncing (pulls everything it missed since the backup was taken); peers detect the rewind and re-pull its manifest. Convergence is automatic in both directions.
+3. **Check the backup's age against `tombstone_grace_days` first.** Objects deleted cluster-wide more than the grace *before the restore* have no tombstones left to teach the restored copy — they would resurrect. A backup older than the grace should not be restored into the cluster: prefer the [empty-disk replacement](#replacing-a-dead-node), which re-pulls only live state.
+
+### Resizing the cluster
+
+`cluster_size` derives the write quorum, so it must change **everywhere at once** — a rolling resize produces mixed quorum thresholds by construction, and the cluster actively defends against the resulting split-brain: in quorum mode, a node observing more eligible nodes than its configured `cluster_size` **fails writes closed** (`size_exceeded` on `/admin/cluster`, distinct 503). Starting a 4th node against a 3-node config therefore stops writes; it does not corrupt anything. The supported procedure is cold:
+
+1. Stop all nodes (or accept a write outage for the duration).
+2. Set the new `cluster_size` in the config of **every** node, existing and new — byte-identical as always.
+3. Start all nodes (new ones with empty disks join exactly like a [replacement](#replacing-a-dead-node)). Drift detection flags any node missed in step 2 (the fingerprint includes `cluster_size`).
+
+Shrinking follows the same shape: stop, lower `cluster_size` everywhere, remove the retired nodes' configs from the seed list (static discovery), start. Wipe retired machines — see the replacement runbook's note 4.
+
 ### Rotating the cluster secret
 
 The optional `[cluster] secret_previous` makes a secret rotation a rolling operation instead of a full-cluster restart:
@@ -260,6 +304,25 @@ The optional `[cluster] secret_previous` makes a secret rotation a rolling opera
 1. On every node set `secret_previous` to the current secret and `secret` to the new one.
 2. Rolling-restart the nodes. Inbound authentication accepts both secrets, so replication keeps flowing in both directions across the window; outbound signing always uses the new secret. Expect transient `config_ok: false` flags while versions of the config coexist (the drift fingerprint includes the secret): nodes already on the new secret form the writable majority as soon as there are enough of them, exactly like a rolling upgrade.
 3. When all nodes run the new secret, remove `secret_previous` (no restart urgency: it is inert once nothing signs with it, but leaving the old secret valid forever defeats the rotation).
+
+### Coherent backups
+
+A node's data directory holds the blobs **and** the metadata database (SQLite in WAL mode by default): a backup must capture them coherently.
+
+- **Preferred — filesystem snapshot.** An atomic snapshot of the whole data directory (LVM, ZFS, cloud disk snapshot) is crash-consistent: SQLite recovers from its WAL on open, and Arca's storage write order (blob file → sidecar → DB row) means the worst case is an orphan blob, which `arca fsck` reports and the GC reclaims. Never file-copy a *live* `.db` alone — without the WAL it is torn.
+- **Equally safe — back up a stopped node.** Stop one node (the cluster keeps serving on the survivors), copy the data directory, restart it; it catches up via anti-entropy and the syncing gate covers its re-entry. One node at a time, and the backup window must stay well inside `tombstone_grace_days`.
+- **PostgreSQL backend**: back up the database with the usual PostgreSQL tooling (`pg_dump`, base backups) *plus* the blob directory; the same snapshot-coherence reasoning applies.
+- In a full-replication cluster every node is a complete copy, so backing up **one** node backs up the dataset — but see [Restoring a node from backup](#restoring-a-node-from-backup) for the age caveat before relying on old media.
+
+### Forming a cluster from non-empty nodes
+
+Enabling `[cluster]` on a node that already has data is supported and is the normal way to grow from one node ([prerequisites](#prerequisites)). Joining **two or more already-populated** single-nodes into one cluster, though, is an implicit **union + LWW merge of everything** — objects, buckets, users, credentials, settings — with no preview and no undo:
+
+- Keys that exist on both sides resolve last-writer-wins, silently: one side's copy disappears.
+- Control-plane entities merge by the same rule — including credentials and grants, so the merged cluster's access surface is the union of both.
+- Encrypted data requires the **same master key** on both sides beforehand (drift detection refuses the merge traffic otherwise, but only after the nodes already see each other).
+
+Discouraged unless the datasets are known to be disjoint. The safe alternative: pick ONE node as the survivor, join empty nodes to it, and copy the other dataset in through the S3 API (or [replication](replication.md)) where conflicts are explicit.
 
 ## Design trade-offs (and honest limitations)
 
@@ -270,7 +333,7 @@ This section exists so you can judge the approach, not just use it.
 - **No hinted-handoff.** Larger clusters (Cassandra et al.) buffer writes for absent nodes. At N=3 with full replication, frequent incremental anti-entropy plus read-repair recover an absent node quickly enough that the extra machinery isn't worth it.
 - **Control-plane catch-up is complete (hardening R5).** Every control-plane family reconciles via the periodic snapshot merge, deletions included: credentials, users, teams, grants and buckets, *and* their associations and settings — team memberships, grant attachments, `bucket_config` keys, bucket tag sets (the whole set is one LWW entity, matching `PutBucketTagging`'s replace-all semantics), cluster-wide server settings — plus in-progress multipart uploads with their parts. A node that was down during ANY of those changes fully self-heals at re-entry; a Complete/Abort that happened while it was away cannot resurrect (a `multipart` tombstone closes the upload), and a `CompleteMultipartUpload` landing on a node that is missing some part bytes fetches them from a peer before assembling. Object-Lock retention / legal-hold changes also reach a returning node (they stamp the anti-entropy cursor since R5). The brief window in which a *pairwise* exchange can transiently act on stale state before the deletion's tombstone arrives from its origin node is bounded by one anti-entropy cycle.
 - **Tombstone grace vs downtime.** A returning node must come back **within `tombstone_grace_days`** (default 7) to learn of deletions that happened while it was away. The GC liveness guard keeps tombstones around *while the absent node is still remembered* (it blocks the purge and flags `tombstone_gc_blocked`), but once the node is pruned from membership (`peer_prune_days`, default = the grace) the tombstones it never saw are reclaimed — a node returning **beyond** the grace can still resurrect deleted data. Set the grace longer than your worst-case planned downtime. The guard's memory is also process-local: it cannot account for peers that vanished before the current process started.
-- **Clock dependence.** LWW uses wall-clock time; run NTP. A hybrid logical clock is possible future hardening.
+- **Clock dependence.** LWW uses wall-clock time; run NTP. A hybrid logical clock is possible future hardening. Note an honest test limitation: the integration suite exercises partitions, node loss and re-entry, but **not clock skew** — the NTP prerequisite is asserted by documentation, not by an automated test.
 - **Rolling upgrades across the peer-authentication boundary.** A pre-ping (≤ 0.25.x) peer cannot prove possession of the secret, so an upgraded node treats it as alive-but-not-eligible: no fan-out toward it, no quorum contribution. Practical consequence in a 3-node `quorum` cluster: the **first** upgraded node refuses writes (`503`) until a **second** node is upgraded (the load balancer routes around it; legacy nodes keep accepting writes and their own fan-out/anti-entropy keep all data converging). On an **HTTPS** cluster the upgrade also introduces `[cluster.tls]` (mandatory), and the upgraded node additionally rejects inbound cluster requests from peers that present no client certificate — so legacy pushes toward it fail until those peers are upgraded too, and it catches up via anti-entropy afterwards. Complete the rolling upgrade promptly rather than running mixed versions for long.
 
 ## TOML configuration reference
@@ -299,6 +362,9 @@ health_interval_seconds       = 3     # peer probe cadence (authenticated ping)
 anti_entropy_interval_seconds = 5     # reconcile pass cadence
 request_timeout_seconds       = 30    # inter-node HTTP timeout
 tombstone_grace_days          = 7     # MUST exceed worst-case node downtime
+# tombstone_grace_seconds = 60        # advanced: seconds-granularity override
+                                      # of the grace (tests/demos only —
+                                      # production sizes it in days)
 peer_prune_days               = 7     # evict peers unreachable this long
                                       # (optional; default = tombstone_grace_days)
 blob_repair_budget            = 100   # max blob fetches per repair tick

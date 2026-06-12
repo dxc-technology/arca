@@ -38,6 +38,11 @@ def pytest_configure(config):
         ("cluster_syncing_readiness", "requires node 3 just restarted (no wait): observes 503 syncing, then 200 with the data present"),
         ("cluster_node_views_full", "requires all 3 up; verifies the R8 ?node= admin proxy and merged view"),
         ("cluster_node_views_degraded", "requires node 3 down; verifies ?node= errors and merged-view degradation"),
+        ("cluster_blob_repair_seed", "requires the gc overlay with all 3 up; seeds the proactive blob-repair guinea pig"),
+        ("cluster_blob_repair_verify", "requires the runner to have observed the deleted payload file restored on node 3"),
+        ("cluster_gc_seed", "requires the gc overlay with all 3 up; seeds the tombstone-GC guinea pig"),
+        ("cluster_gc_blocked", "requires node 3 down beyond the 20s test grace; observes the \u00a73.2 GC guard"),
+        ("cluster_gc_recovered", "requires node 3 back up; verifies no resurrection and the guard releasing"),
     ]:
         config.addinivalue_line("markers", f"{name}: {desc}")
 

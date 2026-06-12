@@ -2232,6 +2232,11 @@
 <td>How long a delete tombstone is kept for convergence. MUST exceed the longest expected node downtime.</td>
 </tr>
 <tr>
+<td><code>cluster.tombstone_grace_seconds</code></td>
+<td>unset</td>
+<td>Advanced seconds-granularity override of <code>tombstone_grace_days</code> (≥ 1), for tests and demos that must observe tombstone GC within seconds. Production deployments size the grace in days.</td>
+</tr>
+<tr>
 <td><code>cluster.peer_prune_days</code></td>
 <td><code>tombstone_grace_days</code></td>
 <td>Evict a peer from membership after it has been unreachable this long (≥ 1). While remembered, an absent peer blocks tombstone GC; once pruned, a return beyond the grace risks resurrecting deleted data.</td>

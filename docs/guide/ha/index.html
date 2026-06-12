@@ -917,10 +917,93 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#object-lock-worm-in-a-cluster-the-trust-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Object Lock (WORM) in a cluster: the trust model
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operational-runbooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operational runbooks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Operational runbooks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#replacing-a-dead-node" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Replacing a dead node
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#restoring-a-node-from-backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Restoring a node from backup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resizing-the-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resizing the cluster
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#rotating-the-cluster-secret" class="md-nav__link">
     <span class="md-ellipsis">
       
         Rotating the cluster secret
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#coherent-backups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coherent backups
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#forming-a-cluster-from-non-empty-nodes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Forming a cluster from non-empty nodes
       
     </span>
   </a>
@@ -1742,10 +1825,93 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#object-lock-worm-in-a-cluster-the-trust-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Object Lock (WORM) in a cluster: the trust model
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operational-runbooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operational runbooks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Operational runbooks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#replacing-a-dead-node" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Replacing a dead node
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#restoring-a-node-from-backup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Restoring a node from backup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resizing-the-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resizing the cluster
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#rotating-the-cluster-secret" class="md-nav__link">
     <span class="md-ellipsis">
       
         Rotating the cluster secret
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#coherent-backups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coherent backups
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#forming-a-cluster-from-non-empty-nodes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Forming a cluster from non-empty nodes
       
     </span>
   </a>
@@ -1904,7 +2070,7 @@ them, and any node that takes a write replicates it to the others.</p>
 <p>Two policies, set per cluster with <code>[cluster].mode</code>:</p>
 <ul>
 <li><strong><code>quorum</code> (CP, default)</strong> — a write is acknowledged only when a <strong>majority</strong> of nodes (<code>floor(cluster_size/2) + 1</code>) durably hold it <em>at acknowledgement time</em>: the local copy plus every peer that confirmed, in its replication response, that it applied the row <strong>and</strong> has the blob. Two layers enforce this: a fast admission gate refuses immediately (<code>503 ServiceUnavailable</code>, with <code>Retry-After</code>) when membership already knows a majority is unreachable, and the fan-out ACK count catches what the gate cannot see — a peer believed alive that did not actually receive the copy. Only <strong>eligible</strong> nodes count toward the majority: alive, <em>authenticated</em> (proved possession of the cluster secret on their last probe) and <em>config-aligned</em> — a node that could not correctly hold the replicas cannot vouch for them. The same admission gate also <strong>fails closed when MORE eligible nodes than <code>cluster_size</code> are observed</strong> (<code>size_exceeded</code> on <code>/admin/cluster</code>): the majority is derived from <code>cluster_size</code>, so an over-sized membership — say a 4th node started with the 3-node config — would let two disjoint "majorities" accept conflicting writes. With <code>cluster_size = 3</code> the write quorum is <code>2</code>: the cluster tolerates losing <strong>one</strong> node and keeps serving reads and writes.</li>
-<li><strong><code>available</code> (AP)</strong> — any single node accepts writes and fans out best-effort. Maximum availability, at the cost of accepting writes that may momentarily diverge and converge later.</li>
+<li><strong><code>available</code> (AP)</strong> — any single node accepts writes and fans out best-effort. Maximum availability, at the cost of two consequences that must be stated plainly. <strong>Conflicts are silent</strong>: concurrent writes to the same key on disconnected nodes are <em>both</em> acknowledged with <code>200 OK</code>, but only the LWW winner survives the merge — the losing write is discarded with no error ever reported to its client. <strong>Durability is single-copy until the fan-out lands (RPO &gt; 0)</strong>: the acknowledgement requires only the local copy, so with peers down or partitioned away, acknowledged writes accumulate on one disk; losing that disk before anti-entropy replicates them loses them permanently. Choose <code>available</code> only where both are acceptable (caches, ingest buffers, data reproducible upstream).</li>
 </ul>
 <div class="admonition warning">
 <p class="admonition-title">A quorum error does not undo the write</p>
@@ -1921,7 +2087,7 @@ them, and any node that takes a write replicates it to the others.</p>
     classDef warn fill:#ffb30033,stroke:#fb8c00,stroke-width:2px;</code></pre>
 <p>In <code>quorum</code> the cluster trades availability for safety at the majority boundary; in <code>available</code> it keeps accepting writes the whole way down. Across nodes both modes converge <strong>eventually</strong>: reads are always served locally, reconcile is asynchronous, and conflicts resolve <strong>last-writer-wins (LWW)</strong>. The LWW key is <code>(last_modified, version_id, blob_id)</code> — the <code>blob_id</code> is a stable tiebreaker so two nodes that wrote the "same" null-version object at the same wall-clock instant still pick the same winner deterministically, without a coordination protocol. Object Lock changes (retention, legal hold) are the one in-place mutation that does <em>not</em> bump <code>last_modified</code> (matching S3), so they carry their own LWW dimension: a per-row lock-change timestamp that orders two copies of the same version whose key ties — a stale lock-free copy re-applied by a returning node can never overwrite a newer lock state. The difference is which writes can conflict at all: in <code>quorum</code> mode every <em>acknowledged</em> write reached a majority, so two acknowledged writes to the same key cannot be accepted on two disconnected sides of a partition — LWW only ever has to resolve a client-visible conflict in <code>available</code> mode (or against writes the client was told did not reach quorum).</p>
 <blockquote>
-<p><strong>Read-after-write:</strong> within a single node it is immediate. Across the cluster (through a round-robin load balancer) a read may briefly hit a node that has not yet received the write. Pin a client to one node (LB sticky sessions) if you need read-your-writes through the balancer.</p>
+<p><strong>What quorum mode does and does not promise about reads.</strong> Reads are always served by the node that receives them (R = 1, by design — the read path stays coordination-free). With W = majority and R = 1, a read is not guaranteed to intersect the write majority: <strong>quorum mode prevents conflicting <em>writes</em>; it does not make <em>reads</em> linearizable.</strong> Concretely, the staleness window has two very different sizes. In normal operation it is the fan-out lag — writes replicate synchronously, so a read through a round-robin balancer only rarely beats its write to a node. <strong>During a partition, though, a minority node keeps serving reads</strong> (deliberately — see the load-balancer section) <strong>and its data ages for the partition's whole duration</strong>: a client routed there reads stale values with full confidence, even in quorum mode. If you need read-your-writes through the balancer, pin each client to one node — the shipped HAProxy configs carry a commented <code>balance source</code> sticky alternative as the reference.</p>
 </blockquote>
 <h3 id="background-workers-one-leader-for-shared-work-every-node-for-its-own">Background workers — one leader for shared work, every node for its own<a class="headerlink" href="#background-workers-one-leader-for-shared-work-every-node-for-its-own" title="Permanent link">&para;</a></h3>
 <p>Arca runs several periodic background workers. In a cluster they fall into two classes, audited individually (hardening R6):</p>
@@ -1987,7 +2153,7 @@ them, and any node that takes a write replicates it to the others.</p>
 <ul>
 <li><strong>Console</strong> — the dashboard <strong>Cluster Topology</strong> card shows the consistency mode (Quorum·W=N / Available), the write status (Writable / Read-only when quorum is lost), an amber notice while the node is <a href="#node-re-entry-the-syncing-readiness-gate">syncing</a>, and every node with a green/red status dot, the local-node badge, endpoint, last-seen time, and amber per-node <code>sync lag</code> / <code>skipped</code> indicators when non-zero. The Server card's <em>Topology</em> field summarises it as <code>Cluster · live/total</code>.</li>
 <li><strong><code>GET /admin/cluster</code></strong> (admin SigV4) — JSON the console consumes: <code>mode</code>, <code>write_quorum</code>, <code>has_write_quorum</code>, <code>live_node_count</code>, <code>eligible_node_count</code> (nodes the write quorum is measured against: alive + authenticated + config-aligned), <code>node_count</code>, <code>config_aligned</code>, <code>size_exceeded</code>, <code>tombstone_gc_blocked</code>, <code>worker_leader</code> (whether THIS node runs the <a href="#background-workers-one-leader-for-shared-work-every-node-for-its-own">cluster-singleton background work</a> — exactly one node says <code>true</code> in a stable cluster), <code>syncing</code> (the <a href="#node-re-entry-the-syncing-readiness-gate">readiness gate</a>), and the <code>nodes</code> list (each with <code>alive</code>, <code>authenticated</code>, <code>config_ok</code>, <code>last_seen</code> — kept on dead nodes, showing the last successful contact — and, on peers, <code>sync</code>: this node's pull state toward the peer — <code>hwm</code> cursor, <code>lag</code> still to pull, <code>last_reconcile</code>, <code>first_pass_done</code>, <code>skipped_entries</code>). Returns <code>{"enabled": false}</code> on a single-node deployment.</li>
-<li><strong><code>GET /admin/health?verbose=1</code></strong> (unauthenticated) — liveness plus the cluster snapshot, handy for scripts and load-balancer debugging; it always answers <code>200</code>, with the state in <code>status</code> (<code>ok</code> / <code>syncing</code> / <code>draining</code>). The plain <code>GET /admin/health</code> (200, or 503 on drain/sync) is the load-balancer check.</li>
+<li><strong><code>GET /admin/health?verbose=1</code></strong> (unauthenticated) — liveness plus the cluster snapshot, handy for scripts and load-balancer debugging; it always answers <code>200</code>, with the state in <code>status</code> (<code>ok</code> / <code>syncing</code> / <code>draining</code> / <code>read_only</code>). The plain <code>GET /admin/health</code> (200, or 503 on drain/sync) is the load-balancer check; <code>GET /admin/health?writable=1</code> is its write-aware variant (also 503 — <code>read_only</code> — while the write gate is closed), for a <a href="#load-balancer">separate write pool</a>.</li>
 </ul>
 <h3 id="per-node-views-audit-metrics-events-replication-journal">Per-node views (audit, metrics, events, replication journal)<a class="headerlink" href="#per-node-views-audit-metrics-events-replication-journal" title="Permanent link">&para;</a></h3>
 <p>Four kinds of admin data are <strong>strictly node-local</strong> — each node records only what <em>it</em> served: the audit log, the metrics history, the notification event log, and the replication journal. Object data and the control plane replicate; these do not (by design — they answer "what did this node do"). Behind a load balancer that used to mean the console showed whichever node the LB picked, with nothing saying which.</p>
@@ -2016,17 +2182,22 @@ them, and any node that takes a write replicates it to the others.</p>
 <p>The cluster does <strong>not</strong> refuse to start or auto-isolate the peer's process — a node can't know its peers' config at startup, and one misconfigured node shouldn't take down the healthy ones. It surfaces the problem loudly and keeps running; you fix the config and the warning clears on its own. (Fields that legitimately differ per node — port, <code>advertise_addr</code>, <code>node_id</code>, seeds, intervals, storage backend — are deliberately excluded from the fingerprint.)</p>
 <h2 id="production-deployment">Production deployment<a class="headerlink" href="#production-deployment" title="Permanent link">&para;</a></h2>
 <h3 id="load-balancer">Load balancer<a class="headerlink" href="#load-balancer" title="Permanent link">&para;</a></h3>
-<p>Put any L7/L4 balancer in front and health-check <code>GET /admin/health</code> (200 = up; 503 = draining or <a href="#node-re-entry-the-syncing-readiness-gate">syncing</a> → out of rotation). The reference HAProxy backend:</p>
+<p>Put any L7/L4 balancer in front and health-check <code>GET /admin/health</code> (200 = up; 503 = draining or <a href="#node-re-entry-the-syncing-readiness-gate">syncing</a> → out of rotation). The reference HAProxy backend (matching <code>deploy/haproxy/haproxy.cfg</code>; <code>fall 3 rise 2</code> rides out a transient blip without flapping the pool — the test/demo config under <code>docker/cluster/</code> uses a faster <code>fall 2 rise 1</code> instead):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>backend arca_nodes
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    balance roundrobin
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    balance roundrobin          # or `balance source` for sticky read-your-writes
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    option httpchk
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    http-check send meth GET uri /admin/health
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    http-check expect status 200
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    server arca-1 10.0.0.1:9000 check inter 2s fall 2 rise 1
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    server arca-2 10.0.0.2:9000 check inter 2s fall 2 rise 1
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    server arca-3 10.0.0.3:9000 check inter 2s fall 2 rise 1
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    server arca-1 10.0.0.1:9000 check inter 2s fall 3 rise 2
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    server arca-2 10.0.0.2:9000 check inter 2s fall 3 rise 2
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    server arca-3 10.0.0.3:9000 check inter 2s fall 3 rise 2
 </code></pre></div>
-<p>For an active/passive VIP, pair HAProxy with keepalived. In Kubernetes, run a <code>StatefulSet</code> of 3 replicas with a headless <code>Service</code> and <code>discovery = "dns"</code> pointed at it; front it with a normal <code>Service</code> / Ingress.</p>
+<p><strong>A read-only node stays in rotation — and what that costs.</strong> A node that lost the write quorum still answers 200 on the default health check, <em>on purpose</em>: it can serve every read, and evicting it would throw that capacity away. The cost surfaces on the write path: while the cluster is degraded, a round-robin balancer keeps routing ~1/N of the writes to the read-only node, and each one fails with <code>503 ServiceUnavailable</code> (+ <code>Retry-After</code>) <strong>at the client</strong>. In practice the AWS SDKs mask this — they retry 5xx by default, and the retried request lands on a writable node — but a thin client without retries sees the failures. Two mitigations, choose per deployment:</p>
+<ul>
+<li><strong>SDK retries</strong> (default posture): nothing to configure; accept the retried-write latency during degradation.</li>
+<li><strong>A write-aware pool</strong>: <code>GET /admin/health?writable=1</code> additionally answers <code>503 {"status":"read_only"}</code> while the node's write gate is closed (quorum lost, size exceeded). Health-check a <em>second</em> balancer pool with it and route write methods (<code>PUT</code>/<code>POST</code>/<code>DELETE</code>) there: read-only nodes drop out of the write pool while staying in the default one for reads. Both shipped HAProxy configs carry this as a commented <code>arca_writable</code> backend. (Single-node deployments and <code>available</code> mode always answer 200 — the gate never closes there.)</li>
+</ul>
+<p>For an active/passive VIP, pair HAProxy with keepalived. In Kubernetes, run a <code>StatefulSet</code> of 3 replicas with a headless <code>Service</code> and <code>discovery = "dns"</code> pointed at it; front it with a normal <code>Service</code> / Ingress. The shipped manifest's readiness probe runs every 5s with <code>failureThreshold: 2</code> (a crashed pod receives traffic for ~10s at most) and — since readiness reflects <a href="#node-re-entry-the-syncing-readiness-gate">syncing</a> — the liveness probe deliberately uses <code>?verbose=1</code>, which always answers 200 on a live process: a pod must not be killed for being mid-catch-up.</p>
 <h3 id="a-note-on-the-load-balancer-being-a-spof">A note on the load balancer being a SPOF<a class="headerlink" href="#a-note-on-the-load-balancer-being-a-spof" title="Permanent link">&para;</a></h3>
 <p>The balancer is a single point of failure unless it is itself redundant (keepalived VIP, multiple ingress replicas, or a managed cloud LB). The Arca <em>cluster</em> survives node loss; make sure the entry point does too.</p>
 <h3 id="inter-node-transport-security-tls-mutual-tls">Inter-node transport security (TLS + mutual TLS)<a class="headerlink" href="#inter-node-transport-security-tls-mutual-tls" title="Permanent link">&para;</a></h3>
@@ -2042,6 +2213,38 @@ them, and any node that takes a write replicates it to the others.</p>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span>--node<span class="w"> </span>arca-3<span class="o">=</span>arca-3.internal,10.0.0.3
 </code></pre></div>
 <p>Copy <code>arca-cluster-ca.crt</code> (and each node's own cert/key) to the nodes and point both <code>[server.tls]</code> and <code>[cluster.tls]</code> at them — see the TOML reference below. Keep <code>arca-cluster-ca.key</code> offline: it is only needed to mint certificates for new nodes. The same node certificate serves the S3 listener too, so S3 clients must trust the CA (<code>aws --ca-bundle arca-cluster-ca.crt</code>); if you prefer a public certificate for S3 clients, keep it in <code>[server.tls]</code> — the peers' clients trust the cluster CA <em>in addition to</em> the system roots, so both layouts work. Operators with their own PKI can supply equivalent material (a dedicated CA; per-node certs with serverAuth + clientAuth) instead of using the generator.</p>
+<h3 id="object-lock-worm-in-a-cluster-the-trust-model">Object Lock (WORM) in a cluster: the trust model<a class="headerlink" href="#object-lock-worm-in-a-cluster-the-trust-model" title="Permanent link">&para;</a></h3>
+<p>Object Lock (retention, legal hold) enforcement happens where the client request lands: the origin node refuses the delete/overwrite of a locked version, and what it <em>replicates</em> is applied by its peers <strong>verbatim</strong> — the receive path re-runs no lock checks (correct between trusted peers: re-deriving the verdict on every node would just re-run the same code on the same replicated state). The consequence belongs in your threat model:</p>
+<ul>
+<li><strong>Compliance-mode immutability rests on the integrity of the cluster surface, not on any single node.</strong> An actor holding the cluster secret (and, over HTTPS, a cluster-CA-signed key) can speak <code>/cluster/v1/*</code> directly and replicate a tombstone for a locked object — every node applies it, cluster-wide, bypassing the S3-level enforcement entirely. The same is true of root access on any one node (it holds a full copy and the secret in its config).</li>
+<li>This is not weaker than single-node Arca in kind — root on a single node could always edit the database under the lock — but the cluster <strong>widens the surface</strong>: N machines, a shared secret, and a network protocol now stand behind the WORM guarantee.</li>
+<li>Posture for compliance deployments: treat <code>[cluster].secret</code> and the cluster CA key as regulated-material credentials (generation, storage, rotation — see the runbook below); run the cluster network as an isolated segment <strong>and</strong> enable mutual TLS anyway (defense in depth: the secret alone must not be sufficient from outside the segment); restrict and audit OS access to every node, because each one is a complete copy of the WORM store.</li>
+</ul>
+<h2 id="operational-runbooks">Operational runbooks<a class="headerlink" href="#operational-runbooks" title="Permanent link">&para;</a></h2>
+<p>The procedures an operator actually performs over a cluster's life. Each one leans on machinery described above (the syncing gate, rewind detection, the D3a size guard, dual-secret auth) — the runbook is the order of operations.</p>
+<h3 id="replacing-a-dead-node">Replacing a dead node<a class="headerlink" href="#replacing-a-dead-node" title="Permanent link">&para;</a></h3>
+<p>A node is gone for good (hardware loss, decommission). Replacing it with an <strong>empty disk is safe by construction</strong> — an empty node has nothing stale to resurrect, and the <a href="#node-re-entry-the-syncing-readiness-gate">syncing readiness gate</a> keeps it out of rotation until it holds everything its peers do:</p>
+<ol>
+<li>Provision the new machine with the <strong>same, byte-identical config</strong> (symmetry invariant — there is no per-node config to adapt) and an <strong>empty data directory</strong>. Do <em>not</em> seed it from the dead node's disk or backup; that is the <a href="#restoring-a-node-from-backup">restore</a> procedure, with different caveats.</li>
+<li>Start it. It generates a fresh <code>node_id</code>, is discovered like any candidate, authenticates, and starts pulling. <code>/admin/health</code> answers <code>503 syncing</code> — the LB sends it nothing — while <code>/admin/cluster</code> on any peer shows the pull progressing (<code>sync.hwm</code> against the peers' cursors).</li>
+<li>The moment its health turns <code>200</code>, the node is as complete as its peers. Done.</li>
+<li>The dead node's entry lingers in membership (visible, dead) and <strong>blocks tombstone GC</strong> (<code>tombstone_gc_blocked</code>) until <code>peer_prune_days</code> evicts it — expected and harmless. If the old machine could ever come back (it was not destroyed), wipe it or keep it off the network: a node returning <em>beyond</em> the tombstone grace can resurrect deletions (see <a href="#design-trade-offs-and-honest-limitations">trade-offs</a>).</li>
+</ol>
+<h3 id="restoring-a-node-from-backup">Restoring a node from backup<a class="headerlink" href="#restoring-a-node-from-backup" title="Permanent link">&para;</a></h3>
+<p>Restoring rewinds the node's write cursor (<code>seq</code>), and the peers' incremental sync would normally never look backwards. The cluster detects this on its own: each node advertises its cursor on the authenticated ping, and a peer observing it <em>below</em> what it already consumed resets its high-water mark and re-pulls in full (one idempotent pass, logged as a warning). So the procedure is plain:</p>
+<ol>
+<li>Stop the node (if it still runs); restore the data directory from the backup; start it.</li>
+<li>It re-enters syncing (pulls everything it missed since the backup was taken); peers detect the rewind and re-pull its manifest. Convergence is automatic in both directions.</li>
+<li><strong>Check the backup's age against <code>tombstone_grace_days</code> first.</strong> Objects deleted cluster-wide more than the grace <em>before the restore</em> have no tombstones left to teach the restored copy — they would resurrect. A backup older than the grace should not be restored into the cluster: prefer the <a href="#replacing-a-dead-node">empty-disk replacement</a>, which re-pulls only live state.</li>
+</ol>
+<h3 id="resizing-the-cluster">Resizing the cluster<a class="headerlink" href="#resizing-the-cluster" title="Permanent link">&para;</a></h3>
+<p><code>cluster_size</code> derives the write quorum, so it must change <strong>everywhere at once</strong> — a rolling resize produces mixed quorum thresholds by construction, and the cluster actively defends against the resulting split-brain: in quorum mode, a node observing more eligible nodes than its configured <code>cluster_size</code> <strong>fails writes closed</strong> (<code>size_exceeded</code> on <code>/admin/cluster</code>, distinct 503). Starting a 4th node against a 3-node config therefore stops writes; it does not corrupt anything. The supported procedure is cold:</p>
+<ol>
+<li>Stop all nodes (or accept a write outage for the duration).</li>
+<li>Set the new <code>cluster_size</code> in the config of <strong>every</strong> node, existing and new — byte-identical as always.</li>
+<li>Start all nodes (new ones with empty disks join exactly like a <a href="#replacing-a-dead-node">replacement</a>). Drift detection flags any node missed in step 2 (the fingerprint includes <code>cluster_size</code>).</li>
+</ol>
+<p>Shrinking follows the same shape: stop, lower <code>cluster_size</code> everywhere, remove the retired nodes' configs from the seed list (static discovery), start. Wipe retired machines — see the replacement runbook's note 4.</p>
 <h3 id="rotating-the-cluster-secret">Rotating the cluster secret<a class="headerlink" href="#rotating-the-cluster-secret" title="Permanent link">&para;</a></h3>
 <p>The optional <code>[cluster] secret_previous</code> makes a secret rotation a rolling operation instead of a full-cluster restart:</p>
 <ol>
@@ -2049,6 +2252,22 @@ them, and any node that takes a write replicates it to the others.</p>
 <li>Rolling-restart the nodes. Inbound authentication accepts both secrets, so replication keeps flowing in both directions across the window; outbound signing always uses the new secret. Expect transient <code>config_ok: false</code> flags while versions of the config coexist (the drift fingerprint includes the secret): nodes already on the new secret form the writable majority as soon as there are enough of them, exactly like a rolling upgrade.</li>
 <li>When all nodes run the new secret, remove <code>secret_previous</code> (no restart urgency: it is inert once nothing signs with it, but leaving the old secret valid forever defeats the rotation).</li>
 </ol>
+<h3 id="coherent-backups">Coherent backups<a class="headerlink" href="#coherent-backups" title="Permanent link">&para;</a></h3>
+<p>A node's data directory holds the blobs <strong>and</strong> the metadata database (SQLite in WAL mode by default): a backup must capture them coherently.</p>
+<ul>
+<li><strong>Preferred — filesystem snapshot.</strong> An atomic snapshot of the whole data directory (LVM, ZFS, cloud disk snapshot) is crash-consistent: SQLite recovers from its WAL on open, and Arca's storage write order (blob file → sidecar → DB row) means the worst case is an orphan blob, which <code>arca fsck</code> reports and the GC reclaims. Never file-copy a <em>live</em> <code>.db</code> alone — without the WAL it is torn.</li>
+<li><strong>Equally safe — back up a stopped node.</strong> Stop one node (the cluster keeps serving on the survivors), copy the data directory, restart it; it catches up via anti-entropy and the syncing gate covers its re-entry. One node at a time, and the backup window must stay well inside <code>tombstone_grace_days</code>.</li>
+<li><strong>PostgreSQL backend</strong>: back up the database with the usual PostgreSQL tooling (<code>pg_dump</code>, base backups) <em>plus</em> the blob directory; the same snapshot-coherence reasoning applies.</li>
+<li>In a full-replication cluster every node is a complete copy, so backing up <strong>one</strong> node backs up the dataset — but see <a href="#restoring-a-node-from-backup">Restoring a node from backup</a> for the age caveat before relying on old media.</li>
+</ul>
+<h3 id="forming-a-cluster-from-non-empty-nodes">Forming a cluster from non-empty nodes<a class="headerlink" href="#forming-a-cluster-from-non-empty-nodes" title="Permanent link">&para;</a></h3>
+<p>Enabling <code>[cluster]</code> on a node that already has data is supported and is the normal way to grow from one node (<a href="#prerequisites">prerequisites</a>). Joining <strong>two or more already-populated</strong> single-nodes into one cluster, though, is an implicit <strong>union + LWW merge of everything</strong> — objects, buckets, users, credentials, settings — with no preview and no undo:</p>
+<ul>
+<li>Keys that exist on both sides resolve last-writer-wins, silently: one side's copy disappears.</li>
+<li>Control-plane entities merge by the same rule — including credentials and grants, so the merged cluster's access surface is the union of both.</li>
+<li>Encrypted data requires the <strong>same master key</strong> on both sides beforehand (drift detection refuses the merge traffic otherwise, but only after the nodes already see each other).</li>
+</ul>
+<p>Discouraged unless the datasets are known to be disjoint. The safe alternative: pick ONE node as the survivor, join empty nodes to it, and copy the other dataset in through the S3 API (or <a href="../replication/">replication</a>) where conflicts are explicit.</p>
 <h2 id="design-trade-offs-and-honest-limitations">Design trade-offs (and honest limitations)<a class="headerlink" href="#design-trade-offs-and-honest-limitations" title="Permanent link">&para;</a></h2>
 <p>This section exists so you can judge the approach, not just use it.</p>
 <ul>
@@ -2057,7 +2276,7 @@ them, and any node that takes a write replicates it to the others.</p>
 <li><strong>No hinted-handoff.</strong> Larger clusters (Cassandra et al.) buffer writes for absent nodes. At N=3 with full replication, frequent incremental anti-entropy plus read-repair recover an absent node quickly enough that the extra machinery isn't worth it.</li>
 <li><strong>Control-plane catch-up is complete (hardening R5).</strong> Every control-plane family reconciles via the periodic snapshot merge, deletions included: credentials, users, teams, grants and buckets, <em>and</em> their associations and settings — team memberships, grant attachments, <code>bucket_config</code> keys, bucket tag sets (the whole set is one LWW entity, matching <code>PutBucketTagging</code>'s replace-all semantics), cluster-wide server settings — plus in-progress multipart uploads with their parts. A node that was down during ANY of those changes fully self-heals at re-entry; a Complete/Abort that happened while it was away cannot resurrect (a <code>multipart</code> tombstone closes the upload), and a <code>CompleteMultipartUpload</code> landing on a node that is missing some part bytes fetches them from a peer before assembling. Object-Lock retention / legal-hold changes also reach a returning node (they stamp the anti-entropy cursor since R5). The brief window in which a <em>pairwise</em> exchange can transiently act on stale state before the deletion's tombstone arrives from its origin node is bounded by one anti-entropy cycle.</li>
 <li><strong>Tombstone grace vs downtime.</strong> A returning node must come back <strong>within <code>tombstone_grace_days</code></strong> (default 7) to learn of deletions that happened while it was away. The GC liveness guard keeps tombstones around <em>while the absent node is still remembered</em> (it blocks the purge and flags <code>tombstone_gc_blocked</code>), but once the node is pruned from membership (<code>peer_prune_days</code>, default = the grace) the tombstones it never saw are reclaimed — a node returning <strong>beyond</strong> the grace can still resurrect deleted data. Set the grace longer than your worst-case planned downtime. The guard's memory is also process-local: it cannot account for peers that vanished before the current process started.</li>
-<li><strong>Clock dependence.</strong> LWW uses wall-clock time; run NTP. A hybrid logical clock is possible future hardening.</li>
+<li><strong>Clock dependence.</strong> LWW uses wall-clock time; run NTP. A hybrid logical clock is possible future hardening. Note an honest test limitation: the integration suite exercises partitions, node loss and re-entry, but <strong>not clock skew</strong> — the NTP prerequisite is asserted by documentation, not by an automated test.</li>
 <li><strong>Rolling upgrades across the peer-authentication boundary.</strong> A pre-ping (≤ 0.25.x) peer cannot prove possession of the secret, so an upgraded node treats it as alive-but-not-eligible: no fan-out toward it, no quorum contribution. Practical consequence in a 3-node <code>quorum</code> cluster: the <strong>first</strong> upgraded node refuses writes (<code>503</code>) until a <strong>second</strong> node is upgraded (the load balancer routes around it; legacy nodes keep accepting writes and their own fan-out/anti-entropy keep all data converging). On an <strong>HTTPS</strong> cluster the upgrade also introduces <code>[cluster.tls]</code> (mandatory), and the upgraded node additionally rejects inbound cluster requests from peers that present no client certificate — so legacy pushes toward it fail until those peers are upgraded too, and it catches up via anti-entropy afterwards. Complete the rolling upgrade promptly rather than running mixed versions for long.</li>
 </ul>
 <h2 id="toml-configuration-reference">TOML configuration reference<a class="headerlink" href="#toml-configuration-reference" title="Permanent link">&para;</a></h2>
@@ -2084,19 +2303,22 @@ them, and any node that takes a write replicates it to the others.</p>
 <a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a><span class="n">anti_entropy_interval_seconds</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">5</span><span class="w">     </span><span class="c1"># reconcile pass cadence</span>
 <a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a><span class="n">request_timeout_seconds</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="mi">30</span><span class="w">    </span><span class="c1"># inter-node HTTP timeout</span>
 <a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a><span class="n">tombstone_grace_days</span><span class="w">          </span><span class="o">=</span><span class="w"> </span><span class="mi">7</span><span class="w">     </span><span class="c1"># MUST exceed worst-case node downtime</span>
-<a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a><span class="n">peer_prune_days</span><span class="w">               </span><span class="o">=</span><span class="w"> </span><span class="mi">7</span><span class="w">     </span><span class="c1"># evict peers unreachable this long</span>
-<a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a><span class="w">                                      </span><span class="c1"># (optional; default = tombstone_grace_days)</span>
-<a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a><span class="n">blob_repair_budget</span><span class="w">            </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span><span class="w">   </span><span class="c1"># max blob fetches per repair tick</span>
-<a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a><span class="w">                                      </span><span class="c1"># (optional; the sweep resumes next tick)</span>
-<a id="__codelineno-5-28" name="__codelineno-5-28" href="#__codelineno-5-28"></a>
-<a id="__codelineno-5-29" name="__codelineno-5-29" href="#__codelineno-5-29"></a><span class="c1"># REQUIRED when the cluster runs over HTTPS ([server.tls] enabled): the</span>
-<a id="__codelineno-5-30" name="__codelineno-5-30" href="#__codelineno-5-30"></a><span class="c1"># operator-distributed cluster CA + this node&#39;s CA-signed cert/key, used to</span>
-<a id="__codelineno-5-31" name="__codelineno-5-31" href="#__codelineno-5-31"></a><span class="c1"># verify peers and to authenticate this node to them (mutual TLS). Mint the</span>
-<a id="__codelineno-5-32" name="__codelineno-5-32" href="#__codelineno-5-32"></a><span class="c1"># material with `arca tls generate-cluster`.</span>
-<a id="__codelineno-5-33" name="__codelineno-5-33" href="#__codelineno-5-33"></a><span class="k">[cluster.tls]</span>
-<a id="__codelineno-5-34" name="__codelineno-5-34" href="#__codelineno-5-34"></a><span class="n">ca_file</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs/cluster/arca-cluster-ca.crt&quot;</span><span class="w">   </span><span class="c1"># same on every node</span>
-<a id="__codelineno-5-35" name="__codelineno-5-35" href="#__codelineno-5-35"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs/cluster/arca-1.crt&quot;</span><span class="w">            </span><span class="c1"># this node&#39;s own</span>
-<a id="__codelineno-5-36" name="__codelineno-5-36" href="#__codelineno-5-36"></a><span class="n">key_file</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs/cluster/arca-1.key&quot;</span>
+<a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a><span class="c1"># tombstone_grace_seconds = 60        # advanced: seconds-granularity override</span>
+<a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a><span class="w">                                      </span><span class="c1"># of the grace (tests/demos only —</span>
+<a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a><span class="w">                                      </span><span class="c1"># production sizes it in days)</span>
+<a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a><span class="n">peer_prune_days</span><span class="w">               </span><span class="o">=</span><span class="w"> </span><span class="mi">7</span><span class="w">     </span><span class="c1"># evict peers unreachable this long</span>
+<a id="__codelineno-5-28" name="__codelineno-5-28" href="#__codelineno-5-28"></a><span class="w">                                      </span><span class="c1"># (optional; default = tombstone_grace_days)</span>
+<a id="__codelineno-5-29" name="__codelineno-5-29" href="#__codelineno-5-29"></a><span class="n">blob_repair_budget</span><span class="w">            </span><span class="o">=</span><span class="w"> </span><span class="mi">100</span><span class="w">   </span><span class="c1"># max blob fetches per repair tick</span>
+<a id="__codelineno-5-30" name="__codelineno-5-30" href="#__codelineno-5-30"></a><span class="w">                                      </span><span class="c1"># (optional; the sweep resumes next tick)</span>
+<a id="__codelineno-5-31" name="__codelineno-5-31" href="#__codelineno-5-31"></a>
+<a id="__codelineno-5-32" name="__codelineno-5-32" href="#__codelineno-5-32"></a><span class="c1"># REQUIRED when the cluster runs over HTTPS ([server.tls] enabled): the</span>
+<a id="__codelineno-5-33" name="__codelineno-5-33" href="#__codelineno-5-33"></a><span class="c1"># operator-distributed cluster CA + this node&#39;s CA-signed cert/key, used to</span>
+<a id="__codelineno-5-34" name="__codelineno-5-34" href="#__codelineno-5-34"></a><span class="c1"># verify peers and to authenticate this node to them (mutual TLS). Mint the</span>
+<a id="__codelineno-5-35" name="__codelineno-5-35" href="#__codelineno-5-35"></a><span class="c1"># material with `arca tls generate-cluster`.</span>
+<a id="__codelineno-5-36" name="__codelineno-5-36" href="#__codelineno-5-36"></a><span class="k">[cluster.tls]</span>
+<a id="__codelineno-5-37" name="__codelineno-5-37" href="#__codelineno-5-37"></a><span class="n">ca_file</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs/cluster/arca-cluster-ca.crt&quot;</span><span class="w">   </span><span class="c1"># same on every node</span>
+<a id="__codelineno-5-38" name="__codelineno-5-38" href="#__codelineno-5-38"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs/cluster/arca-1.crt&quot;</span><span class="w">            </span><span class="c1"># this node&#39;s own</span>
+<a id="__codelineno-5-39" name="__codelineno-5-39" href="#__codelineno-5-39"></a><span class="n">key_file</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs/cluster/arca-1.key&quot;</span>
 </code></pre></div>
 <h2 id="related">Related<a class="headerlink" href="#related" title="Permanent link">&para;</a></h2>
 <ul>

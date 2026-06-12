@@ -157,18 +157,27 @@ spec:
               readOnly: true
             - name: data
               mountPath: /data
-          # /admin/health is always 200 on a live node (it does NOT 503 when the
-          # node loses quorum), so a lone survivor stays in rotation and serves
-          # reads; writes correctly return 503 until quorum returns.
+          # /admin/health answers 200 on a serving node and 503 while draining
+          # or SYNCING (a node back from downtime re-pulling what it missed —
+          # readiness reflects data completeness, review D2, so the Service
+          # routes nothing to it until it is coherent). It does NOT 503 when
+          # the node merely loses write quorum: a lone survivor stays in
+          # rotation and serves reads; writes correctly return 503 until
+          # quorum returns. periodSeconds 5 / failureThreshold 2 bounds the
+          # window a crashed pod keeps receiving traffic to ~10s.
           readinessProbe:
             httpGet:
               path: /admin/health
               port: arca
             initialDelaySeconds: 3
-            periodSeconds: 10
+            periodSeconds: 5
+            failureThreshold: 2
+          # Liveness must NOT share the readiness path: a long catch-up keeps
+          # /admin/health at 503 (syncing) and would get the pod killed mid
+          # re-sync. ?verbose=1 always answers 200 on a live process.
           livenessProbe:
             httpGet:
-              path: /admin/health
+              path: /admin/health?verbose=1
               port: arca
             initialDelaySeconds: 10
             periodSeconds: 30

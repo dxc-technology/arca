@@ -1,0 +1,37 @@
+# Tombstone-GC / blob-repair variant: IDENTICAL to config.toml except for a
+# seconds-granularity tombstone grace. Mounted on ALL THREE nodes by the §5.4
+# integration tests (the symmetry invariant still holds): the §3.2 GC liveness
+# guard only engages once a peer has been unseen BEYOND the grace, so the test
+# needs a grace it can outwait in seconds, not days.
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+
+[cluster]
+enabled = true
+cluster_id = "arca-cluster"
+# Shared secret authenticating inter-node /cluster/v1/* requests. DEV value
+# (passes the M5 strength floor) — change for any real deployment
+# (`openssl rand -hex 32`). Same value as config.toml: the overlay changes
+# ONLY the tombstone grace.
+secret = "arca-itest-cluster-secret-3f9c2a71"
+# CP policy: a write needs a majority (2 of 3) of live nodes to be acknowledged.
+mode = "quorum"
+cluster_size = 3
+discovery = "static"
+# Cluster-network-only aliases — see config.toml for why.
+seeds = ["arca-1-cluster:9000", "arca-2-cluster:9000", "arca-3-cluster:9000"]
+# Tighter intervals than the defaults for fast convergence in tests/demos.
+health_interval_seconds = 3
+anti_entropy_interval_seconds = 5
+# Snappy fan-out/probe timeout so writes aimed at an unreachable peer fail fast
+# during partition tests (not part of the config-drift fingerprint).
+request_timeout_seconds = 5
+# Seconds-granularity grace override (testing knob; production sizes the grace
+# in days): a peer unseen beyond 20s blocks tombstone GC, observable within a
+# test run. peer_prune_days keeps its day-granularity default, so the absent
+# node is never pruned during the test. Not part of the drift fingerprint.
+tombstone_grace_seconds = 20

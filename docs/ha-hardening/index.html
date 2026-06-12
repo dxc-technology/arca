@@ -1594,7 +1594,7 @@
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R6</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R7</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R8</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R9</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R9</div>
   </div>
 </div>
 <!-- /hardening-progress-bar -->
@@ -1676,7 +1676,7 @@
 <tr>
 <td>H11</td>
 <td><strong>Versions</strong>: a SINGLE release at the end of the full remediation plan (R1–R9); version number decided then (at least MINOR: the quorum changes observable behavior). Supersedes the original idea of <code>v0.26.0</code> after R1+R2 with per-milestone releases. Milestones are still committed and pushed as they complete.</td>
-<td>✅ revised and decided by Pietro (2026-06-11)</td>
+<td>✅ revised and decided by Pietro (2026-06-11); version fixed at <strong>v0.26.0</strong> (Pietro, 2026-06-12)</td>
 </tr>
 <tr>
 <td>H12</td>
@@ -1811,25 +1811,28 @@
 <p><em>Outcome: the operator always knows WHICH node they are looking at and can pick it (or see all of them merged), without depending on round-robin luck.</em></p>
 <hr />
 <h2 id="r9-documentation-deploy-and-closure">R9 — Documentation, deploy and closure<a class="headerlink" href="#r9-documentation-deploy-and-closure" title="Permanent link">&para;</a></h2>
+<p>Two R9 decisions taken with Pietro (2026-06-12): <strong>§5.4 leftovers = real integration tests</strong> (not doc-only) and <strong>D5 write-aware health = IMPLEMENTED</strong> (not doc-only) — both options the plan had left open. The final version (H11) is <strong>v0.26.0</strong>.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong><code>ha.md</code></strong> (source + <code>docs/</code> via <code>bin/docs-build</code>):<ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> the REAL post-R1 quorum semantics (durability ACK, no rollback, error examples) and the available mode one: <em>concurrent writes to the same key are both acknowledged but only the LWW winner survives; the loser is discarded with no error to the client</em> (§5-doc1).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D11</strong>: available-mode RPO note (single-copy window).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D7</strong>: the real read window (partition, not just lag); CP = no conflicting writes, not read linearizability; sticky as a reference configuration.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D5</strong>: the 503-behind-LB behavior and its mitigation (SDK retries; the write-aware option as a future possibility, decide whether to implement it or only document it).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>D10</strong>: WORM/Object Lock threat model in the cluster (shared secret = full control; link with TD-015).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>§3.6</strong>: the SSE-C limitation (if not fixed in R5).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Operational runbooks (D3, §5-doc2)</strong>: replacing a dead node (empty disk = safe, the syncing readiness protects it); restore from backup (rewind detected by D3c, procedure documented anyway); cluster resize (recommended cold procedure + why rolling is dangerous, the D3a guard); secret rotation (dual-secret, H8); coherent backups (SQLite WAL); forming a cluster from non-empty nodes (D12.4: union+LWW merge, identical master key required, discouraged unless necessary).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>D5 write-aware health (implemented, upgrading the doc-only option)</strong>: <code>GET /admin/health?writable=1</code> answers <code>503 {"status":"read_only"}</code> (+ <code>Retry-After</code>) while the cluster write gate is closed (no quorum / size exceeded); single-node and available mode always 200. Status precedence draining &gt; syncing &gt; read_only in the pure <code>plain_health_status</code> (unit-tested); both HAProxy cfgs ship a commented <code>arca_writable</code> backend + frontend ACL routing write methods to it; integration asserts in phases A (writable 200 everywhere) and C (the lone survivor: plain 200, writable 503 read_only).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>§5.4 leftover tests — new cluster phase L</strong> (gc overlay: <code>config-gc.toml</code> + <code>docker-compose.cluster.gc.yml</code>, identical config except the new <code>[cluster] tombstone_grace_seconds = 20</code>, an advanced seconds-granularity override of the day-based grace added for exactly this — validated ≥ 1, documented as a testing knob): <strong>(a) proactive blob repair</strong> — the seeded object's payload file is deleted straight from arca-3's volume and must reappear via the proactive sweep, polled SHELL-SIDE on the volume (a throwaway alpine container) because any client GET would trigger the lazy read-repair and mask the sweep under test; then the restored blob must serve intact bytes; <strong>(b) §3.2 GC liveness guard</strong> — an object deleted while arca-3 is down beyond the grace must raise <code>tombstone_gc_blocked</code> on BOTH survivors (purge skipped, tombstone retained), and at arca-3's return the deletion is learned (object 404 on all three after full cycles — the resurrection the guard prevents) and the guard releases. 5 new markers; runner orchestration with the volume-side delete/poll between pytest steps.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong><code>ha.md</code></strong> (source + <code>docs/</code> via <code>bin/docs-build</code>):<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> the available-mode §5-doc1 sentence verbatim (<em>both acknowledged, only the LWW winner survives, the loser discarded with no error to the client</em>) + <strong>D11</strong> single-copy RPO window, both in the <code>available</code> bullet of the Consistency section (the post-R1 quorum semantics were already rewritten in R1; R9 left them as-is).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>D7</strong>: the read-after-write note replaced by a "what quorum mode does and does not promise about reads" block — R=1 never intersects the write majority by construction; CP = no conflicting writes, NOT read linearizability; the staleness window is fan-out lag in normal operation but the partition's WHOLE duration on a minority node; sticky (<code>balance source</code>) as the commented reference in both shipped cfgs.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>D5</strong>: "a read-only node stays in rotation — and what that costs" in the Load balancer section: ~1/N client-visible write 503s while degraded, SDK-retry mitigation, and the now-implemented <code>?writable=1</code> write pool.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>D10</strong>: "Object Lock (WORM) in a cluster: the trust model" section — verbatim remote applies (no receive-side lock re-check), compliance immutability rests on secret + CA key + OS access on every node (each one a full copy), posture recommendations; supersedes the TD-015 link (resolved in R4 — mTLS is part of the posture).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>§3.6 SSE-C</strong>: nothing to add — fixed in R5 (read-repair via <code>ClusterSsecBlobStore</code>), already documented in the prerequisites.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>Operational runbooks (D3, §5-doc2)</strong>: new top-level section — replacing a dead node (empty disk safe by construction, syncing gate, the lingering dead entry blocking GC until prune is expected); restore from backup (automatic D3c rewind handling; backup older than the grace → do NOT restore, use empty-disk replacement); cluster resize (cold procedure, why rolling cannot work — mixed quorums by construction — and the D3a guard failing closed); secret rotation (the existing H8 section moved under the runbooks); coherent backups (FS snapshot crash-consistency vs stopped-node copy, WAL caveat, PG backend, one-node-backs-up-the-dataset); forming a cluster from non-empty nodes (D12.4: union+LWW merge with silent losers, same-master-key prerequisite, discouraged — survivor + S3-level copy as the alternative).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> clock-skew honestly declared a test gap (the §5.4 "skew = doc" half) in the Clock dependence trade-off; <code>?writable=1</code> and <code>tombstone_grace_seconds</code> added to the Observability section / TOML reference + <code>configuration.md</code>.</li>
 </ul>
 </li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Deploy</strong>: align <code>fall/rise</code> across <code>docker/cluster/haproxy.cfg</code>, <code>deploy/haproxy/haproxy.cfg</code> and the <code>ha.md</code> snippet (or motivate the difference in comments); add a commented sticky example (<code>balance source</code> or cookie) in both cfgs; k8s probes with <code>periodSeconds: 5, failureThreshold: 2</code> in <code>arca-cluster.yaml</code> (+ a note that readiness now reflects syncing, D2).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong><code>TECH_DEBT.md</code> + roadmap</strong>: TD-016 resolved (R5); TD-017 SSE-C if open; re-evaluate TD-015 after R4; the roadmap tech-debt section in sync.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Roadmap</strong>: update the Phase 29 section with a line about the post-review hardening (checkbox or note), coherent with the existing format.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>Review</strong>: mark the resolved findings in the review (a note at the top pointing to this plan), so review and plan stay coherent.</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>README</strong>: Test Coverage table updated (new R2/R5/R6/R7 tests).</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <strong>CHANGELOG</strong>: consolidate Unreleased → final release; versions in sync (Cargo.toml, console, roadmap) per <code>RELEASING.md</code>.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>Deploy</strong>: <code>fall/rise</code> motivated rather than flattened — test/demo cfg keeps <code>fall 2 rise 1</code> (the R2 wait_live calibration depends on ~4s eviction) and says so; production cfg keeps <code>fall 3 rise 2</code> and says why; the <code>ha.md</code> snippet now matches the PRODUCTION values (it is production guidance). Commented sticky <code>balance source</code> + write-aware backend in both cfgs. K8s: readiness <code>periodSeconds: 5, failureThreshold: 2</code> + comment that readiness reflects syncing (D2); stale "always 200" comment rewritten; <strong>bonus fix</strong>: the liveness probe moved to <code>?verbose=1</code> (always 200 on a live process) — sharing the readiness path would get a pod KILLED during a long catch-up (3 × 30s of 503-syncing), a real bug introduced by R7's semantics and never aligned here.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong><code>TECH_DEBT.md</code> + roadmap</strong>: verified already in sync (TD-015/TD-016 resolved in R4/R5 in both places; no TD-017 — the §3.6 spike fixed SSE-C in scope); nothing to change.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>Roadmap</strong>: R9 milestone line updated to the as-built scope (write-aware health + §5.4 tests, not just docs), R9 ticked, Phase 29.1 marked complete (progress bar, phase summary table with v0.26.0).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>Review</strong>: resolution note at the top pointing to this plan and the per-finding traceability table.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>README</strong>: Test Coverage table updated (+4 unit → 878: 3 health-status + 1 config-knob, +7 cluster → 59, totals).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>CHANGELOG</strong>: Unreleased consolidated into <strong>v0.26.0</strong> (decision H11: the single release closing R1–R9); versions synced (Cargo.toml workspace, Cargo.lock, console, roadmap) per <code>RELEASING.md</code>.</li>
 </ul>
-<p><em>Outcome: the system declares exactly what it does, the operator has the runbooks, the debt is tracked, final release proposed.</em></p>
+<p><em>Outcome: the system declares exactly what it does, the operator has the runbooks, the debt is tracked, the v0.26.0 release closes the remediation plan.</em></p>
 <hr />
 <h2 id="finding-milestone-traceability">Finding → milestone traceability<a class="headerlink" href="#finding-milestone-traceability" title="Permanent link">&para;</a></h2>
 <p>Update the Status column as work proceeds: ⬜ to do, 🔧 in progress, ✅ done, ➖ decided not to do (with a note).</p>
@@ -2008,20 +2011,20 @@
 <tr>
 <td>§5.4</td>
 <td>Listed test debt (GC, repair, bootstrap, skew)</td>
-<td>R2 (partial: bootstrap in the R7 test; skew stays ➖ documented)</td>
-<td>🔧 (bootstrap covered by the R7 phase-J readiness test; still open: tombstone-GC + blob-repair integration tests; skew = doc-only in R9)</td>
+<td>R2 (bootstrap in the R7 test) + R9 (GC + repair tests; skew = doc)</td>
+<td>✅ (R9 phase L: proactive blob repair proven volume-side without a masking GET + §3.2 GC guard blocked/no-resurrection/release, on a gc overlay with the new <code>tombstone_grace_seconds</code> knob; clock skew declared a test gap in <code>ha.md</code> — Pietro chose real tests over doc-only, 2026-06-12)</td>
 </tr>
 <tr>
 <td>§5-deploy</td>
 <td>Inconsistent HAProxy fall/rise; k8s probes</td>
 <td>R9</td>
-<td>⬜</td>
+<td>✅ (fall/rise motivated per environment + ha.md snippet aligned to production values; sticky + write-aware backends commented in both cfgs; k8s readiness 5s/2 + liveness moved to <code>?verbose=1</code> so a long catch-up cannot get the pod killed)</td>
 </tr>
 <tr>
 <td>§5-doc1/2/3</td>
 <td>Available LWW, runbooks, SSE-C/quorum</td>
 <td>R9</td>
-<td>⬜</td>
+<td>✅ (LWW loser-discarded-silently sentence + RPO in the available bullet; six operational runbooks; SSE-C and quorum semantics were already documented by R5/R1)</td>
 </tr>
 <tr>
 <td>D1</td>
@@ -2062,8 +2065,8 @@
 <tr>
 <td>D5</td>
 <td>LB blind to writability (client-visible 503s)</td>
-<td>R9 (doc; write-aware to be decided)</td>
-<td>⬜</td>
+<td>R9</td>
+<td>✅ IMPLEMENTED (Pietro, 2026-06-12): <code>?writable=1</code> → 503 <code>read_only</code> while the write gate is closed, commented write-pool backends in both cfgs, cost+mitigation documented in <code>ha.md</code>; integration asserts in phases A and C</td>
 </tr>
 <tr>
 <td>D6</td>
@@ -2075,7 +2078,7 @@
 <td>D7</td>
 <td>Quorum reads weaker than the CP label</td>
 <td>R9 (doc + sticky reference)</td>
-<td>⬜</td>
+<td>✅ (CP = no conflicting writes, not read linearizability; partition-long staleness on a minority node stated; sticky <code>balance source</code> commented in both cfgs and named the reference in <code>ha.md</code>)</td>
 </tr>
 <tr>
 <td>D8</td>
@@ -2093,13 +2096,13 @@
 <td>D10</td>
 <td>WORM in cluster: trust model undocumented</td>
 <td>R9</td>
-<td>⬜</td>
+<td>✅ (dedicated <code>ha.md</code> section: verbatim remote applies, secret/CA/OS-access surface, compliance posture recommendations)</td>
 </tr>
 <tr>
 <td>D11</td>
 <td>Available RPO undeclared</td>
 <td>R9</td>
-<td>⬜</td>
+<td>✅ (single-copy durability window named RPO &gt; 0 in the available bullet, with the when-to-choose-it guidance)</td>
 </tr>
 <tr>
 <td>D12.1</td>
@@ -2123,7 +2126,7 @@
 <td>D12.4</td>
 <td>Non-empty single-node merge undocumented</td>
 <td>R9</td>
-<td>⬜</td>
+<td>✅ (runbook: union+LWW with silent losers, same-master-key prerequisite, discouraged + survivor alternative)</td>
 </tr>
 </tbody>
 </table>
@@ -2133,7 +2136,7 @@
 <ul>
 <li>Read-quorum / linearizable reads (stays future hardening, as per the Phase 29 plan).</li>
 <li>HLC instead of NTP+LWW.</li>
-<li>A write-aware health check as the LB default (D5: documented; implemented only if decided in R9).</li>
+<li>~~A write-aware health check~~ — implemented in R9 (<code>?writable=1</code>, decision of 2026-06-12); what stays out of scope is only making it the LB <em>default</em> (the shipped configs keep the read-friendly default check, write pool commented).</li>
 <li>Automated clock-skew tests (documented as a limit, the NTP constraint is already in <code>ha.md</code>).</li>
 <li>Erasure coding, sharding, gossip: out of scope as per the Phase 29 plan.</li>
 </ul>

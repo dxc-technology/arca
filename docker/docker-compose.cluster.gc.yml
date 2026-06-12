@@ -1,0 +1,28 @@
+# Overlay for the §5.4 tombstone-GC / blob-repair integration tests.
+#
+# Swaps every node's config for config-gc.toml — IDENTICAL to the base config
+# except `tombstone_grace_seconds = 20`: the §3.2 GC liveness guard engages
+# once a peer has been unseen beyond the grace, which must be outwaitable in
+# a test run (production sizes the grace in days).
+#
+# Apply on top of the base cluster compose:
+#   docker compose -p arca-cluster \
+#     -f docker/docker-compose.cluster.yml \
+#     -f docker/docker-compose.cluster.gc.yml up -d
+#
+# A YAML list override REPLACES the base list, so each node restates its data
+# volume next to the swapped config mount.
+
+services:
+  arca-1:
+    volumes:
+      - arca-1-data:/data
+      - ../docker/cluster/config-gc.toml:/etc/arca/config.toml:ro
+  arca-2:
+    volumes:
+      - arca-2-data:/data
+      - ../docker/cluster/config-gc.toml:/etc/arca/config.toml:ro
+  arca-3:
+    volumes:
+      - arca-3-data:/data
+      - ../docker/cluster/config-gc.toml:/etc/arca/config.toml:ro

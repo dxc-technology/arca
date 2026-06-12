@@ -5,6 +5,16 @@
 - **Method**: static review of the `v0.24.0..v0.25.1` diff across 4 areas (transport/security, anti-entropy/GC, write path/quorum, tests/deploy/docs) carried out by review agents in parallel; **every critical finding was verified by me directly on the code** before entering this document. No chaos tests or load tests were run: the race findings come from code analysis, not from reproduction.
 - **Update 2026-06-11**: second pass dedicated to the plan itself as a design document (new §6, findings D1–D12), with every claim verified on the code or the artifacts; the following sections have been renumbered (7–9).
 
+> **RESOLVED — 2026-06-12.** Every finding in this review has been remediated by the HA Hardening plan
+> ([`arca-phase-29-ha-hardening.md`](../plans/arca-phase-29-ha-hardening.md), milestones R1–R9, released as
+> **v0.26.0**). The plan's finding-by-finding traceability table records, for each item below, the milestone
+> that closed it and how — including the two findings where remediation legitimately diverged from the
+> recommendation (§3.3: the replication-worker half rested on a wrong premise, the journal is node-local and
+> deliveries were already exactly-once; §3.6: the spike found SSE-C replication already worked and fixed the
+> read side instead). Three findings discovered *during* the remediation (N1, N2, the k8s liveness/syncing
+> interaction) are recorded in the plan as well. This document is kept as the historical record of the
+> review pass; the body below is unchanged.
+
 ---
 
 ## 1. Overall judgment

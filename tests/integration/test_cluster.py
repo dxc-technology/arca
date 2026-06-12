@@ -34,6 +34,17 @@ topology it needs via a marker, and the runner selects them with `pytest -m`:
                                  (specific peer, self, all-merged, unknown node)
     cluster_node_views_degraded  node 3 down; ?node=<dead> answers 503 and the
                                  merged view shrinks to the eligible nodes
+    cluster_blob_repair_seed     gc overlay, all 3 up; seeds the blob-repair
+                                 guinea pig (the runner then deletes its payload
+                                 file from node 3's volume and polls the volume
+                                 until the proactive sweep restores it)
+    cluster_blob_repair_verify   the restored blob must serve intact bytes
+    cluster_gc_seed              gc overlay (tombstone_grace_seconds = 20),
+                                 all 3 up; seeds the tombstone-GC guinea pig
+    cluster_gc_blocked           node 3 down beyond the grace: the deletion's
+                                 tombstone must block GC on the survivors
+    cluster_gc_recovered         node 3 back: deletion learned (no resurrection
+                                 anywhere), the GC guard releases
 
 The partition markers rely on the compose dual-network design: `bin/cluster
 partition <n>` cuts a node off the `cluster` network (inter-node traffic — the
@@ -1305,3 +1316,149 @@ def test_node_view_merged_shrinks_to_eligible_nodes():
     # Both surviving nodes' seed rows are still in the merged page.
     for n in (1, 2):
         assert _audit_creates(page["entries"], f"{NODEVIEW_BUCKET_PREFIX}-{n}")
+
+
+# ── Phase: D5 write-aware health (asserted inside existing phases A and C) ────
+
+@pytest.mark.cluster_full
+def test_writable_health_is_ok_with_full_cluster():
+    """`?writable=1` (review D5): with the write gate open, the write-aware
+    health answers 200 on every node — a write pool would route to all of them."""
+    for n in (1, 2, 3):
+        resp = requests.get(f"{NODES[n]}/admin/health?writable=1", timeout=5)
+        assert resp.status_code == 200, f"node {n}: {resp.status_code} {resp.text}"
+        assert resp.json()["status"] == "ok"
+
+
+@pytest.mark.cluster_one_third
+def test_writable_health_reports_read_only_without_quorum():
+    """With 1 of 3 nodes up the survivor still answers 200 on the plain health
+    (it serves reads) but 503 `read_only` on `?writable=1`: a write pool drops
+    it while the default pool keeps it."""
+    plain = requests.get(f"{NODES[1]}/admin/health", timeout=5)
+    assert plain.status_code == 200, f"plain health: {plain.status_code} {plain.text}"
+
+    resp = requests.get(f"{NODES[1]}/admin/health?writable=1", timeout=5)
+    assert resp.status_code == 503, f"writable health: {resp.status_code} {resp.text}"
+    assert resp.json()["status"] == "read_only"
+    assert resp.headers.get("Retry-After") == "5", "M4: retriable 503 must hint a delay"
+
+
+# ── Phase: proactive blob repair (§5.4) ───────────────────────────────────────
+#
+# Runs on a FRESH cluster (gc overlay) so the repair-seed object owns the only
+# payload file under blobs/. The runner then deletes that file from node 3's
+# volume and polls — shell-side, via a throwaway container on the same volume —
+# until the proactive repair sweep restores it WITHOUT any client GET (a GET
+# would trigger the lazy read-repair and mask the sweep under test).
+
+REPAIR_BUCKET = "cluster-repair"
+REPAIR_KEY = "repair/target.bin"
+REPAIR_BODY = uuid.UUID("8e9b2f6a-1c4d-4e0f-9a37-5b6c7d8e9f01").bytes * 8192  # 128 KiB
+
+
+@pytest.mark.cluster_blob_repair_seed
+def test_blob_repair_seed_object_everywhere():
+    """Seed the repair guinea pig and prove every node holds it before the
+    runner deletes node 3's copy of the payload file."""
+    lb = _s3(LB)
+    _ensure_bucket(lb, REPAIR_BUCKET)
+    lb.put_object(Bucket=REPAIR_BUCKET, Key=REPAIR_KEY, Body=REPAIR_BODY)
+    for n in (1, 2, 3):
+        _wait_object(_s3(NODES[n]), REPAIR_BUCKET, REPAIR_KEY, REPAIR_BODY, timeout=30)
+
+
+@pytest.mark.cluster_blob_repair_verify
+def test_repaired_blob_serves_intact_bytes():
+    """After the runner observed the payload file restored on disk (the actual
+    proactive-repair assertion — file presence without any GET), the object
+    must serve the original bytes from node 3."""
+    node3 = _s3(NODES[3])
+    body = node3.get_object(Bucket=REPAIR_BUCKET, Key=REPAIR_KEY)["Body"].read()
+    assert body == REPAIR_BODY
+
+
+# ── Phase: tombstone-GC liveness guard (§3.2 / §5.4) ──────────────────────────
+#
+# Same fresh cluster, gc overlay (`tombstone_grace_seconds = 20`). An object is
+# deleted while node 3 is down; once node 3 has been unseen beyond the grace,
+# the survivors must SKIP tombstone GC (flag on /admin/cluster) so the
+# deletion is still there for node 3 to learn at re-entry — the resurrection
+# the guard exists to prevent.
+
+GC_BUCKET = "cluster-gc"
+GC_KEY = "gc/victim"
+GC_BODY = b"deleted while node 3 is down; must NOT resurrect at its re-entry"
+
+
+def _wait_gc_blocked(node, expected, timeout=60):
+    """Poll a node's /admin/cluster until tombstone_gc_blocked == expected."""
+    deadline = time.time() + timeout
+    last = None
+    while time.time() < deadline:
+        last = _admin_get(NODES[node], "/admin/cluster")["tombstone_gc_blocked"]
+        if last is expected:
+            return
+        time.sleep(2)
+    pytest.fail(f"node {node}: tombstone_gc_blocked stayed {last}, wanted {expected}")
+
+
+@pytest.mark.cluster_gc_seed
+def test_gc_seed_object_everywhere():
+    """Seed the GC guinea pig on all 3 nodes; with everyone live the guard is idle."""
+    lb = _s3(LB)
+    _ensure_bucket(lb, GC_BUCKET)
+    lb.put_object(Bucket=GC_BUCKET, Key=GC_KEY, Body=GC_BODY)
+    for n in (1, 2, 3):
+        _wait_object(_s3(NODES[n]), GC_BUCKET, GC_KEY, GC_BODY, timeout=30)
+    assert _admin_get(NODES[1], "/admin/cluster")["tombstone_gc_blocked"] is False
+
+
+@pytest.mark.cluster_gc_blocked
+def test_gc_blocked_while_peer_unseen_beyond_grace():
+    """With node 3 down, delete the object (tombstone recorded on the
+    survivors), then outwait the 20s grace: both survivors must raise
+    `tombstone_gc_blocked` — the purge is skipped, the tombstone retained."""
+    lb = _s3(LB)
+    lb.delete_object(Bucket=GC_BUCKET, Key=GC_KEY)
+    with pytest.raises(ClientError) as exc:
+        lb.get_object(Bucket=GC_BUCKET, Key=GC_KEY)
+    assert _status_code(exc.value) == 404
+
+    # The flag flips once node 3 has been unseen for > tombstone_grace_seconds
+    # (20s) and the next anti-entropy tick (5s) evaluates the guard.
+    for n in (1, 2):
+        _wait_gc_blocked(n, True)
+
+
+@pytest.mark.cluster_gc_recovered
+def test_deletion_not_resurrected_on_returned_node():
+    """Node 3 is back: it must LEARN the deletion (the retained tombstone) —
+    the object stays gone on every node — and, with all peers seen again, the
+    guard must release the GC."""
+    # Node 3 returns knowing the object: poll until the tombstone lands there.
+    node3 = _s3(NODES[3])
+    deadline = time.time() + 90
+    gone = False
+    while time.time() < deadline:
+        try:
+            node3.get_object(Bucket=GC_BUCKET, Key=GC_KEY)
+        except ClientError as e:
+            if _status_code(e) == 404:
+                gone = True
+                break
+        time.sleep(2)
+    assert gone, "node 3 still serves the deleted object (tombstone never arrived)"
+
+    # No-resurrection is cluster-wide: after a couple of full anti-entropy
+    # cycles (node 3's manifest has been re-pulled by the survivors) the
+    # object must still be deleted EVERYWHERE.
+    time.sleep(12)
+    for n in (1, 2, 3):
+        with pytest.raises(ClientError) as exc:
+            _s3(NODES[n]).get_object(Bucket=GC_BUCKET, Key=GC_KEY)
+        assert _status_code(exc.value) == 404, f"object resurrected on node {n}"
+
+    # Everyone is seen again: the guard releases and GC may purge.
+    for n in (1, 2):
+        _wait_gc_blocked(n, False)

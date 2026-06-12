@@ -13,7 +13,7 @@
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R6</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R7</div>
     <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R8</div>
-    <div style="background:transparent;color:inherit;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">R9</div>
+    <div style="background:#4caf50;color:#fff;padding:4px 10px;font-weight:700;font-size:.75em;border-left:1px solid rgba(128,128,128,.3)">R9</div>
   </div>
 </div>
 <!-- /hardening-progress-bar -->
@@ -47,7 +47,7 @@ The Phase 29 review ([`arca-phase-29-ha-review.md`](https://github.com/dxc-techn
 | H8 | **Secret rotation via dual-secret**: optional `[cluster] secret_previous` key; inbound auth accepts both, outbound uses only `secret`. Runbook: set `secret_previous=old, secret=new`, rolling restart, then remove `secret_previous`. | ✅ decided in planning |
 | H9 | **D6 console via server-side proxy**: a `?node=<node_id>` parameter on the per-node admin endpoints, internal proxying via `ClusterClient`. Avoids CORS and browser-unreachable endpoints (typical deployment: only the LB is exposed). As confirmed, three refinements: **(a)** transport = server-side proxy (direct browser-to-node calls rejected); **(b)** scope = ALL FOUR node-local view families — audit log, metrics history, notification event log, AND the Phase 28 replication journal (node-local by design, same behind-the-LB problem, added beyond the original plan); **(c)** the node selector also offers an **"All nodes"** merged view (entries from every live node fused by timestamp, each labeled with its source node), not just single-node selection. | ✅ confirmed by Pietro (2026-06-12): proxy + all 4 views + "All nodes" merge |
 | H10 | **Rolling upgrade across mixed versions**: every wire change is additive (new JSON fields ignored by old nodes); the probe uses the new authenticated `/cluster/v1/ping` with a fallback to the old `/cluster/v1/health` on 404 (legacy peer, counts as alive with a warning). | ✅ decided in planning |
-| H11 | **Versions**: a SINGLE release at the end of the full remediation plan (R1–R9); version number decided then (at least MINOR: the quorum changes observable behavior). Supersedes the original idea of `v0.26.0` after R1+R2 with per-milestone releases. Milestones are still committed and pushed as they complete. | ✅ revised and decided by Pietro (2026-06-11) |
+| H11 | **Versions**: a SINGLE release at the end of the full remediation plan (R1–R9); version number decided then (at least MINOR: the quorum changes observable behavior). Supersedes the original idea of `v0.26.0` after R1+R2 with per-milestone releases. Milestones are still committed and pushed as they complete. | ✅ revised and decided by Pietro (2026-06-11); version fixed at **v0.26.0** (Pietro, 2026-06-12) |
 | H12 | **Authenticate the peer, not just the request (closes review §3.7).** Today the cluster authenticates the *sender* of every `/cluster/v1/*` request (inbound, via `cluster_auth`) but never the *receiver* of a fan-out: `live_peers()` filters on `alive` only, and membership admits an mDNS peer on a `cluster_id` match alone — so a rogue peer receives all new writes with no secret. Fix, in order of preference: **(1) mutual TLS with a shared cluster CA** — a node verifies the peer's CA-signed cert before adding it to membership / fanning out (also resolves TD-015 and the cleartext/MITM exposure). **(2) Secret-only challenge-response**: an app-layer exchange where the peer proves possession of the secret over a fresh nonce before being counted live — NOT merely "a signed `/ping`" (a rogue controls its own server and can return 200 unconditionally; the peer must prove possession *to us*). Either way, `live_peers()` (fan-out) AND the quorum count only authenticated **and** `config_ok` peers. **CA origin (confirmed with Pietro)**: the CA is *operator-distributed via config* (`[cluster]` CA path + per-node cert/key) with a shipped generator command reusing the rcgen `tls-init` generator — NOT a K8s-style auto-enrollment (first node generates the CA, peers get CSRs signed over a secret-authenticated channel): issuance gated by the standing secret would collapse mTLS to secret strength, while an operator-distributed CA is an independent second factor (K8s mitigates with short-TTL join tokens; possible future evolution, not now). **Layering (confirmed)**: (2) is not a fallback — it ships for ALL clusters as the baseline peer-auth layer in R3 (it also closes the rogue peer on plain-HTTP deployments, where no certificates exist; on a plain-HTTP network it stops the easy attack — a rogue mDNS registrant — while sniffing/MITM still requires TLS), with (1) on top as the independent second factor on TLS clusters. | ✅ confirmed by Pietro (2026-06-11): BOTH layers — challenge-response baseline for every cluster (R3) + mutual TLS with the CA via config + shipped generator tooling (R4) |
 
 ---
@@ -187,22 +187,26 @@ Decision H9 confirmed by Pietro (2026-06-12) on all three axes: server-side prox
 
 ## R9 — Documentation, deploy and closure
 
-- [ ] **`ha.md`** (source + `docs/` via `bin/docs-build`):
-    - [ ] the REAL post-R1 quorum semantics (durability ACK, no rollback, error examples) and the available mode one: *concurrent writes to the same key are both acknowledged but only the LWW winner survives; the loser is discarded with no error to the client* (§5-doc1).
-    - [ ] **D11**: available-mode RPO note (single-copy window).
-    - [ ] **D7**: the real read window (partition, not just lag); CP = no conflicting writes, not read linearizability; sticky as a reference configuration.
-    - [ ] **D5**: the 503-behind-LB behavior and its mitigation (SDK retries; the write-aware option as a future possibility, decide whether to implement it or only document it).
-    - [ ] **D10**: WORM/Object Lock threat model in the cluster (shared secret = full control; link with TD-015).
-    - [ ] **§3.6**: the SSE-C limitation (if not fixed in R5).
-    - [ ] **Operational runbooks (D3, §5-doc2)**: replacing a dead node (empty disk = safe, the syncing readiness protects it); restore from backup (rewind detected by D3c, procedure documented anyway); cluster resize (recommended cold procedure + why rolling is dangerous, the D3a guard); secret rotation (dual-secret, H8); coherent backups (SQLite WAL); forming a cluster from non-empty nodes (D12.4: union+LWW merge, identical master key required, discouraged unless necessary).
-- [ ] **Deploy**: align `fall/rise` across `docker/cluster/haproxy.cfg`, `deploy/haproxy/haproxy.cfg` and the `ha.md` snippet (or motivate the difference in comments); add a commented sticky example (`balance source` or cookie) in both cfgs; k8s probes with `periodSeconds: 5, failureThreshold: 2` in `arca-cluster.yaml` (+ a note that readiness now reflects syncing, D2).
-- [ ] **`TECH_DEBT.md` + roadmap**: TD-016 resolved (R5); TD-017 SSE-C if open; re-evaluate TD-015 after R4; the roadmap tech-debt section in sync.
-- [ ] **Roadmap**: update the Phase 29 section with a line about the post-review hardening (checkbox or note), coherent with the existing format.
-- [ ] **Review**: mark the resolved findings in the review (a note at the top pointing to this plan), so review and plan stay coherent.
-- [ ] **README**: Test Coverage table updated (new R2/R5/R6/R7 tests).
-- [ ] **CHANGELOG**: consolidate Unreleased → final release; versions in sync (Cargo.toml, console, roadmap) per `RELEASING.md`.
+Two R9 decisions taken with Pietro (2026-06-12): **§5.4 leftovers = real integration tests** (not doc-only) and **D5 write-aware health = IMPLEMENTED** (not doc-only) — both options the plan had left open. The final version (H11) is **v0.26.0**.
 
-*Outcome: the system declares exactly what it does, the operator has the runbooks, the debt is tracked, final release proposed.*
+- [x] **D5 write-aware health (implemented, upgrading the doc-only option)**: `GET /admin/health?writable=1` answers `503 {"status":"read_only"}` (+ `Retry-After`) while the cluster write gate is closed (no quorum / size exceeded); single-node and available mode always 200. Status precedence draining > syncing > read_only in the pure `plain_health_status` (unit-tested); both HAProxy cfgs ship a commented `arca_writable` backend + frontend ACL routing write methods to it; integration asserts in phases A (writable 200 everywhere) and C (the lone survivor: plain 200, writable 503 read_only).
+- [x] **§5.4 leftover tests — new cluster phase L** (gc overlay: `config-gc.toml` + `docker-compose.cluster.gc.yml`, identical config except the new `[cluster] tombstone_grace_seconds = 20`, an advanced seconds-granularity override of the day-based grace added for exactly this — validated ≥ 1, documented as a testing knob): **(a) proactive blob repair** — the seeded object's payload file is deleted straight from arca-3's volume and must reappear via the proactive sweep, polled SHELL-SIDE on the volume (a throwaway alpine container) because any client GET would trigger the lazy read-repair and mask the sweep under test; then the restored blob must serve intact bytes; **(b) §3.2 GC liveness guard** — an object deleted while arca-3 is down beyond the grace must raise `tombstone_gc_blocked` on BOTH survivors (purge skipped, tombstone retained), and at arca-3's return the deletion is learned (object 404 on all three after full cycles — the resurrection the guard prevents) and the guard releases. 5 new markers; runner orchestration with the volume-side delete/poll between pytest steps.
+- [x] **`ha.md`** (source + `docs/` via `bin/docs-build`):
+    - [x] the available-mode §5-doc1 sentence verbatim (*both acknowledged, only the LWW winner survives, the loser discarded with no error to the client*) + **D11** single-copy RPO window, both in the `available` bullet of the Consistency section (the post-R1 quorum semantics were already rewritten in R1; R9 left them as-is).
+    - [x] **D7**: the read-after-write note replaced by a "what quorum mode does and does not promise about reads" block — R=1 never intersects the write majority by construction; CP = no conflicting writes, NOT read linearizability; the staleness window is fan-out lag in normal operation but the partition's WHOLE duration on a minority node; sticky (`balance source`) as the commented reference in both shipped cfgs.
+    - [x] **D5**: "a read-only node stays in rotation — and what that costs" in the Load balancer section: ~1/N client-visible write 503s while degraded, SDK-retry mitigation, and the now-implemented `?writable=1` write pool.
+    - [x] **D10**: "Object Lock (WORM) in a cluster: the trust model" section — verbatim remote applies (no receive-side lock re-check), compliance immutability rests on secret + CA key + OS access on every node (each one a full copy), posture recommendations; supersedes the TD-015 link (resolved in R4 — mTLS is part of the posture).
+    - [x] **§3.6 SSE-C**: nothing to add — fixed in R5 (read-repair via `ClusterSsecBlobStore`), already documented in the prerequisites.
+    - [x] **Operational runbooks (D3, §5-doc2)**: new top-level section — replacing a dead node (empty disk safe by construction, syncing gate, the lingering dead entry blocking GC until prune is expected); restore from backup (automatic D3c rewind handling; backup older than the grace → do NOT restore, use empty-disk replacement); cluster resize (cold procedure, why rolling cannot work — mixed quorums by construction — and the D3a guard failing closed); secret rotation (the existing H8 section moved under the runbooks); coherent backups (FS snapshot crash-consistency vs stopped-node copy, WAL caveat, PG backend, one-node-backs-up-the-dataset); forming a cluster from non-empty nodes (D12.4: union+LWW merge with silent losers, same-master-key prerequisite, discouraged — survivor + S3-level copy as the alternative).
+    - [x] clock-skew honestly declared a test gap (the §5.4 "skew = doc" half) in the Clock dependence trade-off; `?writable=1` and `tombstone_grace_seconds` added to the Observability section / TOML reference + `configuration.md`.
+- [x] **Deploy**: `fall/rise` motivated rather than flattened — test/demo cfg keeps `fall 2 rise 1` (the R2 wait_live calibration depends on ~4s eviction) and says so; production cfg keeps `fall 3 rise 2` and says why; the `ha.md` snippet now matches the PRODUCTION values (it is production guidance). Commented sticky `balance source` + write-aware backend in both cfgs. K8s: readiness `periodSeconds: 5, failureThreshold: 2` + comment that readiness reflects syncing (D2); stale "always 200" comment rewritten; **bonus fix**: the liveness probe moved to `?verbose=1` (always 200 on a live process) — sharing the readiness path would get a pod KILLED during a long catch-up (3 × 30s of 503-syncing), a real bug introduced by R7's semantics and never aligned here.
+- [x] **`TECH_DEBT.md` + roadmap**: verified already in sync (TD-015/TD-016 resolved in R4/R5 in both places; no TD-017 — the §3.6 spike fixed SSE-C in scope); nothing to change.
+- [x] **Roadmap**: R9 milestone line updated to the as-built scope (write-aware health + §5.4 tests, not just docs), R9 ticked, Phase 29.1 marked complete (progress bar, phase summary table with v0.26.0).
+- [x] **Review**: resolution note at the top pointing to this plan and the per-finding traceability table.
+- [x] **README**: Test Coverage table updated (+4 unit → 878: 3 health-status + 1 config-knob, +7 cluster → 59, totals).
+- [x] **CHANGELOG**: Unreleased consolidated into **v0.26.0** (decision H11: the single release closing R1–R9); versions synced (Cargo.toml workspace, Cargo.lock, console, roadmap) per `RELEASING.md`.
+
+*Outcome: the system declares exactly what it does, the operator has the runbooks, the debt is tracked, the v0.26.0 release closes the remediation plan.*
 
 ---
 
@@ -239,26 +243,26 @@ Update the Status column as work proceeds: ⬜ to do, 🔧 in progress, ✅ done
 | §5.1 | No available-mode test | R2 | ✅ |
 | §5.2 | No control-plane catch-up test | R2 | ✅ |
 | §5.3 | Latent flakiness (wait/phase E) | R2 | ✅ |
-| §5.4 | Listed test debt (GC, repair, bootstrap, skew) | R2 (partial: bootstrap in the R7 test; skew stays ➖ documented) | 🔧 (bootstrap covered by the R7 phase-J readiness test; still open: tombstone-GC + blob-repair integration tests; skew = doc-only in R9) |
-| §5-deploy | Inconsistent HAProxy fall/rise; k8s probes | R9 | ⬜ |
-| §5-doc1/2/3 | Available LWW, runbooks, SSE-C/quorum | R9 | ⬜ |
+| §5.4 | Listed test debt (GC, repair, bootstrap, skew) | R2 (bootstrap in the R7 test) + R9 (GC + repair tests; skew = doc) | ✅ (R9 phase L: proactive blob repair proven volume-side without a masking GET + §3.2 GC guard blocked/no-resurrection/release, on a gc overlay with the new `tombstone_grace_seconds` knob; clock skew declared a test gap in `ha.md` — Pietro chose real tests over doc-only, 2026-06-12) |
+| §5-deploy | Inconsistent HAProxy fall/rise; k8s probes | R9 | ✅ (fall/rise motivated per environment + ha.md snippet aligned to production values; sticky + write-aware backends commented in both cfgs; k8s readiness 5s/2 + liveness moved to `?verbose=1` so a long catch-up cannot get the pod killed) |
+| §5-doc1/2/3 | Available LWW, runbooks, SSE-C/quorum | R9 | ✅ (LWW loser-discarded-silently sentence + RPO in the available bullet; six operational runbooks; SSE-C and quorum semantics were already documented by R5/R1) |
 | D1 | Ghost quorum (unauthenticated liveness, drift ignored) | R3 | ✅ |
 | D2 | No syncing state (404s/partial listings at re-entry) | R7 | ✅ (first-pass readiness gate on `/admin/health`, per-peer sync detail in `/admin/cluster`, console notice, phase J integration test) |
 | D3a | No nodes > cluster_size guard | R3 | ✅ |
 | D3b | Secret rotation without dual-secret | R4 (+ runbook R9) | ✅ (dual-secret shipped + `ha.md` rotation section; R9 consolidates the runbooks) |
 | D3c | Restore from backup: seq rewind vs HWM | R7 (+ runbook R9) | ✅ (ping `max_seq` → `PeerNode`, `sync_rewound()` with a ping-fresher-than-last-advance guard, automatic HWM reset; restore runbook stays in R9) |
 | D4 | Multipart without reconcile; local-only concat | R5 | ✅ (uploads + parts in the snapshot, `multipart` tombstone on Complete/Abort, concat repairs missing parts from peers; integration: abort-while-down closes everywhere, Complete succeeds on the returned node) |
-| D5 | LB blind to writability (client-visible 503s) | R9 (doc; write-aware to be decided) | ⬜ |
+| D5 | LB blind to writability (client-visible 503s) | R9 | ✅ IMPLEMENTED (Pietro, 2026-06-12): `?writable=1` → 503 `read_only` while the write gate is closed, commented write-pool backends in both cfgs, cost+mitigation documented in `ha.md`; integration asserts in phases A and C |
 | D6 | Console incoherent on per-node views | R8 | ✅ (`?node=` server-side proxy on all four node-local families + `all` merged view with per-row source labels; console selector in the four views, mutations gated off proxied views; 8 integration + 15 unit tests) |
-| D7 | Quorum reads weaker than the CP label | R9 (doc + sticky reference) | ⬜ |
+| D7 | Quorum reads weaker than the CP label | R9 (doc + sticky reference) | ✅ (CP = no conflicting writes, not read linearizability; partition-long staleness on a minority node stated; sticky `balance source` commented in both cfgs and named the reference in `ha.md`) |
 | D8 | No real-partition test | R2 | ✅ |
 | D9 | TD-016 underestimated (RBAC/bucket_config) | R5 | ✅ (all 6 families in the snapshot merge with LWW timestamps + tombstones; parent-dead filtering instead of cascade tombstones; TD-016 resolved) |
-| D10 | WORM in cluster: trust model undocumented | R9 | ⬜ |
-| D11 | Available RPO undeclared | R9 | ⬜ |
+| D10 | WORM in cluster: trust model undocumented | R9 | ✅ (dedicated `ha.md` section: verbatim remote applies, secret/CA/OS-access surface, compliance posture recommendations) |
+| D11 | Available RPO undeclared | R9 | ✅ (single-copy durability window named RPO > 0 in the available bullet, with the when-to-choose-it guidance) |
 | D12.1 | Receive side without a node-local key filter | R4 | ✅ |
 | D12.2 | Export/import rewrites node_id | R5 | ✅ (export omits node-local keys, import refuses them — double defense + integration test) |
 | D12.3 | Failure detector without tolerance | R3 | ✅ |
-| D12.4 | Non-empty single-node merge undocumented | R9 | ⬜ |
+| D12.4 | Non-empty single-node merge undocumented | R9 | ✅ (runbook: union+LWW with silent losers, same-master-key prerequisite, discouraged + survivor alternative) |
 
 ## Estimate and sequence
 
@@ -268,6 +272,6 @@ R1 ≈ 2-3 d · R2 ≈ 1-2 d · R3 ≈ 1-2 d · R4 ≈ 1 d · R5 ≈ 2-3 d · R6
 
 - Read-quorum / linearizable reads (stays future hardening, as per the Phase 29 plan).
 - HLC instead of NTP+LWW.
-- A write-aware health check as the LB default (D5: documented; implemented only if decided in R9).
+- ~~A write-aware health check~~ — implemented in R9 (`?writable=1`, decision of 2026-06-12); what stays out of scope is only making it the LB *default* (the shipped configs keep the read-friendly default check, write pool commented).
 - Automated clock-skew tests (documented as a limit, the NTP constraint is already in `ha.md`).
 - Erasure coding, sharding, gossip: out of scope as per the Phase 29 plan.

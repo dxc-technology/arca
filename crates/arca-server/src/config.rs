@@ -827,6 +827,11 @@ pub struct ClusterConfig {
     /// no longer receive the tombstone and could resurrect the deleted object.
     #[serde(default = "default_cluster_tombstone_grace_days")]
     pub tombstone_grace_days: u64,
+    /// Advanced override of `tombstone_grace_days` with seconds granularity.
+    /// Exists for integration tests and demos that must observe the GC
+    /// liveness guard (§3.2) within seconds — production deployments should
+    /// size the grace in days. When set it wins over `tombstone_grace_days`.
+    pub tombstone_grace_seconds: Option<u64>,
     /// How long an unreachable peer stays in membership before it is pruned
     /// (M3), in days. Defaults to `tombstone_grace_days`: while a dead peer is
     /// still remembered it blocks tombstone GC (a purge it missed could
@@ -948,6 +953,9 @@ impl ClusterConfig {
         if self.peer_prune_days == Some(0) {
             bail!("[cluster] peer_prune_days must be >= 1 when set");
         }
+        if self.tombstone_grace_seconds == Some(0) {
+            bail!("[cluster] tombstone_grace_seconds must be >= 1 when set");
+        }
         if self.blob_repair_budget == Some(0) {
             bail!("[cluster] blob_repair_budget must be >= 1 when set");
         }
@@ -987,9 +995,13 @@ impl ClusterConfig {
         }
     }
 
-    /// Tombstone retention as a `Duration` (see [`ClusterConfig::tombstone_grace_days`]).
+    /// Tombstone retention as a `Duration`: the seconds-granularity override
+    /// when set (tests/demos), otherwise `tombstone_grace_days`.
     pub fn tombstone_grace(&self) -> std::time::Duration {
-        std::time::Duration::from_secs(self.tombstone_grace_days * 24 * 60 * 60)
+        match self.tombstone_grace_seconds {
+            Some(s) => std::time::Duration::from_secs(s),
+            None => std::time::Duration::from_secs(self.tombstone_grace_days * 24 * 60 * 60),
+        }
     }
 
     /// Effective membership prune window in days (M3): the configured
@@ -2113,6 +2125,7 @@ cluster_size = 3
             anti_entropy_interval_seconds: 30,
             request_timeout_seconds: 10,
             tombstone_grace_days: 7,
+            tombstone_grace_seconds: None,
             peer_prune_days: None,
             blob_repair_budget: None,
             tls: None,
@@ -2139,6 +2152,33 @@ cluster_size = 3
         cluster.peer_prune_days = Some(14);
         assert!(cluster.validate().is_ok());
         assert_eq!(cluster.peer_prune_days(), 14, "explicit value wins");
+    }
+
+    /// The seconds-granularity grace override (tests/demos): 0 rejected,
+    /// unset → days win, set → it wins over the days knob.
+    #[test]
+    fn cluster_tombstone_grace_seconds_validation_and_override() {
+        let mut cluster = ClusterConfig {
+            tombstone_grace_seconds: Some(0),
+            ..test_cluster_config()
+        };
+        let err = cluster.validate().unwrap_err().to_string();
+        assert!(err.contains("tombstone_grace_seconds"), "got: {err}");
+
+        cluster.tombstone_grace_seconds = None;
+        assert!(cluster.validate().is_ok());
+        assert_eq!(
+            cluster.tombstone_grace(),
+            std::time::Duration::from_secs(7 * 24 * 60 * 60),
+            "days knob applies when the override is unset"
+        );
+        cluster.tombstone_grace_seconds = Some(20);
+        assert!(cluster.validate().is_ok());
+        assert_eq!(
+            cluster.tombstone_grace(),
+            std::time::Duration::from_secs(20),
+            "the seconds override wins"
+        );
     }
 
     #[test]

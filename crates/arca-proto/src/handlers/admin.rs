@@ -122,6 +122,12 @@ struct HealthResponse {
 pub struct HealthQuery {
     #[serde(default)]
     verbose: Option<String>,
+    /// `?writable=1` — write-aware variant (review D5): additionally answer
+    /// 503 `{"status":"read_only"}` while the cluster write gate is closed
+    /// (lost quorum / size exceeded), so a load balancer can keep a separate
+    /// write pool that only routes to nodes currently able to accept writes.
+    #[serde(default)]
+    writable: Option<String>,
 }
 
 /// Detailed health body for `?verbose=1`: liveness plus the cluster topology and
@@ -182,23 +188,29 @@ pub struct CreateCredentialRequest {
 /// node reports `ok` (degraded-but-serving). This default shape is what the LB
 /// health check consumes.
 ///
+/// `?writable=1` (review D5) makes the plain shape write-aware: a node whose
+/// cluster write gate is closed (lost quorum, size exceeded) additionally
+/// answers 503 `{"status":"read_only"}`. Point a load balancer's *write pool*
+/// health check here to route writes only to nodes that would accept them,
+/// while the default check keeps read-only nodes serving reads. Single-node
+/// deployments and `available` mode are always writable.
+///
 /// `?verbose=1` returns a 200 with the cluster topology + write-quorum status
 /// for operators / the console (`cluster` is null on single-node). It does not
 /// 503 on drain/sync so an inspector always gets the detail; the `status`
 /// field conveys the state.
 pub async fn health(State(state): State<AppState>, Query(q): Query<HealthQuery>) -> Response {
+    let flag = |v: &Option<String>| matches!(v.as_deref(), Some("1") | Some("true") | Some(""));
     let draining = *state.draining.borrow();
     let syncing = state.cluster.as_ref().is_some_and(|c| c.is_syncing());
-    let status = if draining {
-        "draining"
-    } else if syncing {
-        "syncing"
-    } else {
-        "ok"
-    };
-    let verbose = matches!(q.verbose.as_deref(), Some("1") | Some("true") | Some(""));
+    let writable = !flag(&q.writable)
+        || state
+            .cluster
+            .as_ref()
+            .is_none_or(|c| c.has_write_quorum());
+    let (status, ready) = plain_health_status(draining, syncing, writable);
 
-    if verbose {
+    if flag(&q.verbose) {
         let body = VerboseHealthResponse {
             status,
             draining,
@@ -207,7 +219,7 @@ pub async fn health(State(state): State<AppState>, Query(q): Query<HealthQuery>)
         return Json(body).into_response();
     }
 
-    if draining || syncing {
+    if !ready {
         return Response::builder()
             .status(StatusCode::SERVICE_UNAVAILABLE)
             .header("Content-Type", "application/json")
@@ -217,6 +229,23 @@ pub async fn health(State(state): State<AppState>, Query(q): Query<HealthQuery>)
             .expect("build not-ready response");
     }
     Json(HealthResponse { status: "ok" }).into_response()
+}
+
+/// Resolves the plain (load-balancer) health shape: the status string and
+/// whether the node is ready (`false` → 503). Precedence: a graceful-shutdown
+/// drain wins over everything, then the D2 syncing gate, then — only when the
+/// caller asked for the write-aware variant and passed `writable = false` —
+/// the D5 `read_only` state.
+fn plain_health_status(draining: bool, syncing: bool, writable: bool) -> (&'static str, bool) {
+    if draining {
+        ("draining", false)
+    } else if syncing {
+        ("syncing", false)
+    } else if !writable {
+        ("read_only", false)
+    } else {
+        ("ok", true)
+    }
 }
 
 /// One node in the `GET /admin/cluster` topology view.
@@ -898,4 +927,33 @@ pub async fn presign(
         expires_at: expires_at.to_rfc3339(),
         id: record_id,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::plain_health_status;
+
+    /// Default LB shape: ready unless draining or syncing (writable = true
+    /// when the write-aware variant was not requested).
+    #[test]
+    fn health_default_shape() {
+        assert_eq!(plain_health_status(false, false, true), ("ok", true));
+        assert_eq!(plain_health_status(false, true, true), ("syncing", false));
+        assert_eq!(plain_health_status(true, false, true), ("draining", false));
+    }
+
+    /// D5 write-aware shape: a closed write gate turns the node not-ready
+    /// with the dedicated `read_only` status.
+    #[test]
+    fn health_writable_shape_reports_read_only() {
+        assert_eq!(plain_health_status(false, false, false), ("read_only", false));
+    }
+
+    /// Precedence: drain wins over sync, sync wins over read_only — the most
+    /// fundamental not-ready reason is the one reported.
+    #[test]
+    fn health_status_precedence() {
+        assert_eq!(plain_health_status(true, true, false), ("draining", false));
+        assert_eq!(plain_health_status(false, true, false), ("syncing", false));
+    }
 }

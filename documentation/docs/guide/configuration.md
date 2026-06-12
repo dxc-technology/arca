@@ -155,6 +155,7 @@ The cache is transparent to clients: write operations (create/delete bucket, put
 | `cluster.anti_entropy_interval_seconds` | `30` | Interval between anti-entropy reconciliation passes. |
 | `cluster.request_timeout_seconds` | `10` | Inter-node HTTP request timeout. |
 | `cluster.tombstone_grace_days` | `7` | How long a delete tombstone is kept for convergence. MUST exceed the longest expected node downtime. |
+| `cluster.tombstone_grace_seconds` | unset | Advanced seconds-granularity override of `tombstone_grace_days` (≥ 1), for tests and demos that must observe tombstone GC within seconds. Production deployments size the grace in days. |
 | `cluster.peer_prune_days` | `tombstone_grace_days` | Evict a peer from membership after it has been unreachable this long (≥ 1). While remembered, an absent peer blocks tombstone GC; once pruned, a return beyond the grace risks resurrecting deleted data. |
 | `cluster.blob_repair_budget` | `100` | Maximum blob fetches per anti-entropy tick by the proactive blob-repair sweep (≥ 1). An unfinished sweep resumes on the next tick, so a large repair backlog drains steadily without monopolizing the worker. |
 | `cluster.tls.ca_file` | *(required over HTTPS)* | Cluster CA certificate (PEM), identical on every node. The whole `[cluster.tls]` section is REQUIRED when `[server.tls]` is enabled (verified mutual TLS between nodes — no insecure fallback) and rejected when it is not. Mint the material with `arca tls generate-cluster`. |
