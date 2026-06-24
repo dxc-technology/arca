@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Maintenance jobs subsystem (Phase 30, M1).** Long-running, operator-launched maintenance operations are tracked as `maintenance_jobs` rows (SQLite migration v24 / PostgreSQL `0012`) so progress survives restarts and is observable from the console. A single background worker processes one job at a time, committing progress per item so pause / cancel / restart are always safe; in a cluster the worker is leader-gated (only the worker-leader node runs it). A job in `maintenance` mode drains the S3 API on its node for its lifetime (the health endpoint reports `draining` so the load balancer stops routing), while the admin API and worker stay live. New JSON admin API under `/admin/maintenance/jobs` (create / list / get-with-logs / pause / resume / cancel, single-job lock, state-guarded transitions) and a console **Maintenance** page (launch panel, live active-job card with progress / ETA / rate, log panel, job history). The re-encryption (M2) and migration (M3/M4) job types build on this foundation.
+
 ## [0.26.1] — 2026-06-12
 
 ### Security
