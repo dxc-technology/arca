@@ -161,6 +161,34 @@ pub enum Command {
         force: bool,
     },
 
+    /// Guided in-place transition between standalone and HA cluster (offline).
+    /// The cluster is fully replicated (not sharded), so there is no data
+    /// redistribution: this generates the `[cluster]` config stanza and runs
+    /// small DB ops. Exactly one of `--to-cluster` / `--to-single` is required.
+    MigrateTopology {
+        /// Path to the configuration file
+        #[arg(long, default_value = "/etc/arca/config.toml")]
+        config_path: PathBuf,
+
+        /// Single -> HA: make this standalone instance the FIRST node of a new
+        /// cluster (emits the [cluster] stanza; reconciles the seq counter).
+        #[arg(long, conflicts_with = "to_single", required_unless_present = "to_single")]
+        to_cluster: bool,
+
+        /// HA -> standalone: collapse the cluster back to THIS surviving node
+        /// (purges cluster-only tombstones; VACUUMs SQLite). Requires --force.
+        #[arg(long, conflicts_with = "to_cluster", required_unless_present = "to_cluster")]
+        to_single: bool,
+
+        /// (--to-cluster) Also write the generated [cluster] stanza to this file
+        #[arg(long, value_name = "FILE")]
+        output: Option<PathBuf>,
+
+        /// (--to-single) Confirm every peer is synced AND stopped, then proceed
+        #[arg(long)]
+        force: bool,
+    },
+
     /// Manage users (offline, direct database access)
     User {
         /// Path to the configuration file

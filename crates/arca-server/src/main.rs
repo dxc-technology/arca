@@ -10,6 +10,7 @@ mod compress_existing;
 mod fsck;
 mod maintenance;
 mod migrate_db;
+mod migrate_topology;
 mod recover;
 mod recrypt_existing;
 mod replicator;
@@ -1036,6 +1037,25 @@ async fn async_main(cli: Cli) -> Result<()> {
             let _ = init_tracing(&LogFormat::Text, "info");
             let config = config::load_config(&config_path)?;
             migrate_db::run_migrate_db(&config, to.as_str(), force).await?;
+        }
+
+        Command::MigrateTopology {
+            config_path,
+            to_cluster,
+            to_single,
+            output,
+            force,
+        } => {
+            let _ = init_tracing(&LogFormat::Text, "info");
+            let config = config::load_config(&config_path)?;
+            if to_cluster {
+                migrate_topology::run_to_cluster(&config, output.as_deref()).await?;
+            } else if to_single {
+                migrate_topology::run_to_single(&config, force).await?;
+            } else {
+                // clap enforces exactly one via required_unless_present; defensive.
+                anyhow::bail!("specify exactly one of --to-cluster or --to-single");
+            }
         }
 
         Command::Tls { action } => {

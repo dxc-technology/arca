@@ -1320,6 +1320,21 @@ impl MetadataStore for PgStore {
         Ok(row.get::<i64, _>("value") as u64)
     }
 
+    async fn seed_object_seq_to_max(&self) -> Result<u64, ArcaError> {
+        // Bump the counter UP to MAX(seq) when it lags; never rewind it (a
+        // rewind would trip peer D3c rewind detection). A single statement
+        // does the conditional update atomically.
+        let row = sqlx_core::query::query(
+            "UPDATE object_seq \
+             SET value = GREATEST(value, (SELECT COALESCE(MAX(seq), 0) FROM objects)) \
+             RETURNING value",
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("seed_object_seq_to_max: {e}")))?;
+        Ok(row.get::<i64, _>("value") as u64)
+    }
+
     async fn list_referenced_blob_ids(&self) -> Result<Vec<BlobId>, ArcaError> {
         let rows = sqlx_core::query::query(
             "SELECT blob_id FROM objects WHERE is_tombstone = FALSE AND blob_id != ''

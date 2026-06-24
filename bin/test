@@ -353,6 +353,126 @@ run_migrate_db() {
     return $rc
 }
 
+run_migrate_topology() {
+    echo "==> Running migrate-topology (single <-> HA cluster transition) test..."
+
+    # Single-node SQLite lifecycle around the offline `arca migrate-topology` CLI.
+    # We exercise BOTH directions' DB ops + config emission end-to-end (the
+    # deterministic, non-flaky parts); the full 3-node round trip is a runbook in
+    # the HA guide (the emitted secret is random; the 3-node harness uses fixed
+    # configs, so an automated bringup with the generated stanza would be brittle).
+
+    # Base config only (no features), but we still need the config overlay to
+    # mount config/.generated.toml at /etc/arca/config.toml. Add it manually.
+    build_config
+    local COMPOSE
+    COMPOSE="$(compose_cmd) -f $REPO_ROOT/docker/docker-compose.config.yml"
+
+    cleanup_topo() {
+        echo "Cleaning up migrate-topology test..."
+        # Recompute the compose command — the function-local $COMPOSE is out of
+        # scope when this runs from the EXIT trap (and `set -u` would trip).
+        local C
+        C="$(compose_cmd) -f $REPO_ROOT/docker/docker-compose.config.yml"
+        $C down -v 2>/dev/null || true
+        # Restore a clean base config (we appended a [cluster] stanza to it).
+        build_config 2>/dev/null || true
+    }
+    trap cleanup_topo EXIT
+
+    $COMPOSE down -v 2>/dev/null || true
+
+    # --- Phase 1: seed on the standalone SQLite node ---
+    $COMPOSE build arca test
+    $COMPOSE up -d arca
+    wait_for_arca "$COMPOSE"
+    echo "--> Seeding data on the standalone node..."
+    $COMPOSE run --rm -e ARCA_TOPO_PHASE=seed \
+        test integration/test_migrate_topology.py "$@"
+    local seed_rc=$?
+    if [[ $seed_rc -ne 0 ]]; then echo "Seed phase failed (rc=$seed_rc)"; return $seed_rc; fi
+
+    # Stop Arca but KEEP the volume (the DB carries across).
+    $COMPOSE stop arca >/dev/null 2>&1 || true
+    $COMPOSE rm -f arca >/dev/null 2>&1 || true
+
+    # --- Phase 2: offline --to-cluster (emit stanza + reconcile seq) ---
+    echo "--> Running offline: arca migrate-topology --to-cluster ..."
+    local to_cluster_out
+    to_cluster_out="$($COMPOSE run --rm --no-deps arca \
+        migrate-topology --config-path /etc/arca/config.toml --to-cluster)" || {
+        echo "migrate-topology --to-cluster failed"; echo "$to_cluster_out"; return 1
+    }
+    echo "$to_cluster_out"
+
+    # Assert the CLI emitted a well-formed [cluster] stanza and reconciled the seq.
+    echo "$to_cluster_out" | grep -q '^\[cluster\]'        || { echo "FAIL: no [cluster] header"; return 1; }
+    echo "$to_cluster_out" | grep -q '^enabled = true'     || { echo "FAIL: enabled not true"; return 1; }
+    echo "$to_cluster_out" | grep -qE '^cluster_id = "arca-[0-9a-f]+"' || { echo "FAIL: no cluster_id"; return 1; }
+    echo "$to_cluster_out" | grep -qE '^secret = "[0-9a-f]{64}"'       || { echo "FAIL: secret not 32-byte hex"; return 1; }
+    echo "$to_cluster_out" | grep -q 'Reconciled object_seq write counter' || { echo "FAIL: no seq reconcile line"; return 1; }
+    echo "    OK: --to-cluster emitted a valid [cluster] stanza and reconciled the counter."
+
+    # --- Phase 3: prove the emitted stanza is accepted by the binary ---
+    # Append the generated [cluster] section to the host config (live-mounted),
+    # then `arca cluster status` loads + VALIDATES + prints it. This is the
+    # real-binary acceptance check for the generated config.
+    {
+        echo ""
+        echo "$to_cluster_out" | sed -n '/^\[cluster\]/,/^# key_file/p'
+    } >> "$GENERATED_CONFIG"
+
+    # Prove the binary ACCEPTS the emitted config: startup runs the full
+    # load_config + cluster validation. A malformed [cluster] stanza makes
+    # `arca serve` exit immediately, so the container would not stay up.
+    echo "--> Verifying the binary starts with the emitted [cluster] config ..."
+    $COMPOSE up -d arca
+    wait_for_arca "$COMPOSE"
+    if $COMPOSE ps arca 2>/dev/null | grep -qiE "up|running|healthy"; then
+        echo "    OK: the binary started and stayed up with the emitted [cluster] config."
+    else
+        echo "FAIL: arca exited with the emitted [cluster] config"
+        $COMPOSE logs arca 2>&1 | tail -20
+        return 1
+    fi
+    # Stop again so the offline --to-single CLI has exclusive access to the volume.
+    $COMPOSE stop arca >/dev/null 2>&1 || true
+    $COMPOSE rm -f arca >/dev/null 2>&1 || true
+
+    # --- Phase 4: offline --to-single (purge cluster-only state + VACUUM) ---
+    # Without --force it must refuse (precondition guard); with --force it runs.
+    echo "--> Confirming --to-single refuses without --force ..."
+    if $COMPOSE run --rm --no-deps arca \
+        migrate-topology --config-path /etc/arca/config.toml --to-single >/dev/null 2>&1; then
+        echo "FAIL: --to-single ran without --force"; return 1
+    fi
+    echo "    OK: --to-single requires --force."
+
+    echo "--> Running offline: arca migrate-topology --to-single --force ..."
+    local to_single_out
+    to_single_out="$($COMPOSE run --rm --no-deps arca \
+        migrate-topology --config-path /etc/arca/config.toml --to-single --force)" || {
+        echo "migrate-topology --to-single failed"; echo "$to_single_out"; return 1
+    }
+    echo "$to_single_out"
+    echo "$to_single_out" | grep -q 'Purged cluster-only state' || { echo "FAIL: no purge line"; return 1; }
+    echo "$to_single_out" | grep -qi 'VACUUM'                   || { echo "FAIL: no VACUUM line"; return 1; }
+    echo "    OK: --to-single purged cluster-only state and VACUUMed."
+
+    # --- Phase 5: strip [cluster], restart standalone, verify data intact ---
+    build_config   # regenerate base config WITHOUT the [cluster] stanza
+    $COMPOSE up -d arca
+    wait_for_arca "$COMPOSE"
+    echo "--> Verifying the seeded data survived the round trip..."
+    $COMPOSE run --rm -e ARCA_TOPO_PHASE=verify \
+        test integration/test_migrate_topology.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_topo
+    return $rc
+}
+
 run_presigned() {
     echo "==> Running presigned URL integration tests..."
     local COMPOSE
@@ -1265,6 +1385,10 @@ case "${1:-all}" in
         shift
         run_migrate_db "$@"
         ;;
+    migrate-topology)
+        shift
+        run_migrate_topology "$@"
+        ;;
     presigned)
         shift
         run_presigned "$@"
@@ -1313,6 +1437,7 @@ case "${1:-all}" in
         echo "  kms                  Run KMS integration tests (with OpenBAO)"
         echo "  postgres             Run PostgreSQL backend integration tests"
         echo "  migrate-db           Run metadata backend migration (SQLite->PostgreSQL) test"
+        echo "  migrate-topology     Run single <-> HA cluster transition (migrate-topology) test"
         echo "  presigned            Run presigned URL integration tests"
         echo "  ssec                 Run SSE-C integration tests"
         echo "  connectors <type>    Run connector integration tests (redis, nats, mqtt, postgresql, mysql, mongodb, kafka, amqp, elasticsearch, syslog, smtp, grpc, all)"

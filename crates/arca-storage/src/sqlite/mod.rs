@@ -139,6 +139,20 @@ impl SqliteStore {
         self.cluster_mode.load(Ordering::Relaxed)
     }
 
+    /// Runs `VACUUM` to rebuild the database file, reclaiming the pages freed by
+    /// a bulk delete (e.g. `arca migrate-topology --to-single` purging every
+    /// tombstone). Must run outside a transaction; this offline tool holds the
+    /// only connection, so there is nothing to contend with.
+    pub async fn vacuum(&self) -> Result<(), ArcaError> {
+        self.conn
+            .call(|conn| {
+                conn.execute_batch("VACUUM")?;
+                Ok(())
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("vacuum: {e}")))
+    }
+
     /// The single write connection (serializes mutations). Used by the
     /// backend-migration copier ([`crate::migration`]) for batched INSERTs and
     /// by tests that seed/inspect rows directly.

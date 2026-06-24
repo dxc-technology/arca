@@ -882,6 +882,29 @@ impl MetadataStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("current_object_seq: {e}")))
     }
 
+    async fn seed_object_seq_to_max(&self) -> Result<u64, ArcaError> {
+        // Bump the counter UP to MAX(seq) over the rows when it lags; never
+        // rewind it (a rewind would trip peer D3c rewind detection). Both the
+        // read and the conditional update run on the write connection in one
+        // call so no concurrent write races between them (this tool runs with
+        // the server stopped, but keep it correct regardless).
+        self.conn
+            .call(move |conn| {
+                let max_seq: i64 = conn
+                    .query_row("SELECT COALESCE(MAX(seq), 0) FROM objects", [], |row| {
+                        row.get(0)
+                    })?;
+                conn.execute(
+                    "UPDATE object_seq SET value = ?1 WHERE value < ?1",
+                    params![max_seq],
+                )?;
+                let v: i64 = conn.query_row("SELECT value FROM object_seq", [], |row| row.get(0))?;
+                Ok(v as u64)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("seed_object_seq_to_max: {e}")))
+    }
+
     async fn list_referenced_blob_ids(&self) -> Result<Vec<BlobId>, ArcaError> {
         self.read_conn()
             .call(move |conn| {

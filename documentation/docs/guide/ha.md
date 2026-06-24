@@ -305,6 +305,36 @@ The optional `[cluster] secret_previous` makes a secret rotation a rolling opera
 2. Rolling-restart the nodes. Inbound authentication accepts both secrets, so replication keeps flowing in both directions across the window; outbound signing always uses the new secret. Expect transient `config_ok: false` flags while versions of the config coexist (the drift fingerprint includes the secret): nodes already on the new secret form the writable majority as soon as there are enough of them, exactly like a rolling upgrade.
 3. When all nodes run the new secret, remove `secret_previous` (no restart urgency: it is inert once nothing signs with it, but leaving the old secret valid forever defeats the rotation).
 
+### Guided topology transition (`arca migrate-topology`)
+
+`arca migrate-topology` scripts the two in-place topology changes a standalone instance and a cluster go through, so you do not assemble the config and the small DB chores by hand. The cluster is **fully replicated, not sharded**, so neither direction redistributes data — the tool generates config, runs a couple of DB ops, and prints the exact next steps. Run it with the server **stopped**.
+
+**Single node → first cluster node (`--to-cluster`)**
+
+```bash
+arca migrate-topology --config-path /etc/arca/config.toml --to-cluster
+# or, to also drop the stanza into a file you can paste from:
+arca migrate-topology --config-path /etc/arca/config.toml --to-cluster --output /tmp/cluster.toml
+```
+
+It refuses if the node is already clustered, reconciles this node's `object_seq` write counter to `MAX(seq)` (so the first clustered write cannot skip a pre-cluster object), and prints a ready-to-paste `[cluster]` section with a generated `cluster_id`, a strong random `secret` (32 bytes hex), `mode = "quorum"`, `cluster_size = 3`, `discovery = "mdns"`, and commented templates for static/DNS discovery and `[cluster.tls]`. Then:
+
+1. Paste the `[cluster]` section into **this** node's config.
+2. If `[server.tls]` is enabled, mint inter-node mTLS material with `arca tls generate-cluster --node <this-node> --node <node-2> --node <node-3>` and add the printed `[cluster.tls]` section.
+3. Restart this node — restarting with `[cluster].enabled = true` switches the metadata store into cluster (tombstone) mode automatically, no flag needed.
+4. Bring up the **other nodes empty** with the **same** `[cluster]` stanza (same `cluster_id` and `secret`; per-node TLS cert/key). They start blank and anti-entropy pulls the full dataset from this seed node — no manual data copy. This is the [normal grow-from-one path](#prerequisites).
+5. Verify with `arca cluster status` and `GET /admin/cluster`.
+
+**Cluster → single node (`--to-single`)**
+
+Run **on the surviving authoritative node**, after confirming every peer reported in-sync (`first_pass_done` via `GET /admin/cluster` or `arca cluster status`) **and** every peer is stopped. Collapsing while a peer is behind loses that peer's un-replicated writes, so the tool requires `--force` as the explicit confirmation:
+
+```bash
+arca migrate-topology --config-path /etc/arca/config.toml --to-single --force
+```
+
+It purges the cluster-only state (object tombstones and control-plane tombstones) and, on SQLite, `VACUUM`s the database to reclaim the freed pages (PostgreSQL needs none — autovacuum handles it). Then remove the whole `[cluster]` section (and `[cluster.tls]`) from the config and restart: with no `[cluster]` section the node runs standalone again (hard deletes remove rows outright instead of tombstoning).
+
 ### Coherent backups
 
 A node's data directory holds the blobs **and** the metadata database (SQLite in WAL mode by default): a backup must capture them coherently.

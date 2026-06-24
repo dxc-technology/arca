@@ -477,6 +477,23 @@ pub trait MetadataStore: Send + Sync {
         Ok(0)
     }
 
+    /// Reconciles the per-node `object_seq` write counter to at least
+    /// `MAX(seq)` over the objects table, returning the value the counter now
+    /// holds. Used by `arca migrate-topology --to-cluster` to make a standalone
+    /// instance the consistent first node of a cluster: the next clustered
+    /// write is then guaranteed a strictly-larger seq than any pre-cluster row,
+    /// so a peer's changed-since cursor never skips this node's existing
+    /// objects. The counter is only ever bumped UP, never rewound (a rewind
+    /// would false-alarm peer D3c rewind detection), so this is idempotent and
+    /// safe even when the counter is already consistent (the normal case, since
+    /// every local write advances it) — it repairs counters left behind by an
+    /// offline `recover`/`migrate-db` that rebuilt rows out of band.
+    ///
+    /// Default implementation: no-op (`Ok(0)`) — backends without the counter.
+    async fn seed_object_seq_to_max(&self) -> Result<u64, crate::error::ArcaError> {
+        Ok(0)
+    }
+
     /// Removes tombstone rows (hard-deleted versions kept only for cluster
     /// convergence) whose `last_modified` is older than `before`, returning the
     /// number removed. The grace period (`now - before`) MUST exceed the longest

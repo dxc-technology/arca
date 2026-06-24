@@ -274,6 +274,12 @@ impl MetadataStore for CachingMetadataStore {
         self.inner.current_object_seq().await
     }
 
+    async fn seed_object_seq_to_max(&self) -> Result<u64, ArcaError> {
+        // Counter reconciliation; forwarded so the default no-op doesn't shadow
+        // the backend behind the cache (no cached state depends on the counter).
+        self.inner.seed_object_seq_to_max().await
+    }
+
     async fn purge_tombstones(
         &self,
         before: chrono::DateTime<chrono::Utc>,
