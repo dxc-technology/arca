@@ -563,6 +563,8 @@ Auto-refresh is on by default (30-second cycle). The **Clear All** button opens 
 
 ## Maintenance
 
+![Maintenance view](../assets/screenshots/console-maintenance.png)
+
 The Maintenance view is available to **admin credentials only** (navigate to `#/maintenance`). It launches and supervises long-running maintenance jobs — in-place **re-encryption** (encrypt existing plaintext objects to SSE-S3, or decrypt them back) — with persisted progress and pause / resume / cancel controls. Only **one job runs at a time**; in a cluster only the worker-leader node runs it. See the [Migration & Maintenance guide](maintenance.md) for the full model.
 
 ### Launch panel
