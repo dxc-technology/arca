@@ -8,6 +8,7 @@ mod credential;
 mod crypto;
 mod compress_existing;
 mod fsck;
+mod maintenance;
 mod recover;
 mod replicator;
 mod sigv4_http;
@@ -340,6 +341,12 @@ async fn async_main(cli: Cli) -> Result<()> {
             // Drain mode watch channel (set to true on shutdown signal).
             let (drain_tx, drain_rx) = tokio::sync::watch::channel(false);
 
+            // Maintenance-job drain channel (Phase 30): a maintenance-mode job
+            // drains the S3 API on this node for its lifetime. The worker owns
+            // the sender; the receiver feeds the health check alongside `drain`.
+            let (maint_drain_tx, maint_drain_rx) = tokio::sync::watch::channel(false);
+            let maint_drain_tx = std::sync::Arc::new(maint_drain_tx);
+
             // Optionally wrap metadata store with LRU cache.
             let cache_config = config.server.cache.clone().unwrap_or_default();
             let metadata: Arc<dyn arca_core::store::MetadataStore> = if cache_config.enabled {
@@ -563,6 +570,8 @@ async fn async_main(cli: Cli) -> Result<()> {
                 max_header_count: limits.max_header_count,
                 max_metadata_size: limits.max_metadata_size,
                 draining: drain_rx,
+                maintenance_draining: maint_drain_rx,
+                maintenance_store: Some(stores.maintenance.clone()),
                 notification_tx: None,
                 notification_store: stores.notification,
                 connector_registry: None, // Set after building the registry below.
@@ -721,6 +730,22 @@ async fn async_main(cli: Cli) -> Result<()> {
                 &state,
                 config.lifecycle.as_ref().map(|l| l.interval_seconds),
             );
+
+            // Maintenance jobs (Phase 30): reset any job left `running` by a
+            // previous process (the operator re-launches it; re-launched jobs
+            // resume from persisted state), then spawn the worker.
+            if let Some(ref maint) = state.maintenance_store {
+                match maint.interrupt_running_jobs().await {
+                    Ok(n) if n > 0 => tracing::warn!(
+                        count = n,
+                        "maintenance: reset interrupted job(s) to failed on startup"
+                    ),
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!(error = %e, "maintenance: startup interrupt failed"),
+                }
+            }
+            let _maintenance_worker =
+                maintenance::spawn_maintenance_worker(&state, maint_drain_tx.clone());
             let _notification_worker = if let Some(ref notif_store) = state.notification_store {
                 let region = state.config_region.clone().unwrap_or_else(|| "us-east-1".to_string());
                 Some(worker::spawn_notification_worker(
@@ -1101,6 +1126,7 @@ struct StoreSet {
     replication: Arc<dyn arca_core::store::ReplicationStore>,
     control_tombstone: Arc<dyn arca_core::store::ControlTombstoneStore>,
     control_snapshot: Arc<dyn arca_core::store::ControlSnapshotStore>,
+    maintenance: Arc<dyn arca_core::store::MaintenanceStore>,
 }
 
 /// Helper to build a `StoreSet` from any type implementing all store traits.
@@ -1119,6 +1145,7 @@ where
         + arca_core::store::ReplicationStore
         + arca_core::store::ControlTombstoneStore
         + arca_core::store::ControlSnapshotStore
+        + arca_core::store::MaintenanceStore
         + 'static,
 {
     StoreSet {
@@ -1134,6 +1161,7 @@ where
         presigned_url: Some(store.clone() as Arc<dyn arca_core::store::PresignedUrlStore>),
         control_tombstone: store.clone() as Arc<dyn arca_core::store::ControlTombstoneStore>,
         control_snapshot: store.clone() as Arc<dyn arca_core::store::ControlSnapshotStore>,
+        maintenance: store.clone() as Arc<dyn arca_core::store::MaintenanceStore>,
         replication: store as Arc<dyn arca_core::store::ReplicationStore>,
     }
 }

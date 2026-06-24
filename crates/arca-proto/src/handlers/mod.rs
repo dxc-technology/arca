@@ -16,6 +16,7 @@ pub mod archive;
 pub mod body;
 pub mod bucket;
 pub mod cluster;
+pub mod maintenance;
 pub mod multipart;
 pub mod object;
 pub mod ssec;

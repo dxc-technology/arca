@@ -8,6 +8,7 @@ mod control_snapshot;
 mod control_tombstone;
 mod credential;
 mod grant;
+mod maintenance;
 mod metadata;
 mod metrics;
 mod notification;
@@ -94,6 +95,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 11,
         description: "Add lock_updated_at to objects (N2: lock-state LWW dimension)",
         sql: include_str!("migrations/0011_lock_updated_at.sql"),
+    },
+    Migration {
+        version: 12,
+        description: "Create maintenance_jobs and maintenance_job_logs (Phase 30)",
+        sql: include_str!("migrations/0012_maintenance_jobs.sql"),
     },
 ];
 

@@ -13,6 +13,7 @@ mod control_snapshot;
 mod control_tombstone;
 mod credential;
 mod grant;
+mod maintenance;
 mod metadata;
 mod metrics;
 mod migrations;

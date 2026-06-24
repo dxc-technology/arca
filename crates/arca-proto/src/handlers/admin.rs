@@ -201,7 +201,9 @@ pub struct CreateCredentialRequest {
 /// field conveys the state.
 pub async fn health(State(state): State<AppState>, Query(q): Query<HealthQuery>) -> Response {
     let flag = |v: &Option<String>| matches!(v.as_deref(), Some("1") | Some("true") | Some(""));
-    let draining = *state.draining.borrow();
+    // A maintenance-mode job drains the S3 API on this node the same way the
+    // shutdown signal does (Phase 30); both feed the same health status.
+    let draining = *state.draining.borrow() || *state.maintenance_draining.borrow();
     let syncing = state.cluster.as_ref().is_some_and(|c| c.is_syncing());
     let writable = !flag(&q.writable)
         || state

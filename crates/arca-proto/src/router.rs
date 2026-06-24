@@ -10,7 +10,7 @@ use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, OnRequest, OnResponse, TraceLayer};
 use tracing::Level;
 
-use crate::handlers::{admin, admin_export, admin_grants, admin_import, admin_monitoring, admin_notifications, admin_presigned_urls, admin_replication, admin_settings, admin_teams, admin_users, archive, bucket, cluster, object};
+use crate::handlers::{admin, admin_export, admin_grants, admin_import, admin_monitoring, admin_notifications, admin_presigned_urls, admin_replication, admin_settings, admin_teams, admin_users, archive, bucket, cluster, maintenance, object};
 use crate::middleware;
 use crate::state::AppState;
 
@@ -76,6 +76,17 @@ pub fn build_router(state: AppState) -> Router {
         .route("/info", get(admin::info))
         .route("/stats", get(admin::stats))
         .route("/cluster", get(admin::cluster))
+        // Maintenance jobs (Phase 30)
+        .route(
+            "/maintenance/jobs",
+            get(maintenance::list_jobs).post(maintenance::create_job),
+        )
+        .route(
+            "/maintenance/jobs/{id}",
+            get(maintenance::get_job).delete(maintenance::cancel_job),
+        )
+        .route("/maintenance/jobs/{id}/pause", post(maintenance::pause_job))
+        .route("/maintenance/jobs/{id}/resume", post(maintenance::resume_job))
         // Legacy credential endpoints (operate on calling user's credentials)
         .route(
             "/credentials",

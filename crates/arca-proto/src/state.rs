@@ -6,7 +6,7 @@ use std::sync::RwLock;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use arca_core::store::{AuditStore, BlobStore, ConnectorRegistry, ControlSnapshotStore, CredentialStore, GrantStore, MetadataStore, MetricsStore, NotificationStore, PresignedUrlStore, RawBlobOps, ReplicationStore, ServerConfigStore, SsecBlobOps, TeamStore, UserStore};
+use arca_core::store::{AuditStore, BlobStore, ConnectorRegistry, ControlSnapshotStore, CredentialStore, GrantStore, MaintenanceStore, MetadataStore, MetricsStore, NotificationStore, PresignedUrlStore, RawBlobOps, ReplicationStore, ServerConfigStore, SsecBlobOps, TeamStore, UserStore};
 use arca_core::store::audit::AuditEntry;
 use arca_core::cluster::ClusterState;
 
@@ -102,6 +102,12 @@ pub struct AppState {
     pub max_metadata_size: u32,
     /// Drain mode receiver — when true, health endpoint returns 503.
     pub draining: tokio::sync::watch::Receiver<bool>,
+    /// Maintenance-job drain receiver (Phase 30) — when true, a maintenance-mode
+    /// job is draining the S3 API on this node; OR'd into the health check
+    /// alongside `draining`. The maintenance worker owns the sender.
+    pub maintenance_draining: tokio::sync::watch::Receiver<bool>,
+    /// Maintenance jobs store (Phase 30). Always present once migrations run.
+    pub maintenance_store: Option<Arc<dyn MaintenanceStore>>,
     /// Notification event channel sender (None = notifications disabled).
     pub notification_tx: Option<tokio::sync::mpsc::Sender<arca_core::s3::notification::S3Event>>,
     /// Notification event store (for persisting events and console log viewer).

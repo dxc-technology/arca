@@ -500,6 +500,40 @@ const MIGRATIONS: &[Migration] = &[
             ALTER TABLE objects ADD COLUMN lock_updated_at TEXT;
         ",
     },
+    Migration {
+        version: 24,
+        description: "Create maintenance_jobs and maintenance_job_logs (Phase 30)",
+        // Phase 30: console/CLI-driven long-running maintenance operations
+        // (re-encryption, metadata-backend migration, topology migration) are
+        // tracked here so progress survives restarts and is observable. One job
+        // runs at a time; the worker commits progress per item.
+        sql: "
+            CREATE TABLE maintenance_jobs (
+                id           TEXT PRIMARY KEY NOT NULL,
+                type         TEXT NOT NULL,
+                status       TEXT NOT NULL,
+                mode         TEXT NOT NULL,
+                params       TEXT NOT NULL DEFAULT '{}',
+                total        INTEGER NOT NULL DEFAULT 0,
+                done         INTEGER NOT NULL DEFAULT 0,
+                rate         REAL NOT NULL DEFAULT 0,
+                last_error   TEXT,
+                created_at   TEXT NOT NULL,
+                updated_at   TEXT NOT NULL,
+                started_at   TEXT,
+                finished_at  TEXT
+            );
+            CREATE INDEX idx_maintenance_jobs_status ON maintenance_jobs(status);
+            CREATE INDEX idx_maintenance_jobs_created ON maintenance_jobs(created_at DESC);
+            CREATE TABLE maintenance_job_logs (
+                job_id   TEXT NOT NULL,
+                ts       TEXT NOT NULL,
+                level    TEXT NOT NULL,
+                message  TEXT NOT NULL
+            );
+            CREATE INDEX idx_maintenance_job_logs_job ON maintenance_job_logs(job_id, ts DESC);
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -573,7 +607,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 23);
+        assert_eq!(version, 24);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -623,12 +657,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 23);
+        assert_eq!(version, 24);
 
-        // Twenty-three migration records
+        // Twenty-four migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 23);
+        assert_eq!(count, 24);
     }
 }
