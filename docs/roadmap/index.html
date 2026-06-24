@@ -655,6 +655,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../guide/maintenance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration & Maintenance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../guide/connectors/" class="md-nav__link">
         
   
@@ -1396,10 +1424,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-30-cli-enhancements-and-migration-tools-p3" class="md-nav__link">
+  <a href="#phase-30-migration-and-maintenance-p3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 30 — CLI Enhancements and Migration Tools [P3]
+        Phase 30 — Migration and Maintenance [P3]
       
     </span>
   </a>
@@ -2007,10 +2035,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-30-cli-enhancements-and-migration-tools-p3" class="md-nav__link">
+  <a href="#phase-30-migration-and-maintenance-p3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 30 — CLI Enhancements and Migration Tools [P3]
+        Phase 30 — Migration and Maintenance [P3]
       
     </span>
   </a>
@@ -2320,7 +2348,7 @@ continuing from the MVP phases (0–11).</p>
     <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">28</div>
     <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">29</div>
     <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">29.1</div>
-    <div style="background:transparent;color:inherit;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">30</div>
+    <div style="background:#4caf50;color:#fff;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3)">30</div>
     <div style="background:transparent;color:inherit;padding:3px 7px;font-weight:700;font-size:.7em;border-left:1px solid rgba(128,128,128,.3);opacity:.5">31</div>
   </div>
 </div>
@@ -2344,7 +2372,7 @@ continuing from the MVP phases (0–11).</p>
     24["24 PostgreSQL\nBackend"] --&gt; 28
     28 --&gt; 29["29 Multi-Node\nHigh Availability"]
     29 --&gt; H291["29.1 HA\nHardening"]
-    29 --&gt; 30["30 CLI Enhancements\n+ Migration"]
+    29 --&gt; 30["30 Migration\n+ Maintenance"]
     13 --&gt; 30
     24 --&gt; 30
     18 --&gt; 31["31 OpenTelemetry\nIntegration"]
@@ -2543,11 +2571,11 @@ continuing from the MVP phases (0–11).</p>
 </tr>
 <tr>
 <td style="text-align: center;">30</td>
-<td><a href="#phase-30-cli-enhancements-and-migration-tools-p3">CLI Enhancements and Migration Tools</a></td>
+<td><a href="#phase-30-migration-and-maintenance-p3">Migration and Maintenance</a></td>
 <td style="text-align: center;">P3</td>
 <td style="text-align: center;">13, 24, 29</td>
-<td style="text-align: center;"></td>
-<td style="text-align: center;"></td>
+<td style="text-align: center;"><code>v0.27.0</code></td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
 <td style="text-align: center;">31</td>
@@ -2889,15 +2917,22 @@ The whole phase ships as a <strong>single release</strong> when all nine milesto
 <p>It also closes a <strong>security workstream</strong> (review §3.7): the cluster authenticates the <em>sender</em> of every replication request but never the <em>receiver</em> of a fan-out, so a rogue peer discovered over mDNS can receive all newly written data without holding the shared secret. R3 (peer authentication, public-health minimisation) and R4 (verified inter-node TLS, secret-strength enforcement, anti-replay) close it; on an untrusted cluster network this carries P0 urgency.</p>
 <p><strong>Depends on</strong>: Phase 29. Critical for production <code>[cluster]</code> deployments: it closes the gap between the consistency guarantees the cluster declares and those it enforces, and the inter-node trust gaps found in review §3.7.</p>
 <hr />
-<h3 id="phase-30-cli-enhancements-and-migration-tools-p3">Phase 30 — CLI Enhancements and Migration Tools [P3]<a class="headerlink" href="#phase-30-cli-enhancements-and-migration-tools-p3" title="Permanent link">&para;</a></h3>
-<p>Comprehensive CLI tooling for administration, data migration, and remote S3 operations.</p>
+<h3 id="phase-30-migration-and-maintenance-p3">Phase 30 — Migration and Maintenance [P3]<a class="headerlink" href="#phase-30-migration-and-maintenance-p3" title="Permanent link">&para;</a></h3>
+<p>In-place migration and maintenance tooling — change the metadata backend, the
+encryption state of existing objects, or the cluster topology without migrating
+to a new instance — built on a new console-driven maintenance-jobs subsystem.
+See the <a href="../guide/maintenance/">Migration &amp; Maintenance guide</a>.</p>
 <ul class="task-list">
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>arca migrate-db --from sqlite --to postgres</code>: bidirectional metadata migration between SQLite and PostgreSQL backends</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>arca encrypt-existing</code> / <code>arca decrypt-existing</code>: offline encryption/decryption of existing objects in-place. Atomic renames for crash safety, resumable (skips already-processed blobs), configurable concurrency, progress reporting</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>arca migrate-topology</code>: migrate data between single-node and multi-node (HA) deployments. Resharding, metadata redistribution, rollback support</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Remote S3 client mode: <code>arca</code> binary acts as an S3 client (like <code>mc</code> or <code>aws s3</code>), connecting to any S3-compatible endpoint. Subcommands: <code>arca s3 ls</code>, <code>arca s3 cp</code>, <code>arca s3 mv</code>, <code>arca s3 rm</code>, <code>arca s3 sync</code>, <code>arca s3 presign</code></li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Profile management: <code>arca profile add/list/remove/use</code> for managing multiple endpoint/credential profiles (stored in <code>~/.arca/profiles.toml</code>)</li>
-<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Interactive shell mode: <code>arca shell</code> with tab completion, history, and prompt showing current profile/bucket</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>Maintenance-jobs subsystem (M1)</strong>: long-running operator operations tracked as <code>maintenance_jobs</code> rows (progress persisted across restarts), one job at a time, <strong>live</strong> vs <strong>maintenance</strong> mode (the latter drains the S3 API on the node via the health check so the load balancer stops routing, while the admin API and worker stay live), pause / resume / cancel with state-guarded transitions, a single background worker that is <strong>leader-gated in a cluster</strong> (only the worker-leader node runs it). New JSON admin API under <code>/admin/maintenance/jobs</code> and a console <strong>Maintenance</strong> page.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong>Hot copy-on-write re-encryption (M2)</strong> — <code>arca encrypt-existing</code> / <code>arca decrypt-existing</code>: encrypt existing plaintext objects to SSE-S3, or decrypt them back, in place without re-uploading. Runs as an <code>encrypt</code> / <code>decrypt</code> maintenance job in <strong>live</strong> mode (copy-on-write + compare-and-swap + optional byte/sec throttle, <strong>zero downtime</strong>) or <strong>maintenance</strong> mode (drained, full speed); ETag and Last-Modified preserved. Also available as an offline CLI escape hatch for disaster recovery. SSE-C and multipart/composite objects are skipped (TD-014).</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong><code>arca migrate-db --to &lt;sqlite|postgres&gt;</code> (M3)</strong>: metadata migration between SQLite and PostgreSQL backends in place. Copies every metadata table via a generic, type-aware, FK-safe column copier with per-table row-count reconciliation; blob files are untouched. Available as an offline CLI escape hatch and as a maintenance-mode <code>migrate-db</code> job. After a run, switch <code>metadata_backend</code> and restart.</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> <strong><code>arca migrate-topology --to-cluster | --to-single</code> (M4)</strong>: guided in-place transition between standalone and HA cluster. The cluster is fully replicated (not sharded), so <strong>no data redistribution</strong>: <code>--to-cluster</code> emits a ready-to-paste <code>[cluster]</code> stanza and seeds the <code>object_seq</code> counter; <code>--to-single</code> purges cluster-only tombstones and VACUUMs SQLite. CLI-only by design (both directions are operator+restart actions). Full 3-node bringup runbook lives in the <a href="../guide/ha/">HA guide</a>.</li>
+</ul>
+<p><strong>Descoped</strong> (Pietro's decision — these duplicate <code>mc</code> / <code>aws s3</code> and add a client-mode surface Arca does not need to own):</p>
+<ul>
+<li>~~Remote S3 client mode: <code>arca s3 ls/cp/mv/rm/sync/presign</code>~~ — use <code>mc</code> or <code>aws s3</code> against the endpoint instead.</li>
+<li>~~Profile management: <code>arca profile add/list/remove/use</code> (<code>~/.arca/profiles.toml</code>)~~ — client-mode only; descoped with the S3 client.</li>
+<li>~~Interactive shell mode: <code>arca shell</code>~~ — client-mode only; descoped with the S3 client.</li>
 </ul>
 <p><strong>Depends on</strong>: Phase 13 (encryption pipeline for encrypt/decrypt), Phase 24 (PostgreSQL for migrate-db), Phase 29 (multi-node for topology migration)</p>
 <hr />
@@ -3202,6 +3237,9 @@ with unique IDs (<code>TD-XXX</code>) referenced in source code comments.</p>
 <li><strong>SSE-C multipart</strong> (TD-010): SSE-C headers rejected on multipart uploads — needs per-part encryption tracking</li>
 <li><strong>Composite blobs in <code>recover</code> / <code>fsck</code></strong> (TD-014): the multipart Complete optimisation produces composite sidecars with no on-disk blob file. <code>arca recover</code> aborts on them as orphans, <code>arca fsck</code> reports false-positive <code>orphaned_sidecars</code>. Runtime S3 reads/writes are unaffected — only the recovery and integrity-check tools need teaching how to walk composites.</li>
 <li><strong><code>time</code> pinned to =0.3.47</strong> (TD-017): <code>time</code> 0.3.48 introduces <code>From</code> impls that clash (E0119 coherence) with <code>rcgen</code>'s blanket conversions when time's parsing/formatting features are enabled in the graph. No security exposure (0.3.47 already contains the CVE-2026-25727 fix — the old TD-011, resolved by the 2026-06 dependency refresh together with TD-012, the <code>rustls-pemfile</code> retirement). Unpin when rcgen or time fixes the conflict upstream.</li>
+<li><strong>Re-encryption skips multipart/composite</strong> (TD-018): the <code>encrypt</code>/<code>decrypt</code> jobs and CLI skip multipart/composite objects (detected by their <code>&lt;hex&gt;-&lt;n&gt;</code> ETag) and SSE-C objects, so a store with multipart objects is only partially re-encrypted. Related to TD-014 (composite blobs have no single on-disk file to rewrite copy-on-write). Phase 30</li>
+<li><strong><code>migrate-db</code> online direction limited to postgres→sqlite</strong> (TD-019): the online maintenance-job direction can only run postgres→sqlite (the config auto-detects PostgreSQL as the running backend); sqlite→postgres is done with the offline CLI. Phase 30</li>
+<li><strong>Deferred integration tests</strong> (TD-020): cold-CLI re-encryption and the 3-node cluster behaviours of re-encryption / <code>migrate-topology</code> round-trips are covered by unit tests and the online single-node suite only — no dedicated cold-CLI or cluster integration phase yet. Phase 30</li>
 <li>~~<strong>Cluster inter-node TLS</strong> (TD-015)~~: <strong>Resolved</strong> — verified mutual TLS with an operator-distributed cluster CA (<code>[cluster.tls]</code>, required when the cluster runs over HTTPS), <code>danger_accept_invalid_certs</code> removed, client certificates enforced on <code>/cluster/v1/*</code>, material minted by <code>arca tls generate-cluster</code>. HA hardening R4 (Phase 29.1)</li>
 <li>~~<strong>Partial cluster control-plane reconcile</strong> (TD-016)~~: <strong>Resolved</strong> — the anti-entropy snapshot merge now covers every control-plane family (grant attachments, memberships, bucket config keys, bucket tag sets, cluster-wide server settings, plus multipart uploads and parts) with per-row LWW timestamps, deletion tombstones and parent-dead filtering, so a returning node fully self-heals. HA hardening R5 (Phase 29.1)</li>
 </ul>

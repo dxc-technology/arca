@@ -1,0 +1,2261 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Open source S3-compatible object storage server written in Rust">
+      
+      
+      
+        <link rel="canonical" href="https://dxc-technology.github.io/arca/guide/maintenance/">
+      
+      
+        <link rel="prev" href="../ha/">
+      
+      
+        <link rel="next" href="../connectors/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/logo.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Migration & Maintenance - Arca</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#migration-maintenance" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Arca" class="md-header__button md-logo" aria-label="Arca" data-md-component="logo">
+      
+  <img src="../../assets/logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Arca
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Migration & Maintenance
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/dxc-technology/arca" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    dxc-technology/arca
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Arca" class="md-nav__button md-logo" aria-label="Arca" data-md-component="logo">
+      
+  <img src="../../assets/logo.svg" alt="logo">
+
+    </a>
+    Arca
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/dxc-technology/arca" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    dxc-technology/arca
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../access-control/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Access Control
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tls/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TLS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../encryption/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encryption
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../compression/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compression
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../replication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Replication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ha/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    High Availability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration & Maintenance
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration & Maintenance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-maintenance-jobs-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The maintenance-jobs model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The maintenance-jobs model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#live-vs-maintenance-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Live vs maintenance mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cluster-leader-gating" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cluster leader-gating
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#re-encryption-encrypt-decrypt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Re-encryption (encrypt / decrypt)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Re-encryption (encrypt / decrypt)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it does
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#live-mode-and-the-throttle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Live mode and the throttle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#console-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Console usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#offline-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Offline CLI
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metadata-migration-migrate-db" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata migration (migrate-db)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Metadata migration (migrate-db)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#running-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#after-a-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        After a run
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#topology-migration-migrate-topology" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Topology migration (migrate-topology)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Topology migration (migrate-topology)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#-to-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --to-cluster
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#-to-single" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --to-single
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#admin-api-adminmaintenancejobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin API: /admin/maintenance/jobs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Admin API: /admin/maintenance/jobs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#job-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Job object
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-a-job" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a job
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-jobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List jobs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-one-job-with-logs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get one job with logs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pause-resume-cancel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pause / resume / cancel
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../connectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Notification Connectors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../console/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Console
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/s3-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    S3 API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/admin-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operations/recovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Disaster Recovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operations/monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitoring & Logging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operations/deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Production Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operations/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ha-hardening/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HA Hardening Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tech-debt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Technical Debt
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-maintenance-jobs-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The maintenance-jobs model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The maintenance-jobs model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#live-vs-maintenance-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Live vs maintenance mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cluster-leader-gating" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cluster leader-gating
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#re-encryption-encrypt-decrypt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Re-encryption (encrypt / decrypt)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Re-encryption (encrypt / decrypt)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-it-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it does
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#live-mode-and-the-throttle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Live mode and the throttle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#console-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Console usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#offline-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Offline CLI
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metadata-migration-migrate-db" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metadata migration (migrate-db)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Metadata migration (migrate-db)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How it works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#running-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#after-a-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        After a run
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#topology-migration-migrate-topology" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Topology migration (migrate-topology)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Topology migration (migrate-topology)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#-to-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --to-cluster
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#-to-single" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --to-single
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#admin-api-adminmaintenancejobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin API: /admin/maintenance/jobs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Admin API: /admin/maintenance/jobs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#job-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Job object
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-a-job" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a job
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-jobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List jobs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-one-job-with-logs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get one job with logs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pause-resume-cancel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pause / resume / cancel
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="migration-maintenance">Migration &amp; Maintenance<a class="headerlink" href="#migration-maintenance" title="Permanent link">&para;</a></h1>
+<p>Arca can change almost everything about a running instance — the encryption state
+of existing objects, the metadata backend, the cluster topology — <strong>in place</strong>,
+without migrating data to a new instance. This is a hard architectural constraint:
+unlike systems that force a fresh deployment when you change a fundamental setting,
+Arca always provides a migration path that preserves existing data where it lives.</p>
+<p>These operations are exposed two ways:</p>
+<ul>
+<li><strong>Maintenance jobs</strong> — long-running operations launched from the web console (or
+  the admin API) and run by a background worker, with persisted progress and
+  pause / resume / cancel controls. Used for re-encryption (<code>encrypt</code> / <code>decrypt</code>)
+  and metadata migration (<code>migrate-db</code>).</li>
+<li><strong>Offline CLI commands</strong> — escape hatches that perform the same transform with
+  the server stopped (<code>arca encrypt-existing</code>, <code>arca decrypt-existing</code>,
+  <code>arca migrate-db</code>), plus the CLI-only topology transition (<code>arca migrate-topology</code>).</li>
+</ul>
+<h2 id="the-maintenance-jobs-model">The maintenance-jobs model<a class="headerlink" href="#the-maintenance-jobs-model" title="Permanent link">&para;</a></h2>
+<p>A maintenance job is a row in the <code>maintenance_jobs</code> table. Because the state is
+persisted, progress survives a restart and the job is observable from the console.</p>
+<ul>
+<li><strong>One job at a time.</strong> Starting a job while another is active (<code>pending</code>,
+  <code>running</code>, or <code>paused</code>) is rejected with <code>409 Conflict</code>. Cancel the active job
+  before launching another.</li>
+<li><strong>Progress is persisted per item.</strong> The worker commits <code>done</code> / <code>total</code> as it
+  goes, so <strong>pause</strong>, <strong>cancel</strong> and a process restart are always safe — a resumed
+  job picks up where it left off, and a cancelled one stops without corrupting
+  anything.</li>
+<li><strong>State-guarded transitions.</strong> A job moves through <code>pending → running →
+  completed</code> (or <code>failed</code> / <code>cancelled</code>); pause is allowed only from
+  <code>pending</code> / <code>running</code>, resume only from <code>paused</code>, cancel from any non-terminal
+  state. Invalid transitions return <code>409</code>.</li>
+</ul>
+<h3 id="live-vs-maintenance-mode">Live vs maintenance mode<a class="headerlink" href="#live-vs-maintenance-mode" title="Permanent link">&para;</a></h3>
+<p>Every job runs in one of two modes:</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>S3 API on the node</th>
+<th>Use when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><code>live</code></strong> (default)</td>
+<td>Stays fully available — zero downtime</td>
+<td>Online, while clients keep reading and writing</td>
+</tr>
+<tr>
+<td><strong><code>maintenance</code></strong></td>
+<td><strong>Drained</strong> for the job's whole lifetime</td>
+<td>You want full speed and can take the node out of service</td>
+</tr>
+</tbody>
+</table>
+<p>In <strong>maintenance</strong> mode the node's health check reports <code>draining</code>, so a load
+balancer in front stops routing S3 traffic to it while the job runs (and resumes
+once the job leaves the active slot). The <strong>admin API and the worker stay live</strong>
+throughout, so you can still watch progress and pause / cancel the job. A
+maintenance-mode job drains the node even while paused — the slot is held until
+the job reaches a terminal state.</p>
+<h3 id="cluster-leader-gating">Cluster leader-gating<a class="headerlink" href="#cluster-leader-gating" title="Permanent link">&para;</a></h3>
+<p>In a cluster the maintenance worker is <strong>leader-gated</strong>: only the <strong>worker-leader</strong>
+node (the lowest <code>node_id</code> among the eligible nodes — the same predicate that gates
+the cluster write quorum and the lifecycle evaluator) runs jobs. The data these
+jobs mutate is fully replicated, so running them on every node would duplicate the
+work; a non-leader node never holds the maintenance drain. Leader failover is
+automatic if the current leader stops.</p>
+<h2 id="re-encryption-encrypt-decrypt">Re-encryption (encrypt / decrypt)<a class="headerlink" href="#re-encryption-encrypt-decrypt" title="Permanent link">&para;</a></h2>
+<p>Encrypt existing <strong>plaintext</strong> objects to SSE-S3 (AES-256-GCM), or decrypt SSE-S3
+objects back to plaintext, <strong>in place</strong> — without re-uploading and without
+migrating to a new instance. This is the tool for turning on at-rest encryption
+after objects already exist, or for reverting it.</p>
+<h3 id="what-it-does">What it does<a class="headerlink" href="#what-it-does" title="Permanent link">&para;</a></h3>
+<p>The job scans every bucket's object versions and selects the candidates for the
+chosen direction:</p>
+<ul>
+<li><strong><code>encrypt</code></strong> — objects currently stored as plaintext (no encryption).</li>
+<li><strong><code>decrypt</code></strong> — objects currently stored as SSE-S3 (<code>AES256</code>).</li>
+</ul>
+<p>Each candidate is rewritten <strong>copy-on-write (COW)</strong>: a brand-new blob is written
+(encrypted for <code>encrypt</code>, plaintext for <code>decrypt</code>), then the object row is swapped
+to the new blob with a <strong>compare-and-swap</strong> against the old blob id. Because the
+swap is atomic and the old blob stays in place until it succeeds:</p>
+<ul>
+<li><strong>Concurrent readers always see a consistent blob</strong> — they get either the old or
+  the new one, never a half-written file. This is why re-encryption is safe to run
+  <strong>live</strong>, with zero downtime.</li>
+<li><strong>The ETag and Last-Modified are preserved</strong> — re-encryption does not change the
+  object's identity or its lifecycle clock. (The ETag is computed on plaintext, so
+  it is the same before and after.)</li>
+<li>If a <strong>client overwrites the object</strong> while the job is mid-flight, the CAS loses
+  and the freshly written blob is discarded — the client's newer write wins.</li>
+</ul>
+<p>The orphaned old blob is then reclaimed: by the encrypting store's delete on a
+single node, and by the cluster's blob GC in a cluster.</p>
+<div class="admonition warning">
+<p class="admonition-title">Skipped objects (TD-014)</p>
+<p>Two object kinds are <strong>skipped</strong> and left as they are:</p>
+<ul>
+<li><strong>SSE-C objects</strong> (customer-provided keys) — the server never holds the key,
+  so it cannot re-encrypt them.</li>
+<li><strong>Multipart / composite objects</strong> — the optimised <code>CompleteMultipartUpload</code>
+  stores them as composite blobs that re-encryption does not yet rewrite
+  (tracked as TD-014).</li>
+</ul>
+</div>
+<h3 id="live-mode-and-the-throttle">Live mode and the throttle<a class="headerlink" href="#live-mode-and-the-throttle" title="Permanent link">&para;</a></h3>
+<p>In <strong>live</strong> mode the job uses COW + CAS (as above) and honours an optional
+byte-rate throttle (<code>rate_bytes_per_sec</code>, <code>0</code> = unlimited): after each object it
+sleeps proportionally to the object size, so you can cap the I/O the job adds to a
+busy server. In <strong>maintenance</strong> mode the S3 API is drained and the job runs at full
+speed (the throttle is ignored).</p>
+<div class="admonition note">
+<p class="admonition-title">Cost in a cluster</p>
+<p>Re-encryption <strong>rewrites every blob once</strong> (COW gives each object a new blob
+id). In a cluster, those new blobs are immutable and propagate to peers via
+read-repair and anti-entropy — so a re-encryption pass triggers a <strong>one-time
+full re-replication</strong> of the rewritten data across the cluster. Plan for the
+extra inter-node traffic and disk churn: use the live-mode throttle, run it
+during a quiet window, and expect the anti-entropy worker to be busy until the
+cluster reconverges.</p>
+</div>
+<h3 id="console-usage">Console usage<a class="headerlink" href="#console-usage" title="Permanent link">&para;</a></h3>
+<p>Open the <strong>Maintenance</strong> page, choose <strong>Encrypt objects (SSE-S3)</strong> or <strong>Decrypt
+objects</strong> as the job type, pick <strong>Live</strong> or <strong>Maintenance</strong> mode, optionally scope
+to a single <strong>bucket</strong> and / or key <strong>prefix</strong>, set a <strong>throttle</strong> (live mode only),
+and launch. The active-job card shows progress, ETA and rate; per-object errors are
+logged without aborting the run.</p>
+<p>Re-encryption requires encryption to be configured (a master key). On an instance
+without encryption the job fails cleanly with a clear message.</p>
+<h3 id="offline-cli">Offline CLI<a class="headerlink" href="#offline-cli" title="Permanent link">&para;</a></h3>
+<p>For disaster recovery (server stopped), the same transform is available as an
+escape hatch:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Encrypt all existing plaintext objects to SSE-S3, in place</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>arca<span class="w"> </span>encrypt-existing<span class="w"> </span>--config-path<span class="w"> </span>/etc/arca/config.toml
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># Decrypt SSE-S3 objects back to plaintext</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>arca<span class="w"> </span>decrypt-existing<span class="w"> </span>--config-path<span class="w"> </span>/etc/arca/config.toml
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c1"># Preview only — report what would change, write nothing</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>arca<span class="w"> </span>encrypt-existing<span class="w"> </span>--dry-run
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="c1"># Scope to a bucket and/or prefix</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>arca<span class="w"> </span>encrypt-existing<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--prefix<span class="w"> </span>logs/
+</code></pre></div>
+<h2 id="metadata-migration-migrate-db">Metadata migration (migrate-db)<a class="headerlink" href="#metadata-migration-migrate-db" title="Permanent link">&para;</a></h2>
+<p>Move <strong>all metadata</strong> from one backend to the other — SQLite ⇄ PostgreSQL — <strong>in
+place</strong>, without re-uploading data. Blob files are filesystem-resident and are
+<strong>not touched</strong>; only the metadata database moves.</p>
+<h3 id="how-it-works">How it works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h3>
+<p>The copier is a single generic, type-aware column walker driven by a static
+description of every metadata table. It:</p>
+<ul>
+<li>copies tables in <strong>foreign-key-safe order</strong>,</li>
+<li>translates each backend's native representation (SQLite <code>TEXT</code> timestamps ⇄ PG
+  <code>TIMESTAMPTZ</code>, SQLite <code>INTEGER</code> booleans ⇄ PG <code>BOOLEAN</code>, SQLite <code>TEXT</code> JSON ⇄ PG
+  <code>JSONB</code>),</li>
+<li><strong>reconciles source and destination row counts per table</strong> — a mismatch aborts
+  the run, naming the offending table,</li>
+<li>migrates / reseeds the <code>object_seq</code> write counter and the audit / metrics
+  surrogate sequences, so writes on the new backend cannot collide.</li>
+</ul>
+<p>It refuses a destination that already holds operator data unless <code>--force</code> (which
+fully replaces it); the always-present schema baseline (root user, built-in grants,
+seq counter) is ignored.</p>
+<h3 id="running-it">Running it<a class="headerlink" href="#running-it" title="Permanent link">&para;</a></h3>
+<p>As a <strong>maintenance-mode job</strong> (<code>type: "migrate-db"</code>, params <code>{ "target", "force" }</code>)
+it drains the S3 API on its node while it copies. As an <strong>offline CLI escape hatch</strong>
+(server stopped, so no writes can race the copy):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Migrate metadata from the configured backend to PostgreSQL</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>arca<span class="w"> </span>migrate-db<span class="w"> </span>--to<span class="w"> </span>postgres<span class="w"> </span>--config-path<span class="w"> </span>/etc/arca/config.toml
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Migrate to SQLite, replacing any existing destination data</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>arca<span class="w"> </span>migrate-db<span class="w"> </span>--to<span class="w"> </span>sqlite<span class="w"> </span>--force
+</code></pre></div>
+<h3 id="after-a-run">After a run<a class="headerlink" href="#after-a-run" title="Permanent link">&para;</a></h3>
+<p>Migration only moves the data; it does not switch the running backend. To complete
+the move:</p>
+<ol>
+<li>Edit the config: set <code>metadata_backend</code> to the new backend (and add a
+   <code>[storage.postgres]</code> section when migrating to PostgreSQL).</li>
+<li>Restart Arca onto the new backend.</li>
+</ol>
+<div class="admonition note">
+<p class="admonition-title">Online direction constraint</p>
+<p>The <strong>online</strong> (maintenance-job) direction is <strong>postgres → sqlite</strong>: Arca
+auto-detects PostgreSQL as the running backend whenever a <code>[storage.postgres]</code>
+section is present, so a live instance whose source is PostgreSQL can migrate to
+SQLite online. The <strong>sqlite → postgres</strong> direction is done with the <strong>offline
+CLI</strong> (<code>arca migrate-db --to postgres</code>), since the running config has no
+PostgreSQL section yet.</p>
+</div>
+<h2 id="topology-migration-migrate-topology">Topology migration (migrate-topology)<a class="headerlink" href="#topology-migration-migrate-topology" title="Permanent link">&para;</a></h2>
+<p>Guided in-place transition between a <strong>standalone single node</strong> and an <strong>HA
+cluster</strong>. Arca's cluster is <strong>fully replicated</strong> (every node holds every object),
+<strong>not sharded</strong>, so there is <strong>no data redistribution</strong> in either direction — this
+tool only generates the <code>[cluster]</code> config stanza and runs a couple of small
+database chores. It is <strong>CLI-only</strong> by design: both directions are inherently
+operator-plus-restart actions an online job cannot perform.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Single -&gt; HA: make this standalone instance the FIRST node of a new cluster</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>arca<span class="w"> </span>migrate-topology<span class="w"> </span>--to-cluster<span class="w"> </span>--config-path<span class="w"> </span>/etc/arca/config.toml
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># Also write the generated [cluster] stanza to a file</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>arca<span class="w"> </span>migrate-topology<span class="w"> </span>--to-cluster<span class="w"> </span>--output<span class="w"> </span>cluster.toml
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># HA -&gt; standalone: collapse the cluster back to THIS surviving node</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>arca<span class="w"> </span>migrate-topology<span class="w"> </span>--to-single<span class="w"> </span>--force
+</code></pre></div>
+<h3 id="-to-cluster"><code>--to-cluster</code><a class="headerlink" href="#-to-cluster" title="Permanent link">&para;</a></h3>
+<p>Refuses to run if the instance is already clustered. It:</p>
+<ul>
+<li>emits a ready-to-paste <code>[cluster]</code> stanza with a generated <code>cluster_id</code>, a strong
+  random <code>secret</code> (32 bytes hex), <code>mode = "quorum"</code>, <code>cluster_size = 3</code>,
+  <code>discovery = "mdns"</code>, and commented templates for static / DNS discovery and
+  <code>[cluster.tls]</code> (pointing you at <code>arca tls generate-cluster</code> for the inter-node
+  CA),</li>
+<li>reconciles this node's <code>object_seq</code> write counter to <code>MAX(seq)</code>, so the first
+  clustered write cannot skip a pre-cluster object.</li>
+</ul>
+<p>Paste the stanza into the config and restart; clustering (tombstone mode) turns on
+automatically. Bring up the additional <strong>empty</strong> nodes with the same config and
+they converge via anti-entropy — no data copy.</p>
+<h3 id="-to-single"><code>--to-single</code><a class="headerlink" href="#-to-single" title="Permanent link">&para;</a></h3>
+<p>Run on the surviving authoritative node after every peer is confirmed <strong>synced and
+stopped</strong> (<code>--force</code> is the explicit confirmation — collapsing while a peer is
+behind loses its un-replicated writes). It purges the cluster-only state (object
+tombstones + control-plane tombstones) and <code>VACUUM</code>s SQLite (PostgreSQL autovacuum
+needs none). Then strip the <code>[cluster]</code> section from the config and restart
+standalone.</p>
+<div class="admonition tip">
+<p class="admonition-title">Full cluster bringup</p>
+<p><code>migrate-topology --to-cluster</code> produces the first node's config; the complete
+runbook for standing up the remaining nodes, minting inter-node TLS material and
+operating the cluster lives in the <a href="../ha/">High Availability guide</a>.</p>
+</div>
+<h2 id="admin-api-adminmaintenancejobs">Admin API: <code>/admin/maintenance/jobs</code><a class="headerlink" href="#admin-api-adminmaintenancejobs" title="Permanent link">&para;</a></h2>
+<p>All endpoints are JSON over the admin API, SigV4-authenticated and admin-only, like
+the rest of <code>/admin/*</code>. Known job types: <code>noop</code>, <code>encrypt</code>, <code>decrypt</code>,
+<code>migrate-db</code>.</p>
+<h3 id="job-object">Job object<a class="headerlink" href="#job-object" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;8f3c…&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="nt">&quot;job_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;encrypt&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;running&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="nt">&quot;mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;live&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="nt">&quot;params&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;bucket&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;my-bucket&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rate_bytes_per_sec&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10485760</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="nt">&quot;total&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1280</span><span class="p">,</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="nt">&quot;done&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">412</span><span class="p">,</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">    </span><span class="nt">&quot;rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">37.5</span><span class="p">,</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">    </span><span class="nt">&quot;last_error&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">    </span><span class="nt">&quot;created_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-06-24T10:00:00Z&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="w">    </span><span class="nt">&quot;updated_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-06-24T10:02:11Z&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="w">    </span><span class="nt">&quot;started_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-06-24T10:00:01Z&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="w">    </span><span class="nt">&quot;finished_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="p">}</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>string</td>
+<td>Job id (UUID)</td>
+</tr>
+<tr>
+<td><code>job_type</code></td>
+<td>string</td>
+<td><code>noop</code> | <code>encrypt</code> | <code>decrypt</code> | <code>migrate-db</code></td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>string</td>
+<td><code>pending</code> | <code>running</code> | <code>paused</code> | <code>completed</code> | <code>failed</code> | <code>cancelled</code></td>
+</tr>
+<tr>
+<td><code>mode</code></td>
+<td>string</td>
+<td><code>live</code> | <code>maintenance</code></td>
+</tr>
+<tr>
+<td><code>params</code></td>
+<td>object</td>
+<td>Job-type-specific parameters (see below)</td>
+</tr>
+<tr>
+<td><code>total</code> / <code>done</code></td>
+<td>integer</td>
+<td>Progress counters</td>
+</tr>
+<tr>
+<td><code>rate</code></td>
+<td>number</td>
+<td>Current throughput (items/sec)</td>
+</tr>
+<tr>
+<td><code>last_error</code></td>
+<td>string | null</td>
+<td>Error message if the job failed</td>
+</tr>
+<tr>
+<td><code>created_at</code> / <code>updated_at</code> / <code>started_at</code> / <code>finished_at</code></td>
+<td>string | null</td>
+<td>ISO 8601 timestamps</td>
+</tr>
+</tbody>
+</table>
+<h3 id="create-a-job">Create a job<a class="headerlink" href="#create-a-job" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>POST /admin/maintenance/jobs
+</code></pre></div>
+<p><strong>Request body</strong>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p">{</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;encrypt&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nt">&quot;mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;live&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="nt">&quot;params&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;bucket&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;my-bucket&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;prefix&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;logs/&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rate_bytes_per_sec&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10485760</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="p">}</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td>string</td>
+<td>Yes</td>
+<td>One of the known job types</td>
+</tr>
+<tr>
+<td><code>mode</code></td>
+<td>string</td>
+<td>No</td>
+<td><code>live</code> (default) or <code>maintenance</code></td>
+</tr>
+<tr>
+<td><code>params</code></td>
+<td>object</td>
+<td>No</td>
+<td>Job-type parameters</td>
+</tr>
+</tbody>
+</table>
+<p>Job-type parameters:</p>
+<ul>
+<li><strong><code>encrypt</code> / <code>decrypt</code></strong>: <code>bucket</code> (optional — all buckets if omitted), <code>prefix</code>
+  (optional — all keys if omitted), <code>rate_bytes_per_sec</code> (optional, live mode only,
+  <code>0</code> = unlimited).</li>
+<li><strong><code>migrate-db</code></strong>: <code>target</code> (<code>"sqlite"</code> | <code>"postgres"</code>, required), <code>force</code>
+  (boolean, replace a non-empty destination).</li>
+<li><strong><code>noop</code></strong>: <code>n</code> (steps), <code>delay_ms</code> (optional per-step sleep) — a test job that
+  exercises the subsystem.</li>
+</ul>
+<p><strong>Response</strong> <code>201</code>: the created job object.
+<strong>Response</strong> <code>400</code>: unknown job type or invalid mode.
+<strong>Response</strong> <code>409</code>: a job is already active.</p>
+<h3 id="list-jobs">List jobs<a class="headerlink" href="#list-jobs" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>GET /admin/maintenance/jobs?limit=50
+</code></pre></div>
+<p><strong>Response</strong> <code>200</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="p">{</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span><span class="nt">&quot;active&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;...&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;the in-flight job, or null&quot;</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="nt">&quot;jobs&quot;</span><span class="p">:</span><span class="w">   </span><span class="p">[</span><span class="w"> </span><span class="s2">&quot;...recent history, newest first...&quot;</span><span class="w"> </span><span class="p">]</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="p">}</span>
+</code></pre></div>
+<p><code>limit</code> caps the history page (default 50, max 500).</p>
+<h3 id="get-one-job-with-logs">Get one job with logs<a class="headerlink" href="#get-one-job-with-logs" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>GET /admin/maintenance/jobs/{id}
+</code></pre></div>
+<p><strong>Response</strong> <code>200</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="p">{</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">    </span><span class="nt">&quot;job&quot;</span><span class="p">:</span><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;...&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;the job object&quot;</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="nt">&quot;logs&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;level&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;info&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;job started&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;...&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">]</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="p">}</span>
+</code></pre></div>
+<p><strong>Response</strong> <code>404</code>: no such job.</p>
+<h3 id="pause-resume-cancel">Pause / resume / cancel<a class="headerlink" href="#pause-resume-cancel" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>POST   /admin/maintenance/jobs/{id}/pause     # running|pending  -&gt; paused
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>POST   /admin/maintenance/jobs/{id}/resume    # paused           -&gt; running
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>DELETE /admin/maintenance/jobs/{id}           # any non-terminal -&gt; cancelled
+</code></pre></div>
+<p>Each returns <code>200</code> with the updated job object, <code>404</code> if the job does not exist,
+and <code>409</code> if the job is not in a state from which the transition is allowed.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.code.copy", "content.code.annotate", "navigation.sections", "navigation.top", "search.highlight", "search.share"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

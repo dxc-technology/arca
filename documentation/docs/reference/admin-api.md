@@ -1215,3 +1215,133 @@ Generate a presigned URL for downloading or uploading an object without requirin
 | `expires_at` | string | ISO 8601 expiration timestamp |
 
 The generated URL can be used with `curl`, browsers, or any HTTP client without AWS credentials.
+
+---
+
+## Maintenance Jobs
+
+Long-running maintenance operations (re-encryption, metadata migration) are tracked as jobs and processed by a background worker. Only **one job runs at a time**, progress is persisted across restarts, and jobs can be paused, resumed and cancelled. In a cluster the worker is leader-gated. See the [Migration & Maintenance guide](../guide/maintenance.md) for the full model (live vs maintenance mode, leader-gating, the re-encryption / migrate-db / migrate-topology operations).
+
+Known job types: `noop`, `encrypt`, `decrypt`, `migrate-db`.
+
+### Job object
+
+```json
+{
+    "id": "8f3c…",
+    "job_type": "encrypt",
+    "status": "running",
+    "mode": "live",
+    "params": { "bucket": "my-bucket", "rate_bytes_per_sec": 10485760 },
+    "total": 1280,
+    "done": 412,
+    "rate": 37.5,
+    "last_error": null,
+    "created_at": "2026-06-24T10:00:00Z",
+    "updated_at": "2026-06-24T10:02:11Z",
+    "started_at": "2026-06-24T10:00:01Z",
+    "finished_at": null
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Job id (UUID) |
+| `job_type` | string | `noop` \| `encrypt` \| `decrypt` \| `migrate-db` |
+| `status` | string | `pending` \| `running` \| `paused` \| `completed` \| `failed` \| `cancelled` |
+| `mode` | string | `live` (zero-downtime) \| `maintenance` (drains the S3 API on the node) |
+| `params` | object | Job-type-specific parameters |
+| `total` / `done` | integer | Progress counters |
+| `rate` | number | Current throughput (items/sec) |
+| `last_error` | string \| null | Error message if the job failed |
+| `created_at` / `updated_at` / `started_at` / `finished_at` | string \| null | ISO 8601 timestamps |
+
+### Create a Job
+
+```
+POST /admin/maintenance/jobs
+```
+
+**Auth**: SigV4 (admin)
+
+**Request body**:
+
+```json
+{
+    "type": "encrypt",
+    "mode": "live",
+    "params": { "bucket": "my-bucket", "prefix": "logs/", "rate_bytes_per_sec": 10485760 }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | Yes | One of the known job types |
+| `mode` | string | No | `live` (default) or `maintenance` |
+| `params` | object | No | Job-type parameters (see below) |
+
+Job-type parameters:
+
+- **`encrypt` / `decrypt`**: `bucket` (optional, all buckets if omitted), `prefix` (optional, all keys if omitted), `rate_bytes_per_sec` (optional, live mode only, `0` = unlimited).
+- **`migrate-db`**: `target` (`"sqlite"` \| `"postgres"`, required), `force` (boolean, replace a non-empty destination).
+- **`noop`**: `n` (steps), `delay_ms` (optional per-step sleep) — a test job.
+
+**Response** `201`: the created job object.
+
+**Response** `400`: unknown job type or invalid mode.
+
+**Response** `409`: a maintenance job is already active.
+
+### List Jobs
+
+```
+GET /admin/maintenance/jobs
+```
+
+**Auth**: SigV4 (admin)
+
+**Query parameters**: `limit` — history page size (default 50, max 500).
+
+**Response** `200`:
+
+```json
+{
+    "active": { "...": "the in-flight job, or null" },
+    "jobs":   [ "...recent history, newest first..." ]
+}
+```
+
+### Get a Job (with logs)
+
+```
+GET /admin/maintenance/jobs/{id}
+```
+
+**Auth**: SigV4 (admin)
+
+**Response** `200`:
+
+```json
+{
+    "job":  { "...": "the job object" },
+    "logs": [ { "level": "info", "message": "job started" } ]
+}
+```
+
+**Response** `404`: no such job.
+
+### Pause / Resume / Cancel
+
+```
+POST   /admin/maintenance/jobs/{id}/pause     # running|pending  -> paused
+POST   /admin/maintenance/jobs/{id}/resume    # paused           -> running
+DELETE /admin/maintenance/jobs/{id}           # any non-terminal -> cancelled
+```
+
+**Auth**: SigV4 (admin)
+
+Each returns `200` with the updated job object.
+
+**Response** `404`: no such job.
+
+**Response** `409`: the job is not in a state from which the transition is allowed.

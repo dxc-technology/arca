@@ -561,6 +561,27 @@ Click any row to open a slide-in detail panel showing the full entry: flow summa
 
 Auto-refresh is on by default (30-second cycle). The **Clear All** button opens a confirmation modal requiring you to type "CLEAR JOURNAL" to delete every entry regardless of status — useful for cleaning up test data or after a destination has been permanently retired.
 
+## Maintenance
+
+The Maintenance view is available to **admin credentials only** (navigate to `#/maintenance`). It launches and supervises long-running maintenance jobs — in-place **re-encryption** (encrypt existing plaintext objects to SSE-S3, or decrypt them back) — with persisted progress and pause / resume / cancel controls. Only **one job runs at a time**; in a cluster only the worker-leader node runs it. See the [Migration & Maintenance guide](maintenance.md) for the full model.
+
+### Launch panel
+
+Pick a **job type** — **No-op (test)**, **Encrypt objects (SSE-S3)**, or **Decrypt objects** — and a **mode**:
+
+- **Live** — copy-on-write, zero downtime; the S3 API stays available while the job runs. A byte-per-second **throttle** (0 = unlimited) caps the extra I/O.
+- **Maintenance** — drains the S3 API on the node for the job's lifetime (the load balancer stops routing to it) and runs at full speed.
+
+For re-encryption you can scope the run to a single **bucket** and / or key **prefix** (both optional — blank means all buckets / all keys). The launcher disables itself while a job is active and surfaces a clear message if one is already running (only one job at a time).
+
+### Active-job card
+
+While a job is in flight, a card shows its type, mode chip, a live **progress bar** (`done / total`), the current **rate** and an **ETA**, plus **Pause**, **Resume** and **Cancel** controls. The card refreshes every two seconds. Cancelling stops the job while keeping its committed progress; pausing holds it (a maintenance-mode job keeps the S3 API drained while paused).
+
+### Logs and history
+
+A **log panel** streams the active job's messages (info / warn / error, color-coded). Below, a **history table** lists recent jobs with their status pill, mode, progress and timestamps; click a row to open a detail panel with that job's full record and logs.
+
 ## Settings
 
 ![Settings](../assets/screenshots/console-settings.png)
