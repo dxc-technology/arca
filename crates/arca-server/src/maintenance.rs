@@ -16,10 +16,31 @@ use std::time::Duration;
 use arca_core::store::maintenance::{
     MaintenanceJob, MaintenanceJobStatus, MaintenanceStore, DEFAULT_MAX_JOB_LOGS,
 };
+use arca_core::store::{BlobStore, MetadataStore, SidecarMeta};
+use arca_core::types::{BlobId, ObjectRecord};
 use arca_proto::state::AppState;
+use arca_storage::encryption::keys::MasterKey;
+use arca_storage::recrypt::{self, RecryptDirection};
 use tokio::sync::watch;
 
 use crate::worker::BackgroundWorker;
+
+/// Dependencies the re-encryption job types (`encrypt` / `decrypt`) need beyond
+/// the maintenance store: the metadata store (for the candidate scan + the CAS
+/// row swap) and the blob stores (encrypting + plain) plus the master key.
+/// `None` for deployments without encryption configured (encrypt/decrypt jobs
+/// then fail cleanly with a clear message).
+#[derive(Clone)]
+pub struct RecryptCtx {
+    pub metadata: Arc<dyn MetadataStore>,
+    /// Encryption-aware blob store: `get` returns plaintext for any blob,
+    /// `put` writes an encrypted blob.
+    pub blob: Arc<dyn BlobStore>,
+    /// Plain (non-encrypting) blob store, present when encryption is configured.
+    pub plain_blob: Option<Arc<dyn BlobStore>>,
+    /// Master key, present when encryption is configured.
+    pub master_key: Option<Arc<MasterKey>>,
+}
 
 /// How often the worker polls for an active job and advances it.
 const TICK_INTERVAL: Duration = Duration::from_secs(1);
@@ -29,14 +50,22 @@ const TICK_INTERVAL: Duration = Duration::from_secs(1);
 pub fn spawn_maintenance_worker(
     state: &AppState,
     drain_tx: Arc<watch::Sender<bool>>,
+    master_key: Option<Arc<MasterKey>>,
 ) -> BackgroundWorker {
     let store = state.maintenance_store.clone();
     let cluster = state.cluster.clone();
+    let recrypt = RecryptCtx {
+        metadata: state.metadata.clone(),
+        blob: state.blob.clone(),
+        plain_blob: state.plain_blob.clone(),
+        master_key,
+    };
 
     BackgroundWorker::spawn_periodic("maintenance", TICK_INTERVAL, move || {
         let store = store.clone();
         let cluster = cluster.clone();
         let drain_tx = drain_tx.clone();
+        let recrypt = recrypt.clone();
         async move {
             let Some(store) = store else { return };
             // In a cluster only the worker-leader runs jobs (the data is fully
@@ -47,7 +76,7 @@ pub fn spawn_maintenance_worker(
                     return;
                 }
             }
-            maintenance_tick(store.as_ref(), &drain_tx).await;
+            maintenance_tick(store.as_ref(), Some(&recrypt), &drain_tx).await;
         }
     })
 }
@@ -60,7 +89,11 @@ fn set_drain(drain_tx: &watch::Sender<bool>, want: bool) {
 
 /// One worker tick: reconcile the drain state from the active job, then advance
 /// the job. Pure enough to unit-test against an in-memory store.
-pub async fn maintenance_tick(store: &dyn MaintenanceStore, drain_tx: &watch::Sender<bool>) {
+pub async fn maintenance_tick(
+    store: &dyn MaintenanceStore,
+    recrypt: Option<&RecryptCtx>,
+    drain_tx: &watch::Sender<bool>,
+) {
     let active = match store.active_job().await {
         Ok(a) => a,
         Err(e) => {
@@ -85,21 +118,29 @@ pub async fn maintenance_tick(store: &dyn MaintenanceStore, drain_tx: &watch::Se
                 let _ = store
                     .append_job_log(&job.id, "info", "job started", DEFAULT_MAX_JOB_LOGS)
                     .await;
-                process_job(store, &job).await;
+                process_job(store, recrypt, &job).await;
             }
         }
-        Some(MaintenanceJobStatus::Running) => process_job(store, &job).await,
+        Some(MaintenanceJobStatus::Running) => process_job(store, recrypt, &job).await,
         // Paused: idle (drain stays engaged per the reconcile above). Terminal:
         // nothing to do (active_job never returns terminal jobs anyway).
         _ => {}
     }
 }
 
-/// Dispatches a job to its processor. New job types plug in here (M2: encrypt /
-/// decrypt; M3: migrate-db; M4: migrate-topology).
-async fn process_job(store: &dyn MaintenanceStore, job: &MaintenanceJob) {
+/// Dispatches a job to its processor. New job types plug in here (M3: migrate-db;
+/// M4: migrate-topology).
+async fn process_job(store: &dyn MaintenanceStore, recrypt: Option<&RecryptCtx>, job: &MaintenanceJob) {
     let result = match job.job_type.as_str() {
         "noop" => process_noop(store, job).await,
+        "encrypt" => match recrypt {
+            Some(ctx) => process_recrypt(store, ctx, job, RecryptDirection::Encrypt).await,
+            None => Err("re-encryption context unavailable".to_string()),
+        },
+        "decrypt" => match recrypt {
+            Some(ctx) => process_recrypt(store, ctx, job, RecryptDirection::Decrypt).await,
+            None => Err("re-encryption context unavailable".to_string()),
+        },
         other => Err(format!("unknown job type: {other}")),
     };
     if let Err(e) = result {
@@ -153,6 +194,278 @@ async fn process_noop(store: &dyn MaintenanceStore, job: &MaintenanceJob) -> Res
     Ok(())
 }
 
+/// Whether an etag is a multipart/composite etag (`<32 hex>-<n>`). Multipart
+/// objects are composite blobs (TD-014) and are skipped by re-encryption jobs.
+fn is_multipart_etag(etag: &str) -> bool {
+    match etag.rsplit_once('-') {
+        Some((hash, count)) => {
+            hash.len() == 32
+                && hash.bytes().all(|b| b.is_ascii_hexdigit())
+                && !count.is_empty()
+                && count.bytes().all(|b| b.is_ascii_digit())
+        }
+        None => false,
+    }
+}
+
+/// Whether an object row is a candidate for the given re-encryption direction.
+/// Skips delete markers / tombstones / empty blobs, SSE-C (customer key),
+/// multipart/composite (TD-014), and rows already in the target state.
+fn is_recrypt_candidate(r: &ObjectRecord, direction: RecryptDirection) -> bool {
+    if r.is_delete_marker || r.is_tombstone || r.blob_id.0.is_empty() {
+        return false;
+    }
+    if r.encryption_algorithm.as_deref() == Some(recrypt::SSEC) {
+        return false;
+    }
+    if is_multipart_etag(&r.etag) {
+        return false;
+    }
+    match direction {
+        RecryptDirection::Encrypt => r.encryption_algorithm.is_none(),
+        RecryptDirection::Decrypt => r.encryption_algorithm.as_deref() == Some(recrypt::AES256),
+    }
+}
+
+/// Scans every bucket's object versions and returns the rows that still need
+/// the transform. In-memory for the MVP; large stores are noted as a limitation.
+async fn scan_candidates(
+    ctx: &RecryptCtx,
+    direction: RecryptDirection,
+    bucket_filter: Option<&str>,
+    prefix: Option<&str>,
+) -> Result<Vec<ObjectRecord>, String> {
+    let buckets = ctx
+        .metadata
+        .list_buckets()
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for b in buckets {
+        if let Some(bf) = bucket_filter {
+            if b.name != bf {
+                continue;
+            }
+        }
+        let mut key_marker: Option<String> = None;
+        let mut vid_marker: Option<String> = None;
+        loop {
+            let page = ctx
+                .metadata
+                .list_object_versions(
+                    &b.name,
+                    prefix,
+                    key_marker.as_deref(),
+                    vid_marker.as_deref(),
+                    1000,
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+            if page.is_empty() {
+                break;
+            }
+            let last = page.last().unwrap();
+            key_marker = Some(last.key.clone());
+            vid_marker = last.version_id.clone();
+            let page_len = page.len();
+            for r in page {
+                if is_recrypt_candidate(&r, direction) {
+                    out.push(r);
+                }
+            }
+            if page_len < 1000 {
+                break;
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Copy-on-write re-encryption (encrypt or decrypt) of every candidate object.
+/// Always COW (new blob_id) so it is safe with live readers AND respects the
+/// cluster's blob_id immutability: the new blob propagates to peers via
+/// read-repair / anti-entropy, the CAS row swap converges via lock_updated_at,
+/// and the orphaned old blob is reclaimed by GC. `maintenance` mode runs at full
+/// speed (S3 is drained); `live` mode honors the optional byte-rate throttle.
+async fn process_recrypt(
+    store: &dyn MaintenanceStore,
+    ctx: &RecryptCtx,
+    job: &MaintenanceJob,
+    direction: RecryptDirection,
+) -> Result<(), String> {
+    // Both directions need encryption configured: encrypt needs the encrypting
+    // blob store + master key, decrypt needs the plain store to write plaintext
+    // and the master key to read the ciphertext.
+    if ctx.master_key.is_none() || ctx.plain_blob.is_none() {
+        return Err("encryption is not configured (no master key) — cannot run a re-encryption job".to_string());
+    }
+
+    let bucket_filter = job.params.get("bucket").and_then(|v| v.as_str());
+    let prefix = job.params.get("prefix").and_then(|v| v.as_str());
+    let rate_bps = job
+        .params
+        .get("rate_bytes_per_sec")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let live = job.mode == "live";
+
+    let candidates = scan_candidates(ctx, direction, bucket_filter, prefix).await?;
+    let total = candidates.len() as u64;
+    store
+        .update_job_progress(&job.id, 0, total, 0.0)
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = store
+        .append_job_log(
+            &job.id,
+            "info",
+            &format!("re-encryption: {total} candidate object(s)"),
+            DEFAULT_MAX_JOB_LOGS,
+        )
+        .await;
+
+    let mut done = 0u64;
+    let mut errors = 0u64;
+    for record in candidates {
+        // Honor pause/cancel issued via the admin API mid-run.
+        match store.get_job(&job.id).await {
+            Ok(Some(j)) if j.status == "running" => {}
+            Ok(Some(_)) => return Ok(()),
+            _ => return Ok(()),
+        }
+        match recrypt_one(ctx, &record, direction).await {
+            Ok(_) => {}
+            Err(e) => {
+                errors += 1;
+                let _ = store
+                    .append_job_log(
+                        &job.id,
+                        "warn",
+                        &format!("{}/{}: {e}", record.bucket, record.key),
+                        DEFAULT_MAX_JOB_LOGS,
+                    )
+                    .await;
+            }
+        }
+        done += 1;
+        store
+            .update_job_progress(&job.id, done, total, 0.0)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // Byte-rate throttle (live mode only; maintenance mode runs drained).
+        if live && rate_bps > 0 && record.size > 0 {
+            let ms = record.size.saturating_mul(1000) / rate_bps;
+            if ms > 0 {
+                tokio::time::sleep(Duration::from_millis(ms)).await;
+            }
+        }
+    }
+
+    store
+        .set_job_status(&job.id, MaintenanceJobStatus::Completed, None)
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = store
+        .append_job_log(
+            &job.id,
+            "info",
+            &format!("re-encryption completed: {done} processed, {errors} error(s)"),
+            DEFAULT_MAX_JOB_LOGS,
+        )
+        .await;
+    Ok(())
+}
+
+/// Re-encrypts a single object via copy-on-write. Returns `Ok(true)` when the
+/// CAS swap landed, `Ok(false)` when a concurrent client overwrite won the CAS
+/// (the freshly written blob is discarded).
+async fn recrypt_one(
+    ctx: &RecryptCtx,
+    record: &ObjectRecord,
+    direction: RecryptDirection,
+) -> Result<bool, String> {
+    let old_blob_id = record.blob_id.clone();
+    let new_blob_id = BlobId::new();
+    let version_id = record.version_id.clone();
+
+    // Plaintext source: the encrypting store returns plaintext for any blob
+    // (passes through plain blobs, decrypts encrypted ones).
+    let plaintext = ctx
+        .blob
+        .get(&old_blob_id, None)
+        .await
+        .map_err(|e| format!("read source blob: {e}"))?;
+
+    let (put_result, write_store, encryption) = match direction {
+        RecryptDirection::Encrypt => {
+            let res = ctx
+                .blob
+                .put(&new_blob_id, plaintext.stream)
+                .await
+                .map_err(|e| format!("write encrypted blob: {e}"))?;
+            let enc = res.encryption.clone();
+            (res, ctx.blob.clone(), enc)
+        }
+        RecryptDirection::Decrypt => {
+            let plain = ctx.plain_blob.as_ref().expect("plain_blob checked present");
+            let res = plain
+                .put(&new_blob_id, plaintext.stream)
+                .await
+                .map_err(|e| format!("write plaintext blob: {e}"))?;
+            (res, plain.clone(), None)
+        }
+    };
+
+    let _ = put_result;
+    let sidecar = SidecarMeta {
+        bucket: record.bucket.clone(),
+        key: record.key.clone(),
+        size: record.size,
+        etag: record.etag.clone(),
+        content_type: record.content_type.clone(),
+        last_modified: record.last_modified.to_rfc3339(),
+        metadata: record.metadata.clone(),
+        encryption: encryption.clone(),
+        compression: None,
+        version_id: version_id.clone(),
+        composite: None,
+    };
+    write_store
+        .write_sidecar(&new_blob_id, &sidecar)
+        .await
+        .map_err(|e| format!("write sidecar: {e}"))?;
+
+    let (algo, key_id) = match &encryption {
+        Some(e) => (Some(e.algorithm.as_str()), Some(e.key_id.as_str())),
+        None => (None, None),
+    };
+    let swapped = ctx
+        .metadata
+        .update_object_encryption_cas(
+            &record.bucket,
+            &record.key,
+            version_id.as_deref(),
+            &old_blob_id,
+            &new_blob_id,
+            algo,
+            key_id,
+        )
+        .await
+        .map_err(|e| format!("CAS row swap: {e}"))?;
+
+    if swapped {
+        // The old blob is now orphaned; reclaim it (encrypting store cascades
+        // composite parts, but candidates are never composite).
+        let _ = ctx.blob.delete(&old_blob_id).await;
+        Ok(true)
+    } else {
+        // A concurrent client write replaced the blob first: discard ours.
+        let _ = write_store.delete(&new_blob_id).await;
+        Ok(false)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,14 +499,14 @@ mod tests {
         store.create_job(&noop_job("j1", "maintenance", 3)).await.unwrap();
 
         // First tick starts and completes the (tiny, no-delay) job.
-        maintenance_tick(&store, &tx).await;
+        maintenance_tick(&store, None, &tx).await;
         let j = store.get_job("j1").await.unwrap().unwrap();
         assert_eq!(j.status, "completed");
         assert_eq!(j.done, 3);
 
         // A maintenance-mode job drained while active; now that it is terminal a
         // follow-up tick releases the drain.
-        maintenance_tick(&store, &tx).await;
+        maintenance_tick(&store, None, &tx).await;
         assert!(!*rx.borrow(), "drain released after the job finished");
     }
 
@@ -202,7 +515,7 @@ mod tests {
         let store = SqliteStore::open_in_memory().await.unwrap();
         let (tx, rx) = watch::channel(false);
         store.create_job(&noop_job("j1", "live", 1)).await.unwrap();
-        maintenance_tick(&store, &tx).await;
+        maintenance_tick(&store, None, &tx).await;
         assert!(!*rx.borrow(), "live-mode jobs never drain the S3 API");
     }
 
@@ -224,7 +537,7 @@ mod tests {
             .await
             .unwrap();
 
-        maintenance_tick(&store, &tx).await;
+        maintenance_tick(&store, None, &tx).await;
         let j = store.get_job("j1").await.unwrap().unwrap();
         assert_eq!(j.status, "paused");
         assert!(j.done < 100);
@@ -238,9 +551,33 @@ mod tests {
         job.job_type = "does-not-exist".to_string();
         store.create_job(&job).await.unwrap();
 
-        maintenance_tick(&store, &tx).await;
+        maintenance_tick(&store, None, &tx).await;
         let j = store.get_job("j1").await.unwrap().unwrap();
         assert_eq!(j.status, "failed");
         assert!(j.last_error.unwrap().contains("unknown job type"));
+    }
+
+    #[tokio::test]
+    async fn encrypt_job_without_recrypt_ctx_fails() {
+        let store = SqliteStore::open_in_memory().await.unwrap();
+        let (tx, _rx) = watch::channel(false);
+        let mut job = noop_job("j1", "live", 1);
+        job.job_type = "encrypt".to_string();
+        store.create_job(&job).await.unwrap();
+        // No RecryptCtx passed → the job fails cleanly instead of panicking.
+        maintenance_tick(&store, None, &tx).await;
+        assert_eq!(store.get_job("j1").await.unwrap().unwrap().status, "failed");
+    }
+
+    #[test]
+    fn multipart_etag_detection() {
+        assert!(is_multipart_etag("9bb58f26192e4ba00f01e2e7b136bbd8-3"));
+        assert!(is_multipart_etag("9bb58f26192e4ba00f01e2e7b136bbd8-12"));
+        // Plain single-blob etag (32 hex, no part suffix).
+        assert!(!is_multipart_etag("9bb58f26192e4ba00f01e2e7b136bbd8"));
+        // Non-numeric / malformed suffixes.
+        assert!(!is_multipart_etag("9bb58f26192e4ba00f01e2e7b136bbd8-"));
+        assert!(!is_multipart_etag("9bb58f26192e4ba00f01e2e7b136bbd8-x"));
+        assert!(!is_multipart_etag("short-3"));
     }
 }

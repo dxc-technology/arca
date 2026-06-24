@@ -17,9 +17,9 @@ use arca_core::store::maintenance::{
 use crate::handlers::admin::AdminError;
 use crate::state::AppState;
 
-/// Job types the admin API will accept. Extended per milestone (M2: encrypt /
-/// decrypt; M3: migrate-db; M4: migrate-topology).
-const KNOWN_JOB_TYPES: &[&str] = &["noop"];
+/// Job types the admin API will accept. Extended per milestone (M3: migrate-db;
+/// M4: migrate-topology).
+const KNOWN_JOB_TYPES: &[&str] = &["noop", "encrypt", "decrypt"];
 
 /// Default page size for the job-history list.
 const DEFAULT_HISTORY_LIMIT: u32 = 50;

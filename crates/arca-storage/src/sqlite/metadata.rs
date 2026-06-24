@@ -681,12 +681,21 @@ impl MetadataStore for SqliteStore {
                         let should_write = match &existing {
                             None => true,
                             Some(ex) => {
+                                // Tiebreak order on a last_modified tie:
+                                // lock_updated_at first (so an in-place change
+                                // that does not bump last_modified — a lock
+                                // change OR a re-encryption, both of which stamp
+                                // lock_updated_at — converges deterministically),
+                                // then blob_id for two genuine concurrent
+                                // overwrites that neither touched lock state
+                                // (both lock_updated_at None). Mirrors the
+                                // versioned branch's lock_updated_at tiebreak.
                                 let lww = record.last_modified > ex.last_modified
                                     || (record.last_modified == ex.last_modified
-                                        && record.blob_id.0 > ex.blob_id.0)
+                                        && record.lock_updated_at > ex.lock_updated_at)
                                     || (record.last_modified == ex.last_modified
-                                        && record.blob_id == ex.blob_id
-                                        && record.lock_updated_at > ex.lock_updated_at);
+                                        && record.lock_updated_at == ex.lock_updated_at
+                                        && record.blob_id.0 > ex.blob_id.0);
                                 lww && !record.same_replicated_content(ex)
                             }
                         };
@@ -1593,20 +1602,25 @@ impl MetadataStore for SqliteStore {
                 let tx = conn.transaction()?;
                 // Fresh seq so the re-encryption travels to peers via the
                 // changed-since manifest; last_modified/ETag are untouched (the
-                // logical object is unchanged). Seq taken before the row UPDATE
-                // per the next_object_seq lock-order rule.
+                // logical object is unchanged). A fresh lock_updated_at is the
+                // cluster LWW convergence dimension: re-encryption is an
+                // in-place row change that does NOT bump last_modified, so peers
+                // must adopt it via lock_updated_at (same mechanism as a lock
+                // change — see apply_remote_object). Seq taken before the row
+                // UPDATE per the next_object_seq lock-order rule.
                 let seq = next_object_seq(&tx)?;
+                let lock_updated_at = chrono::Utc::now().to_rfc3339();
                 let rows = if let Some(ref vid) = version_id {
                     tx.execute(
-                        "UPDATE objects SET encryption_algorithm = ?1, encryption_key_id = ?2, seq = ?3 \
-                         WHERE bucket = ?4 AND key = ?5 AND version_id = ?6",
-                        params![algorithm, key_id, seq, bucket, key, vid],
+                        "UPDATE objects SET encryption_algorithm = ?1, encryption_key_id = ?2, seq = ?3, lock_updated_at = ?4 \
+                         WHERE bucket = ?5 AND key = ?6 AND version_id = ?7",
+                        params![algorithm, key_id, seq, lock_updated_at, bucket, key, vid],
                     )?
                 } else {
                     tx.execute(
-                        "UPDATE objects SET encryption_algorithm = ?1, encryption_key_id = ?2, seq = ?3 \
-                         WHERE bucket = ?4 AND key = ?5 AND is_latest = 1",
-                        params![algorithm, key_id, seq, bucket, key],
+                        "UPDATE objects SET encryption_algorithm = ?1, encryption_key_id = ?2, seq = ?3, lock_updated_at = ?4 \
+                         WHERE bucket = ?5 AND key = ?6 AND is_latest = 1",
+                        params![algorithm, key_id, seq, lock_updated_at, bucket, key],
                     )?
                 };
                 tx.commit()?;
@@ -1639,19 +1653,21 @@ impl MetadataStore for SqliteStore {
                 let tx = conn.transaction()?;
                 // CAS guard on blob_id: a concurrent client overwrite already
                 // swapped the blob, in which case 0 rows match and the caller
-                // discards the freshly written blob.
+                // discards the freshly written blob. A fresh lock_updated_at is
+                // the cluster LWW convergence dimension (see update_object_encryption).
                 let seq = next_object_seq(&tx)?;
+                let lock_updated_at = chrono::Utc::now().to_rfc3339();
                 let rows = if let Some(ref vid) = version_id {
                     tx.execute(
-                        "UPDATE objects SET blob_id = ?1, encryption_algorithm = ?2, encryption_key_id = ?3, seq = ?4 \
-                         WHERE bucket = ?5 AND key = ?6 AND version_id = ?7 AND blob_id = ?8",
-                        params![new_blob_id, algorithm, key_id, seq, bucket, key, vid, old_blob_id],
+                        "UPDATE objects SET blob_id = ?1, encryption_algorithm = ?2, encryption_key_id = ?3, seq = ?4, lock_updated_at = ?5 \
+                         WHERE bucket = ?6 AND key = ?7 AND version_id = ?8 AND blob_id = ?9",
+                        params![new_blob_id, algorithm, key_id, seq, lock_updated_at, bucket, key, vid, old_blob_id],
                     )?
                 } else {
                     tx.execute(
-                        "UPDATE objects SET blob_id = ?1, encryption_algorithm = ?2, encryption_key_id = ?3, seq = ?4 \
-                         WHERE bucket = ?5 AND key = ?6 AND is_latest = 1 AND blob_id = ?7",
-                        params![new_blob_id, algorithm, key_id, seq, bucket, key, old_blob_id],
+                        "UPDATE objects SET blob_id = ?1, encryption_algorithm = ?2, encryption_key_id = ?3, seq = ?4, lock_updated_at = ?5 \
+                         WHERE bucket = ?6 AND key = ?7 AND is_latest = 1 AND blob_id = ?8",
+                        params![new_blob_id, algorithm, key_id, seq, lock_updated_at, bucket, key, old_blob_id],
                     )?
                 };
                 tx.commit()?;
@@ -3732,5 +3748,41 @@ mod tests {
         assert_eq!(got.blob_id.0, "new-blob");
         assert_eq!(got.encryption_algorithm.as_deref(), Some("AES256"));
         assert_eq!(got.encryption_key_id.as_deref(), Some("deadbeef"));
+    }
+
+    #[tokio::test]
+    async fn apply_remote_reencrypted_row_converges_via_lock_updated_at() {
+        // A re-encrypted row keeps the same last_modified but changes blob_id +
+        // encryption columns and stamps a fresh lock_updated_at. It MUST be
+        // adopted by a peer (cluster convergence), and a stale plain copy with
+        // the same last_modified must NOT clobber it back.
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut orig = make_record("b", "k");
+        orig.blob_id = BlobId("old-blob".to_string());
+        store.put_object(&orig).await.unwrap();
+        let stored = store.get_object("b", "k").await.unwrap().unwrap();
+        assert!(stored.encryption_algorithm.is_none());
+
+        let mut reenc = stored.clone();
+        reenc.blob_id = BlobId("new-blob".to_string());
+        reenc.encryption_algorithm = Some("AES256".to_string());
+        reenc.encryption_key_id = Some("deadbeef".to_string());
+        reenc.lock_updated_at = Some(stored.last_modified + chrono::Duration::seconds(5));
+
+        store.apply_remote_object(&reenc).await.unwrap();
+        let after = store.get_object("b", "k").await.unwrap().unwrap();
+        assert_eq!(after.blob_id.0, "new-blob");
+        assert_eq!(after.encryption_algorithm.as_deref(), Some("AES256"));
+
+        // Re-applying the stale plain copy (lock_updated_at None, same
+        // last_modified) must not revert the re-encryption.
+        store.apply_remote_object(&stored).await.unwrap();
+        let after2 = store.get_object("b", "k").await.unwrap().unwrap();
+        assert_eq!(
+            after2.blob_id.0, "new-blob",
+            "stale plain copy must not clobber the re-encryption"
+        );
+        assert_eq!(after2.encryption_algorithm.as_deref(), Some("AES256"));
     }
 }

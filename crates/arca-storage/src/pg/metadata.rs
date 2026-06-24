@@ -1111,12 +1111,19 @@ impl MetadataStore for PgStore {
                 let should_write = match &existing {
                     None => true,
                     Some(ex) => {
+                        // Tiebreak order on a last_modified tie: lock_updated_at
+                        // first (so an in-place change that does not bump
+                        // last_modified — a lock change OR a re-encryption, both
+                        // of which stamp lock_updated_at — converges
+                        // deterministically), then blob_id for two genuine
+                        // concurrent overwrites that neither touched lock state.
+                        // Mirrors the versioned branch's lock_updated_at tiebreak.
                         let lww = record.last_modified > ex.last_modified
                             || (record.last_modified == ex.last_modified
-                                && record.blob_id.0 > ex.blob_id.0)
+                                && record.lock_updated_at > ex.lock_updated_at)
                             || (record.last_modified == ex.last_modified
-                                && record.blob_id == ex.blob_id
-                                && record.lock_updated_at > ex.lock_updated_at);
+                                && record.lock_updated_at == ex.lock_updated_at
+                                && record.blob_id.0 > ex.blob_id.0);
                         lww && !record.same_replicated_content(ex)
                     }
                 };
@@ -2025,18 +2032,23 @@ impl MetadataStore for PgStore {
             .map_err(|e| ArcaError::Internal(format!("update_object_encryption: {e}")))?;
         // Fresh seq so the re-encryption reaches peers via the changed-since
         // manifest; last_modified/ETag untouched (the logical object is
-        // unchanged). Seq before the row UPDATE per the lock-order rule.
+        // unchanged). A fresh lock_updated_at is the cluster LWW convergence
+        // dimension (re-encryption is an in-place change that does not bump
+        // last_modified — see apply_remote_object). Seq before the row UPDATE
+        // per the lock-order rule.
         let seq = next_object_seq(&mut tx)
             .await
             .map_err(|e| ArcaError::Internal(format!("update_object_encryption: {e}")))?;
+        let lock_updated_at = Utc::now();
         let result = if let Some(vid) = version_id {
             sqlx_core::query::query(
-                "UPDATE objects SET encryption_algorithm = $1, encryption_key_id = $2, seq = $3 \
-                 WHERE bucket = $4 AND key = $5 AND version_id = $6",
+                "UPDATE objects SET encryption_algorithm = $1, encryption_key_id = $2, seq = $3, lock_updated_at = $4 \
+                 WHERE bucket = $5 AND key = $6 AND version_id = $7",
             )
             .bind(algorithm)
             .bind(key_id)
             .bind(seq)
+            .bind(lock_updated_at)
             .bind(bucket)
             .bind(key)
             .bind(vid)
@@ -2044,12 +2056,13 @@ impl MetadataStore for PgStore {
             .await
         } else {
             sqlx_core::query::query(
-                "UPDATE objects SET encryption_algorithm = $1, encryption_key_id = $2, seq = $3 \
-                 WHERE bucket = $4 AND key = $5 AND is_latest = TRUE",
+                "UPDATE objects SET encryption_algorithm = $1, encryption_key_id = $2, seq = $3, lock_updated_at = $4 \
+                 WHERE bucket = $5 AND key = $6 AND is_latest = TRUE",
             )
             .bind(algorithm)
             .bind(key_id)
             .bind(seq)
+            .bind(lock_updated_at)
             .bind(bucket)
             .bind(key)
             .execute(&mut *tx)
@@ -2082,16 +2095,20 @@ impl MetadataStore for PgStore {
             .await
             .map_err(|e| ArcaError::Internal(format!("update_object_encryption_cas: {e}")))?;
         // CAS guard on blob_id: 0 rows means a concurrent client overwrite
-        // already swapped the blob and the caller discards the new one.
+        // already swapped the blob and the caller discards the new one. A fresh
+        // lock_updated_at is the cluster LWW convergence dimension (see
+        // update_object_encryption).
+        let lock_updated_at = Utc::now();
         let result = if let Some(vid) = version_id {
             sqlx_core::query::query(
-                "UPDATE objects SET blob_id = $1, encryption_algorithm = $2, encryption_key_id = $3, seq = $4 \
-                 WHERE bucket = $5 AND key = $6 AND version_id = $7 AND blob_id = $8",
+                "UPDATE objects SET blob_id = $1, encryption_algorithm = $2, encryption_key_id = $3, seq = $4, lock_updated_at = $5 \
+                 WHERE bucket = $6 AND key = $7 AND version_id = $8 AND blob_id = $9",
             )
             .bind(&new_blob_id.0)
             .bind(algorithm)
             .bind(key_id)
             .bind(seq)
+            .bind(lock_updated_at)
             .bind(bucket)
             .bind(key)
             .bind(vid)
@@ -2100,13 +2117,14 @@ impl MetadataStore for PgStore {
             .await
         } else {
             sqlx_core::query::query(
-                "UPDATE objects SET blob_id = $1, encryption_algorithm = $2, encryption_key_id = $3, seq = $4 \
-                 WHERE bucket = $5 AND key = $6 AND is_latest = TRUE AND blob_id = $7",
+                "UPDATE objects SET blob_id = $1, encryption_algorithm = $2, encryption_key_id = $3, seq = $4, lock_updated_at = $5 \
+                 WHERE bucket = $6 AND key = $7 AND is_latest = TRUE AND blob_id = $8",
             )
             .bind(&new_blob_id.0)
             .bind(algorithm)
             .bind(key_id)
             .bind(seq)
+            .bind(lock_updated_at)
             .bind(bucket)
             .bind(key)
             .bind(&old_blob_id.0)

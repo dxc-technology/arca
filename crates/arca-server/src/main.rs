@@ -226,6 +226,11 @@ async fn async_main(cli: Cli) -> Result<()> {
                 ));
             }
 
+            // Captured before the key is moved into the EncryptingBlobStore, so
+            // the maintenance re-encryption worker (Phase 30) can use it.
+            let mut maintenance_master_key: Option<
+                Arc<arca_storage::encryption::keys::MasterKey>,
+            > = None;
             let (mut blob, mut plain_blob): (
                 Arc<dyn arca_core::store::BlobStore>,
                 Option<Arc<dyn arca_core::store::BlobStore>>,
@@ -245,10 +250,12 @@ async fn async_main(cli: Cli) -> Result<()> {
                 }
                 let plain: Arc<dyn arca_core::store::BlobStore> =
                     Arc::new(fs_blob_store.clone());
+                let mk_arc = Arc::new(master_key);
+                maintenance_master_key = Some(mk_arc.clone());
                 let encrypting: Arc<dyn arca_core::store::BlobStore> =
                     Arc::new(arca_storage::EncryptingBlobStore::new(
                         fs_blob_store,
-                        Arc::new(master_key),
+                        mk_arc,
                     ));
                 (encrypting, Some(plain))
             } else {
@@ -744,8 +751,11 @@ async fn async_main(cli: Cli) -> Result<()> {
                     Err(e) => tracing::warn!(error = %e, "maintenance: startup interrupt failed"),
                 }
             }
-            let _maintenance_worker =
-                maintenance::spawn_maintenance_worker(&state, maint_drain_tx.clone());
+            let _maintenance_worker = maintenance::spawn_maintenance_worker(
+                &state,
+                maint_drain_tx.clone(),
+                maintenance_master_key.clone(),
+            );
             let _notification_worker = if let Some(ref notif_store) = state.notification_store {
                 let region = state.config_region.clone().unwrap_or_else(|| "us-east-1".to_string());
                 Some(worker::spawn_notification_worker(
