@@ -162,6 +162,54 @@ pub trait MetadataStore: Send + Sync {
         status: Option<&str>,
     ) -> Result<bool, crate::error::ArcaError>;
 
+    // -- Re-encryption (Phase 30 maintenance jobs) --
+
+    /// Updates the encryption metadata of an object version IN PLACE (same
+    /// `blob_id`): sets `encryption_algorithm`/`encryption_key_id` to the given
+    /// values, or clears both with `None` (after a decrypt). Bumps the
+    /// node-local `seq` so the change reaches cluster peers via the anti-entropy
+    /// manifest; leaves `last_modified` and the ETag untouched — re-encryption
+    /// never changes the logical object. `version_id == None` targets the
+    /// current version. Returns whether a row was updated.
+    ///
+    /// Used by the maintenance-mode (S3-drained) re-encryption path, where the
+    /// blob file is rewritten under the same `blob_id`. In a cluster this MUST
+    /// be paired with re-replication of the rewritten bytes; the hot/cluster
+    /// path instead uses the copy-on-write variant
+    /// [`MetadataStore::update_object_encryption_cas`].
+    async fn update_object_encryption(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+        algorithm: Option<&str>,
+        key_id: Option<&str>,
+    ) -> Result<bool, crate::error::ArcaError>;
+
+    /// Copy-on-write swap of an object version's blob: atomically sets
+    /// `blob_id = new_blob_id`, `encryption_algorithm`, `encryption_key_id` and
+    /// a fresh `seq`, but ONLY IF the row still references `old_blob_id`
+    /// (compare-and-swap guard). Returns `true` when exactly that row was
+    /// updated, `false` when a concurrent client write already replaced the blob
+    /// (the caller then discards the freshly written blob and skips).
+    /// `version_id == None` targets the current version; `last_modified` and the
+    /// ETag are preserved.
+    ///
+    /// This is the hot-path, cluster-safe primitive: changing `blob_id` makes
+    /// anti-entropy / read-repair pull the new (encrypted) blob with its sidecar
+    /// to every peer, rather than leaving peers with stale bytes under an
+    /// unchanged id.
+    async fn update_object_encryption_cas(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+        old_blob_id: &crate::types::BlobId,
+        new_blob_id: &crate::types::BlobId,
+        algorithm: Option<&str>,
+        key_id: Option<&str>,
+    ) -> Result<bool, crate::error::ArcaError>;
+
     // -- Bucket config operations --
 
     /// Gets a bucket configuration value.

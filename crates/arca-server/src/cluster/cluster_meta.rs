@@ -60,7 +60,7 @@ use arca_core::store::{
     TOMBSTONE_BUCKET_TAGS, TOMBSTONE_MULTIPART,
 };
 use arca_core::types::{
-    BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
+    BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
 };
 use arca_core::{S3Error, S3ErrorCode};
 
@@ -554,6 +554,59 @@ impl MetadataStore for ClusterMetadataStore {
             self.replicate_lock_change(bucket, key, version_id).await;
         }
         Ok(changed)
+    }
+
+    // -- Re-encryption (Phase 30 maintenance jobs) --
+
+    async fn update_object_encryption(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+        algorithm: Option<&str>,
+        key_id: Option<&str>,
+    ) -> Result<bool, ArcaError> {
+        self.check_write_quorum()?;
+        let changed = self
+            .inner
+            .update_object_encryption(bucket, key, version_id, algorithm, key_id)
+            .await?;
+        // The in-place variant keeps `blob_id` unchanged, so the re-sent row's
+        // LWW tuple is equal and peers adopt the new encryption columns. NOTE:
+        // the rewritten bytes are NOT shipped here — in a cluster the worker
+        // uses the copy-on-write path (`update_object_encryption_cas`) so peers
+        // pull the new blob; the in-place path is for single-node deployments.
+        if changed {
+            self.replicate_lock_change(bucket, key, version_id).await;
+        }
+        Ok(changed)
+    }
+
+    async fn update_object_encryption_cas(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+        old_blob_id: &BlobId,
+        new_blob_id: &BlobId,
+        algorithm: Option<&str>,
+        key_id: Option<&str>,
+    ) -> Result<bool, ArcaError> {
+        self.check_write_quorum()?;
+        let swapped = self
+            .inner
+            .update_object_encryption_cas(
+                bucket, key, version_id, old_blob_id, new_blob_id, algorithm, key_id,
+            )
+            .await?;
+        // CAS succeeded: the row now points at the new (encrypted) blob_id. Re-send
+        // it so peers learn the new id; anti-entropy / read-repair then pulls the
+        // new blob bytes + sidecar. (Convergence of the changed blob_id under LWW
+        // is exercised on the 3-node harness in M2.)
+        if swapped {
+            self.replicate_lock_change(bucket, key, version_id).await;
+        }
+        Ok(swapped)
     }
 
     // -- Bucket config operations (delegate; control-plane follow-up) --

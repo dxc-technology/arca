@@ -2010,6 +2010,117 @@ impl MetadataStore for PgStore {
         Ok(result.rows_affected() > 0)
     }
 
+    async fn update_object_encryption(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+        algorithm: Option<&str>,
+        key_id: Option<&str>,
+    ) -> Result<bool, ArcaError> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("update_object_encryption: {e}")))?;
+        // Fresh seq so the re-encryption reaches peers via the changed-since
+        // manifest; last_modified/ETag untouched (the logical object is
+        // unchanged). Seq before the row UPDATE per the lock-order rule.
+        let seq = next_object_seq(&mut tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("update_object_encryption: {e}")))?;
+        let result = if let Some(vid) = version_id {
+            sqlx_core::query::query(
+                "UPDATE objects SET encryption_algorithm = $1, encryption_key_id = $2, seq = $3 \
+                 WHERE bucket = $4 AND key = $5 AND version_id = $6",
+            )
+            .bind(algorithm)
+            .bind(key_id)
+            .bind(seq)
+            .bind(bucket)
+            .bind(key)
+            .bind(vid)
+            .execute(&mut *tx)
+            .await
+        } else {
+            sqlx_core::query::query(
+                "UPDATE objects SET encryption_algorithm = $1, encryption_key_id = $2, seq = $3 \
+                 WHERE bucket = $4 AND key = $5 AND is_latest = TRUE",
+            )
+            .bind(algorithm)
+            .bind(key_id)
+            .bind(seq)
+            .bind(bucket)
+            .bind(key)
+            .execute(&mut *tx)
+            .await
+        };
+        let result =
+            result.map_err(|e| ArcaError::Internal(format!("update_object_encryption: {e}")))?;
+        tx.commit()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("update_object_encryption: {e}")))?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn update_object_encryption_cas(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+        old_blob_id: &BlobId,
+        new_blob_id: &BlobId,
+        algorithm: Option<&str>,
+        key_id: Option<&str>,
+    ) -> Result<bool, ArcaError> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("update_object_encryption_cas: {e}")))?;
+        let seq = next_object_seq(&mut tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("update_object_encryption_cas: {e}")))?;
+        // CAS guard on blob_id: 0 rows means a concurrent client overwrite
+        // already swapped the blob and the caller discards the new one.
+        let result = if let Some(vid) = version_id {
+            sqlx_core::query::query(
+                "UPDATE objects SET blob_id = $1, encryption_algorithm = $2, encryption_key_id = $3, seq = $4 \
+                 WHERE bucket = $5 AND key = $6 AND version_id = $7 AND blob_id = $8",
+            )
+            .bind(&new_blob_id.0)
+            .bind(algorithm)
+            .bind(key_id)
+            .bind(seq)
+            .bind(bucket)
+            .bind(key)
+            .bind(vid)
+            .bind(&old_blob_id.0)
+            .execute(&mut *tx)
+            .await
+        } else {
+            sqlx_core::query::query(
+                "UPDATE objects SET blob_id = $1, encryption_algorithm = $2, encryption_key_id = $3, seq = $4 \
+                 WHERE bucket = $5 AND key = $6 AND is_latest = TRUE AND blob_id = $7",
+            )
+            .bind(&new_blob_id.0)
+            .bind(algorithm)
+            .bind(key_id)
+            .bind(seq)
+            .bind(bucket)
+            .bind(key)
+            .bind(&old_blob_id.0)
+            .execute(&mut *tx)
+            .await
+        };
+        let result =
+            result.map_err(|e| ArcaError::Internal(format!("update_object_encryption_cas: {e}")))?;
+        tx.commit()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("update_object_encryption_cas: {e}")))?;
+        Ok(result.rows_affected() > 0)
+    }
+
     // -- Lifecycle query operations --
 
     async fn list_expired_objects(

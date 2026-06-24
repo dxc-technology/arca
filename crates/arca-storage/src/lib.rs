@@ -12,6 +12,7 @@ pub mod encryption;
 pub mod fs;
 #[cfg(feature = "postgres")]
 pub mod pg;
+pub mod recrypt;
 pub mod sqlite;
 pub mod ssec_blob;
 

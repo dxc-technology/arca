@@ -1574,6 +1574,93 @@ impl MetadataStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("set_object_legal_hold: {e}")))
     }
 
+    async fn update_object_encryption(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+        algorithm: Option<&str>,
+        key_id: Option<&str>,
+    ) -> Result<bool, ArcaError> {
+        let bucket = bucket.to_string();
+        let key = key.to_string();
+        let version_id = version_id.map(|s| s.to_string());
+        let algorithm = algorithm.map(|s| s.to_string());
+        let key_id = key_id.map(|s| s.to_string());
+
+        self.conn
+            .call(move |conn| {
+                let tx = conn.transaction()?;
+                // Fresh seq so the re-encryption travels to peers via the
+                // changed-since manifest; last_modified/ETag are untouched (the
+                // logical object is unchanged). Seq taken before the row UPDATE
+                // per the next_object_seq lock-order rule.
+                let seq = next_object_seq(&tx)?;
+                let rows = if let Some(ref vid) = version_id {
+                    tx.execute(
+                        "UPDATE objects SET encryption_algorithm = ?1, encryption_key_id = ?2, seq = ?3 \
+                         WHERE bucket = ?4 AND key = ?5 AND version_id = ?6",
+                        params![algorithm, key_id, seq, bucket, key, vid],
+                    )?
+                } else {
+                    tx.execute(
+                        "UPDATE objects SET encryption_algorithm = ?1, encryption_key_id = ?2, seq = ?3 \
+                         WHERE bucket = ?4 AND key = ?5 AND is_latest = 1",
+                        params![algorithm, key_id, seq, bucket, key],
+                    )?
+                };
+                tx.commit()?;
+                Ok(rows > 0)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("update_object_encryption: {e}")))
+    }
+
+    async fn update_object_encryption_cas(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+        old_blob_id: &BlobId,
+        new_blob_id: &BlobId,
+        algorithm: Option<&str>,
+        key_id: Option<&str>,
+    ) -> Result<bool, ArcaError> {
+        let bucket = bucket.to_string();
+        let key = key.to_string();
+        let version_id = version_id.map(|s| s.to_string());
+        let old_blob_id = old_blob_id.0.clone();
+        let new_blob_id = new_blob_id.0.clone();
+        let algorithm = algorithm.map(|s| s.to_string());
+        let key_id = key_id.map(|s| s.to_string());
+
+        self.conn
+            .call(move |conn| {
+                let tx = conn.transaction()?;
+                // CAS guard on blob_id: a concurrent client overwrite already
+                // swapped the blob, in which case 0 rows match and the caller
+                // discards the freshly written blob.
+                let seq = next_object_seq(&tx)?;
+                let rows = if let Some(ref vid) = version_id {
+                    tx.execute(
+                        "UPDATE objects SET blob_id = ?1, encryption_algorithm = ?2, encryption_key_id = ?3, seq = ?4 \
+                         WHERE bucket = ?5 AND key = ?6 AND version_id = ?7 AND blob_id = ?8",
+                        params![new_blob_id, algorithm, key_id, seq, bucket, key, vid, old_blob_id],
+                    )?
+                } else {
+                    tx.execute(
+                        "UPDATE objects SET blob_id = ?1, encryption_algorithm = ?2, encryption_key_id = ?3, seq = ?4 \
+                         WHERE bucket = ?5 AND key = ?6 AND is_latest = 1 AND blob_id = ?7",
+                        params![new_blob_id, algorithm, key_id, seq, bucket, key, old_blob_id],
+                    )?
+                };
+                tx.commit()?;
+                Ok(rows > 0)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("update_object_encryption_cas: {e}")))
+    }
+
     async fn list_expired_objects(
         &self,
         bucket: &str,
@@ -3564,5 +3651,86 @@ mod tests {
             store.purge_tombstones(chrono::Utc::now() + chrono::Duration::seconds(1)).await.unwrap(),
             2
         );
+    }
+
+    // -- Re-encryption (Phase 30 M0) --
+
+    #[tokio::test]
+    async fn update_object_encryption_sets_and_clears_columns() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        store.put_object(&make_record("b", "k")).await.unwrap();
+        let seq_before = store.current_object_seq().await.unwrap();
+
+        // Set encryption metadata in place (same blob_id).
+        assert!(store
+            .update_object_encryption("b", "k", None, Some("AES256"), Some("deadbeef"))
+            .await
+            .unwrap());
+        let got = store.get_object("b", "k").await.unwrap().unwrap();
+        assert_eq!(got.encryption_algorithm.as_deref(), Some("AES256"));
+        assert_eq!(got.encryption_key_id.as_deref(), Some("deadbeef"));
+        assert_eq!(got.blob_id.0, "test-blob-id", "blob_id is unchanged in place");
+        // The change bumped the node-local seq so it travels via the manifest.
+        assert!(store.current_object_seq().await.unwrap() > seq_before);
+
+        // Clearing (after a decrypt) drops both columns.
+        assert!(store
+            .update_object_encryption("b", "k", None, None, None)
+            .await
+            .unwrap());
+        let got = store.get_object("b", "k").await.unwrap().unwrap();
+        assert!(got.encryption_algorithm.is_none());
+        assert!(got.encryption_key_id.is_none());
+
+        // Missing object → no row updated.
+        assert!(!store
+            .update_object_encryption("b", "missing", None, Some("AES256"), None)
+            .await
+            .unwrap());
+    }
+
+    #[tokio::test]
+    async fn update_object_encryption_cas_swaps_only_on_matching_blob_id() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut r = make_record("b", "k");
+        r.blob_id = BlobId("old-blob".to_string());
+        store.put_object(&r).await.unwrap();
+
+        // CAS with the wrong old blob_id does nothing (a concurrent overwrite won).
+        assert!(!store
+            .update_object_encryption_cas(
+                "b",
+                "k",
+                None,
+                &BlobId("stale".to_string()),
+                &BlobId("new-blob".to_string()),
+                Some("AES256"),
+                Some("deadbeef"),
+            )
+            .await
+            .unwrap());
+        let got = store.get_object("b", "k").await.unwrap().unwrap();
+        assert_eq!(got.blob_id.0, "old-blob");
+        assert!(got.encryption_algorithm.is_none());
+
+        // CAS with the matching old blob_id swaps the blob and sets encryption.
+        assert!(store
+            .update_object_encryption_cas(
+                "b",
+                "k",
+                None,
+                &BlobId("old-blob".to_string()),
+                &BlobId("new-blob".to_string()),
+                Some("AES256"),
+                Some("deadbeef"),
+            )
+            .await
+            .unwrap());
+        let got = store.get_object("b", "k").await.unwrap().unwrap();
+        assert_eq!(got.blob_id.0, "new-blob");
+        assert_eq!(got.encryption_algorithm.as_deref(), Some("AES256"));
+        assert_eq!(got.encryption_key_id.as_deref(), Some("deadbeef"));
     }
 }
