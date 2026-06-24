@@ -11,6 +11,7 @@ set -euo pipefail
 #   bin/test tls          Run TLS integration tests
 #   bin/test encryption   Run encryption integration tests
 #   bin/test per-bucket-encryption  Run per-bucket encryption tests
+#   bin/test recrypt      Run HOT re-encryption (maintenance jobs) tests
 #   bin/test kms          Run KMS integration tests
 #   bin/test postgres     Run PostgreSQL backend integration tests
 #   bin/test s3-compat    Run Ceph s3-tests compatibility suite
@@ -170,6 +171,40 @@ run_per_bucket_encryption() {
 
     trap - EXIT
     cleanup_pbe
+    return $rc
+}
+
+run_recrypt() {
+    echo "==> Running HOT re-encryption (maintenance jobs) integration tests..."
+
+    # Same config as per-bucket encryption: master key present, global
+    # encryption disabled — plain default puts that the server can re-encrypt.
+    enable_encryption_per_bucket
+    build_config
+
+    local COMPOSE
+    COMPOSE="$(compose_cmd)"
+
+    cleanup_recrypt() {
+        echo "Cleaning up re-encryption test..."
+        $COMPOSE down -v 2>/dev/null || true
+    }
+    trap cleanup_recrypt EXIT
+
+    # Step 1: Build images
+    $COMPOSE build arca
+    # Step 2: Start server (key present, enabled=false — plain default puts)
+    $COMPOSE up -d arca
+    # Step 3: Wait for server to be ready
+    wait_for_arca "$COMPOSE"
+    # Step 4: Run re-encryption tests
+    $COMPOSE run --rm \
+        -e ARCA_PER_BUCKET_ENCRYPTION=1 \
+        test integration/test_recrypt.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_recrypt
     return $rc
 }
 
@@ -1141,6 +1176,10 @@ case "${1:-all}" in
         shift
         run_per_bucket_encryption "$@"
         ;;
+    recrypt)
+        shift
+        run_recrypt "$@"
+        ;;
     kms)
         shift
         run_kms "$@"
@@ -1193,6 +1232,7 @@ case "${1:-all}" in
         echo "  encryption           Run encryption integration tests"
         echo "  compression          Run compression integration tests"
         echo "  per-bucket-encryption  Run per-bucket encryption tests"
+        echo "  recrypt              Run HOT re-encryption (maintenance jobs) tests"
         echo "  kms                  Run KMS integration tests (with OpenBAO)"
         echo "  postgres             Run PostgreSQL backend integration tests"
         echo "  presigned            Run presigned URL integration tests"

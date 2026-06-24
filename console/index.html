@@ -5227,6 +5227,26 @@
                     </div>
                   </div>
 
+                  <!-- re-encryption params (encrypt / decrypt) -->
+                  <div x-show="launchParamsKind === 'reencrypt'" x-cloak class="space-y-4">
+                    <div>
+                      <label class="text-[11px] text-vault-muted uppercase tracking-wider block mb-1.5">Bucket</label>
+                      <input type="text" x-model="launch.bucket" :disabled="jobActive || launching" placeholder="All buckets"
+                        class="setting-number w-full px-3 py-2 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm focus:outline-none focus:border-vault-accent/50 transition disabled:opacity-40">
+                    </div>
+                    <div>
+                      <label class="text-[11px] text-vault-muted uppercase tracking-wider block mb-1.5">Prefix</label>
+                      <input type="text" x-model="launch.prefix" :disabled="jobActive || launching" placeholder="All keys"
+                        class="setting-number w-full px-3 py-2 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm focus:outline-none focus:border-vault-accent/50 transition disabled:opacity-40">
+                    </div>
+                    <div x-show="launch.mode === 'live'">
+                      <label class="text-[11px] text-vault-muted uppercase tracking-wider block mb-1.5">Throttle (bytes/sec, 0 = unlimited)</label>
+                      <input type="number" min="0" x-model.number="launch.rateBytesPerSec" :disabled="jobActive || launching" placeholder="0"
+                        class="setting-number w-full px-3 py-2 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm focus:outline-none focus:border-vault-accent/50 transition disabled:opacity-40">
+                    </div>
+                    <p class="text-[11px] text-vault-muted">Maintenance mode drains S3 on the node and runs at full speed; Live mode uses copy-on-write and an optional throttle so clients are unaffected.</p>
+                  </div>
+
                   <!-- Error -->
                   <div x-show="launchError" x-cloak class="p-2.5 bg-red-500/5 border border-red-500/20 rounded-lg text-[12px] text-red-400" x-text="launchError"></div>
 

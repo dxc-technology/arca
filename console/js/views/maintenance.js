@@ -8,6 +8,8 @@ import { api } from '../api.js';
 // params form the launch panel renders; 'noop' is the only one for now.
 const JOB_TYPES = [
   { id: 'noop', label: 'No-op (test)', paramsKind: 'noop' },
+  { id: 'encrypt', label: 'Encrypt objects (SSE-S3)', paramsKind: 'reencrypt' },
+  { id: 'decrypt', label: 'Decrypt objects', paramsKind: 'reencrypt' },
 ];
 
 // Status pill styling — mirrors the STATUS_META idiom used by the replication
@@ -56,6 +58,12 @@ export function maintenanceView() {
       // noop params
       n: 100,
       delayMs: 0,
+      // re-encryption params (encrypt / decrypt). All optional: a blank
+      // bucket scans every bucket, a blank prefix scans every key, and the
+      // throttle only applies in live mode (0 = unlimited).
+      bucket: '',
+      prefix: '',
+      rateBytesPerSec: 0,
     },
     launching: false,
     launchError: '',
@@ -142,6 +150,25 @@ export function maintenanceView() {
             return;
           }
           params.delay_ms = delay;
+        }
+      } else if (meta.paramsKind === 'reencrypt') {
+        // bucket / prefix are optional scoping filters — omit when blank so
+        // the job scans all buckets / all keys.
+        const bucket = (this.launch.bucket || '').trim();
+        if (bucket) params.bucket = bucket;
+        const prefix = (this.launch.prefix || '').trim();
+        if (prefix) params.prefix = prefix;
+        // Throttle only matters in live mode (copy-on-write). Omit when blank
+        // or zero (= unlimited).
+        if (this.launch.mode === 'live') {
+          const rate = Number(this.launch.rateBytesPerSec);
+          if (rate) {
+            if (!Number.isInteger(rate) || rate < 0) {
+              this.launchError = 'Throttle must be 0 or a positive number of bytes per second.';
+              return;
+            }
+            params.rate_bytes_per_sec = rate;
+          }
         }
       }
 

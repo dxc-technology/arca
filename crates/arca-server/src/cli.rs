@@ -105,6 +105,44 @@ pub enum Command {
         bucket: Option<String>,
     },
 
+    /// Encrypt existing plaintext blobs in place (offline, atomic, idempotent)
+    EncryptExisting {
+        /// Path to the configuration file
+        #[arg(long, default_value = "/etc/arca/config.toml")]
+        config_path: PathBuf,
+
+        /// Only report what would change; no files or rows written
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Restrict to a single bucket
+        #[arg(long)]
+        bucket: Option<String>,
+
+        /// Restrict to keys with this prefix
+        #[arg(long)]
+        prefix: Option<String>,
+    },
+
+    /// Decrypt existing SSE-S3 blobs back to plaintext in place (offline, atomic, idempotent)
+    DecryptExisting {
+        /// Path to the configuration file
+        #[arg(long, default_value = "/etc/arca/config.toml")]
+        config_path: PathBuf,
+
+        /// Only report what would change; no files or rows written
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Restrict to a single bucket
+        #[arg(long)]
+        bucket: Option<String>,
+
+        /// Restrict to keys with this prefix
+        #[arg(long)]
+        prefix: Option<String>,
+    },
+
     /// Manage users (offline, direct database access)
     User {
         /// Path to the configuration file

@@ -10,6 +10,7 @@ mod compress_existing;
 mod fsck;
 mod maintenance;
 mod recover;
+mod recrypt_existing;
 mod replicator;
 mod sigv4_http;
 mod tls;
@@ -989,6 +990,40 @@ async fn async_main(cli: Cli) -> Result<()> {
             let config = config::load_config(&config_path)?;
             compress_existing::run_decompress_existing(&config, dry_run, bucket.as_deref())
                 .await?;
+        }
+
+        Command::EncryptExisting {
+            config_path,
+            dry_run,
+            bucket,
+            prefix,
+        } => {
+            let _ = init_tracing(&LogFormat::Text, "info");
+            let config = config::load_config(&config_path)?;
+            recrypt_existing::run_encrypt_existing(
+                &config,
+                dry_run,
+                bucket.as_deref(),
+                prefix.as_deref(),
+            )
+            .await?;
+        }
+
+        Command::DecryptExisting {
+            config_path,
+            dry_run,
+            bucket,
+            prefix,
+        } => {
+            let _ = init_tracing(&LogFormat::Text, "info");
+            let config = config::load_config(&config_path)?;
+            recrypt_existing::run_decrypt_existing(
+                &config,
+                dry_run,
+                bucket.as_deref(),
+                prefix.as_deref(),
+            )
+            .await?;
         }
 
         Command::Tls { action } => {
