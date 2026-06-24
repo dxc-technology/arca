@@ -128,6 +128,12 @@ impl PgStore {
     pub(crate) fn cluster_mode(&self) -> bool {
         self.cluster_mode.load(Ordering::Relaxed)
     }
+
+    /// The connection pool. Used by the backend-migration copier
+    /// ([`crate::migration`]) which issues dynamic per-table SQL.
+    pub(crate) fn pool(&self) -> &sqlx_postgres::PgPool {
+        &self.pool
+    }
 }
 
 /// Ensures the `_migrations` tracking table exists.

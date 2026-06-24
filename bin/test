@@ -280,6 +280,79 @@ run_postgres() {
     return $rc
 }
 
+run_migrate_db() {
+    echo "==> Running migrate-db (metadata backend migration) integration test..."
+
+    # Phase 1 runs Arca on SQLite with NO postgres section in config (so the
+    # backend stays sqlite); phase 3 enables the postgres overlay + combined
+    # config and runs Arca on postgres. The shared `arca-data` volume carries
+    # the SQLite DB + blobs across the recreation, so the offline migrate-db CLI
+    # reads /data/arca.db and the post-migration GETs resolve the same blobs.
+
+    # --- Phase 0: clean slate (sqlite-only compose) ---
+    local SQLITE_COMPOSE
+    SQLITE_COMPOSE="$(compose_cmd)"   # base only, no features
+
+    cleanup_migrate() {
+        echo "Cleaning up migrate-db test..."
+        # Tear down BOTH compose shapes; the postgres overlay is a superset, so
+        # `down -v` with it removes the arca-data + postgres-data volumes.
+        ${_MIGRATE_PG_COMPOSE:-$SQLITE_COMPOSE} down -v 2>/dev/null || true
+    }
+    trap cleanup_migrate EXIT
+
+    # Fresh volumes so the source SQLite DB starts empty.
+    $SQLITE_COMPOSE down -v 2>/dev/null || true
+
+    # --- Phase 1: seed on SQLite ---
+    $SQLITE_COMPOSE build arca
+    $SQLITE_COMPOSE up -d arca
+    wait_for_arca "$SQLITE_COMPOSE"
+    echo "--> Seeding data on the SQLite backend..."
+    $SQLITE_COMPOSE run --rm \
+        -e ARCA_MIGRATE_PHASE=seed \
+        test integration/test_migrate_db.py "$@"
+    local seed_rc=$?
+    if [[ $seed_rc -ne 0 ]]; then
+        echo "Seed phase failed (rc=$seed_rc)"; return $seed_rc
+    fi
+
+    # Stop Arca but KEEP the arca-data volume (no -v).
+    $SQLITE_COMPOSE stop arca >/dev/null 2>&1 || true
+    $SQLITE_COMPOSE rm -f arca >/dev/null 2>&1 || true
+
+    # --- Phase 2: enable postgres, run the offline migration ---
+    enable_postgres          # adds [storage.postgres] fragment + pg overlay + config mount
+    build_config
+    _MIGRATE_PG_COMPOSE="$(compose_cmd)"
+
+    $_MIGRATE_PG_COMPOSE up -d postgres
+    wait_for_postgres "$_MIGRATE_PG_COMPOSE"
+
+    echo "--> Running offline: arca migrate-db --to postgres ..."
+    # ENTRYPOINT is the arca binary; the combined config carries both the sqlite
+    # source (data_dir=/data) and the postgres target ([storage.postgres]).
+    $_MIGRATE_PG_COMPOSE run --rm \
+        arca migrate-db --config-path /etc/arca/config.toml --to postgres
+    local mig_rc=$?
+    if [[ $mig_rc -ne 0 ]]; then
+        echo "migrate-db CLI failed (rc=$mig_rc)"; return $mig_rc
+    fi
+
+    # --- Phase 3: start Arca on postgres, verify ---
+    $_MIGRATE_PG_COMPOSE up -d arca
+    wait_for_arca "$_MIGRATE_PG_COMPOSE"
+    echo "--> Verifying data on the PostgreSQL backend..."
+    $_MIGRATE_PG_COMPOSE run --rm \
+        -e ARCA_MIGRATE_PHASE=verify \
+        test integration/test_migrate_db.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_migrate
+    return $rc
+}
+
 run_presigned() {
     echo "==> Running presigned URL integration tests..."
     local COMPOSE
@@ -1188,6 +1261,10 @@ case "${1:-all}" in
         shift
         run_postgres "$@"
         ;;
+    migrate-db)
+        shift
+        run_migrate_db "$@"
+        ;;
     presigned)
         shift
         run_presigned "$@"
@@ -1235,6 +1312,7 @@ case "${1:-all}" in
         echo "  recrypt              Run HOT re-encryption (maintenance jobs) tests"
         echo "  kms                  Run KMS integration tests (with OpenBAO)"
         echo "  postgres             Run PostgreSQL backend integration tests"
+        echo "  migrate-db           Run metadata backend migration (SQLite->PostgreSQL) test"
         echo "  presigned            Run presigned URL integration tests"
         echo "  ssec                 Run SSE-C integration tests"
         echo "  connectors <type>    Run connector integration tests (redis, nats, mqtt, postgresql, mysql, mongodb, kafka, amqp, elasticsearch, syslog, smtp, grpc, all)"

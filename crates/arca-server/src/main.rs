@@ -9,6 +9,7 @@ mod crypto;
 mod compress_existing;
 mod fsck;
 mod maintenance;
+mod migrate_db;
 mod recover;
 mod recrypt_existing;
 mod replicator;
@@ -756,6 +757,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                 &state,
                 maint_drain_tx.clone(),
                 maintenance_master_key.clone(),
+                config.storage.clone(),
             );
             let _notification_worker = if let Some(ref notif_store) = state.notification_store {
                 let region = state.config_region.clone().unwrap_or_else(|| "us-east-1".to_string());
@@ -1024,6 +1026,16 @@ async fn async_main(cli: Cli) -> Result<()> {
                 prefix.as_deref(),
             )
             .await?;
+        }
+
+        Command::MigrateDb {
+            config_path,
+            to,
+            force,
+        } => {
+            let _ = init_tracing(&LogFormat::Text, "info");
+            let config = config::load_config(&config_path)?;
+            migrate_db::run_migrate_db(&config, to.as_str(), force).await?;
         }
 
         Command::Tls { action } => {

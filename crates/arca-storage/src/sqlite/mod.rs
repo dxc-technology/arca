@@ -139,6 +139,13 @@ impl SqliteStore {
         self.cluster_mode.load(Ordering::Relaxed)
     }
 
+    /// The single write connection (serializes mutations). Used by the
+    /// backend-migration copier ([`crate::migration`]) for batched INSERTs and
+    /// by tests that seed/inspect rows directly.
+    pub(crate) fn write_conn(&self) -> &tokio_rusqlite::Connection {
+        &self.conn
+    }
+
     /// Dispatches a read-only query to the pool (round-robin).
     /// Falls back to the write connection if the pool is empty (in-memory tests).
     pub(crate) fn read_conn(&self) -> &tokio_rusqlite::Connection {

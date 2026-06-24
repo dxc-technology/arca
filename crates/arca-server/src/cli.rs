@@ -143,6 +143,24 @@ pub enum Command {
         prefix: Option<String>,
     },
 
+    /// Migrate ALL metadata to the other backend in place (offline). Blob files
+    /// are not touched; after a successful run, switch `metadata_backend` in the
+    /// config and restart onto the new backend.
+    MigrateDb {
+        /// Path to the configuration file
+        #[arg(long, default_value = "/etc/arca/config.toml")]
+        config_path: PathBuf,
+
+        /// Target backend to copy metadata INTO (the source is the configured
+        /// metadata_backend)
+        #[arg(long, value_name = "BACKEND")]
+        to: MigrateBackend,
+
+        /// Overwrite a non-empty target: delete every destination row first
+        #[arg(long)]
+        force: bool,
+    },
+
     /// Manage users (offline, direct database access)
     User {
         /// Path to the configuration file
@@ -162,6 +180,22 @@ pub enum Command {
         #[command(subcommand)]
         action: ClusterAction,
     },
+}
+
+/// Target metadata backend for `arca migrate-db`.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum MigrateBackend {
+    Sqlite,
+    Postgres,
+}
+
+impl MigrateBackend {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MigrateBackend::Sqlite => "sqlite",
+            MigrateBackend::Postgres => "postgres",
+        }
+    }
 }
 
 #[derive(Debug, Clone, ValueEnum)]

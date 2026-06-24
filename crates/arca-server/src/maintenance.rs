@@ -23,6 +23,7 @@ use arca_storage::encryption::keys::MasterKey;
 use arca_storage::recrypt::{self, RecryptDirection};
 use tokio::sync::watch;
 
+use crate::config::StorageConfig;
 use crate::worker::BackgroundWorker;
 
 /// Dependencies the re-encryption job types (`encrypt` / `decrypt`) need beyond
@@ -42,6 +43,15 @@ pub struct RecryptCtx {
     pub master_key: Option<Arc<MasterKey>>,
 }
 
+/// Dependencies the `migrate-db` job needs: the storage config (to open the
+/// TARGET backend) and the SOURCE backend name (the running `metadata_backend`).
+/// The SOURCE store is opened fresh from the same config, so the job never
+/// touches the live store handles.
+#[derive(Clone)]
+pub struct MigrateDbCtx {
+    pub storage: StorageConfig,
+}
+
 /// How often the worker polls for an active job and advances it.
 const TICK_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -51,6 +61,7 @@ pub fn spawn_maintenance_worker(
     state: &AppState,
     drain_tx: Arc<watch::Sender<bool>>,
     master_key: Option<Arc<MasterKey>>,
+    storage: StorageConfig,
 ) -> BackgroundWorker {
     let store = state.maintenance_store.clone();
     let cluster = state.cluster.clone();
@@ -60,12 +71,14 @@ pub fn spawn_maintenance_worker(
         plain_blob: state.plain_blob.clone(),
         master_key,
     };
+    let migrate = MigrateDbCtx { storage };
 
     BackgroundWorker::spawn_periodic("maintenance", TICK_INTERVAL, move || {
         let store = store.clone();
         let cluster = cluster.clone();
         let drain_tx = drain_tx.clone();
         let recrypt = recrypt.clone();
+        let migrate = migrate.clone();
         async move {
             let Some(store) = store else { return };
             // In a cluster only the worker-leader runs jobs (the data is fully
@@ -76,7 +89,7 @@ pub fn spawn_maintenance_worker(
                     return;
                 }
             }
-            maintenance_tick(store.as_ref(), Some(&recrypt), &drain_tx).await;
+            maintenance_tick(store.as_ref(), Some(&recrypt), Some(&migrate), &drain_tx).await;
         }
     })
 }
@@ -92,6 +105,7 @@ fn set_drain(drain_tx: &watch::Sender<bool>, want: bool) {
 pub async fn maintenance_tick(
     store: &dyn MaintenanceStore,
     recrypt: Option<&RecryptCtx>,
+    migrate: Option<&MigrateDbCtx>,
     drain_tx: &watch::Sender<bool>,
 ) {
     let active = match store.active_job().await {
@@ -118,10 +132,10 @@ pub async fn maintenance_tick(
                 let _ = store
                     .append_job_log(&job.id, "info", "job started", DEFAULT_MAX_JOB_LOGS)
                     .await;
-                process_job(store, recrypt, &job).await;
+                process_job(store, recrypt, migrate, &job).await;
             }
         }
-        Some(MaintenanceJobStatus::Running) => process_job(store, recrypt, &job).await,
+        Some(MaintenanceJobStatus::Running) => process_job(store, recrypt, migrate, &job).await,
         // Paused: idle (drain stays engaged per the reconcile above). Terminal:
         // nothing to do (active_job never returns terminal jobs anyway).
         _ => {}
@@ -130,7 +144,12 @@ pub async fn maintenance_tick(
 
 /// Dispatches a job to its processor. New job types plug in here (M3: migrate-db;
 /// M4: migrate-topology).
-async fn process_job(store: &dyn MaintenanceStore, recrypt: Option<&RecryptCtx>, job: &MaintenanceJob) {
+async fn process_job(
+    store: &dyn MaintenanceStore,
+    recrypt: Option<&RecryptCtx>,
+    migrate: Option<&MigrateDbCtx>,
+    job: &MaintenanceJob,
+) {
     let result = match job.job_type.as_str() {
         "noop" => process_noop(store, job).await,
         "encrypt" => match recrypt {
@@ -140,6 +159,10 @@ async fn process_job(store: &dyn MaintenanceStore, recrypt: Option<&RecryptCtx>,
         "decrypt" => match recrypt {
             Some(ctx) => process_recrypt(store, ctx, job, RecryptDirection::Decrypt).await,
             None => Err("re-encryption context unavailable".to_string()),
+        },
+        "migrate-db" => match migrate {
+            Some(ctx) => process_migrate_db(store, ctx, job).await,
+            None => Err("metadata-migration context unavailable".to_string()),
         },
         other => Err(format!("unknown job type: {other}")),
     };
@@ -190,6 +213,107 @@ async fn process_noop(store: &dyn MaintenanceStore, job: &MaintenanceJob) -> Res
         .map_err(|e| e.to_string())?;
     let _ = store
         .append_job_log(&job.id, "info", "job completed", DEFAULT_MAX_JOB_LOGS)
+        .await;
+    Ok(())
+}
+
+/// The `migrate-db` job: copies ALL metadata from the running (SOURCE) backend
+/// into the TARGET backend named in `params.target`, in place. Blob files are
+/// not touched. This is maintenance-mode (the S3 API is drained); the operator
+/// switches `metadata_backend` in the config and restarts onto the new backend
+/// afterward. Params: `{ "target": "sqlite"|"postgres", "force": bool }`.
+async fn process_migrate_db(
+    store: &dyn MaintenanceStore,
+    ctx: &MigrateDbCtx,
+    job: &MaintenanceJob,
+) -> Result<(), String> {
+    use arca_storage::migration::{self, TABLES};
+
+    let from = ctx.storage.metadata_backend.as_str();
+    let to = job
+        .params
+        .get("target")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "migrate-db requires a \"target\" param (sqlite|postgres)".to_string())?;
+    let force = job
+        .params
+        .get("force")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    if to != "sqlite" && to != "postgres" {
+        return Err(format!("invalid target backend \"{to}\" (expected sqlite|postgres)"));
+    }
+    if to == from {
+        return Err(format!(
+            "target backend \"{to}\" equals the source backend; nothing to migrate"
+        ));
+    }
+
+    // Open SOURCE (the running backend) and TARGET fresh from config; never touch
+    // the live store handles.
+    let source = crate::migrate_db::open_backend_from_storage(&ctx.storage, from)
+        .await
+        .map_err(|e| format!("opening source backend ({from}): {e}"))?;
+    let dest = crate::migrate_db::open_backend_from_storage(&ctx.storage, to)
+        .await
+        .map_err(|e| format!("opening target backend ({to}): {e}"))?;
+
+    let total_tables = TABLES.len() as u64;
+    store
+        .update_job_progress(&job.id, 0, total_tables, 0.0)
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = store
+        .append_job_log(
+            &job.id,
+            "info",
+            &format!("migrating metadata {from} -> {to} (force={force})"),
+            DEFAULT_MAX_JOB_LOGS,
+        )
+        .await;
+
+    // The progress callback is synchronous (migrate_all cannot await per table),
+    // so it can only trace; the durable per-table accounting is the report's
+    // per-table counts, logged below, and the job's done/total set after the
+    // copy. Table count is small and the run is drained, so coarse progress
+    // (0 -> total on completion) is acceptable.
+    let report = migration::migrate_all(&source, &dest, force, |idx, total, name| {
+        tracing::info!(table = name, step = idx + 1, total, "migrate-db: copying table");
+    })
+    .await?;
+
+    for t in &report.tables {
+        let _ = store
+            .append_job_log(
+                &job.id,
+                "info",
+                &format!("{}: {} row(s)", t.table, t.source_count),
+                DEFAULT_MAX_JOB_LOGS,
+            )
+            .await;
+    }
+
+    store
+        .update_job_progress(&job.id, total_tables, total_tables, 0.0)
+        .await
+        .map_err(|e| e.to_string())?;
+    store
+        .set_job_status(&job.id, MaintenanceJobStatus::Completed, None)
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = store
+        .append_job_log(
+            &job.id,
+            "info",
+            &format!(
+                "migration completed: {} table(s), {} row(s) copied {from} -> {to}. \
+                 Switch metadata_backend to \"{to}\" and restart.",
+                report.tables.len(),
+                report.total_rows
+            ),
+            DEFAULT_MAX_JOB_LOGS,
+        )
         .await;
     Ok(())
 }
@@ -499,14 +623,14 @@ mod tests {
         store.create_job(&noop_job("j1", "maintenance", 3)).await.unwrap();
 
         // First tick starts and completes the (tiny, no-delay) job.
-        maintenance_tick(&store, None, &tx).await;
+        maintenance_tick(&store, None, None, &tx).await;
         let j = store.get_job("j1").await.unwrap().unwrap();
         assert_eq!(j.status, "completed");
         assert_eq!(j.done, 3);
 
         // A maintenance-mode job drained while active; now that it is terminal a
         // follow-up tick releases the drain.
-        maintenance_tick(&store, None, &tx).await;
+        maintenance_tick(&store, None, None, &tx).await;
         assert!(!*rx.borrow(), "drain released after the job finished");
     }
 
@@ -515,7 +639,7 @@ mod tests {
         let store = SqliteStore::open_in_memory().await.unwrap();
         let (tx, rx) = watch::channel(false);
         store.create_job(&noop_job("j1", "live", 1)).await.unwrap();
-        maintenance_tick(&store, None, &tx).await;
+        maintenance_tick(&store, None, None, &tx).await;
         assert!(!*rx.borrow(), "live-mode jobs never drain the S3 API");
     }
 
@@ -537,7 +661,7 @@ mod tests {
             .await
             .unwrap();
 
-        maintenance_tick(&store, None, &tx).await;
+        maintenance_tick(&store, None, None, &tx).await;
         let j = store.get_job("j1").await.unwrap().unwrap();
         assert_eq!(j.status, "paused");
         assert!(j.done < 100);
@@ -551,7 +675,7 @@ mod tests {
         job.job_type = "does-not-exist".to_string();
         store.create_job(&job).await.unwrap();
 
-        maintenance_tick(&store, None, &tx).await;
+        maintenance_tick(&store, None, None, &tx).await;
         let j = store.get_job("j1").await.unwrap().unwrap();
         assert_eq!(j.status, "failed");
         assert!(j.last_error.unwrap().contains("unknown job type"));
@@ -565,7 +689,20 @@ mod tests {
         job.job_type = "encrypt".to_string();
         store.create_job(&job).await.unwrap();
         // No RecryptCtx passed → the job fails cleanly instead of panicking.
-        maintenance_tick(&store, None, &tx).await;
+        maintenance_tick(&store, None, None, &tx).await;
+        assert_eq!(store.get_job("j1").await.unwrap().unwrap().status, "failed");
+    }
+
+    #[tokio::test]
+    async fn migrate_db_job_without_ctx_fails() {
+        let store = SqliteStore::open_in_memory().await.unwrap();
+        let (tx, _rx) = watch::channel(false);
+        let mut job = noop_job("j1", "maintenance", 1);
+        job.job_type = "migrate-db".to_string();
+        job.params = serde_json::json!({ "target": "postgres" });
+        store.create_job(&job).await.unwrap();
+        // No MigrateDbCtx passed → the job fails cleanly instead of panicking.
+        maintenance_tick(&store, None, None, &tx).await;
         assert_eq!(store.get_job("j1").await.unwrap().unwrap().status, "failed");
     }
 

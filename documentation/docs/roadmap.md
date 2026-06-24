@@ -545,7 +545,7 @@ It also closes a **security workstream** (review §3.7): the cluster authenticat
 
 Comprehensive CLI tooling for administration, data migration, and remote S3 operations.
 
-- [ ] `arca migrate-db --from sqlite --to postgres`: bidirectional metadata migration between SQLite and PostgreSQL backends
+- [x] `arca migrate-db --to <sqlite|postgres>`: bidirectional metadata migration between SQLite and PostgreSQL backends (M3). Copies every metadata table in place via a generic, type-aware column copier; blob files are untouched. Available as an offline CLI escape hatch and as a maintenance-mode `migrate-db` job. After a run, switch `metadata_backend` and restart.
 - [ ] `arca encrypt-existing` / `arca decrypt-existing`: offline encryption/decryption of existing objects in-place. Atomic renames for crash safety, resumable (skips already-processed blobs), configurable concurrency, progress reporting
 - [ ] `arca migrate-topology`: migrate data between single-node and multi-node (HA) deployments. Resharding, metadata redistribution, rollback support
 - [ ] Remote S3 client mode: `arca` binary acts as an S3 client (like `mc` or `aws s3`), connecting to any S3-compatible endpoint. Subcommands: `arca s3 ls`, `arca s3 cp`, `arca s3 mv`, `arca s3 rm`, `arca s3 sync`, `arca s3 presign`
