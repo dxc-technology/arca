@@ -219,9 +219,16 @@ export function maintenanceView() {
       try {
         const path = '/maintenance/jobs/' + encodeURIComponent(id) +
           (verb === 'cancel' ? '' : '/' + verb);
-        const resp = method === 'DELETE'
-          ? await api.adminDelete(path)
-          : await api.adminPost(path);
+        // Guard against a request that never settles so the action buttons can
+        // never get permanently wedged (the finally below always re-enables them).
+        const reqP = method === 'DELETE'
+          ? api.adminDelete(path)
+          : api.adminPost(path);
+        const resp = await Promise.race([
+          reqP,
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('request timed out')), 15000)),
+        ]);
         if (!resp.ok) {
           let body = {};
           try { body = await resp.json(); } catch {}
