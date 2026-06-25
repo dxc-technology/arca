@@ -12,7 +12,7 @@ import { auditView } from './views/audit.js?v=node-views-2';
 import { monitoringView } from './views/monitoring.js?v=node-views-2';
 import { notificationsView, bucketNotificationEditor } from './views/notifications.js?v=node-views-2';
 import { replicationView, bucketReplicationEditor, replicationCredentials } from './views/replication.js?v=node-views-2';
-import { maintenanceView } from './views/maintenance.js?v=node-views-2';
+import { maintenanceView } from './views/maintenance.js?v=maint-fix-1';
 
 // ==================== SHARED SVG ICONS ====================
 // Centralized SVG strings for consistent use across views.
