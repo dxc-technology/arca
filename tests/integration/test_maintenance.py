@@ -193,3 +193,79 @@ class TestMaintenanceLifecycle:
             "GET", f"{jobs_url(endpoint)}/no-such-job-id", creds
         )
         assert resp.status_code == 404, resp.text
+
+
+class TestMaintenanceDrain:
+    """A maintenance-mode job must drain the S3 API on the node (503 to
+    external clients), not just flip the health probe."""
+
+    def test_maintenance_mode_blocks_s3(self, endpoint, creds):
+        created = signed_request(
+            "POST",
+            jobs_url(endpoint),
+            creds,
+            {"type": "noop", "mode": "maintenance", "params": {"n": 100000, "delay_ms": 50}},
+        )
+        assert created.status_code == 201, created.text
+        jid = created.json()["id"]
+        try:
+            wait_for_status(endpoint, creds, jid, {"running"})
+            # S3 requests (here: ListBuckets) are refused with 503 while the
+            # maintenance-mode job runs.
+            deadline = time.time() + 10
+            blocked = False
+            while time.time() < deadline:
+                ls = signed_request("GET", f"{endpoint}/", creds)
+                if ls.status_code == 503:
+                    blocked = True
+                    break
+                time.sleep(0.5)
+            assert blocked, "S3 was not drained (no 503) during a maintenance-mode job"
+        finally:
+            signed_request("DELETE", f"{jobs_url(endpoint)}/{jid}", creds)
+        # After cancellation the drain lifts and S3 serves again.
+        deadline = time.time() + 10
+        served = False
+        while time.time() < deadline:
+            ls = signed_request("GET", f"{endpoint}/", creds)
+            if ls.status_code == 200:
+                served = True
+                break
+            time.sleep(0.5)
+        assert served, "S3 did not recover after the maintenance job was cancelled"
+
+    def test_live_mode_does_not_block_s3(self, endpoint, creds):
+        created = signed_request(
+            "POST",
+            jobs_url(endpoint),
+            creds,
+            {"type": "noop", "mode": "live", "params": {"n": 100000, "delay_ms": 50}},
+        )
+        assert created.status_code == 201, created.text
+        jid = created.json()["id"]
+        try:
+            wait_for_status(endpoint, creds, jid, {"running"})
+            ls = signed_request("GET", f"{endpoint}/", creds)
+            assert ls.status_code == 200, "live-mode jobs must not drain S3"
+        finally:
+            signed_request("DELETE", f"{jobs_url(endpoint)}/{jid}", creds)
+
+
+class TestClearHistory:
+    def test_clear_removes_terminal_keeps_active(self, endpoint, creds):
+        # A finished job lands in history.
+        done = signed_request(
+            "POST", jobs_url(endpoint), creds,
+            {"type": "noop", "mode": "live", "params": {"n": 2}},
+        )
+        assert done.status_code == 201, done.text
+        wait_for_status(endpoint, creds, done.json()["id"], {"completed", "failed"})
+
+        # Clear the history (DELETE on the collection).
+        resp = signed_request("DELETE", jobs_url(endpoint), creds)
+        assert resp.status_code == 200, resp.text
+        assert resp.json().get("cleared", 0) >= 1
+        # The terminal job is gone.
+        listing = signed_request("GET", jobs_url(endpoint), creds).json()
+        ids = [j["id"] for j in listing["jobs"]]
+        assert done.json()["id"] not in ids

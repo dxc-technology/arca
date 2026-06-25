@@ -71,6 +71,15 @@ pub fn build_router(state: AppState) -> Router {
         middleware::auth::auth_middleware,
     ));
 
+    // Maintenance-mode drain (Phase 30): when a maintenance-mode job runs on
+    // this node, refuse every S3 request with 503 (outermost layer, so a drained
+    // node short-circuits before auth). Admin API + worker are unaffected (this
+    // is on the S3 router only); the graceful-shutdown drain is separate.
+    s3_app = s3_app.layer(axum::middleware::from_fn_with_state(
+        state.clone(),
+        middleware::maintenance_drain::maintenance_drain_middleware,
+    ));
+
     // --- Admin router (authenticated endpoints) ---
     let admin_auth = Router::new()
         .route("/info", get(admin::info))
@@ -79,7 +88,9 @@ pub fn build_router(state: AppState) -> Router {
         // Maintenance jobs (Phase 30)
         .route(
             "/maintenance/jobs",
-            get(maintenance::list_jobs).post(maintenance::create_job),
+            get(maintenance::list_jobs)
+                .post(maintenance::create_job)
+                .delete(maintenance::clear_jobs),
         )
         .route(
             "/maintenance/jobs/{id}",

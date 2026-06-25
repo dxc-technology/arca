@@ -263,6 +263,28 @@ impl MaintenanceStore for SqliteStore {
             .await
             .map_err(|e: TrError| ArcaError::Internal(format!("interrupt_running_jobs: {e}")))
     }
+
+    async fn clear_terminal_jobs(&self) -> Result<u64, ArcaError> {
+        self.conn
+            .call(move |conn| {
+                let tx = conn.transaction()?;
+                tx.execute(
+                    "DELETE FROM maintenance_job_logs WHERE job_id IN (
+                        SELECT id FROM maintenance_jobs \
+                        WHERE status IN ('completed','failed','cancelled')
+                     )",
+                    [],
+                )?;
+                let rows = tx.execute(
+                    "DELETE FROM maintenance_jobs WHERE status IN ('completed','failed','cancelled')",
+                    [],
+                )?;
+                tx.commit()?;
+                Ok(rows as u64)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("clear_terminal_jobs: {e}")))
+    }
 }
 
 #[cfg(test)]
@@ -385,5 +407,30 @@ mod tests {
         assert_eq!(logs[0].message, "line 9");
         assert_eq!(logs[4].message, "line 5");
         assert_eq!(logs[0].level, "info");
+    }
+
+    #[tokio::test]
+    async fn clear_terminal_jobs_keeps_active_drops_terminal_and_logs() {
+        let s = store().await;
+        // One active (running) job and two terminal ones, each with a log line.
+        s.create_job(&job("active", St::Pending, "live")).await.unwrap();
+        s.set_job_status("active", St::Running, None).await.unwrap();
+        s.append_job_log("active", "info", "still going", 100).await.unwrap();
+        for id in ["done", "failed"] {
+            s.create_job(&job(id, St::Pending, "live")).await.unwrap();
+            s.append_job_log(id, "info", "log", 100).await.unwrap();
+        }
+        s.set_job_status("done", St::Completed, None).await.unwrap();
+        s.set_job_status("failed", St::Failed, Some("boom")).await.unwrap();
+
+        let removed = s.clear_terminal_jobs().await.unwrap();
+        assert_eq!(removed, 2);
+        // The active job and its logs survive; the terminal ones are gone.
+        assert!(s.get_job("active").await.unwrap().is_some());
+        assert_eq!(s.list_job_logs("active", 100).await.unwrap().len(), 1);
+        assert!(s.get_job("done").await.unwrap().is_none());
+        assert!(s.get_job("failed").await.unwrap().is_none());
+        assert!(s.list_job_logs("done", 100).await.unwrap().is_empty());
+        assert_eq!(s.list_jobs(100).await.unwrap().len(), 1);
     }
 }

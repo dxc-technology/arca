@@ -126,6 +126,17 @@ pub async fn list_jobs(
     Ok(Json(serde_json::json!({ "active": active, "jobs": jobs })))
 }
 
+/// DELETE /admin/maintenance/jobs — clear the terminal job history
+/// (completed / failed / cancelled) and their logs. The active job is kept.
+pub async fn clear_jobs(State(state): State<AppState>) -> Result<impl IntoResponse, AdminError> {
+    let store = store(&state)?;
+    let cleared = store
+        .clear_terminal_jobs()
+        .await
+        .map_err(|e| AdminError::internal(e.to_string()))?;
+    Ok(Json(serde_json::json!({ "cleared": cleared })))
+}
+
 /// GET /admin/maintenance/jobs/{id} — one job with its logs.
 pub async fn get_job(
     State(state): State<AppState>,

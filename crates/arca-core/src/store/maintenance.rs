@@ -196,6 +196,11 @@ pub trait MaintenanceStore: Send + Sync {
     /// operator can re-launch it (a re-launched job resumes from persisted
     /// state). Returns the number of jobs reset.
     async fn interrupt_running_jobs(&self) -> Result<u64, ArcaError>;
+
+    /// Deletes all terminal jobs (completed / failed / cancelled) and their
+    /// logs, returning the number of jobs removed. Active jobs (pending /
+    /// running / paused) are kept. Backs the console "Clear history" action.
+    async fn clear_terminal_jobs(&self) -> Result<u64, ArcaError>;
 }
 
 #[cfg(test)]

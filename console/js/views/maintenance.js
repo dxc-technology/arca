@@ -55,9 +55,11 @@ export function maintenanceView() {
     launch: {
       type: 'noop',
       mode: 'live',
-      // noop params
+      // noop params. A non-zero default delay makes the test job run long
+      // enough to actually observe + pause/cancel it (with delay 0 a small
+      // noop completes in well under one worker tick).
       n: 100,
-      delayMs: 0,
+      delayMs: 200,
       // re-encryption params (encrypt / decrypt). All optional: a blank
       // bucket scans every bucket, a blank prefix scans every key, and the
       // throttle only applies in live mode (0 = unlimited).
@@ -77,6 +79,12 @@ export function maintenanceView() {
     selectedJob: null,
     selectedLogs: [],
     detailLoading: false,
+
+    // History pagination (client-side, like the audit log) + clear-history modal.
+    historyPage: 0,
+    historyPageSize: 20,
+    showClearModal: false,
+    clearing: false,
 
     jobTypes: JOB_TYPES,
 
@@ -101,9 +109,15 @@ export function maintenanceView() {
 
     async load() {
       try {
-        const data = await api.adminGet('/maintenance/jobs?limit=50');
-        this.active = data.active || null;
+        const data = await api.adminGet('/maintenance/jobs?limit=200');
+        // Merge the active job into the existing object reference rather than
+        // replacing it, so the active-job card + progress bar update in place
+        // instead of being torn down and rebuilt on every 2s poll (flicker).
+        this.active = mergeInto(this.active, data.active || null);
         this.jobs = data.jobs || [];
+        // Clamp the history page if rows were removed (e.g. after a clear).
+        const maxPage = Math.max(0, this.historyTotalPages - 1);
+        if (this.historyPage > maxPage) this.historyPage = maxPage;
         // Keep the logs panel tracking the active job. When no job is active we
         // leave the last logs in place until the user opens a detail panel.
         if (this.active) {
@@ -239,7 +253,9 @@ export function maintenanceView() {
       if (!this.selectedJob) return;
       try {
         const data = await api.adminGet('/maintenance/jobs/' + encodeURIComponent(this.selectedJob.id));
-        this.selectedJob = data.job || this.selectedJob;
+        // Merge in place (stable reference) so the open detail pane updates its
+        // progress bar smoothly instead of flickering on each poll.
+        this.selectedJob = mergeInto(this.selectedJob, data.job || this.selectedJob);
         this.selectedLogs = (data.logs || []).slice().reverse();
       } catch (e) {
         console.error('Failed to load job detail:', e);
@@ -248,6 +264,41 @@ export function maintenanceView() {
     },
 
     closeDetail() { this.selectedJob = null; this.selectedLogs = []; },
+
+    // ---- history pagination (client-side, mirrors the audit log) ----
+    get historyTotalPages() {
+      return Math.max(1, Math.ceil(this.jobs.length / this.historyPageSize));
+    },
+    get pagedJobs() {
+      const start = this.historyPage * this.historyPageSize;
+      return this.jobs.slice(start, start + this.historyPageSize);
+    },
+    get historyHasPrev() { return this.historyPage > 0; },
+    get historyHasNext() { return this.historyPage < this.historyTotalPages - 1; },
+    prevHistoryPage() { if (this.historyHasPrev) this.historyPage--; },
+    nextHistoryPage() { if (this.historyHasNext) this.historyPage++; },
+
+    // ---- clear history ----
+    async clearHistory() {
+      this.clearing = true;
+      try {
+        const resp = await api.adminDelete('/maintenance/jobs');
+        if (!resp.ok) {
+          let body = {};
+          try { body = await resp.json(); } catch {}
+          throw new Error(body.message || body.error || `HTTP ${resp.status}`);
+        }
+        this.showClearModal = false;
+        this.historyPage = 0;
+        // If the open detail panel pointed at a now-deleted terminal job, close it.
+        if (this.selectedJob && !this.isActive(this.selectedJob)) this.closeDetail();
+        await this.load();
+      } catch (e) {
+        this.$dispatch('show-toast', { message: 'Clear failed: ' + e.message, type: 'error' });
+      } finally {
+        this.clearing = false;
+      }
+    },
 
     // ---- computed display helpers ----
     isActive(job) { return job ? ACTIVE_STATUSES.has(job.status) : false; },
@@ -308,6 +359,20 @@ export function maintenanceView() {
 
 // ---- module-local utilities ----
 function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+// Merge `next` into the existing `prev` object IN PLACE when they refer to the
+// same job (same id), preserving the object reference so Alpine updates bound
+// DOM in place rather than tearing it down (avoids progress-bar flicker on the
+// 2s poll). Returns the object to assign back: `prev` mutated, or `next` when
+// the identity changed or either side is null.
+function mergeInto(prev, next) {
+  if (!next) return null;
+  if (prev && prev.id === next.id) {
+    Object.assign(prev, next);
+    return prev;
+  }
+  return next;
+}
 
 function formatDuration(seconds) {
   if (!isFinite(seconds) || seconds < 0) return '—';

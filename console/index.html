@@ -5362,7 +5362,11 @@
             <div x-show="!loading">
               <div class="flex items-center justify-between mb-3">
                 <h3 class="text-sm font-semibold tracking-tight">Job history</h3>
-                <span class="text-xs text-vault-muted" x-text="jobs.length + ' jobs'"></span>
+                <div class="flex items-center gap-3">
+                  <span class="text-xs text-vault-muted" x-text="jobs.length + ' jobs'"></span>
+                  <button x-show="jobs.length > 0" @click="showClearModal = true"
+                    class="px-2.5 py-1 rounded-lg text-xs border border-red-500/30 text-red-400 hover:bg-red-500/10 transition">Clear history</button>
+                </div>
               </div>
               <div class="glass rounded-xl overflow-x-auto">
                 <table class="w-full text-sm" style="min-width:900px;table-layout:fixed">
@@ -5387,7 +5391,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <template x-for="job in jobs" :key="job.id">
+                    <template x-for="job in pagedJobs" :key="job.id">
                       <tr @click="selectJob(job)" class="border-b border-vault-border/10 hover:bg-white/[0.02] cursor-pointer transition"
                         :class="selectedJob?.id === job.id ? 'bg-vault-accent/5' : ''">
                         <td class="px-4 py-2.5 text-xs text-vault-text truncate" :title="jobTypeLabel(job.job_type)" x-text="jobTypeLabel(job.job_type)"></td>
@@ -5418,6 +5422,30 @@
                 <!-- Empty state -->
                 <div x-show="jobs.length === 0" class="py-12 text-center text-vault-muted text-sm">
                   No jobs yet. Start one from the panel above.
+                </div>
+              </div>
+              <!-- Pagination -->
+              <div x-show="historyTotalPages > 1" class="flex items-center justify-end gap-3 mt-3 text-xs text-vault-muted">
+                <span x-text="'Page ' + (historyPage + 1) + ' of ' + historyTotalPages"></span>
+                <div class="flex gap-1">
+                  <button @click="prevHistoryPage()" :disabled="!historyHasPrev"
+                    class="px-2.5 py-1 rounded-lg border border-vault-border text-vault-text hover:bg-white/5 transition disabled:opacity-30 disabled:pointer-events-none">Prev</button>
+                  <button @click="nextHistoryPage()" :disabled="!historyHasNext"
+                    class="px-2.5 py-1 rounded-lg border border-vault-border text-vault-text hover:bg-white/5 transition disabled:opacity-30 disabled:pointer-events-none">Next</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Clear-history confirm modal -->
+            <div x-show="showClearModal" x-transition.opacity class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="showClearModal = false">
+              <div class="glass rounded-xl p-6 w-full max-w-sm mx-4" @click.stop>
+                <h3 class="text-lg font-semibold mb-2 text-red-400">Clear job history</h3>
+                <p class="text-sm text-vault-muted mb-4">This permanently deletes all finished jobs (completed, failed and cancelled) and their logs. A running or paused job is kept. This cannot be undone.</p>
+                <div class="flex gap-3 justify-end">
+                  <button @click="showClearModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                  <button @click="clearHistory()" :disabled="clearing"
+                    class="px-4 py-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 text-sm font-medium hover:bg-red-500/30 transition disabled:opacity-30"
+                    x-text="clearing ? 'Clearing...' : 'Clear history'"></button>
                 </div>
               </div>
             </div>

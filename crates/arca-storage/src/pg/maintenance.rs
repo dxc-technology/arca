@@ -218,4 +218,30 @@ impl MaintenanceStore for PgStore {
         .map_err(|e| ArcaError::Internal(format!("interrupt_running_jobs: {e}")))?;
         Ok(result.rows_affected())
     }
+
+    async fn clear_terminal_jobs(&self) -> Result<u64, ArcaError> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("clear_terminal_jobs: {e}")))?;
+        sqlx_core::query::query(
+            "DELETE FROM maintenance_job_logs WHERE job_id IN (
+                SELECT id FROM maintenance_jobs WHERE status IN ('completed','failed','cancelled')
+             )",
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("clear_terminal_jobs: {e}")))?;
+        let result = sqlx_core::query::query(
+            "DELETE FROM maintenance_jobs WHERE status IN ('completed','failed','cancelled')",
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("clear_terminal_jobs: {e}")))?;
+        tx.commit()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("clear_terminal_jobs: {e}")))?;
+        Ok(result.rows_affected())
+    }
 }
