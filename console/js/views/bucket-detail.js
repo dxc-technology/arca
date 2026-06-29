@@ -1,4 +1,4 @@
-import { api } from '../api.js';
+import { api } from '../api.js?v=deeplink-1';
 import { formatBytes, ringColors, icons } from '../app.js';
 
 // Squarified treemap algorithm
@@ -249,12 +249,42 @@ export function bucketDetailView() {
       const bucket = this.bucketName;
       try {
         const result = await api.s3ListObjects(bucket, this.prefix);
+        // S3 has no concept of a missing "folder": listing a non-existent
+        // prefix succeeds with an empty result. So a non-empty prefix whose
+        // raw listing has zero objects (not even a folder marker, which a real
+        // empty folder always carries) and zero sub-directories means the path
+        // does not exist — bounce back to the bucket root with an explanation
+        // instead of showing a misleading empty location.
+        if (this.prefix && result.objects.length === 0 && result.directories.length === 0) {
+          this.$dispatch('show-toast', {
+            message: `Folder "${this.prefix}" does not exist in bucket "${bucket}".`,
+            type: 'error',
+          });
+          this.navigatePrefix('');
+          return;
+        }
         // Filter out directory marker objects (zero-byte objects with keys
         // ending in '/') — they represent folders, not real files
         this.objects = result.objects.filter(o => !o.key.endsWith('/'));
         this.directories = result.directories;
         if (this.showTreemap) this.computeTreemap();
-      } catch (e) { console.error(e); }
+      } catch (e) {
+        // A forbidden or non-existent bucket (e.g. reached via a shared deep
+        // link) bounces the user home with an explanation instead of showing
+        // a silently empty bucket. Other (transient) errors just log.
+        if (e.status === 403 || e.status === 404) {
+          const message = e.status === 403
+            ? `You don't have access to bucket "${bucket}".`
+            : `Bucket "${bucket}" does not exist.`;
+          const home = sessionStorage.getItem('arca_is_admin') === 'true'
+            ? '#/dashboard' : '#/buckets';
+          this.loading = false;
+          this.$dispatch('show-toast', { message, type: 'error' });
+          window.location.hash = home;
+          return;
+        }
+        console.error(e);
+      }
       // Load deleted objects/directories if "Show deleted" is on.
       if (this.showDeleted && this.bucketVersioned) {
         await this.loadDeletedObjects();
