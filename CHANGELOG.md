@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Console: shared bucket links now land on the bucket after login.** Opening a deep-link URL (e.g. a bucket link sent by another user) and then logging in previously always dropped you on the dashboard (admin) or the buckets list (non-admin), discarding the link. The console now preserves the deep link and routes to it after login, only defaulting to home when no destination was given. If the target bucket is inaccessible or missing, the user is bounced home with an explanatory toast — `403` → "You don't have access to bucket …", `404` → "Bucket … does not exist". Because S3 returns no error for a non-existent *prefix*, a missing sub-folder (a non-empty prefix whose listing is entirely empty, with no folder marker) is inferred client-side and returns the user to the bucket root with a "Folder … does not exist" toast; genuinely empty folders still open normally.
+
 ## [0.26.1] — 2026-06-12
 
 ### Security
