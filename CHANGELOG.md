@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.0] — 2026-07-06
+
 ### Added
 
 - **`arca gc` — reclaim orphaned blob files on a single node.** Orphan blobs (on disk, referenced by no live object row, in-progress part, or non-orphan composite sidecar) accumulate from interrupted uploads, overwrites, crashes between the metadata and blob delete, and swallowed blob-delete failures. Until now the only reclamation path was the cluster anti-entropy worker, which is spawned only when clustering is enabled — a single-node deployment never reclaimed them and they grew unbounded (`arca fsck` could report them but not remove them). The new offline command reuses the same composite-aware, fail-safe selection as the cluster worker: it previews by default (dry run) and deletes only with `--reclaim`. `--grace-seconds` (default 86400) protects freshly-written blobs whose object row may not be committed yet; drop it to `0` when the server is stopped. Schedule it from cron or run it on demand. The shared selection logic now lives in one place (`blob_gc::collect_reclaimable_blobs`), used by both the CLI and the anti-entropy worker.
@@ -742,7 +744,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.26.1...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.27.0...HEAD
+[0.27.0]: https://github.com/dxc-technology/arca/compare/v0.26.1...v0.27.0
 [0.26.1]: https://github.com/dxc-technology/arca/compare/v0.26.0...v0.26.1
 [0.26.0]: https://github.com/dxc-technology/arca/compare/v0.25.1...v0.26.0
 [0.25.1]: https://github.com/dxc-technology/arca/compare/v0.25.0...v0.25.1
