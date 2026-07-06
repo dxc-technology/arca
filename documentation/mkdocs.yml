@@ -61,6 +61,7 @@ nav:
     - Admin API: reference/admin-api.md
   - Operations:
     - Disaster Recovery: operations/recovery.md
+    - Storage Reclamation (GC): operations/gc.md
     - Monitoring & Logging: operations/monitoring.md
     - Production Deployment: operations/deployment.md
     - Troubleshooting: operations/troubleshooting.md
