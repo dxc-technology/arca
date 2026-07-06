@@ -1,5 +1,6 @@
 //! Arca S3-compatible object storage server.
 
+mod blob_gc;
 mod cli;
 mod cluster;
 mod config;
@@ -8,6 +9,7 @@ mod credential;
 mod crypto;
 mod compress_existing;
 mod fsck;
+mod gc;
 mod recover;
 mod replicator;
 mod sigv4_http;
@@ -745,6 +747,26 @@ async fn async_main(cli: Cli) -> Result<()> {
                 None,
             );
 
+            // Single-node blob GC worker (opt-in). Skipped under clustering,
+            // where the anti-entropy worker already reclaims orphan blobs.
+            let cluster_enabled = config.cluster.as_ref().map_or(false, |c| c.enabled);
+            let _blob_gc_worker = if !cluster_enabled && config.storage.blob_gc_enabled {
+                tracing::info!(
+                    interval_seconds = config.storage.blob_gc_interval_seconds,
+                    grace_seconds = config.storage.blob_gc_grace_seconds,
+                    "Single-node blob GC worker enabled"
+                );
+                Some(worker::spawn_blob_gc_worker(
+                    state.metadata.clone(),
+                    fs_arc.clone() as Arc<dyn arca_core::store::RawBlobOps>,
+                    state.metrics_registry.clone(),
+                    config.storage.blob_gc_interval(),
+                    config.storage.blob_gc_grace(),
+                ))
+            } else {
+                None
+            };
+
             let addr = format!("{}:{}", config.server.bind, config.server.port);
             tracing::info!("Starting Arca on {addr}");
 
@@ -926,6 +948,24 @@ async fn async_main(cli: Cli) -> Result<()> {
             let config = config::load_config(&config_path)?;
             let exit_code = fsck::run_fsck(&config, verify_checksums).await?;
             std::process::exit(exit_code);
+        }
+
+        Command::Gc {
+            config_path,
+            reclaim,
+            grace_seconds,
+            verbose,
+        } => {
+            let _ = init_tracing(&LogFormat::Text, "info");
+
+            let config = config::load_config(&config_path)?;
+            gc::run_gc(
+                &config,
+                !reclaim,
+                std::time::Duration::from_secs(grace_seconds),
+                verbose,
+            )
+            .await?;
         }
 
         Command::CompressExisting {

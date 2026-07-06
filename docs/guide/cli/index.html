@@ -956,6 +956,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#arca-gc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca gc
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#arca-compress-existing" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1625,6 +1636,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#arca-gc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca gc
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#arca-compress-existing" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2008,10 +2030,54 @@
 <a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="c1"># Full check including blob checksums (slow for large datasets)</span>
 <a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>arca<span class="w"> </span>fsck<span class="w"> </span>--verify-checksums
 </code></pre></div>
+<h2 id="arca-gc"><code>arca gc</code><a class="headerlink" href="#arca-gc" title="Permanent link">&para;</a></h2>
+<p>Reclaim orphaned blob files — on-disk blobs referenced by no live object row, in-progress multipart part, or non-orphan composite sidecar. Orphans accumulate from interrupted uploads, overwrites, crashes between the metadata and blob delete, and blob-delete failures (which are logged but do not fail the request, because the object's metadata is already gone). Where <code>arca fsck</code> only <em>reports</em> orphans (<code>ORPHANED_BLOB</code>), <code>arca gc</code> <em>removes</em> them, using the same composite-aware, fail-safe selection as the cluster anti-entropy worker.</p>
+<p>On a <strong>single-node</strong> deployment there is no anti-entropy worker, so <code>arca gc</code> (typically from cron) is the reclamation path. Alternatively, enable the opt-in background worker with <code>[storage] blob_gc_enabled = true</code> (see <a href="../configuration/#storage">Configuration</a>) to reclaim on a schedule without an external cron job; on very large stores cron-ing this command is preferable so the scan runs outside the serving process. On a cluster the anti-entropy worker already reclaims orphans automatically.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>arca<span class="w"> </span>gc<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--reclaim<span class="o">]</span><span class="w"> </span><span class="o">[</span>--grace-seconds<span class="w"> </span>&lt;SECONDS&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--verbose<span class="o">]</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--config-path</code></td>
+<td>Path to the configuration file (default: <code>/etc/arca/config.toml</code>)</td>
+</tr>
+<tr>
+<td><code>--reclaim</code></td>
+<td>Actually delete the orphans. Without it, only report what would be reclaimed (dry run)</td>
+</tr>
+<tr>
+<td><code>--grace-seconds</code></td>
+<td>Protect blobs written within this many seconds (default: <code>86400</code>)</td>
+</tr>
+<tr>
+<td><code>--verbose</code></td>
+<td>List every orphan blob id before the summary</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>--grace-seconds</code> window protects freshly-written blobs whose object row may not be committed yet (a blob file is written before its metadata row). Keep it comfortably above your longest in-flight upload when running against a <strong>live</strong> server; drop it to <code>0</code> for an immediate full reclaim only when the server is <strong>stopped</strong>.</p>
+<p>Fail-safe: if any enumeration (referenced ids, sidecars, on-disk blobs) fails, the command aborts and deletes nothing.</p>
+<p>Currently supports the <code>sqlite</code> metadata backend only (like <code>arca recover</code> / <code>arca fsck</code>).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="c1"># Preview what would be reclaimed (safe; nothing is deleted)</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>arca<span class="w"> </span>gc
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="c1"># List each orphan, then delete them</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>arca<span class="w"> </span>gc<span class="w"> </span>--reclaim<span class="w"> </span>--verbose
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="c1"># Immediate full reclaim with the server stopped</span>
+<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>arca<span class="w"> </span>gc<span class="w"> </span>--reclaim<span class="w"> </span>--grace-seconds<span class="w"> </span><span class="m">0</span>
+</code></pre></div>
+<p>The <code>arca_blob_delete_failures_total</code> Prometheus metric reports how often a blob delete failed during object deletion (each one leaves an orphan for <code>arca gc</code>), so you can tell whether reclamation needs to run.</p>
 <h2 id="arca-compress-existing"><code>arca compress-existing</code><a class="headerlink" href="#arca-compress-existing" title="Permanent link">&para;</a></h2>
 <p>Walks the blobs directory and compresses any blob that does not already carry compression metadata, honoring the live-write MIME and size filters. Atomic per-blob (writes a <code>.compressing.tmp</code> then renames) and resumable: re-running skips already-compressed blobs. See the <a href="../compression/#offline-retrofit">Compression guide</a>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>arca compress-existing [--config-path &lt;PATH&gt;] [--dry-run]
-<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>                       [--bucket &lt;NAME&gt;] [--algorithm &lt;NAME&gt;]
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>arca compress-existing [--config-path &lt;PATH&gt;] [--dry-run]
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>                       [--bucket &lt;NAME&gt;] [--algorithm &lt;NAME&gt;]
 </code></pre></div>
 <table>
 <thead>
@@ -2035,21 +2101,21 @@
 </tr>
 </tbody>
 </table>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="c1"># Preview</span>
-<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>arca<span class="w"> </span>compress-existing<span class="w"> </span>--dry-run
-<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>
-<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="c1"># Apply compression to everything</span>
-<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>arca<span class="w"> </span>compress-existing
-<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>
-<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="c1"># One bucket, force Brotli</span>
-<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>arca<span class="w"> </span>compress-existing<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--algorithm<span class="w"> </span>brotli
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="c1"># Preview</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>arca<span class="w"> </span>compress-existing<span class="w"> </span>--dry-run
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="c1"># Apply compression to everything</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>arca<span class="w"> </span>compress-existing
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a>
+<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a><span class="c1"># One bucket, force Brotli</span>
+<a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a>arca<span class="w"> </span>compress-existing<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--algorithm<span class="w"> </span>brotli
 </code></pre></div>
 <h2 id="arca-decompress-existing"><code>arca decompress-existing</code><a class="headerlink" href="#arca-decompress-existing" title="Permanent link">&para;</a></h2>
 <p>Inverse of <code>compress-existing</code> — reads each sidecar, and for compressed blobs, rewrites the plaintext to disk and removes the compression metadata. Same atomicity and resume properties.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>arca decompress-existing [--config-path &lt;PATH&gt;] [--dry-run] [--bucket &lt;NAME&gt;]
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>arca decompress-existing [--config-path &lt;PATH&gt;] [--dry-run] [--bucket &lt;NAME&gt;]
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>arca<span class="w"> </span>decompress-existing<span class="w"> </span>--dry-run
-<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>arca<span class="w"> </span>decompress-existing<span class="w"> </span>--bucket<span class="w"> </span>my-bucket
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>arca<span class="w"> </span>decompress-existing<span class="w"> </span>--dry-run
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>arca<span class="w"> </span>decompress-existing<span class="w"> </span>--bucket<span class="w"> </span>my-bucket
 </code></pre></div>
 
 

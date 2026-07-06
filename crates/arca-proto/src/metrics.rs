@@ -18,6 +18,13 @@ pub struct MetricsRegistry {
     histograms: RwLock<HashMap<String, LatencyHistogram>>,
     /// Active HTTP connections gauge.
     pub active_connections: AtomicU64,
+    /// Count of blob-delete failures during object deletion. The metadata row is
+    /// already gone (the object IS deleted), so the request still reports success
+    /// per S3 semantics; this counter surfaces the resulting orphan-creation rate
+    /// (drained by `arca gc` / the anti-entropy worker).
+    pub blob_delete_failures: AtomicU64,
+    /// Count of orphan blob files reclaimed by the single-node blob GC worker.
+    pub blobs_reclaimed: AtomicU64,
     /// Optional compression metrics (owned by `CompressingBlobStore`).
     pub compression: Option<Arc<CompressionMetrics>>,
 }
@@ -66,8 +73,20 @@ impl MetricsRegistry {
             counters: RwLock::new(HashMap::new()),
             histograms: RwLock::new(HashMap::new()),
             active_connections: AtomicU64::new(0),
+            blob_delete_failures: AtomicU64::new(0),
+            blobs_reclaimed: AtomicU64::new(0),
             compression: None,
         }
+    }
+
+    /// Record one blob-delete failure (an orphan blob was left on disk).
+    pub fn record_blob_delete_failure(&self) {
+        self.blob_delete_failures.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record `n` orphan blob files reclaimed by the blob GC worker.
+    pub fn record_blobs_reclaimed(&self, n: u64) {
+        self.blobs_reclaimed.fetch_add(n, Ordering::Relaxed);
     }
 
     /// Attach a compression metrics handle so Prometheus output includes
@@ -184,6 +203,22 @@ impl MetricsRegistry {
         out.push_str("# TYPE arca_storage_bytes_total gauge\n");
         out.push_str(&format!("arca_storage_bytes_total {total_size_bytes}\n"));
 
+        let blob_delete_failures = self.blob_delete_failures.load(Ordering::Relaxed);
+        out.push_str(
+            "\n# HELP arca_blob_delete_failures_total Blob-delete failures during object deletion (orphan blobs left for GC)\n",
+        );
+        out.push_str("# TYPE arca_blob_delete_failures_total counter\n");
+        out.push_str(&format!(
+            "arca_blob_delete_failures_total {blob_delete_failures}\n"
+        ));
+
+        let blobs_reclaimed = self.blobs_reclaimed.load(Ordering::Relaxed);
+        out.push_str(
+            "\n# HELP arca_blobs_reclaimed_total Orphan blob files reclaimed by the single-node blob GC worker\n",
+        );
+        out.push_str("# TYPE arca_blobs_reclaimed_total counter\n");
+        out.push_str(&format!("arca_blobs_reclaimed_total {blobs_reclaimed}\n"));
+
         // Compression metrics (when the wrapper is configured).
         if let Some(ref comp) = self.compression {
             out.push_str(
@@ -261,6 +296,17 @@ mod tests {
         assert!(output.contains("arca_buckets_total 3"));
         assert!(output.contains("arca_objects_total 100"));
         assert!(output.contains("arca_storage_bytes_total 1024"));
+    }
+
+    #[test]
+    fn blob_delete_failures_counter() {
+        let reg = MetricsRegistry::new();
+        let out = reg.render_prometheus(0, 0, 0);
+        assert!(out.contains("arca_blob_delete_failures_total 0"));
+        reg.record_blob_delete_failure();
+        reg.record_blob_delete_failure();
+        let out = reg.render_prometheus(0, 0, 0);
+        assert!(out.contains("arca_blob_delete_failures_total 2"));
     }
 
     #[test]

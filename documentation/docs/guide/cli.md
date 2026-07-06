@@ -262,6 +262,42 @@ arca fsck
 arca fsck --verify-checksums
 ```
 
+## `arca gc`
+
+Reclaim orphaned blob files — on-disk blobs referenced by no live object row, in-progress multipart part, or non-orphan composite sidecar. Orphans accumulate from interrupted uploads, overwrites, crashes between the metadata and blob delete, and blob-delete failures (which are logged but do not fail the request, because the object's metadata is already gone). Where `arca fsck` only *reports* orphans (`ORPHANED_BLOB`), `arca gc` *removes* them, using the same composite-aware, fail-safe selection as the cluster anti-entropy worker.
+
+On a **single-node** deployment there is no anti-entropy worker, so `arca gc` (typically from cron) is the reclamation path. Alternatively, enable the opt-in background worker with `[storage] blob_gc_enabled = true` (see [Configuration](configuration.md#storage)) to reclaim on a schedule without an external cron job; on very large stores cron-ing this command is preferable so the scan runs outside the serving process. On a cluster the anti-entropy worker already reclaims orphans automatically.
+
+```bash
+arca gc [--config-path <PATH>] [--reclaim] [--grace-seconds <SECONDS>] [--verbose]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--config-path` | Path to the configuration file (default: `/etc/arca/config.toml`) |
+| `--reclaim` | Actually delete the orphans. Without it, only report what would be reclaimed (dry run) |
+| `--grace-seconds` | Protect blobs written within this many seconds (default: `86400`) |
+| `--verbose` | List every orphan blob id before the summary |
+
+The `--grace-seconds` window protects freshly-written blobs whose object row may not be committed yet (a blob file is written before its metadata row). Keep it comfortably above your longest in-flight upload when running against a **live** server; drop it to `0` for an immediate full reclaim only when the server is **stopped**.
+
+Fail-safe: if any enumeration (referenced ids, sidecars, on-disk blobs) fails, the command aborts and deletes nothing.
+
+Currently supports the `sqlite` metadata backend only (like `arca recover` / `arca fsck`).
+
+```bash
+# Preview what would be reclaimed (safe; nothing is deleted)
+arca gc
+
+# List each orphan, then delete them
+arca gc --reclaim --verbose
+
+# Immediate full reclaim with the server stopped
+arca gc --reclaim --grace-seconds 0
+```
+
+The `arca_blob_delete_failures_total` Prometheus metric reports how often a blob delete failed during object deletion (each one leaves an orphan for `arca gc`), so you can tell whether reclamation needs to run.
+
 ## `arca compress-existing`
 
 Walks the blobs directory and compresses any blob that does not already carry compression metadata, honoring the live-write MIME and size filters. Atomic per-blob (writes a `.compressing.tmp` then renames) and resumable: re-running skips already-compressed blobs. See the [Compression guide](compression.md#offline-retrofit).
