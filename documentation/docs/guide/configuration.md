@@ -25,6 +25,9 @@ The default config file is `config/default.toml` in the repository. At runtime, 
 |---------|---------|-------------|
 | `storage.data_dir` | `/data` | Root directory for SQLite database (`arca.db`) and blob storage (`blobs/` subdirectory) |
 | `storage.blob_prefix_depth` | `2` | Number of 2-char prefix directory levels for blob file sharding (1–4). Higher values spread files across more directories, reducing files-per-directory at the cost of deeper paths. See [blob storage](#blob-storage) below. |
+| `storage.blob_gc_enabled` | `false` | Enable the opt-in single-node background worker that periodically reclaims orphaned blob files (see [`arca gc`](cli.md#arca-gc)). Ignored under clustering, where the anti-entropy worker reclaims orphans. On very large stores, prefer cron-ing `arca gc` so the full-store scan runs outside the serving process. |
+| `storage.blob_gc_interval_seconds` | `3600` | How often the blob GC worker runs (when enabled). |
+| `storage.blob_gc_grace_seconds` | `86400` | Protect blobs written within this many seconds from reclamation. Must exceed the longest in-flight upload (a blob file exists on disk before its object row is committed). |
 
 ### TLS
 

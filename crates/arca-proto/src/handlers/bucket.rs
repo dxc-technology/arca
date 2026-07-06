@@ -2050,6 +2050,9 @@ async fn delete_objects(
                                     key = %obj.key,
                                     "Failed to delete blob for versioned object"
                                 );
+                                if let Some(ref m) = state.metrics_registry {
+                                    m.record_blob_delete_failure();
+                                }
                             }
                         }
                     }
@@ -2085,6 +2088,9 @@ async fn delete_objects(
                                     key = %obj.key,
                                     "Failed to delete blob for deleted object"
                                 );
+                                if let Some(ref m) = state.metrics_registry {
+                                    m.record_blob_delete_failure();
+                                }
                             }
                         }
                     }

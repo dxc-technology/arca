@@ -337,6 +337,23 @@ pub struct StorageConfig {
     pub metadata_backend: String,
     /// PostgreSQL configuration (required when metadata_backend = "postgres").
     pub postgres: Option<PostgresConfig>,
+    /// Opt-in single-node blob GC: periodically reclaim orphan blob files.
+    /// Off by default. Ignored when clustering is enabled (the anti-entropy
+    /// worker reclaims orphans instead). The equivalent on-demand tool is
+    /// `arca gc`.
+    #[serde(default)]
+    pub blob_gc_enabled: bool,
+    /// How often the single-node blob GC worker runs, in seconds (default 3600).
+    /// The scan walks every blob file and loads the full referenced set, so keep
+    /// this generous on large stores.
+    #[serde(default = "default_blob_gc_interval_seconds")]
+    pub blob_gc_interval_seconds: u64,
+    /// Protect blobs written within this many seconds from reclamation (default
+    /// 86400). Must exceed the longest in-flight upload — a blob file exists on
+    /// disk before its object row is committed, so a smaller window could reclaim
+    /// an upload in progress.
+    #[serde(default = "default_blob_gc_grace_seconds")]
+    pub blob_gc_grace_seconds: u64,
 }
 
 fn default_blob_prefix_depth() -> u8 {
@@ -345,6 +362,14 @@ fn default_blob_prefix_depth() -> u8 {
 
 fn default_metadata_backend() -> String {
     "sqlite".to_string()
+}
+
+fn default_blob_gc_interval_seconds() -> u64 {
+    3600
+}
+
+fn default_blob_gc_grace_seconds() -> u64 {
+    86400
 }
 
 /// PostgreSQL connection configuration.
@@ -370,6 +395,17 @@ impl StorageConfig {
     /// Returns the path to the blob storage directory (`{data_dir}/blobs`).
     pub fn blobs_dir(&self) -> std::path::PathBuf {
         std::path::Path::new(&self.data_dir).join("blobs")
+    }
+
+    /// Interval between single-node blob GC passes (never zero — tokio's timer
+    /// requires a positive period).
+    pub fn blob_gc_interval(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(self.blob_gc_interval_seconds.max(1))
+    }
+
+    /// Grace window protecting freshly-written blobs from reclamation.
+    pub fn blob_gc_grace(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(self.blob_gc_grace_seconds)
     }
 
     /// Validates the storage configuration.
@@ -1212,6 +1248,9 @@ bind = "0.0.0.0"
             blob_prefix_depth: 2,
             metadata_backend: "sqlite".to_string(),
             postgres: None,
+            blob_gc_enabled: false,
+            blob_gc_interval_seconds: 3600,
+            blob_gc_grace_seconds: 86400,
         };
         assert_eq!(
             storage.db_path(),
@@ -1226,6 +1265,9 @@ bind = "0.0.0.0"
             blob_prefix_depth: 2,
             metadata_backend: "sqlite".to_string(),
             postgres: None,
+            blob_gc_enabled: false,
+            blob_gc_interval_seconds: 3600,
+            blob_gc_grace_seconds: 86400,
         };
         assert_eq!(
             storage.blobs_dir(),
@@ -1245,6 +1287,42 @@ data_dir = "/data"
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(config.storage.blob_prefix_depth, 2);
+    }
+
+    #[test]
+    fn blob_gc_defaults_off() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(!config.storage.blob_gc_enabled);
+        assert_eq!(config.storage.blob_gc_interval_seconds, 3600);
+        assert_eq!(config.storage.blob_gc_grace_seconds, 86400);
+    }
+
+    #[test]
+    fn blob_gc_parsed_and_interval_never_zero() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+blob_gc_enabled = true
+blob_gc_interval_seconds = 0
+blob_gc_grace_seconds = 120
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.storage.blob_gc_enabled);
+        // The accessor clamps to >= 1s so tokio's interval timer never panics.
+        assert_eq!(config.storage.blob_gc_interval(), std::time::Duration::from_secs(1));
+        assert_eq!(config.storage.blob_gc_grace(), std::time::Duration::from_secs(120));
     }
 
     #[test]
@@ -1776,6 +1854,9 @@ data_dir = "/data"
                 blob_prefix_depth: 2,
                 metadata_backend: "sqlite".to_string(),
                 postgres: None,
+                blob_gc_enabled: false,
+                blob_gc_interval_seconds: 3600,
+                blob_gc_grace_seconds: 86400,
             },
             encryption: None,
             monitoring: None,

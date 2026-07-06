@@ -1266,6 +1266,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../operations/gc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage Reclamation (GC)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../operations/monitoring/" class="md-nav__link">
         
   
@@ -1804,6 +1832,21 @@
 <td><code>storage.blob_prefix_depth</code></td>
 <td><code>2</code></td>
 <td>Number of 2-char prefix directory levels for blob file sharding (1–4). Higher values spread files across more directories, reducing files-per-directory at the cost of deeper paths. See <a href="#blob-storage">blob storage</a> below.</td>
+</tr>
+<tr>
+<td><code>storage.blob_gc_enabled</code></td>
+<td><code>false</code></td>
+<td>Enable the opt-in single-node background worker that periodically reclaims orphaned blob files (see <a href="../cli/#arca-gc"><code>arca gc</code></a>). Ignored under clustering, where the anti-entropy worker reclaims orphans. On very large stores, prefer cron-ing <code>arca gc</code> so the full-store scan runs outside the serving process.</td>
+</tr>
+<tr>
+<td><code>storage.blob_gc_interval_seconds</code></td>
+<td><code>3600</code></td>
+<td>How often the blob GC worker runs (when enabled).</td>
+</tr>
+<tr>
+<td><code>storage.blob_gc_grace_seconds</code></td>
+<td><code>86400</code></td>
+<td>Protect blobs written within this many seconds from reclamation. Must exceed the longest in-flight upload (a blob file exists on disk before its object row is committed).</td>
 </tr>
 </tbody>
 </table>
