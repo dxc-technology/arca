@@ -53,17 +53,23 @@ pub async fn run_gc(config: &Config, dry_run: bool, grace: Duration, verbose: bo
         grace.as_secs()
     );
     // Fail-safe: any enumeration error aborts here and nothing is deleted.
-    let orphans = blob_gc::collect_reclaimable_blobs(&metadata, &raw, grace)
+    let plan = blob_gc::collect_reclaimable_blobs(&metadata, &raw, grace)
         .await
         .context("scanning for orphan blobs (nothing was deleted)")?;
 
-    if orphans.is_empty() {
+    println!(
+        "Scanned {} blob(s); {} orphan(s).",
+        plan.scanned,
+        plan.candidates.len()
+    );
+
+    if plan.candidates.is_empty() {
         println!("No orphan blobs to reclaim.");
         return Ok(());
     }
 
     if verbose {
-        for id in &orphans {
+        for id in &plan.candidates {
             println!("  orphan {}", id.0);
         }
     }
@@ -71,14 +77,14 @@ pub async fn run_gc(config: &Config, dry_run: bool, grace: Duration, verbose: bo
     if dry_run {
         println!(
             "DRY RUN: {} orphan blob(s) would be reclaimed. Re-run with --reclaim to delete them.",
-            orphans.len()
+            plan.candidates.len()
         );
         return Ok(());
     }
 
     let mut reclaimed = 0u64;
     let mut failed = 0u64;
-    for id in &orphans {
+    for id in &plan.candidates {
         match raw.delete_blob_file(id).await {
             Ok(()) => reclaimed += 1,
             Err(e) => {

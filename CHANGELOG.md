@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Per-run blob GC log summary.** Each blob GC pass (the single-node background worker and the cluster anti-entropy worker) now emits a concise INFO summary — `blob GC pass started` and `blob GC pass complete scanned=… candidates=… reclaimed=… failed=… elapsed_ms=…` — so a scheduled run is visible even when it reclaims nothing (previously only a non-zero reclaim was logged). A pass skipped by the fail-safe (an enumeration error) is logged at WARN. `arca gc` likewise prints the scanned/orphan counts.
+
 ## [0.27.0] — 2026-07-06
 
 ### Added
