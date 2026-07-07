@@ -16,15 +16,25 @@
 //! single-node maintenance worker).
 
 use std::collections::HashSet;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use arca_core::cluster::plan_blob_gc;
 use arca_core::error::ArcaError;
 use arca_core::store::{MetadataStore, RawBlobOps};
 use arca_core::types::BlobId;
 
+/// Outcome of a reclaim scan: how many on-disk blobs were examined and which of
+/// them are safe to reclaim.
+#[derive(Debug)]
+pub struct ReclaimPlan {
+    /// Total on-disk blob files scanned.
+    pub scanned: usize,
+    /// The subset safe to reclaim (unreferenced and grace-expired).
+    pub candidates: Vec<BlobId>,
+}
+
 /// Computes the on-disk blob files safe to reclaim: those NOT referenced and
-/// older than `grace`.
+/// older than `grace`, plus the total scanned count for reporting.
 ///
 /// Composite-aware (data-loss guard): a composite blob has no file of its own;
 /// its parts are referenced only by its sidecar, so this unions in the part
@@ -38,7 +48,7 @@ pub async fn collect_reclaimable_blobs(
     metadata: &dyn MetadataStore,
     raw: &dyn RawBlobOps,
     grace: Duration,
-) -> Result<Vec<BlobId>, ArcaError> {
+) -> Result<ReclaimPlan, ArcaError> {
     // 1) Blobs referenced by metadata (live object rows + in-progress parts).
     let mut referenced: HashSet<BlobId> =
         metadata.list_referenced_blob_ids().await?.into_iter().collect();
@@ -59,11 +69,20 @@ pub async fn collect_reclaimable_blobs(
 
     // 3) On-disk blob files minus referenced, grace-expired.
     let on_disk = raw.list_blob_ids().await?;
-    Ok(plan_blob_gc(&on_disk, &referenced, SystemTime::now(), grace))
+    let candidates = plan_blob_gc(&on_disk, &referenced, SystemTime::now(), grace);
+    Ok(ReclaimPlan {
+        scanned: on_disk.len(),
+        candidates,
+    })
 }
 
 /// Reclaims orphan blob files (collect + delete). Returns the number of files
 /// reclaimed.
+///
+/// Emits a concise per-run INFO summary: one line when the pass starts and one
+/// when it completes (with scanned/candidates/reclaimed/failed/elapsed), so a
+/// scheduled run is visible even when it reclaims nothing. A pass skipped by the
+/// fail-safe (an enumeration error) is logged at WARN.
 ///
 /// Fail-safe: on any enumeration error nothing is deleted and `0` is returned.
 /// An error deleting an individual file is logged and skipped so one bad file
@@ -73,23 +92,41 @@ pub async fn reclaim_blobs(
     raw: &dyn RawBlobOps,
     grace: Duration,
 ) -> u64 {
-    let deletable = match collect_reclaimable_blobs(metadata, raw, grace).await {
-        Ok(v) => v,
+    let started = Instant::now();
+    tracing::info!(grace_seconds = grace.as_secs(), "blob GC pass started");
+
+    let plan = match collect_reclaimable_blobs(metadata, raw, grace).await {
+        Ok(p) => p,
         Err(e) => {
-            tracing::debug!(error = %e, "blob GC: enumeration failed; skipping pass");
+            tracing::warn!(
+                error = %e,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "blob GC pass skipped (enumeration failed; nothing deleted)"
+            );
             return 0;
         }
     };
+
     let mut reclaimed = 0u64;
-    for id in &deletable {
+    let mut failed = 0u64;
+    for id in &plan.candidates {
         match raw.delete_blob_file(id).await {
             Ok(()) => reclaimed += 1,
-            Err(e) => tracing::warn!(error = %e, blob_id = %id.0, "blob GC: delete failed"),
+            Err(e) => {
+                failed += 1;
+                tracing::warn!(error = %e, blob_id = %id.0, "blob GC: delete failed");
+            }
         }
     }
-    if reclaimed > 0 {
-        tracing::info!(reclaimed, "blob GC: reclaimed orphan blobs");
-    }
+
+    tracing::info!(
+        scanned = plan.scanned,
+        candidates = plan.candidates.len(),
+        reclaimed,
+        failed,
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        "blob GC pass complete"
+    );
     reclaimed
 }
 
@@ -155,5 +192,34 @@ mod tests {
         // fail-safe by construction: reclaim must return 0 without deleting.
         let reclaimed = reclaim_blobs(m.as_ref(), &FailingRaw, Duration::ZERO).await;
         assert_eq!(reclaimed, 0);
+    }
+
+    fn one_chunk(data: &[u8]) -> ByteStream {
+        let b = bytes::Bytes::copy_from_slice(data);
+        Box::pin(futures_util::stream::once(async move {
+            Ok::<_, std::io::Error>(b)
+        }))
+    }
+
+    #[tokio::test]
+    async fn plan_reports_scanned_and_candidates() {
+        let dir = tempfile::tempdir().unwrap();
+        let fs = arca_storage::FsBlobStore::new(dir.path().join("blobs"), 2)
+            .await
+            .unwrap();
+        // Empty metadata → every on-disk blob is unreferenced. Two blobs, grace
+        // 0 → both scanned, both candidates. (Referenced-blob exclusion and the
+        // grace window are covered by the anti-entropy reclaim tests.)
+        let m = empty_metadata().await;
+        fs.write_raw(&BlobId("aaaa".into()), one_chunk(b"x")).await.unwrap();
+        fs.write_raw(&BlobId("bbbb".into()), one_chunk(b"y")).await.unwrap();
+
+        let plan = collect_reclaimable_blobs(m.as_ref(), &fs, Duration::ZERO)
+            .await
+            .unwrap();
+        assert_eq!(plan.scanned, 2, "both on-disk blobs are scanned");
+        let mut got: Vec<String> = plan.candidates.iter().map(|b| b.0.clone()).collect();
+        got.sort();
+        assert_eq!(got, vec!["aaaa".to_string(), "bbbb".to_string()]);
     }
 }

@@ -86,6 +86,31 @@ tombstone grace. No configuration and no single-node worker/CLI are required (th
 `arca gc` still works offline if you need it). This is why the opt-in single-node worker is
 disabled under clustering.
 
+## Logs
+
+The background worker logs at startup (once) that it is enabled:
+
+```
+INFO arca: Single-node blob GC worker enabled interval_seconds=3600 grace_seconds=86400
+```
+
+If that line is absent, the worker is not running (either `blob_gc_enabled` is false, or
+clustering is enabled and the anti-entropy worker does GC instead).
+
+Every pass — the background worker and the cluster anti-entropy worker — emits a concise
+INFO summary, so a scheduled run is visible even when it reclaims nothing:
+
+```
+INFO arca::blob_gc: blob GC pass started grace_seconds=86400
+INFO arca::blob_gc: blob GC pass complete scanned=1490233 candidates=12 reclaimed=12 failed=0 elapsed_ms=8421
+```
+
+A pass skipped by the fail-safe (an enumeration error) is logged at WARN
+(`blob GC pass skipped …`), and an individual file that fails to delete at WARN
+(`blob GC: delete failed`). `arca gc` prints the same scanned/orphan counts to stdout.
+
+View logs with `bin/arca logs -f` (or `docker logs <container>`).
+
 ## Metrics
 
 Two Prometheus counters (exposed on the [admin metrics endpoint](monitoring.md)) make

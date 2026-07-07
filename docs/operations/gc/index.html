@@ -1103,6 +1103,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#logs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Logs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#metrics" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1431,6 +1442,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#logs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Logs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#metrics" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1536,6 +1558,21 @@ reclaims orphans automatically as part of its periodic self-heal, using the clus
 tombstone grace. No configuration and no single-node worker/CLI are required (though
 <code>arca gc</code> still works offline if you need it). This is why the opt-in single-node worker is
 disabled under clustering.</p>
+<h2 id="logs">Logs<a class="headerlink" href="#logs" title="Permanent link">&para;</a></h2>
+<p>The background worker logs at startup (once) that it is enabled:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>INFO arca: Single-node blob GC worker enabled interval_seconds=3600 grace_seconds=86400
+</code></pre></div>
+<p>If that line is absent, the worker is not running (either <code>blob_gc_enabled</code> is false, or
+clustering is enabled and the anti-entropy worker does GC instead).</p>
+<p>Every pass — the background worker and the cluster anti-entropy worker — emits a concise
+INFO summary, so a scheduled run is visible even when it reclaims nothing:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>INFO arca::blob_gc: blob GC pass started grace_seconds=86400
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>INFO arca::blob_gc: blob GC pass complete scanned=1490233 candidates=12 reclaimed=12 failed=0 elapsed_ms=8421
+</code></pre></div>
+<p>A pass skipped by the fail-safe (an enumeration error) is logged at WARN
+(<code>blob GC pass skipped …</code>), and an individual file that fails to delete at WARN
+(<code>blob GC: delete failed</code>). <code>arca gc</code> prints the same scanned/orphan counts to stdout.</p>
+<p>View logs with <code>bin/arca logs -f</code> (or <code>docker logs &lt;container&gt;</code>).</p>
 <h2 id="metrics">Metrics<a class="headerlink" href="#metrics" title="Permanent link">&para;</a></h2>
 <p>Two Prometheus counters (exposed on the <a href="../monitoring/">admin metrics endpoint</a>) make
 orphan creation and reclamation observable:</p>
