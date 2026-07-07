@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.1] — 2026-07-07
+
 ### Added
 
 - **Per-run blob GC log summary.** Each blob GC pass (the single-node background worker and the cluster anti-entropy worker) now emits a concise INFO summary — `blob GC pass started` and `blob GC pass complete scanned=… candidates=… reclaimed=… failed=… elapsed_ms=…` — so a scheduled run is visible even when it reclaims nothing (previously only a non-zero reclaim was logged). A pass skipped by the fail-safe (an enumeration error) is logged at WARN. `arca gc` likewise prints the scanned/orphan counts.
@@ -748,7 +750,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.27.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.27.1...HEAD
+[0.27.1]: https://github.com/dxc-technology/arca/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/dxc-technology/arca/compare/v0.26.1...v0.27.0
 [0.26.1]: https://github.com/dxc-technology/arca/compare/v0.26.0...v0.26.1
 [0.26.0]: https://github.com/dxc-technology/arca/compare/v0.25.1...v0.26.0
