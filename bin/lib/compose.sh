@@ -700,3 +700,32 @@ wait_for_grpc_receiver() {
     echo "Waiting for gRPC receiver..."
     _wait_for_container_healthy "$compose" grpc-receiver "$max_wait"
 }
+
+# --- Log viewing ---
+
+# Detect once whether `date` is GNU coreutils (Linux) or BSD date (macOS).
+# The two need different invocations to convert a UTC timestamp to local
+# time, and this only needs to run once per script invocation.
+if date --version >/dev/null 2>&1; then
+    _DATE_IS_GNU=true
+else
+    _DATE_IS_GNU=false
+fi
+
+# Converts a single UTC ISO-8601 timestamp (e.g. "2026-07-07T14:23:01.123456Z"
+# or "2026-07-07T14:23:01Z") to local wall-clock time formatted as
+# "YYYY-MM-DD HH:MM:SS". Falls back to printing the input unchanged if
+# parsing fails for any reason.
+_utc_to_local_timestamp() {
+    local ts="$1"
+    local base="${ts%.*}"   # drop fractional seconds, if any
+    base="${base%Z}"        # drop trailing Z, if still present (no fractional part)
+
+    if $_DATE_IS_GNU; then
+        date -d "${base}Z" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || printf '%s' "$ts"
+    else
+        local epoch
+        epoch="$(TZ=UTC date -j -f '%Y-%m-%dT%H:%M:%S' "$base" '+%s' 2>/dev/null)" || { printf '%s' "$ts"; return; }
+        date -j -f '%s' "$epoch" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || printf '%s' "$ts"
+    fi
+}
