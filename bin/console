@@ -114,7 +114,7 @@ cmd_logs() {
         args+=("-f")
     fi
 
-    $COMPOSE logs "${args[@]+"${args[@]}"}" console
+    $COMPOSE logs "${args[@]+"${args[@]}"}" console | localize_log_timestamps
 }
 
 [[ $# -lt 1 ]] && usage 0
