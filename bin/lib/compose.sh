@@ -729,3 +729,21 @@ _utc_to_local_timestamp() {
         date -j -f '%s' "$epoch" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || printf '%s' "$ts"
     fi
 }
+
+# Reads docker compose log lines from stdin and rewrites any UTC ISO-8601
+# timestamp found in each line to local wall-clock time. Lines without a
+# matching timestamp (e.g. nginx access/error log lines) pass through
+# unchanged. Used by `bin/arca logs`, `bin/console logs`, `bin/cluster logs`.
+localize_log_timestamps() {
+    local ts_re='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z'
+    local line
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" =~ $ts_re ]]; then
+            local match="${BASH_REMATCH[0]}"
+            local local_ts
+            local_ts="$(_utc_to_local_timestamp "$match")"
+            line="${line/$match/$local_ts}"
+        fi
+        printf '%s\n' "$line"
+    done
+}
