@@ -9,10 +9,6 @@
   <a href="https://dxc-technology.github.io/arca/">Documentation</a> · <a href="CHANGELOG.md">Changelog</a> · <a href="https://dxc-technology.github.io/arca/report.html">Project Report</a>
 </p>
 
-<p align="center">
-  <img src="s3-compatibility-badge.svg" alt="S3 Compatibility">
-</p>
-
 ---
 
 Arca is a ground-up implementation of the S3 API, designed as a **drop-in replacement** for AWS S3, MinIO, and other S3-compatible storage services. It runs as a single node or as a symmetric, self-configuring high-availability cluster, with at-rest encryption, object versioning, RBAC, lifecycle rules, object lock, event notifications, and a web console.
