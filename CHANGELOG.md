@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.0] — 2026-07-24
+
 ### Added
 
 - **Guided topology transition `migrate-topology` (Phase 30, M4).** Scripts the two in-place single-node ⇄ HA-cluster topology changes so the operator does not hand-assemble the config and the small DB chores. The cluster is fully replicated (not sharded), so neither direction redistributes data. `arca migrate-topology --to-cluster [--output <file>]` turns a standalone instance into the first node of a new cluster: it refuses if already clustered, reconciles this node's `object_seq` write counter to `MAX(seq)` (so the first clustered write cannot skip a pre-cluster object), and prints a ready-to-paste `[cluster]` stanza with a generated `cluster_id`, a strong random `secret` (32 bytes hex, reusing the `ring`-backed RNG), `mode = "quorum"`, `cluster_size = 3`, `discovery = "mdns"`, and commented templates for static/DNS discovery and `[cluster.tls]` (pointing the operator at `arca tls generate-cluster` for the inter-node CA). Restarting with the stanza enables cluster (tombstone) mode automatically; empty joiners then converge via anti-entropy — no data copy. `arca migrate-topology --to-single --force` collapses a cluster back to one node on the surviving authoritative node: it purges the cluster-only state (object tombstones + control-plane tombstones) and `VACUUM`s SQLite (PostgreSQL autovacuum needs none), then the operator strips `[cluster]` and restarts standalone; `--force` is the explicit confirmation that every peer is synced and stopped (collapsing while a peer is behind loses its un-replicated writes). CLI-only by design (no console job): both directions are inherently operator+restart actions an online job cannot perform. New runbook in the HA guide.
@@ -762,7 +764,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.27.1...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.28.0...HEAD
+[0.28.0]: https://github.com/dxc-technology/arca/compare/v0.27.1...v0.28.0
 [0.27.1]: https://github.com/dxc-technology/arca/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/dxc-technology/arca/compare/v0.26.1...v0.27.0
 [0.26.1]: https://github.com/dxc-technology/arca/compare/v0.26.0...v0.26.1

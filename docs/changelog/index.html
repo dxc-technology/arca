@@ -1238,7 +1238,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0280-2026-07-24" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.28.0 — 2026-07-24
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.28.0 — 2026-07-24">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2864,7 +2875,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0280-2026-07-24" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.28.0 — 2026-07-24
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.28.0 — 2026-07-24">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -4441,7 +4463,8 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.27.1...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.28.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="0280-2026-07-24"><a href="https://github.com/dxc-technology/arca/compare/v0.27.1...v0.28.0">0.28.0</a> — 2026-07-24<a class="headerlink" href="#0280-2026-07-24" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Guided topology transition <code>migrate-topology</code> (Phase 30, M4).</strong> Scripts the two in-place single-node ⇄ HA-cluster topology changes so the operator does not hand-assemble the config and the small DB chores. The cluster is fully replicated (not sharded), so neither direction redistributes data. <code>arca migrate-topology --to-cluster [--output &lt;file&gt;]</code> turns a standalone instance into the first node of a new cluster: it refuses if already clustered, reconciles this node's <code>object_seq</code> write counter to <code>MAX(seq)</code> (so the first clustered write cannot skip a pre-cluster object), and prints a ready-to-paste <code>[cluster]</code> stanza with a generated <code>cluster_id</code>, a strong random <code>secret</code> (32 bytes hex, reusing the <code>ring</code>-backed RNG), <code>mode = "quorum"</code>, <code>cluster_size = 3</code>, <code>discovery = "mdns"</code>, and commented templates for static/DNS discovery and <code>[cluster.tls]</code> (pointing the operator at <code>arca tls generate-cluster</code> for the inter-node CA). Restarting with the stanza enables cluster (tombstone) mode automatically; empty joiners then converge via anti-entropy — no data copy. <code>arca migrate-topology --to-single --force</code> collapses a cluster back to one node on the surviving authoritative node: it purges the cluster-only state (object tombstones + control-plane tombstones) and <code>VACUUM</code>s SQLite (PostgreSQL autovacuum needs none), then the operator strips <code>[cluster]</code> and restarts standalone; <code>--force</code> is the explicit confirmation that every peer is synced and stopped (collapsing while a peer is behind loses its un-replicated writes). CLI-only by design (no console job): both directions are inherently operator+restart actions an online job cannot perform. New runbook in the HA guide.</li>
