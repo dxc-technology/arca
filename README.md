@@ -168,7 +168,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 
 | Suite | Tests | Details |
 |-------|------:|---------|
-| Unit tests (Rust) | 885 | arca-auth: 39, arca-core: 245, arca-proto: 65, arca-server: 276, arca-storage: 260 |
+| Unit tests (Rust) | 920 | arca-auth: 39, arca-core: 248, arca-proto: 65, arca-server: 286, arca-storage: 282 |
 | Integration — boto3 | 146 | buckets, objects, list, multipart, copy, folders, auth, admin, credentials, conditional ops |
 | Integration — RBAC | 42 | user/team/grant CRUD, attachments, effective grants, /admin/me (with and without grants), E2E access control |
 | Integration — Versioning | 21 | versioning config, PUT/GET/HEAD/DELETE with versionId, delete markers, batch delete with VersionId, ListVersions, copy |
@@ -191,10 +191,14 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
 | Integration — Replication | 4 | basic PutObject replication, delete-marker propagation, tag sync, two-way mirror no-loop invariant |
 | Integration — HA Cluster | 59 | 3-node replication to all nodes, read-after-write, write with one node down (quorum), failover read, read-only without quorum (503), anti-entropy catch-up (objects + the full control plane: bucket, credential, grant attach/detach, bucket versioning + tag set, Object-Lock retention, multipart abort/complete — including CompleteMultipartUpload on a returned node fetching part bytes from a peer), real network partition (isolated node 503s while reads keep working, majority side writes, heal convergence), available mode (split-brain writes to the same key with single LWW winner at heal, 1/3 minority still writable), cluster-wide 507 InsufficientStorage, config-drift detection + drift quorum exclusion (1 drifted node → still writable; drifted majority → 503 while reads keep working), worker-leader gate (exactly one node — the lowest eligible node_id — runs the lifecycle evaluator: expiry happens exactly once cluster-wide, with automatic leader failover when that node stops), syncing readiness (a restarted node answers 503 "syncing" until its first anti-entropy pass completes, and the data written during its downtime is readable the moment it reports ready), per-node admin views (`?node=` proxy really reaches a specific node's own audit log, self short-circuit, all-nodes merge ordered/labeled with per-source report, 404 on an unknown node, all four families proxied, 503 on a dead target, merged view shrinking to the eligible sources), write-aware health (`?writable=1` 200 cluster-wide, 503 read_only on a quorum-less survivor whose plain health stays 200), proactive blob repair (a payload file deleted from a node's volume restored by the sweep — observed on the volume, never via a GET that would mask it with lazy read-repair — and served intact), tombstone-GC liveness guard (a deletion while a node is down beyond the grace blocks GC on both survivors; at re-entry the deletion is learned everywhere — no resurrection — and the guard releases) |
+| Integration — Maintenance jobs | 11 | admin API: auth, list shape, job-type/mode validation, no-op job lifecycle, single-job lock, pause/resume/cancel transitions, 404 on unknown job, maintenance mode blocks S3, live mode does not, clear removes terminal keeps active |
+| Integration — Re-encryption | 2 | hot encrypt→decrypt round-trip (copy-on-write, ETag preserved), no-candidate job completes cleanly |
+| Integration — Migrate DB | 1 | SQLite→PostgreSQL offline metadata migration + row-count verify |
+| Integration — Migrate Topology | 1 | single→cluster config emission + DB ops, then →single round-trip |
 | Connector integrations | 84 | Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Kafka, AMQP, Elasticsearch, Syslog, SMTP, gRPC — each: delivery, custom destination, delete event, multiple events, payload format, connectivity test |
-| **Arca tests** | **1,581** | **All tests written for this project** |
+| **Arca tests** | **1,642** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 825 | 369 pass, 365 fail, 91 skip — 0 unexpected failures (RGW-only extensions excluded) |
-| **Total** | **2,411** | |
+| **Total** | **2,011** | |
 
 ## License
 

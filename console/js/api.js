@@ -170,11 +170,17 @@ export function apiClient() {
     },
 
     async adminPost(path, data) {
-      const resp = await this.request('POST', '/admin' + path, {
-        body: JSON.stringify(data),
-        contentType: 'application/json',
-      });
-      return resp;
+      // Only declare a JSON body when there actually is one. A body-less POST
+      // that still carries `Content-Type: application/json` (the previous
+      // behavior) stalls over HTTP/2 — the request never settles — which left
+      // action buttons (pause/resume) permanently disabled on TLS deployments.
+      // Mirrors adminPut/adminDelete, which are already conditional.
+      const opts = {};
+      if (data !== undefined) {
+        opts.body = JSON.stringify(data);
+        opts.contentType = 'application/json';
+      }
+      return await this.request('POST', '/admin' + path, opts);
     },
 
     async adminPut(path, data) {

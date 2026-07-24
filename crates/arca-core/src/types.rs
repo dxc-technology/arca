@@ -113,6 +113,19 @@ pub struct ObjectRecord {
     /// row that ever saw a lock change beat one that never did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lock_updated_at: Option<DateTime<Utc>>,
+    /// When the physical content of this row (its `blob_id` + encryption
+    /// columns) last changed in place WITHOUT bumping `last_modified` — i.e. a
+    /// copy-on-write re-encryption (Phase 30). This is a SECOND in-place
+    /// dimension, independent of `lock_updated_at`: re-encryption and an Object
+    /// Lock change touch disjoint column groups, so collapsing both onto
+    /// `lock_updated_at` let a re-encryption's fresh timestamp clobber a peer's
+    /// newer lock state (dropping a legal hold — a WORM violation) and vice
+    /// versa. `apply_remote_object` therefore merges the two groups separately
+    /// on a `last_modified` tie: lock columns follow `lock_updated_at`, content
+    /// columns follow `content_updated_at`. `Option` ordering (`None < Some`)
+    /// makes a re-encrypted row beat one that was never re-encrypted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_updated_at: Option<DateTime<Utc>>,
 }
 
 fn default_standard() -> String {
@@ -142,6 +155,73 @@ impl ObjectRecord {
         a.is_latest = false;
         b.is_latest = false;
         a == b
+    }
+
+    /// Resolves an incoming replicated record (`self`) against the local row
+    /// (`local`) for the same (bucket, key, version). Returns the row to
+    /// persist, or `None` to keep the local row unchanged (the incoming record
+    /// lost the LWW, or is identical → skip the rewrite so two caught-up nodes
+    /// don't redeliver forever, finding M7).
+    ///
+    /// `last_modified` is the primary clock: a new PUT bumps it and replaces the
+    /// whole row. On a `last_modified` TIE the row carries two INDEPENDENT
+    /// in-place registers that are merged separately rather than picking one
+    /// whole row:
+    /// - the **lock** register (`retention_mode`, `retain_until_date`,
+    ///   `legal_hold_status`) ordered by `lock_updated_at`;
+    /// - the **content** register (`blob_id`, `encryption_algorithm`,
+    ///   `encryption_key_id`) ordered by `content_updated_at`.
+    ///
+    /// Merging them independently is what keeps a copy-on-write re-encryption
+    /// (which bumps `content_updated_at`) from clobbering a peer's newer lock
+    /// state (which bumps `lock_updated_at`) and vice versa — collapsing both
+    /// onto one dimension dropped legal holds (a WORM violation) and silently
+    /// reverted re-encryptions. A genuine concurrent overwrite (same
+    /// `last_modified` but DIFFERENT content, i.e. different `etag`) is not a
+    /// shared lineage, so it is resolved whole-row by a deterministic `blob_id`
+    /// tiebreak, preserving the pre-existing null-version LWW-register behavior.
+    pub fn resolve_replicated(&self, local: &ObjectRecord) -> Option<ObjectRecord> {
+        use std::cmp::Ordering;
+        match self.last_modified.cmp(&local.last_modified) {
+            // Strictly newer PUT replaces everything (including resetting the
+            // lock/content registers to whatever the new version carries).
+            Ordering::Greater => Some(self.clone()),
+            // Strictly older PUT loses.
+            Ordering::Less => None,
+            Ordering::Equal => {
+                if self.etag != local.etag {
+                    // Concurrent overwrite of different content that happens to
+                    // share a timestamp: deterministic whole-row tiebreak.
+                    if self.blob_id.0 > local.blob_id.0 {
+                        Some(self.clone())
+                    } else {
+                        None
+                    }
+                } else {
+                    // Same content lineage: merge the two in-place registers.
+                    // Each adopts the incoming value only when STRICTLY newer, so
+                    // a tie keeps the local row (idempotent redelivery, N2).
+                    let mut merged = local.clone();
+                    if self.lock_updated_at > local.lock_updated_at {
+                        merged.retention_mode = self.retention_mode.clone();
+                        merged.retain_until_date = self.retain_until_date;
+                        merged.legal_hold_status = self.legal_hold_status.clone();
+                        merged.lock_updated_at = self.lock_updated_at;
+                    }
+                    if self.content_updated_at > local.content_updated_at {
+                        merged.blob_id = self.blob_id.clone();
+                        merged.encryption_algorithm = self.encryption_algorithm.clone();
+                        merged.encryption_key_id = self.encryption_key_id.clone();
+                        merged.content_updated_at = self.content_updated_at;
+                    }
+                    if merged.same_replicated_content(local) {
+                        None
+                    } else {
+                        Some(merged)
+                    }
+                }
+            }
+        }
     }
 }
 

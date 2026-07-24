@@ -12,6 +12,7 @@ import { auditView } from './views/audit.js?v=node-views-2';
 import { monitoringView } from './views/monitoring.js?v=node-views-2';
 import { notificationsView, bucketNotificationEditor } from './views/notifications.js?v=node-views-2';
 import { replicationView, bucketReplicationEditor, replicationCredentials } from './views/replication.js?v=node-views-2';
+import { maintenanceView } from './views/maintenance.js?v=maint-fix-2';
 
 // ==================== SHARED SVG ICONS ====================
 // Centralized SVG strings for consistent use across views.
@@ -121,6 +122,8 @@ export function app() {
         this.view = this.isAdmin ? 'notifications' : 'buckets';
       } else if (hash === '#/replication') {
         this.view = this.isAdmin ? 'replication' : 'buckets';
+      } else if (hash === '#/maintenance') {
+        this.view = this.isAdmin ? 'maintenance' : 'buckets';
       } else if (hash === '#/dashboard' || hash === '#/' || hash === '#') {
         this.view = this.isAdmin ? 'dashboard' : 'buckets';
       } else {
@@ -328,4 +331,5 @@ document.addEventListener('alpine:init', () => {
   Alpine.data('replicationView', replicationView);
   Alpine.data('bucketReplicationEditor', bucketReplicationEditor);
   Alpine.data('replicationCredentials', replicationCredentials);
+  Alpine.data('maintenanceView', maintenanceView);
 });

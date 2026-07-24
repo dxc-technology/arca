@@ -13,6 +13,7 @@ mod control_snapshot;
 mod control_tombstone;
 mod credential;
 mod grant;
+mod maintenance;
 mod metadata;
 mod metrics;
 mod migrations;
@@ -136,6 +137,27 @@ impl SqliteStore {
     /// Whether hard deletes should tombstone (cluster mode) rather than remove.
     pub(crate) fn cluster_mode(&self) -> bool {
         self.cluster_mode.load(Ordering::Relaxed)
+    }
+
+    /// Runs `VACUUM` to rebuild the database file, reclaiming the pages freed by
+    /// a bulk delete (e.g. `arca migrate-topology --to-single` purging every
+    /// tombstone). Must run outside a transaction; this offline tool holds the
+    /// only connection, so there is nothing to contend with.
+    pub async fn vacuum(&self) -> Result<(), ArcaError> {
+        self.conn
+            .call(|conn| {
+                conn.execute_batch("VACUUM")?;
+                Ok(())
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("vacuum: {e}")))
+    }
+
+    /// The single write connection (serializes mutations). Used by the
+    /// backend-migration copier ([`crate::migration`]) for batched INSERTs and
+    /// by tests that seed/inspect rows directly.
+    pub(crate) fn write_conn(&self) -> &tokio_rusqlite::Connection {
+        &self.conn
     }
 
     /// Dispatches a read-only query to the pool (round-robin).

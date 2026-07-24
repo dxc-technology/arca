@@ -10,7 +10,11 @@ mod crypto;
 mod compress_existing;
 mod fsck;
 mod gc;
+mod maintenance;
+mod migrate_db;
+mod migrate_topology;
 mod recover;
+mod recrypt_existing;
 mod replicator;
 mod sigv4_http;
 mod tls;
@@ -227,6 +231,11 @@ async fn async_main(cli: Cli) -> Result<()> {
                 ));
             }
 
+            // Captured before the key is moved into the EncryptingBlobStore, so
+            // the maintenance re-encryption worker (Phase 30) can use it.
+            let mut maintenance_master_key: Option<
+                Arc<arca_storage::encryption::keys::MasterKey>,
+            > = None;
             let (mut blob, mut plain_blob): (
                 Arc<dyn arca_core::store::BlobStore>,
                 Option<Arc<dyn arca_core::store::BlobStore>>,
@@ -246,10 +255,12 @@ async fn async_main(cli: Cli) -> Result<()> {
                 }
                 let plain: Arc<dyn arca_core::store::BlobStore> =
                     Arc::new(fs_blob_store.clone());
+                let mk_arc = Arc::new(master_key);
+                maintenance_master_key = Some(mk_arc.clone());
                 let encrypting: Arc<dyn arca_core::store::BlobStore> =
                     Arc::new(arca_storage::EncryptingBlobStore::new(
                         fs_blob_store,
-                        Arc::new(master_key),
+                        mk_arc,
                     ));
                 (encrypting, Some(plain))
             } else {
@@ -341,6 +352,12 @@ async fn async_main(cli: Cli) -> Result<()> {
 
             // Drain mode watch channel (set to true on shutdown signal).
             let (drain_tx, drain_rx) = tokio::sync::watch::channel(false);
+
+            // Maintenance-job drain channel (Phase 30): a maintenance-mode job
+            // drains the S3 API on this node for its lifetime. The worker owns
+            // the sender; the receiver feeds the health check alongside `drain`.
+            let (maint_drain_tx, maint_drain_rx) = tokio::sync::watch::channel(false);
+            let maint_drain_tx = std::sync::Arc::new(maint_drain_tx);
 
             // Optionally wrap metadata store with LRU cache.
             let cache_config = config.server.cache.clone().unwrap_or_default();
@@ -565,6 +582,8 @@ async fn async_main(cli: Cli) -> Result<()> {
                 max_header_count: limits.max_header_count,
                 max_metadata_size: limits.max_metadata_size,
                 draining: drain_rx,
+                maintenance_draining: maint_drain_rx,
+                maintenance_store: Some(stores.maintenance.clone()),
                 notification_tx: None,
                 notification_store: stores.notification,
                 connector_registry: None, // Set after building the registry below.
@@ -722,6 +741,26 @@ async fn async_main(cli: Cli) -> Result<()> {
             let _lifecycle_worker = worker::spawn_lifecycle_worker(
                 &state,
                 config.lifecycle.as_ref().map(|l| l.interval_seconds),
+            );
+
+            // Maintenance jobs (Phase 30): reset any job left `running` by a
+            // previous process (the operator re-launches it; re-launched jobs
+            // resume from persisted state), then spawn the worker.
+            if let Some(ref maint) = state.maintenance_store {
+                match maint.interrupt_running_jobs().await {
+                    Ok(n) if n > 0 => tracing::warn!(
+                        count = n,
+                        "maintenance: reset interrupted job(s) to failed on startup"
+                    ),
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!(error = %e, "maintenance: startup interrupt failed"),
+                }
+            }
+            let _maintenance_worker = maintenance::spawn_maintenance_worker(
+                &state,
+                maint_drain_tx.clone(),
+                maintenance_master_key.clone(),
+                config.storage.clone(),
             );
             let _notification_worker = if let Some(ref notif_store) = state.notification_store {
                 let region = state.config_region.clone().unwrap_or_else(|| "us-east-1".to_string());
@@ -996,6 +1035,69 @@ async fn async_main(cli: Cli) -> Result<()> {
                 .await?;
         }
 
+        Command::EncryptExisting {
+            config_path,
+            dry_run,
+            bucket,
+            prefix,
+        } => {
+            let _ = init_tracing(&LogFormat::Text, "info");
+            let config = config::load_config(&config_path)?;
+            recrypt_existing::run_encrypt_existing(
+                &config,
+                dry_run,
+                bucket.as_deref(),
+                prefix.as_deref(),
+            )
+            .await?;
+        }
+
+        Command::DecryptExisting {
+            config_path,
+            dry_run,
+            bucket,
+            prefix,
+        } => {
+            let _ = init_tracing(&LogFormat::Text, "info");
+            let config = config::load_config(&config_path)?;
+            recrypt_existing::run_decrypt_existing(
+                &config,
+                dry_run,
+                bucket.as_deref(),
+                prefix.as_deref(),
+            )
+            .await?;
+        }
+
+        Command::MigrateDb {
+            config_path,
+            to,
+            force,
+        } => {
+            let _ = init_tracing(&LogFormat::Text, "info");
+            let config = config::load_config(&config_path)?;
+            migrate_db::run_migrate_db(&config, to.as_str(), force).await?;
+        }
+
+        Command::MigrateTopology {
+            config_path,
+            to_cluster,
+            to_single,
+            output,
+            force,
+        } => {
+            let _ = init_tracing(&LogFormat::Text, "info");
+            let config = config::load_config(&config_path)?;
+            if to_cluster {
+                migrate_topology::run_to_cluster(&config, output.as_deref()).await?;
+            } else if to_single {
+                migrate_topology::run_to_single(&config, force).await?;
+            } else {
+                // clap enforces exactly one via required_unless_present; defensive.
+                anyhow::bail!("specify exactly one of --to-cluster or --to-single");
+            }
+        }
+
         Command::Tls { action } => {
             match action {
                 TlsAction::Generate {
@@ -1141,6 +1243,7 @@ struct StoreSet {
     replication: Arc<dyn arca_core::store::ReplicationStore>,
     control_tombstone: Arc<dyn arca_core::store::ControlTombstoneStore>,
     control_snapshot: Arc<dyn arca_core::store::ControlSnapshotStore>,
+    maintenance: Arc<dyn arca_core::store::MaintenanceStore>,
 }
 
 /// Helper to build a `StoreSet` from any type implementing all store traits.
@@ -1159,6 +1262,7 @@ where
         + arca_core::store::ReplicationStore
         + arca_core::store::ControlTombstoneStore
         + arca_core::store::ControlSnapshotStore
+        + arca_core::store::MaintenanceStore
         + 'static,
 {
     StoreSet {
@@ -1174,6 +1278,7 @@ where
         presigned_url: Some(store.clone() as Arc<dyn arca_core::store::PresignedUrlStore>),
         control_tombstone: store.clone() as Arc<dyn arca_core::store::ControlTombstoneStore>,
         control_snapshot: store.clone() as Arc<dyn arca_core::store::ControlSnapshotStore>,
+        maintenance: store.clone() as Arc<dyn arca_core::store::MaintenanceStore>,
         replication: store as Arc<dyn arca_core::store::ReplicationStore>,
     }
 }

@@ -411,7 +411,7 @@ def take_screenshots(rbac_ids):
     """Capture screenshots of the web console using Playwright."""
     print("\n=== Phase B: Taking screenshots ===")
 
-    total = 36
+    total = 37
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     with sync_playwright() as p:
@@ -795,6 +795,22 @@ def take_screenshots(rbac_ids):
         screenshot(page, "console-replication-delete-credential.png")
         page.locator('button:visible:has-text("Cancel")').first.click()
         page.wait_for_timeout(300)
+
+        # ----- 37. Maintenance jobs (Phase 30) -----
+        print(f"  37/{total} console-maintenance.png")
+        # Launch a no-op job via the Admin API so the active-job card (progress
+        # bar / ETA / pause-cancel) is populated when the page is captured. The
+        # worker ticks every 1s; the job runs long enough to stay "running"
+        # through the capture (torn down with the volume afterwards).
+        signed_admin_request(
+            "POST",
+            "/admin/maintenance/jobs",
+            {"type": "noop", "mode": "live", "params": {"n": 400, "delay_ms": 120}},
+        )
+        page.goto(f"{CONSOLE_URL}#/maintenance")
+        page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(3500)
+        screenshot(page, "console-maintenance.png")
 
         browser.close()
 

@@ -27,7 +27,7 @@ fn get_versioning_state(conn: &Connection, bucket: &str) -> VersioningState {
 }
 
 /// Column list for all object SELECT queries (20 columns).
-const OBJECT_COLUMNS: &str = "bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status, is_tombstone, lock_updated_at";
+const OBJECT_COLUMNS: &str = "bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status, is_tombstone, lock_updated_at, content_updated_at";
 
 #[async_trait::async_trait]
 impl MetadataStore for SqliteStore {
@@ -442,6 +442,7 @@ impl MetadataStore for SqliteStore {
                             checksum_value: None,
                             replication_status: None,
                             lock_updated_at: None,
+                            content_updated_at: None,
                         })
                     }
                     VersioningState::Suspended => {
@@ -611,93 +612,62 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;
-                let metadata_json =
-                    serde_json::to_string(&record.metadata).unwrap_or_else(|_| "{}".to_string());
 
-                match &record.version_id {
-                    // Versioned rows are immutable, keyed by version_id, except
-                    // for the lock columns (retention/legal hold), which mutate
-                    // in place WITHOUT bumping last_modified. The LWW guard is
-                    // therefore: strictly newer last_modified wins; on a tie —
-                    // same version, possibly different lock state — strictly
-                    // newer lock_updated_at wins (N1 delivery + N2 ordering).
-                    // A plain `>=` here let the tie pass in BOTH directions: a
-                    // node re-pulling a peer's full manifest after a restart
-                    // re-applied the stale lock-free copy over a newer lock
-                    // state, and the rewrite's fresh seq propagated the
-                    // regression cluster-wide (N2). Identical rows are skipped
-                    // without a rewrite (M7): rewriting would stamp a fresh
-                    // seq and keep two caught-up nodes redelivering their
-                    // whole tables to each other forever.
-                    Some(vid) => {
-                        let sql = format!(
-                            "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3"
-                        );
-                        let existing: Option<ObjectRecord> = match tx.query_row(
-                            &sql,
-                            params![record.bucket, record.key, vid],
-                            |row| Ok(row_to_object_record(row)),
-                        ) {
-                            Ok(rec) => Some(rec?),
-                            Err(rusqlite::Error::QueryReturnedNoRows) => None,
-                            Err(e) => return Err(e.into()),
-                        };
-                        let should_write = match &existing {
-                            None => true,
-                            Some(ex) => {
-                                let newer = record.last_modified > ex.last_modified
-                                    || (record.last_modified == ex.last_modified
-                                        && record.lock_updated_at > ex.lock_updated_at);
-                                newer && !record.same_replicated_content(ex)
-                            }
-                        };
-                        if should_write {
-                            tx.execute(
-                                "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
-                                params![record.bucket, record.key, vid],
-                            )?;
-                            insert_replicated_row(&tx, &record, &metadata_json)?;
-                        }
-                    }
-                    // Null-version rows form an LWW register per (bucket, key):
-                    // unversioned/suspended overwrites resolve by
-                    // (last_modified, blob_id), with lock_updated_at as the
-                    // final tiebreak for the same physical row whose lock state
-                    // changed in place (N1/N2 — see the versioned branch).
-                    // Same M7 identical-row skip as the versioned branch.
-                    None => {
-                        let sql = format!(
-                            "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL"
-                        );
-                        let existing: Option<ObjectRecord> = match tx.query_row(
-                            &sql,
-                            params![record.bucket, record.key],
-                            |row| Ok(row_to_object_record(row)),
-                        ) {
-                            Ok(rec) => Some(rec?),
-                            Err(rusqlite::Error::QueryReturnedNoRows) => None,
-                            Err(e) => return Err(e.into()),
-                        };
-                        let should_write = match &existing {
-                            None => true,
-                            Some(ex) => {
-                                let lww = record.last_modified > ex.last_modified
-                                    || (record.last_modified == ex.last_modified
-                                        && record.blob_id.0 > ex.blob_id.0)
-                                    || (record.last_modified == ex.last_modified
-                                        && record.blob_id == ex.blob_id
-                                        && record.lock_updated_at > ex.lock_updated_at);
-                                lww && !record.same_replicated_content(ex)
-                            }
-                        };
-                        if should_write {
-                            tx.execute(
-                                "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
-                                params![record.bucket, record.key],
-                            )?;
-                            insert_replicated_row(&tx, &record, &metadata_json)?;
-                        }
-                    }
+                // Fetch the local row for this exact version (null-version rows
+                // form a single LWW register per (bucket, key); versioned rows
+                // are keyed by version_id). The write decision is centralized in
+                // ObjectRecord::resolve_replicated: strictly newer last_modified
+                // replaces the whole row; on a tie the lock register
+                // (lock_updated_at) and the content register (content_updated_at)
+                // are merged independently so a re-encryption and a lock change
+                // never clobber each other (N2 ordering + Phase 30 WORM safety),
+                // and an identical redelivery is skipped without a rewrite so two
+                // caught-up nodes don't redeliver forever (M7).
+                let (select_sql, delete_sql) = match &record.version_id {
+                    Some(_) => (
+                        format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3"),
+                        "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
+                    ),
+                    None => (
+                        format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL"),
+                        "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
+                    ),
+                };
+
+                let existing: Option<ObjectRecord> = match &record.version_id {
+                    Some(vid) => match tx.query_row(
+                        &select_sql,
+                        params![record.bucket, record.key, vid],
+                        |row| Ok(row_to_object_record(row)),
+                    ) {
+                        Ok(rec) => Some(rec?),
+                        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+                        Err(e) => return Err(e.into()),
+                    },
+                    None => match tx.query_row(
+                        &select_sql,
+                        params![record.bucket, record.key],
+                        |row| Ok(row_to_object_record(row)),
+                    ) {
+                        Ok(rec) => Some(rec?),
+                        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+                        Err(e) => return Err(e.into()),
+                    },
+                };
+
+                let to_write = match &existing {
+                    None => Some(record.clone()),
+                    Some(ex) => record.resolve_replicated(ex),
+                };
+
+                if let Some(row) = to_write {
+                    let metadata_json =
+                        serde_json::to_string(&row.metadata).unwrap_or_else(|_| "{}".to_string());
+                    match &record.version_id {
+                        Some(vid) => tx.execute(delete_sql, params![record.bucket, record.key, vid])?,
+                        None => tx.execute(delete_sql, params![record.bucket, record.key])?,
+                    };
+                    insert_replicated_row(&tx, &row, &metadata_json)?;
                 }
 
                 recompute_is_latest(&tx, &record.bucket, &record.key)?;
@@ -871,6 +841,29 @@ impl MetadataStore for SqliteStore {
             })
             .await
             .map_err(|e: TrError| ArcaError::Internal(format!("current_object_seq: {e}")))
+    }
+
+    async fn seed_object_seq_to_max(&self) -> Result<u64, ArcaError> {
+        // Bump the counter UP to MAX(seq) over the rows when it lags; never
+        // rewind it (a rewind would trip peer D3c rewind detection). Both the
+        // read and the conditional update run on the write connection in one
+        // call so no concurrent write races between them (this tool runs with
+        // the server stopped, but keep it correct regardless).
+        self.conn
+            .call(move |conn| {
+                let max_seq: i64 = conn
+                    .query_row("SELECT COALESCE(MAX(seq), 0) FROM objects", [], |row| {
+                        row.get(0)
+                    })?;
+                conn.execute(
+                    "UPDATE object_seq SET value = ?1 WHERE value < ?1",
+                    params![max_seq],
+                )?;
+                let v: i64 = conn.query_row("SELECT value FROM object_seq", [], |row| row.get(0))?;
+                Ok(v as u64)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("seed_object_seq_to_max: {e}")))
     }
 
     async fn list_referenced_blob_ids(&self) -> Result<Vec<BlobId>, ArcaError> {
@@ -1574,6 +1567,106 @@ impl MetadataStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("set_object_legal_hold: {e}")))
     }
 
+    async fn update_object_encryption(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+        algorithm: Option<&str>,
+        key_id: Option<&str>,
+    ) -> Result<bool, ArcaError> {
+        let bucket = bucket.to_string();
+        let key = key.to_string();
+        let version_id = version_id.map(|s| s.to_string());
+        let algorithm = algorithm.map(|s| s.to_string());
+        let key_id = key_id.map(|s| s.to_string());
+
+        self.conn
+            .call(move |conn| {
+                let tx = conn.transaction()?;
+                // Fresh seq so the re-encryption travels to peers via the
+                // changed-since manifest; last_modified/ETag are untouched (the
+                // logical object is unchanged). A fresh content_updated_at is the
+                // cluster LWW convergence dimension for the CONTENT column group
+                // (blob_id + encryption): re-encryption is an in-place row change
+                // that does NOT bump last_modified, so peers adopt it via
+                // content_updated_at. It is deliberately SEPARATE from
+                // lock_updated_at — the two dimensions order disjoint column
+                // groups, so a re-encryption never clobbers a peer's newer lock
+                // state and vice versa (see apply_remote_object's per-group
+                // merge). Seq taken before the row UPDATE per the
+                // next_object_seq lock-order rule.
+                let seq = next_object_seq(&tx)?;
+                let content_updated_at = chrono::Utc::now().to_rfc3339();
+                let rows = if let Some(ref vid) = version_id {
+                    tx.execute(
+                        "UPDATE objects SET encryption_algorithm = ?1, encryption_key_id = ?2, seq = ?3, content_updated_at = ?4 \
+                         WHERE bucket = ?5 AND key = ?6 AND version_id = ?7",
+                        params![algorithm, key_id, seq, content_updated_at, bucket, key, vid],
+                    )?
+                } else {
+                    tx.execute(
+                        "UPDATE objects SET encryption_algorithm = ?1, encryption_key_id = ?2, seq = ?3, content_updated_at = ?4 \
+                         WHERE bucket = ?5 AND key = ?6 AND is_latest = 1",
+                        params![algorithm, key_id, seq, content_updated_at, bucket, key],
+                    )?
+                };
+                tx.commit()?;
+                Ok(rows > 0)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("update_object_encryption: {e}")))
+    }
+
+    async fn update_object_encryption_cas(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+        old_blob_id: &BlobId,
+        new_blob_id: &BlobId,
+        algorithm: Option<&str>,
+        key_id: Option<&str>,
+    ) -> Result<bool, ArcaError> {
+        let bucket = bucket.to_string();
+        let key = key.to_string();
+        let version_id = version_id.map(|s| s.to_string());
+        let old_blob_id = old_blob_id.0.clone();
+        let new_blob_id = new_blob_id.0.clone();
+        let algorithm = algorithm.map(|s| s.to_string());
+        let key_id = key_id.map(|s| s.to_string());
+
+        self.conn
+            .call(move |conn| {
+                let tx = conn.transaction()?;
+                // CAS guard on blob_id: a concurrent client overwrite already
+                // swapped the blob, in which case 0 rows match and the caller
+                // discards the freshly written blob. A fresh content_updated_at
+                // is the cluster LWW convergence dimension for the content group
+                // (see update_object_encryption); it is independent of
+                // lock_updated_at so the swap never disturbs lock state.
+                let seq = next_object_seq(&tx)?;
+                let content_updated_at = chrono::Utc::now().to_rfc3339();
+                let rows = if let Some(ref vid) = version_id {
+                    tx.execute(
+                        "UPDATE objects SET blob_id = ?1, encryption_algorithm = ?2, encryption_key_id = ?3, seq = ?4, content_updated_at = ?5 \
+                         WHERE bucket = ?6 AND key = ?7 AND version_id = ?8 AND blob_id = ?9",
+                        params![new_blob_id, algorithm, key_id, seq, content_updated_at, bucket, key, vid, old_blob_id],
+                    )?
+                } else {
+                    tx.execute(
+                        "UPDATE objects SET blob_id = ?1, encryption_algorithm = ?2, encryption_key_id = ?3, seq = ?4, content_updated_at = ?5 \
+                         WHERE bucket = ?6 AND key = ?7 AND is_latest = 1 AND blob_id = ?8",
+                        params![new_blob_id, algorithm, key_id, seq, content_updated_at, bucket, key, old_blob_id],
+                    )?
+                };
+                tx.commit()?;
+                Ok(rows > 0)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("update_object_encryption_cas: {e}")))
+    }
+
     async fn list_expired_objects(
         &self,
         bucket: &str,
@@ -1828,10 +1921,11 @@ fn insert_object_row(
 ) -> Result<(), rusqlite::Error> {
     let retain_until_str = record.retain_until_date.map(|dt| dt.to_rfc3339());
     let lock_updated_str = record.lock_updated_at.map(|dt| dt.to_rfc3339());
+    let content_updated_str = record.content_updated_at.map(|dt| dt.to_rfc3339());
     let seq = next_object_seq(conn)?;
     conn.execute(
-        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq, is_tombstone, lock_updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
+        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq, is_tombstone, lock_updated_at, content_updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
         params![
             record.bucket,
             record.key,
@@ -1856,6 +1950,7 @@ fn insert_object_row(
             seq,
             record.is_tombstone as i32,
             lock_updated_str,
+            content_updated_str,
         ],
     )?;
     Ok(())
@@ -1899,10 +1994,11 @@ fn insert_replicated_row(
 ) -> Result<(), rusqlite::Error> {
     let retain_until_str = record.retain_until_date.map(|dt| dt.to_rfc3339());
     let lock_updated_str = record.lock_updated_at.map(|dt| dt.to_rfc3339());
+    let content_updated_str = record.content_updated_at.map(|dt| dt.to_rfc3339());
     let seq = next_object_seq(conn)?;
     conn.execute(
-        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status, seq, is_tombstone, lock_updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
+        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status, seq, is_tombstone, lock_updated_at, content_updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
         params![
             record.bucket,
             record.key,
@@ -1927,6 +2023,7 @@ fn insert_replicated_row(
             seq,
             record.is_tombstone as i32,
             lock_updated_str,
+            content_updated_str,
         ],
     )?;
     Ok(())
@@ -2077,6 +2174,12 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
             .map(|dt| dt.with_timezone(&chrono::Utc))
             .ok()
     });
+    let content_updated_at_str: Option<String> = row.get(23).unwrap_or(None);
+    let content_updated_at = content_updated_at_str.and_then(|s| {
+        DateTime::parse_from_rfc3339(&s)
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .ok()
+    });
 
     Ok(ObjectRecord {
         bucket: row.get(0)?,
@@ -2102,6 +2205,7 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
         checksum_value,
         replication_status,
         lock_updated_at,
+        content_updated_at,
     })
 }
 
@@ -2138,6 +2242,7 @@ mod tests {
             checksum_value: None,
             replication_status: None,
             lock_updated_at: None,
+            content_updated_at: None,
         }
     }
 
@@ -3564,5 +3669,183 @@ mod tests {
             store.purge_tombstones(chrono::Utc::now() + chrono::Duration::seconds(1)).await.unwrap(),
             2
         );
+    }
+
+    // -- Re-encryption (Phase 30 M0) --
+
+    #[tokio::test]
+    async fn update_object_encryption_sets_and_clears_columns() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        store.put_object(&make_record("b", "k")).await.unwrap();
+        let seq_before = store.current_object_seq().await.unwrap();
+
+        // Set encryption metadata in place (same blob_id).
+        assert!(store
+            .update_object_encryption("b", "k", None, Some("AES256"), Some("deadbeef"))
+            .await
+            .unwrap());
+        let got = store.get_object("b", "k").await.unwrap().unwrap();
+        assert_eq!(got.encryption_algorithm.as_deref(), Some("AES256"));
+        assert_eq!(got.encryption_key_id.as_deref(), Some("deadbeef"));
+        assert_eq!(got.blob_id.0, "test-blob-id", "blob_id is unchanged in place");
+        // The change bumped the node-local seq so it travels via the manifest.
+        assert!(store.current_object_seq().await.unwrap() > seq_before);
+
+        // Clearing (after a decrypt) drops both columns.
+        assert!(store
+            .update_object_encryption("b", "k", None, None, None)
+            .await
+            .unwrap());
+        let got = store.get_object("b", "k").await.unwrap().unwrap();
+        assert!(got.encryption_algorithm.is_none());
+        assert!(got.encryption_key_id.is_none());
+
+        // Missing object → no row updated.
+        assert!(!store
+            .update_object_encryption("b", "missing", None, Some("AES256"), None)
+            .await
+            .unwrap());
+    }
+
+    #[tokio::test]
+    async fn update_object_encryption_cas_swaps_only_on_matching_blob_id() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut r = make_record("b", "k");
+        r.blob_id = BlobId("old-blob".to_string());
+        store.put_object(&r).await.unwrap();
+
+        // CAS with the wrong old blob_id does nothing (a concurrent overwrite won).
+        assert!(!store
+            .update_object_encryption_cas(
+                "b",
+                "k",
+                None,
+                &BlobId("stale".to_string()),
+                &BlobId("new-blob".to_string()),
+                Some("AES256"),
+                Some("deadbeef"),
+            )
+            .await
+            .unwrap());
+        let got = store.get_object("b", "k").await.unwrap().unwrap();
+        assert_eq!(got.blob_id.0, "old-blob");
+        assert!(got.encryption_algorithm.is_none());
+
+        // CAS with the matching old blob_id swaps the blob and sets encryption.
+        assert!(store
+            .update_object_encryption_cas(
+                "b",
+                "k",
+                None,
+                &BlobId("old-blob".to_string()),
+                &BlobId("new-blob".to_string()),
+                Some("AES256"),
+                Some("deadbeef"),
+            )
+            .await
+            .unwrap());
+        let got = store.get_object("b", "k").await.unwrap().unwrap();
+        assert_eq!(got.blob_id.0, "new-blob");
+        assert_eq!(got.encryption_algorithm.as_deref(), Some("AES256"));
+        assert_eq!(got.encryption_key_id.as_deref(), Some("deadbeef"));
+    }
+
+    #[tokio::test]
+    async fn apply_remote_reencrypted_row_converges_via_content_updated_at() {
+        // A re-encrypted row keeps the same last_modified but changes blob_id +
+        // encryption columns and stamps a fresh content_updated_at (its own LWW
+        // dimension, TD-021). It MUST be adopted by a peer (cluster
+        // convergence), and a stale plain copy with the same last_modified must
+        // NOT clobber it back.
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut orig = make_record("b", "k");
+        orig.blob_id = BlobId("old-blob".to_string());
+        store.put_object(&orig).await.unwrap();
+        let stored = store.get_object("b", "k").await.unwrap().unwrap();
+        assert!(stored.encryption_algorithm.is_none());
+
+        let mut reenc = stored.clone();
+        reenc.blob_id = BlobId("new-blob".to_string());
+        reenc.encryption_algorithm = Some("AES256".to_string());
+        reenc.encryption_key_id = Some("deadbeef".to_string());
+        reenc.content_updated_at = Some(stored.last_modified + chrono::Duration::seconds(5));
+
+        store.apply_remote_object(&reenc).await.unwrap();
+        let after = store.get_object("b", "k").await.unwrap().unwrap();
+        assert_eq!(after.blob_id.0, "new-blob");
+        assert_eq!(after.encryption_algorithm.as_deref(), Some("AES256"));
+
+        // Re-applying the stale plain copy (content_updated_at None, same
+        // last_modified) must not revert the re-encryption.
+        store.apply_remote_object(&stored).await.unwrap();
+        let after2 = store.get_object("b", "k").await.unwrap().unwrap();
+        assert_eq!(
+            after2.blob_id.0, "new-blob",
+            "stale plain copy must not clobber the re-encryption"
+        );
+        assert_eq!(after2.encryption_algorithm.as_deref(), Some("AES256"));
+    }
+
+    #[tokio::test]
+    async fn apply_remote_reencryption_and_lock_change_merge_independently() {
+        // TD-021: the whole point of the dedicated content_updated_at dimension.
+        // A re-encryption (content columns, content_updated_at) and a lock
+        // change (lock columns, lock_updated_at) can race on two nodes over the
+        // same version. Neither must clobber the other: after both are applied
+        // in EITHER order the row must carry BOTH the new blob AND the new lock
+        // state. Reusing one timestamp for both (the pre-fix behaviour) made the
+        // later-applied whole-row copy revert the other group.
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut orig = make_record("b", "k");
+        orig.version_id = Some("v1".to_string());
+        orig.blob_id = BlobId("old-blob".to_string());
+        store.apply_remote_object(&orig).await.unwrap();
+        let base = store.get_object_version("b", "k", "v1").await.unwrap().unwrap();
+
+        // Node A re-encrypts (content group only).
+        let mut reenc = base.clone();
+        reenc.blob_id = BlobId("new-blob".to_string());
+        reenc.encryption_algorithm = Some("AES256".to_string());
+        reenc.encryption_key_id = Some("deadbeef".to_string());
+        reenc.content_updated_at = Some(base.last_modified + chrono::Duration::seconds(5));
+
+        // Node B locks the SAME original version (lock group only, still the
+        // old plain blob — B never saw the re-encryption).
+        let mut locked = base.clone();
+        locked.retention_mode = Some("GOVERNANCE".to_string());
+        locked.retain_until_date = Some(base.last_modified + chrono::Duration::days(3650));
+        locked.lock_updated_at = Some(base.last_modified + chrono::Duration::seconds(7));
+
+        // Apply re-encryption then lock: lock must not revert the blob.
+        store.apply_remote_object(&reenc).await.unwrap();
+        store.apply_remote_object(&locked).await.unwrap();
+        let merged = store.get_object_version("b", "k", "v1").await.unwrap().unwrap();
+        assert_eq!(merged.blob_id.0, "new-blob", "lock must not revert re-encryption");
+        assert_eq!(merged.encryption_algorithm.as_deref(), Some("AES256"));
+        assert_eq!(merged.retention_mode.as_deref(), Some("GOVERNANCE"), "lock preserved");
+
+        // And the reverse order on a fresh key must converge to the same state.
+        let mut orig2 = make_record("b", "k2");
+        orig2.version_id = Some("v1".to_string());
+        orig2.blob_id = BlobId("old-blob".to_string());
+        store.apply_remote_object(&orig2).await.unwrap();
+        let base2 = store.get_object_version("b", "k2", "v1").await.unwrap().unwrap();
+        let mut reenc2 = base2.clone();
+        reenc2.blob_id = BlobId("new-blob".to_string());
+        reenc2.encryption_algorithm = Some("AES256".to_string());
+        reenc2.content_updated_at = Some(base2.last_modified + chrono::Duration::seconds(5));
+        let mut locked2 = base2.clone();
+        locked2.retention_mode = Some("GOVERNANCE".to_string());
+        locked2.retain_until_date = Some(base2.last_modified + chrono::Duration::days(3650));
+        locked2.lock_updated_at = Some(base2.last_modified + chrono::Duration::seconds(7));
+        store.apply_remote_object(&locked2).await.unwrap();
+        store.apply_remote_object(&reenc2).await.unwrap();
+        let merged2 = store.get_object_version("b", "k2", "v1").await.unwrap().unwrap();
+        assert_eq!(merged2.blob_id.0, "new-blob", "re-encryption applied after lock");
+        assert_eq!(merged2.retention_mode.as_deref(), Some("GOVERNANCE"), "lock not reverted by re-encryption");
     }
 }

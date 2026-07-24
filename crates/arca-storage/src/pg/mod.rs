@@ -8,6 +8,7 @@ mod control_snapshot;
 mod control_tombstone;
 mod credential;
 mod grant;
+mod maintenance;
 mod metadata;
 mod metrics;
 mod notification;
@@ -95,6 +96,16 @@ const MIGRATIONS: &[Migration] = &[
         description: "Add lock_updated_at to objects (N2: lock-state LWW dimension)",
         sql: include_str!("migrations/0011_lock_updated_at.sql"),
     },
+    Migration {
+        version: 12,
+        description: "Create maintenance_jobs and maintenance_job_logs (Phase 30)",
+        sql: include_str!("migrations/0012_maintenance_jobs.sql"),
+    },
+    Migration {
+        version: 13,
+        description: "Add content_updated_at to objects (Phase 30: re-encryption LWW dimension, TD-021)",
+        sql: include_str!("migrations/0013_content_updated_at.sql"),
+    },
 ];
 
 impl PgStore {
@@ -121,6 +132,12 @@ impl PgStore {
     /// Whether hard deletes should tombstone (cluster mode) rather than remove.
     pub(crate) fn cluster_mode(&self) -> bool {
         self.cluster_mode.load(Ordering::Relaxed)
+    }
+
+    /// The connection pool. Used by the backend-migration copier
+    /// ([`crate::migration`]) which issues dynamic per-table SQL.
+    pub(crate) fn pool(&self) -> &sqlx_postgres::PgPool {
+        &self.pool
     }
 }
 

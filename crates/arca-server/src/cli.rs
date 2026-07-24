@@ -127,6 +127,90 @@ pub enum Command {
         bucket: Option<String>,
     },
 
+    /// Encrypt existing plaintext blobs in place (offline, atomic, idempotent)
+    EncryptExisting {
+        /// Path to the configuration file
+        #[arg(long, default_value = "/etc/arca/config.toml")]
+        config_path: PathBuf,
+
+        /// Only report what would change; no files or rows written
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Restrict to a single bucket
+        #[arg(long)]
+        bucket: Option<String>,
+
+        /// Restrict to keys with this prefix
+        #[arg(long)]
+        prefix: Option<String>,
+    },
+
+    /// Decrypt existing SSE-S3 blobs back to plaintext in place (offline, atomic, idempotent)
+    DecryptExisting {
+        /// Path to the configuration file
+        #[arg(long, default_value = "/etc/arca/config.toml")]
+        config_path: PathBuf,
+
+        /// Only report what would change; no files or rows written
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Restrict to a single bucket
+        #[arg(long)]
+        bucket: Option<String>,
+
+        /// Restrict to keys with this prefix
+        #[arg(long)]
+        prefix: Option<String>,
+    },
+
+    /// Migrate ALL metadata to the other backend in place (offline). Blob files
+    /// are not touched; after a successful run, switch `metadata_backend` in the
+    /// config and restart onto the new backend.
+    MigrateDb {
+        /// Path to the configuration file
+        #[arg(long, default_value = "/etc/arca/config.toml")]
+        config_path: PathBuf,
+
+        /// Target backend to copy metadata INTO (the source is the configured
+        /// metadata_backend)
+        #[arg(long, value_name = "BACKEND")]
+        to: MigrateBackend,
+
+        /// Overwrite a non-empty target: delete every destination row first
+        #[arg(long)]
+        force: bool,
+    },
+
+    /// Guided in-place transition between standalone and HA cluster (offline).
+    /// The cluster is fully replicated (not sharded), so there is no data
+    /// redistribution: this generates the `[cluster]` config stanza and runs
+    /// small DB ops. Exactly one of `--to-cluster` / `--to-single` is required.
+    MigrateTopology {
+        /// Path to the configuration file
+        #[arg(long, default_value = "/etc/arca/config.toml")]
+        config_path: PathBuf,
+
+        /// Single -> HA: make this standalone instance the FIRST node of a new
+        /// cluster (emits the [cluster] stanza; reconciles the seq counter).
+        #[arg(long, conflicts_with = "to_single", required_unless_present = "to_single")]
+        to_cluster: bool,
+
+        /// HA -> standalone: collapse the cluster back to THIS surviving node
+        /// (purges cluster-only tombstones; VACUUMs SQLite). Requires --force.
+        #[arg(long, conflicts_with = "to_cluster", required_unless_present = "to_cluster")]
+        to_single: bool,
+
+        /// (--to-cluster) Also write the generated [cluster] stanza to this file
+        #[arg(long, value_name = "FILE")]
+        output: Option<PathBuf>,
+
+        /// (--to-single) Confirm every peer is synced AND stopped, then proceed
+        #[arg(long)]
+        force: bool,
+    },
+
     /// Manage users (offline, direct database access)
     User {
         /// Path to the configuration file
@@ -146,6 +230,22 @@ pub enum Command {
         #[command(subcommand)]
         action: ClusterAction,
     },
+}
+
+/// Target metadata backend for `arca migrate-db`.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum MigrateBackend {
+    Sqlite,
+    Postgres,
+}
+
+impl MigrateBackend {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MigrateBackend::Sqlite => "sqlite",
+            MigrateBackend::Postgres => "postgres",
+        }
+    }
 }
 
 #[derive(Debug, Clone, ValueEnum)]

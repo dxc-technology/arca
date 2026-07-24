@@ -655,6 +655,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../guide/maintenance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration & Maintenance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../guide/connectors/" class="md-nav__link">
         
   
@@ -1474,6 +1502,78 @@
     <span class="md-ellipsis">
       
         Generate Presigned URL
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#maintenance-jobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Maintenance Jobs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Maintenance Jobs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#job-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Job object
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-a-job" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a Job
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-jobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List Jobs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-a-job-with-logs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get a Job (with logs)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pause-resume-cancel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pause / Resume / Cancel
       
     </span>
   </a>
@@ -2393,6 +2493,78 @@
     <span class="md-ellipsis">
       
         Generate Presigned URL
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#maintenance-jobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Maintenance Jobs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Maintenance Jobs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#job-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Job object
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#create-a-job" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a Job
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#list-jobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        List Jobs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get-a-job-with-logs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Get a Job (with logs)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pause-resume-cancel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pause / Resume / Cancel
       
     </span>
   </a>
@@ -3641,6 +3813,164 @@
 </tbody>
 </table>
 <p>The generated URL can be used with <code>curl</code>, browsers, or any HTTP client without AWS credentials.</p>
+<hr />
+<h2 id="maintenance-jobs">Maintenance Jobs<a class="headerlink" href="#maintenance-jobs" title="Permanent link">&para;</a></h2>
+<p>Long-running maintenance operations (re-encryption, metadata migration) are tracked as jobs and processed by a background worker. Only <strong>one job runs at a time</strong>, progress is persisted across restarts, and jobs can be paused, resumed and cancelled. In a cluster the worker is leader-gated. See the <a href="../../guide/maintenance/">Migration &amp; Maintenance guide</a> for the full model (live vs maintenance mode, leader-gating, the re-encryption / migrate-db / migrate-topology operations).</p>
+<p>Known job types: <code>noop</code>, <code>encrypt</code>, <code>decrypt</code>, <code>migrate-db</code>.</p>
+<h3 id="job-object">Job object<a class="headerlink" href="#job-object" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-75-1" name="__codelineno-75-1" href="#__codelineno-75-1"></a><span class="p">{</span>
+<a id="__codelineno-75-2" name="__codelineno-75-2" href="#__codelineno-75-2"></a><span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;8f3c…&quot;</span><span class="p">,</span>
+<a id="__codelineno-75-3" name="__codelineno-75-3" href="#__codelineno-75-3"></a><span class="w">    </span><span class="nt">&quot;job_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;encrypt&quot;</span><span class="p">,</span>
+<a id="__codelineno-75-4" name="__codelineno-75-4" href="#__codelineno-75-4"></a><span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;running&quot;</span><span class="p">,</span>
+<a id="__codelineno-75-5" name="__codelineno-75-5" href="#__codelineno-75-5"></a><span class="w">    </span><span class="nt">&quot;mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;live&quot;</span><span class="p">,</span>
+<a id="__codelineno-75-6" name="__codelineno-75-6" href="#__codelineno-75-6"></a><span class="w">    </span><span class="nt">&quot;params&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;bucket&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;my-bucket&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rate_bytes_per_sec&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10485760</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-75-7" name="__codelineno-75-7" href="#__codelineno-75-7"></a><span class="w">    </span><span class="nt">&quot;total&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1280</span><span class="p">,</span>
+<a id="__codelineno-75-8" name="__codelineno-75-8" href="#__codelineno-75-8"></a><span class="w">    </span><span class="nt">&quot;done&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">412</span><span class="p">,</span>
+<a id="__codelineno-75-9" name="__codelineno-75-9" href="#__codelineno-75-9"></a><span class="w">    </span><span class="nt">&quot;rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">37.5</span><span class="p">,</span>
+<a id="__codelineno-75-10" name="__codelineno-75-10" href="#__codelineno-75-10"></a><span class="w">    </span><span class="nt">&quot;last_error&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<a id="__codelineno-75-11" name="__codelineno-75-11" href="#__codelineno-75-11"></a><span class="w">    </span><span class="nt">&quot;created_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-06-24T10:00:00Z&quot;</span><span class="p">,</span>
+<a id="__codelineno-75-12" name="__codelineno-75-12" href="#__codelineno-75-12"></a><span class="w">    </span><span class="nt">&quot;updated_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-06-24T10:02:11Z&quot;</span><span class="p">,</span>
+<a id="__codelineno-75-13" name="__codelineno-75-13" href="#__codelineno-75-13"></a><span class="w">    </span><span class="nt">&quot;started_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-06-24T10:00:01Z&quot;</span><span class="p">,</span>
+<a id="__codelineno-75-14" name="__codelineno-75-14" href="#__codelineno-75-14"></a><span class="w">    </span><span class="nt">&quot;finished_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<a id="__codelineno-75-15" name="__codelineno-75-15" href="#__codelineno-75-15"></a><span class="p">}</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>string</td>
+<td>Job id (UUID)</td>
+</tr>
+<tr>
+<td><code>job_type</code></td>
+<td>string</td>
+<td><code>noop</code> | <code>encrypt</code> | <code>decrypt</code> | <code>migrate-db</code></td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>string</td>
+<td><code>pending</code> | <code>running</code> | <code>paused</code> | <code>completed</code> | <code>failed</code> | <code>cancelled</code></td>
+</tr>
+<tr>
+<td><code>mode</code></td>
+<td>string</td>
+<td><code>live</code> (zero-downtime) | <code>maintenance</code> (drains the S3 API on the node)</td>
+</tr>
+<tr>
+<td><code>params</code></td>
+<td>object</td>
+<td>Job-type-specific parameters</td>
+</tr>
+<tr>
+<td><code>total</code> / <code>done</code></td>
+<td>integer</td>
+<td>Progress counters</td>
+</tr>
+<tr>
+<td><code>rate</code></td>
+<td>number</td>
+<td>Current throughput (items/sec)</td>
+</tr>
+<tr>
+<td><code>last_error</code></td>
+<td>string | null</td>
+<td>Error message if the job failed</td>
+</tr>
+<tr>
+<td><code>created_at</code> / <code>updated_at</code> / <code>started_at</code> / <code>finished_at</code></td>
+<td>string | null</td>
+<td>ISO 8601 timestamps</td>
+</tr>
+</tbody>
+</table>
+<h3 id="create-a-job">Create a Job<a class="headerlink" href="#create-a-job" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-76-1" name="__codelineno-76-1" href="#__codelineno-76-1"></a>POST /admin/maintenance/jobs
+</code></pre></div>
+<p><strong>Auth</strong>: SigV4 (admin)</p>
+<p><strong>Request body</strong>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-77-1" name="__codelineno-77-1" href="#__codelineno-77-1"></a><span class="p">{</span>
+<a id="__codelineno-77-2" name="__codelineno-77-2" href="#__codelineno-77-2"></a><span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;encrypt&quot;</span><span class="p">,</span>
+<a id="__codelineno-77-3" name="__codelineno-77-3" href="#__codelineno-77-3"></a><span class="w">    </span><span class="nt">&quot;mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;live&quot;</span><span class="p">,</span>
+<a id="__codelineno-77-4" name="__codelineno-77-4" href="#__codelineno-77-4"></a><span class="w">    </span><span class="nt">&quot;params&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;bucket&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;my-bucket&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;prefix&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;logs/&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rate_bytes_per_sec&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10485760</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-77-5" name="__codelineno-77-5" href="#__codelineno-77-5"></a><span class="p">}</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td>string</td>
+<td>Yes</td>
+<td>One of the known job types</td>
+</tr>
+<tr>
+<td><code>mode</code></td>
+<td>string</td>
+<td>No</td>
+<td><code>live</code> (default) or <code>maintenance</code></td>
+</tr>
+<tr>
+<td><code>params</code></td>
+<td>object</td>
+<td>No</td>
+<td>Job-type parameters (see below)</td>
+</tr>
+</tbody>
+</table>
+<p>Job-type parameters:</p>
+<ul>
+<li><strong><code>encrypt</code> / <code>decrypt</code></strong>: <code>bucket</code> (optional, all buckets if omitted), <code>prefix</code> (optional, all keys if omitted), <code>rate_bytes_per_sec</code> (optional, live mode only, <code>0</code> = unlimited).</li>
+<li><strong><code>migrate-db</code></strong>: <code>target</code> (<code>"sqlite"</code> | <code>"postgres"</code>, required), <code>force</code> (boolean, replace a non-empty destination).</li>
+<li><strong><code>noop</code></strong>: <code>n</code> (steps), <code>delay_ms</code> (optional per-step sleep) — a test job.</li>
+</ul>
+<p><strong>Response</strong> <code>201</code>: the created job object.</p>
+<p><strong>Response</strong> <code>400</code>: unknown job type or invalid mode.</p>
+<p><strong>Response</strong> <code>409</code>: a maintenance job is already active.</p>
+<h3 id="list-jobs">List Jobs<a class="headerlink" href="#list-jobs" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-78-1" name="__codelineno-78-1" href="#__codelineno-78-1"></a>GET /admin/maintenance/jobs
+</code></pre></div>
+<p><strong>Auth</strong>: SigV4 (admin)</p>
+<p><strong>Query parameters</strong>: <code>limit</code> — history page size (default 50, max 500).</p>
+<p><strong>Response</strong> <code>200</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-79-1" name="__codelineno-79-1" href="#__codelineno-79-1"></a><span class="p">{</span>
+<a id="__codelineno-79-2" name="__codelineno-79-2" href="#__codelineno-79-2"></a><span class="w">    </span><span class="nt">&quot;active&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;...&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;the in-flight job, or null&quot;</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-79-3" name="__codelineno-79-3" href="#__codelineno-79-3"></a><span class="w">    </span><span class="nt">&quot;jobs&quot;</span><span class="p">:</span><span class="w">   </span><span class="p">[</span><span class="w"> </span><span class="s2">&quot;...recent history, newest first...&quot;</span><span class="w"> </span><span class="p">]</span>
+<a id="__codelineno-79-4" name="__codelineno-79-4" href="#__codelineno-79-4"></a><span class="p">}</span>
+</code></pre></div>
+<h3 id="get-a-job-with-logs">Get a Job (with logs)<a class="headerlink" href="#get-a-job-with-logs" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-80-1" name="__codelineno-80-1" href="#__codelineno-80-1"></a>GET /admin/maintenance/jobs/{id}
+</code></pre></div>
+<p><strong>Auth</strong>: SigV4 (admin)</p>
+<p><strong>Response</strong> <code>200</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-81-1" name="__codelineno-81-1" href="#__codelineno-81-1"></a><span class="p">{</span>
+<a id="__codelineno-81-2" name="__codelineno-81-2" href="#__codelineno-81-2"></a><span class="w">    </span><span class="nt">&quot;job&quot;</span><span class="p">:</span><span class="w">  </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;...&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;the job object&quot;</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-81-3" name="__codelineno-81-3" href="#__codelineno-81-3"></a><span class="w">    </span><span class="nt">&quot;logs&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;level&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;info&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;job started&quot;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">]</span>
+<a id="__codelineno-81-4" name="__codelineno-81-4" href="#__codelineno-81-4"></a><span class="p">}</span>
+</code></pre></div>
+<p><strong>Response</strong> <code>404</code>: no such job.</p>
+<h3 id="pause-resume-cancel">Pause / Resume / Cancel<a class="headerlink" href="#pause-resume-cancel" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-82-1" name="__codelineno-82-1" href="#__codelineno-82-1"></a>POST   /admin/maintenance/jobs/{id}/pause     # running|pending  -&gt; paused
+<a id="__codelineno-82-2" name="__codelineno-82-2" href="#__codelineno-82-2"></a>POST   /admin/maintenance/jobs/{id}/resume    # paused           -&gt; running
+<a id="__codelineno-82-3" name="__codelineno-82-3" href="#__codelineno-82-3"></a>DELETE /admin/maintenance/jobs/{id}           # any non-terminal -&gt; cancelled
+</code></pre></div>
+<p><strong>Auth</strong>: SigV4 (admin)</p>
+<p>Each returns <code>200</code> with the updated job object.</p>
+<p><strong>Response</strong> <code>404</code>: no such job.</p>
+<p><strong>Response</strong> <code>409</code>: the job is not in a state from which the transition is allowed.</p>
 
 
 

@@ -7,6 +7,7 @@ pub mod control_snapshot;
 pub mod control_tombstone;
 pub mod credential;
 pub mod grant;
+pub mod maintenance;
 pub mod metadata;
 pub mod metrics;
 pub mod notification;
@@ -32,6 +33,10 @@ pub use control_tombstone::{
 };
 pub use credential::CredentialStore;
 pub use grant::GrantStore;
+pub use maintenance::{
+    MaintenanceJob, MaintenanceJobLog, MaintenanceJobMode, MaintenanceJobStatus, MaintenanceStore,
+    DEFAULT_MAX_JOB_LOGS,
+};
 pub use metadata::MetadataStore;
 pub use metrics::{MetricsSnapshot, MetricsStore};
 pub use notification::{NotificationEventFilter, NotificationEventRecord, NotificationStore};

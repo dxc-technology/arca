@@ -11,7 +11,9 @@ use moka::future::Cache;
 
 use arca_core::error::ArcaError;
 use arca_core::store::MetadataStore;
-use arca_core::types::{BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats};
+use arca_core::types::{
+    BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
+};
 
 /// A `MetadataStore` wrapper that caches `head_bucket` and `get_object`
 /// / `get_latest_object` results in memory using LRU eviction and TTL.
@@ -272,6 +274,12 @@ impl MetadataStore for CachingMetadataStore {
         self.inner.current_object_seq().await
     }
 
+    async fn seed_object_seq_to_max(&self) -> Result<u64, ArcaError> {
+        // Counter reconciliation; forwarded so the default no-op doesn't shadow
+        // the backend behind the cache (no cached state depends on the counter).
+        self.inner.seed_object_seq_to_max().await
+    }
+
     async fn purge_tombstones(
         &self,
         before: chrono::DateTime<chrono::Utc>,
@@ -355,6 +363,50 @@ impl MetadataStore for CachingMetadataStore {
         let result = self
             .inner
             .set_object_legal_hold(bucket, key, version_id, status)
+            .await;
+        if result.is_ok() {
+            let cache_key = Self::object_key(bucket, key);
+            self.object_cache.invalidate(&cache_key).await;
+        }
+        result
+    }
+
+    // -- Re-encryption (delegated, invalidate object cache) --
+
+    async fn update_object_encryption(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+        algorithm: Option<&str>,
+        key_id: Option<&str>,
+    ) -> Result<bool, ArcaError> {
+        let result = self
+            .inner
+            .update_object_encryption(bucket, key, version_id, algorithm, key_id)
+            .await;
+        if result.is_ok() {
+            let cache_key = Self::object_key(bucket, key);
+            self.object_cache.invalidate(&cache_key).await;
+        }
+        result
+    }
+
+    async fn update_object_encryption_cas(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+        old_blob_id: &BlobId,
+        new_blob_id: &BlobId,
+        algorithm: Option<&str>,
+        key_id: Option<&str>,
+    ) -> Result<bool, ArcaError> {
+        let result = self
+            .inner
+            .update_object_encryption_cas(
+                bucket, key, version_id, old_blob_id, new_blob_id, algorithm, key_id,
+            )
             .await;
         if result.is_ok() {
             let cache_key = Self::object_key(bucket, key);

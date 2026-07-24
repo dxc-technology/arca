@@ -540,6 +540,11 @@
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"/></svg>
             Monitoring
           </a>
+          <!-- Maintenance (admin only) -->
+          <a x-show="isAdmin" @click="navigate('maintenance')" :class="view === 'maintenance' ? 'text-vault-accent bg-vault-accent/10 border-r-2 border-vault-accent' : 'text-vault-muted hover:text-vault-text hover:bg-white/5'" class="flex items-center gap-3 px-4 py-2.5 text-sm cursor-pointer transition-all duration-150">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M11.42 15.17 17.25 21A2.652 2.652 0 0 0 21 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 1 1-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 0 0 4.486-6.336l-3.276 3.277a3.004 3.004 0 0 1-2.25-2.25l3.276-3.276a4.5 4.5 0 0 0-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437 1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008Z"/></svg>
+            Maintenance
+          </a>
           <!-- Settings (admin only) -->
           <a x-show="isAdmin" @click="navigate('settings')" :class="view === 'settings' ? 'text-vault-accent bg-vault-accent/10 border-r-2 border-vault-accent' : 'text-vault-muted hover:text-vault-text hover:bg-white/5'" class="flex items-center gap-3 px-4 py-2.5 text-sm cursor-pointer transition-all duration-150">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 0 1 1.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.559.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.894.149c-.424.07-.764.383-.929.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 0 1-1.449.12l-.738-.527c-.35-.25-.806-.272-1.204-.107-.397.165-.71.505-.78.929l-.15.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 0 1-.12-1.45l.527-.737c.25-.35.272-.806.108-1.204-.165-.397-.506-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.108-1.204l-.526-.738a1.125 1.125 0 0 1 .12-1.45l.773-.773a1.125 1.125 0 0 1 1.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894ZM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
@@ -5143,6 +5148,398 @@
             </div>
           </div> <!-- /replicationView scope -->
           </div> <!-- /outer p-6 max-w-7xl -->
+        </template>
+
+        <!-- ==================== MAINTENANCE ==================== -->
+        <template x-if="view === 'maintenance'">
+          <div class="p-6 max-w-7xl" x-data="maintenanceView" x-init="init()" @destroy="destroy()">
+            <!-- Header -->
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+              <div class="flex items-center gap-2">
+                <h2 class="text-xl font-semibold tracking-tight">Maintenance</h2>
+                <span class="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-vault-muted font-medium px-2 py-0.5 rounded-full border border-vault-border/40">
+                  <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+                  Auto-refresh 2s
+                </span>
+              </div>
+              <div class="flex items-center gap-3">
+                <button @click="load()" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-vault-muted hover:text-vault-text border border-vault-border/30 hover:border-vault-border/60 transition" title="Reload now">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182"/></svg>
+                  Reload
+                </button>
+              </div>
+            </div>
+
+            <!-- Loading -->
+            <div x-show="loading" class="flex justify-center py-16">
+              <svg class="animate-spin h-6 w-6 text-vault-accent" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            </div>
+
+            <!-- Top row: launch panel + active job -->
+            <div x-show="!loading" class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+
+              <!-- LAUNCH PANEL -->
+              <div class="glass rounded-xl p-5">
+                <h3 class="text-sm font-semibold uppercase tracking-wider text-vault-accent mb-4">Start a job</h3>
+
+                <div class="space-y-4">
+                  <!-- Job type -->
+                  <div>
+                    <label class="text-[11px] text-vault-muted uppercase tracking-wider block mb-1.5">Job type</label>
+                    <select x-model="launch.type" :disabled="jobActive || launching"
+                      class="setting-number w-full px-3 py-2 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm focus:outline-none focus:border-vault-accent/50 transition disabled:opacity-40">
+                      <template x-for="t in jobTypes" :key="t.id">
+                        <option :value="t.id" x-text="t.label"></option>
+                      </template>
+                    </select>
+                  </div>
+
+                  <!-- Mode -->
+                  <div>
+                    <label class="text-[11px] text-vault-muted uppercase tracking-wider block mb-1.5">Mode</label>
+                    <div class="grid grid-cols-2 gap-2">
+                      <label class="flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition"
+                        :class="launch.mode === 'live' ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-vault-border/40 hover:border-vault-border'">
+                        <input type="radio" value="live" x-model="launch.mode" :disabled="jobActive || launching" class="accent-emerald-400">
+                        <span class="text-sm">Live</span>
+                      </label>
+                      <label class="flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition"
+                        :class="launch.mode === 'maintenance' ? 'border-orange-500/40 bg-orange-500/5' : 'border-vault-border/40 hover:border-vault-border'">
+                        <input type="radio" value="maintenance" x-model="launch.mode" :disabled="jobActive || launching" class="accent-orange-400">
+                        <span class="text-sm">Maintenance</span>
+                      </label>
+                    </div>
+                    <p class="text-[11px] text-vault-muted mt-1.5" x-show="launch.mode === 'live'">Runs alongside normal traffic. S3 stays available on this node.</p>
+                    <p class="text-[11px] text-orange-400/90 mt-1.5" x-show="launch.mode === 'maintenance'">Drains S3 on this node before running. Clients are turned away here until the job finishes.</p>
+                  </div>
+
+                  <!-- noop params -->
+                  <div x-show="launchParamsKind === 'noop'" class="grid grid-cols-2 gap-3">
+                    <div>
+                      <label class="text-[11px] text-vault-muted uppercase tracking-wider block mb-1.5">Steps</label>
+                      <input type="number" min="1" x-model.number="launch.n" :disabled="jobActive || launching"
+                        class="setting-number w-full px-3 py-2 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm focus:outline-none focus:border-vault-accent/50 transition disabled:opacity-40">
+                    </div>
+                    <div>
+                      <label class="text-[11px] text-vault-muted uppercase tracking-wider block mb-1.5">Delay per step (ms)</label>
+                      <input type="number" min="0" x-model.number="launch.delayMs" :disabled="jobActive || launching"
+                        class="setting-number w-full px-3 py-2 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm focus:outline-none focus:border-vault-accent/50 transition disabled:opacity-40">
+                    </div>
+                  </div>
+
+                  <!-- re-encryption params (encrypt / decrypt) -->
+                  <div x-show="launchParamsKind === 'reencrypt'" x-cloak class="space-y-4">
+                    <div>
+                      <label class="text-[11px] text-vault-muted uppercase tracking-wider block mb-1.5">Bucket</label>
+                      <input type="text" x-model="launch.bucket" :disabled="jobActive || launching" placeholder="All buckets"
+                        class="setting-number w-full px-3 py-2 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm focus:outline-none focus:border-vault-accent/50 transition disabled:opacity-40">
+                    </div>
+                    <div>
+                      <label class="text-[11px] text-vault-muted uppercase tracking-wider block mb-1.5">Prefix</label>
+                      <input type="text" x-model="launch.prefix" :disabled="jobActive || launching" placeholder="All keys"
+                        class="setting-number w-full px-3 py-2 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm focus:outline-none focus:border-vault-accent/50 transition disabled:opacity-40">
+                    </div>
+                    <div x-show="launch.mode === 'live'">
+                      <label class="text-[11px] text-vault-muted uppercase tracking-wider block mb-1.5">Throttle (bytes/sec, 0 = unlimited)</label>
+                      <input type="number" min="0" x-model.number="launch.rateBytesPerSec" :disabled="jobActive || launching" placeholder="0"
+                        class="setting-number w-full px-3 py-2 rounded-lg bg-vault-bg border border-vault-border text-vault-text text-sm focus:outline-none focus:border-vault-accent/50 transition disabled:opacity-40">
+                    </div>
+                    <p class="text-[11px] text-vault-muted">Maintenance mode drains S3 on the node and runs at full speed; Live mode uses copy-on-write and an optional throttle so clients are unaffected.</p>
+                  </div>
+
+                  <!-- Error -->
+                  <div x-show="launchError" x-cloak class="p-2.5 bg-red-500/5 border border-red-500/20 rounded-lg text-[12px] text-red-400" x-text="launchError"></div>
+
+                  <!-- Only-one-at-a-time note -->
+                  <p class="text-[11px] text-vault-muted flex items-center gap-1.5">
+                    <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"/></svg>
+                    Only one maintenance job runs at a time.
+                  </p>
+
+                  <button @click="startJob()" :disabled="jobActive || launching"
+                    class="w-full py-2.5 rounded-lg bg-gradient-to-r from-vault-accent to-cyan-400 text-vault-bg font-semibold text-sm hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    x-text="launching ? 'Starting…' : (jobActive ? 'A job is already running' : 'Start job')"></button>
+                </div>
+              </div>
+
+              <!-- ACTIVE JOB CARD -->
+              <div class="glass rounded-xl p-5 flex flex-col">
+                <div class="flex items-center justify-between mb-4">
+                  <h3 class="text-sm font-semibold uppercase tracking-wider text-vault-accent">Active job</h3>
+                  <template x-if="active">
+                    <div class="flex items-center gap-2">
+                      <span class="text-[10px] font-medium px-1.5 py-0.5 rounded border" :class="modeBadgeClass(active.mode)" x-text="modeLabel(active.mode)"></span>
+                      <span class="inline-flex items-center gap-1.5">
+                        <span class="w-1.5 h-1.5 rounded-full" :class="statusDotClass(active.status) + (statusShouldPulse(active.status) ? ' animate-pulse' : '')"></span>
+                        <span :class="statusBadgeClass(active.status)" class="px-2 py-0.5 rounded-full text-[10px] font-medium" x-text="active.status"></span>
+                      </span>
+                    </div>
+                  </template>
+                </div>
+
+                <!-- Empty state -->
+                <div x-show="!active" class="flex-1 flex flex-col items-center justify-center py-8 text-center">
+                  <svg class="w-8 h-8 text-vault-muted/40 mb-3" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6.878V6a2.25 2.25 0 0 1 2.25-2.25h7.5A2.25 2.25 0 0 1 18 6v.878m-12 0c.235-.083.487-.128.75-.128h10.5c.263 0 .515.045.75.128m-12 0A2.25 2.25 0 0 0 4.5 9v.878m13.5-3A2.25 2.25 0 0 1 19.5 9v.878m0 0a2.246 2.246 0 0 0-.75-.128H5.25c-.263 0-.515.045-.75.128m15 0A2.25 2.25 0 0 1 21 12v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18v-6c0-.98.626-1.813 1.5-2.122"/></svg>
+                  <p class="text-sm text-vault-muted">No job is running.</p>
+                  <p class="text-[12px] text-vault-muted/70 mt-1">Start one from the panel on the left.</p>
+                </div>
+
+                <!-- Active job body -->
+                <template x-if="active">
+                  <div class="flex-1 flex flex-col">
+                    <div class="text-base font-semibold mb-4" x-text="jobTypeLabel(active.job_type)"></div>
+
+                    <!-- Progress bar -->
+                    <div class="mb-4">
+                      <div class="flex justify-between text-xs text-vault-muted mb-1.5">
+                        <span x-text="progressLabel(active) + ' steps'"></span>
+                        <span x-text="progressPct(active).toFixed(1) + '%'"></span>
+                      </div>
+                      <div class="w-full h-2 rounded-full bg-vault-border/50 overflow-hidden">
+                        <div class="h-full rounded-full bg-gradient-to-r from-vault-accent to-vault-indigo transition-all duration-500"
+                          :style="'width:' + progressPct(active) + '%'"></div>
+                      </div>
+                    </div>
+
+                    <!-- Stats -->
+                    <div class="grid grid-cols-3 gap-3 mb-4">
+                      <div>
+                        <div class="text-[10px] text-vault-muted uppercase tracking-wider mb-0.5">Throughput</div>
+                        <div class="text-sm font-semibold" x-text="rateLabel(active)"></div>
+                      </div>
+                      <div>
+                        <div class="text-[10px] text-vault-muted uppercase tracking-wider mb-0.5">ETA</div>
+                        <div class="text-sm font-semibold" x-text="etaLabel(active)"></div>
+                      </div>
+                      <div>
+                        <div class="text-[10px] text-vault-muted uppercase tracking-wider mb-0.5">Started</div>
+                        <div class="text-xs text-vault-muted" x-text="formatTime(active.started_at)"></div>
+                      </div>
+                    </div>
+
+                    <!-- Last error -->
+                    <div x-show="active.last_error" x-cloak class="mb-4">
+                      <div class="text-[10px] text-vault-muted uppercase tracking-wider mb-0.5">Last error</div>
+                      <pre class="p-2.5 bg-red-500/5 border border-red-500/20 rounded-lg text-[11px] text-red-400 whitespace-pre-wrap break-all" x-text="active.last_error"></pre>
+                    </div>
+
+                    <!-- Controls -->
+                    <div class="flex gap-2 mt-auto pt-2">
+                      <button x-show="canPause(active)" @click="pauseJob(active.id)" :disabled="acting[active.id]"
+                        class="flex-1 px-3 py-2 rounded-lg bg-amber-500/15 text-amber-400 border border-amber-500/30 text-sm font-medium hover:bg-amber-500/25 transition disabled:opacity-40"
+                        x-text="acting[active.id] ? '…' : 'Pause'"></button>
+                      <button x-show="canResume(active)" @click="resumeJob(active.id)" :disabled="acting[active.id]"
+                        class="flex-1 px-3 py-2 rounded-lg bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-sm font-medium hover:bg-cyan-500/25 transition disabled:opacity-40"
+                        x-text="acting[active.id] ? '…' : 'Resume'"></button>
+                      <button x-show="canCancel(active)" @click="cancelJob(active.id)" :disabled="acting[active.id]"
+                        class="flex-1 px-3 py-2 rounded-lg bg-red-500/15 text-red-400 border border-red-500/30 text-sm font-medium hover:bg-red-500/25 transition disabled:opacity-40"
+                        x-text="acting[active.id] ? '…' : 'Cancel'"></button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- LOGS PANEL (active job) -->
+            <div x-show="!loading && active" x-cloak class="glass rounded-xl p-5 mb-4">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-semibold uppercase tracking-wider text-vault-accent">Job log</h3>
+                <span class="text-xs text-vault-muted" x-text="logs.length + ' entries'"></span>
+              </div>
+              <div class="max-h-72 overflow-y-auto rounded-lg border border-vault-border/30 bg-vault-bg/40 divide-y divide-vault-border/10">
+                <template x-for="(entry, i) in logs" :key="i">
+                  <div class="flex items-start gap-3 px-3 py-1.5 text-xs font-mono">
+                    <span class="text-vault-muted/70 whitespace-nowrap" x-text="formatTime(entry.ts)"></span>
+                    <span class="uppercase font-semibold w-12 flex-shrink-0" :class="logLevelClass(entry.level)" x-text="entry.level"></span>
+                    <span class="text-vault-text break-all" x-text="entry.message"></span>
+                  </div>
+                </template>
+                <div x-show="logs.length === 0" class="px-3 py-6 text-center text-vault-muted text-xs">No log entries yet.</div>
+              </div>
+            </div>
+
+            <!-- JOB HISTORY -->
+            <div x-show="!loading">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-semibold tracking-tight">Job history</h3>
+                <div class="flex items-center gap-3">
+                  <span class="text-xs text-vault-muted" x-text="jobs.length + ' jobs'"></span>
+                  <button x-show="jobs.length > 0" @click="showClearModal = true"
+                    class="px-2.5 py-1 rounded-lg text-xs border border-red-500/30 text-red-400 hover:bg-red-500/10 transition">Clear history</button>
+                </div>
+              </div>
+              <div class="glass rounded-xl overflow-x-auto">
+                <table class="w-full text-sm" style="min-width:900px;table-layout:fixed">
+                  <colgroup>
+                    <col style="width:150px">
+                    <col style="width:120px">
+                    <col style="width:120px">
+                    <col style="width:auto;min-width:180px">
+                    <col style="width:170px">
+                    <col style="width:170px">
+                    <col style="width:auto;min-width:160px">
+                  </colgroup>
+                  <thead>
+                    <tr class="text-left text-[11px] uppercase tracking-wider text-vault-muted border-b border-vault-border/30">
+                      <th class="px-4 py-3">Type</th>
+                      <th class="px-4 py-3">Mode</th>
+                      <th class="px-4 py-3">Status</th>
+                      <th class="px-4 py-3">Progress</th>
+                      <th class="px-4 py-3">Created</th>
+                      <th class="px-4 py-3">Finished</th>
+                      <th class="px-4 py-3">Last error</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template x-for="job in pagedJobs" :key="job.id">
+                      <tr @click="selectJob(job)" class="border-b border-vault-border/10 hover:bg-white/[0.02] cursor-pointer transition"
+                        :class="selectedJob?.id === job.id ? 'bg-vault-accent/5' : ''">
+                        <td class="px-4 py-2.5 text-xs text-vault-text truncate" :title="jobTypeLabel(job.job_type)" x-text="jobTypeLabel(job.job_type)"></td>
+                        <td class="px-4 py-2.5">
+                          <span class="text-[10px] font-medium px-1.5 py-0.5 rounded border" :class="modeBadgeClass(job.mode)" x-text="modeLabel(job.mode)"></span>
+                        </td>
+                        <td class="px-4 py-2.5">
+                          <span class="inline-flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full" :class="statusDotClass(job.status) + (statusShouldPulse(job.status) ? ' animate-pulse' : '')"></span>
+                            <span :class="statusBadgeClass(job.status)" class="px-2 py-0.5 rounded-full text-[10px] font-medium" x-text="job.status"></span>
+                          </span>
+                        </td>
+                        <td class="px-4 py-2.5">
+                          <div class="flex items-center gap-2">
+                            <div class="flex-1 h-1.5 rounded-full bg-vault-border/50 overflow-hidden min-w-[60px]">
+                              <div class="h-full rounded-full bg-gradient-to-r from-vault-accent to-vault-indigo" :style="'width:' + progressPct(job) + '%'"></div>
+                            </div>
+                            <span class="text-[11px] text-vault-muted whitespace-nowrap" x-text="progressPct(job).toFixed(0) + '%'"></span>
+                          </div>
+                        </td>
+                        <td class="px-4 py-2.5 text-xs text-vault-muted whitespace-nowrap" x-text="formatTime(job.created_at)"></td>
+                        <td class="px-4 py-2.5 text-xs text-vault-muted whitespace-nowrap" x-text="job.finished_at ? formatTime(job.finished_at) : '—'"></td>
+                        <td class="px-4 py-2.5 text-xs truncate" :class="job.last_error ? 'text-red-400' : 'text-vault-muted'" :title="job.last_error || ''" x-text="job.last_error || '—'"></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+                <!-- Empty state -->
+                <div x-show="jobs.length === 0" class="py-12 text-center text-vault-muted text-sm">
+                  No jobs yet. Start one from the panel above.
+                </div>
+              </div>
+              <!-- Pagination -->
+              <div x-show="historyTotalPages > 1" class="flex items-center justify-end gap-3 mt-3 text-xs text-vault-muted">
+                <span x-text="'Page ' + (historyPage + 1) + ' of ' + historyTotalPages"></span>
+                <div class="flex gap-1">
+                  <button @click="prevHistoryPage()" :disabled="!historyHasPrev"
+                    class="px-2.5 py-1 rounded-lg border border-vault-border text-vault-text hover:bg-white/5 transition disabled:opacity-30 disabled:pointer-events-none">Prev</button>
+                  <button @click="nextHistoryPage()" :disabled="!historyHasNext"
+                    class="px-2.5 py-1 rounded-lg border border-vault-border text-vault-text hover:bg-white/5 transition disabled:opacity-30 disabled:pointer-events-none">Next</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Clear-history confirm modal -->
+            <div x-show="showClearModal" x-transition.opacity class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" @click.self="showClearModal = false">
+              <div class="glass rounded-xl p-6 w-full max-w-sm mx-4" @click.stop>
+                <h3 class="text-lg font-semibold mb-2 text-red-400">Clear job history</h3>
+                <p class="text-sm text-vault-muted mb-4">This permanently deletes all finished jobs (completed, failed and cancelled) and their logs. A running or paused job is kept. This cannot be undone.</p>
+                <div class="flex gap-3 justify-end">
+                  <button @click="showClearModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
+                  <button @click="clearHistory()" :disabled="clearing"
+                    class="px-4 py-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 text-sm font-medium hover:bg-red-500/30 transition disabled:opacity-30"
+                    x-text="clearing ? 'Clearing...' : 'Clear history'"></button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Detail backdrop (mobile) -->
+            <div x-show="selectedJob" @click="closeDetail()" class="fixed inset-0 bg-black/40 z-30 md:hidden"></div>
+            <!-- Side detail panel -->
+            <div x-show="selectedJob" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0"
+              class="fixed right-0 top-12 md:top-0 h-[calc(100%-3rem)] md:h-full w-full md:w-96 glass border-l border-vault-border/50 z-40 slide-panel overflow-y-auto">
+              <div class="p-5">
+                <div class="flex items-center justify-between mb-5">
+                  <h3 class="text-sm font-semibold uppercase tracking-wider text-vault-accent">Job detail</h3>
+                  <button @click="closeDetail()" class="text-vault-muted hover:text-vault-text p-1 rounded-lg hover:bg-white/5 transition">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                  </button>
+                </div>
+                <template x-if="selectedJob">
+                  <div class="space-y-4 text-sm">
+                    <!-- Summary -->
+                    <div class="glass rounded-lg p-3 bg-white/[0.02] border border-vault-border/30">
+                      <div class="text-base font-semibold mb-2" x-text="jobTypeLabel(selectedJob.job_type)"></div>
+                      <div class="flex items-center gap-2">
+                        <span class="inline-flex items-center gap-1.5">
+                          <span class="w-1.5 h-1.5 rounded-full" :class="statusDotClass(selectedJob.status) + (statusShouldPulse(selectedJob.status) ? ' animate-pulse' : '')"></span>
+                          <span :class="statusBadgeClass(selectedJob.status)" class="px-2 py-0.5 rounded-full text-[10px] font-medium" x-text="selectedJob.status"></span>
+                        </span>
+                        <span class="text-[10px] font-medium px-1.5 py-0.5 rounded border" :class="modeBadgeClass(selectedJob.mode)" x-text="modeLabel(selectedJob.mode)"></span>
+                      </div>
+                    </div>
+
+                    <!-- Progress -->
+                    <div>
+                      <div class="flex justify-between text-xs text-vault-muted mb-1.5">
+                        <span x-text="progressLabel(selectedJob) + ' steps'"></span>
+                        <span x-text="progressPct(selectedJob).toFixed(1) + '%'"></span>
+                      </div>
+                      <div class="w-full h-1.5 rounded-full bg-vault-border/50 overflow-hidden">
+                        <div class="h-full rounded-full bg-gradient-to-r from-vault-accent to-vault-indigo transition-all duration-500" :style="'width:' + progressPct(selectedJob) + '%'"></div>
+                      </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                      <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Throughput</span><span x-text="rateLabel(selectedJob)"></span></div>
+                      <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">ETA</span><span x-text="etaLabel(selectedJob)"></span></div>
+                    </div>
+                    <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Created</span><span class="text-xs" x-text="formatTime(selectedJob.created_at)"></span></div>
+                    <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Started</span><span class="text-xs" x-text="formatTime(selectedJob.started_at)"></span></div>
+                    <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Finished</span><span class="text-xs" x-text="formatTime(selectedJob.finished_at)"></span></div>
+                    <div x-show="selectedJob.last_error">
+                      <span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Last error</span>
+                      <pre class="p-2.5 bg-red-500/5 border border-red-500/20 rounded-lg text-[11px] text-red-400 whitespace-pre-wrap break-all" x-text="selectedJob.last_error"></pre>
+                    </div>
+                    <div><span class="text-[11px] text-vault-muted uppercase tracking-wider block mb-0.5">Job ID</span><span class="font-mono text-[10px] text-vault-muted break-all" x-text="selectedJob.id"></span></div>
+
+                    <!-- Controls (active jobs only) -->
+                    <div x-show="canPause(selectedJob) || canResume(selectedJob) || canCancel(selectedJob)" class="flex gap-2 pt-3 border-t border-vault-border/30">
+                      <button x-show="canPause(selectedJob)" @click="pauseJob(selectedJob.id)" :disabled="acting[selectedJob.id]"
+                        class="flex-1 px-3 py-2 rounded-lg bg-amber-500/15 text-amber-400 border border-amber-500/30 text-sm font-medium hover:bg-amber-500/25 transition disabled:opacity-40"
+                        x-text="acting[selectedJob.id] ? '…' : 'Pause'"></button>
+                      <button x-show="canResume(selectedJob)" @click="resumeJob(selectedJob.id)" :disabled="acting[selectedJob.id]"
+                        class="flex-1 px-3 py-2 rounded-lg bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-sm font-medium hover:bg-cyan-500/25 transition disabled:opacity-40"
+                        x-text="acting[selectedJob.id] ? '…' : 'Resume'"></button>
+                      <button x-show="canCancel(selectedJob)" @click="cancelJob(selectedJob.id)" :disabled="acting[selectedJob.id]"
+                        class="flex-1 px-3 py-2 rounded-lg bg-red-500/15 text-red-400 border border-red-500/30 text-sm font-medium hover:bg-red-500/25 transition disabled:opacity-40"
+                        x-text="acting[selectedJob.id] ? '…' : 'Cancel'"></button>
+                    </div>
+
+                    <!-- Logs -->
+                    <div class="pt-3 border-t border-vault-border/30">
+                      <div class="flex items-center justify-between mb-2">
+                        <span class="text-[11px] text-vault-muted uppercase tracking-wider">Log</span>
+                        <span class="text-[10px] text-vault-muted" x-text="selectedLogs.length + ' entries'"></span>
+                      </div>
+                      <div x-show="detailLoading" class="py-4 flex justify-center">
+                        <svg class="animate-spin h-4 w-4 text-vault-accent" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                      </div>
+                      <div x-show="!detailLoading" class="max-h-64 overflow-y-auto rounded-lg border border-vault-border/30 bg-vault-bg/40 divide-y divide-vault-border/10">
+                        <template x-for="(entry, i) in selectedLogs" :key="i">
+                          <div class="px-2.5 py-1.5 text-[11px] font-mono">
+                            <div class="flex items-center gap-2">
+                              <span class="text-vault-muted/70 whitespace-nowrap" x-text="formatTime(entry.ts)"></span>
+                              <span class="uppercase font-semibold" :class="logLevelClass(entry.level)" x-text="entry.level"></span>
+                            </div>
+                            <div class="text-vault-text break-all mt-0.5" x-text="entry.message"></div>
+                          </div>
+                        </template>
+                        <div x-show="selectedLogs.length === 0" class="px-3 py-6 text-center text-vault-muted text-xs">No log entries.</div>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div> <!-- /maintenanceView scope -->
         </template>
 
         <!-- ==================== SETTINGS ==================== -->

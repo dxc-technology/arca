@@ -10,7 +10,7 @@ use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::{DefaultMakeSpan, OnRequest, OnResponse, TraceLayer};
 use tracing::Level;
 
-use crate::handlers::{admin, admin_export, admin_grants, admin_import, admin_monitoring, admin_notifications, admin_presigned_urls, admin_replication, admin_settings, admin_teams, admin_users, archive, bucket, cluster, object};
+use crate::handlers::{admin, admin_export, admin_grants, admin_import, admin_monitoring, admin_notifications, admin_presigned_urls, admin_replication, admin_settings, admin_teams, admin_users, archive, bucket, cluster, maintenance, object};
 use crate::middleware;
 use crate::state::AppState;
 
@@ -71,11 +71,33 @@ pub fn build_router(state: AppState) -> Router {
         middleware::auth::auth_middleware,
     ));
 
+    // Maintenance-mode drain (Phase 30): when a maintenance-mode job runs on
+    // this node, refuse every S3 request with 503 (outermost layer, so a drained
+    // node short-circuits before auth). Admin API + worker are unaffected (this
+    // is on the S3 router only); the graceful-shutdown drain is separate.
+    s3_app = s3_app.layer(axum::middleware::from_fn_with_state(
+        state.clone(),
+        middleware::maintenance_drain::maintenance_drain_middleware,
+    ));
+
     // --- Admin router (authenticated endpoints) ---
     let admin_auth = Router::new()
         .route("/info", get(admin::info))
         .route("/stats", get(admin::stats))
         .route("/cluster", get(admin::cluster))
+        // Maintenance jobs (Phase 30)
+        .route(
+            "/maintenance/jobs",
+            get(maintenance::list_jobs)
+                .post(maintenance::create_job)
+                .delete(maintenance::clear_jobs),
+        )
+        .route(
+            "/maintenance/jobs/{id}",
+            get(maintenance::get_job).delete(maintenance::cancel_job),
+        )
+        .route("/maintenance/jobs/{id}/pause", post(maintenance::pause_job))
+        .route("/maintenance/jobs/{id}/resume", post(maintenance::resume_job))
         // Legacy credential endpoints (operate on calling user's credentials)
         .route(
             "/credentials",

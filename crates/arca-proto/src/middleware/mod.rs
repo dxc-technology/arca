@@ -5,6 +5,7 @@ pub mod audit;
 pub mod auth;
 pub mod cluster_auth;
 pub mod identity;
+pub mod maintenance_drain;
 pub mod normalize;
 pub mod rate_limit;
 pub mod request_id;

@@ -16,7 +16,7 @@ use super::PgStore;
 const OBJECT_COLUMNS: &str = "bucket, key, blob_id, size, etag, content_type, last_modified, \
     metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, \
     is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, \
-    checksum_algorithm, checksum_value, replication_status, lock_updated_at";
+    checksum_algorithm, checksum_value, replication_status, lock_updated_at, content_updated_at";
 
 /// Reads the bucket versioning state from `bucket_config`.
 /// Called inside a transaction context.
@@ -114,8 +114,8 @@ async fn insert_object_row(
         "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, \
          metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, \
          is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, \
-         checksum_algorithm, checksum_value, seq, lock_updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)",
+         checksum_algorithm, checksum_value, seq, lock_updated_at, content_updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)",
     )
     .bind(&record.bucket)
     .bind(&record.key)
@@ -139,6 +139,7 @@ async fn insert_object_row(
     .bind(&record.checksum_value)
     .bind(seq)
     .bind(record.lock_updated_at)
+    .bind(record.content_updated_at)
     .execute(&mut **tx)
     .await?;
     Ok(())
@@ -160,9 +161,10 @@ async fn insert_replicated_row(
         "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, \
          metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, \
          is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, \
-         checksum_algorithm, checksum_value, replication_status, is_tombstone, seq, lock_updated_at) \
+         checksum_algorithm, checksum_value, replication_status, is_tombstone, seq, lock_updated_at, \
+         content_updated_at) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, FALSE, $13, $14, $15, $16, \
-         $17, $18, $19, $20, $21, $22, $23)",
+         $17, $18, $19, $20, $21, $22, $23, $24)",
     )
     .bind(&record.bucket)
     .bind(&record.key)
@@ -187,6 +189,7 @@ async fn insert_replicated_row(
     .bind(record.is_tombstone)
     .bind(seq)
     .bind(record.lock_updated_at)
+    .bind(record.content_updated_at)
     .execute(&mut **tx)
     .await?;
     Ok(())
@@ -271,6 +274,7 @@ fn row_to_object_record(row: &sqlx_postgres::PgRow) -> ObjectRecord {
         replication_status: row.try_get("replication_status").unwrap_or(None),
         is_tombstone: row.try_get("is_tombstone").unwrap_or(false),
         lock_updated_at: row.try_get("lock_updated_at").unwrap_or(None),
+        content_updated_at: row.try_get("content_updated_at").unwrap_or(None),
     }
 }
 
@@ -778,6 +782,7 @@ impl MetadataStore for PgStore {
                     checksum_value: None,
                     replication_status: None,
                     lock_updated_at: None,
+                    content_updated_at: None,
                 })
             }
             VersioningState::Suspended => {
@@ -1028,53 +1033,63 @@ impl MetadataStore for PgStore {
             .begin()
             .await
             .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
-        let metadata_json =
-            serde_json::to_value(&record.metadata).unwrap_or_else(|_| serde_json::json!({}));
 
-        match &record.version_id {
-            // Versioned rows are immutable, keyed by version_id, except for
-            // the lock columns (retention/legal hold), which mutate in place
-            // WITHOUT bumping last_modified. The LWW guard is therefore:
-            // strictly newer last_modified wins; on a tie — same version,
-            // possibly different lock state — strictly newer lock_updated_at
-            // wins (N1 delivery + N2 ordering). A plain `>=` here let the tie
-            // pass in BOTH directions: a node re-pulling a peer's full
-            // manifest after a restart re-applied the stale lock-free copy
-            // over a newer lock state, and the rewrite's fresh seq propagated
-            // the regression cluster-wide (N2). Identical rows are skipped
-            // without a rewrite (M7): rewriting would stamp a fresh seq and
-            // keep two caught-up nodes redelivering their whole tables to
-            // each other forever.
+        // Fetch the local row for this exact version (null-version rows form a
+        // single LWW register per (bucket, key); versioned rows are keyed by
+        // version_id). The write decision is centralized in
+        // ObjectRecord::resolve_replicated: strictly newer last_modified
+        // replaces the whole row; on a tie the lock register (lock_updated_at)
+        // and the content register (content_updated_at) are merged
+        // independently so a re-encryption and a lock change never clobber each
+        // other (N2 ordering + Phase 30 WORM safety, TD-021), and an identical
+        // redelivery is skipped without a rewrite so two caught-up nodes don't
+        // redeliver forever (M7).
+        let existing: Option<ObjectRecord> = match &record.version_id {
             Some(vid) => {
                 let sql = format!(
                     "SELECT {OBJECT_COLUMNS} FROM objects \
                      WHERE bucket = $1 AND key = $2 AND version_id = $3"
                 );
-                let existing: Option<ObjectRecord> = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
+                sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
                     .bind(&record.bucket)
                     .bind(&record.key)
                     .bind(vid)
                     .fetch_optional(&mut *tx)
                     .await
                     .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?
-                    .map(|row| row_to_object_record(&row));
+                    .map(|row| row_to_object_record(&row))
+            }
+            None => {
+                let sql = format!(
+                    "SELECT {OBJECT_COLUMNS} FROM objects \
+                     WHERE bucket = $1 AND key = $2 AND version_id IS NULL"
+                );
+                sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
+                    .bind(&record.bucket)
+                    .bind(&record.key)
+                    .fetch_optional(&mut *tx)
+                    .await
+                    .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?
+                    .map(|row| row_to_object_record(&row))
+            }
+        };
 
-                let should_write = match &existing {
-                    None => true,
-                    Some(ex) => {
-                        let newer = record.last_modified > ex.last_modified
-                            || (record.last_modified == ex.last_modified
-                                && record.lock_updated_at > ex.lock_updated_at);
-                        newer && !record.same_replicated_content(ex)
-                    }
-                };
-                if should_write {
-                    // Commit-ordered seq before the first DML (lock-order rule
-                    // of next_object_seq). Re-stamped on every effective apply
-                    // so the reconciliation propagates transitively A->B->C.
-                    let seq = next_object_seq(&mut tx)
-                        .await
-                        .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
+        let to_write = match &existing {
+            None => Some(record.clone()),
+            Some(ex) => record.resolve_replicated(ex),
+        };
+
+        if let Some(row) = to_write {
+            let metadata_json =
+                serde_json::to_value(&row.metadata).unwrap_or_else(|_| serde_json::json!({}));
+            // Commit-ordered seq before the first DML (lock-order rule of
+            // next_object_seq). Re-stamped on every effective apply so the
+            // reconciliation propagates transitively A->B->C.
+            let seq = next_object_seq(&mut tx)
+                .await
+                .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
+            match &record.version_id {
+                Some(vid) => {
                     sqlx_core::query::query(
                         "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id = $3",
                     )
@@ -1084,48 +1099,8 @@ impl MetadataStore for PgStore {
                     .execute(&mut *tx)
                     .await
                     .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
-                    insert_replicated_row(&mut tx, record, &metadata_json, seq)
-                        .await
-                        .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
                 }
-            }
-            // Null-version rows form an LWW register per (bucket, key):
-            // unversioned/suspended overwrites resolve by (last_modified,
-            // blob_id), with lock_updated_at as the final tiebreak for the
-            // same physical row whose lock state changed in place (N1/N2 —
-            // see the versioned branch). Same M7 identical-row skip as the
-            // versioned branch.
-            None => {
-                let sql = format!(
-                    "SELECT {OBJECT_COLUMNS} FROM objects \
-                     WHERE bucket = $1 AND key = $2 AND version_id IS NULL"
-                );
-                let existing: Option<ObjectRecord> = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
-                    .bind(&record.bucket)
-                    .bind(&record.key)
-                    .fetch_optional(&mut *tx)
-                    .await
-                    .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?
-                    .map(|row| row_to_object_record(&row));
-
-                let should_write = match &existing {
-                    None => true,
-                    Some(ex) => {
-                        let lww = record.last_modified > ex.last_modified
-                            || (record.last_modified == ex.last_modified
-                                && record.blob_id.0 > ex.blob_id.0)
-                            || (record.last_modified == ex.last_modified
-                                && record.blob_id == ex.blob_id
-                                && record.lock_updated_at > ex.lock_updated_at);
-                        lww && !record.same_replicated_content(ex)
-                    }
-                };
-                if should_write {
-                    // Commit-ordered seq before the first DML (lock-order rule
-                    // of next_object_seq).
-                    let seq = next_object_seq(&mut tx)
-                        .await
-                        .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
+                None => {
                     sqlx_core::query::query(
                         "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id IS NULL",
                     )
@@ -1134,11 +1109,11 @@ impl MetadataStore for PgStore {
                     .execute(&mut *tx)
                     .await
                     .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
-                    insert_replicated_row(&mut tx, record, &metadata_json, seq)
-                        .await
-                        .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
                 }
             }
+            insert_replicated_row(&mut tx, &row, &metadata_json, seq)
+                .await
+                .map_err(|e| ArcaError::Internal(format!("apply_remote_object: {e}")))?;
         }
 
         recompute_is_latest(&mut tx, &record.bucket, &record.key)
@@ -1310,6 +1285,21 @@ impl MetadataStore for PgStore {
             .fetch_one(&self.pool)
             .await
             .map_err(|e| ArcaError::Internal(format!("current_object_seq: {e}")))?;
+        Ok(row.get::<i64, _>("value") as u64)
+    }
+
+    async fn seed_object_seq_to_max(&self) -> Result<u64, ArcaError> {
+        // Bump the counter UP to MAX(seq) when it lags; never rewind it (a
+        // rewind would trip peer D3c rewind detection). A single statement
+        // does the conditional update atomically.
+        let row = sqlx_core::query::query(
+            "UPDATE object_seq \
+             SET value = GREATEST(value, (SELECT COALESCE(MAX(seq), 0) FROM objects)) \
+             RETURNING value",
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("seed_object_seq_to_max: {e}")))?;
         Ok(row.get::<i64, _>("value") as u64)
     }
 
@@ -2007,6 +1997,130 @@ impl MetadataStore for PgStore {
         tx.commit()
             .await
             .map_err(|e| ArcaError::Internal(format!("set_object_legal_hold: {e}")))?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn update_object_encryption(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+        algorithm: Option<&str>,
+        key_id: Option<&str>,
+    ) -> Result<bool, ArcaError> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("update_object_encryption: {e}")))?;
+        // Fresh seq so the re-encryption reaches peers via the changed-since
+        // manifest; last_modified/ETag untouched (the logical object is
+        // unchanged). A fresh content_updated_at is the cluster LWW convergence
+        // dimension for the CONTENT column group (blob/algorithm/key), kept
+        // separate from the lock register's lock_updated_at so a re-encryption
+        // and a concurrent lock change merge independently instead of clobbering
+        // each other (TD-021 — see apply_remote_object). Seq before the row
+        // UPDATE per the lock-order rule.
+        let seq = next_object_seq(&mut tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("update_object_encryption: {e}")))?;
+        let content_updated_at = Utc::now();
+        let result = if let Some(vid) = version_id {
+            sqlx_core::query::query(
+                "UPDATE objects SET encryption_algorithm = $1, encryption_key_id = $2, seq = $3, content_updated_at = $4 \
+                 WHERE bucket = $5 AND key = $6 AND version_id = $7",
+            )
+            .bind(algorithm)
+            .bind(key_id)
+            .bind(seq)
+            .bind(content_updated_at)
+            .bind(bucket)
+            .bind(key)
+            .bind(vid)
+            .execute(&mut *tx)
+            .await
+        } else {
+            sqlx_core::query::query(
+                "UPDATE objects SET encryption_algorithm = $1, encryption_key_id = $2, seq = $3, content_updated_at = $4 \
+                 WHERE bucket = $5 AND key = $6 AND is_latest = TRUE",
+            )
+            .bind(algorithm)
+            .bind(key_id)
+            .bind(seq)
+            .bind(content_updated_at)
+            .bind(bucket)
+            .bind(key)
+            .execute(&mut *tx)
+            .await
+        };
+        let result =
+            result.map_err(|e| ArcaError::Internal(format!("update_object_encryption: {e}")))?;
+        tx.commit()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("update_object_encryption: {e}")))?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn update_object_encryption_cas(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+        old_blob_id: &BlobId,
+        new_blob_id: &BlobId,
+        algorithm: Option<&str>,
+        key_id: Option<&str>,
+    ) -> Result<bool, ArcaError> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("update_object_encryption_cas: {e}")))?;
+        let seq = next_object_seq(&mut tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("update_object_encryption_cas: {e}")))?;
+        // CAS guard on blob_id: 0 rows means a concurrent client overwrite
+        // already swapped the blob and the caller discards the new one. A fresh
+        // content_updated_at is the cluster LWW convergence dimension for the
+        // content column group (see update_object_encryption, TD-021).
+        let content_updated_at = Utc::now();
+        let result = if let Some(vid) = version_id {
+            sqlx_core::query::query(
+                "UPDATE objects SET blob_id = $1, encryption_algorithm = $2, encryption_key_id = $3, seq = $4, content_updated_at = $5 \
+                 WHERE bucket = $6 AND key = $7 AND version_id = $8 AND blob_id = $9",
+            )
+            .bind(&new_blob_id.0)
+            .bind(algorithm)
+            .bind(key_id)
+            .bind(seq)
+            .bind(content_updated_at)
+            .bind(bucket)
+            .bind(key)
+            .bind(vid)
+            .bind(&old_blob_id.0)
+            .execute(&mut *tx)
+            .await
+        } else {
+            sqlx_core::query::query(
+                "UPDATE objects SET blob_id = $1, encryption_algorithm = $2, encryption_key_id = $3, seq = $4, content_updated_at = $5 \
+                 WHERE bucket = $6 AND key = $7 AND is_latest = TRUE AND blob_id = $8",
+            )
+            .bind(&new_blob_id.0)
+            .bind(algorithm)
+            .bind(key_id)
+            .bind(seq)
+            .bind(content_updated_at)
+            .bind(bucket)
+            .bind(key)
+            .bind(&old_blob_id.0)
+            .execute(&mut *tx)
+            .await
+        };
+        let result =
+            result.map_err(|e| ArcaError::Internal(format!("update_object_encryption_cas: {e}")))?;
+        tx.commit()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("update_object_encryption_cas: {e}")))?;
         Ok(result.rows_affected() > 0)
     }
 

@@ -326,7 +326,7 @@ impl TlsConfig {
 }
 
 /// Storage configuration.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct StorageConfig {
     pub data_dir: String,
     /// Number of 2-char prefix directory levels for blob sharding (1–4, default 2).
