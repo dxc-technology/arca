@@ -1,8 +1,8 @@
-import { api } from './api.js';
+import { api } from './api.js?v=deeplink-1';
 import { topicFor } from './help.js';
 import { dashboardView } from './views/dashboard.js';
 import { bucketsView, bucketSettingsView } from './views/buckets.js';
-import { bucketDetailView } from './views/bucket-detail.js?v=slideshow-nav-1';
+import { bucketDetailView } from './views/bucket-detail.js?v=deeplink-1';
 import { credentialsView } from './views/credentials.js';
 import { usersView, userDetailView } from './views/users.js?v=eff-grants-refresh-1';
 import { teamsView, teamDetailView } from './views/teams.js';
@@ -183,7 +183,16 @@ export function app() {
         sessionStorage.setItem('arca_is_admin', admin ? 'true' : 'false');
         if (username) sessionStorage.setItem('arca_username', username);
         this.authenticated = true;
-        window.location.hash = admin ? '#/dashboard' : '#/buckets';
+        // Preserve a deep link the visitor arrived with (e.g. a shared
+        // bucket URL): only force the default home when there is no
+        // meaningful hash. Re-run the router so the view is recomputed with
+        // the freshly determined isAdmin (page-load routing ran with the
+        // stale value from sessionStorage).
+        const hash = window.location.hash;
+        if (!hash || hash === '#' || hash === '#/') {
+          window.location.hash = admin ? '#/dashboard' : '#/buckets';
+        }
+        this.handleRoute();
       } catch (e) {
         sessionStorage.clear();
         this.loginError = e.message || 'Connection failed';

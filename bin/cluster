@@ -28,6 +28,7 @@ set -euo pipefail
 # individual nodes http://localhost:9001|9002|9003.
 
 cd "$(git rev-parse --show-toplevel)"
+source bin/lib/compose.sh
 
 PROJECT="arca-cluster"
 COMPOSE_FILE="docker/docker-compose.cluster.yml"
@@ -110,7 +111,7 @@ cmd_logs() {
             *)   args+=("$1"); shift ;;
         esac
     done
-    $COMPOSE logs "${args[@]+"${args[@]}"}"
+    $COMPOSE logs "${args[@]+"${args[@]}"}" | localize_log_timestamps
 }
 
 cmd_node() {

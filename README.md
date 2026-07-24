@@ -9,17 +9,13 @@
   <a href="https://dxc-technology.github.io/arca/">Documentation</a> · <a href="CHANGELOG.md">Changelog</a> · <a href="https://dxc-technology.github.io/arca/report.html">Project Report</a>
 </p>
 
-<p align="center">
-  <img src="s3-compatibility-badge.svg" alt="S3 Compatibility">
-</p>
-
 ---
 
 Arca is a ground-up implementation of the S3 API, designed as a **drop-in replacement** for AWS S3, MinIO, and other S3-compatible storage services. It runs as a single node or as a symmetric, self-configuring high-availability cluster, with at-rest encryption, object versioning, RBAC, lifecycle rules, object lock, event notifications, and a web console.
 
 ## Status
 
-Production-grade and actively developed. **29 of 31** planned phases are complete (latest release **v0.25.0**), covering 60+ S3 operations plus encryption, versioning, RBAC, monitoring, lifecycle, object lock, tagging, notifications, compression, replication, and high-availability clustering. Arca passes the [Ceph s3-tests](https://github.com/ceph/s3-tests) compatibility suite with **369/825 passing and 0 unexpected failures** (100% pass rate on implemented features; RGW-only extensions out of scope). See the [roadmap](https://dxc-technology.github.io/arca/roadmap/) for what's next.
+Production-grade and actively developed. **29 of 31** planned phases are complete (latest release **v0.27.1**), covering 60+ S3 operations plus encryption, versioning, RBAC, monitoring, lifecycle, object lock, tagging, notifications, compression, replication, and high-availability clustering. Arca passes the [Ceph s3-tests](https://github.com/ceph/s3-tests) compatibility suite with **369/825 passing and 0 unexpected failures** (100% pass rate on implemented features; RGW-only extensions out of scope). See the [roadmap](https://dxc-technology.github.io/arca/roadmap/) for what's next.
 
 ## Features
 

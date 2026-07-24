@@ -14,6 +14,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **In-place re-encryption jobs (Phase 30, M2).** Encrypt existing plaintext objects to SSE-S3 (AES-256), or decrypt them back, without re-uploading and without migrating to a new instance. Runs as a maintenance job (console or admin API, `type: "encrypt"` / `"decrypt"`) in either **live** mode (copy-on-write + compare-and-swap + an optional byte-rate throttle, zero downtime) or **maintenance** mode (S3 drained on the node, full speed). Copy-on-write is used in both modes: a new encrypted blob is written and the object row is atomically swapped to it, so concurrent readers always see a consistent blob and the cluster's blob-id immutability is preserved — the new blob reaches peers via read-repair / anti-entropy and the orphaned old blob is reclaimed by GC. The ETag and Last-Modified are preserved (no lifecycle-clock impact); cluster convergence rides the existing `lock_updated_at` LWW dimension so a re-encrypted row is adopted deterministically. SSE-C objects (customer-held keys) and multipart/composite objects are skipped (TD-014). An offline CLI escape hatch (`arca encrypt-existing` / `arca decrypt-existing`) performs the same transform in place for disaster recovery when the server is stopped. Console **Maintenance** page gains the encrypt/decrypt launchers (bucket/prefix filter, throttle).
 - **Maintenance jobs subsystem (Phase 30, M1).** Long-running, operator-launched maintenance operations are tracked as `maintenance_jobs` rows (SQLite migration v24 / PostgreSQL `0012`) so progress survives restarts and is observable from the console. A single background worker processes one job at a time, committing progress per item so pause / cancel / restart are always safe; in a cluster the worker is leader-gated (only the worker-leader node runs it). A job in `maintenance` mode drains the S3 API on its node for its lifetime — every S3 request is refused with `503 ServiceUnavailable` (+ `Retry-After`) AND the health endpoint reports `draining` so the load balancer stops routing — while the admin API and worker stay live (the graceful-shutdown drain stays non-blocking, by design). New JSON admin API under `/admin/maintenance/jobs` (create / list / get-with-logs / pause / resume / cancel / clear-history, single-job lock, state-guarded transitions) and a console **Maintenance** page (launch panel, live active-job card with progress / ETA / rate, log panel, paginated job history with a clear-history action). The re-encryption (M2) and migration (M3/M4) job types build on this foundation.
 
+## [0.27.1] — 2026-07-07
+
+### Added
+
+- **Per-run blob GC log summary.** Each blob GC pass (the single-node background worker and the cluster anti-entropy worker) now emits a concise INFO summary — `blob GC pass started` and `blob GC pass complete scanned=… candidates=… reclaimed=… failed=… elapsed_ms=…` — so a scheduled run is visible even when it reclaims nothing (previously only a non-zero reclaim was logged). A pass skipped by the fail-safe (an enumeration error) is logged at WARN. `arca gc` likewise prints the scanned/orphan counts.
+
+## [0.27.0] — 2026-07-06
+
+### Added
+
+- **`arca gc` — reclaim orphaned blob files on a single node.** Orphan blobs (on disk, referenced by no live object row, in-progress part, or non-orphan composite sidecar) accumulate from interrupted uploads, overwrites, crashes between the metadata and blob delete, and swallowed blob-delete failures. Until now the only reclamation path was the cluster anti-entropy worker, which is spawned only when clustering is enabled — a single-node deployment never reclaimed them and they grew unbounded (`arca fsck` could report them but not remove them). The new offline command reuses the same composite-aware, fail-safe selection as the cluster worker: it previews by default (dry run) and deletes only with `--reclaim`. `--grace-seconds` (default 86400) protects freshly-written blobs whose object row may not be committed yet; drop it to `0` when the server is stopped. Schedule it from cron or run it on demand. The shared selection logic now lives in one place (`blob_gc::collect_reclaimable_blobs`), used by both the CLI and the anti-entropy worker.
+- **Opt-in single-node blob GC worker.** For hands-off operation, a background worker can reclaim orphans on a schedule without an external cron job. Off by default; enable with `[storage] blob_gc_enabled = true` (plus `blob_gc_interval_seconds`, default 3600, and `blob_gc_grace_seconds`, default 86400). It is skipped under clustering (the anti-entropy worker already reclaims orphans) and exposes the `arca_blobs_reclaimed_total` metric. On very large stores prefer cron-ing `arca gc` so the full-store scan runs out of the serving process.
+- **`arca_blob_delete_failures_total` metric.** Counts blob-delete failures during object deletion. When a blob delete fails after its metadata row is already gone, the object is genuinely deleted (a subsequent GET returns 404), so `DeleteObjects`/`DeleteObject` still report success per S3 semantics — but an orphan blob is left on disk. This counter makes the orphan-creation rate observable (previously visible only in `warn!` logs), so operators can see whether `arca gc` needs to run.
+
+### Fixed
+
+- **Console: shared bucket links now land on the bucket after login.** Opening a deep-link URL (e.g. a bucket link sent by another user) and then logging in previously always dropped you on the dashboard (admin) or the buckets list (non-admin), discarding the link. The console now preserves the deep link and routes to it after login, only defaulting to home when no destination was given. If the target bucket is inaccessible or missing, the user is bounced home with an explanatory toast — `403` → "You don't have access to bucket …", `404` → "Bucket … does not exist". Because S3 returns no error for a non-existent *prefix*, a missing sub-folder (a non-empty prefix whose listing is entirely empty, with no folder marker) is inferred client-side and returns the user to the bucket root with a "Folder … does not exist" toast; genuinely empty folders still open normally.
+>>>>>>> main
+
 ## [0.26.1] — 2026-06-12
 
 ### Security
@@ -739,7 +758,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.26.1...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.27.1...HEAD
+[0.27.1]: https://github.com/dxc-technology/arca/compare/v0.27.0...v0.27.1
+[0.27.0]: https://github.com/dxc-technology/arca/compare/v0.26.1...v0.27.0
 [0.26.1]: https://github.com/dxc-technology/arca/compare/v0.26.0...v0.26.1
 [0.26.0]: https://github.com/dxc-technology/arca/compare/v0.25.1...v0.26.0
 [0.25.1]: https://github.com/dxc-technology/arca/compare/v0.25.0...v0.25.1

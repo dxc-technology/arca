@@ -34,6 +34,8 @@ use arca_core::store::blob::BlobStore;
 use arca_core::store::metadata::MetadataStore;
 use arca_core::store::metrics::MetricsStore;
 use arca_core::store::server_config::ServerConfigStore;
+use arca_core::store::RawBlobOps;
+use arca_proto::metrics::MetricsRegistry;
 use arca_proto::AppState;
 
 /// Handle to a background worker task. Aborts the task when dropped.
@@ -129,6 +131,38 @@ pub fn spawn_metrics_worker(state: &AppState, interval_seconds: u64) -> Option<B
             }
         },
     ))
+}
+
+/// Spawn the single-node blob GC worker (opt-in via `storage.blob_gc_enabled`).
+///
+/// Periodically reclaims orphan blob files through the shared, composite-aware,
+/// fail-safe [`crate::blob_gc`] core — the same one the cluster anti-entropy
+/// worker uses. It is spawned ONLY when clustering is disabled: in a cluster the
+/// anti-entropy worker already reclaims orphans, and running a second reclaimer
+/// would be redundant. `raw` is the concrete filesystem blob store (not the
+/// public `BlobStore`), and `metadata` should be the node-local store so the
+/// referenced set reflects this node's rows.
+pub fn spawn_blob_gc_worker(
+    metadata: Arc<dyn MetadataStore>,
+    raw: Arc<dyn RawBlobOps>,
+    metrics: Option<Arc<MetricsRegistry>>,
+    interval: Duration,
+    grace: Duration,
+) -> BackgroundWorker {
+    BackgroundWorker::spawn_periodic("blob-gc", interval, move || {
+        let metadata = metadata.clone();
+        let raw = raw.clone();
+        let metrics = metrics.clone();
+        async move {
+            let reclaimed =
+                crate::blob_gc::reclaim_blobs(metadata.as_ref(), raw.as_ref(), grace).await;
+            if reclaimed > 0 {
+                if let Some(ref m) = metrics {
+                    m.record_blobs_reclaimed(reclaimed);
+                }
+            }
+        }
+    })
 }
 
 /// Spawn the retention purge worker.
@@ -1001,5 +1035,61 @@ async fn deliver_with_retry(
         // Exponential backoff
         let delay = Duration::from_secs(retry_base_seconds * (1 << (attempts - 1)));
         tokio::time::sleep(delay).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arca_core::store::ByteStream;
+    use arca_core::types::BlobId;
+
+    fn one_chunk(data: &[u8]) -> ByteStream {
+        let b = bytes::Bytes::copy_from_slice(data);
+        Box::pin(futures_util::stream::once(async move {
+            Ok::<_, std::io::Error>(b)
+        }))
+    }
+
+    #[tokio::test]
+    async fn blob_gc_worker_reclaims_on_schedule() {
+        let dir = tempfile::tempdir().unwrap();
+        let fs = Arc::new(
+            arca_storage::FsBlobStore::new(dir.path().join("blobs"), 2)
+                .await
+                .unwrap(),
+        );
+        let metadata: Arc<dyn MetadataStore> =
+            Arc::new(arca_storage::SqliteStore::open_in_memory().await.unwrap());
+
+        // An orphan blob (no object row) with grace 0 → immediately eligible.
+        fs.write_raw(&BlobId("orphan".into()), one_chunk(b"x")).await.unwrap();
+        assert!(RawBlobOps::exists(fs.as_ref(), &BlobId("orphan".into())).await.unwrap());
+
+        let metrics = Arc::new(MetricsRegistry::new());
+        let worker = spawn_blob_gc_worker(
+            metadata,
+            fs.clone() as Arc<dyn RawBlobOps>,
+            Some(metrics.clone()),
+            Duration::from_millis(50),
+            Duration::ZERO,
+        );
+
+        // Wait for at least one scheduled tick to fire and reclaim the orphan.
+        let mut reclaimed = false;
+        for _ in 0..40 {
+            tokio::time::sleep(Duration::from_millis(25)).await;
+            if !RawBlobOps::exists(fs.as_ref(), &BlobId("orphan".into())).await.unwrap() {
+                reclaimed = true;
+                break;
+            }
+        }
+        drop(worker);
+        assert!(reclaimed, "the scheduled worker must reclaim the orphan blob");
+        assert_eq!(
+            metrics.blobs_reclaimed.load(std::sync::atomic::Ordering::Relaxed),
+            1,
+            "the reclaim metric must be recorded"
+        );
     }
 }

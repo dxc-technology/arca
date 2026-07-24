@@ -221,7 +221,11 @@ export function apiClient() {
       const params = { 'list-type': '2', delimiter: '/', prefix };
       if (continuationToken) params['continuation-token'] = continuationToken;
       const resp = await this.request('GET', '/' + encodeURIComponent(bucket), { queryParams: params });
-      if (!resp.ok) throw new Error('Failed to list objects');
+      if (!resp.ok) {
+        const err = new Error('Failed to list objects');
+        err.status = resp.status;
+        throw err;
+      }
       const xml = await resp.text();
       return this.parseListObjects(xml);
     },

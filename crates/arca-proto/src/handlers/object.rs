@@ -2053,6 +2053,9 @@ pub async fn delete_object(
                 // Delete blob only for real objects, not delete markers.
                 if let Err(e) = state.blob.delete(&old_record.blob_id).await {
                     tracing::warn!(error = %e, "Failed to delete blob for versioned delete");
+                    if let Some(ref m) = state.metrics_registry {
+                        m.record_blob_delete_failure();
+                    }
                 }
             }
         }
@@ -2132,6 +2135,9 @@ pub async fn delete_object(
             }
             if let Err(e) = state.blob.delete(&old_record.blob_id).await {
                 tracing::warn!(error = %e, "Failed to delete blob for deleted object");
+                if let Some(ref m) = state.metrics_registry {
+                    m.record_blob_delete_failure();
+                }
             }
         }
     }

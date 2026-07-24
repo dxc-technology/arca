@@ -59,6 +59,28 @@ pub enum Command {
         verify_checksums: bool,
     },
 
+    /// Reclaim orphaned blob files (offline; composite-aware, grace-protected)
+    Gc {
+        /// Path to the configuration file
+        #[arg(long, default_value = "/etc/arca/config.toml")]
+        config_path: PathBuf,
+
+        /// Actually delete the orphan blobs. Without this flag, only report
+        /// what would be reclaimed (dry run).
+        #[arg(long)]
+        reclaim: bool,
+
+        /// Protect blobs written within this many seconds (guards in-flight
+        /// uploads whose object row may not be committed yet). Use 0 only when
+        /// the server is stopped.
+        #[arg(long, default_value = "86400")]
+        grace_seconds: u64,
+
+        /// List every orphan blob id before the summary
+        #[arg(long)]
+        verbose: bool,
+    },
+
     /// Manage TLS certificates
     Tls {
         #[command(subcommand)]
