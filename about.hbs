@@ -1,0 +1,24 @@
+# Third-Party Licenses
+
+Arca bundles or builds upon the third-party open source components listed below.
+This file is generated mechanically with [`cargo-about`](https://github.com/EmbarkStudios/cargo-about)
+from the committed `Cargo.lock`. Do not edit by hand; regenerate after any dependency change:
+
+    cargo about generate --all-features about.hbs -o THIRD-PARTY-NOTICES.md
+
+All components are permissively licensed (see the Dependency Licensing Policy in `CLAUDE.md`).
+
+{{#each licenses}}
+## {{{name}}}
+
+Used by:
+
+{{#each used_by}}
+- {{crate.name}} {{crate.version}}
+{{/each}}
+
+```
+{{{text}}}
+```
+
+{{/each}}

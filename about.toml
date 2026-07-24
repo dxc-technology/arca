@@ -1,0 +1,36 @@
+# Configuration for `cargo about` — third-party license attribution.
+# Only permissive licenses are accepted (see the Dependency Licensing Policy in CLAUDE.md).
+# LGPL-2.1-or-later is listed solely because `r-efi` is multi-licensed
+# `Apache-2.0 OR LGPL-2.1-or-later OR MIT`; the permissive option is always chosen.
+
+# Restrict to the targets of the released binary (Alpine/musl, amd64 + arm64)
+# so the notices reflect what is actually distributed and foreign-target crates
+# (Windows, wasm, UEFI) are excluded.
+targets = [
+    "x86_64-unknown-linux-musl",
+    "aarch64-unknown-linux-musl",
+]
+
+accepted = [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-1-Clause",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "BSL-1.0",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "0BSD",
+    "CDLA-Permissive-2.0",
+    "Unlicense",
+    "LGPL-2.1-or-later",
+]
+
+# Ignore the workspace's own unpublished crates (arca-*); this file is for third parties.
+[private]
+ignore = true

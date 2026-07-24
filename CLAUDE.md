@@ -8,6 +8,23 @@ Arca is an open source S3-compatible object storage server written in Rust. It i
 
 The full architecture plan lives in `.claude/plans/arca-s3-mvp-architecture.md`.
 
+## Dependency Licensing Policy (HARD CONSTRAINT)
+
+Arca's own license (AGPL-3.0-or-later) does not exempt its dependencies: a copyleft dependency (GPL/AGPL/LGPL/MPL/SSPL/CDDL/EPL/OSL) anywhere in the transitive tree would stack extra source-disclosure or network-copyleft obligations, beyond AGPL's own, onto every user of Arca. To keep the license surface simple and predictable for anyone consuming Arca:
+
+- **Only permissively licensed dependencies are allowed**, transitively down to the leaves: MIT, Apache-2.0, BSD-2/3-Clause, ISC, Zlib, BSL-1.0, Unicode-3.0, CC0-1.0, 0BSD, MIT-0, CDLA-Permissive-2.0, Unlicense, and equivalents.
+- **Copyleft is forbidden** — no GPL, AGPL, LGPL, MPL, SSPL, CDDL, EPL, or OSL, direct or transitive. A crate multi-licensed with `OR` is acceptable **only if** it always offers a permissive option (e.g. `Apache-2.0 OR LGPL-2.1-or-later OR MIT` is fine because Apache-2.0/MIT can be chosen).
+- **Before adding or upgrading any dependency**, run the full transitive audit in a container and confirm zero copyleft:
+  ```bash
+  docker run --rm -v "$PWD":/work -w /work rust:alpine sh -c \
+    'apk add --no-cache musl-dev >/dev/null; cargo install cargo-license >/dev/null; \
+     cargo license --all-features --tsv' \
+    | awk -F"\t" "NR>1{print \$5}" | grep -wiE "GPL|AGPL|LGPL|MPL-|SSPL|CDDL|EPL|OSL"
+  # must print nothing (an OR-with-permissive-option match must be reviewed by hand)
+  ```
+- If a needed capability is only available under a copyleft license, **STOP and ask Pietro** before pulling it in — do not add it on your own initiative.
+- After any dependency change, **regenerate `THIRD-PARTY-NOTICES`** (via `cargo-about`) so the attribution file stays in sync.
+
 ## Language
 
 Arca is an international project: **everything committed to the repository must be in English** — code, comments, documentation, commit messages, and the planning/review documents under `.claude/`. Conversations with Pietro may happen in Italian, but no Italian may end up in tracked files.
