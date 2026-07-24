@@ -23,7 +23,12 @@ Arca's own license (AGPL-3.0-or-later) does not exempt its dependencies: a copyl
   # must print nothing (an OR-with-permissive-option match must be reviewed by hand)
   ```
 - If a needed capability is only available under a copyleft license, **STOP and ask Pietro** before pulling it in — do not add it on your own initiative.
-- After any dependency change, **regenerate `THIRD-PARTY-NOTICES`** (via `cargo-about`) so the attribution file stays in sync.
+- After any dependency change, **regenerate `THIRD-PARTY-NOTICES`** so the attribution file stays in sync (config in `about.toml` / `about.hbs`). The `cargo-about` binary is gated behind the `cli` feature, so the install must pass `--features cli`:
+  ```bash
+  docker run --rm -v "$PWD":/work -w /work rust:alpine sh -c \
+    'apk add --no-cache build-base perl; cargo install cargo-about --features cli; \
+     cargo about generate --all-features about.hbs -o THIRD-PARTY-NOTICES.md'
+  ```
 
 ## Language
 

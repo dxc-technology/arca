@@ -2,9 +2,15 @@
 
 Arca bundles or builds upon the third-party open source components listed below.
 This file is generated mechanically with [`cargo-about`](https://github.com/EmbarkStudios/cargo-about)
-from the committed `Cargo.lock`. Do not edit by hand; regenerate after any dependency change:
+from the committed `Cargo.lock`. Do not edit by hand; regenerate (in a container) after any
+dependency change. Note that the `cargo-about` binary is gated behind the `cli` feature, so the
+install must pass `--features cli`:
 
-    cargo about generate --all-features about.hbs -o THIRD-PARTY-NOTICES.md
+    docker run --rm -v "$PWD":/work -w /work rust:alpine sh -c '
+      apk add --no-cache build-base perl
+      cargo install cargo-about --features cli
+      cargo about generate --all-features about.hbs -o THIRD-PARTY-NOTICES.md
+    '
 
 All components are permissively licensed (see the Dependency Licensing Policy in `CLAUDE.md`).
 
