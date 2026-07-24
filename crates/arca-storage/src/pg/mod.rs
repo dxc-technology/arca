@@ -101,6 +101,11 @@ const MIGRATIONS: &[Migration] = &[
         description: "Create maintenance_jobs and maintenance_job_logs (Phase 30)",
         sql: include_str!("migrations/0012_maintenance_jobs.sql"),
     },
+    Migration {
+        version: 13,
+        description: "Add content_updated_at to objects (Phase 30: re-encryption LWW dimension, TD-021)",
+        sql: include_str!("migrations/0013_content_updated_at.sql"),
+    },
 ];
 
 impl PgStore {

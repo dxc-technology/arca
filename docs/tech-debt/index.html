@@ -1469,6 +1469,30 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>tests/</code> (no cold-CLI/cluster phase yet), <code>crates/arca-server/src/{recrypt_existing,migrate_topology}.rs</code></td>
 </tr>
 <tr>
+<td>TD-021</td>
+<td>Cluster re-encryption defers old-blob reclaim to GC</td>
+<td>After a copy-on-write re-encryption swap, the old blob is deleted eagerly on a single node but <strong>left for the grace-bounded anti-entropy GC in a cluster</strong>, so out-of-band reclaim never races the blob-repair pulls peers issue while converging onto the re-encrypted row. Correctness is not affected (content and lock state now converge on independent LWW dimensions — <code>content_updated_at</code> for blob/algorithm/key vs <code>lock_updated_at</code> for retention/legal-hold — so a concurrent lock op can no longer revert <code>blob_id</code>; migrations sqlite v25 / pg 0013). The only residual is a <strong>transient extra copy of each re-encrypted object's old blob</strong> on every node until the next GC pass reclaims it.</td>
+<td>Once the 3-node cluster re-encryption phase (TD-020) confirms it, consider reclaiming the old blob eagerly in the cluster path too (the new blob is already CAS-committed and propagates on its own dimension), or trigger a targeted GC sweep at job completion instead of waiting for the periodic pass.</td>
+<td>None (unit tests cover the independent-merge convergence: <code>apply_remote_reencryption_and_lock_change_merge_independently</code>, <code>apply_remote_reencrypted_row_converges_via_content_updated_at</code>)</td>
+<td><code>crates/arca-server/src/maintenance.rs</code> (<code>recrypt_one</code>, <code>RecryptCtx::clustered</code>), <code>crates/arca-core/src/types.rs</code> (<code>resolve_replicated</code>)</td>
+</tr>
+<tr>
+<td>TD-022</td>
+<td><code>migrate-db</code> / <code>migrate-topology</code> online jobs are not cancellable mid-copy</td>
+<td>The <code>migrate-db</code> maintenance job copies every metadata table in one pass; unlike the re-encryption jobs it does not check the pause/cancel flag between tables, so a cancel request only takes effect once the whole copy finishes (or the job errors). The destination is left with a partial copy on error, which the operator must drop before retrying.</td>
+<td>Check the job status between tables (and ideally between row batches) and abort cleanly, truncating or dropping the partially-populated destination tables on cancel. Surface a "not resumable, will restart from scratch" note in the console.</td>
+<td>None</td>
+<td><code>crates/arca-server/src/maintenance.rs</code> (<code>process_migrate_db</code>)</td>
+</tr>
+<tr>
+<td>TD-023</td>
+<td>Offline <code>migrate-db</code> has no crash-safe checkpoint</td>
+<td>The offline <code>arca migrate-db</code> CLI copies every table to the destination in a single process with no checkpoint; a crash or SIGKILL mid-run leaves the destination partially written and the operator must drop it before retrying. Row-count reconciliation at the end catches a torn copy, but only if the process survives to print it. (The <code>migrate-topology</code> CLI is not affected: its operations are idempotent/in-place — tombstone purge is safely re-runnable, VACUUM is a no-op on restart.)</td>
+<td>Write a resume marker (last-completed table / cursor) to the destination or a sidecar file and skip already-copied tables on restart; or wrap the whole copy in a single destination transaction where the backend allows it.</td>
+<td>None</td>
+<td><code>crates/arca-server/src/migrate_db.rs</code>, <code>crates/arca-storage/src/migration.rs</code></td>
+</tr>
+<tr>
 <td>TD-014</td>
 <td><code>recover</code> / <code>fsck</code> composite blobs</td>
 <td>Composite blobs (the result of the optimised <code>CompleteMultipartUpload</code>) live as a sidecar that lists the part blob ids — no on-disk file exists at the composite's blob path. <code>recover::process_sidecar</code> rejects them as "orphaned sidecar (blob file missing)" and aborts the rebuild. <code>fsck</code> reports the same sidecar as an <code>orphaned_sidecars</code> entry (the parts themselves are not orphaned because they each carry their own sidecar). Both tools therefore produce false positives on any data directory that has experienced multipart uploads after the composite-concat optimisation. Runtime S3 reads/writes are unaffected — the request path fully handles composites.</td>

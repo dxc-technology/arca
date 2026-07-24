@@ -683,6 +683,7 @@ pub async fn put_object(
         checksum_value,
         replication_status: None,
         lock_updated_at: None,
+        content_updated_at: None,
     };
     let (old, version_id) = match state.metadata.put_object(&record).await {
         Ok(r) => r,
@@ -1082,6 +1083,7 @@ async fn copy_object(
         checksum_value: src_record.checksum_value.clone(),
         replication_status: None,
         lock_updated_at: None,
+        content_updated_at: None,
     };
     let (old, version_id) = match state.metadata.put_object(&record).await {
         Ok(r) => r,

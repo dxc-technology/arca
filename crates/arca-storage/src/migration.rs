@@ -186,6 +186,7 @@ pub const TABLES: &[TableDesc] = &[
             col("seq", Int),
             col("is_tombstone", Bool),
             col("lock_updated_at", Timestamp),
+            col("content_updated_at", Timestamp),
         ],
     },
     TableDesc {

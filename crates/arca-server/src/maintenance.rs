@@ -41,6 +41,12 @@ pub struct RecryptCtx {
     pub plain_blob: Option<Arc<dyn BlobStore>>,
     /// Master key, present when encryption is configured.
     pub master_key: Option<Arc<MasterKey>>,
+    /// Whether this node is part of a cluster. Governs old-blob reclaim after a
+    /// copy-on-write swap: on a single node the old blob is deleted eagerly; in
+    /// a cluster it is left for the grace-bounded anti-entropy GC instead, so
+    /// old-blob reclaim never races the blob-repair pulls peers issue while they
+    /// converge onto the re-encrypted row (see TECH_DEBT TD-021).
+    pub clustered: bool,
 }
 
 /// Dependencies the `migrate-db` job needs: the storage config (to open the
@@ -70,6 +76,7 @@ pub fn spawn_maintenance_worker(
         blob: state.blob.clone(),
         plain_blob: state.plain_blob.clone(),
         master_key,
+        clustered: cluster.is_some(),
     };
     let migrate = MigrateDbCtx { storage };
 
@@ -278,6 +285,9 @@ async fn process_migrate_db(
     // per-table counts, logged below, and the job's done/total set after the
     // copy. Table count is small and the run is drained, so coarse progress
     // (0 -> total on completion) is acceptable.
+    // TECHDEBT(TD-022): the copy does not poll the pause/cancel flag between
+    // tables, so a cancel only takes effect once the whole copy finishes; on
+    // error the destination is left partial and must be dropped before retry.
     let report = migration::migrate_all(&source, &dest, force, |idx, total, name| {
         tracing::info!(table = name, step = idx + 1, total, "migrate-db: copying table");
     })
@@ -579,12 +589,26 @@ async fn recrypt_one(
         .map_err(|e| format!("CAS row swap: {e}"))?;
 
     if swapped {
-        // The old blob is now orphaned; reclaim it (encrypting store cascades
-        // composite parts, but candidates are never composite).
-        let _ = ctx.blob.delete(&old_blob_id).await;
+        // The old blob is now orphaned. On a single node reclaim it eagerly
+        // (encrypting store cascades composite parts, but candidates are never
+        // composite). In a cluster do NOT delete it here: the re-encrypted row
+        // (blob_id = new) propagates via anti-entropy and each peer then pulls
+        // the new blob by blob repair; reclaiming the old blob is left to the
+        // same grace-bounded anti-entropy GC that reclaims every other orphan,
+        // so re-encryption never races repair/GC with an out-of-band delete.
+        // TECHDEBT(TD-021): the old blob lingers until the next GC pass — a
+        // transient extra copy per re-encrypted object on every node.
+        // Content and lock state converge on independent LWW dimensions
+        // (content_updated_at vs lock_updated_at), so a concurrent lock op can
+        // no longer revert blob_id to the old value.
+        if !ctx.clustered {
+            let _ = ctx.blob.delete(&old_blob_id).await;
+        }
         Ok(true)
     } else {
-        // A concurrent client write replaced the blob first: discard ours.
+        // A concurrent client write replaced the blob first: discard ours. The
+        // freshly written blob was never referenced by a committed row (the CAS
+        // matched zero rows) and never propagated, so deleting it is always safe.
         let _ = write_store.delete(&new_blob_id).await;
         Ok(false)
     }

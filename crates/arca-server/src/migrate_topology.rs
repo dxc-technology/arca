@@ -352,6 +352,7 @@ mod tests {
             checksum_value: None,
             replication_status: None,
             lock_updated_at: None,
+            content_updated_at: None,
         };
 
         // Each put advances the counter (and stamps seq on the row).

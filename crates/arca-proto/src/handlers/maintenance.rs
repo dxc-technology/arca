@@ -66,6 +66,19 @@ pub async fn create_job(
     }
     let mode = MaintenanceJobMode::parse(&body.mode)
         .ok_or_else(|| AdminError::bad_request("mode must be \"live\" or \"maintenance\""))?;
+    // migrate-db copies every metadata table across separate read transactions;
+    // a concurrent S3 or admin write mid-copy lands in some already-dumped
+    // tables but not others, producing a torn, silently-incomplete destination
+    // that per-table row-count reconciliation cannot detect (source counts are
+    // captured at dump time). The online job is therefore only safe with the S3
+    // API drained, so it MUST run in maintenance mode. (The offline CLI, run
+    // with the server stopped, is the other consistent path.)
+    if job_type == "migrate-db" && mode != MaintenanceJobMode::Maintenance {
+        return Err(AdminError::bad_request(
+            "migrate-db requires \"mode\":\"maintenance\" (the copy must run with S3 drained; \
+             for a live migration use the offline `arca migrate-db` CLI with the server stopped)",
+        ));
+    }
     let params = if body.params.is_null() {
         serde_json::json!({})
     } else {

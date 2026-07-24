@@ -2122,6 +2122,7 @@ mod tests {
             checksum_value: None,
             replication_status: None,
             lock_updated_at: None,
+            content_updated_at: None,
         };
         let manifest = ClusterManifest {
             entries: vec![ManifestEntry { seq: 7, record }],

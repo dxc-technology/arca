@@ -8,10 +8,12 @@ Arca always provides a migration path that preserves existing data where it live
 
 These operations are exposed two ways:
 
-- **Maintenance jobs** — long-running operations launched from the web console (or
-  the admin API) and run by a background worker, with persisted progress and
-  pause / resume / cancel controls. Used for re-encryption (`encrypt` / `decrypt`)
-  and metadata migration (`migrate-db`).
+- **Maintenance jobs** — long-running operations run by a background worker, with
+  persisted progress and pause / resume / cancel controls. Re-encryption
+  (`encrypt` / `decrypt`) is launched from the **web console** or the admin API.
+  Metadata migration (`migrate-db`) is a maintenance job too, but it is launched
+  from the **admin API only** (the console UI does not offer it) and **requires
+  maintenance mode** — see below.
 - **Offline CLI commands** — escape hatches that perform the same transform with
   the server stopped (`arca encrypt-existing`, `arca decrypt-existing`,
   `arca migrate-db`), plus the CLI-only topology transition (`arca migrate-topology`).
@@ -172,9 +174,14 @@ seq counter) is ignored.
 
 ### Running it
 
-As a **maintenance-mode job** (`type: "migrate-db"`, params `{ "target", "force" }`)
-it drains the S3 API on its node while it copies. As an **offline CLI escape hatch**
-(server stopped, so no writes can race the copy):
+As a **maintenance-mode job** (`type: "migrate-db"`, params `{ "target", "force" }`,
+launched via the admin API — the console UI does not offer it). The job **requires
+maintenance mode**: a `live`-mode request is rejected, because the copy walks every
+table across separate read transactions and a concurrent write mid-copy would land
+in some already-dumped tables but not others, producing a torn destination that
+per-table row-count reconciliation cannot detect. In maintenance mode the S3 API on
+its node is drained while it copies. As an **offline CLI escape hatch** (server
+stopped, so no writes can race the copy):
 
 ```bash
 # Migrate metadata from the configured backend to PostgreSQL
@@ -317,12 +324,14 @@ Job-type parameters:
   (optional — all keys if omitted), `rate_bytes_per_sec` (optional, live mode only,
   `0` = unlimited).
 - **`migrate-db`**: `target` (`"sqlite"` \| `"postgres"`, required), `force`
-  (boolean, replace a non-empty destination).
+  (boolean, replace a non-empty destination). Requires `"mode": "maintenance"` —
+  a `live`-mode `migrate-db` request is rejected with `400` (the copy must run
+  with the S3 API drained; see [Metadata migration](#metadata-migration-migrate-db)).
 - **`noop`**: `n` (steps), `delay_ms` (optional per-step sleep) — a test job that
   exercises the subsystem.
 
 **Response** `201`: the created job object.
-**Response** `400`: unknown job type or invalid mode.
+**Response** `400`: unknown job type, invalid mode, or a `live`-mode `migrate-db`.
 **Response** `409`: a job is already active.
 
 ### List jobs

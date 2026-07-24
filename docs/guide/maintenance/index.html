@@ -1839,10 +1839,12 @@ unlike systems that force a fresh deployment when you change a fundamental setti
 Arca always provides a migration path that preserves existing data where it lives.</p>
 <p>These operations are exposed two ways:</p>
 <ul>
-<li><strong>Maintenance jobs</strong> — long-running operations launched from the web console (or
-  the admin API) and run by a background worker, with persisted progress and
-  pause / resume / cancel controls. Used for re-encryption (<code>encrypt</code> / <code>decrypt</code>)
-  and metadata migration (<code>migrate-db</code>).</li>
+<li><strong>Maintenance jobs</strong> — long-running operations run by a background worker, with
+  persisted progress and pause / resume / cancel controls. Re-encryption
+  (<code>encrypt</code> / <code>decrypt</code>) is launched from the <strong>web console</strong> or the admin API.
+  Metadata migration (<code>migrate-db</code>) is a maintenance job too, but it is launched
+  from the <strong>admin API only</strong> (the console UI does not offer it) and <strong>requires
+  maintenance mode</strong> — see below.</li>
 <li><strong>Offline CLI commands</strong> — escape hatches that perform the same transform with
   the server stopped (<code>arca encrypt-existing</code>, <code>arca decrypt-existing</code>,
   <code>arca migrate-db</code>), plus the CLI-only topology transition (<code>arca migrate-topology</code>).</li>
@@ -1998,9 +2000,14 @@ description of every metadata table. It:</p>
 fully replaces it); the always-present schema baseline (root user, built-in grants,
 seq counter) is ignored.</p>
 <h3 id="running-it">Running it<a class="headerlink" href="#running-it" title="Permanent link">&para;</a></h3>
-<p>As a <strong>maintenance-mode job</strong> (<code>type: "migrate-db"</code>, params <code>{ "target", "force" }</code>)
-it drains the S3 API on its node while it copies. As an <strong>offline CLI escape hatch</strong>
-(server stopped, so no writes can race the copy):</p>
+<p>As a <strong>maintenance-mode job</strong> (<code>type: "migrate-db"</code>, params <code>{ "target", "force" }</code>,
+launched via the admin API — the console UI does not offer it). The job <strong>requires
+maintenance mode</strong>: a <code>live</code>-mode request is rejected, because the copy walks every
+table across separate read transactions and a concurrent write mid-copy would land
+in some already-dumped tables but not others, producing a torn destination that
+per-table row-count reconciliation cannot detect. In maintenance mode the S3 API on
+its node is drained while it copies. As an <strong>offline CLI escape hatch</strong> (server
+stopped, so no writes can race the copy):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Migrate metadata from the configured backend to PostgreSQL</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>arca<span class="w"> </span>migrate-db<span class="w"> </span>--to<span class="w"> </span>postgres<span class="w"> </span>--config-path<span class="w"> </span>/etc/arca/config.toml
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
@@ -2190,12 +2197,14 @@ the rest of <code>/admin/*</code>. Known job types: <code>noop</code>, <code>enc
   (optional — all keys if omitted), <code>rate_bytes_per_sec</code> (optional, live mode only,
   <code>0</code> = unlimited).</li>
 <li><strong><code>migrate-db</code></strong>: <code>target</code> (<code>"sqlite"</code> | <code>"postgres"</code>, required), <code>force</code>
-  (boolean, replace a non-empty destination).</li>
+  (boolean, replace a non-empty destination). Requires <code>"mode": "maintenance"</code> —
+  a <code>live</code>-mode <code>migrate-db</code> request is rejected with <code>400</code> (the copy must run
+  with the S3 API drained; see <a href="#metadata-migration-migrate-db">Metadata migration</a>).</li>
 <li><strong><code>noop</code></strong>: <code>n</code> (steps), <code>delay_ms</code> (optional per-step sleep) — a test job that
   exercises the subsystem.</li>
 </ul>
 <p><strong>Response</strong> <code>201</code>: the created job object.
-<strong>Response</strong> <code>400</code>: unknown job type or invalid mode.
+<strong>Response</strong> <code>400</code>: unknown job type, invalid mode, or a <code>live</code>-mode <code>migrate-db</code>.
 <strong>Response</strong> <code>409</code>: a job is already active.</p>
 <h3 id="list-jobs">List jobs<a class="headerlink" href="#list-jobs" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>GET /admin/maintenance/jobs?limit=50

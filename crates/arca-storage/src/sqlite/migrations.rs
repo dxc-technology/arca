@@ -534,6 +534,23 @@ const MIGRATIONS: &[Migration] = &[
             CREATE INDEX idx_maintenance_job_logs_job ON maintenance_job_logs(job_id, ts DESC);
         ",
     },
+    Migration {
+        version: 25,
+        description: "Add content_updated_at to objects (Phase 30: re-encryption LWW dimension)",
+        // Phase 30 (TD-021): re-encryption rewrites a row's blob/algorithm/key
+        // in place WITHOUT bumping last_modified (the plaintext is unchanged),
+        // exactly like a lock-state change. Reusing lock_updated_at as the tie
+        // dimension made the two clobber each other during anti-entropy: a
+        // re-encryption could revert a newer lock state and vice versa. This
+        // column is the content register's own timestamp so apply_remote_object
+        // can merge the lock columns (by lock_updated_at) and the content
+        // columns (by content_updated_at) independently. NULL = never
+        // re-encrypted; existing rows stay NULL (any post-upgrade re-encryption
+        // beats them).
+        sql: "
+            ALTER TABLE objects ADD COLUMN content_updated_at TEXT;
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -607,7 +624,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 24);
+        assert_eq!(version, 25);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -657,12 +674,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 24);
+        assert_eq!(version, 25);
 
-        // Twenty-four migration records
+        // Twenty-five migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 24);
+        assert_eq!(count, 25);
     }
 }

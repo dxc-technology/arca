@@ -544,6 +544,7 @@ mod tests {
             checksum_value: None,
             replication_status: None,
             lock_updated_at: None,
+            content_updated_at: None,
         };
         store.put_object(&record).await.unwrap();
     }
@@ -625,6 +626,7 @@ mod tests {
             checksum_value: None,
             replication_status: None,
             lock_updated_at: None,
+            content_updated_at: None,
         };
         store.put_object(&record).await.unwrap();
         drop(store);
@@ -773,6 +775,7 @@ mod tests {
             checksum_value: None,
             replication_status: None,
             lock_updated_at: None,
+            content_updated_at: None,
         };
         store.put_object(&record).await.unwrap();
         drop(store);

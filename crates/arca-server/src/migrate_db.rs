@@ -74,6 +74,10 @@ pub async fn run_migrate_db(config: &Config, to: &str, force: bool) -> Result<()
     let dest = open_backend(config, to).await?;
 
     println!("Migrating metadata {from} -> {to} (force={force})\n");
+    // TECHDEBT(TD-023): single-pass copy with no crash-safe checkpoint. A crash
+    // mid-run leaves the destination partially written and the operator must
+    // drop it before retrying; the reconcile below only fires if the process
+    // survives to print it.
     let report = migration::migrate_all(&source, &dest, force, |idx, total, name| {
         println!("  [{}/{}] {name}", idx + 1, total);
     })
