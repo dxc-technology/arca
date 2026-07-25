@@ -143,6 +143,16 @@ async fn authenticate_request(
             return Err(json_error(StatusCode::FORBIDDEN, "AccessDenied", "Access Denied"));
         }
 
+        // Anti-replay: reject header-signed requests whose x-amz-date is
+        // outside the freshness window (see auth.rs for rationale).
+        if !super::within_replay_window(&request_datetime, chrono::Utc::now()) {
+            return Err(json_error(
+                StatusCode::FORBIDDEN,
+                "AccessDenied",
+                "Request time too far from server time",
+            ));
+        }
+
         let input = VerifyInput {
             method: &method,
             uri_path: &uri_path,
@@ -234,17 +244,23 @@ async fn authenticate_request(
     };
 
     // Resolve identity: credential -> user -> effective policies.
+    // Fail closed: a valid credential whose user no longer exists is denied,
+    // and a backend error is a 500 — neither may be silently promoted to root.
     let user = match state.users.get_user(&credential.user_id).await {
         Ok(Some(u)) => u,
-        Ok(None) | Err(_) => {
-            // Fallback: treat as root for backward compat (pre-migration credentials).
-            arca_core::types::User {
-                user_id: credential.user_id.clone(),
-                username: credential.user_id.clone(),
-                description: String::new(),
-                is_root: true,
-                created_at: chrono::Utc::now(),
-            }
+        Ok(None) => {
+            return Err(json_error(
+                StatusCode::FORBIDDEN,
+                "AccessDenied",
+                "Access Denied",
+            ));
+        }
+        Err(_) => {
+            return Err(json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "InternalError",
+                "Internal server error",
+            ));
         }
     };
 

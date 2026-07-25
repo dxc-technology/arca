@@ -1197,8 +1197,26 @@ async fn async_main(cli: Cli) -> Result<()> {
                         anyhow::bail!("Cannot delete the root user.");
                     }
 
+                    // delete_user removes the user's credentials in the same
+                    // transaction (a credential must never outlive its user, or
+                    // it would authenticate to a missing identity — which the
+                    // auth layer denies). Unlike the admin API, this path does
+                    // not refuse the delete, so name the access keys it revokes
+                    // instead of dropping them silently.
+                    let revoked: Vec<String> = stores
+                        .credentials
+                        .list_credentials()
+                        .await?
+                        .into_iter()
+                        .filter(|c| c.user_id == user_id)
+                        .map(|c| c.access_key_id)
+                        .collect();
+
                     stores.users.delete_user(&user_id).await?;
                     println!("User {} ({}) deleted.", user_id, user.username);
+                    for access_key_id in &revoked {
+                        println!("  Credential revoked: {access_key_id}");
+                    }
                 }
             }
         }

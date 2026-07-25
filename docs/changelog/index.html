@@ -1238,6 +1238,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Unreleased">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1370,7 +1387,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#security" class="md-nav__link">
+  <a href="#security_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Security
@@ -1420,7 +1437,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#security_1" class="md-nav__link">
+  <a href="#security_2" class="md-nav__link">
     <span class="md-ellipsis">
       
         Security
@@ -2875,6 +2892,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Unreleased">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -3007,7 +3041,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#security" class="md-nav__link">
+  <a href="#security_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Security
@@ -3057,7 +3091,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#security_1" class="md-nav__link">
+  <a href="#security_2" class="md-nav__link">
     <span class="md-ellipsis">
       
         Security
@@ -4464,6 +4498,11 @@
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
 <h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.28.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h3 id="security">Security<a class="headerlink" href="#security" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Anti-replay window on header-signed S3 and admin requests.</strong> The <code>Authorization</code>-header SigV4 paths (S3 API and <code>/admin/*</code>) never validated <code>x-amz-date</code> against the server clock, so a captured signed request — sniffed off a plain-HTTP hop, or lifted from an access log or proxy trace — stayed replayable forever. Both paths now reject a request whose <code>x-amz-date</code> lies more than 15 minutes from the server clock (the AWS SigV4 convention, and the same window <code>/cluster/v1/*</code> already enforced since 0.26.0), returning <code>403 AccessDenied</code>. The signature covers <code>x-amz-date</code>, so an attacker cannot re-date a captured request without the secret key. Presigned (query-string) requests were already bounded by their own <code>X-Amz-Expires</code>. Clients whose clock drifts beyond ±15 minutes from the server's will now be refused — run NTP.</li>
+<li><strong>Auth fails closed when a credential's user no longer exists.</strong> A valid credential whose <code>user_id</code> did not resolve to a <code>users</code> row was silently promoted to a <strong>synthetic root identity</strong> (a leftover backward-compatibility accommodation for pre-users-table credentials), which meant a dangling credential — one left behind after its user was deleted — authenticated as root and bypassed all policy evaluation. Both the S3 and admin auth paths now deny such a request (<code>403 AccessDenied</code>), and a genuine metadata-backend failure is a <code>500 InternalError</code> instead of being collapsed into the same root fallback. To remove the source of dangling credentials, <code>UserStore::delete_user</code> now deletes the user's credentials in the same transaction on both backends (SQLite and PostgreSQL), so a credential can no longer outlive its user. This is not merely defensive: <code>DELETE /admin/users/{id}</code> refuses with <code>409 Conflict</code> while credentials exist (unchanged), but two paths reach the store without that check and could mint a dangling credential that authenticated as <strong>root</strong> — the <code>arca user delete</code> CLI, which validated only "not root", and the cluster control-plane apply of a <code>UserDelete</code> op, where the deleting node's check cannot see a credential another node created concurrently. In the cluster the cascade is also what converges the two nodes on "user gone, its keys gone" instead of leaving one peer with a permanently denied key. <code>arca user delete</code> now prints each access key it revokes rather than dropping them silently. Credentials predating the users table are unaffected: the migration that added <code>credentials.user_id</code> backfilled them to the root user, which exists.</li>
+</ul>
 <h2 id="0280-2026-07-24"><a href="https://github.com/dxc-technology/arca/compare/v0.27.1...v0.28.0">0.28.0</a> — 2026-07-24<a class="headerlink" href="#0280-2026-07-24" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
@@ -4494,7 +4533,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Console: shared bucket links now land on the bucket after login.</strong> Opening a deep-link URL (e.g. a bucket link sent by another user) and then logging in previously always dropped you on the dashboard (admin) or the buckets list (non-admin), discarding the link. The console now preserves the deep link and routes to it after login, only defaulting to home when no destination was given. If the target bucket is inaccessible or missing, the user is bounced home with an explanatory toast — <code>403</code> → "You don't have access to bucket …", <code>404</code> → "Bucket … does not exist". Because S3 returns no error for a non-existent <em>prefix</em>, a missing sub-folder (a non-empty prefix whose listing is entirely empty, with no folder marker) is inferred client-side and returns the user to the bucket root with a "Folder … does not exist" toast; genuinely empty folders still open normally.</li>
 </ul>
 <h2 id="0261-2026-06-12"><a href="https://github.com/dxc-technology/arca/compare/v0.26.0...v0.26.1">0.26.1</a> — 2026-06-12<a class="headerlink" href="#0261-2026-06-12" title="Permanent link">&para;</a></h2>
-<h3 id="security">Security<a class="headerlink" href="#security" title="Permanent link">&para;</a></h3>
+<h3 id="security_1">Security<a class="headerlink" href="#security_1" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong><code>time</code> 0.3.41 → 0.3.47 — CVE-2026-25727 fix picked up (resolves TD-011).</strong> The Docker builder moved from <code>rust:1.85-alpine</code> to <code>rust:alpine</code> (currently Rust 1.96), unblocking the <code>time</code> versions that contain the stack-exhaustion fix; the MSRV pins (<code>home</code>, <code>serde_with</code>, <code>darling</code>) became unnecessary and were removed from the Dockerfile. <code>time</code> 0.3.48 remains excluded for a non-security reason (a coherence clash with <code>rcgen</code> — tracked as TD-017).</li>
 <li><strong><code>rustls-pemfile</code> retired (resolves TD-012, RUSTSEC-2025-0134).</strong> PEM parsing migrated to <code>rustls-pki-types</code> (<code>PemObject</code>), which is maintained as part of the rustls project; the unmaintained dependency is gone from the workspace.</li>
@@ -4521,7 +4560,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Integration tests aligned with current S3/SDK semantics</strong> (no server changes — the server was right): checksum assertions now request <code>ChecksumMode=ENABLED</code> on HEAD/GET as S3 requires; suspending versioning on an Object-Lock bucket expects AWS's real <code>409 InvalidBucketState</code> (not 400); the notification event-log test signs with <code>S3SigV4Auth</code> like every other admin test (the generic <code>SigV4Auth</code> signs the payload hash over http but never sends <code>x-amz-content-sha256</code>, which the server rightly rejects).</li>
 </ul>
 <h2 id="0260-2026-06-12"><a href="https://github.com/dxc-technology/arca/compare/v0.25.1...v0.26.0">0.26.0</a> — 2026-06-12<a class="headerlink" href="#0260-2026-06-12" title="Permanent link">&para;</a></h2>
-<h3 id="security_1">Security<a class="headerlink" href="#security_1" title="Permanent link">&para;</a></h3>
+<h3 id="security_2">Security<a class="headerlink" href="#security_2" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Verified inter-node mutual TLS with a cluster CA (Phase 29.1 R4, review §3.7(C), decision H12 — resolves TD-015).</strong> Inter-node TLS no longer accepts invalid certificates: the <code>danger_accept_invalid_certs</code> accommodation is gone. A new <code>[cluster.tls]</code> section distributes an operator-owned cluster CA plus this node's CA-signed cert/key (mint everything with the new <code>arca tls generate-cluster</code>): outbound cluster clients verify peer certificates against the CA and present the node cert as their client identity, while the listener requests client certificates — optional at the TLS layer, because S3 clients share the single port — and <code>/cluster/v1/*</code> refuses any request whose connection did not present one signed by the cluster CA. This is the independent second factor on top of the R3 challenge-response (an attacker now needs the secret AND a CA-signed key), and it closes the passive-sniffing / active-MITM exposure on the cluster network. <strong>Breaking</strong>: a cluster running over HTTPS now refuses to start without <code>[cluster.tls]</code> (fail closed — there is no insecure fallback); plain-HTTP clusters are unaffected (the R3 peer authentication remains their baseline; use TLS on any network you do not fully trust).</li>
 <li><strong>Anti-replay window on cluster requests (Phase 29.1 R4, review §3.1/§3.7(C)).</strong> <code>/cluster/v1/*</code> now rejects signed requests whose <code>x-amz-date</code> lies more than 15 minutes from the node's clock (the SigV4 convention). Previously a captured signed request — e.g. a blob <code>GET</code> sniffed off a plain-HTTP segment — remained replayable forever; the signature covers the timestamp, so it cannot be refreshed without the secret. Cluster nodes already require NTP.</li>

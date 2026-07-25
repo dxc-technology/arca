@@ -152,6 +152,15 @@ impl UserStore for PgStore {
             .await
             .map_err(|e| ArcaError::Internal(format!("delete_user: {e}")))?;
 
+        // Cascade credential deletion: a credential must never outlive its
+        // user, otherwise it would authenticate to a non-existent identity
+        // (which the auth layer now denies).
+        sqlx_core::query::query("DELETE FROM credentials WHERE user_id = $1")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("delete_user: {e}")))?;
+
         let result = sqlx_core::query::query("DELETE FROM users WHERE user_id = $1")
             .bind(user_id)
             .execute(&mut *tx)

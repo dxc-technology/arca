@@ -147,6 +147,13 @@ impl UserStore for SqliteStore {
                     "DELETE FROM user_grants WHERE user_id = ?1",
                     params![id],
                 )?;
+                // Cascade credential deletion: a credential must never outlive
+                // its user, otherwise it would authenticate to a non-existent
+                // identity (which the auth layer now denies).
+                tx.execute(
+                    "DELETE FROM credentials WHERE user_id = ?1",
+                    params![id],
+                )?;
                 let affected = tx.execute(
                     "DELETE FROM users WHERE user_id = ?1",
                     params![id],
@@ -316,6 +323,70 @@ mod tests {
     async fn delete_nonexistent_returns_false() {
         let store = test_store().await;
         assert!(!store.delete_user("nope").await.unwrap());
+    }
+
+    /// A credential must never outlive its user: the auth layer fails closed on
+    /// a credential whose `user_id` no longer resolves, so a dangling
+    /// credential would be a permanently unusable (and confusing) access key.
+    #[tokio::test]
+    async fn delete_user_cascades_to_its_credentials() {
+        use arca_core::store::CredentialStore;
+        use arca_core::types::Credential;
+
+        let store = test_store().await;
+        store.put_user(&make_user("u-cascade", "grace")).await.unwrap();
+
+        let cred = Credential {
+            access_key_id: "AKIACASCADE".to_string(),
+            secret_access_key: "secret".to_string(),
+            description: "grace's key".to_string(),
+            created_at: Utc::now(),
+            active: true,
+            admin: false,
+            user_id: "u-cascade".to_string(),
+        };
+        store.put_credential(&cred).await.unwrap();
+        assert!(store.get_credential("AKIACASCADE").await.unwrap().is_some());
+
+        assert!(store.delete_user("u-cascade").await.unwrap());
+
+        assert!(store.get_user("u-cascade").await.unwrap().is_none());
+        assert!(
+            store.get_credential("AKIACASCADE").await.unwrap().is_none(),
+            "the deleted user's credential must be gone, not dangling"
+        );
+    }
+
+    /// The cascade is scoped to the deleted user — another user's credentials
+    /// must survive.
+    #[tokio::test]
+    async fn delete_user_leaves_other_users_credentials_intact() {
+        use arca_core::store::CredentialStore;
+        use arca_core::types::Credential;
+
+        let store = test_store().await;
+        store.put_user(&make_user("u-gone", "heidi")).await.unwrap();
+        store.put_user(&make_user("u-stays", "ivan")).await.unwrap();
+
+        for (key, owner) in [("AKIAGONE", "u-gone"), ("AKIASTAYS", "u-stays")] {
+            store
+                .put_credential(&Credential {
+                    access_key_id: key.to_string(),
+                    secret_access_key: "secret".to_string(),
+                    description: String::new(),
+                    created_at: Utc::now(),
+                    active: true,
+                    admin: false,
+                    user_id: owner.to_string(),
+                })
+                .await
+                .unwrap();
+        }
+
+        assert!(store.delete_user("u-gone").await.unwrap());
+
+        assert!(store.get_credential("AKIAGONE").await.unwrap().is_none());
+        assert!(store.get_credential("AKIASTAYS").await.unwrap().is_some());
     }
 
     #[tokio::test]

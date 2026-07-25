@@ -14,7 +14,7 @@
 
 use axum::extract::State;
 use axum::response::Response;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use http::StatusCode;
 
 use arca_auth::{parse_authorization, verify_request, VerifyInput};
@@ -23,24 +23,7 @@ use arca_core::s3::replication::REPLICATION_SOURCE_HEADER;
 
 use crate::state::AppState;
 
-/// §3.1 anti-replay window: a signed cluster request is accepted only when its
-/// `x-amz-date` lies within this many seconds of this node's clock (either
-/// direction). Without it, a captured signed request (e.g. a blob GET sniffed
-/// off a plain-HTTP segment) stays replayable forever. ±15 minutes matches the
-/// AWS SigV4 convention and is generous against NTP drift (the HA guide
-/// already mandates NTP on cluster nodes).
-const REPLAY_WINDOW_SECS: i64 = 15 * 60;
-
-/// Returns true when `amz_date` (SigV4 `YYYYMMDDTHHMMSSZ`) falls within
-/// [`REPLAY_WINDOW_SECS`] of `now`. Unparseable timestamps are rejected — the
-/// signature already covers the header, so a legitimate peer always sends the
-/// canonical format.
-fn within_replay_window(amz_date: &str, now: DateTime<Utc>) -> bool {
-    match chrono::NaiveDateTime::parse_from_str(amz_date, "%Y%m%dT%H%M%SZ") {
-        Ok(t) => (now - t.and_utc()).num_seconds().abs() <= REPLAY_WINDOW_SECS,
-        Err(_) => false,
-    }
-}
+use super::within_replay_window;
 
 /// Request extension recorded by the TLS accept loop when the connection
 /// presented a client certificate that validated against the cluster CA
@@ -272,42 +255,4 @@ fn json_error(status: StatusCode, error: &str, message: &str) -> Response {
         .header("Content-Type", "application/json")
         .body(axum::body::Body::from(body.to_string()))
         .expect("build JSON error response")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn at(iso: &str) -> DateTime<Utc> {
-        DateTime::parse_from_rfc3339(iso).unwrap().with_timezone(&Utc)
-    }
-
-    #[test]
-    fn replay_window_accepts_fresh_and_boundary_timestamps() {
-        let now = at("2026-06-11T12:00:00Z");
-        assert!(within_replay_window("20260611T120000Z", now));
-        // Exactly ±15 minutes is still inside (<=).
-        assert!(within_replay_window("20260611T114500Z", now));
-        assert!(within_replay_window("20260611T121500Z", now));
-    }
-
-    #[test]
-    fn replay_window_rejects_stale_and_future_timestamps() {
-        let now = at("2026-06-11T12:00:00Z");
-        // One second beyond the window, both directions.
-        assert!(!within_replay_window("20260611T114459Z", now));
-        assert!(!within_replay_window("20260611T121501Z", now));
-        // A captured request replayed the next day.
-        assert!(!within_replay_window("20260610T120000Z", now));
-    }
-
-    #[test]
-    fn replay_window_rejects_malformed_timestamps() {
-        let now = at("2026-06-11T12:00:00Z");
-        assert!(!within_replay_window("", now));
-        assert!(!within_replay_window("not-a-date", now));
-        // Missing the trailing Z / wrong shape.
-        assert!(!within_replay_window("20260611T120000", now));
-        assert!(!within_replay_window("2026-06-11T12:00:00Z", now));
-    }
 }
