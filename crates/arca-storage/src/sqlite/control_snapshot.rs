@@ -284,14 +284,13 @@ impl ControlSnapshotStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 conn.execute(
-                    "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, admin, user_id, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                    "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, user_id, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                      ON CONFLICT(access_key_id) DO UPDATE SET
                        secret_access_key = excluded.secret_access_key,
                        description = excluded.description,
                        created_at = excluded.created_at,
                        active = excluded.active,
-                       admin = excluded.admin,
                        user_id = excluded.user_id,
                        updated_at = excluded.updated_at",
                     params![
@@ -300,7 +299,6 @@ impl ControlSnapshotStore for SqliteStore {
                         cred.description,
                         cred.created_at.to_rfc3339(),
                         cred.active as i32,
-                        cred.admin as i32,
                         cred.user_id,
                         ts,
                     ],
@@ -486,7 +484,6 @@ mod tests {
             description: String::new(),
             created_at: Utc::now(),
             active: true,
-            admin: false,
             user_id: "root".to_string(),
         }
     }

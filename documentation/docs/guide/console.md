@@ -303,7 +303,7 @@ Both modals show the version ID and object key. A "Latest" badge appears if you 
 The Credentials view is available to **admin credentials only** (navigate to `#/credentials`). It shows all credentials across all users as cards, each displaying:
 
 - **Active/Inactive** badge — green for active, red for inactive
-- **Admin/User** badge — purple for admin privileges, gray for regular user
+- **Owner** badge — violet, showing the username the credential belongs to; click it to open that user. Privileges come from the user, not from the credential
 - **Access Key ID** — the full key ID
 - **Description** — what the credential is used for
 - **Creation date**
@@ -317,8 +317,11 @@ A warning banner appears when only one active credential remains, to prevent acc
 Click "+ Create Credential" to open the creation form:
 
 1. Enter an optional **description** (e.g., "CI/CD Pipeline")
-2. Check **Admin privileges** if the credential needs access to the Admin API and console management
-3. Click **Create**
+2. Click **Create**
+
+The new credential belongs to the user you are signed in as, and therefore has
+exactly the same privileges. To create a credential with different access,
+create it on another user from the [Users](#user-management) view.
 
 The secret key is displayed **only once** after creation. Copy it immediately, as it cannot be retrieved later.
 

@@ -342,7 +342,6 @@ mod tests {
             description: "grace's key".to_string(),
             created_at: Utc::now(),
             active: true,
-            admin: false,
             user_id: "u-cascade".to_string(),
         };
         store.put_credential(&cred).await.unwrap();
@@ -376,7 +375,6 @@ mod tests {
                     description: String::new(),
                     created_at: Utc::now(),
                     active: true,
-                    admin: false,
                     user_id: owner.to_string(),
                 })
                 .await

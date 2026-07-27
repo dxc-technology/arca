@@ -47,10 +47,9 @@ A **credential** is an access key / secret key pair used to authenticate S3 and 
 
 This design is intentional: a single user might need separate credentials for different contexts (CLI usage, an application, a CI/CD pipeline) without creating separate user identities for each.
 
-Each credential also has:
+Each credential also has an **`active`** flag: disabled credentials are rejected at authentication time without deleting them.
 
-- **`active`** flag: disabled credentials are rejected at authentication time without deleting them.
-- **`admin`** flag: only admin credentials can access the `/admin/*` API endpoints and the web console.
+A credential carries **no privileges of its own**. Everything a request is allowed to do is determined by the user that owns the credential: the root user has implicit full access, and every other user is authorized through its grants. This applies to the `/admin/*` endpoints and the web console as well, which a non-root user reaches only when a grant allows the corresponding `arca:*` action.
 
 ### Teams
 
@@ -177,7 +176,7 @@ The CLI operates directly on the database and works even when the server is stop
 arca user create alice --description "Backend developer"
 
 # Create a credential for the user
-arca credential add --user alice --description "Alice's CLI key" --admin
+arca credential add --user alice --description "Alice's CLI key"
 
 # List users and credentials
 arca user list
@@ -218,8 +217,8 @@ Here's a typical setup for a team with different access levels:
 arca user create alice --description "Backend developer"
 arca user create bob --description "Data analyst"
 
-# 2. Create credentials (admin for alice, regular for bob)
-arca credential add --user alice --description "Alice CLI" --admin
+# 2. Create credentials (privileges come from each user's grants)
+arca credential add --user alice --description "Alice CLI"
 arca credential add --user bob --description "Bob CLI"
 ```
 

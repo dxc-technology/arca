@@ -1,0 +1,13 @@
+-- Privileges belong to the user, never to the credential.
+--
+-- The `admin` flag was a pre-RBAC leftover, already ignored for non-root users
+-- (they are authorized through their grants). The only place still reading it
+-- was the admin gate's root branch, which made every credential minted through
+-- POST /admin/users/{id}/credentials unusable: created for root, therefore not
+-- grant-evaluated, but admin=false, therefore denied on every /admin/* route.
+--
+-- The gate now mirrors S3 authorization: root passes by identity, everyone else
+-- by grants. Root credentials that carried admin=false gain admin access, which
+-- is the point of the fix; non-root credentials lose nothing, since the flag was
+-- already ignored for them.
+ALTER TABLE credentials DROP COLUMN admin;

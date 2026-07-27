@@ -218,14 +218,13 @@ impl ControlSnapshotStore for PgStore {
         updated_at: DateTime<Utc>,
     ) -> Result<(), ArcaError> {
         sqlx_core::query::query(
-            "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, admin, user_id, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, user_id, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
              ON CONFLICT (access_key_id) DO UPDATE SET
                secret_access_key = EXCLUDED.secret_access_key,
                description = EXCLUDED.description,
                created_at = EXCLUDED.created_at,
                active = EXCLUDED.active,
-               admin = EXCLUDED.admin,
                user_id = EXCLUDED.user_id,
                updated_at = EXCLUDED.updated_at",
         )
@@ -234,7 +233,6 @@ impl ControlSnapshotStore for PgStore {
         .bind(&credential.description)
         .bind(credential.created_at)
         .bind(credential.active)
-        .bind(credential.admin)
         .bind(&credential.user_id)
         .bind(updated_at)
         .execute(&self.pool)

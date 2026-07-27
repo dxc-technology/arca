@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::ffi::CString;
 
+use arca_core::types::Credential;
+
 use crate::handlers::admin_settings::effective_region;
 use crate::middleware::admin_auth::AuthenticatedCredential;
 use crate::middleware::identity::AuthenticatedIdentity;
@@ -155,6 +157,11 @@ struct InfoResponse {
     replication_enabled: bool,
 }
 
+/// A credential as reported by the Admin API.
+///
+/// `user_id` replaces the removed `admin` flag: privileges are a property of
+/// the owning user (root implicitly, everyone else through grants), so the
+/// owner is what a client needs in order to reason about a credential.
 #[derive(Serialize)]
 struct CredentialResponse {
     access_key_id: String,
@@ -163,15 +170,17 @@ struct CredentialResponse {
     description: String,
     created_at: String,
     active: bool,
-    admin: bool,
+    user_id: String,
 }
 
+/// Body of `POST /admin/credentials`.
+///
+/// An `admin` field from an older client is silently ignored (serde skips
+/// unknown fields): privileges come from the owning user, not the credential.
 #[derive(Deserialize)]
 pub struct CreateCredentialRequest {
     #[serde(default)]
     description: String,
-    #[serde(default)]
-    admin: bool,
 }
 
 // -- Handlers --
@@ -574,6 +583,47 @@ pub async fn stats(State(state): State<AppState>) -> Result<impl IntoResponse, A
     }))
 }
 
+/// Whether this credential's owning user is a root user.
+///
+/// Root is the only identity with implicit admin access, so this is what the
+/// lockout guards below key on: it replaces the removed per-credential `admin`
+/// flag without changing their intent.
+async fn belongs_to_root(state: &AppState, cred: &Credential) -> Result<bool, AdminError> {
+    Ok(state
+        .users
+        .get_user(&cred.user_id)
+        .await
+        .map_err(|e| AdminError::internal(e.to_string()))?
+        .is_some_and(|u| u.is_root))
+}
+
+/// Counts active credentials owned by a root user.
+///
+/// These are the credentials that can still reach `/admin/*` by identity alone,
+/// so the last one must not be deleted or deactivated: doing so would leave the
+/// deployment with no way in other than a non-root user holding the right
+/// grants, which may not exist.
+async fn active_root_credential_count(state: &AppState) -> Result<usize, AdminError> {
+    let root_ids: HashSet<String> = state
+        .users
+        .list_users()
+        .await
+        .map_err(|e| AdminError::internal(e.to_string()))?
+        .into_iter()
+        .filter(|u| u.is_root)
+        .map(|u| u.user_id)
+        .collect();
+
+    Ok(state
+        .credentials
+        .list_credentials()
+        .await
+        .map_err(|e| AdminError::internal(e.to_string()))?
+        .iter()
+        .filter(|c| c.active && root_ids.contains(&c.user_id))
+        .count())
+}
+
 /// GET /admin/credentials — list all credentials (secrets redacted).
 pub async fn list_credentials(
     State(state): State<AppState>,
@@ -592,7 +642,7 @@ pub async fn list_credentials(
             description: c.description,
             created_at: c.created_at.to_rfc3339(),
             active: c.active,
-            admin: c.admin,
+            user_id: c.user_id,
         })
         .collect();
 
@@ -616,11 +666,8 @@ pub async fn create_credential(
     let body: CreateCredentialRequest =
         serde_json::from_slice(&body_bytes).map_err(|e| AdminError::bad_request(e.to_string()))?;
 
-    let cred = arca_core::credential::generate_credential(
-        &body.description,
-        body.admin,
-        &identity.user.user_id,
-    );
+    let cred =
+        arca_core::credential::generate_credential(&body.description, &identity.user.user_id);
 
     state
         .credentials
@@ -634,7 +681,7 @@ pub async fn create_credential(
         description: cred.description,
         created_at: cred.created_at.to_rfc3339(),
         active: cred.active,
-        admin: cred.admin,
+        user_id: cred.user_id,
     };
 
     Ok((StatusCode::CREATED, Json(response)))
@@ -654,24 +701,22 @@ pub async fn update_credential(
         .ok_or_else(|| AdminError::not_found(format!("Credential {access_key_id} not found")))?;
 
     if let Some(active) = body.active {
-        // Prevent deactivating the last active credential or last active admin credential.
+        // Prevent deactivating the last active credential, or the last one that
+        // can still reach the Admin API (see `active_root_credential_count`).
         if !active && cred.active {
-            let all_creds = state
-                .credentials
-                .list_credentials()
-                .await
-                .map_err(|e| AdminError::internal(e.to_string()))?;
-
-            if cred.admin {
-                let active_admin_count = all_creds.iter().filter(|c| c.active && c.admin).count();
-                if active_admin_count <= 1 {
-                    return Err(AdminError::conflict(
-                        "Cannot deactivate the last active admin credential",
-                    ));
-                }
+            if belongs_to_root(&state, &cred).await?
+                && active_root_credential_count(&state).await? <= 1
+            {
+                return Err(AdminError::conflict(
+                    "Cannot deactivate the last active root credential",
+                ));
             }
 
-            let active_count = all_creds.iter().filter(|c| c.active).count();
+            let active_count = state
+                .credentials
+                .count_active_credentials()
+                .await
+                .map_err(|e| AdminError::internal(e.to_string()))?;
             if active_count <= 1 {
                 return Err(AdminError::conflict(
                     "Cannot deactivate the last active credential",
@@ -726,18 +771,12 @@ pub async fn delete_credential(
                 "Credential {access_key_id} not found"
             )));
         }
-        Some(cred) if cred.active && cred.admin => {
-            // Prevent deleting the last admin credential (checked before active lockout
-            // since it's the more specific constraint).
-            let all_creds = state
-                .credentials
-                .list_credentials()
-                .await
-                .map_err(|e| AdminError::internal(e.to_string()))?;
-            let admin_count = all_creds.iter().filter(|c| c.active && c.admin).count();
-            if admin_count <= 1 {
+        Some(cred) if cred.active && belongs_to_root(&state, cred).await? => {
+            // Prevent deleting the last root credential (checked before the
+            // active-lockout case since it is the more specific constraint).
+            if active_root_credential_count(&state).await? <= 1 {
                 return Err(AdminError::conflict(
-                    "Cannot delete the last admin credential",
+                    "Cannot delete the last active root credential",
                 ));
             }
         }

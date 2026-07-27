@@ -100,7 +100,6 @@ pub const TABLES: &[TableDesc] = &[
             col("description", Text),
             col("created_at", Timestamp),
             col("active", Bool),
-            col("admin", Bool),
             col("user_id", Text),
             col("updated_at", Timestamp),
         ],
@@ -577,10 +576,10 @@ mod tests {
         // typed store APIs would hide column-kind handling).
         let now2 = now.clone();
         src.write_conn().call(move |c| {
-                // A credential (booleans active/admin, timestamps).
+                // A credential (boolean active, timestamps).
                 c.execute(
-                    "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, admin, user_id, updated_at) \
-                     VALUES (?1, ?2, '', ?3, 1, 0, 'root', ?3)",
+                    "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, user_id, updated_at) \
+                     VALUES (?1, ?2, '', ?3, 1, 'root', ?3)",
                     params!["AKIA", "secret", now2],
                 )?;
                 // Two buckets.

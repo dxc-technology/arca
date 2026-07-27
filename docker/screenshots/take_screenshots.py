@@ -187,7 +187,7 @@ def create_extra_credential():
     from botocore.awsrequest import AWSRequest
 
     creds = Credentials(ACCESS_KEY, SECRET_KEY)
-    body = json.dumps({"description": "Backup Service", "admin": False})
+    body = json.dumps({"description": "Backup Service"})
 
     request = AWSRequest(
         method="POST",

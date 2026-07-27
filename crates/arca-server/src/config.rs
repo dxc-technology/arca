@@ -1214,6 +1214,7 @@ fn validate_cluster_transport(server_tls: Option<&TlsConfig>, cluster: &ClusterC
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
 
     #[test]
     fn parse_valid_toml() {
@@ -1867,43 +1868,79 @@ data_dir = "/data"
         }
     }
 
+    /// The variables `apply_env_overrides` reads, cleared around every test that
+    /// touches them.
+    const OVERRIDE_VARS: [&str; 3] = [
+        "ARCA_SERVER_BIND",
+        "ARCA_SERVER_PORT",
+        "ARCA_STORAGE_DATA_DIR",
+    ];
+
+    /// Serializes the tests below. The environment is process-global while cargo
+    /// runs tests in parallel threads, so without this lock one test observes a
+    /// variable another one set (or already removed) and fails at random.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Holds [`ENV_LOCK`] for the duration of a test and clears every override
+    /// variable both on entry and on drop, so a failing assertion cannot leak
+    /// state into the next test.
+    struct EnvGuard(#[allow(dead_code)] MutexGuard<'static, ()>);
+
+    impl EnvGuard {
+        fn set(vars: &[(&str, &str)]) -> Self {
+            // A test that panicked while holding the lock poisons it; the
+            // environment is restored by Drop regardless, so recover the guard.
+            let guard = Self(ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner()));
+            for key in OVERRIDE_VARS {
+                std::env::remove_var(key);
+            }
+            for (key, value) in vars {
+                std::env::set_var(key, value);
+            }
+            guard
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for key in OVERRIDE_VARS {
+                std::env::remove_var(key);
+            }
+        }
+    }
+
     #[test]
     fn env_override_server_bind() {
-        // Use a unique env var name via temp_env pattern: set, run, unset.
-        std::env::set_var("ARCA_SERVER_BIND", "127.0.0.1");
+        let _env = EnvGuard::set(&[("ARCA_SERVER_BIND", "127.0.0.1")]);
         let mut config = base_config();
         apply_env_overrides(&mut config).unwrap();
-        std::env::remove_var("ARCA_SERVER_BIND");
 
         assert_eq!(config.server.bind, "127.0.0.1");
     }
 
     #[test]
     fn env_override_server_port() {
-        std::env::set_var("ARCA_SERVER_PORT", "8080");
+        let _env = EnvGuard::set(&[("ARCA_SERVER_PORT", "8080")]);
         let mut config = base_config();
         apply_env_overrides(&mut config).unwrap();
-        std::env::remove_var("ARCA_SERVER_PORT");
 
         assert_eq!(config.server.port, 8080);
     }
 
     #[test]
     fn env_override_storage_data_dir() {
-        std::env::set_var("ARCA_STORAGE_DATA_DIR", "/mnt/storage");
+        let _env = EnvGuard::set(&[("ARCA_STORAGE_DATA_DIR", "/mnt/storage")]);
         let mut config = base_config();
         apply_env_overrides(&mut config).unwrap();
-        std::env::remove_var("ARCA_STORAGE_DATA_DIR");
 
         assert_eq!(config.storage.data_dir, "/mnt/storage");
     }
 
     #[test]
     fn env_override_invalid_port_fails() {
-        std::env::set_var("ARCA_SERVER_PORT", "not_a_number");
+        let _env = EnvGuard::set(&[("ARCA_SERVER_PORT", "not_a_number")]);
         let mut config = base_config();
         let result = apply_env_overrides(&mut config);
-        std::env::remove_var("ARCA_SERVER_PORT");
 
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
@@ -1912,21 +1949,16 @@ data_dir = "/data"
 
     #[test]
     fn env_override_port_out_of_range_fails() {
-        std::env::set_var("ARCA_SERVER_PORT", "99999");
+        let _env = EnvGuard::set(&[("ARCA_SERVER_PORT", "99999")]);
         let mut config = base_config();
         let result = apply_env_overrides(&mut config);
-        std::env::remove_var("ARCA_SERVER_PORT");
 
         assert!(result.is_err());
     }
 
     #[test]
     fn env_override_absent_leaves_defaults() {
-        // Ensure none of the override vars are set.
-        std::env::remove_var("ARCA_SERVER_BIND");
-        std::env::remove_var("ARCA_SERVER_PORT");
-        std::env::remove_var("ARCA_STORAGE_DATA_DIR");
-
+        let _env = EnvGuard::set(&[]);
         let mut config = base_config();
         apply_env_overrides(&mut config).unwrap();
 

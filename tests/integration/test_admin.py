@@ -2,6 +2,7 @@
 
 import json
 import os
+import uuid
 
 import pytest
 import requests
@@ -126,13 +127,15 @@ class TestCredentialCRUD:
         body = resp.json()
         assert isinstance(body, list)
         assert len(body) >= 1  # At least the root credential
-        # Secret key should be redacted; admin field present
+        # Secret key should be redacted; owning user reported
         for cred in body:
             assert "access_key_id" in cred
             assert "secret_access_key" not in cred or cred["secret_access_key"] is None
             assert "description" in cred
             assert "active" in cred
-            assert "admin" in cred
+            assert "user_id" in cred
+            # Privileges belong to the user, so no per-credential flag
+            assert "admin" not in cred
 
     def test_create_and_delete_credential(self, endpoint, creds):
         # Create
@@ -227,43 +230,54 @@ class TestCredentialCRUD:
 
 
 class TestAdminPrivilege:
-    def test_root_credential_is_admin(self, endpoint, creds):
+    """Admin access follows the owning user, never a per-credential flag."""
+
+    def _root_user_ids(self, endpoint, creds):
+        resp = signed_request("GET", f"{endpoint}/admin/users", creds)
+        assert resp.status_code == 200
+        return {u["user_id"] for u in resp.json() if u["is_root"]}
+
+    def test_root_credential_belongs_to_a_root_user(self, endpoint, creds):
         resp = signed_request("GET", f"{endpoint}/admin/credentials", creds)
         assert resp.status_code == 200
         body = resp.json()
         root = [c for c in body if c["access_key_id"] == os.environ.get(
             "AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")]
         assert len(root) == 1
-        assert root[0]["admin"] is True
+        assert root[0]["user_id"] in self._root_user_ids(endpoint, creds)
 
-    def test_create_admin_credential(self, endpoint, creds):
+    def test_extra_root_credential_reaches_the_admin_api(self, endpoint, creds):
+        """A second credential on the root user is admin too, no flag needed."""
         resp = signed_request(
             "POST", f"{endpoint}/admin/credentials", creds,
-            data={"description": "admin test", "admin": True},
+            data={"description": "second root credential"},
         )
         assert resp.status_code == 201
         body = resp.json()
-        assert body["admin"] is True
-        # Cleanup
-        signed_request("DELETE", f"{endpoint}/admin/credentials/{body['access_key_id']}", creds)
+        assert body["user_id"] in self._root_user_ids(endpoint, creds)
 
-    def test_create_non_admin_credential(self, endpoint, creds):
+        try:
+            new_creds = Credentials(
+                access_key=body["access_key_id"],
+                secret_key=body["secret_access_key"],
+            )
+            resp = signed_request("GET", f"{endpoint}/admin/info", new_creds)
+            assert resp.status_code == 200
+        finally:
+            signed_request("DELETE", f"{endpoint}/admin/credentials/{body['access_key_id']}", creds)
+
+    def test_non_root_rejected_from_admin_api(self, endpoint, creds):
+        """A credential on a user without grants gets 403 on admin endpoints."""
+        name = f"plain-user-{uuid.uuid4().hex[:8]}"
         resp = signed_request(
-            "POST", f"{endpoint}/admin/credentials", creds,
-            data={"description": "user test"},
+            "POST", f"{endpoint}/admin/users", creds, data={"username": name}
         )
         assert resp.status_code == 201
-        body = resp.json()
-        assert body["admin"] is False
-        # Cleanup
-        signed_request("DELETE", f"{endpoint}/admin/credentials/{body['access_key_id']}", creds)
+        user_id = resp.json()["user_id"]
 
-    def test_non_admin_rejected_from_admin_api(self, endpoint, creds):
-        """Non-admin credentials should get 403 on admin endpoints."""
-        # Create a non-admin credential
         resp = signed_request(
-            "POST", f"{endpoint}/admin/credentials", creds,
-            data={"description": "non-admin for test"},
+            "POST", f"{endpoint}/admin/users/{user_id}/credentials", creds,
+            data={"description": "non-root for test"},
         )
         assert resp.status_code == 201
         user_cred = resp.json()
@@ -286,12 +300,12 @@ class TestAdminPrivilege:
             assert resp.status_code == 403
         finally:
             signed_request("DELETE", f"{endpoint}/admin/credentials/{user_cred['access_key_id']}", creds)
+            signed_request("DELETE", f"{endpoint}/admin/users/{user_id}", creds)
 
-    def test_non_admin_can_use_s3(self, endpoint, creds, s3_client):
-        """Non-admin credentials should work fine for S3 operations."""
+    def test_extra_root_credential_can_use_s3(self, endpoint, creds, s3_client):
+        """An additional credential on the root user works for S3 operations."""
         import boto3
 
-        # Create a non-admin credential
         resp = signed_request(
             "POST", f"{endpoint}/admin/credentials", creds,
             data={"description": "s3-user"},
@@ -300,7 +314,6 @@ class TestAdminPrivilege:
         user_cred = resp.json()
 
         try:
-            # Create an S3 client with the non-admin credentials
             user_s3 = boto3.client(
                 "s3",
                 endpoint_url=endpoint,
@@ -308,7 +321,7 @@ class TestAdminPrivilege:
                 aws_secret_access_key=user_cred["secret_access_key"],
                 region_name="us-east-1",
             )
-            bucket = "non-admin-test-bucket"
+            bucket = "extra-cred-test-bucket"
             user_s3.create_bucket(Bucket=bucket)
             user_s3.put_object(Bucket=bucket, Key="hello.txt", Body=b"world")
             obj = user_s3.get_object(Bucket=bucket, Key="hello.txt")
@@ -318,17 +331,18 @@ class TestAdminPrivilege:
         finally:
             signed_request("DELETE", f"{endpoint}/admin/credentials/{user_cred['access_key_id']}", creds)
 
-    def test_cannot_delete_last_admin_credential(self, endpoint, creds):
-        """Should not be able to delete the last admin credential."""
+    def test_cannot_delete_last_root_credential(self, endpoint, creds):
+        """Should not be able to delete the last active root credential."""
+        root_ids = self._root_user_ids(endpoint, creds)
         resp = signed_request("GET", f"{endpoint}/admin/credentials", creds)
-        admins = [c for c in resp.json() if c["admin"] and c["active"]]
-        if len(admins) == 1:
+        root_creds = [c for c in resp.json() if c["active"] and c["user_id"] in root_ids]
+        if len(root_creds) == 1:
             resp = signed_request(
-                "DELETE", f"{endpoint}/admin/credentials/{admins[0]['access_key_id']}", creds,
+                "DELETE", f"{endpoint}/admin/credentials/{root_creds[0]['access_key_id']}", creds,
             )
             assert resp.status_code == 409
             body = resp.json()
-            assert "admin" in body["message"].lower()
+            assert "root" in body["message"].lower()
 
 
 # -- CORS --

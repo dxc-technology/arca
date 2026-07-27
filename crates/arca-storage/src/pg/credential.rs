@@ -12,15 +12,14 @@ use super::PgStore;
 impl CredentialStore for PgStore {
     async fn put_credential(&self, credential: &Credential) -> Result<(), ArcaError> {
         sqlx_core::query::query(
-            "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, admin, user_id, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+            "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, user_id, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)",
         )
         .bind(&credential.access_key_id)
         .bind(&credential.secret_access_key)
         .bind(&credential.description)
         .bind(credential.created_at)
         .bind(credential.active)
-        .bind(credential.admin)
         .bind(&credential.user_id)
         .bind(credential.created_at)
         .execute(&self.pool)
@@ -35,7 +34,7 @@ impl CredentialStore for PgStore {
         access_key_id: &str,
     ) -> Result<Option<Credential>, ArcaError> {
         let row = sqlx_core::query::query(
-            "SELECT access_key_id, secret_access_key, description, created_at, active, admin, user_id
+            "SELECT access_key_id, secret_access_key, description, created_at, active, user_id
              FROM credentials WHERE access_key_id = $1",
         )
         .bind(access_key_id)
@@ -48,7 +47,7 @@ impl CredentialStore for PgStore {
 
     async fn list_credentials(&self) -> Result<Vec<Credential>, ArcaError> {
         let rows = sqlx_core::query::query(
-            "SELECT access_key_id, secret_access_key, description, created_at, active, admin, user_id
+            "SELECT access_key_id, secret_access_key, description, created_at, active, user_id
              FROM credentials ORDER BY created_at",
         )
         .fetch_all(&self.pool)
@@ -138,14 +137,13 @@ impl CredentialStore for PgStore {
 
     async fn apply_remote_credential(&self, credential: &Credential) -> Result<(), ArcaError> {
         sqlx_core::query::query(
-            "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, admin, user_id, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, user_id, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, NOW())
              ON CONFLICT (access_key_id) DO UPDATE SET
                secret_access_key = EXCLUDED.secret_access_key,
                description = EXCLUDED.description,
                created_at = EXCLUDED.created_at,
                active = EXCLUDED.active,
-               admin = EXCLUDED.admin,
                user_id = EXCLUDED.user_id,
                updated_at = NOW()",
         )
@@ -154,7 +152,6 @@ impl CredentialStore for PgStore {
         .bind(&credential.description)
         .bind(credential.created_at)
         .bind(credential.active)
-        .bind(credential.admin)
         .bind(&credential.user_id)
         .execute(&self.pool)
         .await
@@ -171,7 +168,6 @@ fn row_to_credential(row: &sqlx_postgres::PgRow) -> Credential {
         description: row.get("description"),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         active: row.get("active"),
-        admin: row.get("admin"),
         user_id: row.get("user_id"),
     }
 }
