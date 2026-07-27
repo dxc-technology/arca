@@ -3238,7 +3238,7 @@
 <p>The Credentials view is available to <strong>admin credentials only</strong> (navigate to <code>#/credentials</code>). It shows all credentials across all users as cards, each displaying:</p>
 <ul>
 <li><strong>Active/Inactive</strong> badge — green for active, red for inactive</li>
-<li><strong>Admin/User</strong> badge — purple for admin privileges, gray for regular user</li>
+<li><strong>Owner</strong> badge — violet, showing the username the credential belongs to; click it to open that user. Privileges come from the user, not from the credential</li>
 <li><strong>Access Key ID</strong> — the full key ID</li>
 <li><strong>Description</strong> — what the credential is used for</li>
 <li><strong>Creation date</strong></li>
@@ -3249,9 +3249,11 @@
 <p>Click "+ Create Credential" to open the creation form:</p>
 <ol>
 <li>Enter an optional <strong>description</strong> (e.g., "CI/CD Pipeline")</li>
-<li>Check <strong>Admin privileges</strong> if the credential needs access to the Admin API and console management</li>
 <li>Click <strong>Create</strong></li>
 </ol>
+<p>The new credential belongs to the user you are signed in as, and therefore has
+exactly the same privileges. To create a credential with different access,
+create it on another user from the <a href="#user-management">Users</a> view.</p>
 <p>The secret key is displayed <strong>only once</strong> after creation. Copy it immediately, as it cannot be retrieved later.</p>
 <h2 id="user-management">User Management<a class="headerlink" href="#user-management" title="Permanent link">&para;</a></h2>
 <p><img alt="Users list" src="../../assets/screenshots/console-users.png" /></p>

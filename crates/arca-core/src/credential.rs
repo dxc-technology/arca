@@ -28,14 +28,17 @@ fn random_string(charset: &[u8], len: usize) -> String {
 }
 
 /// Generates a new credential with random access key and secret key.
-pub fn generate_credential(description: &str, admin: bool, user_id: &str) -> Credential {
+///
+/// Credentials carry no privileges of their own: what the holder may do is
+/// decided by `user_id` (root has implicit full access, other users are
+/// authorized through their grants).
+pub fn generate_credential(description: &str, user_id: &str) -> Credential {
     Credential {
         access_key_id: random_string(KEY_CHARSET, ACCESS_KEY_LEN),
         secret_access_key: random_string(SECRET_CHARSET, SECRET_KEY_LEN),
         description: description.to_string(),
         created_at: chrono::Utc::now(),
         active: true,
-        admin,
         user_id: user_id.to_string(),
     }
 }
@@ -46,19 +49,19 @@ mod tests {
 
     #[test]
     fn access_key_length() {
-        let cred = generate_credential("test", false, "root");
+        let cred = generate_credential("test", "root");
         assert_eq!(cred.access_key_id.len(), ACCESS_KEY_LEN);
     }
 
     #[test]
     fn secret_key_length() {
-        let cred = generate_credential("test", false, "root");
+        let cred = generate_credential("test", "root");
         assert_eq!(cred.secret_access_key.len(), SECRET_KEY_LEN);
     }
 
     #[test]
     fn access_key_valid_charset() {
-        let cred = generate_credential("test", false, "root");
+        let cred = generate_credential("test", "root");
         assert!(cred
             .access_key_id
             .chars()
@@ -67,26 +70,25 @@ mod tests {
 
     #[test]
     fn credential_fields_set() {
-        let cred = generate_credential("my description", false, "root");
+        let cred = generate_credential("my description", "root");
         assert_eq!(cred.description, "my description");
         assert!(cred.active);
-        assert!(!cred.admin);
         let elapsed = chrono::Utc::now() - cred.created_at;
         assert!(elapsed.num_seconds() < 2);
     }
 
     #[test]
-    fn credential_admin_flag() {
-        let admin = generate_credential("admin", true, "root");
-        assert!(admin.admin);
-        let user = generate_credential("user", false, "root");
-        assert!(!user.admin);
+    fn credential_is_bound_to_its_user() {
+        // Privileges follow the user, so the owning user_id is the only
+        // authorization-relevant field the generator sets.
+        let cred = generate_credential("for alice", "alice");
+        assert_eq!(cred.user_id, "alice");
     }
 
     #[test]
     fn generated_credentials_are_unique() {
-        let cred1 = generate_credential("test", false, "root");
-        let cred2 = generate_credential("test", false, "root");
+        let cred1 = generate_credential("test", "root");
+        let cred2 = generate_credential("test", "root");
         assert_ne!(cred1.access_key_id, cred2.access_key_id);
         assert_ne!(cred1.secret_access_key, cred2.secret_access_key);
     }

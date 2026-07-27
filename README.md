@@ -134,8 +134,8 @@ arca-server → arca-proto, arca-storage, arca-auth → arca-core
 ```bash
 arca serve                          # start the server
 arca serve --config-path ./my.toml  # custom config
-arca credential add                 # create new credential
-arca credential add --admin         # create admin credential
+arca credential add                 # create new credential (root user)
+arca credential add --user <id>     # create credential for another user
 arca credential list                # list all credentials
 arca credential remove <key_id>     # remove a credential
 arca tls generate                   # generate self-signed CA + server cert
@@ -168,8 +168,8 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 
 | Suite | Tests | Details |
 |-------|------:|---------|
-| Unit tests (Rust) | 929 | arca-auth: 39, arca-core: 248, arca-proto: 72, arca-server: 286, arca-storage: 284 |
-| Integration — boto3 | 146 | buckets, objects, list, multipart, copy, folders, auth, admin, credentials, conditional ops |
+| Unit tests (Rust) | 935 | arca-auth: 39, arca-core: 250, arca-proto: 76, arca-server: 286, arca-storage: 284 |
+| Integration — boto3 | 145 | buckets, objects, list, multipart, copy, folders, auth, admin, credentials, conditional ops |
 | Integration — RBAC | 42 | user/team/grant CRUD, attachments, effective grants, /admin/me (with and without grants), E2E access control |
 | Integration — Versioning | 21 | versioning config, PUT/GET/HEAD/DELETE with versionId, delete markers, batch delete with VersionId, ListVersions, copy |
 | Integration — Tagging | 23 | Put/Get/Delete object tags, tag limits and validation, tagging on versioned objects, tag-directive on copy |
@@ -196,9 +196,9 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — Migrate DB | 1 | SQLite→PostgreSQL offline metadata migration + row-count verify |
 | Integration — Migrate Topology | 1 | single→cluster config emission + DB ops, then →single round-trip |
 | Connector integrations | 84 | Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Kafka, AMQP, Elasticsearch, Syslog, SMTP, gRPC — each: delivery, custom destination, delete event, multiple events, payload format, connectivity test |
-| **Arca tests** | **1,642** | **All tests written for this project** |
+| **Arca tests** | **1,647** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 825 | 369 pass, 365 fail, 91 skip — 0 unexpected failures (RGW-only extensions excluded) |
-| **Total** | **2,020** | |
+| **Total** | **2,025** | |
 
 ## License
 

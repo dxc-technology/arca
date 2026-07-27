@@ -1779,7 +1779,7 @@
 <p>Manage S3 access credentials stored in the SQLite database. See <a href="../configuration/#credentials">Configuration — Credentials</a> for background.</p>
 <h3 id="arca-credential-add"><code>arca credential add</code><a class="headerlink" href="#arca-credential-add" title="Permanent link">&para;</a></h3>
 <p>Generate a new access key pair.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span><span class="o">[</span>--description<span class="w"> </span>&lt;TEXT&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--admin<span class="o">]</span><span class="w"> </span><span class="o">[</span>--user<span class="w"> </span>&lt;USER_ID&gt;<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span><span class="o">[</span>--description<span class="w"> </span>&lt;TEXT&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--user<span class="w"> </span>&lt;USER_ID&gt;<span class="o">]</span>
 </code></pre></div>
 <table>
 <thead>
@@ -1796,39 +1796,36 @@
 <td>Human-readable label for the credential</td>
 </tr>
 <tr>
-<td><code>--admin</code></td>
-<td></td>
-<td>Grant admin privileges (access to <a href="../../reference/admin-api/">Admin API</a> and console management)</td>
-</tr>
-<tr>
 <td><code>--user</code></td>
 <td><code>root</code></td>
 <td>User ID to associate the credential with</td>
 </tr>
 </tbody>
 </table>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Create a regular credential</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Create a credential for the root user (full access, including the Admin API)</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;my app&quot;</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Create an admin credential</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;admin user&quot;</span><span class="w"> </span>--admin
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="c1"># Create a credential for a specific user</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;alice key&quot;</span><span class="w"> </span>--user<span class="w"> </span>alice-uuid
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Create a credential for a specific user</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;alice key&quot;</span><span class="w"> </span>--user<span class="w"> </span>alice-uuid
 </code></pre></div>
+<p>A credential carries no privileges of its own: it inherits them from the user
+it belongs to. Credentials on a root user have implicit full access, including
+the <a href="../../reference/admin-api/">Admin API</a> and console management; credentials
+on any other user are authorized through that user's
+<a href="../access-control/">grants</a>.</p>
 <p>The generated access key and secret key are printed to stdout. The secret key is shown only once — store it securely.</p>
 <h3 id="arca-credential-list"><code>arca credential list</code><a class="headerlink" href="#arca-credential-list" title="Permanent link">&para;</a></h3>
 <p>List all credentials.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>arca<span class="w"> </span>credential<span class="w"> </span>list<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span>
 </code></pre></div>
-<p>Shows access key ID, description, role (Admin/User), and status (active/inactive) for each credential.</p>
+<p>Shows access key ID, status (active/inactive), owning user, creation date and description for each credential.</p>
 <h3 id="arca-credential-remove"><code>arca credential remove</code><a class="headerlink" href="#arca-credential-remove" title="Permanent link">&para;</a></h3>
 <p>Delete a credential by its access key ID.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>arca<span class="w"> </span>credential<span class="w"> </span>remove<span class="w"> </span>&lt;ACCESS_KEY_ID&gt;<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span>
 </code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Lockout Prevention</p>
-<p>Arca prevents deleting the last admin credential or the last active credential to avoid lockout.</p>
+<p>Arca prevents deleting the last active credential, and the last active credential belonging to a root user, to avoid lockout.</p>
 </div>
 <h2 id="arca-user"><code>arca user</code><a class="headerlink" href="#arca-user" title="Permanent link">&para;</a></h2>
 <p>Manage users stored in the SQLite database. This is an offline command that accesses the database directly (the server does not need to be running).</p>

@@ -15,15 +15,14 @@ impl CredentialStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 conn.execute(
-                    "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, admin, user_id, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, user_id, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                     params![
                         cred.access_key_id,
                         cred.secret_access_key,
                         cred.description,
                         cred.created_at.to_rfc3339(),
                         cred.active as i32,
-                        cred.admin as i32,
                         cred.user_id,
                         cred.created_at.to_rfc3339(),
                     ],
@@ -42,7 +41,7 @@ impl CredentialStore for SqliteStore {
         self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT access_key_id, secret_access_key, description, created_at, active, admin, user_id
+                    "SELECT access_key_id, secret_access_key, description, created_at, active, user_id
                      FROM credentials WHERE access_key_id = ?1",
                 )?;
                 let result = stmt.query_row(params![key], |row| {
@@ -62,7 +61,7 @@ impl CredentialStore for SqliteStore {
         self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT access_key_id, secret_access_key, description, created_at, active, admin, user_id
+                    "SELECT access_key_id, secret_access_key, description, created_at, active, user_id
                      FROM credentials ORDER BY created_at",
                 )?;
                 let rows = stmt.query_map([], |row| Ok(row_to_credential(row)))?;
@@ -155,14 +154,13 @@ impl CredentialStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 conn.execute(
-                    "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, admin, user_id, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                    "INSERT INTO credentials (access_key_id, secret_access_key, description, created_at, active, user_id, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                      ON CONFLICT(access_key_id) DO UPDATE SET
                        secret_access_key = excluded.secret_access_key,
                        description = excluded.description,
                        created_at = excluded.created_at,
                        active = excluded.active,
-                       admin = excluded.admin,
                        user_id = excluded.user_id,
                        updated_at = excluded.updated_at",
                     params![
@@ -171,7 +169,6 @@ impl CredentialStore for SqliteStore {
                         cred.description,
                         cred.created_at.to_rfc3339(),
                         cred.active as i32,
-                        cred.admin as i32,
                         cred.user_id,
                         chrono::Utc::now().to_rfc3339(),
                     ],
@@ -185,11 +182,10 @@ impl CredentialStore for SqliteStore {
 
 /// Converts a SQLite row to a `Credential`.
 ///
-/// Expects columns: access_key_id, secret_access_key, description, created_at, active, admin, user_id.
+/// Expects columns: access_key_id, secret_access_key, description, created_at, active, user_id.
 fn row_to_credential(row: &rusqlite::Row) -> Result<Credential, rusqlite::Error> {
     let created_at_str: String = row.get(3)?;
     let active_int: i32 = row.get(4)?;
-    let admin_int: i32 = row.get(5)?;
 
     let created_at = DateTime::parse_from_rfc3339(&created_at_str)
         .map(|dt| dt.with_timezone(&chrono::Utc))
@@ -207,8 +203,7 @@ fn row_to_credential(row: &rusqlite::Row) -> Result<Credential, rusqlite::Error>
         description: row.get(2)?,
         created_at,
         active: active_int != 0,
-        admin: admin_int != 0,
-        user_id: row.get(6)?,
+        user_id: row.get(5)?,
     })
 }
 
@@ -230,7 +225,6 @@ mod tests {
             description: "test key".to_string(),
             created_at: Utc::now(),
             active: true,
-            admin: true,
             user_id: "root".to_string(),
         };
 
@@ -246,7 +240,7 @@ mod tests {
         assert_eq!(fetched.secret_access_key, cred.secret_access_key);
         assert_eq!(fetched.description, "test key");
         assert!(fetched.active);
-        assert!(fetched.admin);
+        assert_eq!(fetched.user_id, "root");
     }
 
     #[tokio::test]
@@ -274,7 +268,6 @@ mod tests {
                 description: format!("key {i}"),
                 created_at: Utc::now(),
                 active: true,
-                admin: false,
                 user_id: "root".to_string(),
             };
             store.put_credential(&cred).await.unwrap();
@@ -293,7 +286,6 @@ mod tests {
             description: String::new(),
             created_at: Utc::now(),
             active: true,
-            admin: false,
             user_id: "root".to_string(),
         };
         store.put_credential(&cred).await.unwrap();
@@ -321,7 +313,6 @@ mod tests {
             description: String::new(),
             created_at: Utc::now(),
             active: true,
-            admin: false,
             user_id: "root".to_string(),
         };
         store.put_credential(&cred).await.unwrap();
@@ -339,7 +330,6 @@ mod tests {
             description: "d".to_string(),
             created_at: Utc::now(),
             active: true,
-            admin: false,
             user_id: "root".to_string(),
         };
         // Verbatim insert with no prior put_credential.
@@ -386,7 +376,6 @@ mod tests {
             description: "d".to_string(),
             created_at: created,
             active: true,
-            admin: false,
             user_id: "root".to_string(),
         };
 
@@ -419,7 +408,6 @@ mod tests {
             description: String::new(),
             created_at: Utc::now(),
             active: true,
-            admin: false,
             user_id: "root".to_string(),
         };
         let inactive = Credential {
@@ -428,7 +416,6 @@ mod tests {
             description: String::new(),
             created_at: Utc::now(),
             active: false,
-            admin: false,
             user_id: "root".to_string(),
         };
 
@@ -440,36 +427,36 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn admin_flag_persisted() {
+    async fn owning_user_persisted() {
+        // Privileges follow the owning user, so user_id is the only
+        // authorization-relevant field the store round-trips.
         let store = test_store().await;
 
-        let admin_cred = Credential {
-            access_key_id: "ADMIN1".to_string(),
+        let root_cred = Credential {
+            access_key_id: "ROOT1".to_string(),
             secret_access_key: "SECRET".to_string(),
-            description: "admin".to_string(),
+            description: "root".to_string(),
             created_at: Utc::now(),
             active: true,
-            admin: true,
             user_id: "root".to_string(),
         };
-        let user_cred = Credential {
-            access_key_id: "USER1".to_string(),
+        let alice_cred = Credential {
+            access_key_id: "ALICE1".to_string(),
             secret_access_key: "SECRET".to_string(),
-            description: "user".to_string(),
+            description: "alice".to_string(),
             created_at: Utc::now(),
             active: true,
-            admin: false,
-            user_id: "root".to_string(),
+            user_id: "alice".to_string(),
         };
 
-        store.put_credential(&admin_cred).await.unwrap();
-        store.put_credential(&user_cred).await.unwrap();
+        store.put_credential(&root_cred).await.unwrap();
+        store.put_credential(&alice_cred).await.unwrap();
 
-        let admin = store.get_credential("ADMIN1").await.unwrap().unwrap();
-        assert!(admin.admin);
+        let root = store.get_credential("ROOT1").await.unwrap().unwrap();
+        assert_eq!(root.user_id, "root");
 
-        let user = store.get_credential("USER1").await.unwrap().unwrap();
-        assert!(!user.admin);
+        let alice = store.get_credential("ALICE1").await.unwrap().unwrap();
+        assert_eq!(alice.user_id, "alice");
     }
 
     #[tokio::test]
@@ -481,7 +468,6 @@ mod tests {
             description: String::new(),
             created_at: Utc::now(),
             active: true,
-            admin: false,
             user_id: "root".to_string(),
         };
         store.put_credential(&cred).await.unwrap();
@@ -508,7 +494,6 @@ mod tests {
             description: "original".to_string(),
             created_at: Utc::now(),
             active: true,
-            admin: false,
             user_id: "root".to_string(),
         };
         store.put_credential(&cred).await.unwrap();
@@ -529,7 +514,6 @@ mod tests {
             description: "old".to_string(),
             created_at: Utc::now(),
             active: true,
-            admin: false,
             user_id: "root".to_string(),
         };
         store.put_credential(&cred).await.unwrap();
@@ -549,37 +533,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_credentials_includes_admin_flag() {
+    async fn list_credentials_includes_owning_user() {
         let store = test_store().await;
 
-        let admin_cred = Credential {
-            access_key_id: "ADMIN2".to_string(),
+        let root_cred = Credential {
+            access_key_id: "ROOT2".to_string(),
             secret_access_key: "SECRET".to_string(),
             description: String::new(),
             created_at: Utc::now(),
             active: true,
-            admin: true,
             user_id: "root".to_string(),
         };
-        let user_cred = Credential {
-            access_key_id: "USER2".to_string(),
+        let alice_cred = Credential {
+            access_key_id: "ALICE2".to_string(),
             secret_access_key: "SECRET".to_string(),
             description: String::new(),
             created_at: Utc::now(),
             active: true,
-            admin: false,
-            user_id: "root".to_string(),
+            user_id: "alice".to_string(),
         };
 
-        store.put_credential(&admin_cred).await.unwrap();
-        store.put_credential(&user_cred).await.unwrap();
+        store.put_credential(&root_cred).await.unwrap();
+        store.put_credential(&alice_cred).await.unwrap();
 
         let creds = store.list_credentials().await.unwrap();
-        let admins: Vec<_> = creds.iter().filter(|c| c.admin).collect();
-        let users: Vec<_> = creds.iter().filter(|c| !c.admin).collect();
-        assert_eq!(admins.len(), 1);
-        assert_eq!(admins[0].access_key_id, "ADMIN2");
-        assert_eq!(users.len(), 1);
-        assert_eq!(users[0].access_key_id, "USER2");
+        let root: Vec<_> = creds.iter().filter(|c| c.user_id == "root").collect();
+        let alice: Vec<_> = creds.iter().filter(|c| c.user_id == "alice").collect();
+        assert_eq!(root.len(), 1);
+        assert_eq!(root[0].access_key_id, "ROOT2");
+        assert_eq!(alice.len(), 1);
+        assert_eq!(alice[0].access_key_id, "ALICE2");
     }
 }

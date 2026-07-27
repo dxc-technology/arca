@@ -296,12 +296,10 @@ pub async fn create_user_credential(
         .map_err(|e| AdminError::internal(e.to_string()))?
         .ok_or_else(|| AdminError::not_found(format!("User {user_id} not found")))?;
 
-    // Generate credential, using user-provided keys when available.
-    let mut cred = arca_core::credential::generate_credential(
-        &body.description,
-        false, // admin flag is deprecated, new creds always false
-        &user_id,
-    );
+    // Generate credential, using user-provided keys when available. The
+    // credential grants exactly what `user_id` is entitled to: root by identity,
+    // everyone else through their grants.
+    let mut cred = arca_core::credential::generate_credential(&body.description, &user_id);
 
     // Override with user-provided keys if present
     if let Some(ref ak) = body.access_key_id {

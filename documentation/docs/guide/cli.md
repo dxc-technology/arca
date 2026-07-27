@@ -34,25 +34,27 @@ Manage S3 access credentials stored in the SQLite database. See [Configuration â
 Generate a new access key pair.
 
 ```bash
-arca credential add [--description <TEXT>] [--admin] [--user <USER_ID>]
+arca credential add [--description <TEXT>] [--user <USER_ID>]
 ```
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--description` | | Human-readable label for the credential |
-| `--admin` | | Grant admin privileges (access to [Admin API](../reference/admin-api.md) and console management) |
 | `--user` | `root` | User ID to associate the credential with |
 
 ```bash
-# Create a regular credential
+# Create a credential for the root user (full access, including the Admin API)
 arca credential add --description "my app"
-
-# Create an admin credential
-arca credential add --description "admin user" --admin
 
 # Create a credential for a specific user
 arca credential add --description "alice key" --user alice-uuid
 ```
+
+A credential carries no privileges of its own: it inherits them from the user
+it belongs to. Credentials on a root user have implicit full access, including
+the [Admin API](../reference/admin-api.md) and console management; credentials
+on any other user are authorized through that user's
+[grants](access-control.md).
 
 The generated access key and secret key are printed to stdout. The secret key is shown only once â€” store it securely.
 
@@ -64,7 +66,7 @@ List all credentials.
 arca credential list [--config-path <PATH>]
 ```
 
-Shows access key ID, description, role (Admin/User), and status (active/inactive) for each credential.
+Shows access key ID, status (active/inactive), owning user, creation date and description for each credential.
 
 ### `arca credential remove`
 
@@ -75,7 +77,7 @@ arca credential remove <ACCESS_KEY_ID> [--config-path <PATH>]
 ```
 
 !!! warning "Lockout Prevention"
-    Arca prevents deleting the last admin credential or the last active credential to avoid lockout.
+    Arca prevents deleting the last active credential, and the last active credential belonging to a root user, to avoid lockout.
 
 ## `arca user`
 

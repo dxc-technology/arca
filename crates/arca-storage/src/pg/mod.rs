@@ -106,6 +106,11 @@ const MIGRATIONS: &[Migration] = &[
         description: "Add content_updated_at to objects (Phase 30: re-encryption LWW dimension, TD-021)",
         sql: include_str!("migrations/0013_content_updated_at.sql"),
     },
+    Migration {
+        version: 14,
+        description: "Drop credentials.admin (privileges belong to the user, not the credential)",
+        sql: include_str!("migrations/0014_drop_credential_admin.sql"),
+    },
 ];
 
 impl PgStore {

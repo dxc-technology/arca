@@ -290,10 +290,28 @@ async fn authenticate_request(
     Ok((AuthContext { identity, uri_path }, request))
 }
 
+/// Whether this identity may reach the admin endpoint at `uri_path`.
+///
+/// Root users pass by identity. Everyone else must hold a grant satisfying the
+/// per-path admin action (see [`determine_admin_action`]).
+///
+/// Privileges are a property of the user, never of the credential: this mirrors
+/// S3 authorization (`middleware::auth`) and [`crate::authorize`], which have
+/// always short-circuited on root and evaluated grants for everyone else.
+fn admin_access_allowed(identity: &AuthenticatedIdentity, uri_path: &str) -> bool {
+    if identity.user.is_root {
+        return true;
+    }
+    let admin_action = determine_admin_action(uri_path);
+    matches!(
+        policy::evaluate_grants(&identity.effective_policies, admin_action, "*"),
+        Evaluation::Allow
+    )
+}
+
 /// Axum middleware: verify SigV4 + require admin access.
 ///
-/// Root users with `admin=true` credentials pass. Non-root users must have a
-/// grant that satisfies the per-path admin action (see [`determine_admin_action`]).
+/// See [`admin_access_allowed`] for the authorization rule.
 pub async fn admin_auth_middleware(
     State(state): State<AppState>,
     request: axum::extract::Request,
@@ -305,28 +323,12 @@ pub async fn admin_auth_middleware(
             Err(resp) => return resp,
         };
 
-    // Check admin access.
-    // Root users with admin credentials pass. Non-root users need arca:* grants.
-    // Backward compat: root user credentials with admin=false are still denied,
-    // preserving the pre-RBAC behavior until user management is fully in place.
-    if identity.user.is_root {
-        if !identity.credential.admin {
-            return json_error(
-                StatusCode::FORBIDDEN,
-                "AccessDenied",
-                "Admin privileges required",
-            );
-        }
-    } else {
-        let admin_action = determine_admin_action(&uri_path);
-        let result = policy::evaluate_grants(&identity.effective_policies, admin_action, "*");
-        if !matches!(result, Evaluation::Allow) {
-            return json_error(
-                StatusCode::FORBIDDEN,
-                "AccessDenied",
-                "Admin privileges required",
-            );
-        }
+    if !admin_access_allowed(&identity, &uri_path) {
+        return json_error(
+            StatusCode::FORBIDDEN,
+            "AccessDenied",
+            "Admin privileges required",
+        );
     }
 
     // Store both for backward compat (existing handlers read AuthenticatedCredential).
@@ -404,4 +406,88 @@ fn parse_amz_datetime(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
     chrono::NaiveDateTime::parse_from_str(s, "%Y%m%dT%H%M%SZ")
         .ok()
         .map(|dt| dt.and_utc())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arca_core::policy::PolicyDocument;
+    use arca_core::types::{Credential, User};
+
+    fn user(user_id: &str, is_root: bool) -> User {
+        User {
+            user_id: user_id.to_string(),
+            username: user_id.to_string(),
+            description: String::new(),
+            is_root,
+            created_at: chrono::Utc::now(),
+        }
+    }
+
+    fn credential(user_id: &str) -> Credential {
+        Credential {
+            access_key_id: "AKIATEST".to_string(),
+            secret_access_key: "secret".to_string(),
+            description: String::new(),
+            created_at: chrono::Utc::now(),
+            active: true,
+            user_id: user_id.to_string(),
+        }
+    }
+
+    fn identity(user_id: &str, is_root: bool, policies: Vec<PolicyDocument>) -> AuthenticatedIdentity {
+        AuthenticatedIdentity {
+            credential: credential(user_id),
+            user: user(user_id, is_root),
+            effective_policies: policies,
+        }
+    }
+
+    fn policy(action: &str) -> PolicyDocument {
+        serde_json::from_str(&format!(
+            r#"{{"Version":"2012-10-17","Statement":[{{"Effect":"Allow","Action":["{action}"],"Resource":["*"]}}]}}"#
+        ))
+        .expect("valid policy document")
+    }
+
+    /// THE regression test for this fix: admin access follows the USER, not the
+    /// credential. Every credential minted for root through
+    /// `POST /admin/users/{id}/credentials` used to be born unusable — owned by
+    /// root (so grants were never evaluated) yet carrying the pre-RBAC
+    /// `admin=false` flag (so the gate denied it), leaving the holder locked out
+    /// of every `/admin/*` route while the console showed them as a plain user.
+    #[test]
+    fn any_root_credential_reaches_the_admin_api() {
+        let id = identity("root", true, Vec::new());
+        assert!(admin_access_allowed(&id, "/admin/credentials"));
+        assert!(admin_access_allowed(&id, "/admin/users"));
+        assert!(admin_access_allowed(&id, "/admin/settings"));
+    }
+
+    #[test]
+    fn non_root_without_grants_is_denied() {
+        let id = identity("alice", false, Vec::new());
+        assert!(!admin_access_allowed(&id, "/admin/credentials"));
+    }
+
+    #[test]
+    fn non_root_with_wildcard_grant_is_allowed() {
+        let id = identity("alice", false, vec![policy("*")]);
+        assert!(admin_access_allowed(&id, "/admin/credentials"));
+    }
+
+    #[test]
+    fn non_root_grant_must_match_the_path_action() {
+        // A grant for one admin action does not open the others: the gate keys
+        // on the action `determine_admin_action` derives from the path. Both
+        // paths below map to a specific action, not to the `arca:*` catch-all
+        // that unmapped admin paths fall back to.
+        let action = determine_admin_action("/admin/credentials");
+        let other = determine_admin_action("/admin/users");
+        assert_ne!(action, other, "test needs two distinct admin actions");
+
+        let id = identity("alice", false, vec![policy(action)]);
+        assert!(admin_access_allowed(&id, "/admin/credentials"));
+        assert!(!admin_access_allowed(&id, "/admin/users"));
+    }
 }

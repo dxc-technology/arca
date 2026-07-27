@@ -334,10 +334,13 @@ pub struct Credential {
     pub description: String,
     pub created_at: DateTime<Utc>,
     pub active: bool,
-    /// Deprecated: use policy-based access control instead.
-    /// Kept for schema compatibility during migration.
-    pub admin: bool,
     /// The user that owns this credential.
+    ///
+    /// Privileges are a property of this user, never of the credential: root
+    /// users have implicit full access, everyone else is authorized through
+    /// their grants. This type is serialized on the cluster control plane; a
+    /// pre-0.29 `admin` field from an older peer is ignored rather than
+    /// rejected (serde skips unknown fields).
     pub user_id: String,
 }
 
@@ -371,4 +374,47 @@ pub struct Grant {
     pub document: crate::policy::PolicyDocument,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn credential() -> Credential {
+        Credential {
+            access_key_id: "AKIATEST".to_string(),
+            secret_access_key: "secret".to_string(),
+            description: "test".to_string(),
+            created_at: Utc::now(),
+            active: true,
+            user_id: "root".to_string(),
+        }
+    }
+
+    /// The flag is gone from the wire format too: privileges are read from the
+    /// owning user, so the owner is what a peer needs.
+    #[test]
+    fn credential_serializes_its_owner_and_no_admin_flag() {
+        let json = serde_json::to_value(credential()).unwrap();
+        assert_eq!(json["user_id"], serde_json::json!("root"));
+        assert!(json.get("admin").is_none());
+    }
+
+    /// The reverse direction: an `admin` field from an older peer is ignored
+    /// rather than rejected.
+    #[test]
+    fn credential_ignores_an_incoming_admin_field() {
+        let json = serde_json::json!({
+            "access_key_id": "AKIAOLD",
+            "secret_access_key": "secret",
+            "description": "from an older peer",
+            "created_at": "2026-01-01T00:00:00Z",
+            "active": true,
+            "admin": false,
+            "user_id": "root",
+        });
+        let cred: Credential = serde_json::from_value(json).unwrap();
+        assert_eq!(cred.access_key_id, "AKIAOLD");
+        assert_eq!(cred.user_id, "root");
+    }
 }

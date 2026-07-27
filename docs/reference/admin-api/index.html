@@ -2800,10 +2800,14 @@
 <a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">        </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;root credential&quot;</span><span class="p">,</span>
 <a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">        </span><span class="nt">&quot;created_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2025-01-15T10:30:00+00:00&quot;</span><span class="p">,</span>
 <a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">        </span><span class="nt">&quot;active&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">        </span><span class="nt">&quot;admin&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">        </span><span class="nt">&quot;user_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;root&quot;</span>
 <a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="w">    </span><span class="p">}</span>
 <a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="p">]</span>
 </code></pre></div>
+<p>A credential carries no privileges of its own: it inherits them from the user
+identified by <code>user_id</code>. Credentials on a root user have implicit full access,
+including this API; credentials on any other user are authorized through that
+user's grants.</p>
 <hr />
 <h3 id="create-credential">Create Credential<a class="headerlink" href="#create-credential" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>POST /admin/credentials
@@ -2812,11 +2816,13 @@
 <p>Creates a new credential for the calling user.</p>
 <p><strong>Request body</strong>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="p">{</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CI/CD pipeline&quot;</span><span class="p">,</span>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="nt">&quot;admin&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="p">}</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CI/CD pipeline&quot;</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="p">}</span>
 </code></pre></div>
-<p>Both fields are optional. <code>description</code> defaults to empty string, <code>admin</code> defaults to <code>false</code>.</p>
+<p><code>description</code> is optional and defaults to the empty string. The credential is
+created for the calling user, and therefore has exactly the same privileges.
+To create a credential for a different user, use
+<a href="#create-user-credential">Create User Credential</a>.</p>
 <p><strong>Response</strong> <code>201</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="p">{</span>
 <a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">    </span><span class="nt">&quot;access_key_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;AKXYZ123456789ABCDEF&quot;</span><span class="p">,</span>
@@ -2824,7 +2830,7 @@
 <a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;CI/CD pipeline&quot;</span><span class="p">,</span>
 <a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="w">    </span><span class="nt">&quot;created_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2025-06-01T12:00:00+00:00&quot;</span><span class="p">,</span>
 <a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="w">    </span><span class="nt">&quot;active&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="w">    </span><span class="nt">&quot;admin&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="w">    </span><span class="nt">&quot;user_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;root&quot;</span>
 <a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="p">}</span>
 </code></pre></div>
 <div class="admonition warning">
@@ -2869,7 +2875,7 @@
 </table>
 <p><strong>Response</strong> <code>204</code>: Credential updated successfully (no body).</p>
 <p><strong>Response</strong> <code>404</code>: Credential not found.</p>
-<p><strong>Response</strong> <code>409</code>: Cannot deactivate the last active credential or last active admin credential (prevents lockout).</p>
+<p><strong>Response</strong> <code>409</code>: Cannot deactivate the last active credential, or the last active credential belonging to a root user (prevents lockout).</p>
 <hr />
 <h3 id="delete-credential">Delete Credential<a class="headerlink" href="#delete-credential" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>DELETE /admin/credentials/{access_key_id}
@@ -2877,7 +2883,7 @@
 <p><strong>Auth</strong>: SigV4</p>
 <p><strong>Response</strong> <code>204</code>: Credential deleted successfully (no body).</p>
 <p><strong>Response</strong> <code>404</code>: Credential not found.</p>
-<p><strong>Response</strong> <code>409</code>: Cannot delete the last active credential or last admin credential (prevents lockout).</p>
+<p><strong>Response</strong> <code>409</code>: Cannot delete the last active credential, or the last active credential belonging to a root user (prevents lockout).</p>
 <hr />
 <h2 id="users">Users<a class="headerlink" href="#users" title="Permanent link">&para;</a></h2>
 <p>User management endpoints for the RBAC system. Users own credentials and can be members of teams. Grants (policy documents) can be attached directly to users or inherited through team membership.</p>

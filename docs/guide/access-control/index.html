@@ -1655,11 +1655,8 @@
 <h3 id="credentials">Credentials<a class="headerlink" href="#credentials" title="Permanent link">&para;</a></h3>
 <p>A <strong>credential</strong> is an access key / secret key pair used to authenticate S3 and Admin API requests via AWS SigV4 signatures. Each credential belongs to exactly one user, but a user can have multiple credentials.</p>
 <p>This design is intentional: a single user might need separate credentials for different contexts (CLI usage, an application, a CI/CD pipeline) without creating separate user identities for each.</p>
-<p>Each credential also has:</p>
-<ul>
-<li><strong><code>active</code></strong> flag: disabled credentials are rejected at authentication time without deleting them.</li>
-<li><strong><code>admin</code></strong> flag: only admin credentials can access the <code>/admin/*</code> API endpoints and the web console.</li>
-</ul>
+<p>Each credential also has an <strong><code>active</code></strong> flag: disabled credentials are rejected at authentication time without deleting them.</p>
+<p>A credential carries <strong>no privileges of its own</strong>. Everything a request is allowed to do is determined by the user that owns the credential: the root user has implicit full access, and every other user is authorized through its grants. This applies to the <code>/admin/*</code> endpoints and the web console as well, which a non-root user reaches only when a grant allows the corresponding <code>arca:*</code> action.</p>
 <h3 id="teams">Teams<a class="headerlink" href="#teams" title="Permanent link">&para;</a></h3>
 <p>A <strong>team</strong> is a named group of users. Teams have no permissions of their own, they serve as a way to assign the same set of grants to multiple users at once. A user can belong to any number of teams.</p>
 <h3 id="grants">Grants<a class="headerlink" href="#grants" title="Permanent link">&para;</a></h3>
@@ -1780,7 +1777,7 @@
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>arca<span class="w"> </span>user<span class="w"> </span>create<span class="w"> </span>alice<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;Backend developer&quot;</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Create a credential for the user</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span>--user<span class="w"> </span>alice<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;Alice&#39;s CLI key&quot;</span><span class="w"> </span>--admin
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span>--user<span class="w"> </span>alice<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;Alice&#39;s CLI key&quot;</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># List users and credentials</span>
 <a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>arca<span class="w"> </span>user<span class="w"> </span>list
@@ -1807,8 +1804,8 @@
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>arca<span class="w"> </span>user<span class="w"> </span>create<span class="w"> </span>alice<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;Backend developer&quot;</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>arca<span class="w"> </span>user<span class="w"> </span>create<span class="w"> </span>bob<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;Data analyst&quot;</span>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="c1"># 2. Create credentials (admin for alice, regular for bob)</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span>--user<span class="w"> </span>alice<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;Alice CLI&quot;</span><span class="w"> </span>--admin
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="c1"># 2. Create credentials (privileges come from each user&#39;s grants)</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span>--user<span class="w"> </span>alice<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;Alice CLI&quot;</span>
 <a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>arca<span class="w"> </span>credential<span class="w"> </span>add<span class="w"> </span>--user<span class="w"> </span>bob<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;Bob CLI&quot;</span>
 </code></pre></div>
 <p>Then, using the Admin API or web console:</p>

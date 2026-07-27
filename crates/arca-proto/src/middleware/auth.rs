@@ -535,7 +535,6 @@ mod tests {
             description: String::new(),
             created_at: chrono::Utc::now(),
             active: true,
-            admin: false,
             user_id: user_id.to_string(),
         }
     }

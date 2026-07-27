@@ -914,21 +914,22 @@ async fn async_main(cli: Cli) -> Result<()> {
             match action {
                 CredentialAction::Add {
                     description,
-                    admin,
                     user,
                 } => {
-                    // Verify the user exists.
-                    let user_exists = stores.users.get_user(&user).await?.is_some();
-                    if !user_exists {
-                        anyhow::bail!("User \"{user}\" not found. Create the user first with `arca user create`.");
-                    }
-                    let cred = credential::generate_credential(&description, admin, &user);
+                    // Verify the user exists. Its privileges are the
+                    // credential's privileges, so report which user by name.
+                    let owner = stores.users.get_user(&user).await?.ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "User \"{user}\" not found. Create the user first with `arca user create`."
+                        )
+                    })?;
+                    let cred = credential::generate_credential(&description, &user);
                     stores.credentials.put_credential(&cred).await?;
 
                     println!("Credential created:");
                     println!("  Access Key: {}", cred.access_key_id);
                     println!("  Secret Key: {}", cred.secret_access_key);
-                    println!("  Admin:      {}", if cred.admin { "yes" } else { "no" });
+                    println!("  User:       {}", owner.username);
                     if !cred.description.is_empty() {
                         println!("  Description: {}", cred.description);
                     }
@@ -939,18 +940,29 @@ async fn async_main(cli: Cli) -> Result<()> {
                     if creds.is_empty() {
                         println!("No credentials found.");
                     } else {
+                        // The owning user is what determines a credential's
+                        // privileges, so report it by name rather than by the
+                        // opaque UUID stored on the credential.
+                        let usernames: std::collections::HashMap<String, String> = stores
+                            .users
+                            .list_users()
+                            .await?
+                            .into_iter()
+                            .map(|u| (u.user_id, u.username))
+                            .collect();
+
                         println!(
-                            "{:<22} {:<10} {:<7} {:<20} {}",
-                            "ACCESS KEY", "STATUS", "ROLE", "CREATED", "DESCRIPTION"
+                            "{:<22} {:<10} {:<20} {:<20} {}",
+                            "ACCESS KEY", "STATUS", "USER", "CREATED", "DESCRIPTION"
                         );
-                        println!("{}", "-".repeat(81));
+                        println!("{}", "-".repeat(94));
                         for cred in creds {
                             let status = if cred.active { "active" } else { "inactive" };
-                            let role = if cred.admin { "admin" } else { "user" };
+                            let user = usernames.get(&cred.user_id).unwrap_or(&cred.user_id);
                             let created = cred.created_at.format("%Y-%m-%d %H:%M:%S");
                             println!(
-                                "{:<22} {:<10} {:<7} {:<20} {}",
-                                cred.access_key_id, status, role, created, cred.description
+                                "{:<22} {:<10} {:<20} {:<20} {}",
+                                cred.access_key_id, status, user, created, cred.description
                             );
                         }
                     }

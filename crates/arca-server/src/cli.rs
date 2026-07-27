@@ -329,10 +329,6 @@ pub enum CredentialAction {
         #[arg(long, default_value = "")]
         description: String,
 
-        /// Grant admin privileges (access to Admin API)
-        #[arg(long)]
-        admin: bool,
-
         /// User ID to associate the credential with (default: root)
         #[arg(long, default_value = "root")]
         user: String,

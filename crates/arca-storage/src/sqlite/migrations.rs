@@ -551,6 +551,24 @@ const MIGRATIONS: &[Migration] = &[
             ALTER TABLE objects ADD COLUMN content_updated_at TEXT;
         ",
     },
+    Migration {
+        version: 26,
+        description: "Drop credentials.admin (privileges belong to the user, not the credential)",
+        // The `admin` flag was a pre-RBAC leftover, already ignored for non-root
+        // users (they are authorized through their grants). The only place still
+        // reading it was the admin gate's root branch, which made every
+        // credential minted through POST /admin/users/{id}/credentials unusable:
+        // created for root, therefore not grant-evaluated, but admin=false,
+        // therefore denied on every /admin/* route.
+        //
+        // The gate now mirrors S3 authorization: root passes by identity,
+        // everyone else by grants. Root credentials that carried admin=false
+        // gain admin access, which is the point of the fix; non-root credentials
+        // lose nothing, since the flag was already ignored for them.
+        sql: "
+            ALTER TABLE credentials DROP COLUMN admin;
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -624,7 +642,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 25);
+        assert_eq!(version, 26);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -674,12 +692,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 25);
+        assert_eq!(version, 26);
 
-        // Twenty-five migration records
+        // Twenty-six migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 25);
+        assert_eq!(count, 26);
     }
 }

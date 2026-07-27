@@ -3018,8 +3018,9 @@
                       <svg class="w-5 h-5 text-vault-indigo" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/></svg>
                       <span :class="cred.active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'"
                         class="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase" x-text="cred.active ? 'Active' : 'Inactive'"></span>
-                      <span :class="cred.admin ? 'bg-violet-500/20 text-violet-400' : 'bg-slate-500/20 text-slate-400'"
-                        class="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase" x-text="cred.admin ? 'Admin' : 'User'"></span>
+                      <a :href="'#/users/' + cred.user_id" @click.stop
+                        class="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase bg-violet-500/20 text-violet-400 hover:bg-violet-500/30 transition"
+                        title="Privileges come from this user" x-text="ownerName(cred)"></a>
                     </div>
                     <button @click="confirmDeleteCred(cred.access_key_id)"
                       class="p-1 rounded hover:bg-red-500/10 text-vault-muted hover:text-red-400 transition">
@@ -3059,12 +3060,11 @@
                           class="w-full px-3.5 py-2.5 rounded-lg bg-vault-bg border border-vault-border text-vault-text placeholder-slate-500 focus:outline-none focus:border-vault-accent/50 focus:ring-1 focus:ring-vault-accent/30 transition text-sm">
                         <p x-show="newCredDescription && newCredDescription.trim() && credentials.some(c => (c.description || '').trim() === newCredDescription.trim())" x-cloak class="text-xs text-amber-400 mt-1">Another credential already uses this description. You can still continue.</p>
                       </div>
-                      <label class="flex items-center gap-2 mb-4 cursor-pointer">
-                        <input type="checkbox" x-model="newCredAdmin"
-                          class="w-4 h-4 rounded border-vault-border bg-vault-bg text-vault-accent focus:ring-vault-accent/30 focus:ring-offset-0">
-                        <span class="text-sm text-vault-muted">Admin privileges</span>
-                        <span class="text-[10px] text-vault-muted/60">(access to Admin API and console management)</span>
-                      </label>
+                      <p class="text-xs text-vault-muted/60 mb-4">
+                        The credential inherits the privileges of <span class="text-vault-muted font-mono" x-text="username || 'your user'"></span>.
+                        To grant different access, create the credential on another user from
+                        <a href="#/users" class="text-vault-accent hover:underline">Users</a>.
+                      </p>
                       <div class="flex gap-3 justify-end">
                         <button type="button" @click="showCreateModal = false" class="px-4 py-2 rounded-lg text-sm text-vault-muted hover:text-vault-text transition">Cancel</button>
                         <button type="submit" :disabled="creating" class="px-4 py-2 rounded-lg bg-vault-accent text-vault-bg text-sm font-medium hover:opacity-90 transition disabled:opacity-50">Create</button>

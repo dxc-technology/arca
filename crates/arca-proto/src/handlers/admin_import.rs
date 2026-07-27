@@ -402,7 +402,6 @@ pub async fn import_config(
                         description: description.to_string(),
                         user_id: user_id.to_string(),
                         active,
-                        admin: false,
                         created_at,
                     };
 

@@ -451,7 +451,6 @@ mod tests {
                     description: String::new(),
                     created_at: now,
                     active: true,
-                    admin: false,
                     user_id: "u-new".into(),
                 },
                 updated_at: now,

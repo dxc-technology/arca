@@ -178,10 +178,15 @@ Returns all credentials. Secret keys are **never** included in list responses.
         "description": "root credential",
         "created_at": "2025-01-15T10:30:00+00:00",
         "active": true,
-        "admin": true
+        "user_id": "root"
     }
 ]
 ```
+
+A credential carries no privileges of its own: it inherits them from the user
+identified by `user_id`. Credentials on a root user have implicit full access,
+including this API; credentials on any other user are authorized through that
+user's grants.
 
 ---
 
@@ -199,12 +204,14 @@ Creates a new credential for the calling user.
 
 ```json
 {
-    "description": "CI/CD pipeline",
-    "admin": false
+    "description": "CI/CD pipeline"
 }
 ```
 
-Both fields are optional. `description` defaults to empty string, `admin` defaults to `false`.
+`description` is optional and defaults to the empty string. The credential is
+created for the calling user, and therefore has exactly the same privileges.
+To create a credential for a different user, use
+[Create User Credential](#create-user-credential).
 
 **Response** `201`:
 
@@ -215,7 +222,7 @@ Both fields are optional. `description` defaults to empty string, `admin` defaul
     "description": "CI/CD pipeline",
     "created_at": "2025-06-01T12:00:00+00:00",
     "active": true,
-    "admin": false
+    "user_id": "root"
 }
 ```
 
@@ -252,7 +259,7 @@ Update a credential's `active` status and/or `description`. Both fields are opti
 
 **Response** `404`: Credential not found.
 
-**Response** `409`: Cannot deactivate the last active credential or last active admin credential (prevents lockout).
+**Response** `409`: Cannot deactivate the last active credential, or the last active credential belonging to a root user (prevents lockout).
 
 ---
 
@@ -268,7 +275,7 @@ DELETE /admin/credentials/{access_key_id}
 
 **Response** `404`: Credential not found.
 
-**Response** `409`: Cannot delete the last active credential or last admin credential (prevents lockout).
+**Response** `409`: Cannot delete the last active credential, or the last active credential belonging to a root user (prevents lockout).
 
 ---
 

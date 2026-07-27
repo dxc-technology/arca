@@ -430,8 +430,8 @@ The `arca` binary exposes subcommands via [clap](https://docs.rs/clap):
 | Command | Description |
 |---------|-------------|
 | `arca serve` | Start the S3 server |
-| `arca credential add` | Generate a new access key pair (`--admin` for admin privileges) |
-| `arca credential list` | List all credentials (shows role: Admin/User) |
+| `arca credential add` | Generate a new access key pair (`--user` selects the owning user) |
+| `arca credential list` | List all credentials (shows the owning user) |
 | `arca credential remove` | Delete a credential by access key ID |
 | `arca recover` | Rebuild SQLite DB from `.meta` sidecar files |
 | `arca fsck` | Check consistency between DB and filesystem |
