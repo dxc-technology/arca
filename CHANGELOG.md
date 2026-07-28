@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.0] — 2026-07-28
+
 ### Security
 
 - **Anti-replay window on header-signed S3 and admin requests.** The `Authorization`-header SigV4 paths (S3 API and `/admin/*`) never validated `x-amz-date` against the server clock, so a captured signed request — sniffed off a plain-HTTP hop, or lifted from an access log or proxy trace — stayed replayable forever. Both paths now reject a request whose `x-amz-date` lies more than 15 minutes from the server clock (the AWS SigV4 convention, and the same window `/cluster/v1/*` already enforced since 0.26.0), returning `403 AccessDenied`. The signature covers `x-amz-date`, so an attacker cannot re-date a captured request without the secret key. Presigned (query-string) requests were already bounded by their own `X-Amz-Expires`. Clients whose clock drifts beyond ±15 minutes from the server's will now be refused — run NTP.
@@ -777,7 +779,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.28.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.29.0...HEAD
+[0.29.0]: https://github.com/dxc-technology/arca/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/dxc-technology/arca/compare/v0.27.1...v0.28.0
 [0.27.1]: https://github.com/dxc-technology/arca/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/dxc-technology/arca/compare/v0.26.1...v0.27.0
