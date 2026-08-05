@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`license` field in the Cargo manifests.** The workspace declared no licence at all in its package metadata, so `cargo metadata`, `cargo package` and any downstream tooling reading the manifests saw Arca as unlicensed even though the repository has always carried the licence file and the notices in `README.md`. `[workspace.package]` now sets `license = "AGPL-3.0-or-later"` and all five crates inherit it with `license.workspace = true`. Metadata only: no code, dependency or behaviour change.
+
 ## [0.29.0] — 2026-07-28
 
 ### Security
