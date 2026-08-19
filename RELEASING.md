@@ -24,7 +24,6 @@ Present the proposed version number with a brief summary of what changed and why
 - `console/index.html` → `window.ARCA_CONSOLE_VERSION = "X.Y.Z"`
 - `documentation/docs/roadmap.md` → Phase Summary table version column (if completing a phase)
 - `README.md` → Status section, "latest release **vX.Y.Z**"
-- `documentation/docs/report.html` → footer, "Arca vX.Y.Z"
 
 Grep for the previous version string across the repo (`grep -rn "vX.Y.Z-old"`) to catch any location missed above.
 
