@@ -2,6 +2,7 @@
 name = "arca-storage"
 version.workspace = true
 license.workspace = true
+publish.workspace = true
 edition = "2021"
 description = "Storage implementations (filesystem + SQLite) for the Arca S3 server"
 

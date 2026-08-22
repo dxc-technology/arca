@@ -2,6 +2,7 @@
 name = "arca-proto"
 version.workspace = true
 license.workspace = true
+publish.workspace = true
 edition = "2021"
 description = "S3 HTTP protocol adapter for the Arca S3 server"
 

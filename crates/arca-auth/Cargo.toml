@@ -2,6 +2,7 @@
 name = "arca-auth"
 version.workspace = true
 license.workspace = true
+publish.workspace = true
 edition = "2021"
 description = "AWS SigV4 authentication for the Arca S3 server"
 

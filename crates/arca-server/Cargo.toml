@@ -2,6 +2,7 @@
 name = "arca-server"
 version.workspace = true
 license.workspace = true
+publish.workspace = true
 edition = "2021"
 description = "Arca S3-compatible object storage server"
 
