@@ -7,5 +7,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY tests/ /tests/
 
+RUN useradd --no-create-home --shell /usr/sbin/nologin tester && \
+    chown -R tester:tester /tests
+
+USER tester
+
 ENTRYPOINT ["pytest"]
 CMD ["integration/", "-v"]

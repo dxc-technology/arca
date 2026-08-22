@@ -5,4 +5,9 @@ RUN pip install --no-cache-dir boto3
 WORKDIR /tests
 COPY tests/perf/perf_test.py .
 
+RUN useradd --no-create-home --shell /usr/sbin/nologin tester && \
+    chown -R tester:tester /tests
+
+USER tester
+
 ENTRYPOINT ["python", "perf_test.py"]

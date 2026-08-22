@@ -68,6 +68,9 @@ services:
     build:
       context: s3-tests
       dockerfile: Dockerfile
+    # Matches the host user so writes to the bind-mounted output dir below
+    # work regardless of host filesystem permissions (set by bin/s3-tests).
+    user: "${S3TESTS_UID:-1000}:${S3TESTS_GID:-1000}"
     environment:
       - S3TEST_CONF=/s3-tests/s3tests.conf
     volumes:

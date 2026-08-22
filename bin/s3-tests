@@ -20,6 +20,12 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
+# The s3-tests container runs as this UID/GID (docker/docker-compose.yml)
+# so its writes into the bind-mounted ../s3-tests output dir land with the
+# host user's ownership instead of a container-only fixed UID.
+export S3TESTS_UID="$(id -u)"
+export S3TESTS_GID="$(id -g)"
+
 COMPOSE="docker compose -f docker/docker-compose.yml --profile s3-tests"
 PASSLIST="s3-tests/passlist.txt"
 BUILD=false

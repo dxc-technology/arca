@@ -42,6 +42,12 @@ ENV ARCA_GIT_COMMIT=${ARCA_GIT_COMMIT}
 # Build the actual binary
 RUN cargo build --release --workspace
 
+# scratch has no shell/mkdir/chown, so the /data mount point is created and
+# owned by the non-root runtime UID here, in the builder, then copied in.
+# This lets Docker seed a freshly-created named volume at /data with matching
+# ownership, keeping it writable by that user.
+RUN mkdir -p /data-seed && chown 65532:65532 /data-seed
+
 # Stage 2: Development tools (for running unit tests)
 FROM builder AS dev
 
@@ -54,8 +60,16 @@ FROM scratch AS production
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /build/target/release/arca /usr/local/bin/arca
 COPY config/default.toml /etc/arca/config.toml
+COPY --from=builder --chown=65532:65532 /data-seed /data
 
 EXPOSE 9000
+
+# No HEALTHCHECK: scratch ships no shell/curl/wget to run one, and adding a
+# static binary just for this is not worth the extra attack surface for a
+# minimal hardening item — orchestrated deployments use the Kubernetes
+# manifests' own probes against GET /admin/health instead.
+
+USER 65532:65532
 
 ENTRYPOINT ["/usr/local/bin/arca"]
 CMD ["serve"]
@@ -64,15 +78,25 @@ CMD ["serve"]
 FROM debian:stable-slim AS development
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 65532 arca \
+    && useradd --uid 65532 --gid 65532 --no-create-home --shell /usr/sbin/nologin arca
 
 COPY --from=builder /build/target/release/arca /usr/local/bin/arca
 COPY config/default.toml /etc/arca/config.toml
 
-RUN mkdir -p /data
+RUN mkdir -p /data && chown 65532:65532 /data
 
 EXPOSE 9000
+
+# TLS mode serves the same port as HTTPS-only, so try both schemes; -k skips
+# verification of self-signed dev certs (this is a liveness probe, not an
+# integrity check).
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
+    CMD curl -fsS http://localhost:9000/admin/health || curl -fsSk https://localhost:9000/admin/health || exit 1
+
+USER 65532:65532
 
 ENTRYPOINT ["arca"]
 CMD ["serve"]

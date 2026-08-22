@@ -18,5 +18,13 @@ COPY report.py /s3-tests/report.py
 
 ENV S3TEST_CONF=/s3-tests/s3tests.conf
 
+# Runs as a non-root user by default. report.py writes results into a
+# bind-mounted host directory (../s3-tests:/s3-tests/output), so
+# docker-compose.yml overrides this UID/GID at runtime (via S3TESTS_UID/
+# S3TESTS_GID, set by bin/s3-tests) to match the host user and keep those
+# writes working regardless of host filesystem permissions.
+RUN useradd --uid 1000 --no-create-home --shell /usr/sbin/nologin tester
+USER tester
+
 ENTRYPOINT ["pytest"]
 CMD ["s3tests/functional/test_s3.py", "-v", "--tb=short"]
