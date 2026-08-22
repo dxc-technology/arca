@@ -35,9 +35,19 @@ spec:
         app.kubernetes.io/component: console
         app.kubernetes.io/part-of: arca
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101     # the image's built-in `nginx` user (console/Dockerfile)
+        runAsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: console
           image: arca-console:latest    # <-- replace with your registry/tag
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: http
               containerPort: 80

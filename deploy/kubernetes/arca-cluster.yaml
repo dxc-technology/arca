@@ -140,10 +140,25 @@ spec:
         app.kubernetes.io/part-of: arca
     spec:
       terminationGracePeriodSeconds: 45   # > drain_timeout_seconds (default 30)
+      # fsGroup chowns the PVC mount to this GID on volume attach, since the
+      # image's fixed non-root UID/GID (baked in at build time) has no entry
+      # in this pod's user database to look up.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: arca
           image: arca:latest        # <-- replace with your registry/tag
           args: ["serve", "--config-path", "/etc/arca/config.toml"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: arca
               containerPort: 9000
