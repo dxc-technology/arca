@@ -28,10 +28,10 @@ def s3_client(endpoint_url):
     kwargs = dict(
         endpoint_url=endpoint_url,
         aws_access_key_id=os.environ.get(
-            "AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE"
+            "AWS_ACCESS_KEY_ID", "AKIA5B6BSHJA8CIHZSVG"
         ),
         aws_secret_access_key=os.environ.get(
-            "AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+            "AWS_SECRET_ACCESS_KEY", "hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv"
         ),
         region_name="us-east-1",
         config=Config(signature_version="s3v4"),
@@ -46,9 +46,9 @@ def s3_client(endpoint_url):
 def creds():
     """AWS credentials for SigV4 signing."""
     return Credentials(
-        access_key=os.environ.get("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE"),
+        access_key=os.environ.get("AWS_ACCESS_KEY_ID", "AKIA5B6BSHJA8CIHZSVG"),
         secret_key=os.environ.get(
-            "AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+            "AWS_SECRET_ACCESS_KEY", "hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv"
         ),
     )
 

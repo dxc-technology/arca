@@ -25,9 +25,9 @@ def _signed_s3(method, url, data=b""):
     from botocore.awsrequest import AWSRequest
     from botocore.credentials import Credentials
     creds = Credentials(
-        access_key=os.environ.get("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE"),
+        access_key=os.environ.get("AWS_ACCESS_KEY_ID", "AKIA5B6BSHJA8CIHZSVG"),
         secret_key=os.environ.get(
-            "AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+            "AWS_SECRET_ACCESS_KEY", "hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv"
         ),
     )
     headers = {}

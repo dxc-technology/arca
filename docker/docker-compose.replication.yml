@@ -14,16 +14,16 @@ services:
       - arca-replica-data:/data
     environment:
       - ARCA_LOG=${ARCA_LOG:-info}
-      - ARCA_ROOT_ACCESS_KEY=${ARCA_ROOT_ACCESS_KEY:-AKIAIOSFODNN7EXAMPLE}
-      - ARCA_ROOT_SECRET_KEY=${ARCA_ROOT_SECRET_KEY:-wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY}
+      - ARCA_ROOT_ACCESS_KEY=${ARCA_ROOT_ACCESS_KEY:-AKIA5B6BSHJA8CIHZSVG}
+      - ARCA_ROOT_SECRET_KEY=${ARCA_ROOT_SECRET_KEY:-hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv}
 
   # Integration-test client can reach both endpoints.
   test:
     environment:
       - ARCA_ENDPOINT=http://arca:9000
       - ARCA_REPLICA_ENDPOINT=http://arca-replica:9000
-      - AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
-      - AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+      - AWS_ACCESS_KEY_ID=AKIA5B6BSHJA8CIHZSVG
+      - AWS_SECRET_ACCESS_KEY=hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv
     depends_on:
       - arca
       - arca-replica

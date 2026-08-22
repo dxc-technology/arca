@@ -17,8 +17,8 @@ from playwright.sync_api import sync_playwright
 # Configuration from environment
 ARCA_ENDPOINT = os.environ.get("ARCA_ENDPOINT", "http://arca:9000")
 CONSOLE_URL = os.environ.get("CONSOLE_URL", "http://screenshots-console:3000")
-ACCESS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
-SECRET_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+ACCESS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "AKIA5B6BSHJA8CIHZSVG")
+SECRET_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv")
 OUTPUT_DIR = "/app/output"
 
 VIEWPORT = {"width": 1280, "height": 800}
@@ -432,8 +432,8 @@ def take_screenshots(rbac_ids):
 
         # ----- 2. Dashboard (login + navigate) -----
         print(f"  2/{total} console-dashboard.png")
-        page.fill('input[placeholder="AKIAIOSFODNN7EXAMPLE"]', ACCESS_KEY)
-        page.fill('input[placeholder="wJalrXUtnFEMI/..."]', SECRET_KEY)
+        page.fill('input[placeholder="AKIA5B6BSHJA8CIHZSVG"]', ACCESS_KEY)
+        page.fill('input[placeholder="hQBDe6WnX9umjb..."]', SECRET_KEY)
         page.click('button:has-text("Sign In")')
         # Wait for dashboard heading (admin login lands on dashboard)
         page.wait_for_selector('h2:has-text("Dashboard")', timeout=15000)

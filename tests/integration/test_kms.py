@@ -171,8 +171,8 @@ class TestKmsAdminInfo:
         from botocore.credentials import Credentials
 
         creds = Credentials(
-            access_key=os.environ.get("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE"),
-            secret_key=os.environ.get("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
+            access_key=os.environ.get("AWS_ACCESS_KEY_ID", "AKIA5B6BSHJA8CIHZSVG"),
+            secret_key=os.environ.get("AWS_SECRET_ACCESS_KEY", "hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv"),
         )
         url = f"{endpoint_url}/admin/info"
         aws_req = AWSRequest(method="GET", url=url, data="")

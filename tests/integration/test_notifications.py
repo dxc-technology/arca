@@ -417,8 +417,8 @@ class TestNotificationAdminApi:
 
         # Use direct HTTP with admin credentials
         admin_url = f"{endpoint_url}/admin/notifications/events?bucket={unique_bucket}&limit=10"
-        access_key = os.environ.get("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
-        secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+        access_key = os.environ.get("AWS_ACCESS_KEY_ID", "AKIA5B6BSHJA8CIHZSVG")
+        secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv")
 
         # Use boto3 session to sign the request (SigV4)
         import botocore.auth
@@ -465,8 +465,8 @@ class TestConnectorArchitecture:
         from botocore.awsrequest import AWSRequest
         endpoint = os.environ.get("S3_ENDPOINT", "http://arca:9000")
         url = f"{endpoint}/{unique_bucket}?notification"
-        access_key = os.environ.get("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
-        secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+        access_key = os.environ.get("AWS_ACCESS_KEY_ID", "AKIA5B6BSHJA8CIHZSVG")
+        secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv")
         credentials = botocore.credentials.Credentials(access_key, secret_key)
         content_sha = hashlib.sha256(xml.encode()).hexdigest()
         aws_req = AWSRequest(method="PUT", url=url, data=xml, headers={
@@ -530,8 +530,8 @@ class TestConnectorArchitecture:
         from botocore.awsrequest import AWSRequest
         endpoint = os.environ.get("S3_ENDPOINT", "http://arca:9000")
         url = f"{endpoint}/{unique_bucket}?notification"
-        access_key = os.environ.get("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
-        secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+        access_key = os.environ.get("AWS_ACCESS_KEY_ID", "AKIA5B6BSHJA8CIHZSVG")
+        secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv")
         credentials = botocore.credentials.Credentials(access_key, secret_key)
         content_sha = hashlib.sha256(xml.encode()).hexdigest()
         aws_req = AWSRequest(method="PUT", url=url, data=xml, headers={

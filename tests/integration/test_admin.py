@@ -21,9 +21,9 @@ def endpoint(endpoint_url):
 def creds():
     """AWS credentials for SigV4 signing."""
     return Credentials(
-        access_key=os.environ.get("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE"),
+        access_key=os.environ.get("AWS_ACCESS_KEY_ID", "AKIA5B6BSHJA8CIHZSVG"),
         secret_key=os.environ.get(
-            "AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+            "AWS_SECRET_ACCESS_KEY", "hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv"
         ),
     )
 
@@ -242,7 +242,7 @@ class TestAdminPrivilege:
         assert resp.status_code == 200
         body = resp.json()
         root = [c for c in body if c["access_key_id"] == os.environ.get(
-            "AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")]
+            "AWS_ACCESS_KEY_ID", "AKIA5B6BSHJA8CIHZSVG")]
         assert len(root) == 1
         assert root[0]["user_id"] in self._root_user_ids(endpoint, creds)
 

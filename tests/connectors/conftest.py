@@ -20,10 +20,10 @@ def s3_client(endpoint_url):
         "s3",
         endpoint_url=endpoint_url,
         aws_access_key_id=os.environ.get(
-            "AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE"
+            "AWS_ACCESS_KEY_ID", "AKIA5B6BSHJA8CIHZSVG"
         ),
         aws_secret_access_key=os.environ.get(
-            "AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+            "AWS_SECRET_ACCESS_KEY", "hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv"
         ),
         region_name="us-east-1",
     )
@@ -58,9 +58,9 @@ def sigv4_request(method, url, data=None, headers=None, timeout=30):
     import botocore.credentials
     from botocore.awsrequest import AWSRequest
 
-    access_key = os.environ.get("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
+    access_key = os.environ.get("AWS_ACCESS_KEY_ID", "AKIA5B6BSHJA8CIHZSVG")
     secret_key = os.environ.get(
-        "AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+        "AWS_SECRET_ACCESS_KEY", "hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv"
     )
     credentials = botocore.credentials.Credentials(access_key, secret_key)
 

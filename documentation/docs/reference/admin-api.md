@@ -174,7 +174,7 @@ Returns all credentials. Secret keys are **never** included in list responses.
 ```json
 [
     {
-        "access_key_id": "AKIAIOSFODNN7EXAMPLE",
+        "access_key_id": "AKIA5B6BSHJA8CIHZSVG",
         "description": "root credential",
         "created_at": "2025-01-15T10:30:00+00:00",
         "active": true,
@@ -218,7 +218,7 @@ To create a credential for a different user, use
 ```json
 {
     "access_key_id": "AKXYZ123456789ABCDEF",
-    "secret_access_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+    "secret_access_key": "hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv",
     "description": "CI/CD pipeline",
     "created_at": "2025-06-01T12:00:00+00:00",
     "active": true,
@@ -455,7 +455,7 @@ Returns all credentials belonging to the specified user. Secret keys are **never
 ```json
 [
     {
-        "access_key_id": "AKIAIOSFODNN7EXAMPLE",
+        "access_key_id": "AKIA5B6BSHJA8CIHZSVG",
         "description": "Main credential",
         "created_at": "2025-06-01T12:00:00+00:00",
         "active": true

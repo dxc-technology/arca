@@ -220,8 +220,8 @@ mod tests {
     async fn put_and_get_credential() {
         let store = test_store().await;
         let cred = Credential {
-            access_key_id: "AKIAIOSFODNN7EXAMPLE".to_string(),
-            secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_string(),
+            access_key_id: "AKIA5B6BSHJA8CIHZSVG".to_string(),
+            secret_access_key: "hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv".to_string(),
             description: "test key".to_string(),
             created_at: Utc::now(),
             active: true,
@@ -231,7 +231,7 @@ mod tests {
         store.put_credential(&cred).await.unwrap();
 
         let fetched = store
-            .get_credential("AKIAIOSFODNN7EXAMPLE")
+            .get_credential("AKIA5B6BSHJA8CIHZSVG")
             .await
             .unwrap()
             .expect("credential should exist");

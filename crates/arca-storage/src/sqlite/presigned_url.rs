@@ -139,7 +139,7 @@ mod tests {
             expires_seconds: 3600,
             created_at: Utc::now(),
             expires_at: Utc::now() + Duration::hours(1),
-            access_key_id: "AKIAIOSFODNN7EXAMPLE".to_string(),
+            access_key_id: "AKIA5B6BSHJA8CIHZSVG".to_string(),
         }
     }
 

@@ -79,8 +79,8 @@ NODES = {
     2: os.environ.get("ARCA_NODE2_ENDPOINT", "http://arca-2:9000"),
     3: os.environ.get("ARCA_NODE3_ENDPOINT", "http://arca-3:9000"),
 }
-ACCESS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
-SECRET_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+ACCESS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "AKIA5B6BSHJA8CIHZSVG")
+SECRET_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv")
 REGION = "us-east-1"
 
 # Deterministic names for the values that must survive a node stop/start.

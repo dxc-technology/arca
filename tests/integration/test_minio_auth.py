@@ -24,10 +24,10 @@ def valid_minio(endpoint_url):
     return Minio(
         parsed.netloc,
         access_key=os.environ.get(
-            "AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE"
+            "AWS_ACCESS_KEY_ID", "AKIA5B6BSHJA8CIHZSVG"
         ),
         secret_key=os.environ.get(
-            "AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+            "AWS_SECRET_ACCESS_KEY", "hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv"
         ),
         secure=parsed.scheme == "https",
     )
@@ -40,7 +40,7 @@ def bad_key_minio(endpoint_url):
     return Minio(
         parsed.netloc,
         access_key="AKIAI_NONEXISTENT_KEY",
-        secret_key="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        secret_key="hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv",
         secure=parsed.scheme == "https",
     )
 
@@ -52,7 +52,7 @@ def bad_secret_minio(endpoint_url):
     return Minio(
         parsed.netloc,
         access_key=os.environ.get(
-            "AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE"
+            "AWS_ACCESS_KEY_ID", "AKIA5B6BSHJA8CIHZSVG"
         ),
         secret_key="THIS_IS_THE_WRONG_SECRET_KEY_1234567890",
         secure=parsed.scheme == "https",

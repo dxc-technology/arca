@@ -227,7 +227,7 @@ mod tests {
             key: None,
             version_id: None,
             user_id: Some("root".to_string()),
-            access_key_id: Some("AKIAIOSFODNN7EXAMPLE".to_string()),
+            access_key_id: Some("AKIA5B6BSHJA8CIHZSVG".to_string()),
             source_ip: Some("127.0.0.1".to_string()),
             http_method: "GET".to_string(),
             http_status: 200,

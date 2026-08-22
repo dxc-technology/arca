@@ -11,8 +11,8 @@ services:
       - arca-data:/data
     environment:
       - ARCA_LOG=${ARCA_LOG:-info}
-      - ARCA_ROOT_ACCESS_KEY=${ARCA_ROOT_ACCESS_KEY:-AKIAIOSFODNN7EXAMPLE}
-      - ARCA_ROOT_SECRET_KEY=${ARCA_ROOT_SECRET_KEY:-wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY}
+      - ARCA_ROOT_ACCESS_KEY=${ARCA_ROOT_ACCESS_KEY:-AKIA5B6BSHJA8CIHZSVG}
+      - ARCA_ROOT_SECRET_KEY=${ARCA_ROOT_SECRET_KEY:-hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv}
     # Default container nofile is often 1024, which caps concurrent
     # connections under fan-out (PBM, parallel multipart, etc.). Raise it.
     ulimits:
@@ -40,8 +40,8 @@ services:
       dockerfile: docker/Dockerfile.test
     environment:
       - ARCA_ENDPOINT=http://arca:9000
-      - AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
-      - AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+      - AWS_ACCESS_KEY_ID=AKIA5B6BSHJA8CIHZSVG
+      - AWS_SECRET_ACCESS_KEY=hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv
     depends_on:
       - arca
     profiles:
@@ -84,8 +84,8 @@ services:
       dockerfile: docker/Dockerfile.perf
     environment:
       - ARCA_ENDPOINT=http://arca:9000
-      - AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
-      - AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+      - AWS_ACCESS_KEY_ID=AKIA5B6BSHJA8CIHZSVG
+      - AWS_SECRET_ACCESS_KEY=hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv
     depends_on:
       - arca
     profiles:
@@ -113,8 +113,8 @@ services:
     environment:
       - ARCA_ENDPOINT=http://arca:9000
       - CONSOLE_URL=http://localhost
-      - AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
-      - AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+      - AWS_ACCESS_KEY_ID=AKIA5B6BSHJA8CIHZSVG
+      - AWS_SECRET_ACCESS_KEY=hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv
     volumes:
       - ../documentation/docs/assets/screenshots:/app/output
     depends_on:

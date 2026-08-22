@@ -26,8 +26,8 @@ from botocore.credentials import Credentials
 
 SOURCE_ENDPOINT = os.environ.get("ARCA_ENDPOINT", "http://arca:9000")
 REPLICA_ENDPOINT = os.environ.get("ARCA_REPLICA_ENDPOINT", "http://arca-replica:9000")
-ACCESS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE")
-SECRET_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+ACCESS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "AKIA5B6BSHJA8CIHZSVG")
+SECRET_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv")
 REGION = "us-east-1"
 
 

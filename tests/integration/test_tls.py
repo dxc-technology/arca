@@ -46,8 +46,8 @@ class TestHTTPSBasic:
         from botocore.awsrequest import AWSRequest
 
         creds = Credentials(
-            os.environ.get("AWS_ACCESS_KEY_ID", "AKIAIOSFODNN7EXAMPLE"),
-            os.environ.get("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
+            os.environ.get("AWS_ACCESS_KEY_ID", "AKIA5B6BSHJA8CIHZSVG"),
+            os.environ.get("AWS_SECRET_ACCESS_KEY", "hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv"),
         )
         url = f"{endpoint_url}/admin/info"
         req = AWSRequest(method="GET", url=url, headers={"Host": "arca:9000"})
