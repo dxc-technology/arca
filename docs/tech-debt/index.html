@@ -1493,6 +1493,14 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>crates/arca-server/src/migrate_db.rs</code>, <code>crates/arca-storage/src/migration.rs</code></td>
 </tr>
 <tr>
+<td>TD-024</td>
+<td><code>rustls-webpki</code> 0.102.8 pinned transitively</td>
+<td><code>rumqttc</code> 0.25.1 (MQTT notification connector) hard-pins <code>rustls-webpki = "^0.102.8"</code>, which carries 4 published advisories (RUSTSEC-2026-0104/0049/0098/0099, CVSS up to 7.5). <code>cargo update -p rustls-webpki:0.102.8 --precise 0.103.13</code> fails: <code>rumqttc</code> 0.25.1 is the latest published version and its manifest never allows <code>&gt;=0.103</code>. No <code>[patch]</code> override was applied without checking with Pietro first — an unvetted patched <code>rustls-webpki</code> could silently diverge from what <code>rumqttc</code>'s TLS code path was tested against.</td>
+<td>Track new <code>rumqttc</code> releases that relax the <code>rustls-webpki</code> requirement; if none appear, evaluate switching the MQTT connector to <code>rumqttc</code>'s <code>native-tls</code> backend instead of <code>rustls</code>, or vendor a <code>[patch.crates-io]</code> override to <code>rustls-webpki &gt;= 0.103.13</code> after confirming API compatibility with <code>rumqttc</code>'s usage.</td>
+<td>None (MQTT connector integration tests pass; the exposure is TLS certificate-validation edge cases in the underlying webpki crate, not the connector's own logic)</td>
+<td><code>Cargo.toml</code>, <code>Cargo.lock</code></td>
+</tr>
+<tr>
 <td>TD-014</td>
 <td><code>recover</code> / <code>fsck</code> composite blobs</td>
 <td>Composite blobs (the result of the optimised <code>CompleteMultipartUpload</code>) live as a sidecar that lists the part blob ids — no on-disk file exists at the composite's blob path. <code>recover::process_sidecar</code> rejects them as "orphaned sidecar (blob file missing)" and aborts the rebuild. <code>fsck</code> reports the same sidecar as an <code>orphaned_sidecars</code> entry (the parts themselves are not orphaned because they each carry their own sidecar). Both tools therefore produce false positives on any data directory that has experienced multipart uploads after the composite-concat optimisation. Runtime S3 reads/writes are unaffected — the request path fully handles composites.</td>

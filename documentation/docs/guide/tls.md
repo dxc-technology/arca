@@ -130,6 +130,9 @@ key_file = "/etc/ssl/private/arca.key"
 !!! tip
     The `cert_file` should contain the full certificate chain (server cert + intermediates). Most CAs provide this as a "fullchain" file.
 
+!!! warning "File permissions when running as a container"
+    The `arca` container runs as a fixed non-root user (UID/GID `65532`). On a real Linux host, a bind-mounted key file that is only readable by its owning host user (e.g. mode `600` owned by `root`) will make Arca fail to start with a permission error — grant read access to that UID/GID explicitly (`chmod 640` + `chgrp 65532`, or an ACL entry), or place the certs on a volume you control the ownership of. This is easy to miss in local development: Docker Desktop's bind mounts on macOS do not enforce host permission bits the same way, so a restrictive-looking key file can appear to work there and only fail once deployed to Linux.
+
 ## Certificate Rotation
 
 Arca supports zero-downtime certificate rotation via SIGHUP. When the server receives a SIGHUP signal, it re-reads the certificate and key files from disk and applies them to new connections. Existing connections are not affected.
