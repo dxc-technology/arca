@@ -488,6 +488,10 @@ impl BlobStore for FsBlobStore {
         Ok(())
     }
 
+    async fn delete_assembled(&self, blob_id: &BlobId) -> Result<(), ArcaError> {
+        self.delete_blob_file_raw(blob_id).await
+    }
+
     /// Composite-aware concatenation.
     ///
     /// Fast path: when every part is plain (no encryption, no compression),

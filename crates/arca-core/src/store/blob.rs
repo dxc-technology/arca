@@ -360,6 +360,14 @@ pub trait BlobStore: Send + Sync {
     /// Deletes a blob and its sidecar. Ignores not-found errors.
     async fn delete(&self, blob_id: &BlobId) -> Result<(), crate::error::ArcaError>;
 
+    /// Deletes only this blob's own file and sidecar, without cascading into
+    /// composite parts (unlike [`BlobStore::delete`]). Used to discard a
+    /// freshly assembled multipart blob when a conditional
+    /// `CompleteMultipartUpload` is refused after assembly: the
+    /// already-uploaded parts must survive so the client can retry, only the
+    /// (not-yet-visible) assembled blob goes away.
+    async fn delete_assembled(&self, blob_id: &BlobId) -> Result<(), crate::error::ArcaError>;
+
     /// Writes sidecar metadata alongside the blob file.
     async fn write_sidecar(
         &self,

@@ -10,8 +10,9 @@ use std::collections::HashMap;
 
 use base64::Engine;
 
+use arca_core::s3::etag::etag_matches;
 use arca_core::s3::xml_types;
-use arca_core::store::{BlobEncryptionInfo, ByteRange, SidecarMeta};
+use arca_core::store::{BlobEncryptionInfo, ByteRange, SidecarMeta, WritePrecondition};
 use arca_core::types::{BlobId, ObjectRecord};
 use arca_core::{S3Error, S3ErrorCode};
 
@@ -350,18 +351,6 @@ fn check_copy_source_conditionals(
     None
 }
 
-/// Checks if an ETag value matches the If-Match / If-None-Match header value.
-/// The header can be `*` (matches everything) or a comma-separated list of ETags.
-pub(super) fn etag_matches(header_val: &str, etag: &str) -> bool {
-    let trimmed = header_val.trim();
-    if trimmed == "*" {
-        return true;
-    }
-    trimmed
-        .split(',')
-        .any(|v| v.trim().trim_matches('"') == etag.trim_matches('"'))
-}
-
 /// PUT /{bucket}/{*key} — PutObject, CopyObject, UploadPart, or UploadPartCopy
 ///
 /// Dispatches based on headers and query parameters:
@@ -685,8 +674,39 @@ pub async fn put_object(
         lock_updated_at: None,
         content_updated_at: None,
     };
-    let (old, version_id) = match state.metadata.put_object(&record).await {
+    // Authoritative CAS check: evaluated inside the same metadata transaction
+    // that installs this record, so a concurrent conflicting write cannot
+    // slip past both writers' early checks (object.rs:485-516, an
+    // optimisation only — this is the actual decision point).
+    let write_pre = WritePrecondition {
+        if_match: headers
+            .get("if-match")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string()),
+        if_none_match: headers
+            .get("if-none-match")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string()),
+    };
+    let (old, version_id) = match state.metadata.put_object_if(&record, &write_pre).await {
         Ok(r) => r,
+        Err(ArcaError::S3(e))
+            if matches!(
+                e.code,
+                S3ErrorCode::PreconditionFailed | S3ErrorCode::NoSuchKey
+            ) =>
+        {
+            // The blob was already written; the CAS check refused the
+            // commit, so discard it. The request body was already fully
+            // read, so the connection is clean — no Connection: close.
+            if let Err(del_err) = state.blob.delete(&record.blob_id).await {
+                tracing::warn!(
+                    error = %del_err,
+                    "Failed to delete blob after refused conditional PutObject"
+                );
+            }
+            return s3_error_response(e);
+        }
         Err(e) => return internal_error_response(e, &resource),
     };
 

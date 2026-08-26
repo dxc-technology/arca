@@ -6,8 +6,9 @@ use http::header;
 use http::StatusCode;
 use md5::{Digest, Md5};
 
+use arca_core::error::ArcaError;
 use arca_core::s3::xml_types;
-use arca_core::store::SidecarMeta;
+use arca_core::store::{SidecarMeta, WritePrecondition};
 use arca_core::types::{BlobId, MultipartUploadRecord, ObjectRecord, PartRecord};
 use arca_core::{S3Error, S3ErrorCode};
 
@@ -452,8 +453,36 @@ pub async fn complete_multipart_upload(
         lock_updated_at: None,
         content_updated_at: None,
     };
-    let (old, version_id) = match state.metadata.put_object(&record).await {
+    // Authoritative CAS check, same contract as PutObject: evaluated inside
+    // the metadata transaction that installs this record, so it cannot drift
+    // from check_complete_conditionals' early reject above.
+    let write_pre = WritePrecondition {
+        if_match: if_match.clone(),
+        if_none_match: if_none_match.clone(),
+    };
+    let (old, version_id) = match state.metadata.put_object_if(&record, &write_pre).await {
         Ok(r) => r,
+        Err(ArcaError::S3(e))
+            if matches!(
+                e.code,
+                S3ErrorCode::PreconditionFailed | S3ErrorCode::NoSuchKey
+            ) =>
+        {
+            // Discard only the just-assembled blob — NOT a cascading delete,
+            // since the still-uploaded parts must survive for the client to
+            // retry. Return before delete_multipart_upload so the upload
+            // record and parts are untouched.
+            if let Err(del_err) = write_blob.delete_assembled(&record.blob_id).await {
+                tracing::warn!(
+                    error = %del_err,
+                    "Failed to delete assembled blob after refused conditional CompleteMultipartUpload"
+                );
+            }
+            // Arca evaluates the CAS once, at commit time, and maps every
+            // refused precondition to 412 — never AWS's separate 409
+            // ConditionalRequestConflict (no "conflict in flight" state here).
+            return s3_error_response(e);
+        }
         Err(e) => return internal_error_response(e, &resource),
     };
 
@@ -603,7 +632,11 @@ async fn check_complete_conditionals(
     if_none_match: &Option<String>,
     resource: &str,
 ) -> Option<Response> {
-    if if_match.is_none() && if_none_match.is_none() {
+    let pre = WritePrecondition {
+        if_match: if_match.clone(),
+        if_none_match: if_none_match.clone(),
+    };
+    if pre.is_empty() {
         return None;
     }
 
@@ -612,40 +645,10 @@ async fn check_complete_conditionals(
         Err(_) => return None,
     };
 
-    // If-Match: object must exist and ETag must match.
-    if let Some(expected) = if_match {
-        match &existing {
-            Some(obj) => {
-                let quoted_etag = format!("\"{}\"", obj.etag);
-                if !super::object::etag_matches(expected, &quoted_etag) {
-                    return Some(s3_error_response(S3Error::new(
-                        S3ErrorCode::PreconditionFailed,
-                        resource,
-                    )));
-                }
-            }
-            None => {
-                return Some(s3_error_response(S3Error::new(
-                    S3ErrorCode::NoSuchKey,
-                    resource,
-                )));
-            }
-        }
-    }
-
-    // If-None-Match: object must not exist or ETag must not match.
-    if let Some(expected) = if_none_match {
-        if let Some(obj) = &existing {
-            let quoted_etag = format!("\"{}\"", obj.etag);
-            if super::object::etag_matches(expected, &quoted_etag) {
-                return Some(s3_error_response(S3Error::new(
-                    S3ErrorCode::PreconditionFailed,
-                    resource,
-                )));
-            }
-        }
-    }
-
-    None
+    // Same evaluate() the authoritative check inside put_object_if uses, so
+    // this early reject and the commit-time decision cannot drift apart.
+    pre.evaluate(existing.as_ref())
+        .err()
+        .map(|code| s3_error_response(S3Error::new(code, resource)))
 }
 

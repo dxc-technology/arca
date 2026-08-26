@@ -488,6 +488,10 @@ impl BlobStore for CompressingBlobStore {
         self.inner.delete(blob_id).await
     }
 
+    async fn delete_assembled(&self, blob_id: &BlobId) -> Result<(), ArcaError> {
+        self.inner.delete_assembled(blob_id).await
+    }
+
     async fn write_sidecar(
         &self,
         blob_id: &BlobId,

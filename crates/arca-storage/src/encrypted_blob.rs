@@ -416,6 +416,12 @@ impl BlobStore for EncryptingBlobStore {
         self.inner.delete(blob_id).await
     }
 
+    async fn delete_assembled(&self, blob_id: &BlobId) -> Result<(), ArcaError> {
+        // No cascade into composite parts — the caller wants to discard only
+        // the assembled blob itself.
+        self.inner.delete_assembled(blob_id).await
+    }
+
     async fn write_sidecar(
         &self,
         blob_id: &BlobId,

@@ -273,6 +273,11 @@ impl BlobStore for ClusterBlobStore {
         self.inner.delete(blob_id).await
     }
 
+    async fn delete_assembled(&self, blob_id: &BlobId) -> Result<(), ArcaError> {
+        // Local only, same as delete() — no cascade into composite parts.
+        self.inner.delete_assembled(blob_id).await
+    }
+
     async fn write_sidecar(&self, blob_id: &BlobId, meta: &SidecarMeta) -> Result<(), ArcaError> {
         // Durable locally first (preserves the blob -> sidecar -> metadata order),
         // then replicate the bytes + sidecar to peers.
