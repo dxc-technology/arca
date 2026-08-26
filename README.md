@@ -69,6 +69,8 @@ Production-grade and actively developed. **30 of 31** planned phases are complet
 - Unicode metadata support
 - Server-side encryption (SSE-S3): AES-256-GCM with per-object DEKs and master key envelope encryption
 
+> **Conditional requests are atomic compare-and-swap** on a single node (and within one node in a cluster): `If-Match`/`If-None-Match`/`x-amz-if-match-*` preconditions are evaluated authoritatively inside the same transaction that performs the write, so a concurrent conditional write to the same key never races to a false `200 OK`. In a cluster this guarantee is **per node, not cluster-wide** (TD-025): two conditional writes for the same key landing on two different nodes at once can both be accepted, converging afterward by last-writer-wins. See the [HA guide](documentation/docs/guide/ha.md#design-trade-offs-and-honest-limitations) for the mitigation (sticky load-balancer routing).
+
 ## Quick Start
 
 ```bash

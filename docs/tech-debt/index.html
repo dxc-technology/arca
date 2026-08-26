@@ -1501,6 +1501,14 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>Cargo.toml</code>, <code>Cargo.lock</code></td>
 </tr>
 <tr>
+<td>TD-025</td>
+<td>Cluster conditional writes (CAS)</td>
+<td>Cluster-wide conditional-write atomicity is not provided: <code>If-Match</code> / <code>If-None-Match</code> / <code>x-amz-if-match-*</code> preconditions are evaluated authoritatively only against the <em>serving</em> node's own state (<code>put_object_if</code>/<code>delete_object_if</code>/<code>delete_object_version_if</code> commit locally, then fan out — there is no per-key authoritative node to arbitrate across peers). Concurrent conditional writes for the same key landing on two different nodes at once can both pass their own local CAS and both be accepted (<code>200 OK</code>); the row then converges by last-writer-wins, the same as any other conflicting write. Single-node CAS (the common case, and the whole point of the conditional-write-atomicity fix) is unaffected — see <code>crates/arca-storage/src/{sqlite,pg}/metadata.rs</code>. Mitigated operationally by pinning a given key's conditional-write traffic to one node (a sticky/session-aware load balancer — see <code>documentation/docs/guide/ha.md</code>).</td>
+<td>Owner-node forwarding for conditional writes: the node that receives a conditional PUT/DELETE for a key it doesn't own forwards it to that key's designated owner node instead of committing locally, giving cluster mode the same per-key authoritative arbitration single-node CAS already has.</td>
+<td>None (cluster CAS boundary is pinned by <code>tests/integration/test_cluster.py::test_conditional_put_is_per_node_not_cluster_wide</code>; single-node CAS is fully covered by <code>tests/integration/test_conditional_writes.py</code>)</td>
+<td><code>crates/arca-server/src/cluster/cluster_meta.rs</code> (<code>put_object_if</code>, <code>delete_object_if</code>, <code>delete_object_version_if</code>)</td>
+</tr>
+<tr>
 <td>TD-014</td>
 <td><code>recover</code> / <code>fsck</code> composite blobs</td>
 <td>Composite blobs (the result of the optimised <code>CompleteMultipartUpload</code>) live as a sidecar that lists the part blob ids — no on-disk file exists at the composite's blob path. <code>recover::process_sidecar</code> rejects them as "orphaned sidecar (blob file missing)" and aborts the rebuild. <code>fsck</code> reports the same sidecar as an <code>orphaned_sidecars</code> entry (the parts themselves are not orphaned because they each carry their own sidecar). Both tools therefore produce false positives on any data directory that has experienced multipart uploads after the composite-concat optimisation. Runtime S3 reads/writes are unaffected — the request path fully handles composites.</td>
