@@ -1,7 +1,7 @@
 //! PostgreSQL implementation of the `MetadataStore` trait.
 
-use arca_core::error::ArcaError;
-use arca_core::store::MetadataStore;
+use arca_core::error::{ArcaError, S3Error};
+use arca_core::store::{DeletePrecondition, MetadataStore, WritePrecondition};
 use arca_core::types::{
     BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
     VersioningState,
@@ -54,6 +54,26 @@ async fn fetch_latest_object(
 ) -> Result<Option<ObjectRecord>, sqlx_core::error::Error> {
     let sql = format!(
         "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = $1 AND key = $2 AND is_latest = TRUE"
+    );
+    let row = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
+        .bind(bucket)
+        .bind(key)
+        .fetch_optional(&mut **tx)
+        .await?;
+    Ok(row.as_ref().map(row_to_object_record))
+}
+
+/// Fetches the current object exactly as `MetadataStore::get_object` would see
+/// it: the latest version, with delete markers filtered out. Used by
+/// `put_object_if` to evaluate `WritePrecondition` against what the
+/// handler-side early check already saw (see plan §3.5).
+async fn fetch_current_object(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    bucket: &str,
+    key: &str,
+) -> Result<Option<ObjectRecord>, sqlx_core::error::Error> {
+    let sql = format!(
+        "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = $1 AND key = $2 AND is_latest = TRUE AND is_delete_marker = FALSE"
     );
     let row = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
         .bind(bucket)
@@ -428,16 +448,30 @@ impl MetadataStore for PgStore {
 
     // -- Object operations --
 
-    async fn put_object(
+    async fn put_object_if(
         &self,
         record: &ObjectRecord,
+        pre: &WritePrecondition,
     ) -> Result<(Option<ObjectRecord>, Option<String>), ArcaError> {
         let mut record = record.clone();
+        let resource = format!("/{}/{}", record.bucket, record.key);
         let mut tx = self
             .pool
             .begin()
             .await
-            .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
+            .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
+
+        // Authoritative CAS check, evaluated inside the same transaction that
+        // performs the write, against what `get_object` would see (delete
+        // markers filtered).
+        if !pre.is_empty() {
+            let current = fetch_current_object(&mut tx, &record.bucket, &record.key)
+                .await
+                .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
+            if let Err(code) = pre.evaluate(current.as_ref()) {
+                return Err(ArcaError::S3(S3Error::new(code, &resource)));
+            }
+        }
 
         let versioning = get_versioning_state(&mut tx, &record.bucket).await;
 
@@ -448,20 +482,20 @@ impl MetadataStore for PgStore {
         // first row-mutating statement (lock-order rule of next_object_seq).
         let seq = next_object_seq(&mut tx)
             .await
-            .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
+            .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
 
         let old = match versioning {
             VersioningState::Unversioned => {
                 // Find old, DELETE + INSERT.
                 let old = fetch_latest_object(&mut tx, &record.bucket, &record.key).await
-                    .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
+                    .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
 
                 sqlx_core::query::query("DELETE FROM objects WHERE bucket = $1 AND key = $2")
                     .bind(&record.bucket)
                     .bind(&record.key)
                     .execute(&mut *tx)
                     .await
-                    .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
+                    .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
 
                 // Clean up tags from overwritten object.
                 sqlx_core::query::query("DELETE FROM object_tags WHERE bucket = $1 AND key = $2")
@@ -469,13 +503,13 @@ impl MetadataStore for PgStore {
                     .bind(&record.key)
                     .execute(&mut *tx)
                     .await
-                    .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
+                    .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
 
                 record.version_id = None;
                 record.is_latest = true;
                 record.is_delete_marker = false;
                 insert_object_row(&mut tx, &record, &metadata_json, seq).await
-                    .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
+                    .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
 
                 old // old blob to clean up
             }
@@ -489,21 +523,21 @@ impl MetadataStore for PgStore {
                 .bind(&record.key)
                 .execute(&mut *tx)
                 .await
-                .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
+                .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
 
                 // Generate version ID and insert new row.
                 record.version_id = Some(uuid::Uuid::new_v4().to_string());
                 record.is_latest = true;
                 record.is_delete_marker = false;
                 insert_object_row(&mut tx, &record, &metadata_json, seq).await
-                    .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
+                    .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
 
                 None // keep old versions, no cleanup
             }
             VersioningState::Suspended => {
                 // Delete existing null-version (if any) for cleanup.
                 let old_null = fetch_null_version(&mut tx, &record.bucket, &record.key).await
-                    .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
+                    .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
 
                 sqlx_core::query::query(
                     "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id IS NULL",
@@ -512,7 +546,7 @@ impl MetadataStore for PgStore {
                 .bind(&record.key)
                 .execute(&mut *tx)
                 .await
-                .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
+                .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
 
                 // Clean up tags from old null-version.
                 sqlx_core::query::query(
@@ -522,7 +556,7 @@ impl MetadataStore for PgStore {
                 .bind(&record.key)
                 .execute(&mut *tx)
                 .await
-                .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
+                .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
 
                 // Mark any remaining latest as not-latest.
                 sqlx_core::query::query(
@@ -533,14 +567,14 @@ impl MetadataStore for PgStore {
                 .bind(&record.key)
                 .execute(&mut *tx)
                 .await
-                .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
+                .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
 
                 // Insert with NULL version_id.
                 record.version_id = None;
                 record.is_latest = true;
                 record.is_delete_marker = false;
                 insert_object_row(&mut tx, &record, &metadata_json, seq).await
-                    .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
+                    .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
 
                 old_null // clean up old null-version blob
             }
@@ -551,11 +585,11 @@ impl MetadataStore for PgStore {
         // version (Phase 29, Risk #1). Matches the SQLite backend.
         recompute_is_latest(&mut tx, &record.bucket, &record.key)
             .await
-            .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
+            .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
 
         tx.commit()
             .await
-            .map_err(|e| ArcaError::Internal(format!("put_object: {e}")))?;
+            .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
 
         Ok((old, record.version_id.clone()))
     }
@@ -647,17 +681,33 @@ impl MetadataStore for PgStore {
         Ok(rows.iter().map(row_to_object_record).collect())
     }
 
-    async fn delete_object(
+    async fn delete_object_if(
         &self,
         bucket: &str,
         key: &str,
+        pre: &DeletePrecondition,
     ) -> Result<Option<ObjectRecord>, ArcaError> {
         let cluster_mode = self.cluster_mode();
+        let resource = format!("/{bucket}/{key}");
         let mut tx = self
             .pool
             .begin()
             .await
-            .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+            .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
+
+        // Authoritative CAS check against the object being deleted, as
+        // `MetadataStore::get_latest_object` would see it (includes a delete
+        // marker). An absent object is always `Ok(())` — DeleteObject on a
+        // missing key is a no-op, never a precondition failure (existing
+        // behaviour, plan §3.5).
+        if !pre.is_empty() {
+            let current = fetch_latest_object(&mut tx, bucket, key)
+                .await
+                .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
+            if let Err(code) = pre.evaluate(current.as_ref()) {
+                return Err(ArcaError::S3(S3Error::new(code, &resource)));
+            }
+        }
 
         let versioning = get_versioning_state(&mut tx, bucket).await;
 
@@ -665,7 +715,7 @@ impl MetadataStore for PgStore {
             VersioningState::Unversioned => {
                 let old = fetch_latest_object(&mut tx, bucket, key)
                     .await
-                    .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+                    .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
 
                 if old.is_some() {
                     // Clustered: tombstone (blob cleared) so the deletion
@@ -678,7 +728,7 @@ impl MetadataStore for PgStore {
                         // was never versioned -> at most one row matches).
                         let seq = next_object_seq(&mut tx)
                             .await
-                            .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+                            .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
                         sqlx_core::query::query(
                             "UPDATE objects SET seq = $4, is_tombstone = TRUE, is_delete_marker = FALSE, \
                              blob_id = '', size = 0, last_modified = $3 \
@@ -690,14 +740,14 @@ impl MetadataStore for PgStore {
                         .bind(seq)
                         .execute(&mut *tx)
                         .await
-                        .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+                        .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
                     } else {
                         sqlx_core::query::query("DELETE FROM objects WHERE bucket = $1 AND key = $2")
                             .bind(bucket)
                             .bind(key)
                             .execute(&mut *tx)
                             .await
-                            .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+                            .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
                     }
 
                     // Clean up tags either way.
@@ -706,12 +756,12 @@ impl MetadataStore for PgStore {
                         .bind(key)
                         .execute(&mut *tx)
                         .await
-                        .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+                        .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
 
                     if cluster_mode {
                         recompute_is_latest(&mut tx, bucket, key)
                             .await
-                            .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+                            .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
                     }
                 }
 
@@ -722,7 +772,7 @@ impl MetadataStore for PgStore {
                 // first DML (lock-order rule of next_object_seq).
                 let seq = next_object_seq(&mut tx)
                     .await
-                    .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+                    .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
 
                 // Mark current latest as not-latest.
                 sqlx_core::query::query(
@@ -733,7 +783,7 @@ impl MetadataStore for PgStore {
                 .bind(key)
                 .execute(&mut *tx)
                 .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+                .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
 
                 // Insert a delete marker.
                 let version_id = uuid::Uuid::new_v4().to_string();
@@ -755,7 +805,7 @@ impl MetadataStore for PgStore {
                 .bind(seq)
                 .execute(&mut *tx)
                 .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+                .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
 
                 // Return the delete marker so the handler can set response headers.
                 Some(ObjectRecord {
@@ -789,13 +839,13 @@ impl MetadataStore for PgStore {
                 // Delete existing null-version for cleanup.
                 let old_null = fetch_null_version(&mut tx, bucket, key)
                     .await
-                    .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+                    .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
 
                 // Commit-ordered seq for the delete marker, taken before the
                 // first DML (lock-order rule of next_object_seq).
                 let seq = next_object_seq(&mut tx)
                     .await
-                    .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+                    .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
 
                 sqlx_core::query::query(
                     "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id IS NULL",
@@ -804,7 +854,7 @@ impl MetadataStore for PgStore {
                 .bind(key)
                 .execute(&mut *tx)
                 .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+                .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
 
                 // Clean up tags from old null-version.
                 sqlx_core::query::query(
@@ -814,7 +864,7 @@ impl MetadataStore for PgStore {
                 .bind(key)
                 .execute(&mut *tx)
                 .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+                .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
 
                 // Mark any remaining latest as not-latest.
                 sqlx_core::query::query(
@@ -825,7 +875,7 @@ impl MetadataStore for PgStore {
                 .bind(key)
                 .execute(&mut *tx)
                 .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+                .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
 
                 // Insert delete marker with NULL version_id.
                 let now = Utc::now();
@@ -845,7 +895,7 @@ impl MetadataStore for PgStore {
                 .bind(seq)
                 .execute(&mut *tx)
                 .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+                .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
 
                 old_null // clean up old null-version blob (if any)
             }
@@ -853,7 +903,7 @@ impl MetadataStore for PgStore {
 
         tx.commit()
             .await
-            .map_err(|e| ArcaError::Internal(format!("delete_object: {e}")))?;
+            .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
 
         Ok(result)
     }
@@ -893,18 +943,20 @@ impl MetadataStore for PgStore {
         Ok(row.as_ref().map(row_to_object_record))
     }
 
-    async fn delete_object_version(
+    async fn delete_object_version_if(
         &self,
         bucket: &str,
         key: &str,
         version_id: &str,
+        pre: &DeletePrecondition,
     ) -> Result<Option<ObjectRecord>, ArcaError> {
         let cluster_mode = self.cluster_mode();
+        let resource = format!("/{bucket}/{key}?versionId={version_id}");
         let mut tx = self
             .pool
             .begin()
             .await
-            .map_err(|e| ArcaError::Internal(format!("delete_object_version: {e}")))?;
+            .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
 
         // Fetch the version to delete.
         let deleted = if version_id == "null" {
@@ -917,7 +969,7 @@ impl MetadataStore for PgStore {
                 .bind(key)
                 .fetch_optional(&mut *tx)
                 .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object_version: {e}")))?;
+                .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
             row.as_ref().map(row_to_object_record)
         } else {
             let sql = format!(
@@ -930,9 +982,24 @@ impl MetadataStore for PgStore {
                 .bind(version_id)
                 .fetch_optional(&mut *tx)
                 .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object_version: {e}")))?;
+                .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
             row.as_ref().map(row_to_object_record)
         };
+
+        // Per S3 semantics (and the existing single-version delete handler),
+        // the precondition is skipped entirely — never evaluated, never
+        // refused — when the targeted version is itself a delete marker.
+        if !pre.is_empty() {
+            let applies = match &deleted {
+                Some(rec) => !rec.is_delete_marker,
+                None => true,
+            };
+            if applies {
+                if let Err(code) = pre.evaluate(deleted.as_ref()) {
+                    return Err(ArcaError::S3(S3Error::new(code, &resource)));
+                }
+            }
+        }
 
         if deleted.is_some() {
             // Clustered: tombstone the version (blob cleared) so the deletion
@@ -943,7 +1010,7 @@ impl MetadataStore for PgStore {
                 // rule of next_object_seq). The WHERE targets one version row.
                 let seq = next_object_seq(&mut tx)
                     .await
-                    .map_err(|e| ArcaError::Internal(format!("delete_object_version: {e}")))?;
+                    .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
                 let now = Utc::now();
                 if version_id == "null" {
                     sqlx_core::query::query(
@@ -957,7 +1024,7 @@ impl MetadataStore for PgStore {
                     .bind(seq)
                     .execute(&mut *tx)
                     .await
-                    .map_err(|e| ArcaError::Internal(format!("delete_object_version: {e}")))?;
+                    .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
                 } else {
                     sqlx_core::query::query(
                         "UPDATE objects SET seq = $5, is_tombstone = TRUE, is_delete_marker = FALSE, \
@@ -971,7 +1038,7 @@ impl MetadataStore for PgStore {
                     .bind(seq)
                     .execute(&mut *tx)
                     .await
-                    .map_err(|e| ArcaError::Internal(format!("delete_object_version: {e}")))?;
+                    .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
                 }
             } else if version_id == "null" {
                 sqlx_core::query::query(
@@ -981,7 +1048,7 @@ impl MetadataStore for PgStore {
                 .bind(key)
                 .execute(&mut *tx)
                 .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object_version: {e}")))?;
+                .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
             } else {
                 sqlx_core::query::query(
                     "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id = $3",
@@ -991,7 +1058,7 @@ impl MetadataStore for PgStore {
                 .bind(version_id)
                 .execute(&mut *tx)
                 .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object_version: {e}")))?;
+                .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
             }
 
             // Clean up tags for this version.
@@ -1008,7 +1075,7 @@ impl MetadataStore for PgStore {
             .bind(&tag_vid)
             .execute(&mut *tx)
             .await
-            .map_err(|e| ArcaError::Internal(format!("delete_object_version: {e}")))?;
+            .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
 
             // Recompute is_latest deterministically (full tiebreak: last_modified
             // DESC, version_id DESC NULLS LAST, blob_id DESC), matching SQLite and
@@ -1017,12 +1084,12 @@ impl MetadataStore for PgStore {
             // tiebreak and could diverge from peers (Phase 29, Risk #1).
             recompute_is_latest(&mut tx, bucket, key)
                 .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object_version: {e}")))?;
+                .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
         }
 
         tx.commit()
             .await
-            .map_err(|e| ArcaError::Internal(format!("delete_object_version: {e}")))?;
+            .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
 
         Ok(deleted)
     }

@@ -1,6 +1,7 @@
 //! S3-specific types and utilities.
 
 pub mod bucket_name;
+pub mod etag;
 pub mod lifecycle;
 pub mod notification;
 pub mod object_lock;

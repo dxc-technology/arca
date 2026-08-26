@@ -56,8 +56,8 @@ use std::sync::Arc;
 use arca_core::cluster::{pair_key, quorum_satisfied, ClusterState, ControlOp, WriteGate};
 use arca_core::error::ArcaError;
 use arca_core::store::{
-    ControlTombstoneStore, MetadataStore, TOMBSTONE_BUCKET, TOMBSTONE_BUCKET_CONFIG,
-    TOMBSTONE_BUCKET_TAGS, TOMBSTONE_MULTIPART,
+    ControlTombstoneStore, DeletePrecondition, MetadataStore, WritePrecondition,
+    TOMBSTONE_BUCKET, TOMBSTONE_BUCKET_CONFIG, TOMBSTONE_BUCKET_TAGS, TOMBSTONE_MULTIPART,
 };
 use arca_core::types::{
     BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
@@ -337,12 +337,22 @@ impl MetadataStore for ClusterMetadataStore {
 
     // -- Object operations (replicated) --
 
-    async fn put_object(
+    // TECHDEBT(TD-025): the CAS precondition below is authoritative only
+    // against THIS node's local state. Two nodes can each locally admit a
+    // conflicting conditional write (e.g. both see no current object and both
+    // accept `If-None-Match: *`) and both return 200 — cluster mode has no
+    // per-key authoritative node to arbitrate across peers (plan §4 decision
+    // A). Anti-entropy converges the row by last-writer-wins afterward, same
+    // as any unconditional write. Mitigate by pinning conditional-write
+    // traffic for a given key to one node (sticky routing / a session-aware
+    // load balancer) when strict cross-node CAS matters. See TECH_DEBT.md.
+    async fn put_object_if(
         &self,
         record: &ObjectRecord,
+        pre: &WritePrecondition,
     ) -> Result<(Option<ObjectRecord>, Option<String>), ArcaError> {
         self.check_write_quorum()?;
-        let (old, version_id) = self.inner.put_object(record).await?;
+        let (old, version_id) = self.inner.put_object_if(record, pre).await?;
 
         // Replicate the row exactly as stored: the input fields plus the
         // canonical version_id the inner store assigned. is_delete_marker is
@@ -379,13 +389,14 @@ impl MetadataStore for ClusterMetadataStore {
         self.inner.get_latest_object(bucket, key).await
     }
 
-    async fn delete_object(
+    async fn delete_object_if(
         &self,
         bucket: &str,
         key: &str,
+        pre: &DeletePrecondition,
     ) -> Result<Option<ObjectRecord>, ArcaError> {
         self.check_write_quorum()?;
-        let old = self.inner.delete_object(bucket, key).await?;
+        let old = self.inner.delete_object_if(bucket, key, pre).await?;
         if old.is_some() {
             // A versioned bucket creates a delete marker (a new latest row);
             // an unversioned bucket hard-deletes. Replicate whichever happened
@@ -430,16 +441,17 @@ impl MetadataStore for ClusterMetadataStore {
         self.inner.get_object_version(bucket, key, version_id).await
     }
 
-    async fn delete_object_version(
+    async fn delete_object_version_if(
         &self,
         bucket: &str,
         key: &str,
         version_id: &str,
+        pre: &DeletePrecondition,
     ) -> Result<Option<ObjectRecord>, ArcaError> {
         self.check_write_quorum()?;
         let deleted = self
             .inner
-            .delete_object_version(bucket, key, version_id)
+            .delete_object_version_if(bucket, key, version_id, pre)
             .await?;
         if deleted.is_some() {
             let acks = self.fan_out_version_delete(bucket, key, version_id).await;

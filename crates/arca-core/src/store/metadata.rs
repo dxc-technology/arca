@@ -1,6 +1,101 @@
 //! Metadata storage trait.
 
+use crate::error::S3ErrorCode;
+use crate::s3::etag::etag_matches;
 use crate::types::{BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats};
+
+/// Compare-and-swap preconditions for a write (S3 `If-Match` /
+/// `If-None-Match`), evaluated inside the same transaction that installs the
+/// new version — see `.claude/plans/arca-conditional-write-atomicity.md`.
+#[derive(Debug, Clone, Default)]
+pub struct WritePrecondition {
+    /// `If-Match`: proceed only if the current latest object exists and its
+    /// ETag matches one of the listed values. `*` matches any existing object.
+    pub if_match: Option<String>,
+    /// `If-None-Match`: proceed only if no current object matches. `*` means
+    /// "only if the object does not exist".
+    pub if_none_match: Option<String>,
+}
+
+impl WritePrecondition {
+    /// True when neither header was given — the write is unconditional.
+    pub fn is_empty(&self) -> bool {
+        self.if_match.is_none() && self.if_none_match.is_none()
+    }
+
+    /// Evaluates the precondition against the current object as
+    /// [`MetadataStore::get_object`] would see it (latest version, delete
+    /// markers filtered out). Returns `Err(NoSuchKey)` when `if_match` was
+    /// given and no current object exists, `Err(PreconditionFailed)` on a
+    /// mismatch, `Ok(())` otherwise.
+    pub fn evaluate(&self, current: Option<&ObjectRecord>) -> Result<(), S3ErrorCode> {
+        if let Some(ref expected) = self.if_match {
+            match current {
+                Some(obj) => {
+                    let quoted = format!("\"{}\"", obj.etag);
+                    if !etag_matches(expected, &quoted) {
+                        return Err(S3ErrorCode::PreconditionFailed);
+                    }
+                }
+                None => return Err(S3ErrorCode::NoSuchKey),
+            }
+        }
+        if let Some(ref expected) = self.if_none_match {
+            if let Some(obj) = current {
+                let quoted = format!("\"{}\"", obj.etag);
+                if etag_matches(expected, &quoted) {
+                    return Err(S3ErrorCode::PreconditionFailed);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Preconditions for a conditional delete (S3 adds size and last-modified
+/// time to `If-Match` for `DeleteObject`).
+#[derive(Debug, Clone, Default)]
+pub struct DeletePrecondition {
+    pub if_match: Option<String>,
+    pub if_match_last_modified: Option<chrono::DateTime<chrono::Utc>>,
+    pub if_match_size: Option<u64>,
+}
+
+impl DeletePrecondition {
+    /// True when no conditional header was given — the delete is unconditional.
+    pub fn is_empty(&self) -> bool {
+        self.if_match.is_none()
+            && self.if_match_last_modified.is_none()
+            && self.if_match_size.is_none()
+    }
+
+    /// Evaluates the precondition against the object being deleted (as
+    /// [`MetadataStore::get_latest_object`] would see it — includes delete
+    /// markers). A missing object is always `Ok(())`: `DeleteObject` on an
+    /// absent key is a no-op, never a precondition failure.
+    pub fn evaluate(&self, current: Option<&ObjectRecord>) -> Result<(), S3ErrorCode> {
+        let Some(obj) = current else {
+            return Ok(());
+        };
+        if let Some(ref expected) = self.if_match {
+            let quoted = format!("\"{}\"", obj.etag);
+            if !etag_matches(expected, &quoted) {
+                return Err(S3ErrorCode::PreconditionFailed);
+            }
+        }
+        if let Some(expected) = self.if_match_last_modified {
+            if obj.last_modified.timestamp() != expected.timestamp() {
+                return Err(S3ErrorCode::PreconditionFailed);
+            }
+        }
+        if let Some(expected) = self.if_match_size {
+            if obj.size != expected {
+                return Err(S3ErrorCode::PreconditionFailed);
+            }
+        }
+        Ok(())
+    }
+}
 
 /// Trait for metadata storage operations.
 #[async_trait::async_trait]
@@ -30,13 +125,31 @@ pub trait MetadataStore: Send + Sync {
 
     // -- Object operations --
 
-    /// Inserts or replaces an object record. Returns `(old_record, version_id)`:
+    /// Same as [`MetadataStore::put_object`], but applies the write only if
+    /// `pre` holds against the current object (see
+    /// [`WritePrecondition::evaluate`]), checked inside the same transaction
+    /// that installs the new version — this is the authoritative
+    /// compare-and-swap, not a check-then-commit race. On a mismatch nothing
+    /// is written and the error is `ArcaError::S3` with
+    /// `S3ErrorCode::PreconditionFailed` (or `NoSuchKey` when `if_match` was
+    /// given and no current object exists).
+    async fn put_object_if(
+        &self,
+        record: &ObjectRecord,
+        pre: &WritePrecondition,
+    ) -> Result<(Option<ObjectRecord>, Option<String>), crate::error::ArcaError>;
+
+    /// Inserts or replaces an object record unconditionally. Returns
+    /// `(old_record, version_id)`:
     /// - `old_record`: the overwritten record (if any), so the caller can delete the orphaned blob.
     /// - `version_id`: the version ID assigned to the new record (None for unversioned).
     async fn put_object(
         &self,
         record: &ObjectRecord,
-    ) -> Result<(Option<ObjectRecord>, Option<String>), crate::error::ArcaError>;
+    ) -> Result<(Option<ObjectRecord>, Option<String>), crate::error::ArcaError> {
+        self.put_object_if(record, &WritePrecondition::default())
+            .await
+    }
 
     /// Returns the object record for the given bucket/key, or None if not found.
     /// Filters out delete markers (use `get_latest_object` to include them).
@@ -54,13 +167,29 @@ pub trait MetadataStore: Send + Sync {
         key: &str,
     ) -> Result<Option<ObjectRecord>, crate::error::ArcaError>;
 
-    /// Deletes an object record. Returns the deleted record if it existed
-    /// (so the caller can delete the orphaned blob).
+    /// Same as [`MetadataStore::delete_object`], but applies the delete only
+    /// if `pre` holds against the object being deleted (see
+    /// [`DeletePrecondition::evaluate`]), checked inside the same transaction
+    /// that installs the delete/tombstone/delete-marker. On a mismatch
+    /// nothing is deleted and the error is `ArcaError::S3` with
+    /// `S3ErrorCode::PreconditionFailed`.
+    async fn delete_object_if(
+        &self,
+        bucket: &str,
+        key: &str,
+        pre: &DeletePrecondition,
+    ) -> Result<Option<ObjectRecord>, crate::error::ArcaError>;
+
+    /// Deletes an object record unconditionally. Returns the deleted record
+    /// if it existed (so the caller can delete the orphaned blob).
     async fn delete_object(
         &self,
         bucket: &str,
         key: &str,
-    ) -> Result<Option<ObjectRecord>, crate::error::ArcaError>;
+    ) -> Result<Option<ObjectRecord>, crate::error::ArcaError> {
+        self.delete_object_if(bucket, key, &DeletePrecondition::default())
+            .await
+    }
 
     /// Lists objects in a bucket, ordered by key.
     ///
@@ -85,14 +214,31 @@ pub trait MetadataStore: Send + Sync {
         version_id: &str,
     ) -> Result<Option<ObjectRecord>, crate::error::ArcaError>;
 
-    /// Hard-deletes a specific object version. Returns the deleted record.
-    /// If the deleted version was `is_latest`, promotes the next-newest version.
+    /// Same as [`MetadataStore::delete_object_version`], but applies the
+    /// delete only if `pre` holds against the specific version being deleted.
+    /// Per S3 semantics (and the existing single-version delete handler), the
+    /// precondition is skipped entirely — never evaluated, never refused —
+    /// when the targeted version is itself a delete marker.
+    async fn delete_object_version_if(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: &str,
+        pre: &DeletePrecondition,
+    ) -> Result<Option<ObjectRecord>, crate::error::ArcaError>;
+
+    /// Hard-deletes a specific object version unconditionally. Returns the
+    /// deleted record. If the deleted version was `is_latest`, promotes the
+    /// next-newest version.
     async fn delete_object_version(
         &self,
         bucket: &str,
         key: &str,
         version_id: &str,
-    ) -> Result<Option<ObjectRecord>, crate::error::ArcaError>;
+    ) -> Result<Option<ObjectRecord>, crate::error::ArcaError> {
+        self.delete_object_version_if(bucket, key, version_id, &DeletePrecondition::default())
+            .await
+    }
 
     /// Lists all versions of objects in a bucket, including delete markers,
     /// ordered by `(key ASC, last_modified DESC)`.
@@ -524,5 +670,200 @@ pub trait MetadataStore: Send + Sync {
         Err(crate::error::ArcaError::Internal(
             "list_referenced_blob_ids: not supported by this backend".to_string(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod precondition_tests {
+    use super::*;
+    use crate::types::BlobId;
+    use std::collections::HashMap;
+
+    fn make_record(etag: &str) -> ObjectRecord {
+        ObjectRecord {
+            bucket: "b".to_string(),
+            key: "k".to_string(),
+            blob_id: BlobId("blob".to_string()),
+            size: 100,
+            etag: etag.to_string(),
+            content_type: None,
+            last_modified: chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
+            metadata: HashMap::new(),
+            encryption_algorithm: None,
+            encryption_key_id: None,
+            owner: "root".to_string(),
+            version_id: None,
+            is_latest: true,
+            is_delete_marker: false,
+            is_tombstone: false,
+            retention_mode: None,
+            retain_until_date: None,
+            legal_hold_status: None,
+            storage_class: "STANDARD".to_string(),
+            checksum_algorithm: None,
+            checksum_value: None,
+            replication_status: None,
+            lock_updated_at: None,
+            content_updated_at: None,
+        }
+    }
+
+    // -- WritePrecondition --
+
+    #[test]
+    fn write_precondition_empty_always_ok() {
+        let pre = WritePrecondition::default();
+        assert!(pre.is_empty());
+        assert!(pre.evaluate(None).is_ok());
+        assert!(pre.evaluate(Some(&make_record("abc"))).is_ok());
+    }
+
+    #[test]
+    fn write_if_match_star_requires_existing_object() {
+        let pre = WritePrecondition {
+            if_match: Some("*".to_string()),
+            if_none_match: None,
+        };
+        assert!(pre.evaluate(Some(&make_record("abc"))).is_ok());
+        assert_eq!(pre.evaluate(None), Err(S3ErrorCode::NoSuchKey));
+    }
+
+    #[test]
+    fn write_if_match_specific_etag() {
+        let pre = WritePrecondition {
+            if_match: Some("\"abc\"".to_string()),
+            if_none_match: None,
+        };
+        assert!(pre.evaluate(Some(&make_record("abc"))).is_ok());
+        assert_eq!(
+            pre.evaluate(Some(&make_record("other"))),
+            Err(S3ErrorCode::PreconditionFailed)
+        );
+        assert_eq!(pre.evaluate(None), Err(S3ErrorCode::NoSuchKey));
+    }
+
+    #[test]
+    fn write_if_match_comma_separated_list() {
+        let pre = WritePrecondition {
+            if_match: Some("\"foo\", \"abc\", \"bar\"".to_string()),
+            if_none_match: None,
+        };
+        assert!(pre.evaluate(Some(&make_record("abc"))).is_ok());
+        assert_eq!(
+            pre.evaluate(Some(&make_record("zzz"))),
+            Err(S3ErrorCode::PreconditionFailed)
+        );
+    }
+
+    #[test]
+    fn write_if_none_match_star_requires_absence() {
+        let pre = WritePrecondition {
+            if_match: None,
+            if_none_match: Some("*".to_string()),
+        };
+        assert!(pre.evaluate(None).is_ok());
+        assert_eq!(
+            pre.evaluate(Some(&make_record("abc"))),
+            Err(S3ErrorCode::PreconditionFailed)
+        );
+    }
+
+    #[test]
+    fn write_if_none_match_specific_etag_refused_on_match_allowed_otherwise() {
+        // AWS documents only `*` for PutObject's If-None-Match, but Arca keeps
+        // standard HTTP semantics for a specific ETag (see plan §3.5).
+        let pre = WritePrecondition {
+            if_match: None,
+            if_none_match: Some("\"abc\"".to_string()),
+        };
+        assert_eq!(
+            pre.evaluate(Some(&make_record("abc"))),
+            Err(S3ErrorCode::PreconditionFailed)
+        );
+        assert!(pre.evaluate(Some(&make_record("other"))).is_ok());
+        assert!(pre.evaluate(None).is_ok());
+    }
+
+    // -- DeletePrecondition --
+
+    #[test]
+    fn delete_precondition_empty_always_ok() {
+        let pre = DeletePrecondition::default();
+        assert!(pre.is_empty());
+        assert!(pre.evaluate(None).is_ok());
+        assert!(pre.evaluate(Some(&make_record("abc"))).is_ok());
+    }
+
+    #[test]
+    fn delete_precondition_absent_object_is_always_ok() {
+        // DeleteObject on a missing key is a no-op, never a precondition failure.
+        let pre = DeletePrecondition {
+            if_match: Some("\"abc\"".to_string()),
+            if_match_last_modified: None,
+            if_match_size: None,
+        };
+        assert!(pre.evaluate(None).is_ok());
+    }
+
+    #[test]
+    fn delete_if_match_etag_mismatch_refuses() {
+        let pre = DeletePrecondition {
+            if_match: Some("\"abc\"".to_string()),
+            if_match_last_modified: None,
+            if_match_size: None,
+        };
+        assert!(pre.evaluate(Some(&make_record("abc"))).is_ok());
+        assert_eq!(
+            pre.evaluate(Some(&make_record("other"))),
+            Err(S3ErrorCode::PreconditionFailed)
+        );
+    }
+
+    #[test]
+    fn delete_if_match_size_mismatch_refuses() {
+        let mut rec = make_record("abc");
+        rec.size = 42;
+        let pre = DeletePrecondition {
+            if_match: None,
+            if_match_last_modified: None,
+            if_match_size: Some(42),
+        };
+        assert!(pre.evaluate(Some(&rec)).is_ok());
+        rec.size = 7;
+        assert_eq!(pre.evaluate(Some(&rec)), Err(S3ErrorCode::PreconditionFailed));
+    }
+
+    #[test]
+    fn delete_if_match_last_modified_mismatch_refuses() {
+        let rec = make_record("abc");
+        let pre = DeletePrecondition {
+            if_match: None,
+            if_match_last_modified: Some(rec.last_modified),
+            if_match_size: None,
+        };
+        assert!(pre.evaluate(Some(&rec)).is_ok());
+        let pre_mismatch = DeletePrecondition {
+            if_match: None,
+            if_match_last_modified: Some(rec.last_modified + chrono::Duration::seconds(1)),
+            if_match_size: None,
+        };
+        assert_eq!(
+            pre_mismatch.evaluate(Some(&rec)),
+            Err(S3ErrorCode::PreconditionFailed)
+        );
+    }
+
+    #[test]
+    fn delete_precondition_against_delete_marker_as_latest() {
+        // A delete marker's etag is empty — If-Match against it fails unless
+        // the client (unusually) matches the empty ETag.
+        let mut dm = make_record("");
+        dm.is_delete_marker = true;
+        let pre = DeletePrecondition {
+            if_match: Some("\"abc\"".to_string()),
+            if_match_last_modified: None,
+            if_match_size: None,
+        };
+        assert_eq!(pre.evaluate(Some(&dm)), Err(S3ErrorCode::PreconditionFailed));
     }
 }

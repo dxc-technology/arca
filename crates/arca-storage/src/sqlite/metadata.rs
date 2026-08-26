@@ -1,7 +1,7 @@
 //! `MetadataStore` implementation for `SqliteStore`.
 
-use arca_core::error::ArcaError;
-use arca_core::store::MetadataStore;
+use arca_core::error::{ArcaError, S3Error, S3ErrorCode};
+use arca_core::store::{DeletePrecondition, MetadataStore, WritePrecondition};
 use arca_core::types::{
     BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
     VersioningState,
@@ -11,6 +11,41 @@ use chrono::DateTime;
 use rusqlite::{params, Connection};
 
 use super::{SqliteStore, TrError};
+
+/// Error type for the CAS-checked write closures (`put_object_if`,
+/// `delete_object_if`, `delete_object_version_if`): distinguishes a refused
+/// precondition (mapped to the matching S3 error, with nothing written —
+/// `?` on the transaction rolls it back on drop) from any other database
+/// error (mapped to `ArcaError::Internal`).
+#[derive(Debug)]
+enum CasError {
+    // Only ever consumed via the `{other:?}` Debug format in `map_cas_result`.
+    #[allow(dead_code)]
+    Db(rusqlite::Error),
+    Precondition(S3ErrorCode),
+}
+
+impl From<rusqlite::Error> for CasError {
+    fn from(e: rusqlite::Error) -> Self {
+        CasError::Db(e)
+    }
+}
+
+/// Converts the result of a CAS-checked `conn.call(...)` into `ArcaError`,
+/// turning a refused precondition into the matching `S3Error` and anything
+/// else into `ArcaError::Internal`.
+fn map_cas_result<T>(
+    result: Result<T, tokio_rusqlite::Error<CasError>>,
+    op: &str,
+    resource: &str,
+) -> Result<T, ArcaError> {
+    result.map_err(|e| match e {
+        tokio_rusqlite::Error::Error(CasError::Precondition(code)) => {
+            ArcaError::S3(S3Error::new(code, resource))
+        }
+        other => ArcaError::Internal(format!("{op}: {other:?}")),
+    })
+}
 
 /// Reads the bucket versioning state from `bucket_config`.
 /// Called inside a synchronous `rusqlite::Connection` context.
@@ -148,14 +183,31 @@ impl MetadataStore for SqliteStore {
 
     // -- Object operations --
 
-    async fn put_object(
+    async fn put_object_if(
         &self,
         record: &ObjectRecord,
+        pre: &WritePrecondition,
     ) -> Result<(Option<ObjectRecord>, Option<String>), ArcaError> {
         let mut record = record.clone();
-        self.conn
-            .call(move |conn| {
+        let pre = pre.clone();
+        let resource = format!("/{}/{}", record.bucket, record.key);
+        let result = self
+            .conn
+            .call(move |conn| -> Result<_, CasError> {
                 let tx = conn.transaction()?;
+
+                // Authoritative CAS check, evaluated inside this transaction
+                // so no concurrent writer can commit between the check and
+                // the read (see plan §3: this replaces the handler's early
+                // check, which stays only as a cheap non-authoritative
+                // optimisation).
+                if !pre.is_empty() {
+                    let current = fetch_current_object(&tx, &record.bucket, &record.key)?;
+                    if let Err(code) = pre.evaluate(current.as_ref()) {
+                        return Err(CasError::Precondition(code));
+                    }
+                }
+
                 let versioning = get_versioning_state(&tx, &record.bucket);
 
                 let metadata_json = serde_json::to_string(&record.metadata)
@@ -232,8 +284,8 @@ impl MetadataStore for SqliteStore {
 
                 Ok((old, record.version_id.clone()))
             })
-            .await
-            .map_err(|e: TrError| ArcaError::Internal(format!("put_object: {e}")))
+            .await;
+        map_cas_result(result, "put_object_if", &resource)
     }
 
     async fn get_object(
@@ -354,17 +406,34 @@ impl MetadataStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("list_objects: {e}")))
     }
 
-    async fn delete_object(
+    async fn delete_object_if(
         &self,
         bucket: &str,
         key: &str,
+        pre: &DeletePrecondition,
     ) -> Result<Option<ObjectRecord>, ArcaError> {
         let bucket = bucket.to_string();
         let key = key.to_string();
+        let pre = pre.clone();
         let cluster_mode = self.cluster_mode();
-        self.conn
-            .call(move |conn| {
+        let resource = format!("/{bucket}/{key}");
+        let result = self
+            .conn
+            .call(move |conn| -> Result<_, CasError> {
                 let tx = conn.transaction()?;
+
+                // Authoritative CAS check against the object being deleted,
+                // as `MetadataStore::get_latest_object` would see it
+                // (includes a delete marker). An absent object is always
+                // `Ok(())` — DeleteObject on a missing key is a no-op, never
+                // a precondition failure (existing behaviour, plan §3.5).
+                if !pre.is_empty() {
+                    let current = fetch_latest_object(&tx, &bucket, &key)?;
+                    if let Err(code) = pre.evaluate(current.as_ref()) {
+                        return Err(CasError::Precondition(code));
+                    }
+                }
+
                 let versioning = get_versioning_state(&tx, &bucket);
 
                 let result = match versioning {
@@ -477,8 +546,8 @@ impl MetadataStore for SqliteStore {
 
                 Ok(result)
             })
-            .await
-            .map_err(|e: TrError| ArcaError::Internal(format!("delete_object: {e}")))
+            .await;
+        map_cas_result(result, "delete_object_if", &resource)
     }
 
     // -- Versioned object operations --
@@ -517,18 +586,22 @@ impl MetadataStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("get_object_version: {e}")))
     }
 
-    async fn delete_object_version(
+    async fn delete_object_version_if(
         &self,
         bucket: &str,
         key: &str,
         version_id: &str,
+        pre: &DeletePrecondition,
     ) -> Result<Option<ObjectRecord>, ArcaError> {
         let bucket = bucket.to_string();
         let key = key.to_string();
         let version_id = version_id.to_string();
+        let pre = pre.clone();
         let cluster_mode = self.cluster_mode();
-        self.conn
-            .call(move |conn| {
+        let resource = format!("/{bucket}/{key}?versionId={version_id}");
+        let result = self
+            .conn
+            .call(move |conn| -> Result<_, CasError> {
                 let tx = conn.transaction()?;
 
                 // Fetch the version to delete.
@@ -552,6 +625,22 @@ impl MetadataStore for SqliteStore {
                         Err(e) => return Err(e.into()),
                     }
                 };
+
+                // Per S3 semantics (and the existing single-version delete
+                // handler), the precondition is skipped entirely — never
+                // evaluated, never refused — when the targeted version is
+                // itself a delete marker.
+                if !pre.is_empty() {
+                    let applies = match &deleted {
+                        Some(rec) => !rec.is_delete_marker,
+                        None => true,
+                    };
+                    if applies {
+                        if let Err(code) = pre.evaluate(deleted.as_ref()) {
+                            return Err(CasError::Precondition(code));
+                        }
+                    }
+                }
 
                 if let Some(ref rec) = deleted {
                     // Clustered: tombstone the version (blob cleared, fresh seq)
@@ -603,8 +692,8 @@ impl MetadataStore for SqliteStore {
                 tx.commit()?;
                 Ok(deleted)
             })
-            .await
-            .map_err(|e: TrError| ArcaError::Internal(format!("delete_object_version: {e}")))
+            .await;
+        map_cas_result(result, "delete_object_version_if", &resource)
     }
 
     async fn apply_remote_object(&self, record: &ObjectRecord) -> Result<(), ArcaError> {
@@ -1869,6 +1958,27 @@ fn fetch_latest_object(
 ) -> Result<Option<ObjectRecord>, rusqlite::Error> {
     let sql = format!(
         "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND is_latest = 1"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let result = stmt.query_row(params![bucket, key], |row| Ok(row_to_object_record(row)));
+    match result {
+        Ok(rec) => Ok(Some(rec?)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Fetches the current object exactly as `MetadataStore::get_object` would
+/// see it: the latest version, with delete markers filtered out. Used by
+/// `put_object_if` to evaluate `WritePrecondition` against what the
+/// handler-side early check already saw (see plan §3.5).
+fn fetch_current_object(
+    conn: &Connection,
+    bucket: &str,
+    key: &str,
+) -> Result<Option<ObjectRecord>, rusqlite::Error> {
+    let sql = format!(
+        "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND is_latest = 1 AND is_delete_marker = 0"
     );
     let mut stmt = conn.prepare(&sql)?;
     let result = stmt.query_row(params![bucket, key], |row| Ok(row_to_object_record(row)));
@@ -3847,5 +3957,294 @@ mod tests {
         let merged2 = store.get_object_version("b", "k2", "v1").await.unwrap().unwrap();
         assert_eq!(merged2.blob_id.0, "new-blob", "re-encryption applied after lock");
         assert_eq!(merged2.retention_mode.as_deref(), Some("GOVERNANCE"), "lock not reverted by re-encryption");
+    }
+
+    // -- §7.2: conditional-write CAS (put_object_if / delete_object_if /
+    // delete_object_version_if) --
+
+    fn expect_precondition_failed(err: &ArcaError) {
+        match err {
+            ArcaError::S3(e) => assert_eq!(e.code, S3ErrorCode::PreconditionFailed),
+            other => panic!("expected S3(PreconditionFailed), got {other:?}"),
+        }
+    }
+
+    fn expect_no_such_key(err: &ArcaError) {
+        match err {
+            ArcaError::S3(e) => assert_eq!(e.code, S3ErrorCode::NoSuchKey),
+            other => panic!("expected S3(NoSuchKey), got {other:?}"),
+        }
+    }
+
+    fn if_match(etag: &str) -> WritePrecondition {
+        WritePrecondition {
+            if_match: Some(format!("\"{etag}\"")),
+            if_none_match: None,
+        }
+    }
+
+    fn if_none_match_star() -> WritePrecondition {
+        WritePrecondition {
+            if_match: None,
+            if_none_match: Some("*".to_string()),
+        }
+    }
+
+    #[tokio::test]
+    async fn put_object_if_cas_hit_commits_unversioned() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut r1 = make_record("b", "key1");
+        r1.etag = "etag-1".to_string();
+        store.put_object_if(&r1, &WritePrecondition::default()).await.unwrap();
+
+        let mut r2 = make_record("b", "key1");
+        r2.etag = "etag-2".to_string();
+        let (old, _vid) = store.put_object_if(&r2, &if_match("etag-1")).await.unwrap();
+        assert_eq!(old.unwrap().etag, "etag-1");
+        assert_eq!(store.get_object("b", "key1").await.unwrap().unwrap().etag, "etag-2");
+    }
+
+    #[tokio::test]
+    async fn put_object_if_cas_miss_writes_nothing_unversioned() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut r1 = make_record("b", "key1");
+        r1.etag = "etag-1".to_string();
+        store.put_object_if(&r1, &WritePrecondition::default()).await.unwrap();
+
+        let mut r2 = make_record("b", "key1");
+        r2.etag = "etag-2".to_string();
+        let err = store.put_object_if(&r2, &if_match("stale")).await.unwrap_err();
+        expect_precondition_failed(&err);
+
+        // Nothing was written: ETag unchanged, exactly one row for the key.
+        assert_eq!(store.get_object("b", "key1").await.unwrap().unwrap().etag, "etag-1");
+        let versions = store.list_object_versions("b", None, None, None, 100).await.unwrap();
+        assert_eq!(versions.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn put_object_if_cas_hit_commits_versioned() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+
+        let mut r1 = make_record("b", "key1");
+        r1.etag = "etag-1".to_string();
+        store.put_object_if(&r1, &WritePrecondition::default()).await.unwrap();
+
+        let mut r2 = make_record("b", "key1");
+        r2.etag = "etag-2".to_string();
+        store.put_object_if(&r2, &if_match("etag-1")).await.unwrap();
+
+        let versions = store.list_object_versions("b", None, None, None, 100).await.unwrap();
+        assert_eq!(versions.len(), 2, "the accepted write created a new version");
+    }
+
+    #[tokio::test]
+    async fn put_object_if_cas_miss_writes_nothing_versioned() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+
+        let mut r1 = make_record("b", "key1");
+        r1.etag = "etag-1".to_string();
+        store.put_object_if(&r1, &WritePrecondition::default()).await.unwrap();
+
+        let mut r2 = make_record("b", "key1");
+        r2.etag = "etag-2".to_string();
+        let err = store.put_object_if(&r2, &if_match("stale")).await.unwrap_err();
+        expect_precondition_failed(&err);
+
+        let versions = store.list_object_versions("b", None, None, None, 100).await.unwrap();
+        assert_eq!(versions.len(), 1, "the refused write must not create a new version");
+        assert_eq!(versions[0].etag, "etag-1");
+    }
+
+    #[tokio::test]
+    async fn put_object_if_cas_hit_commits_suspended() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        suspend_versioning(&store, "b").await;
+
+        let mut r1 = make_record("b", "key1");
+        r1.etag = "etag-1".to_string();
+        store.put_object_if(&r1, &WritePrecondition::default()).await.unwrap();
+
+        let mut r2 = make_record("b", "key1");
+        r2.etag = "etag-2".to_string();
+        store.put_object_if(&r2, &if_match("etag-1")).await.unwrap();
+        assert_eq!(store.get_object("b", "key1").await.unwrap().unwrap().etag, "etag-2");
+    }
+
+    #[tokio::test]
+    async fn put_object_if_cas_miss_writes_nothing_suspended() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        suspend_versioning(&store, "b").await;
+
+        let mut r1 = make_record("b", "key1");
+        r1.etag = "etag-1".to_string();
+        store.put_object_if(&r1, &WritePrecondition::default()).await.unwrap();
+
+        let mut r2 = make_record("b", "key1");
+        r2.etag = "etag-2".to_string();
+        let err = store.put_object_if(&r2, &if_match("stale")).await.unwrap_err();
+        expect_precondition_failed(&err);
+        assert_eq!(store.get_object("b", "key1").await.unwrap().unwrap().etag, "etag-1");
+    }
+
+    #[tokio::test]
+    async fn put_object_if_if_match_on_absent_object_is_no_such_key() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let r = make_record("b", "missing");
+        let err = store.put_object_if(&r, &if_match("anything")).await.unwrap_err();
+        expect_no_such_key(&err);
+        assert!(store.get_object("b", "missing").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn put_object_if_none_match_star_refuses_on_existing_commits_on_absent() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+
+        // Absent key: If-None-Match: * commits.
+        let mut r1 = make_record("b", "key1");
+        r1.etag = "etag-1".to_string();
+        store.put_object_if(&r1, &if_none_match_star()).await.unwrap();
+
+        // Existing key: If-None-Match: * is refused, nothing changes.
+        let mut r2 = make_record("b", "key1");
+        r2.etag = "etag-2".to_string();
+        let err = store.put_object_if(&r2, &if_none_match_star()).await.unwrap_err();
+        expect_precondition_failed(&err);
+        assert_eq!(store.get_object("b", "key1").await.unwrap().unwrap().etag, "etag-1");
+    }
+
+    #[tokio::test]
+    async fn delete_object_if_etag_mismatch_refuses_row_survives() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut r = make_record("b", "key1");
+        r.etag = "etag-1".to_string();
+        store.put_object_if(&r, &WritePrecondition::default()).await.unwrap();
+
+        let pre = DeletePrecondition {
+            if_match: Some("\"stale\"".to_string()),
+            if_match_last_modified: None,
+            if_match_size: None,
+        };
+        let err = store.delete_object_if("b", "key1", &pre).await.unwrap_err();
+        expect_precondition_failed(&err);
+        assert!(store.get_object("b", "key1").await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn delete_object_if_size_mismatch_refuses_row_survives() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut r = make_record("b", "key1");
+        r.size = 100;
+        store.put_object_if(&r, &WritePrecondition::default()).await.unwrap();
+
+        let pre = DeletePrecondition {
+            if_match: None,
+            if_match_last_modified: None,
+            if_match_size: Some(999),
+        };
+        let err = store.delete_object_if("b", "key1", &pre).await.unwrap_err();
+        expect_precondition_failed(&err);
+        assert!(store.get_object("b", "key1").await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn delete_object_if_last_modified_mismatch_refuses_row_survives() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let r = make_record("b", "key1");
+        let last_modified = r.last_modified;
+        store.put_object_if(&r, &WritePrecondition::default()).await.unwrap();
+
+        let pre = DeletePrecondition {
+            if_match: None,
+            if_match_last_modified: Some(last_modified + chrono::Duration::seconds(60)),
+            if_match_size: None,
+        };
+        let err = store.delete_object_if("b", "key1", &pre).await.unwrap_err();
+        expect_precondition_failed(&err);
+        assert!(store.get_object("b", "key1").await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn delete_object_if_cas_hit_deletes() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut r = make_record("b", "key1");
+        r.etag = "etag-1".to_string();
+        store.put_object_if(&r, &WritePrecondition::default()).await.unwrap();
+
+        let pre = DeletePrecondition {
+            if_match: Some("\"etag-1\"".to_string()),
+            if_match_last_modified: None,
+            if_match_size: None,
+        };
+        let deleted = store.delete_object_if("b", "key1", &pre).await.unwrap();
+        assert!(deleted.is_some());
+        assert!(store.get_object("b", "key1").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn delete_object_version_if_skips_precondition_on_delete_marker() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+
+        let r = make_record("b", "key1");
+        store.put_object_if(&r, &WritePrecondition::default()).await.unwrap();
+        // Creates a delete marker as the new latest version.
+        store.delete_object("b", "key1").await.unwrap();
+
+        let versions = store.list_object_versions("b", None, None, None, 100).await.unwrap();
+        let marker = versions.iter().find(|v| v.is_delete_marker).unwrap();
+        let marker_vid = marker.version_id.clone().unwrap();
+
+        // A precondition that would otherwise refuse (etag never matches an
+        // empty-etag delete marker) is skipped entirely for a delete-marker target.
+        let pre = DeletePrecondition {
+            if_match: Some("\"anything\"".to_string()),
+            if_match_last_modified: None,
+            if_match_size: None,
+        };
+        let deleted = store
+            .delete_object_version_if("b", "key1", &marker_vid, &pre)
+            .await
+            .unwrap();
+        assert!(deleted.is_some());
+    }
+
+    #[tokio::test]
+    async fn delete_object_version_if_cas_miss_row_survives() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+
+        let mut r = make_record("b", "key1");
+        r.etag = "etag-1".to_string();
+        store.put_object_if(&r, &WritePrecondition::default()).await.unwrap();
+        let vid = store.get_object("b", "key1").await.unwrap().unwrap().version_id.unwrap();
+
+        let pre = DeletePrecondition {
+            if_match: Some("\"stale\"".to_string()),
+            if_match_last_modified: None,
+            if_match_size: None,
+        };
+        let err = store
+            .delete_object_version_if("b", "key1", &vid, &pre)
+            .await
+            .unwrap_err();
+        expect_precondition_failed(&err);
+        assert!(store.get_object_version("b", "key1", &vid).await.unwrap().is_some());
     }
 }

@@ -10,7 +10,7 @@ use std::time::Duration;
 use moka::future::Cache;
 
 use arca_core::error::ArcaError;
-use arca_core::store::MetadataStore;
+use arca_core::store::{DeletePrecondition, MetadataStore, WritePrecondition};
 use arca_core::types::{
     BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
 };
@@ -104,11 +104,12 @@ impl MetadataStore for CachingMetadataStore {
 
     // -- Object operations (cached for get, invalidated on write) --
 
-    async fn put_object(
+    async fn put_object_if(
         &self,
         record: &ObjectRecord,
+        pre: &WritePrecondition,
     ) -> Result<(Option<ObjectRecord>, Option<String>), ArcaError> {
-        let result = self.inner.put_object(record).await;
+        let result = self.inner.put_object_if(record, pre).await;
         if result.is_ok() {
             let key = Self::object_key(&record.bucket, &record.key);
             self.object_cache.invalidate(&key).await;
@@ -140,12 +141,13 @@ impl MetadataStore for CachingMetadataStore {
         Ok(result)
     }
 
-    async fn delete_object(
+    async fn delete_object_if(
         &self,
         bucket: &str,
         key: &str,
+        pre: &DeletePrecondition,
     ) -> Result<Option<ObjectRecord>, ArcaError> {
-        let result = self.inner.delete_object(bucket, key).await;
+        let result = self.inner.delete_object_if(bucket, key, pre).await;
         if result.is_ok() {
             let cache_key = Self::object_key(bucket, key);
             self.object_cache.invalidate(&cache_key).await;
@@ -176,15 +178,16 @@ impl MetadataStore for CachingMetadataStore {
         self.inner.get_object_version(bucket, key, version_id).await
     }
 
-    async fn delete_object_version(
+    async fn delete_object_version_if(
         &self,
         bucket: &str,
         key: &str,
         version_id: &str,
+        pre: &DeletePrecondition,
     ) -> Result<Option<ObjectRecord>, ArcaError> {
         let result = self
             .inner
-            .delete_object_version(bucket, key, version_id)
+            .delete_object_version_if(bucket, key, version_id, pre)
             .await;
         if result.is_ok() {
             let cache_key = Self::object_key(bucket, key);
