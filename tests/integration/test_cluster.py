@@ -60,6 +60,7 @@ node stop/start that happens between phases).
 
 import json
 import os
+import threading
 import time
 import uuid
 
@@ -294,6 +295,72 @@ def test_read_after_write_via_lb():
     _ensure_bucket(lb, bucket)
     lb.put_object(Bucket=bucket, Key="k", Body=body)
     assert lb.get_object(Bucket=bucket, Key="k")["Body"].read() == body
+
+
+@pytest.mark.cluster_full
+def test_conditional_put_is_per_node_not_cluster_wide():
+    """Pins the documented CAS boundary (TD-025, plan §4 option A).
+
+    Compare-and-swap is exact PER NODE, not cluster-wide: `put_object`
+    commits locally, then fans out — there is no authoritative node per key.
+    Two conditional PUTs against the same base ETag, landing on two DIFFERENT
+    nodes, can both pass their local CAS and both commit (LWW picks a
+    winner), instead of the cluster-wide "exactly one wins" a single node
+    gives. This is a known, documented limitation (mitigated by a sticky load
+    balancer so a given key's writers consistently land on the same node),
+    not a bug — see TD-025.
+
+    Whether both nodes accept is itself a race (each node's local commit
+    fans out to its peers, and if that fan-out lands before the other node's
+    own local check runs, that other node correctly emits 412 instead) — a
+    small, fast body makes the peer catch up before the racing write even
+    starts, so this uses large bodies to widen the window and retries across
+    several fresh keys, requiring only ONE occurrence of "both nodes
+    accepted" to demonstrate the boundary is real. If this stops reproducing
+    at all across every attempt, the guarantee has silently changed and
+    TD-025 / the HA docs need to be revisited.
+    """
+    lb = _s3(LB)
+    bucket = f"cl-cas-boundary-{uuid.uuid4().hex[:10]}"
+    _ensure_bucket(lb, bucket)
+
+    payload_size = 4 * 1024 * 1024
+    attempts = 15
+
+    for attempt in range(attempts):
+        key = f"k-{attempt}"
+        lb.put_object(Bucket=bucket, Key=key, Body=b"base")
+        _wait_object(lb, bucket, key, b"base", timeout=30)
+        etag = lb.head_object(Bucket=bucket, Key=key)["ETag"]
+
+        gate = threading.Barrier(2)
+        codes = {}
+
+        def write(node, body):
+            cl = _s3(NODES[node])
+            gate.wait()
+            try:
+                cl.put_object(Bucket=bucket, Key=key, Body=body, IfMatch=etag)
+                codes[node] = 200
+            except ClientError as e:
+                codes[node] = e.response["ResponseMetadata"]["HTTPStatusCode"]
+
+        threads = [
+            threading.Thread(target=write, args=(1, bytes([65]) * payload_size)),
+            threading.Thread(target=write, args=(2, bytes([66]) * payload_size)),
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        if codes == {1: 200, 2: 200}:
+            return
+
+    pytest.fail(
+        f"cluster-wide CAS boundary (TD-025) did not reproduce in {attempts} attempts — "
+        "either the race window is too narrow here, or the guarantee has changed"
+    )
 
 
 @pytest.mark.cluster_full

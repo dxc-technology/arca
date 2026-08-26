@@ -461,6 +461,19 @@ impl MetadataStore for PgStore {
             .await
             .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
 
+        // Commit-ordered seq, taken as the FIRST statement of the
+        // transaction. `next_object_seq` is the only statement here that
+        // actually contends under PostgreSQL's default READ COMMITTED
+        // isolation (a plain SELECT does not block concurrent transactions):
+        // taking it before the authoritative CAS-check SELECT below turns it
+        // into a serialization gate — by the time this transaction is
+        // granted the lock, every previously-serialized writer has already
+        // committed, so the CAS-check SELECT is guaranteed to see genuinely
+        // current state instead of a stale pre-write snapshot.
+        let seq = next_object_seq(&mut tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
+
         // Authoritative CAS check, evaluated inside the same transaction that
         // performs the write, against what `get_object` would see (delete
         // markers filtered).
@@ -477,12 +490,6 @@ impl MetadataStore for PgStore {
 
         let metadata_json = serde_json::to_value(&record.metadata)
             .unwrap_or_else(|_| serde_json::json!({}));
-
-        // Commit-ordered seq for the row this put inserts, taken BEFORE the
-        // first row-mutating statement (lock-order rule of next_object_seq).
-        let seq = next_object_seq(&mut tx)
-            .await
-            .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
 
         let old = match versioning {
             VersioningState::Unversioned => {
@@ -695,6 +702,16 @@ impl MetadataStore for PgStore {
             .await
             .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
 
+        // Commit-ordered seq, taken as the FIRST statement of the
+        // transaction — see put_object_if for why this must precede the
+        // CAS-check SELECT below (it's the only statement that contends
+        // under READ COMMITTED, so it acts as the serialization gate). Taken
+        // unconditionally, even for the non-cluster Unversioned branch below
+        // which doesn't persist it, purely to gate the CAS check.
+        let seq = next_object_seq(&mut tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
+
         // Authoritative CAS check against the object being deleted, as
         // `MetadataStore::get_latest_object` would see it (includes a delete
         // marker). An absent object is always `Ok(())` — DeleteObject on a
@@ -720,15 +737,10 @@ impl MetadataStore for PgStore {
                 if old.is_some() {
                     // Clustered: tombstone (blob cleared) so the deletion
                     // converges via the manifest and isn't resurrected by
-                    // anti-entropy. Single-node: remove the row.
+                    // anti-entropy. Single-node: remove the row. One seq for
+                    // the single row of this key (an unversioned bucket was
+                    // never versioned -> at most one row matches).
                     if cluster_mode {
-                        // Commit-ordered seq, taken before the first DML
-                        // (lock-order rule of next_object_seq). One seq for
-                        // the single row of this key (an unversioned bucket
-                        // was never versioned -> at most one row matches).
-                        let seq = next_object_seq(&mut tx)
-                            .await
-                            .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
                         sqlx_core::query::query(
                             "UPDATE objects SET seq = $4, is_tombstone = TRUE, is_delete_marker = FALSE, \
                              blob_id = '', size = 0, last_modified = $3 \
@@ -768,12 +780,6 @@ impl MetadataStore for PgStore {
                 old // blob to clean up
             }
             VersioningState::Enabled => {
-                // Commit-ordered seq for the delete marker, taken before the
-                // first DML (lock-order rule of next_object_seq).
-                let seq = next_object_seq(&mut tx)
-                    .await
-                    .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
-
                 // Mark current latest as not-latest.
                 sqlx_core::query::query(
                     "UPDATE objects SET is_latest = FALSE \
@@ -838,12 +844,6 @@ impl MetadataStore for PgStore {
             VersioningState::Suspended => {
                 // Delete existing null-version for cleanup.
                 let old_null = fetch_null_version(&mut tx, bucket, key)
-                    .await
-                    .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
-
-                // Commit-ordered seq for the delete marker, taken before the
-                // first DML (lock-order rule of next_object_seq).
-                let seq = next_object_seq(&mut tx)
                     .await
                     .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
 
@@ -958,6 +958,16 @@ impl MetadataStore for PgStore {
             .await
             .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
 
+        // Commit-ordered seq, taken as the FIRST statement of the
+        // transaction — see put_object_if for why this must precede the
+        // CAS-check SELECT below (it's the only statement that contends
+        // under READ COMMITTED, so it acts as the serialization gate). Taken
+        // unconditionally, even for the non-cluster branches below which
+        // don't persist it, purely to gate the CAS check.
+        let seq = next_object_seq(&mut tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
+
         // Fetch the version to delete.
         let deleted = if version_id == "null" {
             let sql = format!(
@@ -1006,11 +1016,7 @@ impl MetadataStore for PgStore {
             // converges via the manifest and isn't resurrected by anti-entropy.
             // Single-node: remove the row.
             if cluster_mode {
-                // Commit-ordered seq, taken before the first DML (lock-order
-                // rule of next_object_seq). The WHERE targets one version row.
-                let seq = next_object_seq(&mut tx)
-                    .await
-                    .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
+                // seq already taken above. The WHERE targets one version row.
                 let now = Utc::now();
                 if version_id == "null" {
                     sqlx_core::query::query(
