@@ -5,8 +5,10 @@ use axum::extract::{Path, State};
 use axum::response::Response;
 use http::StatusCode;
 
+use arca_core::error::ArcaError;
 use arca_core::s3::xml_types;
 use arca_core::s3::xml_types::{DeleteErrorEntry, DeletedEntry};
+use arca_core::store::DeletePrecondition;
 use arca_core::types::{ListBucketResultParams, ListBucketV1ResultParams, ListEntry, ObjectRecord};
 use arca_core::{validate_bucket_name, S3Error, S3ErrorCode};
 
@@ -1873,6 +1875,38 @@ pub async fn post_bucket(
     delete_objects(state, bucket, request).await
 }
 
+/// Builds the per-key `DeletePrecondition` for a `DeleteObjects` batch entry.
+///
+/// `Err(())` means a given field was present but failed to parse (bad date,
+/// non-numeric size) — the old inline check treated that as an unconditional
+/// precondition failure rather than silently ignoring it, preserved here.
+fn build_batch_delete_precondition(obj: &xml_types::DeleteObject) -> Result<DeletePrecondition, ()> {
+    // boto3 sends RFC 2822 format: "Sun, 09 Mar 2025 16:58:47 GMT".
+    let if_match_last_modified = match &obj.last_modified_time {
+        Some(s) => {
+            let parsed = chrono::DateTime::parse_from_rfc2822(s)
+                .or_else(|_| chrono::DateTime::parse_from_rfc3339(s));
+            match parsed {
+                Ok(dt) => Some(dt.with_timezone(&chrono::Utc)),
+                Err(_) => return Err(()),
+            }
+        }
+        None => None,
+    };
+    let if_match_size = match &obj.size {
+        Some(s) => match s.parse::<u64>() {
+            Ok(n) => Some(n),
+            Err(_) => return Err(()),
+        },
+        None => None,
+    };
+    Ok(DeletePrecondition {
+        if_match: obj.etag.clone(),
+        if_match_last_modified,
+        if_match_size,
+    })
+}
+
 /// Handles the DeleteObjects (`POST /{bucket}?delete`) operation.
 async fn delete_objects(
     state: AppState,
@@ -1937,88 +1971,23 @@ async fn delete_objects(
     let mut errors = Vec::new();
 
     for obj in &delete_body.objects {
-        // Per-key conditional checks (ETag, LastModifiedTime, IfMatchSize).
-        let has_condition = obj.etag.is_some()
-            || obj.last_modified_time.is_some()
-            || obj.size.is_some();
-        if has_condition {
-            // Use get_latest_object to include delete markers for conditional checks.
-            match state.metadata.get_latest_object(&bucket, &obj.key).await {
-                Ok(Some(existing)) => {
-                    let mut failed = false;
-
-                    // ETag check.
-                    if let Some(ref expected_etag) = obj.etag {
-                        let quoted = format!("\"{}\"", existing.etag);
-                        if expected_etag != &existing.etag
-                            && expected_etag != &quoted
-                            && expected_etag != "*"
-                        {
-                            failed = true;
-                        }
-                    }
-
-                    // LastModifiedTime check.
-                    // boto3 sends RFC 2822 format: "Sun, 09 Mar 2025 16:58:47 GMT".
-                    // Compare at second precision since RFC 2822 has no sub-seconds.
-                    if let Some(ref expected_time) = obj.last_modified_time {
-                        let parsed = chrono::DateTime::parse_from_rfc2822(expected_time)
-                            .or_else(|_| chrono::DateTime::parse_from_rfc3339(expected_time));
-                        if let Ok(expected) = parsed {
-                            let expected_secs = expected.timestamp();
-                            let existing_secs = existing.last_modified.timestamp();
-                            if expected_secs != existing_secs {
-                                failed = true;
-                            }
-                        } else {
-                            // Unknown format — treat as mismatch.
-                            failed = true;
-                        }
-                    }
-
-                    // Size check.
-                    if let Some(ref expected_size) = obj.size {
-                        if let Ok(size) = expected_size.parse::<u64>() {
-                            if size != existing.size {
-                                failed = true;
-                            }
-                        } else {
-                            failed = true;
-                        }
-                    }
-
-                    if failed {
-                        errors.push(DeleteErrorEntry {
-                            key: obj.key.clone(),
-                            version_id: obj.version_id.clone(),
-                            code: S3ErrorCode::PreconditionFailed.as_str().to_string(),
-                            message: "At least one of the pre-conditions you specified did not hold.".to_string(),
-                        });
-                        continue;
-                    }
-                }
-                Ok(None) => {
-                    // Object doesn't exist — delete is a no-op, report success.
-                    deleted.push(DeletedEntry {
-                        key: obj.key.clone(),
-                        version_id: obj.version_id.clone(),
-                        delete_marker: false,
-                        delete_marker_version_id: None,
-                    });
-                    continue;
-                }
-                Err(e) => {
-                    tracing::error!(error = %e, key = %obj.key, "Error checking object for conditional delete");
-                    errors.push(DeleteErrorEntry {
-                        key: obj.key.clone(),
-                        version_id: obj.version_id.clone(),
-                        code: S3ErrorCode::InternalError.as_str().to_string(),
-                        message: "We encountered an internal error. Please try again.".to_string(),
-                    });
-                    continue;
-                }
+        // Per-key conditional checks (ETag, LastModifiedTime, IfMatchSize),
+        // evaluated authoritatively inside delete_object_if /
+        // delete_object_version_if below — no early pre-filter, so a
+        // version-specific delete is checked against that exact version
+        // rather than the bucket's current latest object.
+        let delete_pre = match build_batch_delete_precondition(obj) {
+            Ok(pre) => pre,
+            Err(()) => {
+                errors.push(DeleteErrorEntry {
+                    key: obj.key.clone(),
+                    version_id: obj.version_id.clone(),
+                    code: S3ErrorCode::PreconditionFailed.as_str().to_string(),
+                    message: "At least one of the pre-conditions you specified did not hold.".to_string(),
+                });
+                continue;
             }
-        }
+        };
 
         // Version-specific delete: hard-remove the exact version or delete marker.
         if let Some(ref vid) = obj.version_id {
@@ -2038,7 +2007,7 @@ async fn delete_objects(
             }
             match state
                 .metadata
-                .delete_object_version(&bucket, &obj.key, vid)
+                .delete_object_version_if(&bucket, &obj.key, vid, &delete_pre)
                 .await
             {
                 Ok(old) => {
@@ -2064,6 +2033,14 @@ async fn delete_objects(
                         delete_marker_version_id: if is_dm { Some(vid.clone()) } else { None },
                     });
                 }
+                Err(ArcaError::S3(e)) if e.code == S3ErrorCode::PreconditionFailed => {
+                    errors.push(DeleteErrorEntry {
+                        key: obj.key.clone(),
+                        version_id: obj.version_id.clone(),
+                        code: S3ErrorCode::PreconditionFailed.as_str().to_string(),
+                        message: "At least one of the pre-conditions you specified did not hold.".to_string(),
+                    });
+                }
                 Err(e) => {
                     tracing::error!(error = %e, key = %obj.key, "Error deleting object version");
                     errors.push(DeleteErrorEntry {
@@ -2077,7 +2054,11 @@ async fn delete_objects(
             }
         } else {
             // Non-versioned delete: may create a delete marker in versioned buckets.
-            match state.metadata.delete_object(&bucket, &obj.key).await {
+            match state
+                .metadata
+                .delete_object_if(&bucket, &obj.key, &delete_pre)
+                .await
+            {
                 Ok(old) => {
                     // Delete blob if record existed and is not a delete marker.
                     if let Some(ref old_record) = old {
@@ -2106,6 +2087,14 @@ async fn delete_objects(
                         version_id: old.as_ref().and_then(|r| r.version_id.clone()),
                         delete_marker: is_dm,
                         delete_marker_version_id: dm_vid,
+                    });
+                }
+                Err(ArcaError::S3(e)) if e.code == S3ErrorCode::PreconditionFailed => {
+                    errors.push(DeleteErrorEntry {
+                        key: obj.key.clone(),
+                        version_id: obj.version_id.clone(),
+                        code: S3ErrorCode::PreconditionFailed.as_str().to_string(),
+                        message: "At least one of the pre-conditions you specified did not hold.".to_string(),
                     });
                 }
                 Err(e) => {

@@ -12,7 +12,9 @@ use base64::Engine;
 
 use arca_core::s3::etag::etag_matches;
 use arca_core::s3::xml_types;
-use arca_core::store::{BlobEncryptionInfo, ByteRange, SidecarMeta, WritePrecondition};
+use arca_core::store::{
+    BlobEncryptionInfo, ByteRange, DeletePrecondition, SidecarMeta, WritePrecondition,
+};
 use arca_core::types::{BlobId, ObjectRecord};
 use arca_core::{S3Error, S3ErrorCode};
 
@@ -349,6 +351,26 @@ fn check_copy_source_conditionals(
     }
 
     None
+}
+
+/// Builds a `DeletePrecondition` from `DeleteObject`'s conditional headers
+/// (`If-Match`, `x-amz-if-match-last-modified-time`, `x-amz-if-match-size`).
+fn build_delete_precondition(headers: &http::HeaderMap) -> DeletePrecondition {
+    DeletePrecondition {
+        if_match: headers
+            .get("if-match")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string()),
+        if_match_last_modified: headers
+            .get("x-amz-if-match-last-modified-time")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| httpdate::parse_http_date(v).ok())
+            .map(chrono::DateTime::<chrono::Utc>::from),
+        if_match_size: headers
+            .get("x-amz-if-match-size")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u64>().ok()),
+    }
 }
 
 /// PUT /{bucket}/{*key} — PutObject, CopyObject, UploadPart, or UploadPartCopy
@@ -2021,45 +2043,29 @@ pub async fn delete_object(
 
     // Versioned delete: permanent removal of a specific version.
     if let Some(ref vid) = version_id {
-        // Object Lock enforcement: check if version is locked before hard-deleting
+        let delete_pre = build_delete_precondition(&headers);
+
+        // Object Lock enforcement: check if version is locked before hard-deleting.
+        // Per S3 semantics (and delete_object_version_if's own rule), both the
+        // lock check and the conditional-delete precondition are skipped
+        // entirely when the targeted version is itself a delete marker.
         if let Ok(Some(lock_record)) = state.metadata.get_object_version(&bucket, &key, vid).await {
             if !lock_record.is_delete_marker {
                 if let Err(e) = check_object_lock_allows_delete(&lock_record, &headers) {
                     return s3_error_response(e);
                 }
-                // Conditional headers for version-specific delete
-                if let Some(val) = headers.get("if-match").and_then(|v| v.to_str().ok()) {
-                    let quoted_etag = format!("\"{}\"", lock_record.etag);
-                    if !etag_matches(val, &quoted_etag) {
-                        return precondition_failed_response(&resource);
-                    }
-                }
-                if let Some(val) = headers
-                    .get("x-amz-if-match-last-modified-time")
-                    .and_then(|v| v.to_str().ok())
-                {
-                    if let Ok(expected) = httpdate::parse_http_date(val) {
-                        let expected_dt: chrono::DateTime<chrono::Utc> = expected.into();
-                        if lock_record.last_modified.timestamp() != expected_dt.timestamp() {
-                            return precondition_failed_response(&resource);
-                        }
-                    }
-                }
-                if let Some(val) = headers
-                    .get("x-amz-if-match-size")
-                    .and_then(|v| v.to_str().ok())
-                {
-                    if let Ok(expected_size) = val.parse::<u64>() {
-                        if lock_record.size != expected_size {
-                            return precondition_failed_response(&resource);
-                        }
-                    }
+                if let Err(code) = delete_pre.evaluate(Some(&lock_record)) {
+                    return s3_error_response(S3Error::new(code, &resource));
                 }
             }
         }
+
+        // Authoritative CAS check happens inside delete_object_version_if,
+        // evaluated in the same transaction that performs the delete — the
+        // check above is an optimisation only.
         let old = match state
             .metadata
-            .delete_object_version(&bucket, &key, vid)
+            .delete_object_version_if(&bucket, &key, vid, &delete_pre)
             .await
         {
             Ok(old) => old,
@@ -2087,55 +2093,25 @@ pub async fn delete_object(
     }
 
     // Check conditional headers on delete (If-Match, x-amz-if-match-*).
-    let has_delete_conditionals = headers.contains_key("if-match")
-        || headers.contains_key("x-amz-if-match-last-modified-time")
-        || headers.contains_key("x-amz-if-match-size");
+    let delete_pre = build_delete_precondition(&headers);
 
-    if has_delete_conditionals {
+    if !delete_pre.is_empty() {
         // Use get_latest_object to include delete markers for conditional checks.
         let existing = match state.metadata.get_latest_object(&bucket, &key).await {
             Ok(obj) => obj,
             Err(e) => return internal_error_response(e, &resource),
         };
-        if let Some(ref obj) = existing {
-            // If-Match: check ETag.
-            if let Some(val) = headers.get("if-match").and_then(|v| v.to_str().ok()) {
-                let quoted_etag = format!("\"{}\"", obj.etag);
-                if !etag_matches(val, &quoted_etag) {
-                    return precondition_failed_response(&resource);
-                }
-            }
-            // x-amz-if-match-last-modified-time: check Last-Modified.
-            if let Some(val) = headers
-                .get("x-amz-if-match-last-modified-time")
-                .and_then(|v| v.to_str().ok())
-            {
-                if let Ok(expected) = httpdate::parse_http_date(val) {
-                    let expected_dt: chrono::DateTime<chrono::Utc> = expected.into();
-                    // Truncate both to seconds for comparison (HTTP dates have 1s resolution).
-                    let obj_secs = obj.last_modified.timestamp();
-                    let exp_secs = expected_dt.timestamp();
-                    if obj_secs != exp_secs {
-                        return precondition_failed_response(&resource);
-                    }
-                }
-            }
-            // x-amz-if-match-size: check object size.
-            if let Some(val) = headers
-                .get("x-amz-if-match-size")
-                .and_then(|v| v.to_str().ok())
-            {
-                if let Ok(expected_size) = val.parse::<u64>() {
-                    if obj.size != expected_size {
-                        return precondition_failed_response(&resource);
-                    }
-                }
-            }
+        // A missing object is always Ok(()) — DELETE on an absent key is a
+        // no-op, never a precondition failure — so this falls through to 204.
+        if let Err(code) = delete_pre.evaluate(existing.as_ref()) {
+            return s3_error_response(S3Error::new(code, &resource));
         }
-        // If object doesn't exist, DELETE is a no-op — fall through to 204.
     }
 
-    let old = match state.metadata.delete_object(&bucket, &key).await {
+    // Authoritative CAS check happens inside delete_object_if, evaluated in
+    // the same transaction that performs the delete — the check above is an
+    // optimisation only.
+    let old = match state.metadata.delete_object_if(&bucket, &key, &delete_pre).await {
         Ok(old) => old,
         Err(e) => return internal_error_response(e, &resource),
     };
