@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.0] — 2026-09-01
+
 ### Fixed
 
 - **Conditional writes (`If-Match`, `If-None-Match`, `x-amz-if-match-last-modified-time`, `x-amz-if-match-size`) are now atomic compare-and-swap, not check-then-commit.** Every conditional-write path evaluated the precondition against a snapshot read long before the write actually committed — for `PutObject` and `CompleteMultipartUpload` the gap spanned the entire body upload / part assembly, so two concurrent conditional writes to the same key both routinely passed their check and both got `200 OK`, silently degrading to last-writer-wins on exactly the primitive S3 clients use for coordination. `DeleteObject` (plain and version-specific) and the `DeleteObjects` batch had the same shape with a narrower window. Preconditions are now re-evaluated authoritatively inside the same transaction that performs the write, on both backends (SQLite and PostgreSQL): `MetadataStore` gained `put_object_if`, `delete_object_if` and `delete_object_version_if`, and every handler commits through them instead of a plain read-then-write. The early snapshot check is kept as a fast-path optimisation (fail fast before uploading a doomed body) but is no longer authoritative. **Behaviour change:** a concurrent conditional write that previously raced to `200 OK` now correctly receives `412 PreconditionFailed` — this is the fix, not a regression; no correct client could depend on the old racy `200`.
@@ -798,7 +800,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.29.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.30.0...HEAD
+[0.30.0]: https://github.com/dxc-technology/arca/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/dxc-technology/arca/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/dxc-technology/arca/compare/v0.27.1...v0.28.0
 [0.27.1]: https://github.com/dxc-technology/arca/compare/v0.27.0...v0.27.1

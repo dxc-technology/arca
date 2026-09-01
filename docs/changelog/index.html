@@ -1238,7 +1238,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0300-2026-09-01" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.30.0 — 2026-09-01
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.30.0 — 2026-09-01">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2953,7 +2964,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0300-2026-09-01" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.30.0 — 2026-09-01
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.30.0 — 2026-09-01">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -4619,7 +4641,8 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.29.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.30.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="0300-2026-09-01"><a href="https://github.com/dxc-technology/arca/compare/v0.29.0...v0.30.0">0.30.0</a> — 2026-09-01<a class="headerlink" href="#0300-2026-09-01" title="Permanent link">&para;</a></h2>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Conditional writes (<code>If-Match</code>, <code>If-None-Match</code>, <code>x-amz-if-match-last-modified-time</code>, <code>x-amz-if-match-size</code>) are now atomic compare-and-swap, not check-then-commit.</strong> Every conditional-write path evaluated the precondition against a snapshot read long before the write actually committed — for <code>PutObject</code> and <code>CompleteMultipartUpload</code> the gap spanned the entire body upload / part assembly, so two concurrent conditional writes to the same key both routinely passed their check and both got <code>200 OK</code>, silently degrading to last-writer-wins on exactly the primitive S3 clients use for coordination. <code>DeleteObject</code> (plain and version-specific) and the <code>DeleteObjects</code> batch had the same shape with a narrower window. Preconditions are now re-evaluated authoritatively inside the same transaction that performs the write, on both backends (SQLite and PostgreSQL): <code>MetadataStore</code> gained <code>put_object_if</code>, <code>delete_object_if</code> and <code>delete_object_version_if</code>, and every handler commits through them instead of a plain read-then-write. The early snapshot check is kept as a fast-path optimisation (fail fast before uploading a doomed body) but is no longer authoritative. <strong>Behaviour change:</strong> a concurrent conditional write that previously raced to <code>200 OK</code> now correctly receives <code>412 PreconditionFailed</code> — this is the fix, not a regression; no correct client could depend on the old racy <code>200</code>.</li>
