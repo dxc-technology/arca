@@ -1,19 +1,30 @@
-FROM python:3.12-alpine
+# Stage 1: generate the protobuf/gRPC stubs. grpcio-tools is build-time only
+# (~50 MB of protoc machinery) and has no business in the runtime image.
+FROM python:alpine AS stubs
 
-RUN apk add --no-cache gcc g++ musl-dev libffi-dev linux-headers
+WORKDIR /stubs
+COPY arca_notifications.proto ./
+RUN pip install --no-cache-dir --only-binary=:all: grpcio-tools && \
+    python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. \
+        arca_notifications.proto
+
+# Stage 2: runtime. `--only-binary=:all:` fails the build loudly if a musl
+# wheel is ever missing, instead of silently falling back to compiling grpcio
+# from source — which is what used to pull gcc/g++/musl-dev in and inflate
+# this image to 820 MB. `apk upgrade` keeps the base OS packages patched
+# (CPython links libuuid, a recurring util-linux CVE surface) without waiting
+# for an upstream base image rebuild.
+FROM python:alpine
+
+RUN apk upgrade --no-cache
 
 WORKDIR /app
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --only-binary=:all: -r requirements.txt
 
-COPY arca_notifications.proto ./
-RUN python -m grpc_tools.protoc \
-        -I. \
-        --python_out=. \
-        --grpc_python_out=. \
-        arca_notifications.proto
-
+COPY --from=stubs /stubs/arca_notifications_pb2.py \
+                  /stubs/arca_notifications_pb2_grpc.py ./
 COPY server.py ./
 
 RUN adduser --disabled-password --no-create-home --gecos '' receiver && \

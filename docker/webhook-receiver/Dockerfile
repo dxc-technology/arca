@@ -1,4 +1,12 @@
-FROM python:3.12-alpine
+# Test fixture: a ~100-line stdlib HTTP server, so the stock Python Alpine
+# image is the right base — but its OS packages are only as fresh as the
+# upstream image rebuild, and CPython genuinely links libuuid (_uuid), which
+# has a steady stream of util-linux advisories. `apk upgrade` at build time
+# picks up patched Alpine packages without waiting for a new base image.
+FROM python:alpine
+
+RUN apk upgrade --no-cache
+
 WORKDIR /app
 COPY server.py .
 

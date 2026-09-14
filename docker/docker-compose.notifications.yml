@@ -1,5 +1,10 @@
 services:
   webhook-receiver:
+    # Explicit name, like every other locally built service (arca-test,
+    # arca-console, arca-grpc-receiver). Without it compose derives
+    # `docker-webhook-receiver` from the project dir and any image built
+    # under the old name lingers as an untracked orphan.
+    image: arca-webhook-receiver
     build:
       context: ./webhook-receiver
     ports:
