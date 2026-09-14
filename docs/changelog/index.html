@@ -1238,7 +1238,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0301-2026-09-14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.30.1 — 2026-09-14
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.30.1 — 2026-09-14">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3003,7 +3014,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0301-2026-09-14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.30.1 — 2026-09-14
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.30.1 — 2026-09-14">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -4719,7 +4741,8 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.30.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.30.1...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="0301-2026-09-14"><a href="https://github.com/dxc-technology/arca/compare/v0.30.0...v0.30.1">0.30.1</a> — 2026-09-14<a class="headerlink" href="#0301-2026-09-14" title="Permanent link">&para;</a></h2>
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Base images of every distributed image are now pinned to exact versions.</strong> <code>rust:alpine</code> → <code>rust:1.98.1-alpine3.24</code> (builder, and the <code>dev</code> stage that inherits it), <code>debian:stable-slim</code> → <code>debian:13.6-slim</code> (development runtime) and <code>alpine</code> → <code>alpine:3.24.1</code> (console); <code>production</code> stays <code>FROM scratch</code>, which has no tag to pin. Each pin is digest-identical to what the floating tag resolved to when it was set, so this changes nothing about the images today — it stops them changing underneath us tomorrow, which matters because the in-Dockerfile package pins (<code>libcrypto3&gt;=3.5.8-r0</code>, <code>libssl3&gt;=3.5.8-r0</code>, <code>libuuid&gt;=2.42.3-r1</code>) are each relative to a <em>specific</em> base image version and go stale silently when the base moves. The Rust tag deliberately keeps its <code>-alpine3.24</code> suffix, which fixes the apk repository branch the builder's C dependencies (<code>ring</code>, <code>rdkafka</code>) come from, not just the compiler version; Debian uses the numeric point release rather than <code>stable-slim</code> because the numeric tag also pins the apt suite to the codename (<code>trixie</code>), so <code>apt-get install</code> in that stage cannot silently cross a Debian major release. Note that pinning the Alpine rootfs does not freeze the apk index: the <code>v3.24</code> branch keeps publishing updates, which is why <code>alpine:3.24.1</code> still installs openssl 3.5.7-r0 while the pinned constraint pulls 3.5.8-r0 from the repository. Images used <strong>only</strong> for testing and tooling (<code>python:alpine</code>, <code>python:3-slim</code>, the Playwright screenshot image, and the third-party services in the connector/KMS/cluster compose overlays) stay on floating tags on purpose: they are never distributed. <code>AGENTS.md</code> gained a "Base Image Pinning and Upgrades" section with the upgrade procedure — how to find and verify a new tag, and, critically, how to re-check every package pin against the new base and <em>remove</em> the ones it has overtaken instead of leaving a constraint whose CVE list is no longer true. The <code>FROM</code> lines are the single source of truth for the tags in force: the documentation states the pinning <em>principle</em> and points at the Dockerfiles rather than repeating version numbers that would need rewriting at every bump, and this changelog is the only file where exact versions are recorded.</li>
@@ -4738,7 +4761,12 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Console container reported <code>unhealthy</code> in every mode.</strong> The <code>HEALTHCHECK</code> probed <code>http://localhost:80/</code>, and busybox <code>wget</code> resolves <code>localhost</code> to <code>::1</code> first while nginx listens on IPv4 only, so the probe was always refused. It now targets <code>127.0.0.1</code> and, because TLS mode replaces the server config with an HTTPS-only one that stops answering on port 80, falls back to <code>https://127.0.0.1:443/</code> (certificate validation skipped: a liveness probe, not an integrity check). Verified healthy in both plain-HTTP and TLS modes.</li>
+<li>
+<p><strong>Console container reported <code>unhealthy</code> in every mode.</strong> The <code>HEALTHCHECK</code> probed <code>http://localhost:80/</code>, and busybox <code>wget</code> resolves <code>localhost</code> to <code>::1</code> first while nginx listens on IPv4 only, so the probe was always refused. It now targets <code>127.0.0.1</code> and, because TLS mode replaces the server config with an HTTPS-only one that stops answering on port 80, falls back to <code>https://127.0.0.1:443/</code> (certificate validation skipped: a liveness probe, not an integrity check). Verified healthy in both plain-HTTP and TLS modes.</p>
+</li>
+<li>
+<p><strong>Cluster 507 test could not start its third node.</strong> The <code>InsufficientStorage</code> integration phase replaces <code>arca-3</code>'s data volume with a 16 MiB tmpfs, and Docker gives a tmpfs the familiar world-writable <code>1777</code> only when it <em>creates</em> the mount point — mounted over a directory the image already ships (<code>/data</code>, mode 755) it inherits <code>root:root 755</code> instead. That was harmless while the images ran as root, but since they were switched to a non-root user in 0.30.0 the node died at startup with <code>unable to open database file: /data/arca.db</code>, haproxy then failed to resolve the missing container, and the phase timed out waiting for three live nodes. The overlay now sets the mode explicitly. Note the YAML octal prefix (<code>mode: 0o1777</code>): Compose reads a bare <code>1777</code> as decimal and mounts the tmpfs as mode <code>3361</code>, which fails the same way. Test-harness only, no change to any distributed image; the perf overlay's tmpfs (a <code>local</code>-driver volume rather than a bind-style tmpfs mount) was checked and is unaffected.</p>
+</li>
 </ul>
 <h2 id="0300-2026-09-01"><a href="https://github.com/dxc-technology/arca/compare/v0.29.0...v0.30.0">0.30.0</a> — 2026-09-01<a class="headerlink" href="#0300-2026-09-01" title="Permanent link">&para;</a></h2>
 <h3 id="fixed_1">Fixed<a class="headerlink" href="#fixed_1" title="Permanent link">&para;</a></h3>

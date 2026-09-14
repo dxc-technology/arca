@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.1] — 2026-09-14
+
 ### Changed
 
 - **Base images of every distributed image are now pinned to exact versions.** `rust:alpine` → `rust:1.98.1-alpine3.24` (builder, and the `dev` stage that inherits it), `debian:stable-slim` → `debian:13.6-slim` (development runtime) and `alpine` → `alpine:3.24.1` (console); `production` stays `FROM scratch`, which has no tag to pin. Each pin is digest-identical to what the floating tag resolved to when it was set, so this changes nothing about the images today — it stops them changing underneath us tomorrow, which matters because the in-Dockerfile package pins (`libcrypto3>=3.5.8-r0`, `libssl3>=3.5.8-r0`, `libuuid>=2.42.3-r1`) are each relative to a *specific* base image version and go stale silently when the base moves. The Rust tag deliberately keeps its `-alpine3.24` suffix, which fixes the apk repository branch the builder's C dependencies (`ring`, `rdkafka`) come from, not just the compiler version; Debian uses the numeric point release rather than `stable-slim` because the numeric tag also pins the apt suite to the codename (`trixie`), so `apt-get install` in that stage cannot silently cross a Debian major release. Note that pinning the Alpine rootfs does not freeze the apk index: the `v3.24` branch keeps publishing updates, which is why `alpine:3.24.1` still installs openssl 3.5.7-r0 while the pinned constraint pulls 3.5.8-r0 from the repository. Images used **only** for testing and tooling (`python:alpine`, `python:3-slim`, the Playwright screenshot image, and the third-party services in the connector/KMS/cluster compose overlays) stay on floating tags on purpose: they are never distributed. `AGENTS.md` gained a "Base Image Pinning and Upgrades" section with the upgrade procedure — how to find and verify a new tag, and, critically, how to re-check every package pin against the new base and *remove* the ones it has overtaken instead of leaving a constraint whose CVE list is no longer true. The `FROM` lines are the single source of truth for the tags in force: the documentation states the pinning *principle* and points at the Dockerfiles rather than repeating version numbers that would need rewriting at every bump, and this changelog is the only file where exact versions are recorded.
@@ -22,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Console container reported `unhealthy` in every mode.** The `HEALTHCHECK` probed `http://localhost:80/`, and busybox `wget` resolves `localhost` to `::1` first while nginx listens on IPv4 only, so the probe was always refused. It now targets `127.0.0.1` and, because TLS mode replaces the server config with an HTTPS-only one that stops answering on port 80, falls back to `https://127.0.0.1:443/` (certificate validation skipped: a liveness probe, not an integrity check). Verified healthy in both plain-HTTP and TLS modes.
+
+- **Cluster 507 test could not start its third node.** The `InsufficientStorage` integration phase replaces `arca-3`'s data volume with a 16 MiB tmpfs, and Docker gives a tmpfs the familiar world-writable `1777` only when it *creates* the mount point — mounted over a directory the image already ships (`/data`, mode 755) it inherits `root:root 755` instead. That was harmless while the images ran as root, but since they were switched to a non-root user in 0.30.0 the node died at startup with `unable to open database file: /data/arca.db`, haproxy then failed to resolve the missing container, and the phase timed out waiting for three live nodes. The overlay now sets the mode explicitly. Note the YAML octal prefix (`mode: 0o1777`): Compose reads a bare `1777` as decimal and mounts the tmpfs as mode `3361`, which fails the same way. Test-harness only, no change to any distributed image; the perf overlay's tmpfs (a `local`-driver volume rather than a bind-style tmpfs mount) was checked and is unaffected.
 
 ## [0.30.0] — 2026-09-01
 
@@ -816,7 +820,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.30.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.30.1...HEAD
+[0.30.1]: https://github.com/dxc-technology/arca/compare/v0.30.0...v0.30.1
 [0.30.0]: https://github.com/dxc-technology/arca/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/dxc-technology/arca/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/dxc-technology/arca/compare/v0.27.1...v0.28.0
