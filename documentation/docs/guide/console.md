@@ -4,8 +4,8 @@ Arca includes a browser-based web console for managing buckets, objects, and acc
 
 ## Overview
 
-- **Technology**: single-file Alpine.js + Tailwind CSS application, served by nginx:alpine
-- **Docker image**: `arca-console`, ~40 MB
+- **Technology**: single-file Alpine.js + Tailwind CSS application, served by nginx on a minimal Alpine image
+- **Docker image**: `arca-console`, ~13 MB
 - **Port**: 80 (mapped to 9080 on the host by default), 443 for TLS
 - **Theme**: "The Vault" — dark glassmorphism design
 

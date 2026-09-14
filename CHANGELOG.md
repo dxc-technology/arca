@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Console image rebuilt on plain `alpine` + the `nginx` package instead of `nginx:alpine`.** The official image ships the image-filter, xslt, geoip, njs and acme modules, none of which the console loads (it serves static files and has no `load_module` directive anywhere), and they drag in `libgd` → `libxpm` → `libxt` → `libsm` → `libuuid` along with `tiff`, `freetype`, `libx11`, `libavif`, `libxml2`, `libxslt`, `curl` and `geoip`. That transitive `libuuid` (util-linux) is what a container scan flagged: CVE-2026-53612, CVE-2026-53613, CVE-2026-53614, CVE-2026-76642, CVE-2026-78408, CVE-2026-78409, CVE-2026-78410 (High) and CVE-2026-27456 (Medium), all against 2.42.1-r0. Rather than upgrade the package, the whole unused dependency chain is gone: the image drops from 70 packages / ~65 MB to 18 packages / ~13 MB, and `libuuid` is no longer installed at all, so future util-linux advisories cannot reach the console. Alpine's nginx includes `/etc/nginx/http.d/*.conf` rather than `conf.d`, so the server config and the entrypoint's TLS rewrite moved to that path. Arca's own image is unaffected (`FROM scratch`, no OS packages).
+
+### Fixed
+
+- **Console container reported `unhealthy` in every mode.** The `HEALTHCHECK` probed `http://localhost:80/`, and busybox `wget` resolves `localhost` to `::1` first while nginx listens on IPv4 only, so the probe was always refused. It now targets `127.0.0.1` and, because TLS mode replaces the server config with an HTTPS-only one that stops answering on port 80, falls back to `https://127.0.0.1:443/` (certificate validation skipped: a liveness probe, not an integrity check). Verified healthy in both plain-HTTP and TLS modes.
+
 ## [0.30.0] — 2026-09-01
 
 ### Fixed

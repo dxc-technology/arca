@@ -35,7 +35,7 @@ if [ -d /etc/nginx/certs ]; then
     done
     if [ -n "$cert" ] && [ -n "$key" ]; then
         sed "s|/etc/nginx/certs/cert.pem|${cert}|;s|/etc/nginx/certs/key.pem|${key}|" \
-            /etc/nginx/nginx-tls.conf > /etc/nginx/conf.d/default.conf
+            /etc/nginx/nginx-tls.conf > /etc/nginx/http.d/default.conf
         echo "Console TLS enabled: cert=$cert key=$key"
     fi
 fi
