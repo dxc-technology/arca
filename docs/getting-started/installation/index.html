@@ -1602,11 +1602,17 @@
 </tr>
 <tr>
 <td><code>development</code></td>
-<td><code>debian:stable-slim</code></td>
+<td>Debian slim</td>
 <td>Debugging — includes shell, coreutils</td>
 </tr>
 </tbody>
 </table>
+<p>Both are produced by an Alpine-based Rust builder stage. Every image Arca
+distributes — these two and the console — pins its base image to an exact
+version tag, so rebuilding months later yields the same toolchain and the same
+runtime packages. Auxiliary test and tooling images are intentionally left on
+floating tags. The exact tags in force are the ones in <code>docker/Dockerfile</code> and
+<code>console/Dockerfile</code>.</p>
 <p>Switch between them using <code>BUILD_TARGET</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Production (default)</span>
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build

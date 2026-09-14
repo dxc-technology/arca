@@ -4,7 +4,13 @@
 # tiff, freetype, libx11 and libavif. All dead weight on a static file server,
 # and a recurring CVE surface (util-linux advisories reached us this way).
 # 18 packages instead of 70, ~18 MB instead of ~65 MB.
-FROM alpine
+#
+# Pinned to an exact Alpine release for reproducible builds. Note that this
+# pins the rootfs, not the apk repository index: the release branch keeps
+# receiving package updates, so the version constraints below can be satisfied
+# by newer builds without changing this tag. Upgrade procedure: see
+# "Base Image Pinning and Upgrades" in AGENTS.md.
+FROM alpine:3.24.1
 
 # Run as the nginx package's unprivileged `nginx` user instead of root.
 # Binding ports 80/443 as non-root needs CAP_NET_BIND_SERVICE on the binary

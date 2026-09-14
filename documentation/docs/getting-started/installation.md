@@ -100,7 +100,14 @@ The binary is written to `build/arca-<arch>` (e.g., `build/arca-arm64`). These a
 | Build Target | Base | Use Case |
 |-------------|------|----------|
 | `production` (default) | `scratch` | Production deployments — minimal attack surface |
-| `development` | `debian:stable-slim` | Debugging — includes shell, coreutils |
+| `development` | Debian slim | Debugging — includes shell, coreutils |
+
+Both are produced by an Alpine-based Rust builder stage. Every image Arca
+distributes — these two and the console — pins its base image to an exact
+version tag, so rebuilding months later yields the same toolchain and the same
+runtime packages. Auxiliary test and tooling images are intentionally left on
+floating tags. The exact tags in force are the ones in `docker/Dockerfile` and
+`console/Dockerfile`.
 
 Switch between them using `BUILD_TARGET`:
 

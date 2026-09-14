@@ -88,11 +88,109 @@ bin/docs-publish         # build + commit + push docs to update GitHub Pages
 
 ### Build constraints
 
-- **Rust 1.85** in Docker builder (Alpine). `getrandom 0.4` requires edition 2024 which needs >= 1.85.
+- The Docker builder's Rust version is whatever its pinned Alpine base image tag carries — read `docker/Dockerfile`, don't assume. Minimum is **1.85**: `getrandom 0.4` requires edition 2024.
 - `ring` crate needs `perl` in Alpine; `rdkafka` (Kafka connector) needs `cmake make g++ curl-dev linux-headers zlib-dev zlib-static` for librdkafka static build.
-- `time` crate pinned to 0.3.41 (0.3.47+ requires Rust 1.88).
+- `time` crate pinned to 0.3.47; 0.3.48+ excluded for a coherence clash with `rcgen` (TD-017), not for MSRV reasons.
 - `Cargo.lock*` glob in Dockerfile allows building with or without committed lockfile.
 - `bin/build` only rebuilds the `arca` service image, NOT `unit-test` or `test`. After code changes, run `docker compose -f docker/docker-compose.yml build unit-test test` or test images will be stale.
+
+## Base Image Pinning and Upgrades
+
+Every image Arca **deploys** pins its base image to an exact version tag, so the
+same Dockerfile keeps producing the same toolchain and the same runtime
+packages over time:
+
+| Dockerfile | Stage | Base |
+|---|---|---|
+| `docker/Dockerfile` | `builder` (and `dev`, which inherits it) | Rust on Alpine — **pinned** |
+| `docker/Dockerfile` | `production` | `scratch` — no tag exists, nothing to pin |
+| `docker/Dockerfile` | `development` | Debian slim — **pinned** |
+| `console/Dockerfile` | — | Alpine — **pinned** |
+
+**Never write the concrete pinned versions anywhere but the `FROM` lines
+themselves.** The Dockerfiles are the single source of truth; a tag copied into
+this file, the documentation site or a guide is a second place to forget at the
+next bump. State the principle and point at the Dockerfile. (`CHANGELOG.md` is
+the one exception — it records what changed on a given date, so exact versions
+belong there.)
+
+Images used **only for testing and tooling** deliberately stay unpinned
+(`python:alpine`, `python:3-slim`, `mcr.microsoft.com/playwright/python:…`, and
+the third-party services in the `docker-compose.connector-*.yml` /
+`docker-compose.kms.yml` / `docker-compose.cluster.yml` overlays). They are
+never distributed, and floating tags there mean one less thing to maintain.
+Do not pin them.
+
+### Upgrading a pinned base image
+
+Bumping a base image tag is a deliberate, reviewed step, never a drive-by edit,
+because **the in-Dockerfile package pins are relative to a specific base image
+version** and a newer base can already ship the fixed version — or a newer one,
+which makes the pin dead weight (or, with `=`, a build failure).
+
+Those package pins exist to remediate a specific advisory the base image had
+not picked up yet. Each one sits next to a comment naming the package, the
+advisories that forced it, and the version the base ships — find them with:
+
+```bash
+grep -rn "apk add\|apt-get install" docker/Dockerfile console/Dockerfile \
+    docker/webhook-receiver/Dockerfile docker/grpc-receiver/Dockerfile
+```
+
+As of writing, the console pins `libcrypto3`/`libssl3` (openssl) and the two
+connector-test receivers pin `libuuid` (util-linux). Read the comments for the
+current constraints rather than trusting this paragraph.
+
+Procedure:
+
+1. **Find the new tag.** Query the registry, don't guess — for Docker Hub
+   library images:
+   ```bash
+   curl -s "https://hub.docker.com/v2/repositories/library/alpine/tags/?page_size=100&ordering=last_updated" \
+     | jq -r '.results[] | "\(.name)\t\(.last_updated)"'
+   ```
+   Pick the exact version that the floating tag currently resolves to, and
+   confirm the pin is digest-identical to it before committing:
+   ```bash
+   docker manifest inspect alpine:latest     | jq -r '.manifests[0].digest'
+   docker manifest inspect alpine:<new-tag>  | jq -r '.manifests[0].digest'   # must match
+   ```
+   For Debian prefer the **numeric** point release (`<major>.<minor>-slim`)
+   over `stable-slim`: same rootfs, but the numeric tag also pins the apt suite
+   to the codename, so `apt-get install` cannot silently cross a Debian major
+   release. For Rust keep the Alpine suffix (`-alpine<major>.<minor>`) — it
+   fixes the apk repository branch, not just the compiler.
+
+2. **Revise every package pin for that image.** For each pin the `grep` above
+   turns up, check what the *new* base already ships and drop or raise the pin
+   accordingly:
+   ```bash
+   docker run --rm alpine:<new-tag> sh -c 'apk update >/dev/null && apk policy libcrypto3 libssl3'
+   docker run --rm debian:<new-tag> sh -c 'apt-get update >/dev/null 2>&1 && apt-cache policy ca-certificates curl'
+   ```
+   If the base's own version already satisfies the advisory, **remove the pin**
+   and delete its comment block — a stale `>=` constraint that the base has
+   overtaken is misleading, and the CVE list in the comment stops being true.
+   If it does not, keep the pin and update the comment to name the new base's
+   version. Never replace a pin with a blanket `apk upgrade` / `apt upgrade`:
+   that makes the build irreproducible.
+
+3. **Re-check the Rust side** when bumping the builder: a new compiler can
+   unblock crate versions that MSRV pins in `Cargo.toml` were working around
+   (see the `time`/TD-017 bullet under Build constraints), and Alpine branch
+   changes can move the C dependencies `ring`/`rdkafka` build against.
+
+4. **Rebuild and verify.** `bin/build --dev && bin/build --console`, then
+   `bin/test unit` and `bin/test integration`, then scan: `trivy image` must
+   report **0 findings** for `arca`, `arca-console`, `arca-webhook-receiver`
+   and `arca-grpc-receiver`. Scan the old and the new image with the *same*
+   tool before claiming an improvement — counts from different scanners are
+   not comparable.
+
+5. **Record it in `CHANGELOG.md`** — and nowhere else. If the bump changed a
+   package pin or the Rust version, say so there. No other file should need
+   editing; if one does, it was carrying a version it shouldn't have. Then
+   `bin/docs-build` if you touched the changelog (the docs site symlinks it).
 
 ## Documentation
 

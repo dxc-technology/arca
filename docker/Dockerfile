@@ -1,5 +1,14 @@
 # Stage 1: Build (Alpine for static musl linking — binary runs in scratch)
-FROM rust:alpine AS builder
+#
+# Base image pinned to an exact version for reproducible builds: the same
+# Dockerfile must produce the same toolchain and the same runtime packages
+# months from now. The tag below was digest-identical to `rust:alpine` when it
+# was set. The Alpine part of it is not cosmetic — it fixes the musl/apk
+# repository branch the packages below come from. Bumping this tag is a
+# deliberate, reviewed step: see "Base Image Pinning and Upgrades" in
+# AGENTS.md. This FROM line is the single source of truth for the builder's
+# Rust version; do not restate it in documentation.
+FROM rust:1.98.1-alpine3.24 AS builder
 
 RUN apk add --no-cache musl-dev perl cmake make g++ curl-dev linux-headers zlib-dev zlib-static protobuf-dev protoc
 
@@ -75,7 +84,13 @@ ENTRYPOINT ["/usr/local/bin/arca"]
 CMD ["serve"]
 
 # Stage 4: Development runtime (with shell for debugging)
-FROM debian:stable-slim AS development
+#
+# Pinned to the exact Debian point release rather than `stable-slim`, for the
+# same reproducibility reason as the builder. The numeric tag also pins the apt
+# suite to the codename (`trixie` instead of the floating `stable`), so
+# `apt-get install` below cannot silently jump to the next Debian release the
+# day it ships. Upgrade procedure: see AGENTS.md.
+FROM debian:13.6-slim AS development
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl \
