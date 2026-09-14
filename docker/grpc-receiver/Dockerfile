@@ -11,17 +11,25 @@ RUN pip install --no-cache-dir --only-binary=:all: grpcio-tools && \
 # Stage 2: runtime. `--only-binary=:all:` fails the build loudly if a musl
 # wheel is ever missing, instead of silently falling back to compiling grpcio
 # from source — which is what used to pull gcc/g++/musl-dev in and inflate
-# this image to 820 MB. `apk upgrade` keeps the base OS packages patched
-# (CPython links libuuid, a recurring util-linux CVE surface) without waiting
-# for an upstream base image rebuild.
+# this image to 820 MB. pip itself is removed once the requirements are
+# installed: nothing needs it at runtime, and its vendored copies of
+# msgpack/setuptools are perpetually behind their own advisories.
 FROM python:alpine
 
-RUN apk upgrade --no-cache
+# Point upgrade only, never a blanket `apk upgrade` (irreproducible builds).
+# CPython's _uuid extension links libuuid, and the base image still ships
+# 2.42.1-r0 -- CVE-2026-53612, -53613, -53614, -76642, -78408, -78409, -78410,
+# -27456. `>=` rather than `=` because Alpine drops superseded versions from
+# the repo index, turning an exact pin into a build failure later on.
+RUN apk add --no-cache 'libuuid>=2.42.3-r1'
 
 WORKDIR /app
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir --only-binary=:all: -r requirements.txt
+RUN pip install --no-cache-dir --only-binary=:all: -r requirements.txt && \
+    rm -rf /usr/local/lib/python*/site-packages/pip \
+           /usr/local/lib/python*/site-packages/pip-*.dist-info \
+           /usr/local/lib/python*/ensurepip /usr/local/bin/pip*
 
 COPY --from=stubs /stubs/arca_notifications_pb2.py \
                   /stubs/arca_notifications_pb2_grpc.py ./

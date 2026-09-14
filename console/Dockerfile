@@ -3,7 +3,7 @@
 # loads, and they drag in libgd → libxpm → libxt → libsm → libuuid plus
 # tiff, freetype, libx11 and libavif. All dead weight on a static file server,
 # and a recurring CVE surface (util-linux advisories reached us this way).
-# 18 packages instead of 70, ~13 MB instead of ~65 MB.
+# 18 packages instead of 70, ~18 MB instead of ~65 MB.
 FROM alpine
 
 # Run as the nginx package's unprivileged `nginx` user instead of root.
@@ -13,7 +13,17 @@ FROM alpine
 # (endpoint injection) at startup, so those paths — plus nginx's own temp/
 # cache/pid dirs, which default to root-owned /run — must be owned by that
 # user.
-RUN apk add --no-cache nginx libcap && \
+# Point upgrades only, never a blanket `apk upgrade`: that would pull an
+# unknown set of package versions at build time and make the build
+# irreproducible. Each constraint here names one package and the advisory that
+# forced it, so the diff says what changed and why.
+#   libcrypto3/libssl3 >= 3.5.8-r0 -- openssl CVE-2026-14456, -14457, -18798,
+#   -54874, -63072, -63073, -63074, -63075, -63076, -75803 (the base image
+#   still ships 3.5.7-r0).
+# `>=` rather than `=`: Alpine drops superseded versions from the repo index,
+# so an exact pin turns into a hard build failure the day a newer build lands.
+RUN apk add --no-cache nginx libcap \
+        'libcrypto3>=3.5.8-r0' 'libssl3>=3.5.8-r0' && \
     setcap 'cap_net_bind_service=+ep' /usr/sbin/nginx && \
     apk del libcap && \
     sed -i 's|^pid\s\+.*|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf && \
