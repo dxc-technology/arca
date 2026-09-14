@@ -781,6 +781,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Overview">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2129,6 +2146,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Overview">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2969,12 +3003,54 @@
 <p>Arca includes a browser-based web console for managing buckets, objects, and access control. The console is a <strong>separate application</strong> that communicates with Arca exclusively via the S3 API and Admin API — it's just another API client.</p>
 <h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Technology</strong>: single-file Alpine.js + Tailwind CSS application, served by nginx on a minimal Alpine image</li>
+<li><strong>Technology</strong>: Alpine.js + Tailwind CSS, split into ES modules; served as static files by nginx on a minimal Alpine image</li>
 <li><strong>Docker image</strong>: <code>arca-console</code>, ~18 MB</li>
 <li><strong>Port</strong>: 80 (mapped to 9080 on the host by default), 443 for TLS</li>
 <li><strong>Theme</strong>: "The Vault" — dark glassmorphism design</li>
 </ul>
 <p>The console is intentionally not embedded in the Arca binary. This keeps the server binary small (~8.6 MB), allows independent release cycles, and supports split deployment (Arca on a hardened VM, console on a separate host).</p>
+<h3 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h3>
+<p>There is no build step and no bundler: the browser loads the ES modules directly, so what ships in the image is exactly what is in the repository.</p>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>index.html</code></td>
+<td>Markup only — the Alpine.js templates for every view, plus the CDN tags for Tailwind, Alpine and the syntax/Markdown helpers</td>
+</tr>
+<tr>
+<td><code>js/app.js</code></td>
+<td>Module entry point: global Alpine state, routing between views, shared utilities. Imports every view module</td>
+</tr>
+<tr>
+<td><code>js/api.js</code></td>
+<td>The API client — SigV4 request signing via the Web Crypto API, S3 and Admin API calls, XML parsing</td>
+</tr>
+<tr>
+<td><code>js/views/*.js</code></td>
+<td>One module per view (dashboard, buckets, bucket detail, credentials, users, teams, grants, settings, audit, monitoring, notifications, replication, maintenance)</td>
+</tr>
+<tr>
+<td><code>js/shuttle.js</code>, <code>js/node-selector.js</code></td>
+<td>Shared components: the dual-list transfer widget, and the node picker used by the four node-local views</td>
+</tr>
+<tr>
+<td><code>js/help.js</code></td>
+<td>The in-app help catalogue, keyed by topic id</td>
+</tr>
+</tbody>
+</table>
+<p>Each view is its own Alpine <code>x-data</code> scope and owns the state it renders; view modules do not share state with one another.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Module imports carry a <code>?v=</code> query string (<code>import { api } from './api.js?v=…'</code>). Browsers cache ES modules by URL, and the console's files are deliberately not fingerprinted, so bumping that token is what forces a client to pick up a changed module after a redeploy.</p>
+</div>
+<p>Because signing happens in the browser, the console must be served from a secure context — <code>localhost</code> or HTTPS. See <a href="../../operations/troubleshooting/#cryptosubtle-is-undefined-or-sigv4-signing-fails">crypto.subtle is undefined</a> if the login fails to sign requests.</p>
 <h2 id="starting-the-console">Starting the Console<a class="headerlink" href="#starting-the-console" title="Permanent link">&para;</a></h2>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">HTTP</label><label for="__tabbed_1_2">HTTPS</label></div>
 <div class="tabbed-content">

@@ -4,12 +4,32 @@ Arca includes a browser-based web console for managing buckets, objects, and acc
 
 ## Overview
 
-- **Technology**: single-file Alpine.js + Tailwind CSS application, served by nginx on a minimal Alpine image
+- **Technology**: Alpine.js + Tailwind CSS, split into ES modules; served as static files by nginx on a minimal Alpine image
 - **Docker image**: `arca-console`, ~18 MB
 - **Port**: 80 (mapped to 9080 on the host by default), 443 for TLS
 - **Theme**: "The Vault" — dark glassmorphism design
 
 The console is intentionally not embedded in the Arca binary. This keeps the server binary small (~8.6 MB), allows independent release cycles, and supports split deployment (Arca on a hardened VM, console on a separate host).
+
+### Architecture
+
+There is no build step and no bundler: the browser loads the ES modules directly, so what ships in the image is exactly what is in the repository.
+
+| Path | Contents |
+| --- | --- |
+| `index.html` | Markup only — the Alpine.js templates for every view, plus the CDN tags for Tailwind, Alpine and the syntax/Markdown helpers |
+| `js/app.js` | Module entry point: global Alpine state, routing between views, shared utilities. Imports every view module |
+| `js/api.js` | The API client — SigV4 request signing via the Web Crypto API, S3 and Admin API calls, XML parsing |
+| `js/views/*.js` | One module per view (dashboard, buckets, bucket detail, credentials, users, teams, grants, settings, audit, monitoring, notifications, replication, maintenance) |
+| `js/shuttle.js`, `js/node-selector.js` | Shared components: the dual-list transfer widget, and the node picker used by the four node-local views |
+| `js/help.js` | The in-app help catalogue, keyed by topic id |
+
+Each view is its own Alpine `x-data` scope and owns the state it renders; view modules do not share state with one another.
+
+!!! note
+    Module imports carry a `?v=` query string (`import { api } from './api.js?v=…'`). Browsers cache ES modules by URL, and the console's files are deliberately not fingerprinted, so bumping that token is what forces a client to pick up a changed module after a redeploy.
+
+Because signing happens in the browser, the console must be served from a secure context — `localhost` or HTTPS. See [crypto.subtle is undefined](../operations/troubleshooting.md#cryptosubtle-is-undefined-or-sigv4-signing-fails) if the login fails to sign requests.
 
 ## Starting the Console
 

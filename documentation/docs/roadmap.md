@@ -790,7 +790,7 @@ Endpoints live under `/admin/*` on the same port (9000), using SigV4 auth.
 Web-based administration console and bucket browser, deployed as a **separate application**
 (`console/` directory) that communicates with Arca exclusively via S3 API and Admin API.
 
-- [x] Web console app: single-file Alpine.js + Tailwind CSS, "The Vault" dark theme, nginx:alpine Docker image
+- [x] Web console app: single-file Alpine.js + Tailwind CSS, "The Vault" dark theme, nginx:alpine Docker image (superseded: the console was later split into ES modules under `console/js/`, and the image rebased on plain `alpine` + the `nginx` package — see the [console guide](guide/console.md#architecture))
 - [x] Admin dashboard: bento-grid layout with server info, storage stats, SVG donut chart, health indicator, auto-refresh
 - [x] Bucket browser: list/create/delete buckets, prefix navigation with breadcrumbs, upload/download/delete objects, detail panel, treemap visualization
 - [x] Credential management: card grid, create with reveal-once secret, delete with confirmation, lockout warning
