@@ -21,3 +21,10 @@ services:
         target: /data
         tmpfs:
           size: 16777216  # 16 MiB — room for the SQLite DB, not for a big object
+          # Docker gives a tmpfs its usual 1777 only when it creates the mount
+          # point; over a directory the image already ships (`/data`, mode 755)
+          # it inherits root:root 755 instead, which the non-root user the image
+          # runs as (65532) cannot write — the node then dies at startup with
+          # "unable to open database file: /data/arca.db". YAML octal (`0o`) is
+          # required: a bare `1777` is read as decimal and lands on mode 3361.
+          mode: 0o1777
