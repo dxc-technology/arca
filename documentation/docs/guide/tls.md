@@ -130,8 +130,79 @@ key_file = "/etc/ssl/private/arca.key"
 !!! tip
     The `cert_file` should contain the full certificate chain (server cert + intermediates). Most CAs provide this as a "fullchain" file.
 
-!!! warning "File permissions when running as a container"
-    The `arca` container runs as a fixed non-root user (UID/GID `65532`). On a real Linux host, a bind-mounted key file that is only readable by its owning host user (e.g. mode `600` owned by `root`) will make Arca fail to start with a permission error — grant read access to that UID/GID explicitly (`chmod 640` + `chgrp 65532`, or an ACL entry), or place the certs on a volume you control the ownership of. This is easy to miss in local development: Docker Desktop's bind mounts on macOS do not enforce host permission bits the same way, so a restrictive-looking key file can appear to work there and only fail once deployed to Linux.
+### File Permissions
+
+Every Arca image runs as a non-root user, so the certificate files must be readable by that user — and by the console's user, which is a *different* one. The rule is a single line:
+
+> **Private keys are group-readable, never other-readable.**
+
+```bash
+chgrp 65532 /etc/ssl/private/arca.key
+chmod 640   /etc/ssl/private/arca.key
+```
+
+`65532` is **Arca's service GID**: the `arca` container runs as `65532:65532`, and the key must be readable by it in any case. It is the distroless `nobody` GID, not a privilege boundary — treat it as "the identity Arca runs under", not as a general-purpose secrets group.
+
+The web console runs as the nginx package's own user, `100:101`, and in the Compose dev setup it reads the *same* key file. No owner and mode can grant read to both users without also granting it to *everyone*, so the console reaches the key through the key's **group** instead:
+
+=== "Docker Compose"
+
+    ```yaml
+    services:
+      console:
+        group_add: ["65532"]
+    ```
+
+=== "Kubernetes"
+
+    ```yaml
+    spec:
+      securityContext:
+        runAsUser: 100
+        runAsGroup: 101
+        fsGroup: 65532          # or: supplementalGroups: [65532]
+    ```
+
+This is already wired up in `docker/docker-compose.tls.yml` and `deploy/kubernetes/arca-console.yaml`. Without it, the console finds the key, cannot read it, logs a warning and serves plain HTTP — the certificate is never loaded.
+
+These are the modes `arca tls generate` writes, and the ones to reproduce for certificates obtained elsewhere:
+
+| File | Mode | Why |
+|------|------|-----|
+| `arca-ca.crt`, `arca-server.crt` | `0644` | Certificates are public material. |
+| `arca-server.key` (server/node key) | `0640` | Read by Arca as owner, by the console through the group. |
+| `arca-ca.key` (CA key) | `0600` | Nothing reads it at runtime; it only signs. |
+
+Generated files take the **generating process's** group. Inside the `tls-init` container that is `65532`, which is what we want; run `arca tls generate` on the host as yourself and a `chgrp 65532` is still required.
+
+!!! danger "Certbot rewrites the key on every renewal"
+    Let's Encrypt renewals replace `privkey.pem` as `root:root` mode `0600`. A one-time `chgrp` therefore reverts silently, and TLS breaks 60-90 days later — far from the change that caused it. Re-apply ownership from a deploy hook:
+
+    ```bash
+    # /etc/letsencrypt/renewal-hooks/deploy/arca-permissions.sh
+    #!/bin/sh
+    set -e
+    KEY="/etc/letsencrypt/live/example.com/privkey.pem"
+    chgrp 65532 "$(realpath "$KEY")"
+    chmod 640   "$(realpath "$KEY")"
+    docker kill --signal=HUP arca     # pick up the new certificate
+    ```
+
+    ```bash
+    chmod +x /etc/letsencrypt/renewal-hooks/deploy/arca-permissions.sh
+    # or, one-off:  certbot renew --deploy-hook /path/to/arca-permissions.sh
+    ```
+
+    Certbot's `live/` entries are symlinks into `archive/`, hence the `realpath` — and note that `archive/` and `live/` themselves default to `0700`, so the container also needs `chmod 0750` + `chgrp 65532` on both directories, or a copy of the material into a directory you own.
+
+    Where group ownership cannot be changed (a shared key, another service's requirements), grant an ACL entry instead:
+
+    ```bash
+    setfacl -m g:65532:r /etc/ssl/private/arca.key
+    ```
+
+!!! warning "This does not reproduce on macOS"
+    Docker Desktop fakes bind-mount ownership: a key that is `0600` and owned by your host user appears owned by whatever UID the container runs as, and reads fine. A permission bug therefore shows up **only on a real Linux host**. Do not conclude from a working Mac that the modes are right — run `bin/test tls-permissions`, which stages the material in a named Docker volume (where ownership is real on every host) and checks both that the console *can* read the key with the service GID and that it *cannot* without it.
 
 ## Certificate Rotation
 
@@ -188,6 +259,8 @@ arca tls generate \
 ## Console HTTPS
 
 When using `--tls`, the web console also serves over HTTPS. The console entrypoint auto-detects certificate and key PEM files in the mounted `certs/` directory (skipping CA files) and switches nginx to TLS mode.
+
+The console runs as uid `100`, not as Arca's `65532`, so it reads the private key through the supplementary group described in [File Permissions](#file-permissions). If the key is there but unreadable, the entrypoint logs a `WARNING` and keeps serving plain HTTP on port 80 — check `bin/console logs` when port 9443 refuses connections.
 
 ```bash
 bin/console start -d --build --tls

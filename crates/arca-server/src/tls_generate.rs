@@ -8,6 +8,51 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use rcgen::{BasicConstraints, CertificateParams, DistinguishedName, IsCa, KeyPair, SanType};
 
+/// Certificates are public material.
+const MODE_CERT: u32 = 0o644;
+/// Server and node private keys. Group-readable on purpose: Arca runs as
+/// 65532:65532 and the web console runs as a *different* user (uid 100), so the
+/// group is the channel through which the console reaches the same key — via
+/// `group_add` in compose, `fsGroup`/`supplementalGroups` in Kubernetes. Never
+/// other-readable.
+const MODE_KEY: u32 = 0o640;
+/// The CA private key only signs; nothing reads it at runtime.
+const MODE_CA_KEY: u32 = 0o600;
+
+/// Write `contents` to `path` with an explicit Unix mode.
+///
+/// The mode is set at creation time so a private key is never even briefly
+/// world-readable, and re-applied afterwards for two reasons: the creation mode
+/// is masked by the process umask (which must not be allowed to strip the group
+/// bit a key needs), and it does not apply at all when the file already exists
+/// from an earlier run.
+fn write_file_with_mode(path: &Path, contents: &str, mode: u32) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(mode)
+            .open(path)
+            .with_context(|| format!("writing {}", path.display()))?;
+        file.write_all(contents.as_bytes())
+            .with_context(|| format!("writing {}", path.display()))?;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+            .with_context(|| format!("setting permissions on {}", path.display()))?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = mode;
+        std::fs::write(path, contents)
+            .with_context(|| format!("writing {}", path.display()))?;
+    }
+    Ok(())
+}
+
 /// Generate a self-signed CA + server certificate pair.
 ///
 /// Writes four files to `output_dir`:
@@ -67,20 +112,20 @@ pub fn generate(output_dir: &Path, sans: &str, days: u32) -> Result<()> {
     let server_cert_path = output_dir.join("arca-server.crt");
     let server_key_path = output_dir.join("arca-server.key");
 
-    std::fs::write(&ca_cert_path, ca_cert.pem())
-        .with_context(|| format!("writing {}", ca_cert_path.display()))?;
-    std::fs::write(&ca_key_path, ca_key.serialize_pem())
-        .with_context(|| format!("writing {}", ca_key_path.display()))?;
-    std::fs::write(&server_cert_path, server_cert.pem())
-        .with_context(|| format!("writing {}", server_cert_path.display()))?;
-    std::fs::write(&server_key_path, server_key.serialize_pem())
-        .with_context(|| format!("writing {}", server_key_path.display()))?;
+    write_file_with_mode(&ca_cert_path, &ca_cert.pem(), MODE_CERT)?;
+    write_file_with_mode(&ca_key_path, &ca_key.serialize_pem(), MODE_CA_KEY)?;
+    write_file_with_mode(&server_cert_path, &server_cert.pem(), MODE_CERT)?;
+    write_file_with_mode(&server_key_path, &server_key.serialize_pem(), MODE_KEY)?;
 
     println!("TLS certificates generated:");
     println!("  CA cert:     {}", ca_cert_path.display());
     println!("  CA key:      {}", ca_key_path.display());
     println!("  Server cert: {}", server_cert_path.display());
     println!("  Server key:  {}", server_key_path.display());
+    println!();
+    println!("Private keys are not world-readable: server key 0640, CA key 0600.");
+    println!("A process that reads the server key under a different user (the web");
+    println!("console does) must belong to the key's group — see the TLS guide.");
     println!();
     println!("Add to your config.toml:");
     println!();
@@ -135,10 +180,8 @@ pub fn generate_cluster(output_dir: &Path, nodes: &[String], days: u32) -> Resul
 
     let ca_cert_path = output_dir.join("arca-cluster-ca.crt");
     let ca_key_path = output_dir.join("arca-cluster-ca.key");
-    std::fs::write(&ca_cert_path, ca_cert.pem())
-        .with_context(|| format!("writing {}", ca_cert_path.display()))?;
-    std::fs::write(&ca_key_path, ca_key.serialize_pem())
-        .with_context(|| format!("writing {}", ca_key_path.display()))?;
+    write_file_with_mode(&ca_cert_path, &ca_cert.pem(), MODE_CERT)?;
+    write_file_with_mode(&ca_key_path, &ca_key.serialize_pem(), MODE_CA_KEY)?;
 
     // --- Per-node certificates ---
     let ca_issuer = rcgen::Issuer::from_params(&ca_params, &ca_key);
@@ -168,10 +211,8 @@ pub fn generate_cluster(output_dir: &Path, nodes: &[String], days: u32) -> Resul
 
         let cert_path = output_dir.join(format!("{name}.crt"));
         let key_path = output_dir.join(format!("{name}.key"));
-        std::fs::write(&cert_path, cert.pem())
-            .with_context(|| format!("writing {}", cert_path.display()))?;
-        std::fs::write(&key_path, key.serialize_pem())
-            .with_context(|| format!("writing {}", key_path.display()))?;
+        write_file_with_mode(&cert_path, &cert.pem(), MODE_CERT)?;
+        write_file_with_mode(&key_path, &key.serialize_pem(), MODE_KEY)?;
     }
 
     println!("Cluster TLS material generated in {}:", output_dir.display());
@@ -300,5 +341,59 @@ mod tests {
         assert_eq!(certs.len(), 1);
         let key_data = std::fs::read(dir.path().join("arca-1.key")).unwrap();
         assert!(rustls::pki_types::PrivatePkcs8KeyDer::from_pem_slice(&key_data).is_ok());
+
+        // Node keys stay group-readable (the console reads them through Arca's
+        // service GID), the CA key is owner-only, certificates are public.
+        #[cfg(unix)]
+        {
+            assert_eq!(mode_of(&dir.path().join("arca-cluster-ca.crt")), 0o644);
+            assert_eq!(mode_of(&dir.path().join("arca-cluster-ca.key")), 0o600);
+            for node in ["arca-1", "arca-2"] {
+                assert_eq!(mode_of(&dir.path().join(format!("{node}.crt"))), 0o644);
+                assert_eq!(mode_of(&dir.path().join(format!("{node}.key"))), 0o640);
+            }
+        }
+    }
+
+    /// The permission bits of a path, as `0o644`-style Unix mode.
+    #[cfg(unix)]
+    fn mode_of(path: &Path) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn generate_never_writes_world_readable_private_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        generate(dir.path(), "localhost,127.0.0.1", 365).unwrap();
+
+        // Certificates are public material.
+        assert_eq!(mode_of(&dir.path().join("arca-ca.crt")), 0o644);
+        assert_eq!(mode_of(&dir.path().join("arca-server.crt")), 0o644);
+        // The server key is the one the console also reads, through group
+        // membership — group-readable, never other-readable.
+        assert_eq!(mode_of(&dir.path().join("arca-server.key")), 0o640);
+        // Nothing reads the CA key at runtime; it only signs.
+        assert_eq!(mode_of(&dir.path().join("arca-ca.key")), 0o600);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn generate_tightens_the_mode_of_pre_existing_files() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        // A previous run of an older Arca left the keys world-readable.
+        for file in ["arca-ca.key", "arca-server.key"] {
+            let path = dir.path().join(file);
+            std::fs::write(&path, "stale").unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        }
+
+        generate(dir.path(), "localhost", 365).unwrap();
+
+        assert_eq!(mode_of(&dir.path().join("arca-server.key")), 0o640);
+        assert_eq!(mode_of(&dir.path().join("arca-ca.key")), 0o600);
     }
 }

@@ -1516,6 +1516,14 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>None at the runtime level; recovery / fsck workflows on data with composites currently fail</td>
 <td><code>crates/arca-server/src/recover.rs:206</code>, <code>crates/arca-server/src/fsck.rs</code> (<code>orphaned_sidecars</code> collection, around line 112)</td>
 </tr>
+<tr>
+<td>TD-026</td>
+<td><code>bin/test tls</code> cannot create <code>certs/</code> on a real Linux host</td>
+<td>The self-signed TLS flow creates the bind-mount directory on the host (<code>mkdir -p certs</code> in <code>run_tls</code>, mirrored by the "Self-signed certificates" quick start in the TLS guide) and then writes into it from the <code>tls-init</code> container, which runs as <code>65532:65532</code> like every Arca image. On Linux the directory belongs to the invoking user with mode <code>0755</code>, so <code>arca tls generate</code> gets <code>EACCES</code> and the whole <code>bin/test tls</code> phase fails. The gap is invisible on macOS, where Docker Desktop fakes bind-mount ownership and the container sees itself as the owner, so the suite passes locally and would only break on a Linux developer machine or CI runner. Not reproducible from a Mac, and not fixable inside the script without <code>sudo</code> on the host.</td>
+<td>Stop writing generated material into a host bind mount: run <code>tls-init</code> against a named volume (ownership is real there on every host — this is what <code>run_tls_permissions</code> already does) and <code>docker cp</code> the files out if the host needs them, or run the <code>tls-init</code> service as the invoking <code>$(id -u):$(id -g)</code> so the generated files belong to the caller (the file modes from <code>arca tls generate</code> are already correct either way). Update the quick start in <code>documentation/docs/guide/tls.md</code> to match whichever is chosen.</td>
+<td><code>bin/test tls</code> (7 tests) on Linux; passes on macOS</td>
+<td><code>bin/test</code> (<code>run_tls</code>, the <code>mkdir -p certs</code> step), <code>docker/docker-compose.tls.yml</code> (<code>tls-init</code>), <code>documentation/docs/guide/tls.md</code></td>
+</tr>
 </tbody>
 </table>
 <hr />

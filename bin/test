@@ -9,6 +9,7 @@ set -euo pipefail
 #   bin/test integration  Run integration tests only (server must be running)
 #   bin/test unit -p arca-core   Pass extra args to cargo test
 #   bin/test tls          Run TLS integration tests
+#   bin/test tls-permissions  Run TLS file-permission tests (non-root containers)
 #   bin/test encryption   Run encryption integration tests
 #   bin/test per-bucket-encryption  Run per-bucket encryption tests
 #   bin/test recrypt      Run HOT re-encryption (maintenance jobs) tests
@@ -82,6 +83,155 @@ run_tls() {
     trap - EXIT
     cleanup_tls
     return $rc
+}
+
+# Permission semantics of the TLS material under non-root containers.
+#
+# Deliberately does NOT use the repo's ./certs bind mount, unlike run_tls:
+# Docker Desktop fakes bind-mount ownership on macOS, so every uid/gid check
+# would pass there no matter what the files actually look like. A named volume
+# keeps real ownership on every host, which is the only way this suite can fail
+# when it should.
+run_tls_permissions() {
+    echo "==> Running TLS permission tests..."
+
+    local gid=65532                     # Arca's service GID
+    local vol="arca-tlsperm-certs"
+    local net="arca-tlsperm-net"
+    local server_ctr="arca-tlsperm-server"
+    local console_ctr="arca-tlsperm-console"
+    local cfg="$REPO_ROOT/config/.tls-permissions.toml"
+    local failures=0
+
+    cleanup_tls_permissions() {
+        echo "Cleaning up TLS permission test..."
+        docker rm -f "$server_ctr" "$console_ctr" >/dev/null 2>&1 || true
+        docker network rm "$net" >/dev/null 2>&1 || true
+        docker volume rm -f "$vol" >/dev/null 2>&1 || true
+        rm -f "$cfg"
+    }
+    trap cleanup_tls_permissions EXIT
+    cleanup_tls_permissions     # in case an earlier run died mid-way
+
+    pass() { echo "  PASS  $1"; }
+    fail() { echo "  FAIL  $1"; failures=$((failures + 1)); }
+    expect_eq() {   # expect_eq <description> <expected> <actual>
+        if [[ "$2" == "$3" ]]; then pass "$1"; else fail "$1 (expected '$2', got '$3')"; fi
+    }
+    # Probes run from a throwaway container on the test network: the host has no
+    # route to these containers and no published ports are needed.
+    probe_https() { docker run --rm --network "$net" alpine \
+        wget -q -O- --no-check-certificate --timeout=3 "$1" >/dev/null 2>&1; }
+    probe_http()  { docker run --rm --network "$net" alpine \
+        wget -q -O- --timeout=3 "$1" >/dev/null 2>&1; }
+    wait_for() {    # wait_for <probe fn> <url> [attempts]
+        local i
+        for i in $(seq 1 "${3:-30}"); do
+            "$1" "$2" && return 0
+            sleep 1
+        done
+        return 1
+    }
+
+    # --- Images -----------------------------------------------------------
+    docker compose -f docker/docker-compose.yml build arca
+    docker compose -f docker/docker-compose.yml --profile console build console
+
+    docker volume create "$vol" >/dev/null
+    docker network create "$net" >/dev/null
+    # A fresh volume is root-owned; `arca tls generate` runs as 65532.
+    docker run --rm -v "$vol:/certs" alpine chown "$gid:$gid" /certs
+
+    # --- 1. The modes `arca tls generate` writes, seen from inside a container
+    echo "--- arca tls generate"
+    docker run --rm -v "$vol:/certs" arca tls generate \
+        --output-dir /certs --sans "$server_ctr,localhost,127.0.0.1,::1" >/dev/null
+
+    local listing
+    listing="$(docker run --rm -v "$vol:/certs" alpine \
+        sh -c 'cd /certs && stat -c "%n %a %u:%g" *')"
+    echo "$listing" | sed 's/^/      /'
+    field() { echo "$listing" | awk -v n="$1" -v c="$2" '$1 == n { print $c }'; }
+
+    expect_eq "arca-ca.crt is world-readable"           644 "$(field arca-ca.crt 2)"
+    expect_eq "arca-server.crt is world-readable"       644 "$(field arca-server.crt 2)"
+    expect_eq "arca-server.key is group-readable only"  640 "$(field arca-server.key 2)"
+    expect_eq "arca-ca.key is owner-readable only"      600 "$(field arca-ca.key 2)"
+    expect_eq "arca-server.key belongs to the service GID" \
+        "$gid:$gid" "$(field arca-server.key 3)"
+
+    # --- 2. Arca (65532) must serve HTTPS from that key --------------------
+    echo "--- arca server"
+    { cat "$FRAGMENTS_DIR/base.toml"; echo; cat "$FRAGMENTS_DIR/tls-explicit.toml"; } > "$cfg"
+    docker run -d --name "$server_ctr" --network "$net" \
+        -v "$vol:/etc/arca/certs:ro" \
+        -v "$cfg:/etc/arca/config.toml:ro" \
+        -e ARCA_ROOT_ACCESS_KEY=AKIA5B6BSHJA8CIHZSVG \
+        -e ARCA_ROOT_SECRET_KEY=hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv \
+        arca serve >/dev/null
+
+    if wait_for probe_https "https://$server_ctr:9000/admin/health"; then
+        pass "arca (65532:65532) serves HTTPS from the 0640 key"
+    else
+        fail "arca (65532:65532) could not serve HTTPS"
+        docker logs "$server_ctr" 2>&1 | tail -20 | sed 's/^/      /'
+    fi
+
+    # --- 3. The console reaches the same key through the supplementary group
+    echo "--- console with the service GID"
+    docker run -d --name "$console_ctr" --network "$net" \
+        --group-add "$gid" -v "$vol:/etc/nginx/certs:ro" arca-console >/dev/null
+    if wait_for probe_https "https://$console_ctr:443/"; then
+        pass "console (uid 100) with group_add $gid serves HTTPS"
+    else
+        fail "console (uid 100) with group_add $gid could not serve HTTPS"
+        docker logs "$console_ctr" 2>&1 | tail -20 | sed 's/^/      /'
+    fi
+    docker rm -f "$console_ctr" >/dev/null
+
+    # --- 4. ...and must NOT reach it without the group ---------------------
+    # Without this case the suite would pass on a setup where everything is
+    # world-readable, i.e. it would test nothing.
+    echo "--- console without the service GID (negative case)"
+    docker run -d --name "$console_ctr" --network "$net" \
+        -v "$vol:/etc/nginx/certs:ro" arca-console >/dev/null
+    if wait_for probe_http "http://$console_ctr:80/"; then
+        if probe_https "https://$console_ctr:443/"; then
+            fail "console without group $gid served HTTPS — the key was readable to it"
+        else
+            pass "console without group $gid cannot enable TLS (falls back to HTTP)"
+        fi
+    else
+        fail "console without group $gid did not start at all"
+        docker logs "$console_ctr" 2>&1 | tail -20 | sed 's/^/      /'
+    fi
+    docker rm -f "$console_ctr" >/dev/null
+
+    # --- 5. The read itself, with and without the group -------------------
+    echo "--- direct read of the private key"
+    if docker run --rm --network none -v "$vol:/certs:ro" --entrypoint sh \
+            arca-console -c 'cat /certs/arca-server.key' >/dev/null 2>&1; then
+        fail "the console user could read the key without the service GID"
+    else
+        pass "the console user cannot read the key without the service GID"
+    fi
+    if docker run --rm --network none --group-add "$gid" -v "$vol:/certs:ro" \
+            --entrypoint sh arca-console -c 'cat /certs/arca-server.key' >/dev/null 2>&1; then
+        pass "the console user reads the key with the service GID"
+    else
+        fail "the console user could not read the key with the service GID"
+    fi
+
+    trap - EXIT
+    cleanup_tls_permissions
+
+    echo ""
+    if (( failures == 0 )); then
+        echo "==> TLS permission tests passed"
+        return 0
+    fi
+    echo "==> TLS permission tests FAILED ($failures check(s))"
+    return 1
 }
 
 run_encryption() {
@@ -1357,6 +1507,10 @@ case "${1:-all}" in
         shift
         run_tls "$@"
         ;;
+    tls-permissions)
+        shift
+        run_tls_permissions "$@"
+        ;;
     encryption)
         shift
         run_encryption "$@"
@@ -1430,6 +1584,7 @@ case "${1:-all}" in
         echo "  unit                 Run unit tests only"
         echo "  integration          Run integration tests only (server must be running)"
         echo "  tls                  Run TLS integration tests (self-contained)"
+        echo "  tls-permissions      Run TLS file-permission tests (self-contained)"
         echo "  encryption           Run encryption integration tests"
         echo "  compression          Run compression integration tests"
         echo "  per-bucket-encryption  Run per-bucket encryption tests"

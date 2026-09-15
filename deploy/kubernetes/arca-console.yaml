@@ -35,10 +35,17 @@ spec:
         app.kubernetes.io/component: console
         app.kubernetes.io/part-of: arca
     spec:
+      # The nginx package's own user: uid 100, gid 101 (console/Dockerfile).
+      # Both matter — the image pre-owns nginx's writable paths as 100:101, and
+      # the entrypoint rewrites index.html and http.d/default.conf at startup.
+      # fsGroup is Arca's service GID: when the console terminates TLS itself,
+      # it reaches the mounted key through that supplementary group, not
+      # through its own UID (see the TLS guide).
       securityContext:
         runAsNonRoot: true
-        runAsUser: 101     # the image's built-in `nginx` user (console/Dockerfile)
+        runAsUser: 100
         runAsGroup: 101
+        fsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
       containers:

@@ -73,6 +73,7 @@ bin/test unit            # unit tests only
 bin/test integration     # integration tests only (server must be running)
 bin/test unit -p arca-core   # pass extra args to cargo test
 bin/test tls             # TLS integration tests (self-contained)
+bin/test tls-permissions # TLS file-permission tests (named volume, self-contained)
 bin/test encryption      # encryption integration tests
 bin/test per-bucket-encryption   # per-bucket encryption tests
 bin/test kms             # KMS integration tests (with OpenBAO)

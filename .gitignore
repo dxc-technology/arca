@@ -23,6 +23,7 @@ build/
 
 # Generated config and state (bin/lib/compose.sh plugin system)
 config/.generated.toml
+config/.tls-permissions.toml
 .arca-env
 
 # Developer-local docker-compose overrides. docker/.env.example is committed
