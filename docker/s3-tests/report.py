@@ -490,6 +490,9 @@ def generate_html(tests: list, output_path: str, old_passlist: set | None = None
 <h2>Failures ({failed + errors})</h2>
 {fail_rows if fail_rows else '<p style="color: var(--green)">No failures!</p>'}
 
+<p style="color: var(--text-dim); font-size: 0.85em; margin-top: 2.5rem; border-top: 1px solid var(--border); padding-top: 1rem">
+  Contains AI-generated code, see the <a href="https://github.com/dxc-technology/arca/blob/main/NOTICE">NOTICE</a> file.
+</p>
 </body>
 </html>"""
 

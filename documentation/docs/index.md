@@ -46,3 +46,6 @@ Arca is a ground-up implementation of the S3 API, designed as a **drop-in replac
 ## License
 
 Arca is licensed under the [GNU Affero General Public License](https://github.com/dxc-technology/arca/blob/main/LICENSE-AGPL-3.0), either version 3 of the License or (at your option) any later version (SPDX: `AGPL-3.0-or-later`).
+
+!!! info "Contains AI-generated code"
+    Substantially all of Arca's source code, tests and documentation was generated with AI assistance, under human direction and review. See the [NOTICE](https://github.com/dxc-technology/arca/blob/main/NOTICE) file for details.

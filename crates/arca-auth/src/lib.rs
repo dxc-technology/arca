@@ -2,6 +2,8 @@
 //!
 //! This crate has zero I/O dependencies and is independently testable
 //! against AWS test vectors.
+//!
+//! Contains AI-generated code: see the NOTICE file at the repository root.
 
 mod error;
 mod parse;

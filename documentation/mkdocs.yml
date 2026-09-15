@@ -4,6 +4,9 @@ site_url: https://dxc-technology.github.io/arca/
 repo_url: https://github.com/dxc-technology/arca
 repo_name: dxc-technology/arca
 
+# Rendered in the footer of every page
+copyright: 'Contains AI-generated code, see the <a href="https://github.com/dxc-technology/arca/blob/main/NOTICE">NOTICE</a> file.'
+
 docs_dir: docs
 site_dir: ../docs
 

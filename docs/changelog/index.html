@@ -4861,7 +4861,12 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 </ul>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong><code>bin/test tls-permissions</code></strong> — a self-contained suite for the permission semantics above, because nothing else could catch a regression in them. The existing TLS tests run against bind mounts, and Docker Desktop on macOS fakes bind-mount ownership: a <code>0600</code> key owned by the host user appears owned by whatever UID the container runs as and reads fine, so any uid/gid assertion built on one would pass vacuously on a developer Mac and fail only on a real Linux host. The new suite stages its material in a <strong>named Docker volume</strong>, where ownership is real on every host, and runs nine checks: the four modes and the owning GID that <code>arca tls generate</code> writes, seen from inside a container rather than from the host; Arca (65532) serving HTTPS from the <code>0640</code> key; the console (uid 100) serving HTTPS <em>with</em> the service GID; and — so the suite has teeth — the console <em>without</em> it failing to enable TLS, plus the bare read of the key failing and succeeding in the same two configurations.</li>
+<li>
+<p><strong>AI-generated code disclosure.</strong> A new <code>NOTICE</code> file at the repository root states that substantially all of this repository - source code, tests, configuration, scripts and documentation - was generated with the assistance of AI coding tools, under human direction and review, and that the disclosure does not alter the AGPL-3.0-or-later terms. The notice is surfaced wherever a reader is likely to look rather than repeated in every one of the ~200 source files: an info callout in the License section of <code>README.md</code> and of the documentation home page, the MkDocs <code>copyright</code> footer so it renders on <strong>every</strong> documentation page, a <code>//!</code> line in each of the five crate roots (so it also appears in <code>cargo doc</code> output), and a comment in <code>console/index.html</code> and <code>console/js/app.js</code>.</p>
+</li>
+<li>
+<p><strong><code>bin/test tls-permissions</code></strong> — a self-contained suite for the permission semantics above, because nothing else could catch a regression in them. The existing TLS tests run against bind mounts, and Docker Desktop on macOS fakes bind-mount ownership: a <code>0600</code> key owned by the host user appears owned by whatever UID the container runs as and reads fine, so any uid/gid assertion built on one would pass vacuously on a developer Mac and fail only on a real Linux host. The new suite stages its material in a <strong>named Docker volume</strong>, where ownership is real on every host, and runs nine checks: the four modes and the owning GID that <code>arca tls generate</code> writes, seen from inside a container rather than from the host; Arca (65532) serving HTTPS from the <code>0640</code> key; the console (uid 100) serving HTTPS <em>with</em> the service GID; and — so the suite has teeth — the console <em>without</em> it failing to enable TLS, plus the bare read of the key failing and succeeding in the same two configurations.</p>
+</li>
 </ul>
 <h2 id="0301-2026-09-14"><a href="https://github.com/dxc-technology/arca/compare/v0.30.0...v0.30.1">0.30.1</a> — 2026-09-14<a class="headerlink" href="#0301-2026-09-14" title="Permanent link">&para;</a></h2>
 <h3 id="changed_1">Changed<a class="headerlink" href="#changed_1" title="Permanent link">&para;</a></h3>
@@ -5698,6 +5703,10 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
   <div class="md-footer-meta md-typeset">
     <div class="md-footer-meta__inner md-grid">
       <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Contains AI-generated code, see the <a href="https://github.com/dxc-technology/arca/blob/main/NOTICE">NOTICE</a> file.
+    </div>
   
   
     Made with

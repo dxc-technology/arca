@@ -210,3 +210,5 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 ## License
 
 Arca is licensed under the [GNU Affero General Public License](LICENSE-AGPL-3.0), either version 3 of the License or (at your option) any later version (SPDX: `AGPL-3.0-or-later`), a strong copyleft license covering network use: derivative works must remain under the same terms.
+
+> **ℹ️ Contains AI-generated code** — substantially all of Arca's source code, tests and documentation was generated with AI assistance, under human direction and review. See [NOTICE](NOTICE) for details.

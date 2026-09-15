@@ -2,6 +2,8 @@
 //!
 //! Provides `SqliteStore` for credential and metadata storage,
 //! and `FsBlobStore` for filesystem blob storage.
+//!
+//! Contains AI-generated code: see the NOTICE file at the repository root.
 
 pub mod caching;
 pub mod compressed_blob;

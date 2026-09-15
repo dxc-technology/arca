@@ -1,6 +1,8 @@
 //! arca-core: Shared types, traits, and error types for the Arca S3 server.
 //!
 //! This crate has zero I/O dependencies and is independently testable.
+//!
+//! Contains AI-generated code: see the NOTICE file at the repository root.
 
 pub mod cluster;
 pub mod credential;

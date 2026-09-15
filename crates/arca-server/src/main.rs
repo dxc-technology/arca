@@ -1,4 +1,6 @@
 //! Arca S3-compatible object storage server.
+//!
+//! Contains AI-generated code: see the NOTICE file at the repository root.
 
 mod blob_gc;
 mod cli;

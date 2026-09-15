@@ -1,6 +1,8 @@
 //! arca-proto: S3 HTTP protocol adapter built on Axum.
 //!
 //! Provides the HTTP routing and handler layer for the Arca S3 server.
+//!
+//! Contains AI-generated code: see the NOTICE file at the repository root.
 
 pub mod authorize;
 pub mod handlers;

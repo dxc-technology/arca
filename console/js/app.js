@@ -1,3 +1,7 @@
+/*
+ * Contains AI-generated code: see the NOTICE file at the repository root.
+ * https://github.com/dxc-technology/arca/blob/main/NOTICE
+ */
 import { api } from './api.js?v=deeplink-1';
 import { topicFor } from './help.js';
 import { dashboardView } from './views/dashboard.js';
