@@ -1,5 +1,5 @@
 # Configuration for `cargo about` — third-party license attribution.
-# Only permissive licenses are accepted (see the Dependency Licensing Policy in CLAUDE.md).
+# Only permissive licenses are accepted (see the Dependency Licensing Policy in AGENTS.md).
 # LGPL-2.1-or-later is listed solely because `r-efi` is multi-licensed
 # `Apache-2.0 OR LGPL-2.1-or-later OR MIT`; the permissive option is always chosen.
 

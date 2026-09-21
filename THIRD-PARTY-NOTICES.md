@@ -12,7 +12,7 @@ install must pass `--features cli`:
       cargo about generate --all-features about.hbs -o THIRD-PARTY-NOTICES.md
     '
 
-All components are permissively licensed (see the Dependency Licensing Policy in `CLAUDE.md`).
+All components are permissively licensed (see the Dependency Licensing Policy in `AGENTS.md`).
 
 ## BSD Zero Clause License
 

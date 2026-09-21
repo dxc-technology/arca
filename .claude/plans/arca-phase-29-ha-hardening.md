@@ -26,7 +26,7 @@ The Phase 29 review ([`arca-phase-29-ha-review.md`](https://github.com/dxc-techn
 
 **How to use this document** (process rules, valid for every session):
 
-1. At session start read: `CLAUDE.md`, this plan, the review. The traceability table at the bottom says what is done and what is not.
+1. At session start read: `AGENTS.md`, this plan, the review. The traceability table at the bottom says what is done and what is not.
 2. Work TDD; every milestone must leave `bin/test unit` and `bin/test cluster` green. After code changes also rebuild the test images (`docker compose -f docker/docker-compose.yml build unit-test test`), otherwise tests run on stale images.
 3. For every completed item: tick the checkbox HERE and in the traceability table, update `CHANGELOG.md` (Unreleased section), update the documentation touched.
 4. If a decision changes the design, update the WHOLE document, not just the touched section (same rule as the Phase 29 plan).

@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to coding agents (Claude Code and any other AGENTS.md-aware tool) when working with code in this repository.
 
 ## Project
 
@@ -286,7 +286,7 @@ After running `bin/s3-tests`, the report script generates `s3-tests/summary.json
 
 When starting a new session, always read these files first to rebuild context:
 
-- `CLAUDE.md` (this file)
+- `AGENTS.md` (this file)
 - `documentation/docs/roadmap.md` — current phase status, post-MVP progress, what's done and what's next
 - `TECH_DEBT.md` — active workarounds and their IDs
 
