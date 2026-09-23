@@ -1636,6 +1636,9 @@
                   
 
 
+  
+  
+
 
 <h1 id="arca-ha-hardening-remediation-after-the-phase-29-review">Arca — HA Hardening (remediation after the Phase 29 review)<a class="headerlink" href="#arca-ha-hardening-remediation-after-the-phase-29-review" title="Permanent link">&para;</a></h1>
 <h3 id="progress-overview">Progress Overview<a class="headerlink" href="#progress-overview" title="Permanent link">&para;</a></h3>
@@ -1662,7 +1665,7 @@
 </blockquote>
 <p><strong>How to use this document</strong> (process rules, valid for every session):</p>
 <ol>
-<li>At session start read: <code>CLAUDE.md</code>, this plan, the review. The traceability table at the bottom says what is done and what is not.</li>
+<li>At session start read: <code>AGENTS.md</code>, this plan, the review. The traceability table at the bottom says what is done and what is not.</li>
 <li>Work TDD; every milestone must leave <code>bin/test unit</code> and <code>bin/test cluster</code> green. After code changes also rebuild the test images (<code>docker compose -f docker/docker-compose.yml build unit-test test</code>), otherwise tests run on stale images.</li>
 <li>For every completed item: tick the checkbox HERE and in the traceability table, update <code>CHANGELOG.md</code> (Unreleased section), update the documentation touched.</li>
 <li>If a decision changes the design, update the WHOLE document, not just the touched section (same rule as the Phase 29 plan).</li>

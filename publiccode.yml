@@ -1,0 +1,128 @@
+# publiccode.yml — metadata for the Developers Italia open source software
+# catalogue (https://developers.italia.it). Standard: https://yml.publiccode.tools
+publiccodeYmlVersion: "0.7.0"
+
+name: Arca
+url: "https://github.com/dxc-technology/arca"
+landingURL: "https://dxc-technology.github.io/arca/"
+softwareVersion: "0.30.1"
+releaseDate: "2026-09-14"
+logo: logo.svg
+
+platforms:
+  - linux
+  - web
+
+categories:
+  - cloud-management
+  - backup
+  - it-management
+
+developmentStatus: stable
+softwareType: standalone/backend
+
+organisation:
+  name: DXC Technology
+  uri: "https://dxc.com"
+
+intendedAudience:
+  scope:
+    - government
+    - infrastructures
+
+description:
+  en:
+    localisedName: Arca
+    shortDescription: >-
+      S3-compatible object storage server with at-rest encryption, versioning,
+      access control and high availability
+
+    longDescription: |
+      Arca is an object storage server that speaks the Amazon S3 API, so any
+      existing S3 client or application can use it without changes: the AWS
+      CLI, boto3, MinIO Client (mc), rclone and the AWS SDKs all work out of
+      the box. It is meant to be run on the organisation's own hardware or in
+      its own data centre, which keeps the data, the encryption keys and the
+      access logs under the direct control of the organisation that owns them.
+
+      A single binary serves the S3 API, an administration API and a web
+      console on one port, over HTTPS without needing a separate reverse
+      proxy. It can run as a single node or as a cluster of identical nodes
+      that replicate data and configuration to each other in real time,
+      repair themselves after an outage and need neither shared storage nor a
+      central coordinator.
+
+      Data at rest can be encrypted with AES-256-GCM, with a master key held
+      in the configuration or fetched from a key management service
+      (HashiCorp Vault or OpenBAO). Objects can be versioned, retained under
+      a write-once-read-many policy with legal hold, expired automatically by
+      lifecycle rules, compressed transparently and replicated to any other
+      S3-compatible service. Access is governed by users, teams, grants and
+      bucket policies; every administrative action can be recorded in an
+      audit log and the service exposes Prometheus metrics for monitoring.
+
+      Arca is designed so that a running installation can be reconfigured in
+      place: changing the metadata backend, turning encryption on, or moving
+      from a single node to a cluster is done with offline command line tools
+      that operate on the existing data directory, without migrating the data
+      to a new instance.
+
+      The whole project is released under the AGPL-3.0-or-later licence, and
+      all of its dependencies are permissively licensed, so an organisation
+      adopting it takes on no proprietary licence cost and no vendor
+      lock-in.
+
+    documentation: "https://dxc-technology.github.io/arca/"
+    apiDocumentation: "https://dxc-technology.github.io/arca/reference/s3-api/"
+
+    features:
+      - Drop-in replacement for Amazon S3, MinIO and other S3-compatible services
+      - Runs on premise, keeping data, encryption keys and audit trail in house
+      - High availability across identical nodes, with automatic replication and self-healing
+      - Server-side encryption at rest, with keys held locally or in HashiCorp Vault / OpenBAO
+      - Object versioning, with version history and recovery of deleted objects
+      - Write-once-read-many retention and legal hold for records that must not be altered
+      - Lifecycle rules that expire or clean up objects automatically
+      - Access control with users, teams, grants and per-bucket policies
+      - Web console for buckets, objects, credentials, users, policies and cluster status
+      - Event notifications to external systems (webhook, message queues, databases, e-mail and more)
+      - One-way replication to any other S3-compatible service, for off-site copies
+      - Transparent compression of stored data, configurable per bucket
+      - Presigned links for sharing a single object without handing out credentials
+      - Prometheus metrics and an audit log for monitoring and compliance
+      - Disaster recovery tools that rebuild the catalogue from the stored data
+      - Reconfiguration in place, with no data migration to a new instance
+
+    screenshots:
+      - documentation/docs/assets/screenshots/console-dashboard.png
+      - documentation/docs/assets/screenshots/console-buckets.png
+      - documentation/docs/assets/screenshots/console-bucket-browser.png
+      - documentation/docs/assets/screenshots/console-object-detail.png
+      - documentation/docs/assets/screenshots/console-version-history.png
+      - documentation/docs/assets/screenshots/console-grants.png
+      - documentation/docs/assets/screenshots/console-monitoring.png
+      - documentation/docs/assets/screenshots/console-audit-log.png
+
+legal:
+  license: AGPL-3.0-or-later
+  mainCopyrightOwner: DXC Technology
+
+maintenance:
+  type: internal
+  contacts:
+    - name: Pietro Pizzo
+      affiliation: DXC Technology
+
+localisation:
+  localisationReady: false
+  availableLanguages:
+    - en
+
+dependsOn:
+  open:
+    - name: PostgreSQL
+      optional: true
+    - name: OpenBAO
+      optional: true
+    - name: HashiCorp Vault
+      optional: true

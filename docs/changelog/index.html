@@ -4836,6 +4836,9 @@
                   
 
 
+  
+  
+
 
 <h1 id="changelog">Changelog<a class="headerlink" href="#changelog" title="Permanent link">&para;</a></h1>
 <p>All notable changes to this project are documented in this file.</p>
@@ -4861,6 +4864,9 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 </ul>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
+<li>
+<p><strong><code>publiccode.yml</code></strong> — the metadata file that describes Arca to the <a href="https://developers.italia.it">Developers Italia</a> open source software catalogue, written against version 0.7.0 of the <a href="https://yml.publiccode.tools">publiccode.yml standard</a> and validated with the official parser (<code>italia/publiccode-parser-go</code>). It declares the software as a stable standalone backend owned by DXC Technology, under AGPL-3.0-or-later, and carries a user-facing description, the feature list, the documentation links and the console screenshots. Two of its keys, <code>softwareVersion</code> and <code>releaseDate</code>, go stale at every release and are now part of the version-location checklist in <code>RELEASING.md</code>; <code>releaseDate</code> in particular holds no version string, so the usual "grep for the old version" sweep does not catch it. Note that the catalogue's crawler only scans repositories registered against a publisher, so the file alone does not list Arca in the catalogue.</p>
+</li>
 <li>
 <p><strong>AI-generated code disclosure.</strong> A new <code>NOTICE</code> file at the repository root states that substantially all of this repository - source code, tests, configuration, scripts and documentation - was generated with the assistance of AI coding tools, under human direction and review, and that the disclosure does not alter the AGPL-3.0-or-later terms. The notice is surfaced wherever a reader is likely to look rather than repeated in every one of the ~200 source files: an info callout in the License section of <code>README.md</code> and of the documentation home page, the MkDocs <code>copyright</code> footer so it renders on <strong>every</strong> documentation page, a <code>//!</code> line in each of the five crate roots (so it also appears in <code>cargo doc</code> output), and a comment in <code>console/index.html</code> and <code>console/js/app.js</code>.</p>
 </li>

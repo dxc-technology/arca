@@ -24,8 +24,17 @@ Present the proposed version number with a brief summary of what changed and why
 - `console/index.html` → `window.ARCA_CONSOLE_VERSION = "X.Y.Z"`
 - `documentation/docs/roadmap.md` → Phase Summary table version column (if completing a phase)
 - `README.md` → Status section, "latest release **vX.Y.Z**"
+- `publiccode.yml` → `softwareVersion: "X.Y.Z"` **and** `releaseDate: "YYYY-MM-DD"` (the release date, not today's date if they differ)
 
-Grep for the previous version string across the repo (`grep -rn "vX.Y.Z-old"`) to catch any location missed above.
+Grep for the previous version string across the repo (`grep -rn "vX.Y.Z-old"`) to catch any location missed above. Note that `releaseDate` carries no version string, so the grep will not catch it — check it by hand.
+
+After editing `publiccode.yml`, re-validate it; the Developers Italia crawler rejects an invalid file:
+
+```bash
+docker run --rm -v "$PWD":/work -w /work italia/publiccode-parser-go:latest publiccode.yml
+```
+
+No output and exit code 0 means valid.
 
 ### 5. Update CHANGELOG.md
 

@@ -2018,6 +2018,9 @@
                   
 
 
+  
+  
+
 
 <h1 id="encryption">Encryption<a class="headerlink" href="#encryption" title="Permanent link">&para;</a></h1>
 <p>Arca supports server-side encryption at rest (SSE-S3) using AES-256-GCM. When enabled, objects are transparently encrypted before writing to disk and decrypted on read. Encryption uses an envelope scheme: each object gets a random data encryption key (DEK) that is wrapped by the master key, or key encryption key (KEK), from the server configuration.</p>

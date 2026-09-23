@@ -299,4 +299,5 @@ This project uses **semantic versioning** (MAJOR.MINOR.PATCH). The full release 
 - `Cargo.toml` root `[workspace.package]` — single source of truth, inherited by all 5 crates via `version.workspace = true`
 - `console/index.html` line 10 (`window.ARCA_CONSOLE_VERSION`) — must be bumped manually (standalone HTML, no build tooling)
 - `documentation/docs/roadmap.md` Phase Summary table — historical per-phase version tags, update when completing a phase
+- `publiccode.yml` — `softwareVersion` and `releaseDate`, the metadata the Developers Italia catalogue reads. Re-validate after editing: `docker run --rm -v "$PWD":/work -w /work italia/publiccode-parser-go:latest publiccode.yml`
 - `CHANGELOG.md` — [Keep a Changelog](https://keepachangelog.com) format. The docs site symlinks to this file (`documentation/docs/changelog.md` → `../../CHANGELOG.md`).

@@ -1630,6 +1630,9 @@
                   
 
 
+  
+  
+
 
 <h1 id="compression">Compression<a class="headerlink" href="#compression" title="Permanent link">&para;</a></h1>
 <p>Arca supports transparent at-rest compression. When a bucket has compression configured, new uploads are compressed before writing to disk and transparently decompressed on read. The S3 wire format is unchanged: <code>ETag</code> remains the MD5 of the plaintext and <code>Content-Length</code> reports the plaintext size. Compression sits below encryption in the stack, so <code>compress → encrypt → store</code> applies when both features are active.</p>

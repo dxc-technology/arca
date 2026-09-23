@@ -2050,6 +2050,9 @@
                   
 
 
+  
+  
+
 
 <h1 id="high-availability-clustering">High Availability (Clustering)<a class="headerlink" href="#high-availability-clustering" title="Permanent link">&para;</a></h1>
 <p>Arca runs as a <strong>symmetric, self-configuring, shared-nothing cluster</strong>. Every node is identical: there is no primary, no coordinator, no per-node configuration. You give all nodes the same config, they discover each other, and they replicate everything. A client can read and write through any node; a load balancer in front spreads traffic and routes around dead nodes.</p>
