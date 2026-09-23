@@ -1,0 +1,15 @@
+# Trivy vulnerability ignore-list, read automatically from the repository
+# root by `trivy fs .` and `trivy image`.
+#
+# TD-024 (see TECH_DEBT.md): rumqttc 0.25.1 (MQTT connector) hard-pins
+# rustls-webpki = "^0.102.8", which carries these four advisories. The
+# vulnerable code is unreachable from Arca: rumqttc only uses this copy of
+# webpki for one error variant and never configures a CRL; MQTTS certificate
+# validation actually runs through rustls 0.23.40 -> the already-patched
+# rustls-webpki 0.103.13. No upstream fix exists yet. Re-assess if rumqttc
+# ever starts configuring CRLs, or if a new rumqttc release relaxes the
+# rustls-webpki requirement.
+GHSA-82j2-j2ch-gfr8
+GHSA-pwjx-qhcg-rvj4
+GHSA-xgp8-3hg3-c2mh
+GHSA-965h-392x-2mh5

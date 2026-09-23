@@ -1,0 +1,8 @@
+# Trivy configuration, picked up automatically from the repository root by
+# `trivy fs .` and `trivy image` when run with this directory as cwd.
+#
+# Vulnerability/misconfig/license ignores go in .trivyignore (Trivy's default,
+# no wiring needed here). Secret allow-rules live in a separate file because
+# Trivy's secret scanner takes its own --secret-config, not .trivyignore.
+secret:
+  config: trivy-secret.yaml
