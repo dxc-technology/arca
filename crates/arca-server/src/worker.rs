@@ -1075,21 +1075,27 @@ mod tests {
             Duration::ZERO,
         );
 
-        // Wait for at least one scheduled tick to fire and reclaim the orphan.
+        // Wait for at least one scheduled tick to reclaim the orphan AND record
+        // it. Both conditions are awaited: the worker records the metric only
+        // after `reclaim_blobs` returns, i.e. after the blob is already gone,
+        // so checking the metric the instant the blob disappears races it.
+        let reclaim_count = || metrics.blobs_reclaimed.load(std::sync::atomic::Ordering::Relaxed);
         let mut reclaimed = false;
         for _ in 0..40 {
             tokio::time::sleep(Duration::from_millis(25)).await;
-            if !RawBlobOps::exists(fs.as_ref(), &BlobId("orphan".into())).await.unwrap() {
+            if !RawBlobOps::exists(fs.as_ref(), &BlobId("orphan".into())).await.unwrap()
+                && reclaim_count() > 0
+            {
                 reclaimed = true;
                 break;
             }
         }
         drop(worker);
-        assert!(reclaimed, "the scheduled worker must reclaim the orphan blob");
-        assert_eq!(
-            metrics.blobs_reclaimed.load(std::sync::atomic::Ordering::Relaxed),
-            1,
-            "the reclaim metric must be recorded"
+        assert!(
+            !RawBlobOps::exists(fs.as_ref(), &BlobId("orphan".into())).await.unwrap(),
+            "the scheduled worker must reclaim the orphan blob"
         );
+        assert!(reclaimed, "the reclaim metric must be recorded");
+        assert_eq!(reclaim_count(), 1, "the orphan must be counted exactly once");
     }
 }
