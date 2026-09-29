@@ -63,23 +63,18 @@ run_tls() {
 
     local COMPOSE
     COMPOSE="$(compose_cmd)"
-    local generated_certs=()
 
     cleanup_tls() {
         echo "Cleaning up TLS test..."
         $COMPOSE --profile tls-test down -v 2>/dev/null || true
-        for f in "${generated_certs[@]}"; do
-            rm -f "$f"
-        done
+        remove_test_certs
     }
     trap cleanup_tls EXIT
 
     # Step 1: Build images
     $COMPOSE build arca
-    # Step 2: Generate self-signed certs into ./certs/
-    mkdir -p certs
-    $COMPOSE --profile tls-init run --rm tls-init
-    generated_certs=(certs/arca-ca.crt certs/arca-ca.key certs/arca-server.crt certs/arca-server.key)
+    # Step 2: Throwaway certificates in a named volume, never in ./certs
+    make_test_certs "arca,localhost,127.0.0.1,::1"
     # Step 3: Start server with TLS config
     $COMPOSE up -d arca
     # Step 4: Wait for server to be ready

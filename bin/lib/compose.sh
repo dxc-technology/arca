@@ -134,6 +134,30 @@ prepare_local_certs() {
         tls ensure --output-dir certs/local --ca-dir certs/local-ca --sans "$sans"
 }
 
+# Self-contained TLS suites (bin/test tls, bin/perf-test --tls) get their own
+# throwaway CA + server certificate in a named volume, never in certs/: a
+# bind mount would both risk the user's files and fail on Linux, where the
+# 65532 container user cannot write the host user's directory (the former
+# TD-026).
+# Clients verify against the volume's arca-ca.crt: TLS verification stays on.
+TEST_CERTS_VOLUME="arca-tls-test-certs"
+
+make_test_certs() {     # make_test_certs <sans>
+    local image
+    image="$(image_repo arca):${BUILD_TARGET:-production}"
+    docker volume rm -f "$TEST_CERTS_VOLUME" >/dev/null || return 1
+    docker volume create "$TEST_CERTS_VOLUME" >/dev/null || return 1
+    # A fresh volume is root-owned; `arca tls generate` runs as 65532.
+    docker run --rm -v "$TEST_CERTS_VOLUME:/certs" alpine chown 65532:65532 /certs || return 1
+    docker run --rm -v "$TEST_CERTS_VOLUME:/certs" "$image" \
+        tls generate --output-dir /certs --sans "$1" >/dev/null || return 1
+    export ARCA_CERTS_DIR="$TEST_CERTS_VOLUME"
+}
+
+remove_test_certs() {
+    docker volume rm -f "$TEST_CERTS_VOLUME" >/dev/null 2>&1 || true
+}
+
 _check_encryption_conflict() {
     if $_HAS_ENCRYPTION || $_HAS_KMS; then
         echo "Error: --encryption and --kms are mutually exclusive" >&2
@@ -307,7 +331,7 @@ compose_cmd() {
     for feat in "${_FEATURES[@]}"; do
         case "$feat" in
             tls|tls-explicit)
-                # TLS infrastructure: tls-init, cert mounts, console HTTPS
+                # TLS infrastructure: cert mounts, console HTTPS
                 local tls_file="$REPO_ROOT/docker/docker-compose.tls.yml"
                 # Avoid adding it twice (tls and tls-explicit both need it)
                 local already=false

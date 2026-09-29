@@ -221,6 +221,45 @@ test_prepare_fails_when_ensure_fails() {
     ! prepare_local_certs
 }
 
+# --- make_test_certs / remove_test_certs -----------------------------------
+
+test_make_test_certs_generates_into_a_fresh_named_volume() {
+    setup
+    mock_docker
+    make_test_certs "arca,localhost"
+    local log
+    log="$(cat "$DOCKER_LOG")"
+    assert_contains "$log" $'volume\nrm\n-f\narca-tls-test-certs\n--\nvolume\ncreate\narca-tls-test-certs\n--' &&
+    # A fresh volume is root-owned; `arca tls generate` runs as 65532.
+    assert_contains "$log" $'-v\narca-tls-test-certs:/certs\nalpine\nchown\n65532:65532\n/certs' &&
+    assert_contains "$log" $'-v\narca-tls-test-certs:/certs\nghcr.io/dxc-technology/arca:production\ntls\ngenerate\n--output-dir\n/certs\n--sans\narca,localhost\n--' &&
+    assert_eq "arca-tls-test-certs" "$ARCA_CERTS_DIR"
+}
+
+test_make_test_certs_never_touches_the_certs_directory() {
+    setup
+    mock_docker
+    make_test_certs "arca"
+    if grep -q "$PWD/certs" "$DOCKER_LOG" || [[ -e certs ]]; then
+        echo "the self-contained suites must not use ./certs"
+        return 1
+    fi
+}
+
+test_make_test_certs_fails_when_generation_fails() {
+    setup
+    mock_docker
+    docker_reply() { [[ "$*" != *"tls generate"* ]]; }
+    ! make_test_certs "arca"
+}
+
+test_remove_test_certs_removes_the_volume() {
+    setup
+    mock_docker
+    remove_test_certs
+    assert_contains "$(cat "$DOCKER_LOG")" $'volume\nrm\n-f\narca-tls-test-certs\n--'
+}
+
 # --- state persistence -------------------------------------------------------
 
 test_the_certificate_choice_survives_save_and_load() {

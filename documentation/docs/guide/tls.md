@@ -222,7 +222,7 @@ These are the modes `arca tls generate` writes, and the ones to reproduce for ce
 | `arca-server.key` (server/node key) | `0640` | Read by Arca as owner, by the console through the group. |
 | `arca-ca.key` (CA key) | `0600` | Nothing reads it at runtime; it only signs. |
 
-Generated files take the **generating process's** group. Inside the `tls-init` container that is `65532`, which is what we want; run `arca tls generate` on the host as yourself and a `chgrp 65532` is still required.
+Generated files take the **generating process's** group. `bin/arca start --tls` runs `arca tls ensure` with group `65532`, which is what we want; run `arca tls generate` on the host as yourself and a `chgrp 65532` is still required.
 
 !!! danger "Certbot rewrites the key on every renewal"
     Let's Encrypt renewals replace `privkey.pem` as `root:root` mode `0600`. A one-time `chgrp` therefore reverts silently, and TLS breaks 60-90 days later — far from the change that caused it. Re-apply ownership from a deploy hook:

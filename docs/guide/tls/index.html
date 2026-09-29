@@ -1914,7 +1914,7 @@ Authorities → Import</em>.</p>
 </tr>
 </tbody>
 </table>
-<p>Generated files take the <strong>generating process's</strong> group. Inside the <code>tls-init</code> container that is <code>65532</code>, which is what we want; run <code>arca tls generate</code> on the host as yourself and a <code>chgrp 65532</code> is still required.</p>
+<p>Generated files take the <strong>generating process's</strong> group. <code>bin/arca start --tls</code> runs <code>arca tls ensure</code> with group <code>65532</code>, which is what we want; run <code>arca tls generate</code> on the host as yourself and a <code>chgrp 65532</code> is still required.</p>
 <div class="admonition danger">
 <p class="admonition-title">Certbot rewrites the key on every renewal</p>
 <p>Let's Encrypt renewals replace <code>privkey.pem</code> as <code>root:root</code> mode <code>0600</code>. A one-time <code>chgrp</code> therefore reverts silently, and TLS breaks 60-90 days later — far from the change that caused it. Re-apply ownership from a deploy hook:</p>
