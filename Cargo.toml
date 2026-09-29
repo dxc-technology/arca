@@ -126,7 +126,10 @@ tokio-rustls = { version = "0.26", default-features = false, features = ["ring",
 rustls-pki-types = "1"
 arc-swap = "1"
 hyper-util = { version = "0.1", features = ["tokio", "server-auto", "http1", "http2", "service"] }
-rcgen = { version = "0.14", default-features = false, features = ["ring", "pem"] }
+rcgen = { version = "0.14", default-features = false, features = ["ring", "pem", "x509-parser"] }
+# Reads back certificates `arca tls ensure` wrote (expiry, SANs, issuer).
+# Already in the tree through rcgen; `verify` checks the CA signature.
+x509-parser = { version = "0.18", features = ["verify"] }
 # PINNED =0.3.47: time 0.3.48 adds impls that clash (E0119 coherence) with
 # rcgen's blanket From conversions when time's parsing/formatting features are
 # enabled elsewhere in the graph. 0.3.47 already includes the CVE-2026-25727

@@ -271,6 +271,33 @@ pub enum TlsAction {
         days: u32,
     },
 
+    /// Keep a local CA + server certificate valid: (re)generate only what is
+    /// missing, expiring, or no longer matching the SANs. Idempotent; the
+    /// server certificate is renewed with the SAME CA, so a client that
+    /// trusts the CA once keeps trusting it.
+    Ensure {
+        /// Directory for the server certificate, its key and a copy of the CA
+        /// certificate (the directory Arca and the console read)
+        #[arg(long)]
+        output_dir: PathBuf,
+        /// Directory holding the CA certificate and private key; keep it out
+        /// of the containers, only renewals need it
+        #[arg(long)]
+        ca_dir: PathBuf,
+        /// Subject Alternative Names (comma-separated DNS names and IPs)
+        #[arg(long, default_value = "localhost,127.0.0.1,::1")]
+        sans: String,
+        /// Server certificate validity in days
+        #[arg(long, default_value = "365")]
+        days: u32,
+        /// CA validity in days
+        #[arg(long, default_value = "3650")]
+        ca_days: u32,
+        /// Renew whatever expires within this many days
+        #[arg(long, default_value = "30")]
+        renew_within_days: u32,
+    },
+
     /// Generate a cluster CA + per-node certificates for inter-node mTLS ([cluster.tls])
     GenerateCluster {
         /// Output directory for certificate files

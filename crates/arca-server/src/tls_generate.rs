@@ -6,7 +6,10 @@ use std::net::IpAddr;
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use rcgen::{BasicConstraints, CertificateParams, DistinguishedName, IsCa, KeyPair, SanType};
+use rcgen::{
+    BasicConstraints, CertificateParams, DistinguishedName, IsCa, KeyPair, PublicKeyData, SanType,
+};
+use time::OffsetDateTime;
 
 /// Certificates are public material.
 const MODE_CERT: u32 = 0o644;
@@ -53,6 +56,41 @@ fn write_file_with_mode(path: &Path, contents: &str, mode: u32) -> Result<()> {
     Ok(())
 }
 
+/// Parameters of a self-signed CA certificate.
+fn ca_params(common_name: &str, not_after: OffsetDateTime) -> Result<CertificateParams> {
+    let mut params = CertificateParams::new(Vec::<String>::new()).context("creating CA params")?;
+    let mut dn = DistinguishedName::new();
+    dn.push(rcgen::DnType::CommonName, common_name);
+    dn.push(rcgen::DnType::OrganizationName, "Arca");
+    params.distinguished_name = dn;
+    params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+    // OpenSSL strict verification (the default from Python 3.13) refuses a CA
+    // certificate without the KeyUsage extension asserting keyCertSign.
+    params.key_usages = vec![
+        rcgen::KeyUsagePurpose::KeyCertSign,
+        rcgen::KeyUsagePurpose::CrlSign,
+    ];
+    params.not_after = not_after;
+    Ok(params)
+}
+
+/// Parameters of a CA-signed server certificate for `sans`.
+fn server_params(sans: &str, not_after: OffsetDateTime) -> Result<CertificateParams> {
+    let mut params =
+        CertificateParams::new(Vec::<String>::new()).context("creating server params")?;
+    let mut dn = DistinguishedName::new();
+    dn.push(rcgen::DnType::CommonName, "Arca Server");
+    dn.push(rcgen::DnType::OrganizationName, "Arca");
+    params.distinguished_name = dn;
+    params.subject_alt_names = parse_sans(sans);
+    // Modern verifiers (OpenSSL 3.x strict mode, as shipped by current
+    // Python/curl) refuse CA-issued certs without an Authority Key
+    // Identifier; rcgen does not emit it by default.
+    params.use_authority_key_identifier_extension = true;
+    params.not_after = not_after;
+    Ok(params)
+}
+
 /// Generate a self-signed CA + server certificate pair.
 ///
 /// Writes four files to `output_dir`:
@@ -64,43 +102,18 @@ pub fn generate(output_dir: &Path, sans: &str, days: u32) -> Result<()> {
     std::fs::create_dir_all(output_dir)
         .with_context(|| format!("creating output dir: {}", output_dir.display()))?;
 
+    let now = OffsetDateTime::now_utc();
+
     // --- CA ---
     let ca_key = KeyPair::generate().context("generating CA key pair")?;
-    let mut ca_params = CertificateParams::new(Vec::<String>::new())
-        .context("creating CA params")?;
-    let mut ca_dn = DistinguishedName::new();
-    ca_dn.push(rcgen::DnType::CommonName, "Arca CA");
-    ca_dn.push(rcgen::DnType::OrganizationName, "Arca");
-    ca_params.distinguished_name = ca_dn;
-    ca_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
-    // OpenSSL strict verification (the default from Python 3.13) refuses a CA
-    // certificate without the KeyUsage extension asserting keyCertSign.
-    ca_params.key_usages = vec![
-        rcgen::KeyUsagePurpose::KeyCertSign,
-        rcgen::KeyUsagePurpose::CrlSign,
-    ];
-    ca_params.not_after = time::OffsetDateTime::now_utc()
-        + time::Duration::days(i64::from(days) * 2);
+    let ca_params = ca_params("Arca CA", now + time::Duration::days(i64::from(days) * 2))?;
     let ca_cert = ca_params
         .self_signed(&ca_key)
         .context("self-signing CA certificate")?;
 
     // --- Server cert ---
     let server_key = KeyPair::generate().context("generating server key pair")?;
-    let san_types = parse_sans(sans);
-    let mut server_params = CertificateParams::new(Vec::<String>::new())
-        .context("creating server params")?;
-    let mut server_dn = DistinguishedName::new();
-    server_dn.push(rcgen::DnType::CommonName, "Arca Server");
-    server_dn.push(rcgen::DnType::OrganizationName, "Arca");
-    server_params.distinguished_name = server_dn;
-    server_params.subject_alt_names = san_types;
-    // Modern verifiers (OpenSSL 3.x strict mode, as shipped by current
-    // Python/curl) refuse CA-issued certs without an Authority Key
-    // Identifier; rcgen does not emit it by default.
-    server_params.use_authority_key_identifier_extension = true;
-    server_params.not_after = time::OffsetDateTime::now_utc()
-        + time::Duration::days(i64::from(days));
+    let server_params = server_params(sans, now + time::Duration::days(i64::from(days)))?;
     let ca_issuer = rcgen::Issuer::from_params(&ca_params, &ca_key);
     let server_cert = server_params
         .signed_by(&server_key, &ca_issuer)
@@ -135,6 +148,253 @@ pub fn generate(output_dir: &Path, sans: &str, days: u32) -> Result<()> {
     println!("  key_file = \"arca-server.key\"");
 
     Ok(())
+}
+
+/// File names of the local TLS material written by [`ensure`].
+pub const SERVER_CERT: &str = "arca-server.crt";
+pub const SERVER_KEY: &str = "arca-server.key";
+pub const CA_CERT: &str = "arca-ca.crt";
+pub const CA_KEY: &str = "arca-ca.key";
+
+/// Validity and renewal policy for [`ensure`].
+#[derive(Debug, Clone, Copy)]
+pub struct EnsurePolicy {
+    pub server_days: u32,
+    pub ca_days: u32,
+    pub renew_within_days: u32,
+}
+
+/// Why [`ensure`] (re)generated something.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Reason {
+    Missing,
+    Unreadable,
+    Expiring,
+    SansChanged,
+    NewCa,
+    NotSignedByCa,
+}
+
+/// What [`ensure`] did to one artifact.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Action {
+    Kept,
+    Generated(Reason),
+}
+
+/// What [`ensure`] did, for the CA and for the server certificate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnsureOutcome {
+    pub ca: Action,
+    pub server: Action,
+}
+
+/// Make sure `output_dir` holds a server certificate valid for `sans`, signed
+/// by the local CA kept in `ca_dir`, (re)generating only what is missing,
+/// unreadable, expiring within the renewal window, or no longer matching.
+pub fn ensure(
+    output_dir: &Path,
+    ca_dir: &Path,
+    sans: &str,
+    policy: EnsurePolicy,
+    now: OffsetDateTime,
+) -> Result<EnsureOutcome> {
+    for dir in [output_dir, ca_dir] {
+        std::fs::create_dir_all(dir)
+            .with_context(|| format!("creating directory: {}", dir.display()))?;
+    }
+    let window = time::Duration::days(i64::from(policy.renew_within_days));
+    let wanted_sans = normalize_sans(sans);
+
+    let reuse = match load_local_ca(ca_dir) {
+        Ok(Some(ca)) if ca.not_after - now > window => Ok(ca),
+        Ok(Some(_)) => Err(Reason::Expiring),
+        Ok(None) => Err(Reason::Missing),
+        Err(_) => Err(Reason::Unreadable),
+    };
+    let (ca_action, ca) = match reuse {
+        Ok(ca) => (Action::Kept, ca),
+        Err(reason) => (
+            Action::Generated(reason),
+            new_local_ca(ca_dir, now + time::Duration::days(i64::from(policy.ca_days)))?,
+        ),
+    };
+
+    let server_exists =
+        output_dir.join(SERVER_CERT).exists() && output_dir.join(SERVER_KEY).exists();
+    let server_action = if ca_action != Action::Kept {
+        Action::Generated(if server_exists { Reason::NewCa } else { Reason::Missing })
+    } else {
+        match check_server(output_dir, &ca, &wanted_sans, now, window) {
+            None => Action::Kept,
+            Some(reason) => Action::Generated(reason),
+        }
+    };
+    if server_action != Action::Kept {
+        issue_server(
+            output_dir,
+            &ca,
+            &wanted_sans.join(","),
+            now + time::Duration::days(i64::from(policy.server_days)),
+        )?;
+    }
+
+    // Publish the CA certificate next to the server material, for clients to
+    // trust; the CA key stays in `ca_dir`.
+    let published = output_dir.join(CA_CERT);
+    if std::fs::read_to_string(&published).ok().as_deref() != Some(ca.pem.as_str()) {
+        write_file_with_mode(&published, &ca.pem, MODE_CERT)?;
+    }
+
+    Ok(EnsureOutcome {
+        ca: ca_action,
+        server: server_action,
+    })
+}
+
+/// A human-readable summary of what [`ensure`] did.
+pub fn describe(outcome: &EnsureOutcome, output_dir: &Path, ca_dir: &Path) -> String {
+    fn why(reason: &Reason) -> &'static str {
+        match reason {
+            Reason::Missing => "missing",
+            Reason::Unreadable => "unreadable or inconsistent",
+            Reason::Expiring => "expiring",
+            Reason::SansChanged => "SANs changed",
+            Reason::NewCa => "new CA",
+            Reason::NotSignedByCa => "not signed by the local CA",
+        }
+    }
+    let line = |what: &str, action: &Action| match action {
+        Action::Kept => format!("{what}: up to date"),
+        Action::Generated(reason) => format!("{what}: generated ({})", why(reason)),
+    };
+    let mut out = format!(
+        "{}\n{}",
+        line(&format!("Local CA ({})", ca_dir.join(CA_CERT).display()), &outcome.ca),
+        line(
+            &format!("Server certificate ({})", output_dir.join(SERVER_CERT).display()),
+            &outcome.server
+        ),
+    );
+    if outcome.ca != Action::Kept {
+        out.push_str(&format!(
+            "\nNew local CA: trust {} once in your OS/browser to avoid certificate warnings.",
+            ca_dir.join(CA_CERT).display()
+        ));
+    }
+    out
+}
+
+/// The local CA read back from `ca_dir`.
+struct LocalCa {
+    pem: String,
+    key: KeyPair,
+    not_after: OffsetDateTime,
+}
+
+/// Reads the local CA; `Ok(None)` when it does not exist yet, an error when
+/// it exists but cannot be used (unparseable, or a key that does not match).
+fn load_local_ca(ca_dir: &Path) -> Result<Option<LocalCa>> {
+    let (cert_path, key_path) = (ca_dir.join(CA_CERT), ca_dir.join(CA_KEY));
+    if !cert_path.exists() || !key_path.exists() {
+        return Ok(None);
+    }
+    let pem = std::fs::read_to_string(&cert_path)?;
+    let key = KeyPair::from_pem(&std::fs::read_to_string(&key_path)?)?;
+    let (_, parsed) = x509_parser::pem::parse_x509_pem(pem.as_bytes())?;
+    let cert = parsed.parse_x509()?;
+    if cert.public_key().raw != key.subject_public_key_info().as_slice() {
+        anyhow::bail!("the CA key does not match the CA certificate");
+    }
+    Ok(Some(LocalCa {
+        not_after: cert.validity().not_after.to_datetime(),
+        pem,
+        key,
+    }))
+}
+
+fn new_local_ca(ca_dir: &Path, not_after: OffsetDateTime) -> Result<LocalCa> {
+    let key = KeyPair::generate().context("generating local CA key pair")?;
+    let cert = ca_params("Arca Local CA", not_after)?
+        .self_signed(&key)
+        .context("self-signing local CA certificate")?;
+    let pem = cert.pem();
+    write_file_with_mode(&ca_dir.join(CA_CERT), &pem, MODE_CERT)?;
+    write_file_with_mode(&ca_dir.join(CA_KEY), &key.serialize_pem(), MODE_CA_KEY)?;
+    Ok(LocalCa { pem, key, not_after })
+}
+
+/// Why the server certificate in `output_dir` must be reissued, if it must.
+fn check_server(
+    output_dir: &Path,
+    ca: &LocalCa,
+    wanted_sans: &[String],
+    now: OffsetDateTime,
+    window: time::Duration,
+) -> Option<Reason> {
+    let (cert_path, key_path) = (output_dir.join(SERVER_CERT), output_dir.join(SERVER_KEY));
+    if !cert_path.exists() || !key_path.exists() {
+        return Some(Reason::Missing);
+    }
+    let usable = (|| -> Result<Option<Reason>> {
+        let pem = std::fs::read(&cert_path)?;
+        let key = KeyPair::from_pem(&std::fs::read_to_string(&key_path)?)?;
+        let (_, parsed) = x509_parser::pem::parse_x509_pem(&pem)?;
+        let cert = parsed.parse_x509()?;
+        if cert.public_key().raw != key.subject_public_key_info().as_slice() {
+            anyhow::bail!("the server key does not match the server certificate");
+        }
+        let (_, ca_parsed) = x509_parser::pem::parse_x509_pem(ca.pem.as_bytes())?;
+        let ca_cert = ca_parsed.parse_x509()?;
+        if cert.verify_signature(Some(ca_cert.public_key())).is_err() {
+            return Ok(Some(Reason::NotSignedByCa));
+        }
+        if cert.validity().not_after.to_datetime() - now <= window {
+            return Ok(Some(Reason::Expiring));
+        }
+        let mut have = cert_sans(&cert);
+        have.sort();
+        have.dedup();
+        if have != wanted_sans {
+            return Ok(Some(Reason::SansChanged));
+        }
+        Ok(None)
+    })();
+    usable.unwrap_or(Some(Reason::Unreadable))
+}
+
+fn issue_server(
+    output_dir: &Path,
+    ca: &LocalCa,
+    sans: &str,
+    not_after: OffsetDateTime,
+) -> Result<()> {
+    let key = KeyPair::generate().context("generating server key pair")?;
+    let issuer = rcgen::Issuer::from_ca_cert_pem(&ca.pem, &ca.key)
+        .context("loading the local CA as issuer")?;
+    let cert = server_params(sans, not_after)?
+        .signed_by(&key, &issuer)
+        .context("signing server certificate")?;
+    write_file_with_mode(&output_dir.join(SERVER_CERT), &cert.pem(), MODE_CERT)?;
+    write_file_with_mode(&output_dir.join(SERVER_KEY), &key.serialize_pem(), MODE_KEY)?;
+    Ok(())
+}
+
+/// SANs as compared by [`ensure`]: DNS names lowercased, IPs in canonical
+/// form, sorted and deduplicated.
+fn normalize_sans(sans: &str) -> Vec<String> {
+    let mut out: Vec<String> = sans
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| match s.parse::<IpAddr>() {
+            Ok(ip) => ip.to_string(),
+            Err(_) => s.to_ascii_lowercase(),
+        })
+        .collect();
+    out.sort();
+    out.dedup();
+    out
 }
 
 /// Generate a cluster CA + one CA-signed certificate per node, for inter-node
@@ -268,6 +528,27 @@ fn parse_node_spec(spec: &str) -> Result<(String, Vec<SanType>)> {
 
 /// Parse a comma-separated SANs string into `SanType` values.
 /// Distinguishes IP addresses from DNS names.
+/// DNS and IP SANs of a certificate, normalized like [`normalize_sans`].
+fn cert_sans(cert: &x509_parser::certificate::X509Certificate<'_>) -> Vec<String> {
+    use x509_parser::extensions::GeneralName;
+    let Ok(Some(ext)) = cert.subject_alternative_name() else {
+        return Vec::new();
+    };
+    ext.value
+        .general_names
+        .iter()
+        .filter_map(|name| match name {
+            GeneralName::DNSName(dns) => Some(dns.to_ascii_lowercase()),
+            GeneralName::IPAddress(bytes) => match bytes.len() {
+                4 => Some(IpAddr::from(<[u8; 4]>::try_from(*bytes).ok()?).to_string()),
+                16 => Some(IpAddr::from(<[u8; 16]>::try_from(*bytes).ok()?).to_string()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect()
+}
+
 fn parse_sans(sans: &str) -> Vec<SanType> {
     sans.split(',')
         .map(|s| s.trim())
@@ -353,6 +634,252 @@ mod tests {
                 assert_eq!(mode_of(&dir.path().join(format!("{node}.key"))), 0o640);
             }
         }
+    }
+
+    // --- ensure -----------------------------------------------------------
+
+    const POLICY: EnsurePolicy = EnsurePolicy {
+        server_days: 365,
+        ca_days: 3650,
+        renew_within_days: 30,
+    };
+    const SANS: &str = "localhost,127.0.0.1,::1,arca";
+
+    fn now() -> time::OffsetDateTime {
+        time::OffsetDateTime::now_utc()
+    }
+
+    /// A pair of scratch directories: (output_dir, ca_dir).
+    fn dirs() -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
+        let root = tempfile::tempdir().unwrap();
+        let out = root.path().join("local");
+        let ca = root.path().join("local-ca");
+        (root, out, ca)
+    }
+
+    fn read(path: &Path) -> Vec<u8> {
+        std::fs::read(path).unwrap()
+    }
+
+    fn parse_pem_cert(path: &Path) -> (Vec<u8>, x509_parser::pem::Pem) {
+        let data = read(path);
+        let (_, pem) = x509_parser::pem::parse_x509_pem(&data).unwrap();
+        (data, pem)
+    }
+
+    /// SANs of a certificate, as sorted strings.
+    fn sans_of(path: &Path) -> Vec<String> {
+        let (_, pem) = parse_pem_cert(path);
+        let cert = pem.parse_x509().unwrap();
+        let mut sans = cert_sans(&cert);
+        sans.sort();
+        sans
+    }
+
+    fn signed_by(cert_path: &Path, ca_path: &Path) -> bool {
+        let (_, cert_pem) = parse_pem_cert(cert_path);
+        let (_, ca_pem) = parse_pem_cert(ca_path);
+        let cert = cert_pem.parse_x509().unwrap();
+        let ca = ca_pem.parse_x509().unwrap();
+        cert.verify_signature(Some(ca.public_key())).is_ok()
+    }
+
+    fn validity_days(path: &Path) -> i64 {
+        let (_, pem) = parse_pem_cert(path);
+        let cert = pem.parse_x509().unwrap();
+        (cert.validity().not_after.to_datetime() - now()).whole_days()
+    }
+
+    #[test]
+    fn ensure_creates_ca_and_server_in_fresh_dirs() {
+        let (_root, out, ca) = dirs();
+        let outcome = ensure(&out, &ca, SANS, POLICY, now()).unwrap();
+        assert_eq!(outcome.ca, Action::Generated(Reason::Missing));
+        assert_eq!(outcome.server, Action::Generated(Reason::Missing));
+
+        for f in [SERVER_CERT, SERVER_KEY, CA_CERT] {
+            assert!(out.join(f).is_file(), "missing {f} in output dir");
+        }
+        for f in [CA_CERT, CA_KEY] {
+            assert!(ca.join(f).is_file(), "missing {f} in CA dir");
+        }
+        // The CA key never reaches the directory mounted in containers.
+        assert!(!out.join(CA_KEY).exists());
+        // The output dir publishes the CA certificate clients must trust.
+        assert_eq!(read(&out.join(CA_CERT)), read(&ca.join(CA_CERT)));
+        assert!(signed_by(&out.join(SERVER_CERT), &ca.join(CA_CERT)));
+        assert_eq!(sans_of(&out.join(SERVER_CERT)), vec!["127.0.0.1", "::1", "arca", "localhost"]);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn ensure_writes_the_same_modes_as_generate() {
+        let (_root, out, ca) = dirs();
+        ensure(&out, &ca, SANS, POLICY, now()).unwrap();
+        assert_eq!(mode_of(&out.join(SERVER_CERT)), 0o644);
+        assert_eq!(mode_of(&out.join(SERVER_KEY)), 0o640);
+        assert_eq!(mode_of(&out.join(CA_CERT)), 0o644);
+        assert_eq!(mode_of(&ca.join(CA_CERT)), 0o644);
+        assert_eq!(mode_of(&ca.join(CA_KEY)), 0o600);
+    }
+
+    #[test]
+    fn ensure_uses_ten_years_for_the_ca_and_one_year_for_the_server() {
+        let (_root, out, ca) = dirs();
+        ensure(&out, &ca, SANS, POLICY, now()).unwrap();
+        assert!((3649..=3650).contains(&validity_days(&ca.join(CA_CERT))));
+        assert!((364..=365).contains(&validity_days(&out.join(SERVER_CERT))));
+    }
+
+    #[test]
+    fn ensure_is_idempotent() {
+        let (_root, out, ca) = dirs();
+        ensure(&out, &ca, SANS, POLICY, now()).unwrap();
+        let before: Vec<_> = [out.join(SERVER_CERT), out.join(SERVER_KEY), ca.join(CA_KEY)]
+            .iter()
+            .map(|p| read(p))
+            .collect();
+
+        let outcome = ensure(&out, &ca, SANS, POLICY, now()).unwrap();
+        assert_eq!(outcome, EnsureOutcome { ca: Action::Kept, server: Action::Kept });
+        let after: Vec<_> = [out.join(SERVER_CERT), out.join(SERVER_KEY), ca.join(CA_KEY)]
+            .iter()
+            .map(|p| read(p))
+            .collect();
+        assert_eq!(before, after);
+    }
+
+    #[test]
+    fn ensure_treats_san_order_and_case_as_irrelevant() {
+        let (_root, out, ca) = dirs();
+        ensure(&out, &ca, SANS, POLICY, now()).unwrap();
+        let outcome = ensure(&out, &ca, "ARCA, ::1,127.0.0.1 ,localhost", POLICY, now()).unwrap();
+        assert_eq!(outcome.server, Action::Kept);
+    }
+
+    #[test]
+    fn ensure_renews_an_expiring_server_certificate_with_the_same_ca() {
+        let (_root, out, ca) = dirs();
+        ensure(&out, &ca, SANS, POLICY, now()).unwrap();
+        let ca_cert = read(&ca.join(CA_CERT));
+        let ca_key = read(&ca.join(CA_KEY));
+        let old_server = read(&out.join(SERVER_CERT));
+
+        // 340 days later the 365-day certificate is inside the 30-day window.
+        let later = now() + time::Duration::days(340);
+        let outcome = ensure(&out, &ca, SANS, POLICY, later).unwrap();
+        assert_eq!(outcome.ca, Action::Kept);
+        assert_eq!(outcome.server, Action::Generated(Reason::Expiring));
+
+        // Same CA, byte for byte: whoever trusted it keeps trusting.
+        assert_eq!(read(&ca.join(CA_CERT)), ca_cert);
+        assert_eq!(read(&ca.join(CA_KEY)), ca_key);
+        assert_ne!(read(&out.join(SERVER_CERT)), old_server);
+        assert!(signed_by(&out.join(SERVER_CERT), &ca.join(CA_CERT)));
+    }
+
+    #[test]
+    fn ensure_keeps_a_server_certificate_outside_the_renewal_window() {
+        let (_root, out, ca) = dirs();
+        ensure(&out, &ca, SANS, POLICY, now()).unwrap();
+        let later = now() + time::Duration::days(300);
+        let outcome = ensure(&out, &ca, SANS, POLICY, later).unwrap();
+        assert_eq!(outcome, EnsureOutcome { ca: Action::Kept, server: Action::Kept });
+    }
+
+    #[test]
+    fn ensure_renews_the_server_only_when_sans_change() {
+        let (_root, out, ca) = dirs();
+        ensure(&out, &ca, SANS, POLICY, now()).unwrap();
+        let ca_cert = read(&ca.join(CA_CERT));
+
+        let sans = format!("{SANS},s3.example.org");
+        let outcome = ensure(&out, &ca, &sans, POLICY, now()).unwrap();
+        assert_eq!(outcome.ca, Action::Kept);
+        assert_eq!(outcome.server, Action::Generated(Reason::SansChanged));
+        assert_eq!(read(&ca.join(CA_CERT)), ca_cert);
+        assert!(sans_of(&out.join(SERVER_CERT)).contains(&"s3.example.org".to_string()));
+    }
+
+    #[test]
+    fn ensure_renews_an_expiring_ca_and_reissues_the_server() {
+        let (_root, out, ca) = dirs();
+        ensure(&out, &ca, SANS, POLICY, now()).unwrap();
+        let old_ca = read(&ca.join(CA_CERT));
+
+        let later = now() + time::Duration::days(3640);
+        let outcome = ensure(&out, &ca, SANS, POLICY, later).unwrap();
+        assert_eq!(outcome.ca, Action::Generated(Reason::Expiring));
+        assert_eq!(outcome.server, Action::Generated(Reason::NewCa));
+        assert_ne!(read(&ca.join(CA_CERT)), old_ca);
+        assert_eq!(read(&out.join(CA_CERT)), read(&ca.join(CA_CERT)));
+        assert!(signed_by(&out.join(SERVER_CERT), &ca.join(CA_CERT)));
+    }
+
+    #[test]
+    fn ensure_reissues_a_server_certificate_not_signed_by_the_current_ca() {
+        let (_root, out, ca) = dirs();
+        ensure(&out, &ca, SANS, POLICY, now()).unwrap();
+        // The CA directory is swapped for another CA by hand.
+        let (_other_root, other_out, other_ca) = dirs();
+        ensure(&other_out, &other_ca, SANS, POLICY, now()).unwrap();
+        for f in [CA_CERT, CA_KEY] {
+            std::fs::copy(other_ca.join(f), ca.join(f)).unwrap();
+        }
+
+        let outcome = ensure(&out, &ca, SANS, POLICY, now()).unwrap();
+        assert_eq!(outcome.ca, Action::Kept);
+        assert_eq!(outcome.server, Action::Generated(Reason::NotSignedByCa));
+        assert!(signed_by(&out.join(SERVER_CERT), &ca.join(CA_CERT)));
+        assert_eq!(read(&out.join(CA_CERT)), read(&ca.join(CA_CERT)));
+    }
+
+    #[test]
+    fn ensure_reissues_the_server_when_its_key_is_missing() {
+        let (_root, out, ca) = dirs();
+        ensure(&out, &ca, SANS, POLICY, now()).unwrap();
+        std::fs::remove_file(out.join(SERVER_KEY)).unwrap();
+        let outcome = ensure(&out, &ca, SANS, POLICY, now()).unwrap();
+        assert_eq!(outcome.ca, Action::Kept);
+        assert_eq!(outcome.server, Action::Generated(Reason::Missing));
+        assert!(out.join(SERVER_KEY).is_file());
+    }
+
+    #[test]
+    fn ensure_republishes_a_missing_ca_certificate_without_touching_the_rest() {
+        let (_root, out, ca) = dirs();
+        ensure(&out, &ca, SANS, POLICY, now()).unwrap();
+        let server = read(&out.join(SERVER_CERT));
+        std::fs::remove_file(out.join(CA_CERT)).unwrap();
+
+        let outcome = ensure(&out, &ca, SANS, POLICY, now()).unwrap();
+        assert_eq!(outcome, EnsureOutcome { ca: Action::Kept, server: Action::Kept });
+        assert_eq!(read(&out.join(CA_CERT)), read(&ca.join(CA_CERT)));
+        assert_eq!(read(&out.join(SERVER_CERT)), server);
+    }
+
+    #[test]
+    fn ensure_replaces_an_unreadable_ca() {
+        let (_root, out, ca) = dirs();
+        std::fs::create_dir_all(&ca).unwrap();
+        std::fs::write(ca.join(CA_CERT), "garbage").unwrap();
+        std::fs::write(ca.join(CA_KEY), "garbage").unwrap();
+        let outcome = ensure(&out, &ca, SANS, POLICY, now()).unwrap();
+        assert_eq!(outcome.ca, Action::Generated(Reason::Unreadable));
+        assert!(signed_by(&out.join(SERVER_CERT), &ca.join(CA_CERT)));
+    }
+
+    #[test]
+    fn ensure_replaces_a_ca_whose_key_does_not_match_its_certificate() {
+        let (_root, out, ca) = dirs();
+        ensure(&out, &ca, SANS, POLICY, now()).unwrap();
+        let (_other_root, other_out, other_ca) = dirs();
+        ensure(&other_out, &other_ca, SANS, POLICY, now()).unwrap();
+        std::fs::copy(other_ca.join(CA_KEY), ca.join(CA_KEY)).unwrap();
+
+        let outcome = ensure(&out, &ca, SANS, POLICY, now()).unwrap();
+        assert_eq!(outcome.ca, Action::Generated(Reason::Unreadable));
+        assert!(signed_by(&out.join(SERVER_CERT), &ca.join(CA_CERT)));
     }
 
     /// The permission bits of a path, as `0o644`-style Unix mode.

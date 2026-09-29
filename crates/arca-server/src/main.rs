@@ -1127,6 +1127,28 @@ async fn async_main(cli: Cli) -> Result<()> {
                 } => {
                     tls_generate::generate(&output_dir, &sans, days)?;
                 }
+                TlsAction::Ensure {
+                    output_dir,
+                    ca_dir,
+                    sans,
+                    days,
+                    ca_days,
+                    renew_within_days,
+                } => {
+                    let policy = tls_generate::EnsurePolicy {
+                        server_days: days,
+                        ca_days,
+                        renew_within_days,
+                    };
+                    let outcome = tls_generate::ensure(
+                        &output_dir,
+                        &ca_dir,
+                        &sans,
+                        policy,
+                        time::OffsetDateTime::now_utc(),
+                    )?;
+                    println!("{}", tls_generate::describe(&outcome, &output_dir, &ca_dir));
+                }
                 TlsAction::GenerateCluster {
                     output_dir,
                     nodes,

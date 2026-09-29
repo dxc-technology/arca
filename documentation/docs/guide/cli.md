@@ -170,6 +170,50 @@ Distribute `arca-ca.crt` to clients that need to trust the self-signed certifica
 !!! warning
     Self-signed certificates are suitable for development and internal testing. For production, use certificates issued by a trusted Certificate Authority.
 
+## `arca tls ensure`
+
+Keep a local CA and a server certificate valid, (re)generating only what is
+needed. Unlike `arca tls generate`, it is idempotent and safe to run on every
+start.
+
+```bash
+arca tls ensure --output-dir <PATH> --ca-dir <PATH> [--sans <NAMES>] \
+    [--days <N>] [--ca-days <N>] [--renew-within-days <N>]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--output-dir` | *(required)* | Directory for the server certificate, its key and a copy of the CA certificate — the one Arca and the console read |
+| `--ca-dir` | *(required)* | Directory for the CA certificate and private key; keep it out of the containers, only renewals need it |
+| `--sans` | `localhost,127.0.0.1,::1` | Subject Alternative Names (comma-separated DNS names and IP addresses; order and case do not matter) |
+| `--days` | `365` | Server certificate validity in days |
+| `--ca-days` | `3650` | CA validity in days |
+| `--renew-within-days` | `30` | Renew whatever expires within this many days |
+
+What it does on each run:
+
+| Situation | Result |
+|-----------|--------|
+| No CA, unreadable CA, or CA key not matching its certificate | New CA, new server certificate |
+| CA expiring within the renewal window | New CA, new server certificate (clients must trust the new CA) |
+| Server certificate missing, unreadable, expiring, issued for other SANs, or not signed by the current CA | New server certificate, signed by the **same** CA |
+| Everything valid | Nothing is written |
+
+Because renewals reuse the CA, a client that trusts `arca-ca.crt` once keeps
+trusting every renewed server certificate for the CA's whole lifetime.
+
+| File | Directory | Mode |
+|------|-----------|------|
+| `arca-server.crt` | output | `0644` |
+| `arca-server.key` | output | `0640` |
+| `arca-ca.crt` | output and CA | `0644` |
+| `arca-ca.key` | CA only | `0600` |
+
+```bash
+arca tls ensure --output-dir /certs/local --ca-dir /certs/local-ca \
+    --sans "localhost,127.0.0.1,::1,arca"
+```
+
 ## `arca encryption generate-key`
 
 Generate a random 256-bit master key for server-side encryption.
