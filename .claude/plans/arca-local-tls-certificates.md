@@ -1,6 +1,6 @@
 # Local TLS certificates: bring your own, or get working self-signed ones
 
-Status: approved by Pietro 2026-09-29, in progress.
+Status: DONE 2026-09-29 — M1 9522e3c, M2 7ed6ea7, M3 1a27fef, M4 a1e5247; M5 (docs) folded into each milestone.
 
 ## Goal
 
@@ -129,6 +129,27 @@ TLS guide (local CA, trusting it on macOS/Linux, bringing your own
 certificates, `ARCA_TLS_SANS` / `ARCA_TLS_HOSTNAME`), Quick Start, AGENTS.md
 (commands, TLS gotcha), `docker/.env.example`, CHANGELOG, README test counts,
 `bin/docs-build`.
+
+## Deviations from the plan
+
+- Hostname for user certificates: instead of requiring `ARCA_TLS_HOSTNAME`
+  for wildcard-only certificates, a wildcard is made concrete
+  (`*.example.org` -> `arca.example.org`, which it always covers);
+  `ARCA_TLS_HOSTNAME` is only an override.
+- The `tls-init` compose service was removed rather than repointed: it was
+  the only writer into `certs/` and nothing needs it any more.
+- `bin/test images` became `bin/test scripts` (all `tests/scripts/*_test.sh`).
+
+## Found along the way (not fixed here)
+
+- Compression + encryption: reading a compressed object on an encrypted
+  server fails with `compressed footer count truncated` / `read chunks:
+  early eof` (500). Pre-existing (identical on 903582f); `bin/test
+  compression` never enables encryption, so the combination was untested.
+- `bin/test tls` (and other self-contained modes) run `down -v` on the same
+  compose project as the developer's server, deleting its data volume.
+- The encryption test files skip unless `ARCA_ENCRYPTION_ENABLED` is set, so
+  `bin/test integration` against an encrypted server still skips them.
 
 ## Out of scope
 
