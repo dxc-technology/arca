@@ -36,10 +36,12 @@ use tracing_subscriber::EnvFilter;
 use arca_core::store::CredentialStore;
 use arca_proto::AppState;
 use arca_proto::middleware::normalize::NormalizeService;
+use arca_proto::middleware::unread_body::CloseOnUnreadBodyService;
 use cli::{Cli, ClusterAction, Command, CredentialAction, EncryptionAction, LogFormat, TlsAction, UserAction};
 
-/// The normalized app type used by both HTTP and HTTPS code paths.
-pub type NormalizedApp = NormalizeService<Router>;
+/// The app served by both the HTTP and the HTTPS code paths: the Router
+/// behind the layers that must run outside it.
+pub type ServerApp = CloseOnUnreadBodyService<NormalizeService<Router>>;
 
 fn main() -> Result<()> {
     // Install the `ring` rustls crypto provider as the process-wide default
@@ -817,6 +819,10 @@ async fn async_main(cli: Cli) -> Result<()> {
             // *before* Axum routing — strips trailing slashes and saves the
             // original URI in extensions for auth to verify.
             let app = arca_proto::middleware::normalize::NormalizeLayer.layer(router);
+            // Outermost, so it also sees responses produced by middleware (an
+            // auth reject answers before any handler runs): closes the
+            // connection when a response leaves the request body unread.
+            let app = arca_proto::middleware::unread_body::CloseOnUnreadBodyLayer.layer(app);
 
             match config.server.tls {
                 None => {

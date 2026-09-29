@@ -34,6 +34,7 @@ pub mod maintenance_drain;
 pub mod normalize;
 pub mod rate_limit;
 pub mod request_id;
+pub mod unread_body;
 pub mod validate;
 pub mod virtual_host;
 

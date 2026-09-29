@@ -263,7 +263,7 @@ fn build_http_builder(
 pub async fn serve_tls(
     listener: TcpListener,
     reloader: Arc<TlsReloader>,
-    app: crate::NormalizedApp,
+    app: crate::ServerApp,
     shutdown: impl std::future::Future<Output = ()>,
     http_cfg: HttpConfig,
 ) -> Result<()> {
@@ -312,7 +312,7 @@ async fn serve_tls_connection(
     acceptor: tokio_rustls::TlsAcceptor,
     tcp_stream: tokio::net::TcpStream,
     remote_addr: SocketAddr,
-    app: crate::NormalizedApp,
+    app: crate::ServerApp,
     builder: Arc<hyper_util::server::conn::auto::Builder<hyper_util::rt::TokioExecutor>>,
 ) {
     let tls_stream = match acceptor.accept(tcp_stream).await {

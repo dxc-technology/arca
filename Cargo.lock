@@ -237,6 +237,7 @@ dependencies = [
  "governor",
  "hex",
  "http",
+ "http-body",
  "httpdate",
  "libc",
  "md-5 0.11.0",
