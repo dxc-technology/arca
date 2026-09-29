@@ -10,6 +10,9 @@ import requests
 
 
 WEBHOOK_RECEIVER_URL = os.environ.get("WEBHOOK_RECEIVER_URL", "http://webhook-receiver:8765")
+# TLS verification for the raw signed requests, as boto3 does it: the CA
+# bundle when one is configured (e.g. the local CA), the system CAs otherwise.
+_VERIFY = os.environ.get("AWS_CA_BUNDLE") or True
 
 
 @pytest.fixture
@@ -463,7 +466,7 @@ class TestConnectorArchitecture:
         import botocore.auth
         import botocore.credentials
         from botocore.awsrequest import AWSRequest
-        endpoint = os.environ.get("S3_ENDPOINT", "http://arca:9000")
+        endpoint = os.environ.get("ARCA_ENDPOINT", "http://arca:9000")
         url = f"{endpoint}/{unique_bucket}?notification"
         access_key = os.environ.get("AWS_ACCESS_KEY_ID", "AKIA5B6BSHJA8CIHZSVG")
         secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv")
@@ -474,7 +477,7 @@ class TestConnectorArchitecture:
             "x-amz-content-sha256": content_sha,
         })
         botocore.auth.SigV4Auth(credentials, "s3", "us-east-1").add_auth(aws_req)
-        resp = requests.put(url, data=xml, headers=dict(aws_req.headers), timeout=10)
+        resp = requests.put(url, data=xml, headers=dict(aws_req.headers), timeout=10, verify=_VERIFY)
 
         assert resp.status_code in (200, 204), f"PUT notification config failed: {resp.status_code} {resp.text}"
 
@@ -528,7 +531,7 @@ class TestConnectorArchitecture:
         import botocore.auth
         import botocore.credentials
         from botocore.awsrequest import AWSRequest
-        endpoint = os.environ.get("S3_ENDPOINT", "http://arca:9000")
+        endpoint = os.environ.get("ARCA_ENDPOINT", "http://arca:9000")
         url = f"{endpoint}/{unique_bucket}?notification"
         access_key = os.environ.get("AWS_ACCESS_KEY_ID", "AKIA5B6BSHJA8CIHZSVG")
         secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv")
@@ -539,7 +542,7 @@ class TestConnectorArchitecture:
             "x-amz-content-sha256": content_sha,
         })
         botocore.auth.SigV4Auth(credentials, "s3", "us-east-1").add_auth(aws_req)
-        resp = requests.put(url, data=xml, headers=dict(aws_req.headers), timeout=10)
+        resp = requests.put(url, data=xml, headers=dict(aws_req.headers), timeout=10, verify=_VERIFY)
         assert resp.status_code in (200, 204), f"PUT failed: {resp.status_code}"
 
         # GET the config back
@@ -547,7 +550,7 @@ class TestConnectorArchitecture:
             "x-amz-content-sha256": hashlib.sha256(b"").hexdigest(),
         })
         botocore.auth.SigV4Auth(credentials, "s3", "us-east-1").add_auth(aws_req)
-        resp = requests.get(url, headers=dict(aws_req.headers), timeout=10)
+        resp = requests.get(url, headers=dict(aws_req.headers), timeout=10, verify=_VERIFY)
         assert resp.status_code == 200
 
         # Verify Property element is present in response XML

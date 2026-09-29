@@ -135,13 +135,9 @@ def _raw_connection(endpoint_url):
     parsed = urlparse(endpoint_url)
     sock = socket.create_connection((parsed.hostname, parsed.port or 80), timeout=5)
     if parsed.scheme == "https":
-        ca_bundle = os.environ.get("AWS_CA_BUNDLE")
-        if ca_bundle:
-            ctx = ssl.create_default_context(cafile=ca_bundle)
-        else:
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
+        # Verified like every client in the suite: against the CA bundle when
+        # one is configured (e.g. the local CA), the system CAs otherwise.
+        ctx = ssl.create_default_context(cafile=os.environ.get("AWS_CA_BUNDLE"))
         # HTTP/1.1 only: the desync these tests guard against cannot happen
         # over HTTP/2.
         ctx.set_alpn_protocols(["http/1.1"])

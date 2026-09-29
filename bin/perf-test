@@ -142,13 +142,7 @@ if $SELF_CONTAINED; then
             # Map FQDN to the arca container IP via compose override
             ARCA_CONTAINER=$($COMPOSE ps -q arca)
             ARCA_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$ARCA_CONTAINER")
-            PERF_OVERRIDE="$REPO_ROOT/docker/.perf-fqdn-override.yml"
-            cat > "$PERF_OVERRIDE" <<EOF
-services:
-  perf-test:
-    extra_hosts:
-      - "$TLS_FQDN:$ARCA_IP"
-EOF
+            PERF_OVERRIDE="$(extra_hosts_override perf-test "$TLS_FQDN" "$ARCA_IP")"
             PERF_COMPOSE="$COMPOSE -f $PERF_OVERRIDE"
             # Connect via the FQDN
             run_args+=(-e "ARCA_ENDPOINT=https://$TLS_FQDN:9000")

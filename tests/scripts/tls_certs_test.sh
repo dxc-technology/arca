@@ -260,6 +260,73 @@ test_remove_test_certs_removes_the_volume() {
     assert_contains "$(cat "$DOCKER_LOG")" $'volume\nrm\n-f\narca-tls-test-certs\n--'
 }
 
+# --- pick_tls_hostname -------------------------------------------------------
+
+test_pick_prefers_the_first_plain_dns_name() {
+    setup
+    assert_eq "s3.example.org" "$(printf '*.example.org\ns3.example.org\nexample.org\n' | pick_tls_hostname)"
+}
+
+test_pick_turns_a_wildcard_into_a_concrete_name() {
+    # *.example.org covers any single label, so arca.example.org is valid.
+    setup
+    assert_eq "arca.example.org" "$(printf '*.example.org\n' | pick_tls_hostname)"
+}
+
+test_pick_fails_without_dns_names() {
+    setup
+    ! printf '' | pick_tls_hostname
+}
+
+test_pick_honours_the_override_from_docker_env_file() {
+    setup
+    echo 'ARCA_TLS_HOSTNAME=s3.home.lan' > docker/.env
+    assert_eq "s3.home.lan" "$(printf 'other.example.org\n' | pick_tls_hostname)"
+}
+
+# --- integration_endpoint_args ----------------------------------------------
+
+test_plain_server_keeps_the_default_endpoint() {
+    setup
+    assert_eq "" "$(integration_endpoint_args "")"
+}
+
+test_local_certificates_are_verified_against_the_local_ca() {
+    setup
+    enable_tls_auto
+    assert_eq "-e
+ARCA_ENDPOINT=https://arca:9000
+-e
+AWS_CA_BUNDLE=/etc/arca/certs/arca-ca.crt" "$(integration_endpoint_args "")"
+}
+
+test_user_certificates_use_the_certificate_hostname() {
+    setup
+    touch_cert certs/fullchain.pem
+    enable_tls_auto
+    # System CAs verify a publicly issued certificate: no bundle.
+    assert_eq "-e
+ARCA_ENDPOINT=https://s3.example.org:9000" "$(integration_endpoint_args "s3.example.org")"
+}
+
+# --- extra_hosts_override ----------------------------------------------------
+
+test_extra_hosts_override_maps_a_name_for_one_service() {
+    setup
+    local file content
+    file="$(extra_hosts_override test s3.example.org 172.18.0.5)" || return 1
+    content="$(cat "$file")"
+    rm -f "$file"
+    if [[ "$file" == "$PWD"/* ]]; then
+        echo "the override must not land in the repository"
+        return 1
+    fi
+    assert_eq "services:
+  test:
+    extra_hosts:
+      - \"s3.example.org:172.18.0.5\"" "$content"
+}
+
 # --- state persistence -------------------------------------------------------
 
 test_the_certificate_choice_survives_save_and_load() {

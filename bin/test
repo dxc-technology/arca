@@ -38,11 +38,46 @@ run_unit() {
     $COMPOSE run --rm unit-test "$@"
 }
 
+# Runs the suite against the server `bin/arca start` started, exactly as it
+# was started. `--no-deps` matters: without it `compose run` would recreate
+# the arca service from whatever compose files this script passes, silently
+# replacing a TLS/encrypted/dev server with a plain one before any test ran.
 run_integration() {
     echo "==> Running integration tests..."
+    load_env
     local COMPOSE
     COMPOSE="$(compose_cmd)"
-    $COMPOSE run --rm test "$@"
+    local server
+    server="$($COMPOSE ps -q arca 2>/dev/null)"
+    if [[ -z "$server" ]]; then
+        echo "Error: no Arca server is running. Start one first, e.g.:" >&2
+        echo "  bin/arca start -d --build --dev --tls --encryption" >&2
+        return 1
+    fi
+
+    local hostname="" override=""
+    if $_HAS_TLS && [[ "${ARCA_CERTS_DIR:-../certs}" != "../certs/local" ]]; then
+        # Your certificates: reach the server under a name they cover,
+        # resolved to the arca container, verified against the system CAs.
+        if ! hostname="$($COMPOSE run --rm --no-deps -T --entrypoint python test \
+                tools/served_tls_sans.py arca 9000 | pick_tls_hostname)"; then
+            echo "Error: the served certificate has no DNS name to test it under." >&2
+            echo "Set ARCA_TLS_HOSTNAME in docker/.env to a name it covers." >&2
+            return 1
+        fi
+        local ip
+        ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$server")"
+        override="$(extra_hosts_override test "$hostname" "$ip")" || return 1
+        echo "==> Verifying your certificate as $hostname (mapped to the arca container)"
+    fi
+
+    local args=() arg
+    while IFS= read -r arg; do args+=("$arg"); done < <(integration_endpoint_args "$hostname")
+    local rc=0
+    $COMPOSE ${override:+-f "$override"} run --rm --no-deps \
+        "${args[@]+"${args[@]}"}" test "$@" || rc=$?
+    [[ -n "$override" ]] && rm -f "$override"
+    return "$rc"
 }
 
 run_scripts() {

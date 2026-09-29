@@ -90,6 +90,26 @@ only directories it manages, and they are ignored while your certificates are
 present. The choice is remembered in `.arca-env`, so `bin/console` serves the
 same certificates.
 
+### Running the tests
+
+The self-contained TLS suites (`bin/test tls`, `bin/perf-test --tls`) never
+use `certs/`: they generate a throwaway CA into a Docker volume and verify
+against it.
+
+`bin/test integration` runs against the server you started, exactly as you
+started it — it never restarts or reconfigures it — and verifies TLS for real:
+
+| Server started with | The suite connects to | Verified against |
+|---------------------|-----------------------|------------------|
+| no `--tls` | `http://arca:9000` | — |
+| `--tls`, local certificates | `https://arca:9000` | the local CA |
+| `--tls`, your certificates | `https://<name>:9000`, mapped to the Arca container | the system CAs |
+
+For your certificates, `<name>` is the first plain DNS name they list, or, if
+they only list wildcards, a concrete name under the first one (`*.example.org`
+→ `arca.example.org`). Set `ARCA_TLS_HOSTNAME` in `docker/.env` to choose it
+yourself — required only when the certificate lists no DNS name at all.
+
 ### Trusting the local CA
 
 Trust `certs/local-ca/arca-ca.crt` once and every renewal is trusted too, for

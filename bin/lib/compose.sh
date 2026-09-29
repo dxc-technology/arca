@@ -134,6 +134,55 @@ prepare_local_certs() {
         tls ensure --output-dir certs/local --ca-dir certs/local-ca --sans "$sans"
 }
 
+# The name `bin/test integration` reaches a server with the user's own
+# certificates under, from its DNS SANs (stdin, one per line):
+# ARCA_TLS_HOSTNAME (environment or docker/.env) if set, else the first plain
+# name, else the first wildcard made concrete (`*.example.org` covers any
+# single label, so `arca.example.org` is valid for it).
+pick_tls_hostname() {
+    local override sans plain wildcard
+    override="$(dotenv_value ARCA_TLS_HOSTNAME)"
+    if [[ -n "$override" ]]; then
+        echo "$override"
+        return 0
+    fi
+    sans="$(cat)"
+    plain="$(grep -v '^\*\.' <<< "$sans" | grep -m1 . || true)"
+    if [[ -n "$plain" ]]; then
+        echo "$plain"
+        return 0
+    fi
+    wildcard="$(grep -m1 '^\*\.' <<< "$sans" || true)"
+    if [[ -n "$wildcard" ]]; then
+        echo "arca.${wildcard#\*.}"
+        return 0
+    fi
+    return 1
+}
+
+# `compose run` options pointing the integration suite at the running server,
+# one per line: nothing for plain HTTP (the compose default); the local CA as
+# the trust anchor for certs/local; for the user's certificates, the name they
+# were issued for (argument), verified against the system CAs.
+integration_endpoint_args() {  # integration_endpoint_args <tls hostname>
+    $_HAS_TLS || return 0
+    if [[ "${ARCA_CERTS_DIR:-../certs}" == "../certs/local" ]]; then
+        printf '%s\n' -e ARCA_ENDPOINT=https://arca:9000 \
+            -e AWS_CA_BUNDLE=/etc/arca/certs/arca-ca.crt
+    else
+        printf '%s\n' -e "ARCA_ENDPOINT=https://$1:9000"
+    fi
+}
+
+# A compose override (outside the repository) resolving <host> to <ip> in one
+# service; prints its path. The caller removes it.
+extra_hosts_override() {  # extra_hosts_override <service> <host> <ip>
+    local file
+    file="$(mktemp "${TMPDIR:-/tmp}/arca-extra-hosts.XXXXXX")" || return 1
+    printf 'services:\n  %s:\n    extra_hosts:\n      - "%s:%s"\n' "$1" "$2" "$3" > "$file"
+    echo "$file"
+}
+
 # Self-contained TLS suites (bin/test tls, bin/perf-test --tls) get their own
 # throwaway CA + server certificate in a named volume, never in certs/: a
 # bind mount would both risk the user's files and fail on Linux, where the

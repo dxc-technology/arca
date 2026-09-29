@@ -600,6 +600,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#running-the-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#trusting-the-local-ca" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1505,6 +1516,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#running-the-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#trusting-the-local-ca" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1769,6 +1791,42 @@ written, moved or deleted by Arca's tooling; <code>local/</code> and <code>local
 only directories it manages, and they are ignored while your certificates are
 present. The choice is remembered in <code>.arca-env</code>, so <code>bin/console</code> serves the
 same certificates.</p>
+<h3 id="running-the-tests">Running the tests<a class="headerlink" href="#running-the-tests" title="Permanent link">&para;</a></h3>
+<p>The self-contained TLS suites (<code>bin/test tls</code>, <code>bin/perf-test --tls</code>) never
+use <code>certs/</code>: they generate a throwaway CA into a Docker volume and verify
+against it.</p>
+<p><code>bin/test integration</code> runs against the server you started, exactly as you
+started it — it never restarts or reconfigures it — and verifies TLS for real:</p>
+<table>
+<thead>
+<tr>
+<th>Server started with</th>
+<th>The suite connects to</th>
+<th>Verified against</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>no <code>--tls</code></td>
+<td><code>http://arca:9000</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>--tls</code>, local certificates</td>
+<td><code>https://arca:9000</code></td>
+<td>the local CA</td>
+</tr>
+<tr>
+<td><code>--tls</code>, your certificates</td>
+<td><code>https://&lt;name&gt;:9000</code>, mapped to the Arca container</td>
+<td>the system CAs</td>
+</tr>
+</tbody>
+</table>
+<p>For your certificates, <code>&lt;name&gt;</code> is the first plain DNS name they list, or, if
+they only list wildcards, a concrete name under the first one (<code>*.example.org</code>
+→ <code>arca.example.org</code>). Set <code>ARCA_TLS_HOSTNAME</code> in <code>docker/.env</code> to choose it
+yourself — required only when the certificate lists no DNS name at all.</p>
 <h3 id="trusting-the-local-ca">Trusting the local CA<a class="headerlink" href="#trusting-the-local-ca" title="Permanent link">&para;</a></h3>
 <p>Trust <code>certs/local-ca/arca-ca.crt</code> once and every renewal is trusted too, for
 the ten years the CA lasts:</p>

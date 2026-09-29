@@ -71,7 +71,7 @@ bin/console stop                 # stop console
 # Tests
 bin/test                 # run unit + integration tests
 bin/test unit            # unit tests only
-bin/test integration     # integration tests only (server must be running)
+bin/test integration     # integration tests against the running server, as started (never recreated)
 bin/test unit -p arca-core   # pass extra args to cargo test
 bin/test tls             # TLS integration tests (self-contained)
 bin/test tls-permissions # TLS file-permission tests (named volume, self-contained)

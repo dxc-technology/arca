@@ -192,7 +192,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — KMS | 10 | Vault/OpenBAO key fetch, encrypted put/get, headers, ETag, multipart, copy, range, admin info |
 | Integration — TLS | 7 | HTTPS health/info/put/get/multipart, minio client, wrong CA rejection |
 | Shell libraries — image publishing | 40 | `bin/lib/images.sh` with `docker` mocked: release version guard (tag at HEAD, clean tree, Cargo.toml and console in agreement), release tags (`X.Y`/`latest` never move backwards, numeric sort, prereleases), buildx arguments per image, push by digest, index labels → annotations, Trivy gate on the image and on `Cargo.lock` |
-| Shell libraries — TLS certificates | 24 | `bin/lib/compose.sh` with `docker` mocked: your certificates in `certs/` detected (every extension, symlinks, generated subdirectories and unrelated files ignored), served with auto-detect and winning over existing local ones, otherwise `certs/local` with known names; `arca tls ensure` run as the host user with Arca's service group, for the build target's image, building it when missing, extra SANs from the environment or `docker/.env`; the choice surviving `.arca-env` save/load; throwaway certificates for the self-contained suites generated into a fresh named volume, never into `certs/` |
+| Shell libraries — TLS certificates | 32 | `bin/lib/compose.sh` with `docker` mocked: your certificates in `certs/` detected (every extension, symlinks, generated subdirectories and unrelated files ignored), served with auto-detect and winning over existing local ones, otherwise `certs/local` with known names; `arca tls ensure` run as the host user with Arca's service group, for the build target's image, building it when missing, extra SANs from the environment or `docker/.env`; the choice surviving `.arca-env` save/load; throwaway certificates for the self-contained suites generated into a fresh named volume, never into `certs/`; the integration suite pointed at the running server as started (plain, local CA, or your certificate under its first plain DNS SAN, a concrete name for a wildcard, or `ARCA_TLS_HOSTNAME`) |
 | Integration — TLS Permissions | 9 | modes and owning GID of `arca tls generate` output seen from inside a container, Arca (65532) serving HTTPS from the 0640 key, console (uid 100) serving HTTPS with the service GID, and the negative cases without it (no TLS, key unreadable) — staged in a named volume so ownership is real on macOS too |
 | Integration — PostgreSQL | 21 | buckets, objects, multipart, versioning, tags, lifecycle, copy, range, admin health, concurrent-write smoke (commit-ordered seq) |
 | Integration — Export/Import | 20 | export all/single/multiple sections, secret masking, import dry_run/skip/overwrite, masked credentials, node-identity guard, bucket create/skip, round-trip |
@@ -206,9 +206,9 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — Migrate DB | 1 | SQLite→PostgreSQL offline metadata migration + row-count verify |
 | Integration — Migrate Topology | 1 | single→cluster config emission + DB ops, then →single round-trip |
 | Connector integrations | 84 | Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Kafka, AMQP, Elasticsearch, Syslog, SMTP, gRPC — each: delivery, custom destination, delete event, multiple events, payload format, connectivity test |
-| **Arca tests** | **1,807** | **All tests written for this project** |
+| **Arca tests** | **1,815** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 825 | 369 pass, 365 fail, 91 skip — 0 unexpected failures (RGW-only extensions excluded) |
-| **Total** | **2,632** | |
+| **Total** | **2,640** | |
 
 ## License
 
