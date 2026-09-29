@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Unit tests for bin/lib/images.sh (published image names, release versioning
-# and multi-arch publishing). Run them with `bin/test images`, which executes
+# and multi-arch publishing). Run them with `bin/test scripts`, which executes
 # this file in a throwaway container.
 #
 # Every test runs in its own subshell, inside a scratch git repository, with

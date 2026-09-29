@@ -5,7 +5,8 @@
 #   source "$(dirname "$0")/lib/compose.sh"
 #
 # Usage:
-#   enable_tls              # register TLS feature
+#   enable_tls_auto         # register TLS, serving the user's certs/ or local ones
+#   prepare_local_certs     # keep the local certificates valid (after the build)
 #   enable_encryption       # register local-key encryption (global)
 #   enable_encryption_per_bucket  # register local-key encryption (per-bucket)
 #   enable_kms              # register KMS encryption (global)
@@ -19,6 +20,15 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 GENERATED_CONFIG="$REPO_ROOT/config/.generated.toml"
 ENV_FILE="$REPO_ROOT/.arca-env"
 FRAGMENTS_DIR="$REPO_ROOT/config/fragments"
+CERTS_DIR="$REPO_ROOT/certs"
+DOCKER_ENV_FILE="$REPO_ROOT/docker/.env"
+
+# SANs of the generated local certificate; ARCA_TLS_SANS (environment or
+# docker/.env) appends to them.
+LOCAL_TLS_SANS="localhost,127.0.0.1,::1,arca"
+
+# shellcheck source=bin/lib/images.sh
+source "$(dirname "${BASH_SOURCE[0]}")/images.sh"
 
 # Feature tracking
 _FEATURES=()
@@ -59,6 +69,69 @@ enable_tls_explicit() {
     fi
     _HAS_TLS=true
     _FEATURES+=(tls-explicit)
+}
+
+# --- TLS certificates ---
+#
+# `--tls` serves the user's own certificates when certs/ holds any, and
+# otherwise a local CA + server certificate in certs/local, which
+# `arca tls ensure` creates and keeps valid (the CA key sits in
+# certs/local-ca, never mounted in a container). The choice is made again on
+# every start, so dropping real certificates in certs/ wins at the next start
+# and removing them falls back to the local ones. Nothing in certs/ itself is
+# ever written.
+
+# Any certificate or key file directly in certs/ (symlinks followed; the
+# local*/ subdirectories are Arca's own).
+has_user_certs() {
+    [[ -n "$(find -L "$CERTS_DIR" -maxdepth 1 -type f \
+        \( -name '*.pem' -o -name '*.crt' -o -name '*.cert' -o -name '*.key' \) \
+        2>/dev/null | head -n 1)" ]]
+}
+
+enable_tls_auto() {
+    if has_user_certs; then
+        enable_tls                          # auto-detect, as with any cert_dir
+        export ARCA_CERTS_DIR=../certs
+    else
+        enable_tls_explicit                 # known names: the dir also holds the CA cert
+        export ARCA_CERTS_DIR=../certs/local
+    fi
+}
+
+# A value from the environment, else from docker/.env (quotes stripped).
+dotenv_value() {
+    local name="$1" value
+    if [[ -n "${!name:-}" ]]; then
+        echo "${!name}"
+        return
+    fi
+    [[ -f "$DOCKER_ENV_FILE" ]] || return 0
+    value="$(sed -n "s/^[[:space:]]*$name=//p" "$DOCKER_ENV_FILE" | tail -n 1)"
+    value="${value%\"}"; value="${value#\"}"
+    value="${value%\'}"; value="${value#\'}"
+    echo "$value"
+}
+
+# Keep certs/local valid with `arca tls ensure`; a no-op when serving the
+# user's certificates. Needs the arca image, so call it after the build. Runs
+# as the host user with Arca's service group: the host user owns the files,
+# Arca (65532) and the console (group_add 65532) read the 0640 key.
+prepare_local_certs() {
+    [[ "${ARCA_CERTS_DIR:-}" == "../certs/local" ]] || return 0
+    local image sans extra
+    image="$(image_repo arca):${BUILD_TARGET:-production}"
+    if ! docker image inspect "$image" >/dev/null 2>&1; then
+        $(compose_cmd) build arca || return 1
+    fi
+    sans="$LOCAL_TLS_SANS"
+    extra="$(dotenv_value ARCA_TLS_SANS)"
+    [[ -n "$extra" ]] && sans="$sans,$extra"
+    mkdir -p "$CERTS_DIR/local" "$CERTS_DIR/local-ca"
+    # Mounted at its relative path in the repository, so the paths the command
+    # prints (e.g. the CA certificate to trust) are the ones on the host.
+    docker run --rm --user "$(id -u):65532" -v "$CERTS_DIR:/repo/certs" -w /repo "$image" \
+        tls ensure --output-dir certs/local --ca-dir certs/local-ca --sans "$sans"
 }
 
 _check_encryption_conflict() {
@@ -443,6 +516,7 @@ save_env() {
         echo "# Arca environment state -- auto-generated, do not edit."
         echo "FEATURES=\"${_FEATURES[*]}\""
         echo "BUILD_TARGET=\"${BUILD_TARGET:-production}\""
+        echo "ARCA_CERTS_DIR=\"${ARCA_CERTS_DIR:-}\""
     } > "$ENV_FILE"
 }
 
@@ -455,6 +529,7 @@ load_env() {
     # Source the env file to get FEATURES and BUILD_TARGET
     local saved_features=""
     local saved_build_target=""
+    local saved_certs_dir=""
     while IFS='=' read -r key value; do
         # Skip comments and empty lines
         [[ "$key" =~ ^#.*$ || -z "$key" ]] && continue
@@ -464,12 +539,18 @@ load_env() {
         case "$key" in
             FEATURES)      saved_features="$value" ;;
             BUILD_TARGET)  saved_build_target="$value" ;;
+            ARCA_CERTS_DIR) saved_certs_dir="$value" ;;
         esac
     done < "$ENV_FILE"
 
     # Restore BUILD_TARGET
     if [[ -n "$saved_build_target" ]]; then
         export BUILD_TARGET="$saved_build_target"
+    fi
+
+    # Restore the certificate directory chosen at start (see enable_tls_auto)
+    if [[ -n "$saved_certs_dir" ]]; then
+        export ARCA_CERTS_DIR="$saved_certs_dir"
     fi
 
     # Re-register features

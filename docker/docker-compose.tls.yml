@@ -2,6 +2,10 @@
 #
 # Provides: tls-init service, certificate mounts, console HTTPS port.
 # Config is handled separately by docker-compose.config.yml.
+#
+# ARCA_CERTS_DIR is the certificate directory bin/arca chose at start:
+# ../certs (the user's own certificates) or ../certs/local (generated and
+# kept valid by `arca tls ensure`).
 
 services:
   tls-init:
@@ -14,14 +18,14 @@ services:
 
   arca:
     volumes:
-      - ../certs:/etc/arca/certs:ro
+      - ${ARCA_CERTS_DIR:-../certs}:/etc/arca/certs:ro
       - arca-data:/data
     ports:
       - "9000:9000"
 
   test:
     volumes:
-      - ../certs:/etc/arca/certs:ro
+      - ${ARCA_CERTS_DIR:-../certs}:/etc/arca/certs:ro
     profiles:
       - tls-test
 
@@ -34,7 +38,7 @@ services:
     # the compose equivalent of the fsGroup in deploy/kubernetes.
     group_add: ["65532"]
     volumes:
-      - ../certs:/etc/nginx/certs:ro
+      - ${ARCA_CERTS_DIR:-../certs}:/etc/nginx/certs:ro
     ports:
       - "9443:443"
     profiles:

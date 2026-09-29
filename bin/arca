@@ -8,7 +8,7 @@ set -euo pipefail
 #   bin/arca start -d                 Start in background
 #   bin/arca start -d --build         Start in background, rebuild image first
 #   bin/arca start -d --dev           Start development image (has shell)
-#   bin/arca start -d --tls           Start with TLS (requires certs in ./certs/)
+#   bin/arca start -d --tls           Start with TLS (your certs in ./certs/, or local ones)
 #   bin/arca start -d --encryption    Start with global encryption (local key)
 #   bin/arca start -d --encryption --per-bucket  Encryption available per-bucket only
 #   bin/arca start -d --kms           Start with global encryption (KMS)
@@ -43,7 +43,8 @@ usage_start() {
     echo "  -d              Run in background (detached)"
     echo "  --build         Rebuild the Docker image before starting"
     echo "  --dev           Use development image (debian-slim, has shell)"
-    echo "  --tls           Enable HTTPS (certificates must be in ./certs/)"
+    echo "  --tls           Enable HTTPS with your certificates in ./certs/, or, if there"
+    echo "                  are none, a local CA + certificate kept in ./certs/local"
     echo "  --encryption    Enable server-side encryption with local key"
     echo "  --kms           Enable server-side encryption with OpenBAO KMS"
     echo "  --per-bucket    Disable global encryption, enable per-bucket only"
@@ -119,7 +120,7 @@ cmd_start() {
         exit 1
     fi
 
-    if $want_tls; then enable_tls; fi
+    if $want_tls; then enable_tls_auto; fi
     if $want_encryption; then
         if $want_per_bucket; then enable_encryption_per_bucket
         else enable_encryption; fi
@@ -152,6 +153,9 @@ cmd_start() {
         fi
         bin/build "${build_args[@]}"
     fi
+
+    # Needs the image, hence after the build; a no-op for your own certificates.
+    prepare_local_certs
 
     if $_HAS_POSTGRES; then
         echo "Starting PostgreSQL..."

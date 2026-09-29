@@ -54,7 +54,7 @@ bin/build --push                 # publish the release at HEAD to ghcr.io (fallb
 # Run
 bin/arca start -d                # start server in background
 bin/arca start -d --build --dev  # rebuild dev image and start
-bin/arca start -d --tls          # start with TLS (certs in ./certs/)
+bin/arca start -d --tls          # start with TLS (your certs in ./certs/, else a local CA in certs/local)
 bin/arca start -d --encryption   # start with encryption (SSE-S3)
 bin/arca start -d --kms          # start with OpenBAO KMS
 bin/arca start -d --tls --kms    # combine features freely
@@ -75,7 +75,7 @@ bin/test integration     # integration tests only (server must be running)
 bin/test unit -p arca-core   # pass extra args to cargo test
 bin/test tls             # TLS integration tests (self-contained)
 bin/test tls-permissions # TLS file-permission tests (named volume, self-contained)
-bin/test images          # image publishing library tests (bin/lib/images.sh, docker mocked)
+bin/test scripts         # bin/lib shell library tests (tests/scripts/*_test.sh, docker mocked)
 bin/test encryption      # encryption integration tests
 bin/test per-bucket-encryption   # per-bucket encryption tests
 bin/test kms             # KMS integration tests (with OpenBAO)
@@ -219,7 +219,7 @@ their bare local names and are never pushed.
   `vX.Y.Z` tag push: native build per platform, Trivy gate, push by digest,
   then one tagged index per image. `bin/build --push` is the local fallback.
   Both are thin wrappers around `bin/lib/images.sh`, which holds all the
-  logic (and is unit-tested by `bin/test images`) — change the pipeline there,
+  logic (and is unit-tested by `bin/test scripts`) — change the pipeline there,
   not in the workflow.
 - **Metadata**: the static OCI labels (`source`, `description`, `licenses`,
   …) live in the `LABEL` of each Dockerfile; `source` is what links a GHCR

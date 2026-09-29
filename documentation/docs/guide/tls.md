@@ -34,43 +34,92 @@ Arca supports native TLS termination, serving HTTPS directly without a reverse p
 
     With `--tls`, the console does not preset an endpoint URL — enter the HTTPS URL (e.g. `https://your-domain:9000`) at the login screen.
 
-=== "Self-signed certificates"
+=== "No certificates (local CA)"
 
-    Generate a self-signed CA and server certificate:
+    With no certificate of your own in `certs/`, just start Arca with TLS:
 
     ```bash
-    # Build the image first if needed
-    bin/build
-
-    # Generate certs into ./certs/
-    mkdir -p certs
-    docker compose -f docker/docker-compose.yml -f docker/docker-compose.tls.yml \
-        --profile tls-init run --rm tls-init
+    bin/arca start -d --build --tls
     ```
 
-    This creates four files in `certs/`:
+    The first start creates a local CA and a server certificate signed by it,
+    valid for `localhost`, `127.0.0.1`, `::1` and `arca`:
 
-    | File | Description |
-    |------|-------------|
-    | `arca-ca.crt` | CA certificate (distribute to clients) |
-    | `arca-ca.key` | CA private key (keep secure) |
-    | `arca-server.crt` | Server certificate (signed by CA) |
-    | `arca-server.key` | Server private key |
-
-    Start Arca with TLS:
-
-    ```bash
-    bin/arca start -d --tls
+    ```
+    certs/
+      local/            mounted in Arca and the console
+        arca-server.crt   server certificate (1 year)
+        arca-server.key   server key
+        arca-ca.crt       copy of the CA certificate, for clients
+      local-ca/         never mounted in a container
+        arca-ca.crt       local CA certificate (10 years)
+        arca-ca.key       local CA key
     ```
 
-    Verify (passing the CA cert for trust):
+    Every later start checks them with [`arca tls ensure`](cli.md#arca-tls-ensure)
+    and renews only what is needed — the server certificate 30 days before it
+    expires, **always with the same CA** — so there is nothing to maintain.
+    To add names (e.g. the LAN name of the machine), set them in `docker/.env`:
 
     ```bash
-    curl --cacert certs/arca-ca.crt https://localhost:9000/admin/health
+    ARCA_TLS_SANS=s3.home.lan,192.168.1.10
+    ```
+
+    Verify, trusting the local CA:
+
+    ```bash
+    curl --cacert certs/local/arca-ca.crt https://localhost:9000/admin/health
     ```
 
     !!! warning
-        Self-signed certificates are suitable for development and internal testing. For production, use certificates issued by a trusted Certificate Authority.
+        The local CA is for development and local use only. Keep `certs/local-ca/arca-ca.key` private: anyone holding it can issue certificates your machine trusts.
+
+### Your certificates or the local ones
+
+`bin/arca start --tls` decides at **every** start, from what is in `certs/`:
+
+| `certs/` contains | Served |
+|-------------------|--------|
+| any `.pem`, `.crt`, `.cert` or `.key` file of yours (symlinks followed) | your certificates, auto-detected as usual |
+| nothing of yours | the local CA material in `certs/local/`, created or renewed as needed |
+
+Dropping your certificates into `certs/` therefore wins at the next start, and
+removing them falls back to the local ones. Nothing in `certs/` itself is ever
+written, moved or deleted by Arca's tooling; `local/` and `local-ca/` are the
+only directories it manages, and they are ignored while your certificates are
+present. The choice is remembered in `.arca-env`, so `bin/console` serves the
+same certificates.
+
+### Trusting the local CA
+
+Trust `certs/local-ca/arca-ca.crt` once and every renewal is trusted too, for
+the ten years the CA lasts:
+
+=== "macOS"
+
+    ```bash
+    sudo security add-trusted-cert -d -r trustRoot \
+        -k /Library/Keychains/System.keychain certs/local-ca/arca-ca.crt
+    ```
+
+    Safari and Chrome use the system keychain. Firefox keeps its own store:
+    *Settings → Privacy & Security → Certificates → View Certificates →
+    Authorities → Import*.
+
+=== "Debian / Ubuntu"
+
+    ```bash
+    sudo cp certs/local-ca/arca-ca.crt /usr/local/share/ca-certificates/arca-local-ca.crt
+    sudo update-ca-certificates
+    ```
+
+=== "S3 clients only"
+
+    ```bash
+    aws --ca-bundle certs/local/arca-ca.crt --endpoint-url https://localhost:9000 s3 ls
+    export AWS_CA_BUNDLE="$PWD/certs/local/arca-ca.crt"    # for every aws / boto3 call
+    mkdir -p ~/.mc/certs/CAs && cp certs/local/arca-ca.crt ~/.mc/certs/CAs/   # MinIO Client
+    ```
 
 ## Configuration
 

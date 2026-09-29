@@ -78,7 +78,7 @@ bin/arca start -d --build
 # Or, with no build at all, run a published release (linux/amd64 + linux/arm64):
 docker run -d --name arca -p 9000:9000 -v arca-data:/data ghcr.io/dxc-technology/arca:latest
 
-# Or with HTTPS (place cert + key PEM files in ./certs/ first):
+# Or with HTTPS: your cert + key PEM files in ./certs/, or a local CA made for you
 bin/arca start -d --build --tls
 
 # Credentials are printed on first startup — check the logs
@@ -158,7 +158,7 @@ All development happens inside Docker containers — no local toolchain required
 ```bash
 bin/build                # build Docker image
 bin/arca start -d --build --dev  # start in development mode (debian-slim, has shell)
-bin/arca start -d --build --tls  # start with HTTPS (certs in ./certs/)
+bin/arca start -d --build --tls  # start with HTTPS (your certs in ./certs/, or local ones)
 bin/arca stop            # stop server
 bin/arca logs -f         # follow server logs
 bin/test                 # run all tests (unit + integration)
@@ -191,7 +191,8 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — Per-bucket Encryption | 8 | per-bucket enable/disable, plain vs encrypted, ETag, head, revert |
 | Integration — KMS | 10 | Vault/OpenBAO key fetch, encrypted put/get, headers, ETag, multipart, copy, range, admin info |
 | Integration — TLS | 7 | HTTPS health/info/put/get/multipart, minio client, wrong CA rejection |
-| Image publishing library | 40 | `bin/lib/images.sh` with `docker` mocked: release version guard (tag at HEAD, clean tree, Cargo.toml and console in agreement), release tags (`X.Y`/`latest` never move backwards, numeric sort, prereleases), buildx arguments per image, push by digest, index labels → annotations, Trivy gate on the image and on `Cargo.lock` |
+| Shell libraries — image publishing | 40 | `bin/lib/images.sh` with `docker` mocked: release version guard (tag at HEAD, clean tree, Cargo.toml and console in agreement), release tags (`X.Y`/`latest` never move backwards, numeric sort, prereleases), buildx arguments per image, push by digest, index labels → annotations, Trivy gate on the image and on `Cargo.lock` |
+| Shell libraries — TLS certificate selection | 20 | `bin/lib/compose.sh` with `docker` mocked: your certificates in `certs/` detected (every extension, symlinks, generated subdirectories and unrelated files ignored), served with auto-detect and winning over existing local ones, otherwise `certs/local` with known names; `arca tls ensure` run as the host user with Arca's service group, for the build target's image, building it when missing, extra SANs from the environment or `docker/.env`; the choice surviving `.arca-env` save/load |
 | Integration — TLS Permissions | 9 | modes and owning GID of `arca tls generate` output seen from inside a container, Arca (65532) serving HTTPS from the 0640 key, console (uid 100) serving HTTPS with the service GID, and the negative cases without it (no TLS, key unreadable) — staged in a named volume so ownership is real on macOS too |
 | Integration — PostgreSQL | 21 | buckets, objects, multipart, versioning, tags, lifecycle, copy, range, admin health, concurrent-write smoke (commit-ordered seq) |
 | Integration — Export/Import | 20 | export all/single/multiple sections, secret masking, import dry_run/skip/overwrite, masked credentials, node-identity guard, bucket create/skip, round-trip |
@@ -205,9 +206,9 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — Migrate DB | 1 | SQLite→PostgreSQL offline metadata migration + row-count verify |
 | Integration — Migrate Topology | 1 | single→cluster config emission + DB ops, then →single round-trip |
 | Connector integrations | 84 | Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Kafka, AMQP, Elasticsearch, Syslog, SMTP, gRPC — each: delivery, custom destination, delete event, multiple events, payload format, connectivity test |
-| **Arca tests** | **1,783** | **All tests written for this project** |
+| **Arca tests** | **1,803** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 825 | 369 pass, 365 fail, 91 skip — 0 unexpected failures (RGW-only extensions excluded) |
-| **Total** | **2,608** | |
+| **Total** | **2,628** | |
 
 ## License
 

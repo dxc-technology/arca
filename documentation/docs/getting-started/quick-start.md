@@ -12,13 +12,14 @@ Get Arca running and perform your first S3 operations.
 
 === "HTTPS"
 
-    Place your TLS certificate and key PEM files in `certs/` at the repository root, then:
-
     ```bash
     bin/arca start -d --build --tls
     ```
 
-    See the [TLS guide](../guide/tls.md) for details on certificate setup including self-signed certificates for development.
+    Arca serves your certificate and key if you put their PEM files in `certs/`
+    at the repository root. Otherwise it creates a local CA and a certificate
+    for `localhost` on the first start, and keeps them valid. See the
+    [TLS guide](../guide/tls.md) for how to trust the local CA.
 
 !!! tip
     Drop the `-d` flag to run in the foreground and see logs in real time. Press ++ctrl+c++ to stop the server.

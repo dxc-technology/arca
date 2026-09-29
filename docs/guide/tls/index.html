@@ -585,6 +585,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Quick Start">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#your-certificates-or-the-local-ones" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Your certificates or the local ones
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#trusting-the-local-ca" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trusting the local CA
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1462,6 +1490,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Quick Start">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#your-certificates-or-the-local-ones" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Your certificates or the local ones
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#trusting-the-local-ca" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trusting the local CA
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1637,7 +1693,7 @@
 <h1 id="tls">TLS<a class="headerlink" href="#tls" title="Permanent link">&para;</a></h1>
 <p>Arca supports native TLS termination, serving HTTPS directly without a reverse proxy. TLS is configured via the <code>[server.tls]</code> section in the config file.</p>
 <h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Real certificates</label><label for="__tabbed_1_2">Self-signed certificates</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Real certificates</label><label for="__tabbed_1_2">No certificates (local CA)</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
 <p>Place your certificate and key PEM files in the <code>certs/</code> directory at the repository root:</p>
@@ -1657,73 +1713,106 @@
 <p>With <code>--tls</code>, the console does not preset an endpoint URL — enter the HTTPS URL (e.g. <code>https://your-domain:9000</code>) at the login screen.</p>
 </div>
 <div class="tabbed-block">
-<p>Generate a self-signed CA and server certificate:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Build the image first if needed</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>bin/build
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># Generate certs into ./certs/</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>certs
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>docker/docker-compose.yml<span class="w"> </span>-f<span class="w"> </span>docker/docker-compose.tls.yml<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">    </span>--profile<span class="w"> </span>tls-init<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>tls-init
+<p>With no certificate of your own in <code>certs/</code>, just start Arca with TLS:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--tls
 </code></pre></div>
-<p>This creates four files in <code>certs/</code>:</p>
+<p>The first start creates a local CA and a server certificate signed by it,
+valid for <code>localhost</code>, <code>127.0.0.1</code>, <code>::1</code> and <code>arca</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>certs/
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  local/            mounted in Arca and the console
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    arca-server.crt   server certificate (1 year)
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    arca-server.key   server key
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    arca-ca.crt       copy of the CA certificate, for clients
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>  local-ca/         never mounted in a container
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    arca-ca.crt       local CA certificate (10 years)
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    arca-ca.key       local CA key
+</code></pre></div>
+<p>Every later start checks them with <a href="../cli/#arca-tls-ensure"><code>arca tls ensure</code></a>
+and renews only what is needed — the server certificate 30 days before it
+expires, <strong>always with the same CA</strong> — so there is nothing to maintain.
+To add names (e.g. the LAN name of the machine), set them in <code>docker/.env</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nv">ARCA_TLS_SANS</span><span class="o">=</span>s3.home.lan,192.168.1.10
+</code></pre></div>
+<p>Verify, trusting the local CA:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>curl<span class="w"> </span>--cacert<span class="w"> </span>certs/local/arca-ca.crt<span class="w"> </span>https://localhost:9000/admin/health
+</code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>The local CA is for development and local use only. Keep <code>certs/local-ca/arca-ca.key</code> private: anyone holding it can issue certificates your machine trusts.</p>
+</div>
+</div>
+</div>
+</div>
+<h3 id="your-certificates-or-the-local-ones">Your certificates or the local ones<a class="headerlink" href="#your-certificates-or-the-local-ones" title="Permanent link">&para;</a></h3>
+<p><code>bin/arca start --tls</code> decides at <strong>every</strong> start, from what is in <code>certs/</code>:</p>
 <table>
 <thead>
 <tr>
-<th>File</th>
-<th>Description</th>
+<th><code>certs/</code> contains</th>
+<th>Served</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>arca-ca.crt</code></td>
-<td>CA certificate (distribute to clients)</td>
+<td>any <code>.pem</code>, <code>.crt</code>, <code>.cert</code> or <code>.key</code> file of yours (symlinks followed)</td>
+<td>your certificates, auto-detected as usual</td>
 </tr>
 <tr>
-<td><code>arca-ca.key</code></td>
-<td>CA private key (keep secure)</td>
-</tr>
-<tr>
-<td><code>arca-server.crt</code></td>
-<td>Server certificate (signed by CA)</td>
-</tr>
-<tr>
-<td><code>arca-server.key</code></td>
-<td>Server private key</td>
+<td>nothing of yours</td>
+<td>the local CA material in <code>certs/local/</code>, created or renewed as needed</td>
 </tr>
 </tbody>
 </table>
-<p>Start Arca with TLS:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--tls
+<p>Dropping your certificates into <code>certs/</code> therefore wins at the next start, and
+removing them falls back to the local ones. Nothing in <code>certs/</code> itself is ever
+written, moved or deleted by Arca's tooling; <code>local/</code> and <code>local-ca/</code> are the
+only directories it manages, and they are ignored while your certificates are
+present. The choice is remembered in <code>.arca-env</code>, so <code>bin/console</code> serves the
+same certificates.</p>
+<h3 id="trusting-the-local-ca">Trusting the local CA<a class="headerlink" href="#trusting-the-local-ca" title="Permanent link">&para;</a></h3>
+<p>Trust <code>certs/local-ca/arca-ca.crt</code> once and every renewal is trusted too, for
+the ten years the CA lasts:</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="2:3"><input checked="checked" id="__tabbed_2_1" name="__tabbed_2" type="radio" /><input id="__tabbed_2_2" name="__tabbed_2" type="radio" /><input id="__tabbed_2_3" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="__tabbed_2_1">macOS</label><label for="__tabbed_2_2">Debian / Ubuntu</label><label for="__tabbed_2_3">S3 clients only</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>sudo<span class="w"> </span>security<span class="w"> </span>add-trusted-cert<span class="w"> </span>-d<span class="w"> </span>-r<span class="w"> </span>trustRoot<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">    </span>-k<span class="w"> </span>/Library/Keychains/System.keychain<span class="w"> </span>certs/local-ca/arca-ca.crt
 </code></pre></div>
-<p>Verify (passing the CA cert for trust):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>curl<span class="w"> </span>--cacert<span class="w"> </span>certs/arca-ca.crt<span class="w"> </span>https://localhost:9000/admin/health
-</code></pre></div>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p>Self-signed certificates are suitable for development and internal testing. For production, use certificates issued by a trusted Certificate Authority.</p>
+<p>Safari and Chrome use the system keychain. Firefox keeps its own store:
+<em>Settings → Privacy &amp; Security → Certificates → View Certificates →
+Authorities → Import</em>.</p>
 </div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>sudo<span class="w"> </span>cp<span class="w"> </span>certs/local-ca/arca-ca.crt<span class="w"> </span>/usr/local/share/ca-certificates/arca-local-ca.crt
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>sudo<span class="w"> </span>update-ca-certificates
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>aws<span class="w"> </span>--ca-bundle<span class="w"> </span>certs/local/arca-ca.crt<span class="w"> </span>--endpoint-url<span class="w"> </span>https://localhost:9000<span class="w"> </span>s3<span class="w"> </span>ls
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AWS_CA_BUNDLE</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">/certs/local/arca-ca.crt&quot;</span><span class="w">    </span><span class="c1"># for every aws / boto3 call</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>~/.mc/certs/CAs<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cp<span class="w"> </span>certs/local/arca-ca.crt<span class="w"> </span>~/.mc/certs/CAs/<span class="w">   </span><span class="c1"># MinIO Client</span>
+</code></pre></div>
 </div>
 </div>
 </div>
 <h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
 <p>Three configuration scenarios are supported:</p>
 <h3 id="1-directory-only-auto-detect">1. Directory Only (Auto-Detect)<a class="headerlink" href="#1-directory-only-auto-detect" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">[server.tls]</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">cert_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="k">[server.tls]</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">cert_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs&quot;</span>
 </code></pre></div>
 <p>Arca scans the directory for PEM files (<code>.pem</code>, <code>.crt</code>, <code>.key</code>, <code>.cert</code>) and classifies them by reading PEM headers. Requires exactly one key file and at least one certificate file. Fails with a clear error if ambiguous.</p>
 <h3 id="2-directory-relative-filenames">2. Directory + Relative Filenames<a class="headerlink" href="#2-directory-relative-filenames" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">[server.tls]</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">cert_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs&quot;</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;server.crt&quot;</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">key_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;server.key&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">[server.tls]</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="n">cert_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs&quot;</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;server.crt&quot;</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="n">key_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;server.key&quot;</span>
 </code></pre></div>
 <p>Filenames are resolved relative to <code>cert_dir</code>. This is the recommended approach for most deployments.</p>
 <h3 id="3-absolute-paths">3. Absolute Paths<a class="headerlink" href="#3-absolute-paths" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">[server.tls]</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/ssl/certs/arca.pem&quot;</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">key_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/ssl/private/arca.key&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">[server.tls]</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/ssl/certs/arca.pem&quot;</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="n">key_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/ssl/private/arca.key&quot;</span>
 </code></pre></div>
 <p>Use this when the certificate and key are in different directories.</p>
 <h3 id="all-options">All Options<a class="headerlink" href="#all-options" title="Permanent link">&para;</a></h3>
@@ -1761,9 +1850,9 @@
 <p><strong>Validation rules</strong>: You must provide at least <code>cert_dir</code> alone (auto-detect), or both <code>cert_file</code> and <code>key_file</code>. Providing only one of <code>cert_file</code>/<code>key_file</code> without the other is an error.</p>
 <h2 id="production-setup">Production Setup<a class="headerlink" href="#production-setup" title="Permanent link">&para;</a></h2>
 <p>For production, use certificates issued by a trusted CA (e.g. Let's Encrypt, your organization's internal CA):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="k">[server.tls]</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/ssl/certs/arca.pem&quot;</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">key_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/ssl/private/arca.key&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="k">[server.tls]</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/ssl/certs/arca.pem&quot;</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="n">key_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/ssl/private/arca.key&quot;</span>
 </code></pre></div>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
@@ -1774,25 +1863,25 @@
 <blockquote>
 <p><strong>Private keys are group-readable, never other-readable.</strong></p>
 </blockquote>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>chgrp<span class="w"> </span><span class="m">65532</span><span class="w"> </span>/etc/ssl/private/arca.key
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>chmod<span class="w"> </span><span class="m">640</span><span class="w">   </span>/etc/ssl/private/arca.key
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>chgrp<span class="w"> </span><span class="m">65532</span><span class="w"> </span>/etc/ssl/private/arca.key
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>chmod<span class="w"> </span><span class="m">640</span><span class="w">   </span>/etc/ssl/private/arca.key
 </code></pre></div>
 <p><code>65532</code> is <strong>Arca's service GID</strong>: the <code>arca</code> container runs as <code>65532:65532</code>, and the key must be readable by it in any case. It is the distroless <code>nobody</code> GID, not a privilege boundary — treat it as "the identity Arca runs under", not as a general-purpose secrets group.</p>
 <p>The web console runs as the nginx package's own user, <code>100:101</code>, and in the Compose dev setup it reads the <em>same</em> key file. No owner and mode can grant read to both users without also granting it to <em>everyone</em>, so the console reaches the key through the key's <strong>group</strong> instead:</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="2:2"><input checked="checked" id="__tabbed_2_1" name="__tabbed_2" type="radio" /><input id="__tabbed_2_2" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="__tabbed_2_1">Docker Compose</label><label for="__tabbed_2_2">Kubernetes</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="3:2"><input checked="checked" id="__tabbed_3_1" name="__tabbed_3" type="radio" /><input id="__tabbed_3_2" name="__tabbed_3" type="radio" /><div class="tabbed-labels"><label for="__tabbed_3_1">Docker Compose</label><label for="__tabbed_3_2">Kubernetes</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nt">services</span><span class="p">:</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span><span class="nt">console</span><span class="p">:</span>
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="nt">group_add</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;65532&quot;</span><span class="p p-Indicator">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nt">services</span><span class="p">:</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">  </span><span class="nt">console</span><span class="p">:</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">    </span><span class="nt">group_add</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;65532&quot;</span><span class="p p-Indicator">]</span>
 </code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span><span class="nt">securityContext</span><span class="p">:</span>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="nt">runAsUser</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">100</span>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">    </span><span class="nt">runAsGroup</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">101</span>
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">    </span><span class="nt">fsGroup</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">65532</span><span class="w">          </span><span class="c1"># or: supplementalGroups: [65532]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">  </span><span class="nt">securityContext</span><span class="p">:</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">    </span><span class="nt">runAsUser</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">100</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">    </span><span class="nt">runAsGroup</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">101</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="w">    </span><span class="nt">fsGroup</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">65532</span><span class="w">          </span><span class="c1"># or: supplementalGroups: [65532]</span>
 </code></pre></div>
 </div>
 </div>
@@ -1829,20 +1918,20 @@
 <div class="admonition danger">
 <p class="admonition-title">Certbot rewrites the key on every renewal</p>
 <p>Let's Encrypt renewals replace <code>privkey.pem</code> as <code>root:root</code> mode <code>0600</code>. A one-time <code>chgrp</code> therefore reverts silently, and TLS breaks 60-90 days later — far from the change that caused it. Re-apply ownership from a deploy hook:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># /etc/letsencrypt/renewal-hooks/deploy/arca-permissions.sh</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="c1">#!/bin/sh</span>
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="nb">set</span><span class="w"> </span>-e
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="nv">KEY</span><span class="o">=</span><span class="s2">&quot;/etc/letsencrypt/live/example.com/privkey.pem&quot;</span>
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>chgrp<span class="w"> </span><span class="m">65532</span><span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>realpath<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$KEY</span><span class="s2">&quot;</span><span class="k">)</span><span class="s2">&quot;</span>
-<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>chmod<span class="w"> </span><span class="m">640</span><span class="w">   </span><span class="s2">&quot;</span><span class="k">$(</span>realpath<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$KEY</span><span class="s2">&quot;</span><span class="k">)</span><span class="s2">&quot;</span>
-<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>docker<span class="w"> </span><span class="nb">kill</span><span class="w"> </span>--signal<span class="o">=</span>HUP<span class="w"> </span>arca<span class="w">     </span><span class="c1"># pick up the new certificate</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1"># /etc/letsencrypt/renewal-hooks/deploy/arca-permissions.sh</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="c1">#!/bin/sh</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="nb">set</span><span class="w"> </span>-e
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="nv">KEY</span><span class="o">=</span><span class="s2">&quot;/etc/letsencrypt/live/example.com/privkey.pem&quot;</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>chgrp<span class="w"> </span><span class="m">65532</span><span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>realpath<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$KEY</span><span class="s2">&quot;</span><span class="k">)</span><span class="s2">&quot;</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>chmod<span class="w"> </span><span class="m">640</span><span class="w">   </span><span class="s2">&quot;</span><span class="k">$(</span>realpath<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$KEY</span><span class="s2">&quot;</span><span class="k">)</span><span class="s2">&quot;</span>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>docker<span class="w"> </span><span class="nb">kill</span><span class="w"> </span>--signal<span class="o">=</span>HUP<span class="w"> </span>arca<span class="w">     </span><span class="c1"># pick up the new certificate</span>
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>chmod<span class="w"> </span>+x<span class="w"> </span>/etc/letsencrypt/renewal-hooks/deploy/arca-permissions.sh
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="c1"># or, one-off:  certbot renew --deploy-hook /path/to/arca-permissions.sh</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>chmod<span class="w"> </span>+x<span class="w"> </span>/etc/letsencrypt/renewal-hooks/deploy/arca-permissions.sh
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="c1"># or, one-off:  certbot renew --deploy-hook /path/to/arca-permissions.sh</span>
 </code></pre></div>
 <p>Certbot's <code>live/</code> entries are symlinks into <code>archive/</code>, hence the <code>realpath</code> — and note that <code>archive/</code> and <code>live/</code> themselves default to <code>0700</code>, so the container also needs <code>chmod 0750</code> + <code>chgrp 65532</code> on both directories, or a copy of the material into a directory you own.</p>
 <p>Where group ownership cannot be changed (a shared key, another service's requirements), grant an ACL entry instead:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>setfacl<span class="w"> </span>-m<span class="w"> </span>g:65532:r<span class="w"> </span>/etc/ssl/private/arca.key
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>setfacl<span class="w"> </span>-m<span class="w"> </span>g:65532:r<span class="w"> </span>/etc/ssl/private/arca.key
 </code></pre></div>
 </div>
 <div class="admonition warning">
@@ -1851,34 +1940,34 @@
 </div>
 <h2 id="certificate-rotation">Certificate Rotation<a class="headerlink" href="#certificate-rotation" title="Permanent link">&para;</a></h2>
 <p>Arca supports zero-downtime certificate rotation via SIGHUP. When the server receives a SIGHUP signal, it re-reads the certificate and key files from disk and applies them to new connections. Existing connections are not affected.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># Replace certificate files on disk, then:</span>
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="nb">kill</span><span class="w"> </span>-HUP<span class="w"> </span><span class="k">$(</span>pgrep<span class="w"> </span>arca<span class="k">)</span>
-<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>
-<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="c1"># When running in Docker (no shell in the container):</span>
-<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>docker<span class="w"> </span><span class="nb">kill</span><span class="w"> </span>--signal<span class="o">=</span>HUP<span class="w"> </span>arca
-<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="c1"># or with Docker Compose:</span>
-<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">kill</span><span class="w"> </span>--signal<span class="o">=</span>HUP<span class="w"> </span>arca
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="c1"># Replace certificate files on disk, then:</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="nb">kill</span><span class="w"> </span>-HUP<span class="w"> </span><span class="k">$(</span>pgrep<span class="w"> </span>arca<span class="k">)</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="c1"># When running in Docker (no shell in the container):</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>docker<span class="w"> </span><span class="nb">kill</span><span class="w"> </span>--signal<span class="o">=</span>HUP<span class="w"> </span>arca
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="c1"># or with Docker Compose:</span>
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a>docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">kill</span><span class="w"> </span>--signal<span class="o">=</span>HUP<span class="w"> </span>arca
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>INFO TLS certificates reloaded
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>INFO TLS certificates reloaded
 </code></pre></div>
 <p>If the new files are invalid, the reload fails gracefully and the server continues using the previous certificates:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>ERROR TLS reload failed (keeping old config): ...
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>ERROR TLS reload failed (keeping old config): ...
 </code></pre></div>
 <h2 id="mtls-mutual-tls">mTLS (Mutual TLS)<a class="headerlink" href="#mtls-mutual-tls" title="Permanent link">&para;</a></h2>
 <p>For client certificate verification, add a <code>ca_file</code> pointing to the CA that signed your client certificates:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="k">[server.tls]</span>
-<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="n">cert_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs&quot;</span>
-<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;server.crt&quot;</span>
-<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="n">key_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;server.key&quot;</span>
-<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="n">ca_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;client-ca.crt&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="k">[server.tls]</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="n">cert_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs&quot;</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="n">cert_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;server.crt&quot;</span>
+<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="n">key_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;server.key&quot;</span>
+<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a><span class="n">ca_file</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;client-ca.crt&quot;</span>
 </code></pre></div>
 <p>When <code>ca_file</code> is set, the server requires clients to present a valid certificate signed by the specified CA.</p>
 <h2 id="arca-tls-generate"><code>arca tls generate</code><a class="headerlink" href="#arca-tls-generate" title="Permanent link">&para;</a></h2>
 <p>Generate a self-signed CA and server certificate for development and testing. See the <a href="../cli/#arca-tls-generate">CLI Reference</a> for full usage.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>arca<span class="w"> </span>tls<span class="w"> </span>generate<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="w">    </span>--output-dir<span class="w"> </span>/etc/arca/certs<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="w">    </span>--sans<span class="w"> </span><span class="s2">&quot;myhost.example.com,localhost,127.0.0.1,::1&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="w">    </span>--days<span class="w"> </span><span class="m">365</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>arca<span class="w"> </span>tls<span class="w"> </span>generate<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="w">    </span>--output-dir<span class="w"> </span>/etc/arca/certs<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="w">    </span>--sans<span class="w"> </span><span class="s2">&quot;myhost.example.com,localhost,127.0.0.1,::1&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="w">    </span>--days<span class="w"> </span><span class="m">365</span>
 </code></pre></div>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
@@ -1887,7 +1976,7 @@
 <h2 id="console-https">Console HTTPS<a class="headerlink" href="#console-https" title="Permanent link">&para;</a></h2>
 <p>When using <code>--tls</code>, the web console also serves over HTTPS. The console entrypoint auto-detects certificate and key PEM files in the mounted <code>certs/</code> directory (skipping CA files) and switches nginx to TLS mode.</p>
 <p>The console runs as uid <code>100</code>, not as Arca's <code>65532</code>, so it reads the private key through the supplementary group described in <a href="#file-permissions">File Permissions</a>. If the key is there but unreadable, the entrypoint logs a <code>WARNING</code> and keeps serving plain HTTP on port 80 — check <code>bin/console logs</code> when port 9443 refuses connections.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--tls
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--tls
 </code></pre></div>
 <p>The console is available on <strong>port 9443</strong> (HTTPS). At the login screen, enter the Arca HTTPS endpoint (e.g. <code>https://your-domain:9000</code>) and your credentials.</p>
 <div class="admonition note">

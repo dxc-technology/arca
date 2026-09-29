@@ -10,7 +10,7 @@ set -euo pipefail
 #   bin/test unit -p arca-core   Pass extra args to cargo test
 #   bin/test tls          Run TLS integration tests
 #   bin/test tls-permissions  Run TLS file-permission tests (non-root containers)
-#   bin/test images       Run image publishing library tests (bin/lib/images.sh)
+#   bin/test scripts      Run the bin/lib shell library tests (tests/scripts)
 #   bin/test encryption   Run encryption integration tests
 #   bin/test per-bucket-encryption  Run per-bucket encryption tests
 #   bin/test recrypt      Run HOT re-encryption (maintenance jobs) tests
@@ -45,12 +45,13 @@ run_integration() {
     $COMPOSE run --rm test "$@"
 }
 
-run_images() {
-    echo "==> Running image publishing library tests..."
-    # Plain Alpine plus the three tools the library needs; the tests mock
-    # `docker`, so no daemon or registry is involved.
+run_scripts() {
+    echo "==> Running shell library tests..."
+    # Plain Alpine plus the tools the libraries need; the tests mock `docker`,
+    # so no daemon or registry is involved.
     docker run --rm -v "$PWD:/work:ro" -w /work alpine sh -c \
-        'apk add --no-cache bash git jq >/dev/null && bash tests/scripts/images_test.sh'
+        'apk add --no-cache bash git jq >/dev/null && rc=0 &&
+         for t in tests/scripts/*_test.sh; do bash "$t" || rc=1; echo; done; exit $rc'
 }
 
 run_tls() {
@@ -1577,8 +1578,8 @@ case "${1:-all}" in
         shift
         run_cluster "$@"
         ;;
-    images)
-        run_images
+    scripts)
+        run_scripts
         ;;
     connectors)
         shift
@@ -1602,7 +1603,7 @@ case "${1:-all}" in
         echo "  integration          Run integration tests only (server must be running)"
         echo "  tls                  Run TLS integration tests (self-contained)"
         echo "  tls-permissions      Run TLS file-permission tests (self-contained)"
-        echo "  images               Run image publishing library tests (bin/lib/images.sh)"
+        echo "  scripts              Run the bin/lib shell library tests (tests/scripts)"
         echo "  encryption           Run encryption integration tests"
         echo "  compression          Run compression integration tests"
         echo "  per-bucket-encryption  Run per-bucket encryption tests"

@@ -1454,10 +1454,12 @@
 </code></pre></div>
 </div>
 <div class="tabbed-block">
-<p>Place your TLS certificate and key PEM files in <code>certs/</code> at the repository root, then:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--tls
 </code></pre></div>
-<p>See the <a href="../../guide/tls/">TLS guide</a> for details on certificate setup including self-signed certificates for development.</p>
+<p>Arca serves your certificate and key if you put their PEM files in <code>certs/</code>
+at the repository root. Otherwise it creates a local CA and a certificate
+for <code>localhost</code> on the first start, and keeps them valid. See the
+<a href="../../guide/tls/">TLS guide</a> for how to trust the local CA.</p>
 </div>
 </div>
 </div>
