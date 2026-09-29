@@ -9,11 +9,15 @@ set -euo pipefail
 #   bin/build --console             Build console image
 #   bin/build --binary              Extract Linux binary to build/
 #   bin/build --binary --arch amd64 Cross-compile Linux binary for x86_64
+#   bin/build --push                Publish the release at HEAD to ghcr.io
+#                                   (multi-arch; normally done by CI)
 
 cd "$(git rev-parse --show-toplevel)"
+source bin/lib/images.sh
 
 BINARY=false
 CONSOLE=false
+PUSH=false
 ARCH=""
 
 while [[ $# -gt 0 ]]; do
@@ -30,6 +34,10 @@ while [[ $# -gt 0 ]]; do
             BINARY=true
             shift
             ;;
+        --push)
+            PUSH=true
+            shift
+            ;;
         --arch)
             if [[ -z "${2:-}" ]]; then
                 echo "Error: --arch requires a value (amd64 or arm64)" >&2
@@ -39,13 +47,17 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         -h|--help)
-            echo "Usage: bin/build [--dev] [--console] [--binary [--arch ARCH]]"
+            echo "Usage: bin/build [--dev] [--console] [--binary [--arch ARCH]] [--push]"
             echo ""
             echo "Options:"
             echo "  --dev          Build development image (debian-slim, has shell)"
             echo "  --console      Build the web console image"
             echo "  --binary       Extract Linux server binary to build/ (for deployment)"
             echo "  --arch ARCH    Target architecture: amd64 or arm64 (default: host arch)"
+            echo "  --push         Build, scan and publish both production images (amd64 + arm64)"
+            echo "                 to $ARCA_REGISTRY for the release tag at HEAD. The"
+            echo "                 publish-images workflow does this on every release tag; use"
+            echo "                 this only as a fallback. Needs 'docker login ghcr.io'."
             exit 0
             ;;
         *)
@@ -55,6 +67,11 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+if $PUSH && { $BINARY || $CONSOLE || [[ -n "$ARCH" || "${BUILD_TARGET:-}" == "development" ]]; }; then
+    echo "Error: --push takes no other option: it always publishes both production images" >&2
+    exit 1
+fi
 
 if [[ -n "$ARCH" && "$BINARY" == false ]]; then
     echo "Error: --arch requires --binary" >&2
@@ -80,7 +97,9 @@ fi
 # Grab git commit hash for embedding in the image.
 GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
-if $BINARY; then
+if $PUSH; then
+    publish_release
+elif $BINARY; then
     # Determine target platform
     if [[ -z "$ARCH" ]]; then
         ARCH=$(uname -m)

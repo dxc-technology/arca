@@ -12,6 +12,15 @@
 # "Base Image Pinning and Upgrades" in AGENTS.md.
 FROM alpine:3.24.1
 
+# OCI metadata. `source` is what links the package on ghcr.io to this
+# repository; GHCR shows `description` on the package page. Version and
+# revision are added at publish time by bin/lib/images.sh.
+LABEL org.opencontainers.image.title="Arca Console" \
+      org.opencontainers.image.description="Web console for Arca, the S3-compatible object storage server" \
+      org.opencontainers.image.source="https://github.com/dxc-technology/arca" \
+      org.opencontainers.image.url="https://dxc-technology.github.io/arca/guide/console/" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later"
+
 # Run as the nginx package's unprivileged `nginx` user instead of root.
 # Binding ports 80/443 as non-root needs CAP_NET_BIND_SERVICE on the binary
 # itself (Docker grants that capability to containers by default).

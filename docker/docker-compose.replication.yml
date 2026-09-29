@@ -3,7 +3,7 @@ services:
   # service replicates to this instance via the PutBucketReplication rules
   # configured in the integration test setup.
   arca-replica:
-    image: arca
+    image: ghcr.io/dxc-technology/arca:${BUILD_TARGET:-production}
     build:
       context: ..
       dockerfile: docker/Dockerfile

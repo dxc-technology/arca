@@ -39,11 +39,7 @@ blob_prefix_depth = 2
 ```yaml
 services:
   arca:
-    image: arca
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-      target: production
+    image: ghcr.io/dxc-technology/arca:X.Y.Z   # pin a release, see Installation
     ports:
       - "9000:9000"
     volumes:
@@ -206,7 +202,7 @@ Customize before applying:
 | Placeholder / Setting | Description |
 |----------------------|-------------|
 | `NAMESPACE` | Target Kubernetes namespace |
-| `image: arca-console:latest` | Your container registry and tag |
+| `image: ghcr.io/dxc-technology/arca-console:latest` | Pin the release tag (`X.Y.Z`) matching your Arca server, or your own registry |
 | `ARCA_ENDPOINT` | URL of the Arca server (e.g. `http://arca:9000` for in-cluster) |
 | `host: console.example.com` | Ingress hostname for the console |
 | `ingressClassName` | Your ingress controller class (uncomment) |

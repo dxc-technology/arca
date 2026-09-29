@@ -1,6 +1,9 @@
 services:
   arca:
-    image: arca
+    # Local builds are tagged after their build target, never with a release
+    # tag: `:production` / `:development` cannot shadow the published
+    # `:latest` or `:X.Y.Z` images (see bin/lib/images.sh).
+    image: ghcr.io/dxc-technology/arca:${BUILD_TARGET:-production}
     build:
       context: ..
       dockerfile: docker/Dockerfile
@@ -48,7 +51,7 @@ services:
       - test
 
   console:
-    image: arca-console
+    image: ghcr.io/dxc-technology/arca-console:production
     build:
       context: ../console
       dockerfile: Dockerfile
@@ -95,7 +98,7 @@ services:
       - perf
 
   screenshots-console:
-    image: arca-console
+    image: ghcr.io/dxc-technology/arca-console:production
     build:
       context: ../console
       dockerfile: Dockerfile

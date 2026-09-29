@@ -66,6 +66,15 @@ CMD ["test", "--workspace"]
 # Stage 3: Production runtime (minimal — no OS, no shell, no tools)
 FROM scratch AS production
 
+# OCI metadata. `source` is what links the package on ghcr.io to this
+# repository; GHCR shows `description` on the package page. Version and
+# revision are added at publish time by bin/lib/images.sh.
+LABEL org.opencontainers.image.title="Arca" \
+      org.opencontainers.image.description="S3-compatible object storage server with at-rest encryption, versioning, access control and high availability" \
+      org.opencontainers.image.source="https://github.com/dxc-technology/arca" \
+      org.opencontainers.image.url="https://dxc-technology.github.io/arca/" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later"
+
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /build/target/release/arca /usr/local/bin/arca
 COPY config/default.toml /etc/arca/config.toml

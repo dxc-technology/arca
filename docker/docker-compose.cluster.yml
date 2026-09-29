@@ -23,7 +23,7 @@
 # host port only and reach partitioned nodes from inside the mgmt network.
 
 x-arca-node: &arca-node
-  image: arca
+  image: ghcr.io/dxc-technology/arca:${BUILD_TARGET:-production}
   build:
     context: ..
     dockerfile: docker/Dockerfile
@@ -123,7 +123,7 @@ services:
 
   # Web console, pointed at the load balancer (like a real deployment).
   console:
-    image: arca-console
+    image: ghcr.io/dxc-technology/arca-console:production
     build:
       context: ../console
       dockerfile: Dockerfile

@@ -642,7 +642,7 @@ The console can run on a different host or network from Arca. The browser (not t
 ```yaml
 services:
   console:
-    image: arca-console
+    image: ghcr.io/dxc-technology/arca-console:latest
     ports:
       - "9080:80"
     environment:

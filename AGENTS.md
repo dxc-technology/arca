@@ -49,6 +49,7 @@ bin/build --dev                  # build development image (has shell)
 bin/build --console              # build console image
 bin/build --binary               # extract Linux binary to build/arca-<arch>
 bin/build --binary --arch amd64  # cross-compile for x86_64
+bin/build --push                 # publish the release at HEAD to ghcr.io (fallback; CI does it)
 
 # Run
 bin/arca start -d                # start server in background
@@ -74,6 +75,7 @@ bin/test integration     # integration tests only (server must be running)
 bin/test unit -p arca-core   # pass extra args to cargo test
 bin/test tls             # TLS integration tests (self-contained)
 bin/test tls-permissions # TLS file-permission tests (named volume, self-contained)
+bin/test images          # image publishing library tests (bin/lib/images.sh, docker mocked)
 bin/test encryption      # encryption integration tests
 bin/test per-bucket-encryption   # per-bucket encryption tests
 bin/test kms             # KMS integration tests (with OpenBAO)
@@ -181,17 +183,52 @@ Procedure:
    (see the `time`/TD-017 bullet under Build constraints), and Alpine branch
    changes can move the C dependencies `ring`/`rdkafka` build against.
 
-4. **Rebuild and verify.** `bin/build --dev && bin/build --console`, then
-   `bin/test unit` and `bin/test integration`, then scan: `trivy image` must
-   report **0 findings** for `arca`, `arca-console`, `arca-webhook-receiver`
-   and `arca-grpc-receiver`. Scan the old and the new image with the *same*
-   tool before claiming an improvement — counts from different scanners are
-   not comparable.
+4. **Rebuild and verify.** `bin/build && bin/build --console` (the
+   production images — `--dev` builds the Debian image, which never ships),
+   then `bin/test unit` and `bin/test integration`, then scan: `trivy image`
+   must report **0 findings** for `ghcr.io/dxc-technology/arca:production`,
+   `ghcr.io/dxc-technology/arca-console:production`, `arca-webhook-receiver`
+   and `arca-grpc-receiver`. An image scan of `arca` checks next to nothing
+   — scratch has no package database and the Rust binary is not built with
+   `cargo auditable` — so also run `trivy fs --scanners vuln Cargo.lock`,
+   which the publish pipeline enforces too (`image_verify` in
+   `bin/lib/images.sh`). Scan the old and the new image with the *same* tool
+   before claiming an improvement — counts from different scanners are not
+   comparable.
 
 5. **Record it in `CHANGELOG.md`** — and nowhere else. If the bump changed a
    package pin or the Rust version, say so there. No other file should need
    editing; if one does, it was carrying a version it shouldn't have. Then
    `bin/docs-build` if you touched the changelog (the docs site symlinks it).
+
+## Published Container Images
+
+Only the two production images are published, to the GitHub Container
+Registry, as multi-arch (`linux/amd64` + `linux/arm64`) images:
+`ghcr.io/dxc-technology/arca` and `ghcr.io/dxc-technology/arca-console`. Test
+and tooling images (`arca-test`, `arca-unit-test`, the receivers, …) keep
+their bare local names and are never pushed.
+
+- **Release tags** are `X.Y.Z`, plus `X.Y` and `latest` when the release is
+  the newest of its minor line / overall. They exist only in the registry.
+- **Local builds** are tagged after their build target —
+  `ghcr.io/dxc-technology/arca:production` / `:development` (the compose
+  `image:` interpolates `BUILD_TARGET`) and `arca-console:production` — so a
+  working-tree build never carries a release tag or shadows `latest`.
+- **Publishing** happens in `.github/workflows/publish-images.yml` on every
+  `vX.Y.Z` tag push: native build per platform, Trivy gate, push by digest,
+  then one tagged index per image. `bin/build --push` is the local fallback.
+  Both are thin wrappers around `bin/lib/images.sh`, which holds all the
+  logic (and is unit-tested by `bin/test images`) — change the pipeline there,
+  not in the workflow.
+- **Metadata**: the static OCI labels (`source`, `description`, `licenses`,
+  …) live in the `LABEL` of each Dockerfile; `source` is what links a GHCR
+  package to this repository. `version` and `revision` are added at publish
+  time, and all labels are copied to index-level annotations, which is where
+  GHCR reads a multi-arch image's description from.
+
+The release procedure, including the one-time package visibility setup, is in
+`RELEASING.md`.
 
 ## Documentation
 

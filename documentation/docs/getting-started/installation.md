@@ -6,6 +6,38 @@
 - **aws-cli** or **MinIO Client (mc)** (optional, for S3 CLI operations)
 - **Git**
 
+## Pre-built Images
+
+Every release after v0.30.2 is published to the GitHub Container Registry as a
+multi-arch image for `linux/amd64` and `linux/arm64`, so the same tag runs on x86 servers
+and on Apple Silicon or ARM hosts:
+
+| Image | Content |
+|-------|---------|
+| `ghcr.io/dxc-technology/arca` | Arca server — the scratch-based production image |
+| `ghcr.io/dxc-technology/arca-console` | Web console |
+
+Each release is published under three tags:
+
+| Tag | Points to |
+|-----|-----------|
+| `X.Y.Z` | Exactly that release — use this in production |
+| `X.Y` | The newest patch release of the `X.Y` line |
+| `latest` | The newest release |
+
+There is no major-only tag while Arca is at `0.x`, where a minor release may
+break compatibility. A prerelease (`X.Y.Z-rc.N`) gets its exact tag only.
+
+```bash
+docker run -d --name arca -p 9000:9000 -v arca-data:/data \
+    ghcr.io/dxc-technology/arca:latest
+docker logs arca | grep "Access Key"
+```
+
+The images carry standard OCI labels (`org.opencontainers.image.version`,
+`.revision`, `.source`, …), so `docker inspect` tells which release and commit
+a running container was built from.
+
 ## Clone and Build
 
 ```bash
@@ -108,6 +140,12 @@ version tag, so rebuilding months later yields the same toolchain and the same
 runtime packages. Auxiliary test and tooling images are intentionally left on
 floating tags. The exact tags in force are the ones in `docker/Dockerfile` and
 `console/Dockerfile`.
+
+Local builds are tagged after their build target —
+`ghcr.io/dxc-technology/arca:production`, `ghcr.io/dxc-technology/arca:development`
+and `ghcr.io/dxc-technology/arca-console:production` — never with a release tag,
+so a build of your working tree can neither pass for a release nor shadow the
+published `latest`.
 
 Switch between them using `BUILD_TARGET`:
 

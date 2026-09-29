@@ -10,7 +10,8 @@
 #   kubectl apply -f arca-cluster.yaml -n <your-namespace>
 #
 # Prerequisites:
-#   - Arca image built from docker/Dockerfile, pushed to your registry.
+#   - The published ghcr.io/dxc-technology/arca image (multi-arch, one per
+#     release), or your own build of docker/Dockerfile pushed to your registry.
 #   - A default StorageClass (or set one on the volumeClaimTemplate).
 #   - ALL pods MUST share: the same cluster secret, the same root credentials,
 #     and — if you enable encryption — the same master key / KMS. The single
@@ -152,7 +153,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: arca
-          image: arca:latest        # <-- replace with your registry/tag
+          image: ghcr.io/dxc-technology/arca:latest   # <-- pin a release (X.Y.Z) in production
           args: ["serve", "--config-path", "/etc/arca/config.toml"]
           securityContext:
             allowPrivilegeEscalation: false

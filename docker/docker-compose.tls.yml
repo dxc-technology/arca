@@ -5,7 +5,7 @@
 
 services:
   tls-init:
-    image: arca
+    image: ghcr.io/dxc-technology/arca:${BUILD_TARGET:-production}
     volumes:
       - ../certs:/etc/arca/certs
     entrypoint: ["/usr/local/bin/arca", "tls", "generate", "--output-dir", "/etc/arca/certs", "--sans", "arca,localhost,127.0.0.1,::1"]

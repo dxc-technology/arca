@@ -6,11 +6,12 @@
 #
 # Prerequisites:
 #   - Arca server reachable from the cluster (set ARCA_ENDPOINT below)
-#   - Container image built from console/Dockerfile and pushed to your registry
+#   - The published ghcr.io/dxc-technology/arca-console image (multi-arch), or
+#     your own build of console/Dockerfile pushed to your registry
 #
 # Customization:
 #   - Adjust ARCA_ENDPOINT to point to your Arca server (internal service or external URL)
-#   - Update the image registry/tag to match your CI pipeline
+#   - Pin the image to the release tag (X.Y.Z) of the Arca server it fronts
 #   - For TLS on the console itself, mount certs and use nginx-tls.conf (see console docs)
 
 ---
@@ -50,7 +51,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: console
-          image: arca-console:latest    # <-- replace with your registry/tag
+          image: ghcr.io/dxc-technology/arca-console:latest   # <-- pin a release (X.Y.Z)
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

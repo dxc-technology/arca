@@ -1,0 +1,129 @@
+# Publishes Arca's two production images, ghcr.io/dxc-technology/arca and
+# ghcr.io/dxc-technology/arca-console, as multi-arch (amd64 + arm64) images
+# whenever a release tag is pushed. See step 11 of RELEASING.md.
+#
+# Every platform builds natively on its own runner (no QEMU: an emulated Rust
+# release build takes hours), is scanned by Trivy and pushed by digest only,
+# untagged. Once all four builds pass, the merge jobs stitch the digests into
+# one index per image and apply the release tags, so a scan failure on any
+# platform publishes no tag at all. The logic lives in bin/lib/images.sh,
+# shared with the local `bin/build --push` fallback.
+#
+# Publishing with GITHUB_TOKEN links each package to this repository, and the
+# package inherits the repository's access settings.
+name: Publish images
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  # Re-publishing a release: run it on the release tag, not on a branch
+  # (release_version refuses any ref that is not a release tag).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-images-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.image }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        image: [arca, arca-console]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-26.04
+          - arch: arm64
+            runner: ubuntu-26.04-arm
+    env:
+      IMAGE: ${{ matrix.image }}
+      PLATFORM: linux/${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Before logging in: the scan runs with no registry credentials around.
+      - name: Build and scan
+        id: verify
+        run: |
+          source bin/lib/images.sh
+          version="$(release_version)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          use_publish_builder
+          image_verify "$IMAGE" "$version" "$PLATFORM"
+
+      - name: Log in to ghcr.io
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      # Same builder as the scan, so this reuses its cache instead of rebuilding.
+      - name: Push by digest
+        env:
+          VERSION: ${{ steps.verify.outputs.version }}
+        run: |
+          source bin/lib/images.sh
+          use_publish_builder
+          digest="$(image_push_digest "$IMAGE" "$VERSION" "$PLATFORM")"
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${digest#sha256:}"
+
+      # Named arch-first: `digest-*-arca` must not also match arca-console.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digest-${{ matrix.arch }}-${{ matrix.image }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Publish ${{ matrix.image }}
+    needs: build
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        image: [arca, arca-console]
+    env:
+      IMAGE: ${{ matrix.image }}
+    steps:
+      # Full history: release_tags compares against every release tag.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: digest-*-${{ matrix.image }}
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+
+      - name: Log in to ghcr.io
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Create and tag the multi-arch index
+        run: |
+          source bin/lib/images.sh
+          version="$(release_version)"
+          repo="$(image_repo "$IMAGE")"
+          sources=()
+          for digest in "$RUNNER_TEMP"/digests/*; do
+            sources+=("$repo@sha256:$(basename "$digest")")
+          done
+          publish_index "$IMAGE" "$version" "${sources[@]}"
+          docker buildx imagetools inspect "$repo:$version"
