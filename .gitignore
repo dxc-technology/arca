@@ -31,3 +31,6 @@ config/.tls-permissions.toml
 # Compose V2 loads .env from the project directory (where the compose file
 # lives), not from the shell's CWD — so it must sit next to the compose files.
 docker/.env
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
