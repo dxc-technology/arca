@@ -1545,22 +1545,6 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>crates/arca-storage/src/compressed_blob.rs</code>, <code>crates/arca-storage/src/encrypted_blob.rs</code>, <code>bin/test</code> (<code>run_compression</code>)</td>
 </tr>
 <tr>
-<td>TD-030</td>
-<td>Self-contained test modes destroy the developer's server</td>
-<td><code>compose_cmd</code> (<code>bin/lib/compose.sh</code>) sets no compose project name, so every self-contained <code>bin/test</code> mode (tls, encryption, compression, per-bucket-encryption, recrypt, kms, postgres, migrate-db, migrate-topology, replication, notifications, every connector) and <code>bin/perf-test</code> share the developer's default project: they recreate the running <code>arca</code> service, overwrite <code>config/.generated.toml</code>, and finish with <code>down -v</code>, deleting the <code>arca-data</code> volume. <code>.arca-env</code> is left describing a server that no longer exists. Only the cluster suite (<code>-p arca-cluster</code>) and <code>tls-permissions</code> are isolated.</td>
-<td>Give test modes their own compose project (e.g. <code>-p arca-test-&lt;mode&gt;</code>) and their own generated config path inside <code>compose_cmd</code>/<code>build_config</code>, so a test run never touches the developer's stack. Cover with a <code>bin/test scripts</code> case.</td>
-<td>None</td>
-<td><code>bin/lib/compose.sh</code> (<code>compose_cmd</code>, <code>build_config</code>), <code>bin/test</code>, <code>bin/perf-test</code></td>
-</tr>
-<tr>
-<td>TD-031</td>
-<td>Encryption/KMS integration tests skip under <code>bin/test integration</code></td>
-<td><code>test_encryption.py</code>, <code>test_per_bucket_encryption.py</code>, <code>test_recrypt.py</code> and <code>test_kms.py</code> skip unless <code>ARCA_ENCRYPTION_ENABLED</code> / <code>ARCA_PER_BUCKET_ENCRYPTION</code> / <code>ARCA_KMS_ENABLED</code> is set, and only the dedicated modes set them. <code>bin/test integration</code> against a server started with <code>--encryption</code> or <code>--kms</code> therefore skips them silently, although <code>.arca-env</code> records the features. This is part of why TD-029 went unnoticed.</td>
-<td>Have <code>run_integration</code> export the matching variables from the features recorded in <code>.arca-env</code>.</td>
-<td>The four files above, under <code>bin/test integration</code></td>
-<td><code>bin/test</code> (<code>run_integration</code>), <code>bin/lib/compose.sh</code></td>
-</tr>
-<tr>
 <td>TD-032</td>
 <td><code>arca recover</code> rebuilds a wrong database</td>
 <td>Besides TD-014: (1) entries are sorted by <code>last_modified</code> <strong>descending</strong> and buckets are re-created unversioned, so each <code>put_object</code> overwrites the previous one and the <strong>oldest</strong> version of every key wins, while the code comment says the newest is inserted last; (2) only buckets, objects and credentials are restored — users, teams, grants, every <code>bucket_config</code> (versioning, encryption, lifecycle, lock, policy, notifications, replication), bucket/object tags, retention and legal hold are lost, and <code>owner</code> is forced to <code>root</code>; (3) compressed objects fail checksum verification (the ETag is the plaintext MD5, recover hashes the on-disk bytes) and are skipped unless <code>--skip-verify</code>; (4) it always opens a SQLite store, so on a PostgreSQL deployment it writes an unused SQLite file; (5) PutObject, CopyObject and CompleteMultipartUpload write the sidecar with <code>version_id: None</code> before the metadata commit assigns the version, so sidecars never carry it and a rebuild cannot restore version ids. <code>operations/recovery.md</code> documents none of this and claims the opposite for (1).</td>
@@ -1641,12 +1625,12 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>crates/arca-proto/src/handlers/{object,multipart}.rs</code></td>
 </tr>
 <tr>
-<td>TD-039</td>
-<td>PostgreSQL conditional writes have no regression test</td>
-<td>Atomic conditional writes on PostgreSQL rely on the CAS read coming <em>after</em> the transaction's first locking statement (<code>next_object_seq</code>), as required under READ COMMITTED; the first implementation got this order wrong (fixed in c3a995b). <code>pg/metadata.rs</code> has no CAS unit tests and <code>bin/test postgres</code> runs only <code>test_postgres.py</code>, not <code>test_conditional_writes.py</code>, so a reordering would go unnoticed.</td>
-<td>Run <code>test_conditional_writes.py</code> in <code>run_postgres</code>.</td>
-<td><code>test_conditional_writes.py</code> (not run on PostgreSQL)</td>
-<td><code>bin/test</code> (<code>run_postgres</code>), <code>crates/arca-storage/src/pg/metadata.rs</code></td>
+<td>TD-043</td>
+<td>Remaining test tooling that disturbs the developer's stack</td>
+<td>After TD-030 the self-contained <code>bin/test</code> modes run in their own compose projects, but: <code>bin/screenshots</code> still runs in the developer's project (overwrites <code>config/.generated.toml</code>, <code>up -d arca</code>, <code>down</code>, and its cleanup deletes <code>.arca-env</code>); the cluster suite (<code>-p arca-cluster</code>) publishes host ports 9000-9003, which collide with a running dev server; <code>arca-tls-test-certs</code> is one fixed-name volume shared by <code>bin/test tls</code> and <code>bin/perf-test --tls</code>, so the two cannot run concurrently. (<code>bin/s3-tests</code> wiping <code>docker_arca-data</code> is deliberate: the Ceph suite needs a clean state; <code>--no-clean</code> skips it.)</td>
+<td>Apply <code>use_test_project</code> to <code>bin/screenshots</code>; publish the cluster nodes on ephemeral loopback ports (the suite reaches them over the compose network) or refuse to start while the dev server is up; name the TLS test volume per project.</td>
+<td>None</td>
+<td><code>bin/screenshots</code>, <code>bin/test</code> (cluster suite), <code>docker/docker-compose.cluster*.yml</code>, <code>bin/lib/compose.sh</code> (<code>make_test_certs</code>)</td>
 </tr>
 </tbody>
 </table>
@@ -1752,6 +1736,24 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>TD-026</td>
 <td><code>bin/test tls</code> could not create <code>certs/</code> on Linux</td>
 <td>The self-contained TLS suites (<code>bin/test tls</code>, <code>bin/perf-test --tls</code>) no longer write into a host bind mount: <code>make_test_certs</code> in <code>bin/lib/compose.sh</code> generates a throwaway CA + server certificate into the named volume <code>arca-tls-test-certs</code> (ownership is real there on every host, as in <code>run_tls_permissions</code>), mounted through <code>ARCA_CERTS_DIR</code>, and removed afterwards; clients verify against its CA. The <code>tls-init</code> compose service, the only writer into <code>certs/</code>, is gone; <code>bin/arca start --tls</code> keeps its own local certificates in <code>certs/local</code> with <code>arca tls ensure</code>, run as the host user with group 65532.</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-030</td>
+<td>Self-contained test modes destroyed the developer's server</td>
+<td>Every self-contained <code>bin/test</code> mode and <code>bin/perf-test</code>'s self-contained mode now call <code>use_test_project &lt;name&gt;</code> (<code>bin/lib/compose.sh</code>) first: <code>compose_cmd</code> passes <code>-p arca-test-&lt;name&gt;</code>, so containers, networks and the <code>arca-data</code> volume are the suite's own and its <code>down -v</code> removes only them; <code>build_config</code> writes <code>config/.generated-test-&lt;name&gt;.toml</code>, which <code>docker-compose.config.yml</code> mounts through <code>ARCA_GENERATED_CONFIG</code>; every host port a test service publishes (<code>ARCA_HOST_PORT</code>, <code>ARCA_REPLICA_HOST_PORT</code>, and the new <code>OPENBAO_HOST_PORT</code>, <code>POSTGRES_HOST_PORT</code>, <code>WEBHOOK_RECEIVER_HOST_PORT</code>) becomes an ephemeral loopback port, since the suites reach their services over the compose network and a fixed <code>9000</code> would collide with the running server (the TLS overlay's redundant fixed <code>9000:9000</code> is gone). <code>.arca-env</code> is written by <code>bin/arca</code> only. <code>presigned</code>/<code>ssec</code> and <code>bin/perf-test</code> without features, which start nothing, now run with <code>--no-deps</code> against the running server instead of recreating it. Covered by <code>tests/scripts/test_isolation_test.sh</code> (<code>bin/test scripts</code>, <code>docker</code> mocked)</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-031</td>
+<td>Encryption/KMS integration tests skipped under <code>bin/test integration</code></td>
+<td><code>run_integration</code> adds <code>integration_feature_env</code> (<code>bin/lib/compose.sh</code>) to the <code>compose run</code> options: from the features recorded in <code>.arca-env</code>, <code>encryption</code> sets <code>ARCA_ENCRYPTION_ENABLED</code>, <code>kms</code> sets <code>ARCA_ENCRYPTION_ENABLED</code> and <code>ARCA_KMS_ENABLED</code>, <code>encryption-per-bucket</code> / <code>kms-per-bucket</code> set <code>ARCA_PER_BUCKET_ENCRYPTION</code> (per-bucket and re-encryption suites; <code>test_kms.py</code> asserts global encryption, so not for a per-bucket server). Each mapping was run against a real server of that kind</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-039</td>
+<td>PostgreSQL CAS regression test</td>
+<td><code>bin/test postgres</code> now also runs <code>test_conditional_writes.py</code> against the PostgreSQL-backed server (36 tests with <code>test_postgres.py</code>), so a reordering of the CAS read relative to the transaction's first locking statement in <code>pg/metadata.rs</code> is caught.</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 </tbody>

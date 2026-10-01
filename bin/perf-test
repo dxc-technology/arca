@@ -82,6 +82,7 @@ fi
 # --- Self-contained mode: start Arca, run tests, clean up ---
 
 if $SELF_CONTAINED; then
+    use_test_project perf
     # Determine TLS mode: existing certs vs self-signed
     USE_EXISTING_CERTS=false
     if $WANT_TLS; then
@@ -187,4 +188,5 @@ if $BUILD; then
 fi
 
 echo "==> Running performance tests..."
-$COMPOSE --profile perf run --rm perf-test "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
+# --no-deps: never recreate the running server from these compose files.
+$COMPOSE --profile perf run --rm --no-deps perf-test "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"

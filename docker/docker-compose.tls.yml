@@ -13,8 +13,6 @@ services:
     volumes:
       - ${ARCA_CERTS_DIR:-../certs}:/etc/arca/certs:ro
       - arca-data:/data
-    ports:
-      - "9000:9000"
 
   test:
     volumes:

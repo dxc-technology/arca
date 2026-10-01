@@ -28,12 +28,15 @@ set -euo pipefail
 #   bin/test connectors all          Run all connector integration tests
 
 cd "$(git rev-parse --show-toplevel)"
+# Every mode keeps its compose command in the global COMPOSE (never `local`):
+# the EXIT trap that tears the mode down runs after the mode function is gone
+# (set -e), so a cleanup that used a local would hit an unbound variable and
+# leak the test project.
 source bin/lib/compose.sh
 source bin/lib/images.sh
 
 run_unit() {
     echo "==> Running unit tests..."
-    local COMPOSE
     COMPOSE="$(compose_cmd)"
     $COMPOSE run --rm unit-test "$@"
 }
@@ -42,10 +45,11 @@ run_unit() {
 # was started. `--no-deps` matters: without it `compose run` would recreate
 # the arca service from whatever compose files this script passes, silently
 # replacing a TLS/encrypted/dev server with a plain one before any test ran.
+# The features recorded in .arca-env also enable the suites that need them
+# (integration_feature_env), which would otherwise skip.
 run_integration() {
     echo "==> Running integration tests..."
     load_env
-    local COMPOSE
     COMPOSE="$(compose_cmd)"
     local server
     server="$($COMPOSE ps -q arca 2>/dev/null)"
@@ -72,7 +76,7 @@ run_integration() {
     fi
 
     local args=() arg
-    while IFS= read -r arg; do args+=("$arg"); done < <(integration_endpoint_args "$hostname")
+    while IFS= read -r arg; do args+=("$arg"); done < <(integration_endpoint_args "$hostname"; integration_feature_env)
     local rc=0
     $COMPOSE ${override:+-f "$override"} run --rm --no-deps \
         "${args[@]+"${args[@]}"}" test "$@" || rc=$?
@@ -91,12 +95,12 @@ run_scripts() {
 
 run_tls() {
     echo "==> Running TLS integration tests..."
+    use_test_project tls
 
     # tls-explicit includes explicit cert filenames AND triggers the TLS compose overlay
     enable_tls_explicit
     build_config
 
-    local COMPOSE
     COMPOSE="$(compose_cmd)"
 
     cleanup_tls() {
@@ -137,11 +141,12 @@ run_tls_permissions() {
     echo "==> Running TLS permission tests..."
 
     local gid=65532                     # Arca's service GID
-    local vol="arca-tlsperm-certs"
-    local net="arca-tlsperm-net"
-    local server_ctr="arca-tlsperm-server"
-    local console_ctr="arca-tlsperm-console"
-    local cfg="$REPO_ROOT/config/.tls-permissions.toml"
+    # Not local: read by the EXIT trap, which runs once the function is gone.
+    vol="arca-tlsperm-certs"
+    net="arca-tlsperm-net"
+    server_ctr="arca-tlsperm-server"
+    console_ctr="arca-tlsperm-console"
+    cfg="$REPO_ROOT/config/.tls-permissions.toml"
     local failures=0
     # The tags docker-compose.yml gives the local builds below.
     local arca_image console_image
@@ -281,11 +286,11 @@ run_tls_permissions() {
 
 run_encryption() {
     echo "==> Running encryption integration tests..."
+    use_test_project encryption
 
     enable_encryption
     build_config
 
-    local COMPOSE
     COMPOSE="$(compose_cmd)"
 
     cleanup_enc() {
@@ -313,10 +318,10 @@ run_encryption() {
 
 run_compression() {
     echo "==> Running compression integration tests..."
+    use_test_project compression
 
     # Compression is a console-only feature (no TOML fragment). The wrapper
     # is always installed at runtime — tests just need a plain Arca up.
-    local COMPOSE
     COMPOSE="$(compose_cmd)"
 
     cleanup_comp() {
@@ -339,11 +344,11 @@ run_compression() {
 
 run_per_bucket_encryption() {
     echo "==> Running per-bucket encryption integration tests..."
+    use_test_project per-bucket-encryption
 
     enable_encryption_per_bucket
     build_config
 
-    local COMPOSE
     COMPOSE="$(compose_cmd)"
 
     cleanup_pbe() {
@@ -371,13 +376,13 @@ run_per_bucket_encryption() {
 
 run_recrypt() {
     echo "==> Running HOT re-encryption (maintenance jobs) integration tests..."
+    use_test_project recrypt
 
     # Same config as per-bucket encryption: master key present, global
     # encryption disabled — plain default puts that the server can re-encrypt.
     enable_encryption_per_bucket
     build_config
 
-    local COMPOSE
     COMPOSE="$(compose_cmd)"
 
     cleanup_recrypt() {
@@ -405,11 +410,11 @@ run_recrypt() {
 
 run_kms() {
     echo "==> Running KMS integration tests..."
+    use_test_project kms
 
     enable_kms
     build_config
 
-    local COMPOSE
     COMPOSE="$(compose_cmd)"
 
     cleanup_kms() {
@@ -442,11 +447,11 @@ run_kms() {
 
 run_postgres() {
     echo "==> Running PostgreSQL backend integration tests..."
+    use_test_project postgres
 
     enable_postgres
     build_config
 
-    local COMPOSE
     COMPOSE="$(compose_cmd)"
 
     cleanup_pg() {
@@ -464,10 +469,11 @@ run_postgres() {
     $COMPOSE up -d arca
     # Step 4: Wait for server to be ready
     wait_for_arca "$COMPOSE"
-    # Step 5: Run PostgreSQL-specific tests
+    # Step 5: Run PostgreSQL-specific tests, plus the conditional-write suite
+    # (guards the CAS ordering in pg/metadata.rs)
     $COMPOSE run --rm \
         -e ARCA_POSTGRES_BACKEND=1 \
-        test integration/test_postgres.py "$@"
+        test integration/test_postgres.py integration/test_conditional_writes.py "$@"
     local rc=$?
 
     trap - EXIT
@@ -477,6 +483,7 @@ run_postgres() {
 
 run_migrate_db() {
     echo "==> Running migrate-db (metadata backend migration) integration test..."
+    use_test_project migrate-db
 
     # Phase 1 runs Arca on SQLite with NO postgres section in config (so the
     # backend stays sqlite); phase 3 enables the postgres overlay + combined
@@ -485,7 +492,6 @@ run_migrate_db() {
     # reads /data/arca.db and the post-migration GETs resolve the same blobs.
 
     # --- Phase 0: clean slate (sqlite-only compose) ---
-    local SQLITE_COMPOSE
     SQLITE_COMPOSE="$(compose_cmd)"   # base only, no features
 
     cleanup_migrate() {
@@ -550,6 +556,7 @@ run_migrate_db() {
 
 run_migrate_topology() {
     echo "==> Running migrate-topology (single <-> HA cluster transition) test..."
+    use_test_project migrate-topology
 
     # Single-node SQLite lifecycle around the offline `arca migrate-topology` CLI.
     # We exercise BOTH directions' DB ops + config emission end-to-end (the
@@ -560,16 +567,11 @@ run_migrate_topology() {
     # Base config only (no features), but we still need the config overlay to
     # mount config/.generated.toml at /etc/arca/config.toml. Add it manually.
     build_config
-    local COMPOSE
     COMPOSE="$(compose_cmd) -f $REPO_ROOT/docker/docker-compose.config.yml"
 
     cleanup_topo() {
         echo "Cleaning up migrate-topology test..."
-        # Recompute the compose command — the function-local $COMPOSE is out of
-        # scope when this runs from the EXIT trap (and `set -u` would trip).
-        local C
-        C="$(compose_cmd) -f $REPO_ROOT/docker/docker-compose.config.yml"
-        $C down -v 2>/dev/null || true
+        $COMPOSE down -v 2>/dev/null || true
         # Restore a clean base config (we appended a [cluster] stanza to it).
         build_config 2>/dev/null || true
     }
@@ -668,22 +670,21 @@ run_migrate_topology() {
     return $rc
 }
 
+# Both start nothing of their own: they run against the running server, like
+# `integration`.
 run_presigned() {
     echo "==> Running presigned URL integration tests..."
-    local COMPOSE
-    COMPOSE="$(compose_cmd)"
-    $COMPOSE run --rm test integration/test_presigned.py "$@"
+    run_integration integration/test_presigned.py "$@"
 }
 
 run_ssec() {
     echo "==> Running SSE-C integration tests..."
-    local COMPOSE
-    COMPOSE="$(compose_cmd)"
-    $COMPOSE run --rm test integration/test_ssec.py "$@"
+    run_integration integration/test_ssec.py "$@"
 }
 
 run_replication() {
     echo "==> Running replication integration tests..."
+    use_test_project replication
 
     enable_replication
     build_config
@@ -1063,11 +1064,11 @@ run_cluster() {
 
 run_notifications() {
     echo "==> Running notification integration tests..."
+    use_test_project notifications
 
     enable_notifications
     build_config
 
-    local COMPOSE
     COMPOSE="$(compose_cmd)"
 
     cleanup_notif() {
@@ -1106,6 +1107,7 @@ run_notifications() {
 
 run_connector_redis() {
     echo "==> Running Redis connector integration tests..."
+    use_test_project connector-redis
 
     enable_connector_redis
     build_config
@@ -1139,6 +1141,7 @@ run_connector_redis() {
 
 run_connector_nats() {
     echo "==> Running NATS connector integration tests..."
+    use_test_project connector-nats
 
     enable_connector_nats
     build_config
@@ -1172,6 +1175,7 @@ run_connector_nats() {
 
 run_connector_mqtt() {
     echo "==> Running MQTT connector integration tests..."
+    use_test_project connector-mqtt
 
     enable_connector_mqtt
     build_config
@@ -1205,6 +1209,7 @@ run_connector_mqtt() {
 
 run_connector_postgresql() {
     echo "==> Running PostgreSQL connector integration tests..."
+    use_test_project connector-postgresql
 
     enable_connector_postgresql
     build_config
@@ -1234,6 +1239,7 @@ run_connector_postgresql() {
 
 run_connector_mysql() {
     echo "==> Running MySQL connector integration tests..."
+    use_test_project connector-mysql
 
     enable_connector_mysql
     build_config
@@ -1263,6 +1269,7 @@ run_connector_mysql() {
 
 run_connector_mongodb() {
     echo "==> Running MongoDB connector integration tests..."
+    use_test_project connector-mongodb
 
     enable_connector_mongodb
     build_config
@@ -1292,6 +1299,7 @@ run_connector_mongodb() {
 
 run_connector_kafka() {
     echo "==> Running Kafka connector integration tests..."
+    use_test_project connector-kafka
 
     enable_connector_kafka
     build_config
@@ -1321,6 +1329,7 @@ run_connector_kafka() {
 
 run_connector_amqp() {
     echo "==> Running AMQP connector integration tests..."
+    use_test_project connector-amqp
 
     enable_connector_amqp
     build_config
@@ -1350,6 +1359,7 @@ run_connector_amqp() {
 
 run_connector_elasticsearch() {
     echo "==> Running Elasticsearch connector integration tests..."
+    use_test_project connector-elasticsearch
 
     enable_connector_elasticsearch
     build_config
@@ -1379,6 +1389,7 @@ run_connector_elasticsearch() {
 
 run_connector_syslog() {
     echo "==> Running Syslog connector integration tests..."
+    use_test_project connector-syslog
 
     enable_connector_syslog
     build_config
@@ -1409,6 +1420,7 @@ run_connector_syslog() {
 
 run_connector_smtp() {
     echo "==> Running SMTP connector integration tests..."
+    use_test_project connector-smtp
 
     enable_connector_smtp
     build_config
@@ -1439,6 +1451,7 @@ run_connector_smtp() {
 
 run_connector_grpc() {
     echo "==> Running gRPC connector integration tests..."
+    use_test_project connector-grpc
 
     enable_connector_grpc
     build_config

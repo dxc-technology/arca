@@ -71,7 +71,8 @@ bin/console stop                 # stop console
 # Tests
 bin/test                 # run unit + integration tests
 bin/test unit            # unit tests only
-bin/test integration     # integration tests against the running server, as started (never recreated)
+bin/test integration     # integration tests against the running server, as started (never recreated);
+                         # .arca-env's features enable the encryption/per-bucket/KMS suites
 bin/test unit -p arca-core   # pass extra args to cargo test
 bin/test tls             # TLS integration tests (self-contained)
 bin/test tls-permissions # TLS file-permission tests (named volume, self-contained)
@@ -88,6 +89,8 @@ bin/docs-build           # build mkdocs site (output to docs/)
 bin/docs-serve           # serve locally with live reload (http://localhost:8000)
 bin/docs-publish         # build + commit + push docs to update GitHub Pages
 ```
+
+Self-contained test modes (`tls`, `encryption`, `kms`, `postgres`, the connectors, ..., and `bin/perf-test --tls/--encryption`) never touch the developer's stack: `use_test_project <mode>` (`bin/lib/compose.sh`) gives each its own compose project (`arca-test-<mode>`), its own `config/.generated-test-<mode>.toml` and ephemeral loopback host ports, so they can run while `bin/arca start` is up. A new self-contained mode must call `use_test_project` first and get a case in `tests/scripts/test_isolation_test.sh`; a port published in a compose overlay must be a `${<NAME>_HOST_PORT:-<port>}` that `use_test_project` remaps (`bin/test scripts` checks every overlay). Modes that start no server (`integration`, `presigned`, `ssec`) run against the running one with `--no-deps`.
 
 ### Build constraints
 

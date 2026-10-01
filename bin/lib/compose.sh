@@ -11,6 +11,7 @@
 #   enable_encryption_per_bucket  # register local-key encryption (per-bucket)
 #   enable_kms              # register KMS encryption (global)
 #   enable_kms_per_bucket   # register KMS encryption (per-bucket)
+#   use_test_project <name> # isolate a self-contained test suite (call first)
 #   build_config            # concatenate fragments into .generated.toml
 #   COMPOSE="$(compose_cmd)" # build docker compose command
 #   save_env                # persist feature state for other scripts
@@ -29,6 +30,9 @@ LOCAL_TLS_SANS="localhost,127.0.0.1,::1,arca"
 
 # shellcheck source=bin/lib/images.sh
 source "$(dirname "${BASH_SOURCE[0]}")/images.sh"
+
+# Compose project; empty is compose's default, the developer's stack.
+_COMPOSE_PROJECT=""
 
 # Feature tracking
 _FEATURES=()
@@ -172,6 +176,31 @@ integration_endpoint_args() {  # integration_endpoint_args <tls hostname>
     else
         printf '%s\n' -e "ARCA_ENDPOINT=https://$1:9000"
     fi
+}
+
+# `compose run` options enabling the integration suites that only make sense
+# on a server with a given feature, one per line, from the registered
+# features (load_env restores the running server's). The suites skip without
+# them:
+#   test_encryption.py             ARCA_ENCRYPTION_ENABLED  global encryption on
+#   test_per_bucket_encryption.py  ARCA_PER_BUCKET_ENCRYPTION  a master key, global off
+#   test_recrypt.py                  (same)
+#   test_kms.py                    ARCA_KMS_ENABLED  global encryption, key from OpenBAO
+# The master key's source (config or KMS) does not change the S3 behaviour, so
+# a KMS server runs the generic suites too; test_kms.py itself asserts global
+# encryption, so a per-bucket KMS server does not run it.
+integration_feature_env() {
+    local feat
+    for feat in "${_FEATURES[@]}"; do
+        case "$feat" in
+            encryption)
+                printf '%s\n' -e ARCA_ENCRYPTION_ENABLED=1 ;;
+            kms)
+                printf '%s\n' -e ARCA_ENCRYPTION_ENABLED=1 -e ARCA_KMS_ENABLED=1 ;;
+            encryption-per-bucket|kms-per-bucket)
+                printf '%s\n' -e ARCA_PER_BUCKET_ENCRYPTION=1 ;;
+        esac
+    done
 }
 
 # A compose override (outside the repository) resolving <host> to <ip> in one
@@ -344,6 +373,27 @@ enable_cluster() {
     if $_HAS_CLUSTER; then return; fi
     _HAS_CLUSTER=true
     _FEATURES+=(cluster)
+}
+
+# --- Test isolation ---
+#
+# A self-contained test suite starts, recreates and finally `down -v`s its own
+# Arca. In the developer's compose project that is the developer's server, its
+# data volume and its generated config. use_test_project moves the suite to a
+# project of its own (containers, networks and volumes are project-scoped),
+# with its own generated config, and moves every host port its services
+# publish to an ephemeral loopback one: the suites reach their services over
+# the compose network, and a fixed port would collide with the developer's
+# running server. .arca-env is only ever written by bin/arca.
+use_test_project() {    # use_test_project <name>
+    _COMPOSE_PROJECT="arca-test-$1"
+    GENERATED_CONFIG="$REPO_ROOT/config/.generated-test-$1.toml"
+    export ARCA_GENERATED_CONFIG="$GENERATED_CONFIG"
+    local port
+    for port in ARCA_HOST_PORT ARCA_REPLICA_HOST_PORT OPENBAO_HOST_PORT \
+            POSTGRES_HOST_PORT WEBHOOK_RECEIVER_HOST_PORT; do
+        export "$port=127.0.0.1:0"
+    done
 }
 
 # --- Config generation ---
@@ -576,6 +626,9 @@ compose_cmd() {
     fi
 
     local cmd="docker compose"
+    if [[ -n "$_COMPOSE_PROJECT" ]]; then
+        cmd="$cmd -p $_COMPOSE_PROJECT"
+    fi
     for f in "${files[@]}"; do
         cmd="$cmd -f $f"
     done
