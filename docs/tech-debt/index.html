@@ -1530,10 +1530,98 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <tr>
 <td>TD-014</td>
 <td><code>recover</code> / <code>fsck</code> composite blobs</td>
-<td>Composite blobs (the result of the optimised <code>CompleteMultipartUpload</code>) live as a sidecar that lists the part blob ids — no on-disk file exists at the composite's blob path. <code>recover::process_sidecar</code> rejects them as "orphaned sidecar (blob file missing)" and aborts the rebuild. <code>fsck</code> reports the same sidecar as an <code>orphaned_sidecars</code> entry (the parts themselves are not orphaned because they each carry their own sidecar). Both tools therefore produce false positives on any data directory that has experienced multipart uploads after the composite-concat optimisation. Runtime S3 reads/writes are unaffected — the request path fully handles composites.</td>
+<td>Composite blobs (the result of the optimised <code>CompleteMultipartUpload</code>) live as a sidecar that lists the part blob ids — no on-disk file exists at the composite's blob path. <code>recover::process_sidecar</code> rejects them as "orphaned sidecar (blob file missing)"; the caller prints a <code>WARNING</code> and <strong>skips</strong> the sidecar, so every multipart object is silently dropped from the rebuilt database. Worse, the retained part blobs carry ordinary sidecars whose key is <code>{key}#{upload_id}#{part_number}</code> (<code>handlers/multipart.rs</code>), so <code>recover</code> re-creates each part as a bogus object under that key. <code>fsck</code> reports the composite sidecar as an <code>orphaned_sidecars</code> entry (the parts themselves are not orphaned because they each carry their own sidecar). Both tools therefore misbehave on any data directory that has experienced multipart uploads after the composite-concat optimisation. Runtime S3 reads/writes are unaffected — the request path fully handles composites.</td>
 <td>(1) <code>recover</code>: when a sidecar has <code>composite: Some(parts)</code>, skip the blob-existence check, walk the part list, and verify each referenced part blob exists. Insert one <code>ObjectRecord</code> per composite that points at the composite blob_id (the part records are not surfaced to the metadata DB — they are a storage-layer detail). (2) <code>fsck</code>: treat composite sidecars as valid (no blob file expected); cross-check each referenced part exists; report a new <code>dangling_part</code> category when a composite references a missing part. Add unit tests for both tools using fixtures that mix composite and ordinary blobs.</td>
 <td>None at the runtime level; recovery / fsck workflows on data with composites currently fail</td>
 <td><code>crates/arca-server/src/recover.rs:206</code>, <code>crates/arca-server/src/fsck.rs</code> (<code>orphaned_sidecars</code> collection, around line 112)</td>
+</tr>
+<tr>
+<td>TD-029</td>
+<td>Compression + encryption read fails</td>
+<td>Reading a compressed object on a server with encryption enabled returns <code>500</code> (<code>compressed footer count truncated</code> / <code>read chunks: early eof</code>). Pre-existing (reproduced on 903582f, found 2026-09-29). It has never been caught because <code>bin/test compression</code> (<code>run_compression</code>) starts a plain server, so the combination is untested. Not yet known whether the write or the read side is wrong, i.e. whether data at rest is affected. <code>roadmap.md</code> (Phase 27) marks "correct stacking with encryption" as done.</td>
+<td>Root-cause with a failing integration test that enables both compression and encryption (<code>CompressingBlobStore</code> over <code>EncryptingBlobStore</code>; start at <code>get_compressed_full</code>, which reads the footer through the inner store), fix, and add the combination to <code>bin/test compression</code>.</td>
+<td>None today (combination untested)</td>
+<td><code>crates/arca-storage/src/compressed_blob.rs</code>, <code>crates/arca-storage/src/encrypted_blob.rs</code>, <code>bin/test</code> (<code>run_compression</code>)</td>
+</tr>
+<tr>
+<td>TD-030</td>
+<td>Self-contained test modes destroy the developer's server</td>
+<td><code>compose_cmd</code> (<code>bin/lib/compose.sh</code>) sets no compose project name, so every self-contained <code>bin/test</code> mode (tls, encryption, compression, per-bucket-encryption, recrypt, kms, postgres, migrate-db, migrate-topology, replication, notifications, every connector) and <code>bin/perf-test</code> share the developer's default project: they recreate the running <code>arca</code> service, overwrite <code>config/.generated.toml</code>, and finish with <code>down -v</code>, deleting the <code>arca-data</code> volume. <code>.arca-env</code> is left describing a server that no longer exists. Only the cluster suite (<code>-p arca-cluster</code>) and <code>tls-permissions</code> are isolated.</td>
+<td>Give test modes their own compose project (e.g. <code>-p arca-test-&lt;mode&gt;</code>) and their own generated config path inside <code>compose_cmd</code>/<code>build_config</code>, so a test run never touches the developer's stack. Cover with a <code>bin/test scripts</code> case.</td>
+<td>None</td>
+<td><code>bin/lib/compose.sh</code> (<code>compose_cmd</code>, <code>build_config</code>), <code>bin/test</code>, <code>bin/perf-test</code></td>
+</tr>
+<tr>
+<td>TD-031</td>
+<td>Encryption/KMS integration tests skip under <code>bin/test integration</code></td>
+<td><code>test_encryption.py</code>, <code>test_per_bucket_encryption.py</code>, <code>test_recrypt.py</code> and <code>test_kms.py</code> skip unless <code>ARCA_ENCRYPTION_ENABLED</code> / <code>ARCA_PER_BUCKET_ENCRYPTION</code> / <code>ARCA_KMS_ENABLED</code> is set, and only the dedicated modes set them. <code>bin/test integration</code> against a server started with <code>--encryption</code> or <code>--kms</code> therefore skips them silently, although <code>.arca-env</code> records the features. This is part of why TD-029 went unnoticed.</td>
+<td>Have <code>run_integration</code> export the matching variables from the features recorded in <code>.arca-env</code>.</td>
+<td>The four files above, under <code>bin/test integration</code></td>
+<td><code>bin/test</code> (<code>run_integration</code>), <code>bin/lib/compose.sh</code></td>
+</tr>
+<tr>
+<td>TD-032</td>
+<td><code>arca recover</code> rebuilds a wrong database</td>
+<td>Besides TD-014: (1) entries are sorted by <code>last_modified</code> <strong>descending</strong> and buckets are re-created unversioned, so each <code>put_object</code> overwrites the previous one and the <strong>oldest</strong> version of every key wins, while the code comment says the newest is inserted last; (2) only buckets, objects and credentials are restored — users, teams, grants, every <code>bucket_config</code> (versioning, encryption, lifecycle, lock, policy, notifications, replication), bucket/object tags, retention and legal hold are lost, and <code>owner</code> is forced to <code>root</code>; (3) compressed objects fail checksum verification (the ETag is the plaintext MD5, recover hashes the on-disk bytes) and are skipped unless <code>--skip-verify</code>; (4) it always opens a SQLite store, so on a PostgreSQL deployment it writes an unused SQLite file. <code>operations/recovery.md</code> documents none of this and claims the opposite for (1).</td>
+<td>Insert newest-last (and re-create versioned buckets as versioned, keeping <code>version_id</code>), verify compressed objects against the decompressed stream, support the configured backend, and document precisely what a sidecar rebuild can and cannot restore. Unit tests with multi-version, compressed and composite fixtures.</td>
+<td>None (no integration coverage of <code>recover</code> on such data)</td>
+<td><code>crates/arca-server/src/recover.rs</code>, <code>documentation/docs/operations/recovery.md</code></td>
+</tr>
+<tr>
+<td>TD-033</td>
+<td>Object tags never converge in a cluster</td>
+<td><code>put_object_tags</code> / <code>delete_object_tags</code> replicate only through a best-effort <code>ControlOp::ObjectTags</code> fan-out (<code>cluster_meta.rs</code>). They bump no <code>seq</code>, and object tags are not part of <code>ControlSnapshot</code>, so anti-entropy never repairs them: a node that was down or unreachable during a tag change keeps the old tags until the object itself is rewritten. <code>guide/ha.md</code> lists tags among the data that self-heals.</td>
+<td>Carry object tags in anti-entropy, either by bumping the object row's <code>seq</code> and shipping tags with the manifest entry, or as a per-object-version LWW family in <code>ControlSnapshot</code>. Cover with a cluster test that tags an object while a node is down.</td>
+<td>None</td>
+<td><code>crates/arca-server/src/cluster/cluster_meta.rs</code>, <code>crates/arca-core/src/cluster.rs</code> (<code>ControlSnapshot</code>), <code>crates/arca-storage/src/{sqlite,pg}/metadata.rs</code></td>
+</tr>
+<tr>
+<td>TD-034</td>
+<td>Request body integrity is never verified</td>
+<td><code>Content-MD5</code> is never read (<code>S3ErrorCode::BadDigest</code> is defined but never returned); <code>x-amz-checksum-*</code> values are extracted, stored and echoed back but never compared with the body; a hex <code>x-amz-content-sha256</code> is included in the signature but never compared with the body; <code>STREAMING-*</code> chunk signatures are stripped, not verified. A corrupted upload is stored and acknowledged. <code>AGENTS.md</code> and <code>reference/architecture.md</code> state that body integrity relies on Content-MD5.</td>
+<td>Verify <code>Content-MD5</code> and the <code>x-amz-checksum-*</code> value against the streamed body before the metadata commit (the MD5 is already computed for the ETag), returning <code>BadDigest</code> / <code>InvalidRequest</code> and deleting the blob on mismatch; compare a hex <code>x-amz-content-sha256</code> likewise. Chunk-signature verification can follow separately.</td>
+<td>Probably the failing Ceph <code>test_object_checksum_sha256</code>, <code>test_object_checksum_crc64nvme</code>, <code>test_multipart_checksum_sha256</code>, <code>test_post_object_upload_checksum</code>, <code>test_get_multipart_checksum_object_attributes</code> (root cause per test not confirmed)</td>
+<td><code>crates/arca-proto/src/handlers/{object,multipart,body}.rs</code></td>
+</tr>
+<tr>
+<td>TD-035</td>
+<td><code>UploadPartCopy</code> ignores copy-source conditionals</td>
+<td><code>check_copy_source_conditionals</code> (<code>x-amz-copy-source-if-match</code>, <code>-if-none-match</code>, <code>-if-modified-since</code>, <code>-if-unmodified-since</code>) is called only from <code>copy_object</code>; <code>upload_part_copy</code> never evaluates them, so a part is copied even when the precondition fails.</td>
+<td>Call the same check in <code>upload_part_copy</code> before reading the source. Integration test for each header.</td>
+<td>None</td>
+<td><code>crates/arca-proto/src/handlers/object.rs</code> (<code>upload_part_copy</code>)</td>
+</tr>
+<tr>
+<td>TD-036</td>
+<td>Cluster drift fingerprint ignores <code>cluster_size</code></td>
+<td><code>config_fingerprint</code> hashes <code>cluster_id</code>, <code>mode</code>, <code>write_quorum</code>, <code>secret</code> and the master-key id, not <code>cluster_size</code>. <code>write_quorum</code> (<code>n/2+1</code>, quorum mode only) catches some resizes but not 2↔3 or 4↔5, and in <code>available</code> mode a differing <code>cluster_size</code> is never caught. <code>guide/ha.md</code> (drift detection, resize runbook step 3) says the fingerprint includes <code>cluster_size</code>.</td>
+<td>Add <code>cluster_size</code> to the fingerprint (bump the <code>arca-cluster-cfg-v1</code> domain tag, and say in the CHANGELOG that mixed-version nodes report drift during a rolling upgrade).</td>
+<td>None</td>
+<td><code>crates/arca-core/src/cluster.rs</code> (<code>config_fingerprint</code>), <code>crates/arca-server/src/main.rs</code></td>
+</tr>
+<tr>
+<td>TD-037</td>
+<td>Virtual-hosted-style requests probably routed wrong</td>
+<td><code>virtual_host_middleware</code> rewrites the URI, but it is attached with <code>Router::layer</code> (<code>router.rs</code>), which runs <em>after</em> routing (see AGENTS.md › Known Gotchas). The path parameters are already bound to the original path, so <code>bucket.domain/key</code> would be dispatched as bucket=<code>key</code>. Found by code reading; no test exercises virtual-host addressing.</td>
+<td>Write an integration test with <code>server.domain</code> set and virtual-host addressing; if it fails, move the rewrite outside the router as a tower layer (like <code>NormalizeLayer</code>).</td>
+<td>None (untested)</td>
+<td><code>crates/arca-proto/src/router.rs</code>, <code>crates/arca-proto/src/middleware/virtual_host.rs</code></td>
+</tr>
+<tr>
+<td>TD-038</td>
+<td>No fsync on the write path</td>
+<td>Blob writes <code>flush()</code> and <code>rename()</code> but never <code>sync_all()</code> the file or its directory, and <code>write_sidecar</code> uses a plain, non-atomic <code>fs::write</code>. Only re-encryption (<code>recrypt.rs</code>) fsyncs. A power loss after a <code>200 OK</code> can lose or truncate the blob or sidecar of an acknowledged write, which also undermines the blob → sidecar → DB ordering that <code>recover</code> relies on.</td>
+<td><code>sync_all</code> the blob before rename and fsync the parent directory after; write sidecars to a temp file, fsync, rename. Measure the throughput cost and consider a config switch only if it is significant.</td>
+<td>None</td>
+<td><code>crates/arca-storage/src/fs/blob.rs</code></td>
+</tr>
+<tr>
+<td>TD-039</td>
+<td>PostgreSQL conditional writes have no regression test</td>
+<td>Atomic conditional writes on PostgreSQL rely on the CAS read coming <em>after</em> the transaction's first locking statement (<code>next_object_seq</code>), as required under READ COMMITTED; the first implementation got this order wrong (fixed in c3a995b). <code>pg/metadata.rs</code> has no CAS unit tests and <code>bin/test postgres</code> runs only <code>test_postgres.py</code>, not <code>test_conditional_writes.py</code>, so a reordering would go unnoticed.</td>
+<td>Run <code>test_conditional_writes.py</code> in <code>run_postgres</code>.</td>
+<td><code>test_conditional_writes.py</code> (not run on PostgreSQL)</td>
+<td><code>bin/test</code> (<code>run_postgres</code>), <code>crates/arca-storage/src/pg/metadata.rs</code></td>
 </tr>
 </tbody>
 </table>

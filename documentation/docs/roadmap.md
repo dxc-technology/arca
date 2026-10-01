@@ -464,7 +464,7 @@ coexist transparently.
 - [x] Size thresholds (min_size and max_size)
 - [x] Sidecar metadata for compression info
 - [x] Mixed-mode coexistence
-- [x] Correct stacking with encryption: compress then encrypt then store
+- [x] Correct stacking with encryption: compress then encrypt then store (reads of compressed objects on an encrypted server currently fail, see TD-029)
 - [x] Chunked frame format with footer index (enables ranged reads)
 - [x] `arca compress-existing` CLI command (offline, in-place, with --dry-run)
 - [x] `arca decompress-existing` CLI command (offline, in-place)
@@ -854,7 +854,7 @@ Remaining items:
 - **Unimplemented ops** (TD-007): ~33 bucket operations return 501
 - **Multipart Content-Type** (TD-008): Captured at init time — verify against AWS semantics
 - **SSE-C multipart** (TD-010): SSE-C headers rejected on multipart uploads — needs per-part encryption tracking
-- **Composite blobs in `recover` / `fsck`** (TD-014): the multipart Complete optimisation produces composite sidecars with no on-disk blob file. `arca recover` aborts on them as orphans, `arca fsck` reports false-positive `orphaned_sidecars`. Runtime S3 reads/writes are unaffected — only the recovery and integrity-check tools need teaching how to walk composites.
+- **Composite blobs in `recover` / `fsck`** (TD-014): the multipart Complete optimisation produces composite sidecars with no on-disk blob file. `arca recover` skips them as orphans (silently dropping every multipart object) and re-creates their part blobs as bogus `key#uploadId#n` objects; `arca fsck` reports false-positive `orphaned_sidecars`. Runtime S3 reads/writes are unaffected — only the recovery and integrity-check tools need teaching how to walk composites.
 - **`time` pinned to =0.3.47** (TD-017): `time` 0.3.48 introduces `From` impls that clash (E0119 coherence) with `rcgen`'s blanket conversions when time's parsing/formatting features are enabled in the graph. No security exposure (0.3.47 already contains the CVE-2026-25727 fix — the old TD-011, resolved by the 2026-06 dependency refresh together with TD-012, the `rustls-pemfile` retirement). Unpin when rcgen or time fixes the conflict upstream.
 - **Re-encryption skips multipart/composite** (TD-018): the `encrypt`/`decrypt` jobs and CLI skip multipart/composite objects (detected by their `<hex>-<n>` ETag) and SSE-C objects, so a store with multipart objects is only partially re-encrypted. Related to TD-014 (composite blobs have no single on-disk file to rewrite copy-on-write). Phase 30
 - **`migrate-db` online direction limited to postgres→sqlite** (TD-019): the online maintenance-job direction can only run postgres→sqlite (the config auto-detects PostgreSQL as the running backend); sqlite→postgres is done with the offline CLI. Phase 30
@@ -867,5 +867,16 @@ Remaining items:
 - ~~**`bin/test tls` cannot create `certs/` on Linux** (TD-026)~~: **Resolved** — the self-contained TLS suites generate throwaway certificates into a named volume (`arca-tls-test-certs`) instead of the `certs/` bind mount, and the `tls-init` service that wrote there is gone.
 - **`trivy fs` misconfig: k8s console manifest** (TD-027): `deploy/kubernetes/arca-console.yaml` fails 4 checks — pinned to `:latest` (MEDIUM), no `readOnlyRootFilesystem: true` (HIGH), no policy against privileged-port binding (MEDIUM), UID/GID <= 10000 (LOW, nginx's stock user). Found by `trivy fs .`, 2026-09-23; left visible pending a fix, not suppressed.
 - **`trivy fs` misconfig: root user / missing HEALTHCHECK in test-only Dockerfiles** (TD-028): `docker/screenshots/Dockerfile` runs as root (HIGH); `docker/Dockerfile.perf`, `docker/Dockerfile.test`, `docker/s3-tests/Dockerfile` have no `HEALTHCHECK` (LOW each). Tooling-only images, never distributed, but worth closing for consistency with the distributed images (which already scan clean).
+- **Compression + encryption read fails** (TD-029): reading a compressed object on an encrypted server returns `500`; the combination is not covered by `bin/test compression`. Whether data at rest is affected is not yet known.
+- **Self-contained test modes destroy the developer's server** (TD-030): most `bin/test` modes and `bin/perf-test` share the developer's compose project, recreate the running server, overwrite its generated config and `down -v` its data volume.
+- **Encryption/KMS tests skip under `bin/test integration`** (TD-031): they need an environment variable that only the dedicated modes set, even when the running server has the feature enabled.
+- **`arca recover` rebuilds a wrong database** (TD-032): the oldest version of each key wins, only buckets/objects/credentials are restored (bucket configs, users, grants, tags, lock state are lost), compressed objects fail verification, and it always writes SQLite.
+- **Object tags never converge in a cluster** (TD-033): tag changes replicate by best-effort fan-out only and are not repaired by anti-entropy, so a node that was down keeps stale tags.
+- **Request body integrity is never verified** (TD-034): `Content-MD5`, `x-amz-checksum-*` and a hex `x-amz-content-sha256` are accepted but never compared with the body.
+- **`UploadPartCopy` ignores copy-source conditionals** (TD-035): `x-amz-copy-source-if-*` is evaluated by `CopyObject` only.
+- **Cluster drift fingerprint ignores `cluster_size`** (TD-036): some resizes (2↔3, 4↔5, any in `available` mode) are not detected as drift.
+- **Virtual-hosted-style requests probably routed wrong** (TD-037): the rewrite middleware runs after routing; untested.
+- **No fsync on the write path** (TD-038): an acknowledged write can be lost or truncated on power loss.
+- **PostgreSQL conditional writes have no regression test** (TD-039): `bin/test postgres` does not run the conditional-write suite.
 - ~~**Cluster inter-node TLS** (TD-015)~~: **Resolved** — verified mutual TLS with an operator-distributed cluster CA (`[cluster.tls]`, required when the cluster runs over HTTPS), `danger_accept_invalid_certs` removed, client certificates enforced on `/cluster/v1/*`, material minted by `arca tls generate-cluster`. HA hardening R4 (Phase 29.1)
 - ~~**Partial cluster control-plane reconcile** (TD-016)~~: **Resolved** — the anti-entropy snapshot merge now covers every control-plane family (grant attachments, memberships, bucket config keys, bucket tag sets, cluster-wide server settings, plus multipart uploads and parts) with per-row LWW timestamps, deletion tombstones and parent-dead filtering, so a returning node fully self-heals. HA hardening R5 (Phase 29.1)
