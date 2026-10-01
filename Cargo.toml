@@ -67,7 +67,10 @@ lzma-rs = "0.3"
 # Hashing
 hmac = "0.13"
 md-5 = "0.11"
+sha1 = "0.11"
 sha2 = "0.11"
+# CRC32 / CRC32C / CRC64NVME request checksums (x-amz-checksum-*)
+crc = "3.4"
 hex = "0.4"
 subtle = "2"
 

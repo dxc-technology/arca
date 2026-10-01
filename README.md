@@ -174,7 +174,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 
 | Suite | Tests | Details |
 |-------|------:|---------|
-| Unit tests (Rust) | 998 | arca-auth: 39, arca-core: 268, arca-proto: 86, arca-server: 302, arca-storage: 303 |
+| Unit tests (Rust) | 1030 | arca-auth: 39, arca-core: 269, arca-proto: 116, arca-server: 302, arca-storage: 304 |
 | Integration — boto3 | 145 | buckets, objects, list, multipart, copy, folders, auth, admin, credentials, conditional ops |
 | Integration — Conditional Writes (CAS) | 15 | sequential If-Match/If-None-Match/CompleteMultipartUpload/DeleteObject preconditions, N=8 racing writers under barrier release (exactly one winner, every run), conditional DELETE racing an unconditional overwrite (never destroys the newer object), DeleteObjects batch precondition checked against the targeted version, not the bucket's latest |
 | Integration — RBAC | 42 | user/team/grant CRUD, attachments, effective grants, /admin/me (with and without grants), E2E access control |
@@ -184,6 +184,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — Lifecycle | 17 | Put/Get/Delete lifecycle config, expiration rules, noncurrent version, abort upload, tag/and filters |
 | Integration — Object Lock | 19 | Put/Get config (at creation, on empty existing buckets, rejection on non-empty), retention, legal hold, COMPLIANCE/GOVERNANCE enforcement, bypass, delete markers |
 | Integration — API Completeness | 11 | ListParts, GetObjectAttributes, checksum SHA256/CRC32 roundtrip, storage class, pagination |
+| Integration — Body Integrity | 41 | `Content-MD5` (right, wrong → BadDigest and nothing stored or overwritten, malformed → InvalidDigest), `x-amz-checksum-*` for CRC32/CRC32C/CRC64NVME/SHA1/SHA256 (stored and returned with `ChecksumMode`, wrong → BadDigest, malformed → InvalidRequest, two at once rejected), hex `x-amz-content-sha256` (wrong → XAmzContentSHA256Mismatch), aws-chunked trailing checksums (right, wrong, missing), boto3 default uploads (automatic CRC32 recorded, multipart), minio-py, UploadPart (wrong MD5 / checksum → BadDigest, part checksums in ListParts), SSE-C and compressed-bucket paths |
 | Integration — Hardening | 11 | body size limits, health endpoint, metadata headers, cache transparency and invalidation, keep-alive hygiene (`Connection: close` on a response sent before the request body was read — with and without `Expect: 100-continue` — keep-alive kept when no body is owed, and 100 raced follow-ups on the same connection never mangled) |
 | Integration — Presigned URLs | 17 | presigned GET/PUT/HEAD/DELETE, security, admin presign, special chars, endpoint override |
 | Integration — SSE-C | 17 | put/get roundtrip, error handling, head, copy, range, delete, validation, multipart rejection |
@@ -207,9 +208,9 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — Migrate DB | 1 | SQLite→PostgreSQL offline metadata migration + row-count verify |
 | Integration — Migrate Topology | 1 | single→cluster config emission + DB ops, then →single round-trip |
 | Connector integrations | 84 | Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Kafka, AMQP, Elasticsearch, Syslog, SMTP, gRPC — each: delivery, custom destination, delete event, multiple events, payload format, connectivity test |
-| **Arca tests** | **1,871** | **All tests written for this project** |
+| **Arca tests** | **1,944** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 825 | 369 pass, 365 fail, 91 skip — 0 unexpected failures (RGW-only extensions excluded) |
-| **Total** | **2,696** | |
+| **Total** | **2,769** | |
 
 ## License
 

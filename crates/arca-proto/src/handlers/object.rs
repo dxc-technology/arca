@@ -553,7 +553,11 @@ pub async fn put_object(
 
     let headers = request.headers().clone();
     let body = request.into_body();
-    let stream = super::body::body_to_byte_stream(body, &headers, max_body);
+    let (stream, integrity) =
+        match super::body::verified_body_stream(body, &headers, max_body, &resource) {
+            Ok(r) => r,
+            Err(e) => return s3_error_response(e),
+        };
 
     // Check for SSE-C headers.
     let ssec_key = match extract_ssec_key(&headers, &resource) {
@@ -612,6 +616,19 @@ pub async fn put_object(
         (result, enc)
     };
 
+    // Body integrity: Content-MD5, x-amz-checksum-* and a hex
+    // x-amz-content-sha256 are checked against what was stored, before the
+    // sidecar and the metadata row make the blob reachable.
+    let (checksum_algorithm, checksum_value) = match integrity.verify(&put_result.etag, &resource) {
+        Ok(c) => c,
+        Err(e) => {
+            if let Err(del_err) = state.blob.delete(&blob_id).await {
+                tracing::warn!(error = %del_err, "Failed to delete blob after failed integrity check");
+            }
+            return s3_error_response(e);
+        }
+    };
+
     let now = chrono::Utc::now();
 
     // Write sidecar (for disaster recovery).
@@ -638,9 +655,6 @@ pub async fn put_object(
         &headers, &state, &bucket, now,
     )
     .await;
-
-    // Checksum: store client-provided checksum
-    let (checksum_algorithm, checksum_value) = extract_checksum_headers(&headers);
 
     // Storage class
     let storage_class = headers
@@ -2276,40 +2290,6 @@ fn parse_range_header(headers: &http::HeaderMap, file_size: u64) -> RangeParseRe
     }
 
     RangeParseResult::Range(ByteRange { start, end })
-}
-
-// -- Checksum helpers --
-
-/// Known checksum header suffixes and their algorithm names.
-const CHECKSUM_ALGORITHMS: &[(&str, &str)] = &[
-    ("x-amz-checksum-sha256", "SHA256"),
-    ("x-amz-checksum-crc32", "CRC32"),
-    ("x-amz-checksum-crc32c", "CRC32C"),
-    ("x-amz-checksum-crc64nvme", "CRC64NVME"),
-];
-
-/// Extract checksum algorithm and value from request headers.
-/// Checks `x-amz-checksum-algorithm` header and the specific `x-amz-checksum-*` headers.
-fn extract_checksum_headers(headers: &http::HeaderMap) -> (Option<String>, Option<String>) {
-    // Check explicit algorithm header first
-    let algo_header = headers
-        .get("x-amz-checksum-algorithm")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_uppercase());
-
-    // Find the matching checksum value header
-    for &(header_name, algo_name) in CHECKSUM_ALGORITHMS {
-        if let Some(value) = headers.get(header_name).and_then(|v| v.to_str().ok()) {
-            return (Some(algo_name.to_string()), Some(value.to_string()));
-        }
-    }
-
-    // If only the algorithm header is set without a value, record just the algorithm
-    if let Some(algo) = algo_header {
-        return (Some(algo), None);
-    }
-
-    (None, None)
 }
 
 // -- Object Lock helpers --

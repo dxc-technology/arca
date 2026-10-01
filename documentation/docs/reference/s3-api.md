@@ -108,6 +108,8 @@ Content-Type: application/octet-stream
 
 ETag is computed as the hex-encoded MD5 of the object content.
 
+The body is verified against `Content-MD5`, `x-amz-checksum-*` and a hex `x-amz-content-sha256` before the object is stored, see [Request body integrity](#request-body-integrity). The checksum (algorithm and value) is recorded on the object and returned as `x-amz-checksum-<algo>` on this response, and on GetObject / HeadObject when the request carries `x-amz-checksum-mode: ENABLED`.
+
 ### GetObject
 
 Download an object. Supports `Range` header for partial content retrieval.
@@ -214,7 +216,7 @@ Initiate a multipart upload and obtain an upload ID.
 POST /{bucket}/{key+}?uploads HTTP/1.1
 ```
 
-Returns `InitiateMultipartUploadResult` XML containing the `UploadId`.
+Returns `InitiateMultipartUploadResult` XML containing the `UploadId`. An `x-amz-checksum-algorithm` header is recorded on the upload and echoed back; ListParts then reports each part's checksum of that algorithm.
 
 ### UploadPart
 
@@ -225,6 +227,8 @@ PUT /{bucket}/{key+}?partNumber={n}&uploadId={id} HTTP/1.1
 ```
 
 Part numbers range from 1 to 10000. Each part (except the last) must be at least 5 MB.
+
+The part body is verified exactly like a PutObject body (see [Request body integrity](#request-body-integrity)); a refused part is not stored and does not replace an earlier upload of the same part number. A verified `x-amz-checksum-<algo>` is returned on the response.
 
 ### CompleteMultipartUpload
 
@@ -246,6 +250,8 @@ POST /{bucket}/{key+}?uploadId={id} HTTP/1.1
 ```
 
 The resulting ETag is a composite: `hex(MD5(binary_MD5(part1) || binary_MD5(part2) || ...))-{count}`.
+
+The completed object has no checksum: the COMPOSITE / FULL_OBJECT checksum is not computed, and the `Checksum<ALGO>` part fields and a whole-object `x-amz-checksum-*` header are accepted but not validated (TD-046).
 
 ### AbortMultipartUpload
 
@@ -274,6 +280,23 @@ Returns `204 No Content` on success.
 **Cost of losing a race.** The authoritative check runs at commit time, after the body has been received and stored, so a writer that loses a race has uploaded its whole body for nothing: the blob is deleted and the response is `412`. For a refused `CompleteMultipartUpload` only the assembled object is discarded; the upload and its parts are kept, so the client can retry.
 
 **Clusters.** In an HA cluster the check is exact per node, not cluster-wide: two conditional writes for the same key served by two different nodes at the same moment can both succeed (TD-025). Route a key's conditional writes to a single node, see [High Availability](../guide/ha.md).
+
+## Request body integrity
+
+PutObject and UploadPart verify the request body against every digest the request declares, as AWS S3 does. A body that fails is not stored (an existing object or part is left untouched) and the request fails with:
+
+| Header | Value | On mismatch | When malformed |
+|---|---|---|---|
+| `Content-MD5` | base64 of the 16-byte MD5 | `400 BadDigest` | `400 InvalidDigest` |
+| `x-amz-checksum-crc32`, `-crc32c`, `-crc64nvme`, `-sha1`, `-sha256` | base64 of the big-endian CRC or the digest | `400 BadDigest` (`The CRC32 you specified did not match the calculated checksum.`) | `400 InvalidRequest` |
+| `x-amz-trailer: x-amz-checksum-<algo>` with an aws-chunked body (`STREAMING-UNSIGNED-PAYLOAD-TRAILER`, `STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER`) | the same value, sent as a trailing header after the last chunk | `400 BadDigest` | `400 InvalidRequest`, also when the declared trailer is missing |
+| `x-amz-content-sha256` | 64 hex digits | `400 XAmzContentSHA256Mismatch` | — (`UNSIGNED-PAYLOAD` and `STREAMING-*` carry no digest and are not checked) |
+
+At most one checksum algorithm per request: two `x-amz-checksum-*` values (or a header and a trailer) are rejected with `400 InvalidRequest`. Malformed values are refused before the body is read.
+
+This is what makes the default behaviour of current SDKs work end to end: boto3 / botocore 1.36+ send a CRC32 on every upload (a header over HTTP, an aws-chunked trailer over HTTPS) and the AWS CLI a CRC64NVME; MinIO clients send `Content-MD5`, a hex `x-amz-content-sha256` or a CRC32C. The checksum is stored and returned with `x-amz-checksum-mode: ENABLED`.
+
+Not verified: the `chunk-signature` of each chunk and the trailer signature of `STREAMING-AWS4-HMAC-SHA256-PAYLOAD*` bodies (TD-045); multipart object checksums at CompleteMultipartUpload (TD-046).
 
 ## Intentional divergences from AWS S3
 

@@ -1214,6 +1214,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#request-body-integrity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Request body integrity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#intentional-divergences-from-aws-s3" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1884,6 +1895,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#request-body-integrity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Request body integrity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#intentional-divergences-from-aws-s3" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2159,6 +2181,7 @@
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>Content-Type: application/octet-stream
 </code></pre></div>
 <p>ETag is computed as the hex-encoded MD5 of the object content.</p>
+<p>The body is verified against <code>Content-MD5</code>, <code>x-amz-checksum-*</code> and a hex <code>x-amz-content-sha256</code> before the object is stored, see <a href="#request-body-integrity">Request body integrity</a>. The checksum (algorithm and value) is recorded on the object and returned as <code>x-amz-checksum-&lt;algo&gt;</code> on this response, and on GetObject / HeadObject when the request carries <code>x-amz-checksum-mode: ENABLED</code>.</p>
 <h3 id="getobject">GetObject<a class="headerlink" href="#getobject" title="Permanent link">&para;</a></h3>
 <p>Download an object. Supports <code>Range</code> header for partial content retrieval.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>GET /{bucket}/{key+} HTTP/1.1
@@ -2267,12 +2290,13 @@
 <p>Initiate a multipart upload and obtain an upload ID.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>POST /{bucket}/{key+}?uploads HTTP/1.1
 </code></pre></div>
-<p>Returns <code>InitiateMultipartUploadResult</code> XML containing the <code>UploadId</code>.</p>
+<p>Returns <code>InitiateMultipartUploadResult</code> XML containing the <code>UploadId</code>. An <code>x-amz-checksum-algorithm</code> header is recorded on the upload and echoed back; ListParts then reports each part's checksum of that algorithm.</p>
 <h3 id="uploadpart">UploadPart<a class="headerlink" href="#uploadpart" title="Permanent link">&para;</a></h3>
 <p>Upload a part for a multipart upload.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>PUT /{bucket}/{key+}?partNumber={n}&amp;uploadId={id} HTTP/1.1
 </code></pre></div>
 <p>Part numbers range from 1 to 10000. Each part (except the last) must be at least 5 MB.</p>
+<p>The part body is verified exactly like a PutObject body (see <a href="#request-body-integrity">Request body integrity</a>); a refused part is not stored and does not replace an earlier upload of the same part number. A verified <code>x-amz-checksum-&lt;algo&gt;</code> is returned on the response.</p>
 <h3 id="completemultipartupload">CompleteMultipartUpload<a class="headerlink" href="#completemultipartupload" title="Permanent link">&para;</a></h3>
 <p>Complete a multipart upload by assembling previously uploaded parts.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>POST<span class="w"> </span>/{bucket}/{key+}?uploadId={id}<span class="w"> </span>HTTP/1.1
@@ -2289,6 +2313,7 @@
 <a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a><span class="nt">&lt;/CompleteMultipartUpload&gt;</span>
 </code></pre></div>
 <p>The resulting ETag is a composite: <code>hex(MD5(binary_MD5(part1) || binary_MD5(part2) || ...))-{count}</code>.</p>
+<p>The completed object has no checksum: the COMPOSITE / FULL_OBJECT checksum is not computed, and the <code>Checksum&lt;ALGO&gt;</code> part fields and a whole-object <code>x-amz-checksum-*</code> header are accepted but not validated (TD-046).</p>
 <h3 id="abortmultipartupload">AbortMultipartUpload<a class="headerlink" href="#abortmultipartupload" title="Permanent link">&para;</a></h3>
 <p>Abort a multipart upload and delete all uploaded parts.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>DELETE /{bucket}/{key+}?uploadId={id} HTTP/1.1
@@ -2326,6 +2351,47 @@
 <p><strong>Atomicity.</strong> The precondition is evaluated inside the same metadata transaction that installs the new version or removes the old one, so two concurrent conditional writes against the same ETag cannot both succeed: exactly one commits, the other gets <code>412</code>. The check the handler performs before reading the body is only an optimisation that rejects stale requests early. See <a href="../architecture/#conditional-writes">Architecture › Conditional writes</a> for how each metadata backend guarantees this.</p>
 <p><strong>Cost of losing a race.</strong> The authoritative check runs at commit time, after the body has been received and stored, so a writer that loses a race has uploaded its whole body for nothing: the blob is deleted and the response is <code>412</code>. For a refused <code>CompleteMultipartUpload</code> only the assembled object is discarded; the upload and its parts are kept, so the client can retry.</p>
 <p><strong>Clusters.</strong> In an HA cluster the check is exact per node, not cluster-wide: two conditional writes for the same key served by two different nodes at the same moment can both succeed (TD-025). Route a key's conditional writes to a single node, see <a href="../../guide/ha/">High Availability</a>.</p>
+<h2 id="request-body-integrity">Request body integrity<a class="headerlink" href="#request-body-integrity" title="Permanent link">&para;</a></h2>
+<p>PutObject and UploadPart verify the request body against every digest the request declares, as AWS S3 does. A body that fails is not stored (an existing object or part is left untouched) and the request fails with:</p>
+<table>
+<thead>
+<tr>
+<th>Header</th>
+<th>Value</th>
+<th>On mismatch</th>
+<th>When malformed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Content-MD5</code></td>
+<td>base64 of the 16-byte MD5</td>
+<td><code>400 BadDigest</code></td>
+<td><code>400 InvalidDigest</code></td>
+</tr>
+<tr>
+<td><code>x-amz-checksum-crc32</code>, <code>-crc32c</code>, <code>-crc64nvme</code>, <code>-sha1</code>, <code>-sha256</code></td>
+<td>base64 of the big-endian CRC or the digest</td>
+<td><code>400 BadDigest</code> (<code>The CRC32 you specified did not match the calculated checksum.</code>)</td>
+<td><code>400 InvalidRequest</code></td>
+</tr>
+<tr>
+<td><code>x-amz-trailer: x-amz-checksum-&lt;algo&gt;</code> with an aws-chunked body (<code>STREAMING-UNSIGNED-PAYLOAD-TRAILER</code>, <code>STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER</code>)</td>
+<td>the same value, sent as a trailing header after the last chunk</td>
+<td><code>400 BadDigest</code></td>
+<td><code>400 InvalidRequest</code>, also when the declared trailer is missing</td>
+</tr>
+<tr>
+<td><code>x-amz-content-sha256</code></td>
+<td>64 hex digits</td>
+<td><code>400 XAmzContentSHA256Mismatch</code></td>
+<td>— (<code>UNSIGNED-PAYLOAD</code> and <code>STREAMING-*</code> carry no digest and are not checked)</td>
+</tr>
+</tbody>
+</table>
+<p>At most one checksum algorithm per request: two <code>x-amz-checksum-*</code> values (or a header and a trailer) are rejected with <code>400 InvalidRequest</code>. Malformed values are refused before the body is read.</p>
+<p>This is what makes the default behaviour of current SDKs work end to end: boto3 / botocore 1.36+ send a CRC32 on every upload (a header over HTTP, an aws-chunked trailer over HTTPS) and the AWS CLI a CRC64NVME; MinIO clients send <code>Content-MD5</code>, a hex <code>x-amz-content-sha256</code> or a CRC32C. The checksum is stored and returned with <code>x-amz-checksum-mode: ENABLED</code>.</p>
+<p>Not verified: the <code>chunk-signature</code> of each chunk and the trailer signature of <code>STREAMING-AWS4-HMAC-SHA256-PAYLOAD*</code> bodies (TD-045); multipart object checksums at CompleteMultipartUpload (TD-046).</p>
 <h2 id="intentional-divergences-from-aws-s3">Intentional divergences from AWS S3<a class="headerlink" href="#intentional-divergences-from-aws-s3" title="Permanent link">&para;</a></h2>
 <p>Arca targets drop-in AWS S3 compatibility: what AWS accepts, Arca accepts; what AWS rejects, Arca rejects — with the following deliberate, documented exceptions.</p>
 <h3 id="conditional-completemultipartupload-never-returns-409">Conditional <code>CompleteMultipartUpload</code> never returns 409<a class="headerlink" href="#conditional-completemultipartupload-never-returns-409" title="Permanent link">&para;</a></h3>

@@ -1095,6 +1095,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Authentication and Request Integrity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#request-body-integrity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Request body integrity
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1921,6 +1938,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Authentication and Request Integrity">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#request-body-integrity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Request body integrity
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2623,14 +2657,15 @@
     H-&gt;&gt;B: put_with_hints(blob_id, body stream)
     B-&gt;&gt;F: put (after compression / encryption, if any)
     F-&gt;&gt;F: bounded channel to blocking worker: MD5 + write {id}.tmp, rename to {id}
+    H-&gt;&gt;H: verify body digests (mismatch: delete the new blob, 400)
     H-&gt;&gt;B: write_sidecar (cluster: blob + sidecar fan out here)
     H-&gt;&gt;M: put_object_if(record, precondition)
     M--&gt;&gt;H: (old record, version id) or 412 / 404
     H-&gt;&gt;B: refused: delete the new blob; accepted: delete the old blob in background</code></pre>
 <ol>
-<li>The request body becomes a <code>ByteStream</code> (<code>handlers/body.rs</code>); AWS chunked encoding (<code>x-amz-content-sha256: STREAMING-*</code>) is decoded on the fly and <code>max_body_size</code> is enforced while streaming.</li>
+<li>The request body becomes a <code>ByteStream</code> (<code>handlers/body.rs</code>); AWS chunked encoding (<code>x-amz-content-sha256: STREAMING-*</code>) is decoded on the fly, its trailing headers are collected, <code>max_body_size</code> is enforced while streaming, and the digests the request declares are computed (see <a href="#request-body-integrity">Request body integrity</a>).</li>
 <li><code>FsBlobStore::put</code> runs a producer/consumer pipeline: the async task forwards chunks through a bounded channel (capacity 4) to a <code>spawn_blocking</code> worker that MD5-hashes and writes each chunk. The worker writes <code>{id}.tmp</code>, opened with <code>create_new</code> (<code>O_CREAT | O_EXCL</code>), and the file is renamed to its final name when the stream ends. The ETag is the hex MD5 of the plaintext: the encryption and compression layers report the plaintext digest.</li>
-<li>The handler writes the sidecar, then commits the metadata row through <code>put_object_if</code>, which evaluates the precondition and assigns the version id in one transaction (see <a href="#conditional-writes">Conditional writes</a>).</li>
+<li>The handler verifies the body digests against the stored blob (deleting it on a mismatch), writes the sidecar, then commits the metadata row through <code>put_object_if</code>, which evaluates the precondition and assigns the version id in one transaction (see <a href="#conditional-writes">Conditional writes</a>).</li>
 <li><code>MetadataStore::put_object</code> and <code>put_object_if</code> return <code>(Option&lt;ObjectRecord&gt;, Option&lt;String&gt;)</code>: the record that was overwritten (so the caller can delete its now-orphaned blob, done in a background task) and the version id assigned to the new row.</li>
 </ol>
 <p>GetObject streams the blob back through the same stack (<code>ReaderStream</code> over the file, 64 KiB reads); range requests seek and limit the read.</p>
@@ -2702,9 +2737,43 @@
 <li><strong>Authorization</strong>: after authentication the S3 middleware loads the user's effective grants and evaluates them (deny overrides allow); root bypasses policy evaluation. See <a href="../../guide/access-control/">Access Control</a>.</li>
 <li><strong>HTTP/2</strong>: browsers send <code>:authority</code> instead of <code>Host</code>; the S3 and Admin auth middlewares synthesise <code>host</code> from the URI authority when it is missing.</li>
 </ul>
+<h3 id="request-body-integrity">Request body integrity<a class="headerlink" href="#request-body-integrity" title="Permanent link">&para;</a></h3>
+<p>Signatures cover the method, URI, query and signed headers; the body is checked separately, against whatever digest the request declares. PutObject and UploadPart (<code>handlers/integrity.rs</code>, body stream from <code>body::verified_body_stream</code>) verify, as AWS does:</p>
+<table>
+<thead>
+<tr>
+<th>Declared by</th>
+<th>Mismatch</th>
+<th>Malformed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Content-MD5</code></td>
+<td><code>400 BadDigest</code></td>
+<td><code>400 InvalidDigest</code></td>
+</tr>
+<tr>
+<td><code>x-amz-checksum-{crc32,crc32c,crc64nvme,sha1,sha256}</code> header, or the aws-chunked trailer named by <code>x-amz-trailer</code></td>
+<td><code>400 BadDigest</code> ("The CRC32 you specified did not match the calculated checksum.")</td>
+<td><code>400 InvalidRequest</code> (also for two checksums at once, or a declared trailer that never arrives)</td>
+</tr>
+<tr>
+<td>hex <code>x-amz-content-sha256</code></td>
+<td><code>400 XAmzContentSHA256Mismatch</code></td>
+<td>not verified: <code>UNSIGNED-PAYLOAD</code> and the <code>STREAMING-*</code> keywords carry no digest</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Before the body</strong>: the declarations are parsed first, so a malformed one is refused without reading or storing anything.</li>
+<li><strong>While the body streams</strong>: only the digests the request asked for are computed (CRCs with the <code>crc</code> crate, SHA1/SHA256 with RustCrypto), on the decoded plaintext. The MD5 is not recomputed: every blob stack (plain, compressed, SSE-S3/KMS, SSE-C) already returns the plaintext MD5 as the ETag.</li>
+<li><strong>After the body, before the commit</strong>: the handler compares the digests once the blob store has written the blob, and on a mismatch deletes that blob before any sidecar or metadata row references it. The verified checksum is what is recorded on the object (or the part) and returned with <code>x-amz-checksum-mode: ENABLED</code>.</li>
+<li><strong>aws-chunked trailers</strong>: the decoder reads the trailing headers after the last chunk (<code>STREAMING-UNSIGNED-PAYLOAD-TRAILER</code>, which boto3 uses over HTTPS, and the signed <code>-TRAILER</code> variant).</li>
+</ul>
 <div class="admonition warning">
-<p class="admonition-title">No request body integrity check</p>
-<p>Signatures cover the method, URI, query and signed headers. The body is <strong>not</strong> verified today: <code>Content-MD5</code> is never read, <code>x-amz-checksum-*</code> values are stored and echoed back but never compared with the body, a hex <code>x-amz-content-sha256</code> is signed but never compared with the body, and <code>STREAMING-*</code> chunk signatures are stripped without verification. A corrupted upload is stored and acknowledged. Tracked as TD-034 in <a href="../../tech-debt/">Technical Debt</a>.</p>
+<p class="admonition-title">Not verified yet</p>
+<p><code>chunk-signature=</code> and <code>x-amz-trailer-signature</code> in <code>STREAMING-AWS4-HMAC-SHA256-PAYLOAD*</code> bodies are stripped without verification (TD-045), so a body that declares no digest of its own is not checked. CompleteMultipartUpload computes no object checksum and validates neither the part checksums in its XML nor a whole-object <code>x-amz-checksum-*</code> header (TD-046). See <a href="../../tech-debt/">Technical Debt</a>.</p>
 </div>
 <h2 id="clustering">Clustering<a class="headerlink" href="#clustering" title="Permanent link">&para;</a></h2>
 <p>This section covers the architecture only; <a href="../../guide/ha/">High Availability</a> is the operator guide and <a href="../ha-design-decisions/">HA Design Decisions</a> records the individual decisions. A cluster is fully replicated (every node holds every object), symmetric (byte-identical configuration on every node, each node self-assigns and persists its <code>node_id</code> in <code>server_config</code>) and has no leader for the data path.</p>

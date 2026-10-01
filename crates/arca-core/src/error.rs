@@ -34,6 +34,8 @@ pub enum S3ErrorCode {
     InvalidAccessKeyId,
     InvalidArgument,
     InvalidBucketName,
+    /// 400 — `Content-MD5` is not the base64 encoding of a 16-byte digest.
+    InvalidDigest,
     InvalidPart,
     InvalidPartOrder,
     InvalidRange,
@@ -55,6 +57,8 @@ pub enum S3ErrorCode {
     ServerSideEncryptionConfigurationNotFoundError,
     SignatureDoesNotMatch,
     SlowDown,
+    /// 400 — a hex `x-amz-content-sha256` does not match the received body.
+    XAmzContentSHA256Mismatch,
     InvalidRetentionPeriod,
     InvalidBucketState,
     ReplicationConfigurationNotFoundError,
@@ -80,6 +84,7 @@ impl S3ErrorCode {
             S3ErrorCode::InvalidAccessKeyId => 403,
             S3ErrorCode::InvalidArgument => 400,
             S3ErrorCode::InvalidBucketName => 400,
+            S3ErrorCode::InvalidDigest => 400,
             S3ErrorCode::InvalidPart => 400,
             S3ErrorCode::InvalidPartOrder => 400,
             S3ErrorCode::InvalidRange => 416,
@@ -101,6 +106,7 @@ impl S3ErrorCode {
             S3ErrorCode::ServerSideEncryptionConfigurationNotFoundError => 400,
             S3ErrorCode::SignatureDoesNotMatch => 403,
             S3ErrorCode::SlowDown => 503,
+            S3ErrorCode::XAmzContentSHA256Mismatch => 400,
             S3ErrorCode::InvalidRetentionPeriod => 400,
             S3ErrorCode::InvalidBucketState => 409,
             S3ErrorCode::ReplicationConfigurationNotFoundError => 404,
@@ -123,6 +129,7 @@ impl S3ErrorCode {
             S3ErrorCode::InvalidAccessKeyId => "InvalidAccessKeyId",
             S3ErrorCode::InvalidArgument => "InvalidArgument",
             S3ErrorCode::InvalidBucketName => "InvalidBucketName",
+            S3ErrorCode::InvalidDigest => "InvalidDigest",
             S3ErrorCode::InvalidPart => "InvalidPart",
             S3ErrorCode::InvalidPartOrder => "InvalidPartOrder",
             S3ErrorCode::InvalidRange => "InvalidRange",
@@ -148,6 +155,7 @@ impl S3ErrorCode {
             }
             S3ErrorCode::SignatureDoesNotMatch => "SignatureDoesNotMatch",
             S3ErrorCode::SlowDown => "SlowDown",
+            S3ErrorCode::XAmzContentSHA256Mismatch => "XAmzContentSHA256Mismatch",
             S3ErrorCode::InvalidRetentionPeriod => "InvalidRetentionPeriod",
             S3ErrorCode::InvalidBucketState => "InvalidBucketState",
             S3ErrorCode::ReplicationConfigurationNotFoundError => {
@@ -188,6 +196,7 @@ impl S3ErrorCode {
             }
             S3ErrorCode::InvalidArgument => "Invalid Argument",
             S3ErrorCode::InvalidBucketName => "The specified bucket is not valid.",
+            S3ErrorCode::InvalidDigest => "The Content-MD5 you specified is not valid.",
             S3ErrorCode::InvalidPart => {
                 "One or more of the specified parts could not be found."
             }
@@ -236,6 +245,9 @@ impl S3ErrorCode {
             }
             S3ErrorCode::SlowDown => {
                 "Please reduce your request rate."
+            }
+            S3ErrorCode::XAmzContentSHA256Mismatch => {
+                "The provided 'x-amz-content-sha256' header does not match what was computed."
             }
             S3ErrorCode::InvalidRetentionPeriod => {
                 "The retention period specified is not valid."
@@ -418,6 +430,25 @@ mod tests {
         let err =
             S3Error::with_message(S3ErrorCode::InternalError, "custom error", "/resource");
         assert_eq!(err.message, "custom error");
+    }
+
+    #[test]
+    fn body_integrity_error_codes() {
+        assert_eq!(S3ErrorCode::InvalidDigest.http_status(), 400);
+        assert_eq!(S3ErrorCode::InvalidDigest.as_str(), "InvalidDigest");
+        assert_eq!(
+            S3ErrorCode::InvalidDigest.default_message(),
+            "The Content-MD5 you specified is not valid."
+        );
+        assert_eq!(S3ErrorCode::XAmzContentSHA256Mismatch.http_status(), 400);
+        assert_eq!(
+            S3ErrorCode::XAmzContentSHA256Mismatch.as_str(),
+            "XAmzContentSHA256Mismatch"
+        );
+        assert_eq!(
+            S3ErrorCode::XAmzContentSHA256Mismatch.default_message(),
+            "The provided 'x-amz-content-sha256' header does not match what was computed."
+        );
     }
 
     #[test]

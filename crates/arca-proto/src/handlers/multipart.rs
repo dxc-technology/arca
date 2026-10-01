@@ -77,6 +77,15 @@ pub async fn create_multipart_upload(
         metadata.insert("_arca_tagging".to_string(), th.clone());
     }
 
+    // x-amz-checksum-algorithm: the algorithm the parts' checksums use
+    // (reported by ListParts). The final object's checksum is not computed,
+    // see TD-046 in complete_multipart_upload.
+    let checksum_algorithm = request
+        .headers()
+        .get("x-amz-checksum-algorithm")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_uppercase());
+
     let upload_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now();
 
@@ -87,7 +96,7 @@ pub async fn create_multipart_upload(
         content_type,
         initiated_at: now,
         metadata,
-        checksum_algorithm: None,
+        checksum_algorithm: checksum_algorithm.clone(),
     };
 
     if let Err(e) = state.metadata.create_multipart_upload(&record).await {
@@ -95,9 +104,13 @@ pub async fn create_multipart_upload(
     }
 
     let xml = xml_types::initiate_multipart_upload_result(&bucket, &key, &upload_id);
-    Response::builder()
+    let mut builder = Response::builder()
         .status(StatusCode::OK)
-        .header("Content-Type", "application/xml")
+        .header("Content-Type", "application/xml");
+    if let Some(ref algo) = checksum_algorithm {
+        builder = builder.header("x-amz-checksum-algorithm", algo.as_str());
+    }
+    builder
         .body(Body::from(xml))
         .expect("build create_multipart_upload response")
 }
@@ -165,7 +178,11 @@ pub async fn upload_part(
 
     let headers = request.headers().clone();
     let body = request.into_body();
-    let stream = super::body::body_to_byte_stream(body, &headers, max_body);
+    let (stream, integrity) =
+        match super::body::verified_body_stream(body, &headers, max_body, &resource) {
+            Ok(r) => r,
+            Err(e) => return s3_error_response(e),
+        };
 
     // Write part blob (route through encrypting or plain store based on bucket config).
     let blob_id = BlobId::new();
@@ -178,6 +195,18 @@ pub async fn upload_part(
                 return s3_error_response(S3Error::new(S3ErrorCode::EntityTooLarge, &resource));
             }
             return internal_error_response(e, &resource);
+        }
+    };
+
+    // Body integrity, same contract as PutObject: verified before the part
+    // sidecar and row exist.
+    let (checksum_algorithm, checksum_value) = match integrity.verify(&put_result.etag, &resource) {
+        Ok(c) => c,
+        Err(e) => {
+            if let Err(del_err) = state.blob.delete(&blob_id).await {
+                tracing::warn!(error = %del_err, "Failed to delete part blob after failed integrity check");
+            }
+            return s3_error_response(e);
         }
     };
 
@@ -203,14 +232,20 @@ pub async fn upload_part(
         tracing::warn!(error = %e, "Failed to write part sidecar");
     }
 
-    // Insert part record (returns old for cleanup).
+    // Insert part record (returns old for cleanup). The part checksum is
+    // kept when it uses the upload's algorithm, the one ListParts reports.
+    let same_algorithm = matches!(
+        (checksum_algorithm.as_deref(), upload.checksum_algorithm.as_deref()),
+        (Some(algo), Some(upload_algo)) if algo.eq_ignore_ascii_case(upload_algo)
+    );
+    let part_checksum = if same_algorithm { checksum_value.clone() } else { None };
     let part = PartRecord {
         upload_id: upload_id.clone(),
         part_number,
         blob_id,
         size: put_result.size,
         etag: put_result.etag.clone(),
-        checksum_value: None,
+        checksum_value: part_checksum,
         last_modified: Some(chrono::Utc::now()),
     };
     let old_part = match state.metadata.put_part(&part).await {
@@ -226,9 +261,13 @@ pub async fn upload_part(
     }
 
     let etag = format!("\"{}\"", put_result.etag);
-    Response::builder()
+    let mut builder = Response::builder()
         .status(StatusCode::OK)
-        .header("ETag", &etag)
+        .header("ETag", &etag);
+    if let (Some(algo), Some(val)) = (&checksum_algorithm, &checksum_value) {
+        builder = builder.header(format!("x-amz-checksum-{}", algo.to_lowercase()), val.as_str());
+    }
+    builder
         .body(Body::empty())
         .expect("build upload_part response")
 }
@@ -447,6 +486,10 @@ pub async fn complete_multipart_upload(
         retain_until_date: None,
         legal_hold_status: None,
         storage_class: "STANDARD".to_string(),
+        // TECHDEBT(TD-046): no object checksum for multipart uploads; the
+        // composite / full-object checksum is not computed, and neither the
+        // part checksums in the request XML nor its x-amz-checksum-* header
+        // are validated.
         checksum_algorithm: None,
         checksum_value: None,
         replication_status: None,

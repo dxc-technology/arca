@@ -376,14 +376,24 @@ impl BlobStore for FsBlobStore {
         }
         drop(tx);
 
-        let (size, digest) = worker
+        let written = worker
             .await
-            .map_err(|e| ArcaError::Internal(format!("blob writer join: {e}")))?
-            .map_err(|e| ArcaError::Internal(format!("write blob: {e}")))?;
+            .map_err(|e| ArcaError::Internal(format!("blob writer join: {e}")))
+            .and_then(|r| r.map_err(|e| ArcaError::Internal(format!("write blob: {e}"))));
 
-        if let Some(e) = stream_err {
-            return Err(e);
-        }
+        // A failed write (body error, size limit, disk error) leaves nothing
+        // behind: the partial temp file is removed.
+        let (size, digest) = match (written, stream_err) {
+            (Ok(done), None) => done,
+            (Ok(_), Some(e)) | (Err(e), _) => {
+                if let Err(rm_err) = fs::remove_file(&tmp_path).await {
+                    if rm_err.kind() != io::ErrorKind::NotFound {
+                        tracing::warn!(error = %rm_err, "Failed to remove temp blob after failed write");
+                    }
+                }
+                return Err(e);
+            }
+        };
 
         // Atomic rename: tmp → final.
         fs::rename(&tmp_path, &blob_path)
@@ -770,6 +780,23 @@ mod tests {
 
         let body = collect_stream(get_result.stream).await;
         assert_eq!(body, data);
+    }
+
+    #[tokio::test]
+    async fn failed_stream_leaves_no_blob_or_temp_file() {
+        let (store, _dir) = test_store(2).await;
+        let blob_id = BlobId::new();
+        let chunks = vec![
+            Ok(Bytes::from_static(b"partial body")),
+            Err(io::Error::new(io::ErrorKind::Other, "EntityTooLarge")),
+        ];
+        let err = store
+            .put(&blob_id, Box::pin(stream_iter(chunks)))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("EntityTooLarge"));
+        assert!(!store.tmp_path(&blob_id).exists(), "temp file must be removed");
+        assert!(!store.blob_path(&blob_id).exists(), "no blob must be stored");
     }
 
     #[tokio::test]

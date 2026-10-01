@@ -238,15 +238,16 @@ sequenceDiagram
     H->>B: put_with_hints(blob_id, body stream)
     B->>F: put (after compression / encryption, if any)
     F->>F: bounded channel to blocking worker: MD5 + write {id}.tmp, rename to {id}
+    H->>H: verify body digests (mismatch: delete the new blob, 400)
     H->>B: write_sidecar (cluster: blob + sidecar fan out here)
     H->>M: put_object_if(record, precondition)
     M-->>H: (old record, version id) or 412 / 404
     H->>B: refused: delete the new blob; accepted: delete the old blob in background
 ```
 
-1. The request body becomes a `ByteStream` (`handlers/body.rs`); AWS chunked encoding (`x-amz-content-sha256: STREAMING-*`) is decoded on the fly and `max_body_size` is enforced while streaming.
+1. The request body becomes a `ByteStream` (`handlers/body.rs`); AWS chunked encoding (`x-amz-content-sha256: STREAMING-*`) is decoded on the fly, its trailing headers are collected, `max_body_size` is enforced while streaming, and the digests the request declares are computed (see [Request body integrity](#request-body-integrity)).
 2. `FsBlobStore::put` runs a producer/consumer pipeline: the async task forwards chunks through a bounded channel (capacity 4) to a `spawn_blocking` worker that MD5-hashes and writes each chunk. The worker writes `{id}.tmp`, opened with `create_new` (`O_CREAT | O_EXCL`), and the file is renamed to its final name when the stream ends. The ETag is the hex MD5 of the plaintext: the encryption and compression layers report the plaintext digest.
-3. The handler writes the sidecar, then commits the metadata row through `put_object_if`, which evaluates the precondition and assigns the version id in one transaction (see [Conditional writes](#conditional-writes)).
+3. The handler verifies the body digests against the stored blob (deleting it on a mismatch), writes the sidecar, then commits the metadata row through `put_object_if`, which evaluates the precondition and assigns the version id in one transaction (see [Conditional writes](#conditional-writes)).
 4. `MetadataStore::put_object` and `put_object_if` return `(Option<ObjectRecord>, Option<String>)`: the record that was overwritten (so the caller can delete its now-orphaned blob, done in a background task) and the version id assigned to the new row.
 
 GetObject streams the blob back through the same stack (`ReaderStream` over the file, 64 KiB reads); range requests seek and limit the read.
@@ -296,8 +297,23 @@ Known gaps, tracked in [Technical Debt](../tech-debt.md):
 - **Authorization**: after authentication the S3 middleware loads the user's effective grants and evaluates them (deny overrides allow); root bypasses policy evaluation. See [Access Control](../guide/access-control.md).
 - **HTTP/2**: browsers send `:authority` instead of `Host`; the S3 and Admin auth middlewares synthesise `host` from the URI authority when it is missing.
 
-!!! warning "No request body integrity check"
-    Signatures cover the method, URI, query and signed headers. The body is **not** verified today: `Content-MD5` is never read, `x-amz-checksum-*` values are stored and echoed back but never compared with the body, a hex `x-amz-content-sha256` is signed but never compared with the body, and `STREAMING-*` chunk signatures are stripped without verification. A corrupted upload is stored and acknowledged. Tracked as TD-034 in [Technical Debt](../tech-debt.md).
+### Request body integrity
+
+Signatures cover the method, URI, query and signed headers; the body is checked separately, against whatever digest the request declares. PutObject and UploadPart (`handlers/integrity.rs`, body stream from `body::verified_body_stream`) verify, as AWS does:
+
+| Declared by | Mismatch | Malformed |
+|-------------|----------|-----------|
+| `Content-MD5` | `400 BadDigest` | `400 InvalidDigest` |
+| `x-amz-checksum-{crc32,crc32c,crc64nvme,sha1,sha256}` header, or the aws-chunked trailer named by `x-amz-trailer` | `400 BadDigest` ("The CRC32 you specified did not match the calculated checksum.") | `400 InvalidRequest` (also for two checksums at once, or a declared trailer that never arrives) |
+| hex `x-amz-content-sha256` | `400 XAmzContentSHA256Mismatch` | not verified: `UNSIGNED-PAYLOAD` and the `STREAMING-*` keywords carry no digest |
+
+- **Before the body**: the declarations are parsed first, so a malformed one is refused without reading or storing anything.
+- **While the body streams**: only the digests the request asked for are computed (CRCs with the `crc` crate, SHA1/SHA256 with RustCrypto), on the decoded plaintext. The MD5 is not recomputed: every blob stack (plain, compressed, SSE-S3/KMS, SSE-C) already returns the plaintext MD5 as the ETag.
+- **After the body, before the commit**: the handler compares the digests once the blob store has written the blob, and on a mismatch deletes that blob before any sidecar or metadata row references it. The verified checksum is what is recorded on the object (or the part) and returned with `x-amz-checksum-mode: ENABLED`.
+- **aws-chunked trailers**: the decoder reads the trailing headers after the last chunk (`STREAMING-UNSIGNED-PAYLOAD-TRAILER`, which boto3 uses over HTTPS, and the signed `-TRAILER` variant).
+
+!!! warning "Not verified yet"
+    `chunk-signature=` and `x-amz-trailer-signature` in `STREAMING-AWS4-HMAC-SHA256-PAYLOAD*` bodies are stripped without verification (TD-045), so a body that declares no digest of its own is not checked. CompleteMultipartUpload computes no object checksum and validates neither the part checksums in its XML nor a whole-object `x-amz-checksum-*` header (TD-046). See [Technical Debt](../tech-debt.md).
 
 ## Clustering
 

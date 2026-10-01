@@ -1553,14 +1553,6 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>crates/arca-server/src/cluster/cluster_meta.rs</code>, <code>crates/arca-core/src/cluster.rs</code> (<code>ControlSnapshot</code>), <code>crates/arca-storage/src/{sqlite,pg}/metadata.rs</code></td>
 </tr>
 <tr>
-<td>TD-034</td>
-<td>Request body integrity is never verified</td>
-<td><code>Content-MD5</code> is never read (<code>S3ErrorCode::BadDigest</code> is defined but never returned); <code>x-amz-checksum-*</code> values are extracted, stored and echoed back but never compared with the body; a hex <code>x-amz-content-sha256</code> is included in the signature but never compared with the body; <code>STREAMING-*</code> chunk signatures are stripped, not verified. A corrupted upload is stored and acknowledged. <code>AGENTS.md</code> and <code>reference/architecture.md</code> state that body integrity relies on Content-MD5.</td>
-<td>Verify <code>Content-MD5</code> and the <code>x-amz-checksum-*</code> value against the streamed body before the metadata commit (the MD5 is already computed for the ETag), returning <code>BadDigest</code> / <code>InvalidRequest</code> and deleting the blob on mismatch; compare a hex <code>x-amz-content-sha256</code> likewise. Chunk-signature verification can follow separately.</td>
-<td>Probably the failing Ceph <code>test_object_checksum_sha256</code>, <code>test_object_checksum_crc64nvme</code>, <code>test_multipart_checksum_sha256</code>, <code>test_post_object_upload_checksum</code>, <code>test_get_multipart_checksum_object_attributes</code> (root cause per test not confirmed)</td>
-<td><code>crates/arca-proto/src/handlers/{object,multipart,body}.rs</code></td>
-</tr>
-<tr>
 <td>TD-035</td>
 <td><code>UploadPartCopy</code> ignores copy-source conditionals</td>
 <td><code>check_copy_source_conditionals</code> (<code>x-amz-copy-source-if-match</code>, <code>-if-none-match</code>, <code>-if-modified-since</code>, <code>-if-unmodified-since</code>) is called only from <code>copy_object</code>; <code>upload_part_copy</code> never evaluates them, so a part is copied even when the precondition fails.</td>
@@ -1623,6 +1615,22 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>Apply <code>use_test_project</code> to <code>bin/screenshots</code>; publish the cluster nodes on ephemeral loopback ports (the suite reaches them over the compose network) or refuse to start while the dev server is up; name the TLS test volume per project.</td>
 <td>None</td>
 <td><code>bin/screenshots</code>, <code>bin/test</code> (cluster suite), <code>docker/docker-compose.cluster*.yml</code>, <code>bin/lib/compose.sh</code> (<code>make_test_certs</code>)</td>
+</tr>
+<tr>
+<td>TD-045</td>
+<td>aws-chunked chunk and trailer signatures are not verified</td>
+<td>For <code>STREAMING-AWS4-HMAC-SHA256-PAYLOAD</code> (and <code>-TRAILER</code>) bodies the decoder (<code>AwsChunkedDecoder</code>) strips each <code>chunk-signature=</code> and the <code>x-amz-trailer-signature</code> without checking them against the request's seed signature, so only the headers are authenticated. Body integrity is still enforced when the client declares a digest (<code>Content-MD5</code>, <code>x-amz-checksum-*</code> header or trailer, TD-034), but <code>mc</code> over plain HTTP sends signed chunks with no such digest on PutObject/UploadPart, and those bodies are verified by nothing. Found 2026-10-01 while fixing TD-034.</td>
+<td>Derive the SigV4 signing key in the auth middleware and hand it, with the seed signature, to the decoder; verify each chunk's <code>AWS4-HMAC-SHA256-PAYLOAD</code> string-to-sign and the trailer signature as they stream, failing with <code>SignatureDoesNotMatch</code> before the blob is committed. Unit tests against the AWS chunked-upload example vectors.</td>
+<td>None</td>
+<td><code>crates/arca-proto/src/handlers/body.rs</code>, <code>crates/arca-proto/src/middleware/auth.rs</code>, <code>crates/arca-auth/src/</code></td>
+</tr>
+<tr>
+<td>TD-046</td>
+<td>Multipart uploads get no object checksum</td>
+<td>CompleteMultipartUpload stores no <code>checksum_algorithm</code> / <code>checksum_value</code> on the object: the COMPOSITE checksum (<code>base64(H(raw part checksums))-N</code>) and the FULL_OBJECT CRC (CRC combination of the part CRCs, the only type CRC64NVME supports; selected by <code>x-amz-checksum-type</code>) are not computed, the per-part <code>Checksum&lt;ALGO&gt;</code> values in the request XML are not compared with the stored part checksums, and a whole-object <code>x-amz-checksum-*</code> header on the request is not validated (AWS answers <code>BadDigest</code>). GetObjectAttributes returns no <code>ObjectParts</code> checksums for the same reason. UploadPart itself is verified and stores its part checksum (TD-034); CreateMultipartUpload records <code>x-amz-checksum-algorithm</code>. Found 2026-10-01 while fixing TD-034.</td>
+<td>At Complete: when the upload has an algorithm, require and compare each part's checksum, compute the COMPOSITE value (and, for CRC types, the FULL_OBJECT value through a CRC-combine function; <code>x-amz-checksum-type</code> decides), check it against the request header, store it on the object and return it in the response, HEAD/GET and GetObjectAttributes. Keep part checksums with the object so <code>ObjectParts</code> can report them.</td>
+<td><code>test_multipart_checksum_sha256</code>, <code>test_multipart_use_cksum_helper_{sha256,crc32,crc32c,crc64nvme}</code>, <code>test_get_multipart_checksum_object_attributes</code></td>
+<td><code>crates/arca-proto/src/handlers/multipart.rs</code> (<code>complete_multipart_upload</code>), <code>crates/arca-core/src/s3/xml_types.rs</code></td>
 </tr>
 </tbody>
 </table>
@@ -1752,6 +1760,12 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>TD-029</td>
 <td>Compression + encryption read failed</td>
 <td>Root cause on the read side: with a <code>CompressingBlobStore</code> above an <code>EncryptingBlobStore</code>, the encrypting layer encrypts the compressed frame of the object, but <code>EncryptingBlobStore::get</code> took the length of what it had encrypted from the sidecar's <code>size</code>, which is the object's uncompressed size. Ranged reads (the compressing layer reads its footer and chunks through ranged reads) were therefore clamped and their last chunk located in the wrong space: <code>read chunks: early eof</code> when the frame is shorter than the object, <code>compressed footer count truncated</code> (an overflow in debug builds) when it is longer. It now uses <code>compression.compressed_size</code> when the sidecar records compression (<code>payload_size</code> in <code>encrypted_blob.rs</code>). The write side was always correct, so objects already stored compressed and encrypted are read correctly by the fixed server; no repair is needed. Covered by five stacked-store unit tests in <code>compressed_blob.rs</code> and by a second, encrypted pass of <code>bin/test compression</code> (<code>run_compression</code>), which also gained incompressible-body, suffix-range, multipart and copy tests.</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-034</td>
+<td>Request body integrity was never verified</td>
+<td>PutObject and UploadPart now verify (through every blob stack: plain, SSE-S3/KMS, compressed, and SSE-C for PutObject) the body as AWS does, in <code>handlers/integrity.rs</code> with the body stream from <code>body::verified_body_stream</code>: <code>Content-MD5</code> against the plaintext MD5 the blob store already returns as the ETag (mismatch <code>BadDigest</code>, malformed <code>InvalidDigest</code>); <code>x-amz-checksum-{crc32,crc32c,crc64nvme,sha1,sha256}</code> from a header or from an aws-chunked trailer named by <code>x-amz-trailer</code> (the decoder now parses trailers instead of stopping at the last chunk), computed while the body streams (mismatch <code>BadDigest</code> "The <ALGO> you specified did not match the calculated checksum.", malformed or several at once <code>InvalidRequest</code>); a hex <code>x-amz-content-sha256</code> (mismatch <code>XAmzContentSHA256Mismatch</code>). Malformed declarations are refused before the body is read; a mismatch deletes the written blob before any sidecar or row exists. Trailer checksums (boto3 over HTTPS) are now recorded too, SHA1 is supported, UploadPart returns and stores its checksum, CreateMultipartUpload records <code>x-amz-checksum-algorithm</code>. <code>FsBlobStore::put</code> now removes its temp file when the body stream fails (it leaked one, e.g. on <code>EntityTooLarge</code>). Left out: chunk-signature verification (TD-045) and multipart object checksums (TD-046). Unit tests in <code>integrity.rs</code> / <code>body.rs</code>, integration suite <code>test_integrity.py</code> (41)</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 </tbody>

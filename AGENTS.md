@@ -279,7 +279,7 @@ Dependency direction: `arca-server` -> `arca-proto`, `arca-storage`, `arca-auth`
 
 **Multipart composite ETag** — `hex(MD5(binary_MD5(part1) || binary_MD5(part2) || ...))-{count}`. Note: concat the binary MD5 bytes, not hex strings.
 
-**Auth body hash** — Accept `UNSIGNED-PAYLOAD` for streaming uploads. Verify request signature only (headers + URI), not body hash. Body integrity is currently **not** verified at all: `Content-MD5`, `x-amz-checksum-*` and a hex `x-amz-content-sha256` are never compared with the body (TD-034).
+**Auth body hash** — Accept `UNSIGNED-PAYLOAD` and the `STREAMING-*` payload modes; the SigV4 signature covers headers + URI, not the body. Body integrity is verified separately on PutObject and UploadPart (`handlers/integrity.rs`): `Content-MD5` (`BadDigest` / `InvalidDigest`), `x-amz-checksum-*` from a header or an aws-chunked trailer (`BadDigest` / `InvalidRequest`) and a hex `x-amz-content-sha256` (`XAmzContentSHA256Mismatch`), checked after the blob is written and before the sidecar and metadata row, deleting the blob on a mismatch. Not verified yet: aws-chunked chunk/trailer signatures (TD-045) and multipart object checksums at CompleteMultipartUpload (TD-046).
 
 **Configuration migration without data migration** — Arca must allow any configuration change (storage backend, encryption, node topology, etc.) without requiring data migration to a new instance. Changes are applied via offline CLI tools (`arca migrate-*`) or live reconfiguration that operate in-place on the existing data directory. This is a hard architectural constraint: unlike MinIO, which forces a fresh instance when changing topology, Arca must always provide a migration path that preserves existing data in place.
 

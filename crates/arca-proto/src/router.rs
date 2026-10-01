@@ -333,6 +333,7 @@ pub fn build_router(state: AppState) -> Router {
             HeaderName::from_static("x-amz-checksum-crc32"),
             HeaderName::from_static("x-amz-checksum-crc32c"),
             HeaderName::from_static("x-amz-checksum-crc64nvme"),
+            HeaderName::from_static("x-amz-checksum-sha1"),
             HeaderName::from_static("x-amz-storage-class"),
             HeaderName::from_static("x-amz-object-attributes"),
         ]))
@@ -352,6 +353,7 @@ pub fn build_router(state: AppState) -> Router {
             HeaderName::from_static("x-amz-checksum-crc32"),
             HeaderName::from_static("x-amz-checksum-crc32c"),
             HeaderName::from_static("x-amz-checksum-crc64nvme"),
+            HeaderName::from_static("x-amz-checksum-sha1"),
             HeaderName::from_static("x-amz-storage-class"),
         ]);
 
