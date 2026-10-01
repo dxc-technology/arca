@@ -183,7 +183,7 @@ tags_of() { release_tags "$1" | tr '\n' ' ' | sed 's/ $//'; }
 test_release_tags_first_release_gets_all_tags() {
     new_repo 1.2.3 1.2.3
     git tag v1.2.3
-    assert_eq "1.2.3 1.2 latest" "$(tags_of 1.2.3)"
+    assert_eq "1.2.3 1.2 1 latest" "$(tags_of 1.2.3)"
 }
 
 test_release_tags_fix_on_older_minor_keeps_latest() {
@@ -205,7 +205,7 @@ test_release_tags_sort_numerically_not_lexically() {
     new_repo 1.10.0 1.10.0
     git tag v1.9.0
     git tag v1.10.0
-    assert_eq "1.10.0 1.10 latest" "$(tags_of 1.10.0)" &&
+    assert_eq "1.10.0 1.10 1 latest" "$(tags_of 1.10.0)" &&
     assert_eq "1.9.0 1.9" "$(tags_of 1.9.0)"
 }
 
@@ -215,6 +215,43 @@ test_release_tags_minor_glob_does_not_leak_into_other_minors() {
     git tag v0.3.9
     git tag v0.30.0
     assert_eq "0.3.9 0.3" "$(tags_of 0.3.9)"
+}
+
+test_release_tags_major_tag_skipped_in_0x() {
+    # in 0.x a minor bump may break compatibility, so `:0` would promise too much
+    new_repo 0.30.2 0.30.2
+    git tag v0.30.2
+    assert_eq "0.30.2 0.30 latest" "$(tags_of 0.30.2)"
+}
+
+test_release_tags_major_tag_starts_at_1_0_0() {
+    new_repo 1.0.0 1.0.0
+    git tag v0.30.2
+    git tag v1.0.0
+    assert_eq "1.0.0 1.0 1 latest" "$(tags_of 1.0.0)"
+}
+
+test_release_tags_fix_on_older_major_keeps_its_major_tag() {
+    new_repo 2.0.0 2.0.0
+    git tag v1.4.0
+    git tag v1.4.1
+    git tag v2.0.0
+    assert_eq "1.4.1 1.4 1" "$(tags_of 1.4.1)"
+}
+
+test_release_tags_older_minor_does_not_move_major_tag() {
+    new_repo 1.3.0 1.3.0
+    git tag v1.2.4
+    git tag v1.3.0
+    assert_eq "1.2.4 1.2" "$(tags_of 1.2.4)"
+}
+
+test_release_tags_major_glob_does_not_leak_into_other_majors() {
+    # v1.* must not match v10.x
+    new_repo 10.0.0 10.0.0
+    git tag v1.9.0
+    git tag v10.0.0
+    assert_eq "1.9.0 1.9 1" "$(tags_of 1.9.0)"
 }
 
 test_release_tags_prerelease_gets_exact_tag_only() {
@@ -228,7 +265,7 @@ test_release_tags_prerelease_does_not_steal_latest() {
     new_repo 1.3.0 1.3.0
     git tag v1.3.0
     git tag v1.4.0-rc.1
-    assert_eq "1.3.0 1.3 latest" "$(tags_of 1.3.0)"
+    assert_eq "1.3.0 1.3 1 latest" "$(tags_of 1.3.0)"
 }
 
 # --- annotation_args ---------------------------------------------------------
@@ -305,6 +342,8 @@ test_publish_index_tags_annotates_and_merges_sources() {
 ghcr.io/dxc-technology/arca:1.2.3
 -t
 ghcr.io/dxc-technology/arca:1.2
+-t
+ghcr.io/dxc-technology/arca:1
 -t
 ghcr.io/dxc-technology/arca:latest
 --annotation

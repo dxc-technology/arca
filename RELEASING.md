@@ -75,10 +75,15 @@ images as multi-arch (`linux/amd64` + `linux/arm64`) images:
 - `ghcr.io/dxc-technology/arca`
 - `ghcr.io/dxc-technology/arca-console`
 
-Each is tagged `X.Y.Z`; `X.Y` and `latest` move only if this is the newest
-release of its minor line / overall, so releasing a fix for an older line never
-moves them backwards. A prerelease tag (`vX.Y.Z-rc.N`) is published under its
-exact version only.
+Each is tagged `X.Y.Z`; `X.Y`, `X` and `latest` move only if this is the
+newest release of its minor line / major line / overall, so releasing a fix
+for an older line never moves them backwards. A prerelease tag
+(`vX.Y.Z-rc.N`) is published under its exact version only.
+
+The major-only `X` tag is not published while `X` is 0: in 0.x a minor bump
+may break compatibility, so `:0` would promise a stability the project does
+not offer. `release_tags` (`bin/lib/images.sh`) adds it automatically from
+1.0.0, so nothing needs to be done by hand at that point.
 
 Every platform is built natively on its own runner and scanned by Trivy before
 anything is tagged — the image itself, plus `Cargo.lock` for `arca`, whose

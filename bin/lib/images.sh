@@ -83,16 +83,22 @@ _newest_release() {
 }
 
 # Tags a release is published under, one per line: always the exact version;
-# X.Y only if it is the newest release of its minor line, and `latest` only
-# if it is the newest release overall, so publishing a fix for an older line
-# never moves either backwards. A prerelease gets its exact version only. No
-# major-only tag: in 0.x a minor bump may break compatibility.
+# X.Y only if it is the newest release of its minor line, X only if it is the
+# newest release of its major line, and `latest` only if it is the newest
+# release overall, so publishing a fix for an older line never moves any of
+# them backwards. A prerelease gets its exact version only. No X tag while
+# X is 0: in 0.x a minor bump may break compatibility, so `:0` would promise
+# a stability the project does not offer. It appears by itself from 1.0.0.
 release_tags() {    # release_tags <version>
-    local version="$1" minor
+    local version="$1" minor major
     echo "$version"
     [[ "$version" == *-* ]] && return 0
     minor="${version%.*}"
+    major="${version%%.*}"
     [[ "$(_newest_release "v$minor.*")" == "v$version" ]] && echo "$minor"
+    if [[ "$major" != "0" && "$(_newest_release "v$major.*")" == "v$version" ]]; then
+        echo "$major"
+    fi
     [[ "$(_newest_release 'v*')" == "v$version" ]] && echo "latest"
     return 0
 }
