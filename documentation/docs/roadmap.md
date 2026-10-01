@@ -464,7 +464,7 @@ coexist transparently.
 - [x] Size thresholds (min_size and max_size)
 - [x] Sidecar metadata for compression info
 - [x] Mixed-mode coexistence
-- [x] Correct stacking with encryption: compress then encrypt then store (reads of compressed objects on an encrypted server currently fail, see TD-029)
+- [x] Correct stacking with encryption: compress then encrypt then store (reads of compressed objects on an encrypted server failed until TD-029 was fixed; the data at rest was always correct)
 - [x] Chunked frame format with footer index (enables ranged reads)
 - [x] `arca compress-existing` CLI command (offline, in-place, with --dry-run)
 - [x] `arca decompress-existing` CLI command (offline, in-place)
@@ -866,7 +866,7 @@ Remaining items:
 - ~~**`bin/test tls` cannot create `certs/` on Linux** (TD-026)~~: **Resolved** — the self-contained TLS suites generate throwaway certificates into a named volume (`arca-tls-test-certs`) instead of the `certs/` bind mount, and the `tls-init` service that wrote there is gone.
 - **`trivy fs` misconfig: k8s console manifest** (TD-027): `deploy/kubernetes/arca-console.yaml` fails 4 checks — pinned to `:latest` (MEDIUM), no `readOnlyRootFilesystem: true` (HIGH), no policy against privileged-port binding (MEDIUM), UID/GID <= 10000 (LOW, nginx's stock user). Found by `trivy fs .`, 2026-09-23; left visible pending a fix, not suppressed.
 - **`trivy fs` misconfig: root user / missing HEALTHCHECK in test-only Dockerfiles** (TD-028): `docker/screenshots/Dockerfile` runs as root (HIGH); `docker/Dockerfile.perf`, `docker/Dockerfile.test`, `docker/s3-tests/Dockerfile` have no `HEALTHCHECK` (LOW each). Tooling-only images, never distributed, but worth closing for consistency with the distributed images (which already scan clean).
-- **Compression + encryption read fails** (TD-029): reading a compressed object on an encrypted server returns `500`; the combination is not covered by `bin/test compression`. Whether data at rest is affected is not yet known.
+- ~~**Compression + encryption read fails** (TD-029)~~: **Resolved** — the encrypting layer sized its ranged reads with the object's uncompressed size instead of the length of the compressed frame it had encrypted; it now uses the frame's length. Read-side only: objects already stored compressed and encrypted read correctly once fixed. `bin/test compression` now also runs on an encrypted server.
 - ~~**Self-contained test modes destroy the developer's server** (TD-030)~~: **Resolved** — every self-contained `bin/test` mode and `bin/perf-test` runs in a compose project of its own (`arca-test-<mode>`), with its own generated config and ephemeral loopback host ports, so it never recreates, reconfigures or deletes the developer's stack.
 - ~~**Encryption/KMS tests skip under `bin/test integration`** (TD-031)~~: **Resolved** — `bin/test integration` enables the encryption, per-bucket encryption, re-encryption and KMS suites from the features recorded in `.arca-env`.
 - **`arca recover` rebuilds a wrong database** (TD-032): the oldest version of each key wins, only buckets/objects/credentials are restored (bucket configs, users, grants, tags, lock state are lost), compressed objects fail verification, and it always writes SQLite.

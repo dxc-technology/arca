@@ -2449,7 +2449,7 @@
 </table>
 <p>Rules that follow from this wiring:</p>
 <ul>
-<li><strong>Compression sits above encryption</strong>: plaintext is compressed, then the compressed bytes are encrypted. (TD-029 in <a href="../../tech-debt/">Technical Debt</a>: reading a compressed object on a server with encryption enabled currently fails.)</li>
+<li><strong>Compression sits above encryption</strong>: plaintext is compressed, then the compressed bytes are encrypted.</li>
 <li><strong>Write routing</strong>: <code>AppState::blob_for_write(bucket)</code> returns <code>blob</code> when encryption is on globally or for that bucket (a <code>bucket_config</code> lookup cached for 30 seconds), otherwise <code>plain_blob</code>. Reads always go through <code>blob</code>; the encryption layer reads the sidecar to tell encrypted blobs from plain ones, so mixed content coexists.</li>
 <li><strong>Cluster decorators sit on top</strong>, above cache, compression and encryption, so they ship already-encoded bytes and canonical rows verbatim. The receive endpoints and anti-entropy apply through the inner (pre-decorator) stores, so a replicated write is never fanned out again.</li>
 </ul>
@@ -2599,7 +2599,7 @@
 </tr>
 <tr>
 <td><code>compression</code> (optional)</td>
-<td><code>BlobCompressionInfo</code>: algorithm, chunk size, original and compressed size</td>
+<td><code>BlobCompressionInfo</code>: algorithm, chunk size, original and compressed size. When the blob is also encrypted, <code>compressed_size</code> is the length of the bytes the encryption layer encrypted (the compressed frame), while <code>size</code> stays the object's size</td>
 </tr>
 <tr>
 <td><code>version_id</code> (optional)</td>
@@ -2896,7 +2896,7 @@
 </tbody>
 </table>
 <h2 id="known-limitations">Known Limitations<a class="headerlink" href="#known-limitations" title="Permanent link">&para;</a></h2>
-<p>Open workarounds and bugs, each with an ID referenced in the code, are listed in <a href="../../tech-debt/">Technical Debt</a>; planned work is in the <a href="../../roadmap/">Roadmap</a>. The items most relevant to this page are TD-014 and TD-032 (<code>recover</code> / <code>fsck</code>), TD-025 (cluster CAS), TD-029 (compression with encryption), TD-033 (object tags in a cluster), TD-034 (no body integrity check), TD-037 (virtual-hosted-style addressing) and TD-038 (no fsync).</p>
+<p>Open workarounds and bugs, each with an ID referenced in the code, are listed in <a href="../../tech-debt/">Technical Debt</a>; planned work is in the <a href="../../roadmap/">Roadmap</a>. The items most relevant to this page are TD-014 and TD-032 (<code>recover</code> / <code>fsck</code>), TD-025 (cluster CAS), TD-033 (object tags in a cluster), TD-034 (no body integrity check), TD-037 (virtual-hosted-style addressing) and TD-038 (no fsync).</p>
 
 
 

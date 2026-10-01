@@ -316,12 +316,24 @@ run_encryption() {
     return $rc
 }
 
+# Two passes in the test project, each on a fresh server (`down -v` in
+# between): a plain one, then one with SSE-S3 enabled, where compression sits
+# above encryption (plaintext is compressed, then encrypted). Compression
+# itself is a per-bucket setting with no TOML fragment: the wrapper is always
+# installed at runtime.
 run_compression() {
-    echo "==> Running compression integration tests..."
     use_test_project compression
 
-    # Compression is a console-only feature (no TOML fragment). The wrapper
-    # is always installed at runtime — tests just need a plain Arca up.
+    echo "==> Running compression integration tests (plain server)..."
+    _compression_pass "$@"
+
+    echo "==> Running compression integration tests (encrypted server)..."
+    enable_encryption
+    build_config
+    _compression_pass "$@"
+}
+
+_compression_pass() {
     COMPOSE="$(compose_cmd)"
 
     cleanup_comp() {
@@ -333,7 +345,9 @@ run_compression() {
     $COMPOSE build arca
     $COMPOSE up -d arca
     wait_for_arca "$COMPOSE"
-    $COMPOSE run --rm \
+    local args=() arg
+    while IFS= read -r arg; do args+=("$arg"); done < <(integration_feature_env)
+    $COMPOSE run --rm "${args[@]+"${args[@]}"}" \
         test integration/test_compression.py "$@"
     local rc=$?
 

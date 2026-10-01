@@ -74,12 +74,13 @@ impl EncryptingBlobStore {
             ))
     }
 
-    /// Handles `get()` for an encrypted blob (full read).
+    /// Handles `get()` for an encrypted blob (full read). `payload_size` is
+    /// the length of the bytes this layer encrypted (see [`payload_size`]).
     async fn get_encrypted_full(
         &self,
         blob_id: &BlobId,
         enc_info: &BlobEncryptionInfo,
-        plaintext_size: u64,
+        payload_size: u64,
     ) -> Result<BlobGetResult, ArcaError> {
         let dek = self.unwrap_dek(enc_info)?;
         let b64 = &base64::engine::general_purpose::STANDARD;
@@ -114,16 +115,18 @@ impl EncryptingBlobStore {
 
         Ok(BlobGetResult {
             stream: Box::pin(dec_stream),
-            content_length: plaintext_size,
+            content_length: payload_size,
         })
     }
 
-    /// Handles `get()` for an encrypted blob with byte range.
+    /// Handles `get()` for an encrypted blob with byte range. The range and
+    /// `payload_size` are in the space of the bytes this layer encrypted (see
+    /// [`payload_size`]).
     async fn get_encrypted_range(
         &self,
         blob_id: &BlobId,
         enc_info: &BlobEncryptionInfo,
-        plaintext_size: u64,
+        payload_size: u64,
         range: ByteRange,
     ) -> Result<BlobGetResult, ArcaError> {
         let dek = self.unwrap_dek(enc_info)?;
@@ -153,8 +156,8 @@ impl EncryptingBlobStore {
         let range_start = range.start;
         let range_end = range
             .end
-            .map(|e| e.min(plaintext_size - 1))
-            .unwrap_or(plaintext_size - 1);
+            .map(|e| e.min(payload_size - 1))
+            .unwrap_or(payload_size - 1);
         let content_length = range_end - range_start + 1;
 
         // Calculate which chunks overlap.
@@ -174,7 +177,7 @@ impl EncryptingBlobStore {
 
         // For efficiency, compute the expected end position.
         // If last_chunk is not the very last chunk, we know its size.
-        let disk_end = if last_chunk < (plaintext_size + chunk_size as u64 - 1) / chunk_size as u64 - 1 {
+        let disk_end = if last_chunk < (payload_size + chunk_size as u64 - 1) / chunk_size as u64 - 1 {
             // Not the last chunk — all chunks up to last_chunk are full.
             chunk_disk_offset(last_chunk + 1, chunk_size)
         } else {
@@ -301,6 +304,19 @@ impl EncryptingBlobStore {
     }
 }
 
+/// Length of the bytes this layer encrypted into the blob, the plaintext of
+/// its ciphertext. That is the object itself (`size`) unless a
+/// `CompressingBlobStore` sits above, which hands this layer the compressed
+/// frame of the object instead: then it is the frame's length,
+/// `compression.compressed_size`. Using `size` for a compressed blob clamps
+/// ranges and locates the last chunk in the wrong space, so reads fail.
+fn payload_size(meta: &SidecarMeta) -> u64 {
+    match &meta.compression {
+        Some(c) => c.compressed_size,
+        None => meta.size,
+    }
+}
+
 #[async_trait::async_trait]
 impl BlobStore for EncryptingBlobStore {
     async fn put(
@@ -379,14 +395,14 @@ impl BlobStore for EncryptingBlobStore {
                 self.inner.get(blob_id, range).await
             }
             Some(enc_info) => {
-                let plaintext_size = sidecar.as_ref().unwrap().size;
+                let payload_size = payload_size(sidecar.as_ref().unwrap());
                 match range {
                     None => {
-                        self.get_encrypted_full(blob_id, enc_info, plaintext_size)
+                        self.get_encrypted_full(blob_id, enc_info, payload_size)
                             .await
                     }
                     Some(range) => {
-                        self.get_encrypted_range(blob_id, enc_info, plaintext_size, range)
+                        self.get_encrypted_range(blob_id, enc_info, payload_size, range)
                             .await
                     }
                 }

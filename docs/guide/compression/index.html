@@ -1636,7 +1636,7 @@
 
 
 <h1 id="compression">Compression<a class="headerlink" href="#compression" title="Permanent link">&para;</a></h1>
-<p>Arca supports transparent at-rest compression. When a bucket has compression configured, new uploads are compressed before writing to disk and transparently decompressed on read. The S3 wire format is unchanged: <code>ETag</code> remains the MD5 of the plaintext and <code>Content-Length</code> reports the plaintext size. Compression sits below encryption in the stack, so <code>compress → encrypt → store</code> applies when both features are active.</p>
+<p>Arca supports transparent at-rest compression. When a bucket has compression configured, new uploads are compressed before writing to disk and transparently decompressed on read. The S3 wire format is unchanged: <code>ETag</code> remains the MD5 of the plaintext and <code>Content-Length</code> reports the plaintext size. Compression sits above encryption in the stack (plaintext is compressed, then the compressed bytes are encrypted), so <code>compress → encrypt → store</code> applies when both features are active.</p>
 <p>Compression is a <strong>per-bucket</strong>, <strong>console-managed</strong> setting. There is no instance-wide switch and no TOML configuration — the wrapper is always present at runtime and only activates on buckets that explicitly opt in.</p>
 <h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
 <h3 id="1-enable-compression-on-a-bucket">1. Enable compression on a bucket<a class="headerlink" href="#1-enable-compression-on-a-bucket" title="Permanent link">&para;</a></h3>

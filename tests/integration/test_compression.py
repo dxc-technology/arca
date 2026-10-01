@@ -158,6 +158,111 @@ class TestCompressedRangeRead:
         )
         assert resp["Body"].read() == data[start:end + 1]
 
+    def test_range_open_ended_and_suffix(self, s3_client):
+        """`bytes=N-` and `bytes=-N` reach the last (partial) frame."""
+        data = (b"the quick brown fox jumps over the lazy dog. " * 5000)
+        s3_client.put_object(
+            Bucket=BUCKET, Key="range-tail", Body=data,
+            ContentType="text/plain",
+        )
+        resp = s3_client.get_object(
+            Bucket=BUCKET, Key="range-tail", Range="bytes=150000-",
+        )
+        assert resp["Body"].read() == data[150_000:]
+        resp = s3_client.get_object(
+            Bucket=BUCKET, Key="range-tail", Range="bytes=-100",
+        )
+        assert resp["Body"].read() == data[-100:]
+
+
+class TestCompressedIncompressibleAndCopies:
+    """Bodies that grow when compressed, multipart uploads and copies."""
+
+    def test_incompressible_body_roundtrip(self, s3_client):
+        """Random bytes declared as text are still framed and compressed,
+        so the stored payload is LARGER than the object: full and ranged
+        reads must both work."""
+        data = os.urandom(200_000)
+        s3_client.put_object(
+            Bucket=BUCKET, Key="random.txt", Body=data,
+            ContentType="text/plain",
+        )
+        resp = s3_client.get_object(Bucket=BUCKET, Key="random.txt")
+        assert resp["Body"].read() == data
+        resp = s3_client.get_object(
+            Bucket=BUCKET, Key="random.txt", Range="bytes=65000-140000",
+        )
+        assert resp["Body"].read() == data[65_000:140_001]
+        resp = s3_client.get_object(
+            Bucket=BUCKET, Key="random.txt", Range="bytes=-10",
+        )
+        assert resp["Body"].read() == data[-10:]
+
+    def test_multipart_upload_in_compressed_bucket(self, s3_client):
+        """Parts are stored uncompressed; the assembled object round-trips."""
+        part1 = b"multipart part one " * 300_000  # > 5 MiB minimum part size
+        part2 = b"tail part"
+        mpu = s3_client.create_multipart_upload(
+            Bucket=BUCKET, Key="mpu.txt", ContentType="text/plain",
+        )
+        upload_id = mpu["UploadId"]
+        etags = []
+        for n, body in enumerate([part1, part2], start=1):
+            r = s3_client.upload_part(
+                Bucket=BUCKET, Key="mpu.txt", UploadId=upload_id,
+                PartNumber=n, Body=body,
+            )
+            etags.append({"PartNumber": n, "ETag": r["ETag"]})
+        s3_client.complete_multipart_upload(
+            Bucket=BUCKET, Key="mpu.txt", UploadId=upload_id,
+            MultipartUpload={"Parts": etags},
+        )
+        data = part1 + part2
+        resp = s3_client.get_object(Bucket=BUCKET, Key="mpu.txt")
+        assert resp["Body"].read() == data
+        start = len(part1) - 5
+        resp = s3_client.get_object(
+            Bucket=BUCKET, Key="mpu.txt", Range=f"bytes={start}-",
+        )
+        assert resp["Body"].read() == data[start:]
+
+    def test_copy_compressed_object(self, s3_client):
+        """CopyObject reads the compressed source and writes a new object."""
+        data = (b'{"copy":"me"}\n' * 10_000)
+        s3_client.put_object(
+            Bucket=BUCKET, Key="copy-src.json", Body=data,
+            ContentType="application/json",
+        )
+        s3_client.copy_object(
+            Bucket=BUCKET, Key="copy-dst.json",
+            CopySource={"Bucket": BUCKET, "Key": "copy-src.json"},
+        )
+        resp = s3_client.get_object(Bucket=BUCKET, Key="copy-dst.json")
+        assert resp["Body"].read() == data
+        resp = s3_client.get_object(
+            Bucket=BUCKET, Key="copy-dst.json", Range="bytes=70000-70099",
+        )
+        assert resp["Body"].read() == data[70_000:70_100]
+
+
+@pytest.mark.skipif(
+    not os.environ.get("ARCA_ENCRYPTION_ENABLED"),
+    reason="needs a server with global encryption (bin/test compression, second pass)",
+)
+class TestCompressedOnEncryptedServer:
+    """The suite also runs on a server with SSE-S3 enabled: compression then
+    sits above encryption. Check the objects really are encrypted there."""
+
+    def test_compressed_object_is_encrypted(self, s3_client):
+        data = (b"compressed and encrypted " * 4000)
+        put = s3_client.put_object(
+            Bucket=BUCKET, Key="enc.txt", Body=data, ContentType="text/plain",
+        )
+        assert put.get("ServerSideEncryption") == "AES256"
+        resp = s3_client.get_object(Bucket=BUCKET, Key="enc.txt")
+        assert resp.get("ServerSideEncryption") == "AES256"
+        assert resp["Body"].read() == data
+
 
 class TestPerBucketCompression:
     """Tests for PUT/GET/DELETE /{bucket}?compression."""

@@ -1537,14 +1537,6 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>crates/arca-server/src/recover.rs:206</code>, <code>crates/arca-server/src/fsck.rs</code> (<code>orphaned_sidecars</code> collection, around line 112)</td>
 </tr>
 <tr>
-<td>TD-029</td>
-<td>Compression + encryption read fails</td>
-<td>Reading a compressed object on a server with encryption enabled returns <code>500</code> (<code>compressed footer count truncated</code> / <code>read chunks: early eof</code>). Pre-existing (reproduced on 903582f, found 2026-09-29). It has never been caught because <code>bin/test compression</code> (<code>run_compression</code>) starts a plain server, so the combination is untested. Not yet known whether the write or the read side is wrong, i.e. whether data at rest is affected. <code>roadmap.md</code> (Phase 27) marks "correct stacking with encryption" as done.</td>
-<td>Root-cause with a failing integration test that enables both compression and encryption (<code>CompressingBlobStore</code> over <code>EncryptingBlobStore</code>; start at <code>get_compressed_full</code>, which reads the footer through the inner store), fix, and add the combination to <code>bin/test compression</code>.</td>
-<td>None today (combination untested)</td>
-<td><code>crates/arca-storage/src/compressed_blob.rs</code>, <code>crates/arca-storage/src/encrypted_blob.rs</code>, <code>bin/test</code> (<code>run_compression</code>)</td>
-</tr>
-<tr>
 <td>TD-032</td>
 <td><code>arca recover</code> rebuilds a wrong database</td>
 <td>Besides TD-014: (1) entries are sorted by <code>last_modified</code> <strong>descending</strong> and buckets are re-created unversioned, so each <code>put_object</code> overwrites the previous one and the <strong>oldest</strong> version of every key wins, while the code comment says the newest is inserted last; (2) only buckets, objects and credentials are restored — users, teams, grants, every <code>bucket_config</code> (versioning, encryption, lifecycle, lock, policy, notifications, replication), bucket/object tags, retention and legal hold are lost, and <code>owner</code> is forced to <code>root</code>; (3) compressed objects fail checksum verification (the ETag is the plaintext MD5, recover hashes the on-disk bytes) and are skipped unless <code>--skip-verify</code>; (4) it always opens a SQLite store, so on a PostgreSQL deployment it writes an unused SQLite file; (5) PutObject, CopyObject and CompleteMultipartUpload write the sidecar with <code>version_id: None</code> before the metadata commit assigns the version, so sidecars never carry it and a rebuild cannot restore version ids. <code>operations/recovery.md</code> documents none of this and claims the opposite for (1).</td>
@@ -1754,6 +1746,12 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>TD-039</td>
 <td>PostgreSQL CAS regression test</td>
 <td><code>bin/test postgres</code> now also runs <code>test_conditional_writes.py</code> against the PostgreSQL-backed server (36 tests with <code>test_postgres.py</code>), so a reordering of the CAS read relative to the transaction's first locking statement in <code>pg/metadata.rs</code> is caught.</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-029</td>
+<td>Compression + encryption read failed</td>
+<td>Root cause on the read side: with a <code>CompressingBlobStore</code> above an <code>EncryptingBlobStore</code>, the encrypting layer encrypts the compressed frame of the object, but <code>EncryptingBlobStore::get</code> took the length of what it had encrypted from the sidecar's <code>size</code>, which is the object's uncompressed size. Ranged reads (the compressing layer reads its footer and chunks through ranged reads) were therefore clamped and their last chunk located in the wrong space: <code>read chunks: early eof</code> when the frame is shorter than the object, <code>compressed footer count truncated</code> (an overflow in debug builds) when it is longer. It now uses <code>compression.compressed_size</code> when the sidecar records compression (<code>payload_size</code> in <code>encrypted_blob.rs</code>). The write side was always correct, so objects already stored compressed and encrypted are read correctly by the fixed server; no repair is needed. Covered by five stacked-store unit tests in <code>compressed_blob.rs</code> and by a second, encrypted pass of <code>bin/test compression</code> (<code>run_compression</code>), which also gained incompressible-body, suffix-range, multipart and copy tests.</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 </tbody>

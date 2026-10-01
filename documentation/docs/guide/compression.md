@@ -1,6 +1,6 @@
 # Compression
 
-Arca supports transparent at-rest compression. When a bucket has compression configured, new uploads are compressed before writing to disk and transparently decompressed on read. The S3 wire format is unchanged: `ETag` remains the MD5 of the plaintext and `Content-Length` reports the plaintext size. Compression sits below encryption in the stack, so `compress → encrypt → store` applies when both features are active.
+Arca supports transparent at-rest compression. When a bucket has compression configured, new uploads are compressed before writing to disk and transparently decompressed on read. The S3 wire format is unchanged: `ETag` remains the MD5 of the plaintext and `Content-Length` reports the plaintext size. Compression sits above encryption in the stack (plaintext is compressed, then the compressed bytes are encrypted), so `compress → encrypt → store` applies when both features are active.
 
 Compression is a **per-bucket**, **console-managed** setting. There is no instance-wide switch and no TOML configuration — the wrapper is always present at runtime and only activates on buckets that explicitly opt in.
 

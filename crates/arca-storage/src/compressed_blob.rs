@@ -697,4 +697,210 @@ mod tests {
             .unwrap();
         assert!(result.compression.is_none());
     }
+
+    // ----- Compression stacked over encryption (the production stack when
+    // SSE-S3 is enabled): CompressingBlobStore -> EncryptingBlobStore ->
+    // FsBlobStore. Regression tests for TD-029.
+
+    /// Same as `make_store`, but with an `EncryptingBlobStore` between the
+    /// compressing wrapper and the filesystem, wired like `main.rs` does.
+    async fn make_encrypted_store(bucket: &str) -> (CompressingBlobStore, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let fs = Arc::new(FsBlobStore::new(dir.path().join("blobs"), 2).await.unwrap());
+        let master_key = Arc::new(
+            crate::encryption::keys::MasterKey::from_bytes(&[0x42u8; 32]).unwrap(),
+        );
+        let encrypting: Arc<dyn BlobStore> = Arc::new(crate::EncryptingBlobStore::new(
+            (*fs).clone(),
+            master_key,
+        ));
+        let sqlite = Arc::new(SqliteStore::open_in_memory().await.unwrap());
+        let metadata: Arc<dyn MetadataStore> = sqlite.clone();
+        metadata.create_bucket(bucket).await.unwrap();
+        let cfg = BucketCompressionConfig {
+            algorithm: "zstd".to_string(),
+            level: None,
+        };
+        metadata
+            .set_bucket_config(bucket, "compression", &serde_json::to_string(&cfg).unwrap())
+            .await
+            .unwrap();
+        (CompressingBlobStore::new(encrypting, fs, metadata), dir)
+    }
+
+    /// Writes `data` the way the PutObject handler does: `put_with_hints`,
+    /// then a sidecar carrying both the encryption and compression info.
+    async fn put_like_handler(
+        store: &CompressingBlobStore,
+        bucket: &str,
+        data: &[u8],
+    ) -> (BlobId, BlobPutResult) {
+        let blob_id = BlobId::new();
+        let result = store
+            .put_with_hints(
+                &blob_id,
+                bytes_stream(data),
+                PutHints {
+                    content_type: Some("text/plain".into()),
+                    size_hint: Some(data.len() as u64),
+                    bucket: Some(bucket.into()),
+                },
+            )
+            .await
+            .unwrap();
+        let sidecar = SidecarMeta {
+            bucket: bucket.into(),
+            key: "k".into(),
+            size: result.size,
+            etag: result.etag.clone(),
+            content_type: Some("text/plain".into()),
+            last_modified: "2026-01-01T00:00:00Z".into(),
+            metadata: HashMap::new(),
+            encryption: result.encryption.clone(),
+            compression: result.compression.clone(),
+            version_id: None,
+            composite: None,
+        };
+        store.write_sidecar(&blob_id, &sidecar).await.unwrap();
+        (blob_id, result)
+    }
+
+    /// Highly compressible, spans several 64 KiB chunks: the compressed
+    /// payload is much shorter than the object.
+    fn compressible_data() -> Vec<u8> {
+        b"Lorem ipsum dolor sit amet, consectetur adipiscing elit. "
+            .repeat(6_000)
+    }
+
+    /// Deterministic pseudo-random bytes (xorshift): incompressible, so the
+    /// framed compressed payload is LONGER than the object.
+    fn incompressible_data(len: usize) -> Vec<u8> {
+        let mut x: u64 = 0x9E37_79B9_7F4A_7C15;
+        (0..len)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                (x >> 24) as u8
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn encrypted_at_rest_layout_is_compress_then_encrypt() {
+        // Write-side check: the file on disk is an encrypted blob whose
+        // decrypted payload is the compressed frame of the object.
+        let (store, dir) = make_encrypted_store("b").await;
+        let data = compressible_data();
+        let (blob_id, result) = put_like_handler(&store, "b", &data).await;
+        let enc = result.encryption.as_ref().expect("blob must be encrypted");
+        let comp = result.compression.as_ref().expect("blob must be compressed");
+        assert_eq!(comp.original_size, data.len() as u64);
+        assert!(comp.compressed_size < comp.original_size);
+
+        let fs = FsBlobStore::new(dir.path().join("blobs"), 2).await.unwrap();
+        let raw = std::fs::read(fs.blob_path(&blob_id)).unwrap();
+        assert_eq!(&raw[0..4], crate::encryption::format::MAGIC);
+
+        // Decrypt the whole file with the blob's own DEK and nonce prefix.
+        let b64 = &base64::engine::general_purpose::STANDARD;
+        use base64::Engine;
+        let mk = crate::encryption::keys::MasterKey::from_bytes(&[0x42u8; 32]).unwrap();
+        let dek = mk
+            .unwrap_dek(
+                &b64.decode(&enc.encrypted_dek).unwrap(),
+                &b64.decode(&enc.dek_nonce).unwrap(),
+            )
+            .unwrap();
+        let mut nonce_prefix = [0u8; 4];
+        nonce_prefix.copy_from_slice(&b64.decode(&enc.nonce_prefix).unwrap());
+        let key = crate::encryption::keys::make_aead_key(&dek).unwrap();
+        let cipher = bytes_stream(&raw[crate::encryption::format::HEADER_SIZE..]);
+        let payload = collect(Box::pin(crate::encryption::stream::DecryptingStream::new(
+            cipher,
+            key,
+            nonce_prefix,
+        )))
+        .await;
+        assert_eq!(payload.len() as u64, comp.compressed_size);
+        assert_eq!(&payload[0..4], crate::compression::format::MAGIC);
+
+        // And that frame decompresses to the object.
+        let region = &payload[HEADER_SIZE..payload.len() - FOOTER_COUNT_SIZE];
+        let n = u32::from_le_bytes(payload[payload.len() - 4..].try_into().unwrap()) as usize;
+        let region = &region[..region.len() - n * 4];
+        let plain = collect(Box::pin(DecompressingStream::new(
+            bytes_stream(region),
+            comp.algorithm,
+        )))
+        .await;
+        assert_eq!(plain, data);
+    }
+
+    #[tokio::test]
+    async fn encrypted_compressible_full_read() {
+        let (store, _dir) = make_encrypted_store("b").await;
+        let data = compressible_data();
+        let (blob_id, _) = put_like_handler(&store, "b", &data).await;
+        let got = store.get(&blob_id, None).await.unwrap();
+        assert_eq!(got.content_length, data.len() as u64);
+        assert_eq!(collect(got.stream).await, data);
+    }
+
+    #[tokio::test]
+    async fn encrypted_incompressible_full_read() {
+        let (store, _dir) = make_encrypted_store("b").await;
+        let data = incompressible_data(200_000);
+        let (blob_id, result) = put_like_handler(&store, "b", &data).await;
+        let comp = result.compression.unwrap();
+        assert!(comp.compressed_size > comp.original_size);
+        let got = store.get(&blob_id, None).await.unwrap();
+        assert_eq!(got.content_length, data.len() as u64);
+        assert_eq!(collect(got.stream).await, data);
+    }
+
+    #[tokio::test]
+    async fn encrypted_small_object_full_and_range_read() {
+        let (store, _dir) = make_encrypted_store("b").await;
+        let data: Vec<u8> = b"small but compressible ".repeat(80);
+        let (blob_id, result) = put_like_handler(&store, "b", &data).await;
+        assert!(result.compression.is_some());
+        let got = store.get(&blob_id, None).await.unwrap();
+        assert_eq!(collect(got.stream).await, data);
+        let got = store
+            .get(&blob_id, Some(ByteRange { start: 7, end: Some(1_000) }))
+            .await
+            .unwrap();
+        assert_eq!(got.content_length, 994);
+        assert_eq!(collect(got.stream).await, data[7..=1_000]);
+    }
+
+    #[tokio::test]
+    async fn encrypted_range_reads() {
+        let (store, _dir) = make_encrypted_store("b").await;
+        for data in [compressible_data(), incompressible_data(200_000)] {
+            let (blob_id, _) = put_like_handler(&store, "b", &data).await;
+            let last = data.len() as u64 - 1;
+            for (start, end) in [
+                (0, Some(99)),               // head
+                (100, Some(80_100)),         // across a chunk boundary
+                (65_536, Some(131_071)),     // exactly one chunk
+                (last - 10, None),           // open-ended tail
+                (last, Some(last)),          // last byte
+                (150_000, Some(last + 500)), // end past EOF is clamped
+            ] {
+                let got = store
+                    .get(&blob_id, Some(ByteRange { start, end }))
+                    .await
+                    .unwrap_or_else(|e| panic!("range {start}-{end:?}: {e}"));
+                let end_incl = end.unwrap_or(last).min(last);
+                assert_eq!(got.content_length, end_incl - start + 1);
+                assert_eq!(
+                    collect(got.stream).await,
+                    data[start as usize..=end_incl as usize],
+                    "range {start}-{end:?}"
+                );
+            }
+        }
+    }
 }

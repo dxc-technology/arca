@@ -146,7 +146,7 @@ All storage is reached through async traits defined in `arca-core/src/store/`:
 
 Rules that follow from this wiring:
 
-- **Compression sits above encryption**: plaintext is compressed, then the compressed bytes are encrypted. (TD-029 in [Technical Debt](../tech-debt.md): reading a compressed object on a server with encryption enabled currently fails.)
+- **Compression sits above encryption**: plaintext is compressed, then the compressed bytes are encrypted.
 - **Write routing**: `AppState::blob_for_write(bucket)` returns `blob` when encryption is on globally or for that bucket (a `bucket_config` lookup cached for 30 seconds), otherwise `plain_blob`. Reads always go through `blob`; the encryption layer reads the sidecar to tell encrypted blobs from plain ones, so mixed content coexists.
 - **Cluster decorators sit on top**, above cache, compression and encryption, so they ship already-encoded bytes and canonical rows verbatim. The receive endpoints and anti-entropy apply through the inner (pre-decorator) stores, so a replicated write is never fanned out again.
 
@@ -219,7 +219,7 @@ Each blob has a sidecar holding `SidecarMeta` (`arca-core/src/store/blob.rs`) as
 | `size`, `etag` | Plaintext size and ETag |
 | `content_type`, `last_modified`, `metadata` | Object attributes (`metadata` holds `x-amz-meta-*` and system headers) |
 | `encryption` (optional) | `BlobEncryptionInfo`: algorithm, wrapped DEK, nonces, key id |
-| `compression` (optional) | `BlobCompressionInfo`: algorithm, chunk size, original and compressed size |
+| `compression` (optional) | `BlobCompressionInfo`: algorithm, chunk size, original and compressed size. When the blob is also encrypted, `compressed_size` is the length of the bytes the encryption layer encrypted (the compressed frame), while `size` stays the object's size |
 | `version_id` (optional) | Version id (currently never set: sidecars are written before the commit assigns the version, TD-032) |
 | `composite` (optional) | List of `CompositePart` for a composite blob (see below) |
 
@@ -422,4 +422,4 @@ Exact versions are pinned in `Cargo.toml` and the Dockerfiles.
 
 ## Known Limitations
 
-Open workarounds and bugs, each with an ID referenced in the code, are listed in [Technical Debt](../tech-debt.md); planned work is in the [Roadmap](../roadmap.md). The items most relevant to this page are TD-014 and TD-032 (`recover` / `fsck`), TD-025 (cluster CAS), TD-029 (compression with encryption), TD-033 (object tags in a cluster), TD-034 (no body integrity check), TD-037 (virtual-hosted-style addressing) and TD-038 (no fsync).
+Open workarounds and bugs, each with an ID referenced in the code, are listed in [Technical Debt](../tech-debt.md); planned work is in the [Roadmap](../roadmap.md). The items most relevant to this page are TD-014 and TD-032 (`recover` / `fsck`), TD-025 (cluster CAS), TD-033 (object tags in a cluster), TD-034 (no body integrity check), TD-037 (virtual-hosted-style addressing) and TD-038 (no fsync).
