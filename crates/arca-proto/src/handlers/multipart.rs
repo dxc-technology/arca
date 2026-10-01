@@ -13,6 +13,7 @@ use arca_core::types::{BlobId, MultipartUploadRecord, ObjectRecord, PartRecord};
 use arca_core::{S3Error, S3ErrorCode};
 
 use super::object::extract_metadata;
+use super::sidecar::{part_sidecar, write_sidecar_or_discard};
 
 use crate::state::AppState;
 use crate::xml::error_response::{internal_error_response, s3_error_response};
@@ -210,26 +211,17 @@ pub async fn upload_part(
         }
     };
 
-    // Write sidecar for the part blob. Two callers depend on it:
+    // Write sidecar for the part blob (a failure fails the request). Two
+    // readers depend on it:
     // * `EncryptingBlobStore.get()` reads it to find the per-part DEK during
     //   CompleteMultipartUpload assembly (when parts are encrypted).
     // * `FsBlobStore::concat` reads it to capture each part's etag/size and
     //   decide whether the composite fast-path is safe (when parts are plain).
-    let sidecar = SidecarMeta {
-        bucket: bucket.clone(),
-        key: format!("{key}#{upload_id}#{part_number}"),
-        size: put_result.size,
-        etag: put_result.etag.clone(),
-        content_type: None,
-        last_modified: chrono::Utc::now().to_rfc3339(),
-        metadata: std::collections::HashMap::new(),
-        encryption: put_result.encryption.clone(),
-        compression: None,
-        version_id: None,
-        composite: None,
-    };
-    if let Err(e) = state.blob.write_sidecar(&blob_id, &sidecar).await {
-        tracing::warn!(error = %e, "Failed to write part sidecar");
+    let sidecar = part_sidecar(&bucket, &key, &upload_id, part_number, &put_result);
+    if let Err(resp) =
+        write_sidecar_or_discard(state.blob.as_ref(), &blob_id, &sidecar, &resource).await
+    {
+        return resp;
     }
 
     // Insert part record (returns old for cleanup). The part checksum is
@@ -457,8 +449,10 @@ pub async fn complete_multipart_upload(
         version_id: None,
         composite: put_result.composite_parts.clone(),
     };
-    if let Err(e) = state.blob.write_sidecar(&final_blob_id, &sidecar).await {
-        return internal_error_response(e, &resource);
+    if let Err(resp) =
+        write_sidecar_or_discard(state.blob.as_ref(), &final_blob_id, &sidecar, &resource).await
+    {
+        return resp;
     }
 
     // Extract inline tags sentinel from upload metadata before building the object record.

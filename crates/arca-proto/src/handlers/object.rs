@@ -18,6 +18,7 @@ use arca_core::store::{
 use arca_core::types::{BlobId, ObjectRecord};
 use arca_core::{S3Error, S3ErrorCode};
 
+use super::sidecar::{part_sidecar, write_sidecar_or_discard};
 use super::ssec::{extract_ssec_copy_source_key, extract_ssec_key};
 
 /// S3 system metadata headers that are stored and returned alongside user
@@ -645,8 +646,10 @@ pub async fn put_object(
         version_id: None,
         composite: None,
     };
-    if let Err(e) = state.blob.write_sidecar(&blob_id, &sidecar).await {
-        return internal_error_response(e, &resource);
+    if let Err(resp) =
+        write_sidecar_or_discard(state.blob.as_ref(), &blob_id, &sidecar, &resource).await
+    {
+        return resp;
     }
 
     // Insert into metadata (returns old record for cleanup).
@@ -1090,8 +1093,10 @@ async fn copy_object(
         version_id: None,
         composite: None,
     };
-    if let Err(e) = state.blob.write_sidecar(&new_blob_id, &sidecar).await {
-        return internal_error_response(e, &resource);
+    if let Err(resp) =
+        write_sidecar_or_discard(state.blob.as_ref(), &new_blob_id, &sidecar, &resource).await
+    {
+        return resp;
     }
 
     // Insert metadata record.
@@ -1374,25 +1379,14 @@ async fn upload_part_copy(
         Err(e) => return internal_error_response(e, &resource),
     };
 
-    // Write sidecar for the part blob so that EncryptingBlobStore.get()
-    // can detect and decrypt it during CompleteMultipartUpload assembly.
-    if put_result.encryption.is_some() {
-        let sidecar = SidecarMeta {
-            bucket: bucket.clone(),
-            key: format!("{key}#{upload_id}#{part_number}"),
-            size: put_result.size,
-            etag: put_result.etag.clone(),
-            content_type: None,
-            last_modified: chrono::Utc::now().to_rfc3339(),
-            metadata: std::collections::HashMap::new(),
-            encryption: put_result.encryption.clone(),
-            compression: None,
-            version_id: None,
-            composite: None,
-        };
-        if let Err(e) = state.blob.write_sidecar(&blob_id, &sidecar).await {
-            tracing::warn!(error = %e, "Failed to write part sidecar");
-        }
+    // Write sidecar for the part blob, exactly like UploadPart: it lets
+    // EncryptingBlobStore.get() decrypt an encrypted part and lets
+    // FsBlobStore::concat assemble plain parts as a composite.
+    let sidecar = part_sidecar(&bucket, &key, &upload_id, part_number, &put_result);
+    if let Err(resp) =
+        write_sidecar_or_discard(state.blob.as_ref(), &blob_id, &sidecar, &resource).await
+    {
+        return resp;
     }
 
     // Insert part record (returns old for cleanup).

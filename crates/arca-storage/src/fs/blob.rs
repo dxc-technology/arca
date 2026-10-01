@@ -1277,4 +1277,23 @@ mod tests {
         assert!(result.composite_parts.is_none());
         assert!(store.blob_path(&output_id).exists());
     }
+
+    #[tokio::test]
+    async fn concat_falls_back_when_a_part_has_no_sidecar() {
+        // A part without a sidecar (what UploadPartCopy used to leave for a
+        // plain part) cannot join a composite: its etag/size are unknown here,
+        // so concat copies the bytes. Every part writer must write one.
+        let (store, _dir) = test_store(2).await;
+        let (mut part_ids, mut full) = make_plain_parts(&store, 1, 64).await;
+        let bare = BlobId::new();
+        store.put(&bare, bytes_to_stream(b"no sidecar")).await.unwrap();
+        part_ids.push(bare);
+        full.extend_from_slice(b"no sidecar");
+
+        let output_id = BlobId::new();
+        let result = store.concat(&part_ids, &output_id).await.unwrap();
+
+        assert!(result.composite_parts.is_none());
+        assert_eq!(std::fs::read(store.blob_path(&output_id)).unwrap(), full);
+    }
 }

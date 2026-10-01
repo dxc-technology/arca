@@ -5,6 +5,7 @@ UploadPartCopy, conditional headers, encoding-type=url, and
 delimiter+prefix pagination.
 """
 
+import hashlib
 import io
 import time
 
@@ -184,6 +185,49 @@ class TestUploadPartCopy:
 
         resp = s3_client.get_object(Bucket=BUCKET, Key="range-dest")
         assert resp["Body"].read() == src_data
+
+    def test_upload_part_copy_mixed_with_upload_part(self, s3_client):
+        """A copied part and an uploaded part assemble into one object.
+
+        Every part now carries a sidecar, so plain parts are assembled as a
+        composite (no byte copy); the object must read back identically,
+        including a range that crosses the copied/uploaded boundary.
+        """
+        copied = b"C" * (5 * 1024 * 1024 + 7)
+        uploaded = b"U" * 1024
+        s3_client.put_object(Bucket=BUCKET, Key="mixed-src", Body=copied)
+
+        mpu = s3_client.create_multipart_upload(Bucket=BUCKET, Key="mixed-dest")
+        upload_id = mpu["UploadId"]
+        r1 = s3_client.upload_part_copy(
+            Bucket=BUCKET, Key="mixed-dest", PartNumber=1, UploadId=upload_id,
+            CopySource=f"{BUCKET}/mixed-src",
+        )
+        r2 = s3_client.upload_part(
+            Bucket=BUCKET, Key="mixed-dest", PartNumber=2, UploadId=upload_id,
+            Body=uploaded,
+        )
+        e1 = r1["CopyPartResult"]["ETag"]
+        e2 = r2["ETag"]
+        done = s3_client.complete_multipart_upload(
+            Bucket=BUCKET, Key="mixed-dest", UploadId=upload_id,
+            MultipartUpload={"Parts": [
+                {"PartNumber": 1, "ETag": e1},
+                {"PartNumber": 2, "ETag": e2},
+            ]},
+        )
+
+        md5s = bytes.fromhex(e1.strip('"')) + bytes.fromhex(e2.strip('"'))
+        assert done["ETag"].strip('"') == hashlib.md5(md5s).hexdigest() + "-2"
+
+        full = copied + uploaded
+        resp = s3_client.get_object(Bucket=BUCKET, Key="mixed-dest")
+        assert resp["Body"].read() == full
+        start = len(copied) - 10
+        resp = s3_client.get_object(
+            Bucket=BUCKET, Key="mixed-dest", Range=f"bytes={start}-{start + 19}",
+        )
+        assert resp["Body"].read() == full[start:start + 20]
 
 
 class TestConditionalHeaders:

@@ -20,4 +20,5 @@ pub mod integrity;
 pub mod maintenance;
 pub mod multipart;
 pub mod object;
+mod sidecar;
 pub mod ssec;

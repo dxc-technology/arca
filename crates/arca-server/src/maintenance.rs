@@ -567,10 +567,11 @@ async fn recrypt_one(
         version_id: version_id.clone(),
         composite: None,
     };
-    write_store
-        .write_sidecar(&new_blob_id, &sidecar)
-        .await
-        .map_err(|e| format!("write sidecar: {e}"))?;
+    // Without its sidecar the new blob must not be swapped in: discard it.
+    if let Err(e) = write_store.write_sidecar(&new_blob_id, &sidecar).await {
+        let _ = write_store.delete_assembled(&new_blob_id).await;
+        return Err(format!("write sidecar: {e}"));
+    }
 
     let (algo, key_id) = match &encryption {
         Some(e) => (Some(e.algorithm.as_str()), Some(e.key_id.as_str())),
