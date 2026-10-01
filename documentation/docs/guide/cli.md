@@ -379,7 +379,7 @@ The `arca_blob_delete_failures_total` Prometheus metric reports how often a blob
 
 ## `arca compress-existing`
 
-Walks the blobs directory and compresses any blob that does not already carry compression metadata, honoring the live-write MIME and size filters. Atomic per-blob (writes a `.compressing.tmp` then renames) and resumable: re-running skips already-compressed blobs. Encrypted blobs (SSE-S3, SSE-KMS, SSE-C) and composite (multipart) blobs are skipped with a `SKIP` message and counted in `skipped=`; the run continues. See the [Compression guide](compression.md#offline-retrofit).
+Walks the blobs directory and compresses any blob that does not already carry compression metadata, honoring the live-write MIME and size filters. Crash-safe and durable per blob (see [Durability of the offline rewrite tools](#durability-of-the-offline-rewrite-tools)) and resumable: re-running skips already-compressed blobs. Encrypted blobs (SSE-S3, SSE-KMS, SSE-C) and composite (multipart) blobs are skipped with a `SKIP` message and counted in `skipped=`; the run continues. See the [Compression guide](compression.md#offline-retrofit).
 
 ```
 arca compress-existing [--config-path <PATH>] [--dry-run]
@@ -405,7 +405,7 @@ arca compress-existing --bucket my-bucket --algorithm brotli
 
 ## `arca decompress-existing`
 
-Inverse of `compress-existing` — reads each sidecar, and for compressed blobs, rewrites the plaintext to disk and removes the compression metadata. Same atomicity and resume properties. Composite blobs and encrypted blobs (which hold compressed data under the encryption layer) are skipped with a `SKIP` message; the run continues.
+Inverse of `compress-existing` — reads each sidecar, and for compressed blobs, rewrites the plaintext to disk and removes the compression metadata. Same durability and resume properties. Composite blobs and encrypted blobs (which hold compressed data under the encryption layer) are skipped with a `SKIP` message; the run continues.
 
 ```
 arca decompress-existing [--config-path <PATH>] [--dry-run] [--bucket <NAME>]
@@ -416,9 +416,11 @@ arca decompress-existing --dry-run
 arca decompress-existing --bucket my-bucket
 ```
 
+**Exit code.** `compress-existing` and `decompress-existing` abort with a non-zero exit on the first object that fails (the marker is kept); they exit `0` only after a clean run or a `--dry-run`.
+
 ## `arca encrypt-existing` / `arca decrypt-existing`
 
-Offline counterparts of the `encrypt` / `decrypt` maintenance jobs, run with the server **stopped**. `encrypt-existing` encrypts plaintext blobs to SSE-S3; `decrypt-existing` decrypts SSE-S3 blobs back to plaintext. Each blob is rewritten in place (atomic temp file + rename), and its `.meta` sidecar and database row are updated. Re-running is safe: blobs already in the target state are skipped. See the [Migration & Maintenance guide](maintenance.md#offline-cli).
+Offline counterparts of the `encrypt` / `decrypt` maintenance jobs, run with the server **stopped**. `encrypt-existing` encrypts plaintext blobs to SSE-S3; `decrypt-existing` decrypts SSE-S3 blobs back to plaintext. Each blob is rewritten in place (durable, crash-safe, see [Durability of the offline rewrite tools](#durability-of-the-offline-rewrite-tools)), and its `.meta` sidecar and database row are updated. Re-running is safe: blobs already in the target state are skipped. See the [Migration & Maintenance guide](maintenance.md#offline-cli).
 
 ```bash
 arca encrypt-existing [--config-path <PATH>] [--dry-run] [--bucket <NAME>] [--prefix <PREFIX>]
@@ -433,6 +435,36 @@ arca decrypt-existing [--config-path <PATH>] [--dry-run] [--bucket <NAME>] [--pr
 | `--prefix` | Restrict to keys with this prefix |
 
 Multipart objects and SSE-C objects are skipped (TD-018).
+
+**Exit code.** `0` when every object was processed or skipped (and always for `--dry-run`). **Non-zero** when one or more objects failed: the usual summary (`Done. ... errors=N`) is still printed, the [in-progress marker](#the-in-progress-marker) is kept so `arca serve` stays blocked, and the error names the command to re-run. Scripts can rely on the exit status. Before this change these commands exited `0` even when objects had failed.
+
+### Durability of the offline rewrite tools
+
+`compress-existing`, `decompress-existing`, `encrypt-existing` and `decrypt-existing` replace blobs that are already safely on disk, so a power cut must never turn good data into bad. For each blob they:
+
+1. write the new bytes to `<blob-id>.rewrite.tmp` next to the blob and `fsync` it;
+2. write the new sidecar durably to `<blob-id>.meta.pending.tmp` (a journal; for encryption it holds the only copy of the new wrapped key);
+3. rename the temp file over the blob and `fsync` the directory;
+4. rename the journal over the sidecar and `fsync` the directory.
+
+The original blob and sidecar are untouched until step 3, and an error before then removes the temp files. If the process or the machine dies part-way, simply **run the same command again**: before looking at each sidecar it discards a rewrite that never replaced the blob, or completes one that did (printing `recovered <path>: ...`), then carries on. After completing an `encrypt-existing`/`decrypt-existing` rewrite it also brings the database row in line. Do not delete a `*.meta.pending.tmp` file by hand; `arca fsck` lists these files as `STALE_TMP`, which is expected after a crash and cleared by the re-run. A `--dry-run` never repairs or removes anything.
+
+#### The in-progress marker
+
+Until the re-run, an object caught between steps 3 and 4 has a blob that does not match its sidecar (for example ciphertext described as plaintext), and the server would serve it silently. To make that impossible, every real (non `--dry-run`) run first writes a marker file, durably, in the data directory: `<data_dir>/.offline-rewrite-in-progress`. It is a small JSON document with the command name, the arguments needed to re-run it (`--bucket`, `--prefix`, `--algorithm`), the start time and the pid. The marker is removed (and the directory fsynced) only when the run finished cleanly: every sidecar was processed and nothing failed. If the run aborts, reports errors, or the process or machine dies, the marker stays.
+
+While the marker exists:
+
+| Command | Behaviour |
+|---|---|
+| `arca serve` | Refuses to start (non-zero exit) before opening any store or binding a port. The error names the command and arguments to re-run and the marker path. There is no override flag. |
+| The same rewrite command | Allowed, with any filters: it repairs every pending journal (the repair runs on all sidecars before the filters apply) and removes the marker when it finishes cleanly. |
+| Another rewrite command | Refused, with the command to re-run first. |
+| `recover`, `gc`, `migrate-db`, `migrate-topology` | Refused: they would rebuild the database from, delete based on, or copy state derived from mismatched sidecars. |
+| `fsck` | Runs (it is read-only) but prints a warning, since its findings may be misleading until the rewrite is completed. |
+| `--dry-run` of a rewrite command | Allowed, touches nothing. |
+
+To resolve it, run the command named in the error, with the same `--config-path`, and wait for `Done.` without errors. **Never delete the marker by hand.** Doing so would let the server start on blobs and sidecars that may not match, and a pending `*.meta.pending.tmp` journal of `encrypt-existing` holds the only copy of the new wrapped key, which only the re-run commits.
 
 ## `arca migrate-db`
 

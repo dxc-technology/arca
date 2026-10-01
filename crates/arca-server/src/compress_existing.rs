@@ -1,8 +1,10 @@
 //! Offline `arca compress-existing` / `arca decompress-existing`.
 //!
 //! Walks the blobs directory, reads each `.meta` sidecar, and either
-//! compresses or decompresses the associated blob file in place. The
-//! sidecar is updated atomically after the blob is swapped.
+//! compresses or decompresses the associated blob file in place. The new bytes
+//! go to an fsynced temp file, then blob and sidecar are swapped together by
+//! [`arca_storage::inplace::commit_rewrite`]: durable, and repairable when the
+//! tool is run again after a crash (see that module for the protocol).
 
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -18,9 +20,11 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_util::io::ReaderStream;
 
 use crate::config::Config;
+use crate::rewrite_marker;
 use arca_storage::compression::auto::pick_auto;
 use arca_storage::compression::format::{self, FOOTER_COUNT_SIZE, HEADER_SIZE};
 use arca_storage::compression::stream::{CompressingStream, DecompressingStream};
+use arca_storage::inplace::{self, PendingOutcome};
 use arca_storage::FsBlobStore;
 
 type ByteStream = Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>>;
@@ -64,12 +68,27 @@ pub async fn run_compress_existing(
 
     let fs_store = FsBlobStore::new(&blobs_dir, config.storage.blob_prefix_depth).await?;
 
+    // Marker first (real runs only); removed below once every candidate went
+    // through. Any `?` in between leaves it in place.
+    let data_dir = Path::new(&config.storage.data_dir);
+    if !dry_run {
+        let mut args = filter_args(bucket_filter);
+        if let Some(a) = algorithm_override {
+            args.extend(["--algorithm".to_string(), a.to_string()]);
+        }
+        rewrite_marker::begin(data_dir, "compress-existing", args)?;
+    }
+
     let mut compressed = 0u64;
     let mut skipped = 0u64;
     let mut ratio_plain: u64 = 0;
     let mut ratio_comp: u64 = 0;
 
     for meta_path in meta_files {
+        // Repair what an interrupted run left behind BEFORE reading the sidecar.
+        if !dry_run {
+            resolve_interrupted(&meta_path).await?;
+        }
         let mut meta = match read_sidecar(&meta_path).await {
             Ok(m) => m,
             Err(e) => {
@@ -133,7 +152,7 @@ pub async fn run_compress_existing(
             continue;
         }
 
-        let info = compress_blob_in_place(
+        let info = compress_blob_to_tmp(
             &blob_path,
             algorithm,
             level,
@@ -144,11 +163,17 @@ pub async fn run_compress_existing(
         .with_context(|| format!("compressing {}", blob_path.display()))?;
 
         meta.compression = Some(info.clone());
-        write_sidecar(&meta_path, &meta).await?;
+        inplace::commit_rewrite(&blob_path, &meta_path, &meta)
+            .await
+            .with_context(|| format!("rewriting {} and its sidecar", blob_path.display()))?;
 
         ratio_plain += info.original_size;
         ratio_comp += info.compressed_size;
         compressed += 1;
+    }
+
+    if !dry_run {
+        rewrite_marker::finish(data_dir)?;
     }
 
     let ratio = if ratio_comp > 0 {
@@ -175,10 +200,19 @@ pub async fn run_decompress_existing(
     let meta_files = collect_meta_files(&blobs_dir).await?;
     let fs_store = FsBlobStore::new(&blobs_dir, config.storage.blob_prefix_depth).await?;
 
+    let data_dir = Path::new(&config.storage.data_dir);
+    if !dry_run {
+        rewrite_marker::begin(data_dir, "decompress-existing", filter_args(bucket_filter))?;
+    }
+
     let mut decompressed = 0u64;
     let mut skipped = 0u64;
 
     for meta_path in meta_files {
+        // Repair what an interrupted run left behind BEFORE reading the sidecar.
+        if !dry_run {
+            resolve_interrupted(&meta_path).await?;
+        }
         let mut meta = match read_sidecar(&meta_path).await {
             Ok(m) => m,
             Err(e) => {
@@ -218,13 +252,19 @@ pub async fn run_decompress_existing(
             continue;
         }
 
-        decompress_blob_in_place(&blob_path, &info)
+        decompress_blob_to_tmp(&blob_path, &info)
             .await
             .with_context(|| format!("decompressing {}", blob_path.display()))?;
 
         meta.compression = None;
-        write_sidecar(&meta_path, &meta).await?;
+        inplace::commit_rewrite(&blob_path, &meta_path, &meta)
+            .await
+            .with_context(|| format!("rewriting {} and its sidecar", blob_path.display()))?;
         decompressed += 1;
+    }
+
+    if !dry_run {
+        rewrite_marker::finish(data_dir)?;
     }
 
     println!(
@@ -232,6 +272,13 @@ pub async fn run_decompress_existing(
         decompressed, skipped
     );
     Ok(())
+}
+
+/// `--bucket` argument of a re-run, as recorded in the marker.
+fn filter_args(bucket_filter: Option<&str>) -> Vec<String> {
+    bucket_filter
+        .map(|b| vec!["--bucket".to_string(), b.to_string()])
+        .unwrap_or_default()
 }
 
 async fn collect_meta_files(dir: &Path) -> Result<Vec<PathBuf>> {
@@ -261,11 +308,22 @@ async fn read_sidecar(path: &Path) -> Result<SidecarMeta> {
     Ok(meta)
 }
 
-async fn write_sidecar(path: &Path, meta: &SidecarMeta) -> Result<()> {
-    let tmp = path.with_extension("meta.tmp");
-    let json = serde_json::to_string(meta)?;
-    fs::write(&tmp, json).await?;
-    fs::rename(&tmp, path).await?;
+/// Repairs the leftovers of an interrupted run for one sidecar and says so.
+async fn resolve_interrupted(meta_path: &Path) -> Result<()> {
+    match inplace::resolve_pending(meta_path)
+        .await
+        .with_context(|| format!("repairing {}", meta_path.display()))?
+    {
+        PendingOutcome::Clean => {}
+        PendingOutcome::Discarded => println!(
+            "recovered {}: discarded an interrupted rewrite, blob and sidecar unchanged",
+            meta_path.display()
+        ),
+        PendingOutcome::RolledForward(_) => println!(
+            "recovered {}: completed an interrupted rewrite",
+            meta_path.display()
+        ),
+    }
     Ok(())
 }
 
@@ -280,15 +338,16 @@ fn blob_id_from_meta_path(meta_path: &Path) -> Result<BlobId> {
     Ok(BlobId(id.to_string()))
 }
 
-/// Read plaintext → write compressed to a `.compressing.tmp` → rename.
-async fn compress_blob_in_place(
+/// Reads the plaintext and writes the compressed bytes to the rewrite temp
+/// file, fsynced. The blob is untouched until `commit_rewrite`.
+async fn compress_blob_to_tmp(
     blob_path: &Path,
     algorithm: CompressionAlgorithm,
     level: i32,
     chunk_size: u32,
     plaintext_size: u64,
 ) -> Result<BlobCompressionInfo> {
-    let tmp = blob_path.with_extension("compressing.tmp");
+    let tmp = inplace::rewrite_tmp_path(blob_path);
     let file = fs::File::open(blob_path).await?;
     let reader: ByteStream = Box::pin(ReaderStream::new(file));
     let (comp_stream, _stats) = CompressingStream::new(reader, algorithm, level, chunk_size);
@@ -305,10 +364,10 @@ async fn compress_blob_in_place(
         out.write_all(&chunk).await?;
     }
     out.flush().await?;
+    out.sync_all().await?;
     drop(out);
 
     let compressed_size = fs::metadata(&tmp).await?.len();
-    fs::rename(&tmp, blob_path).await?;
     Ok(BlobCompressionInfo {
         algorithm,
         chunk_size,
@@ -317,8 +376,9 @@ async fn compress_blob_in_place(
     })
 }
 
-/// Read compressed → write plaintext to a `.decompressing.tmp` → rename.
-async fn decompress_blob_in_place(
+/// Reads the compressed blob and writes the plaintext to the rewrite temp
+/// file, fsynced. The blob is untouched until `commit_rewrite`.
+async fn decompress_blob_to_tmp(
     blob_path: &Path,
     info: &BlobCompressionInfo,
 ) -> Result<()> {
@@ -355,7 +415,7 @@ async fn decompress_blob_in_place(
     let reader: ByteStream = Box::pin(ReaderStream::new(limited));
     let dec = DecompressingStream::new(reader, info.algorithm);
 
-    let tmp = blob_path.with_extension("decompressing.tmp");
+    let tmp = inplace::rewrite_tmp_path(blob_path);
     let mut out = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -368,17 +428,18 @@ async fn decompress_blob_in_place(
         out.write_all(&chunk).await?;
     }
     out.flush().await?;
+    out.sync_all().await?;
     drop(out);
 
     let new_size = fs::metadata(&tmp).await?.len();
     if new_size != info.original_size {
+        let _ = fs::remove_file(&tmp).await;
         anyhow::bail!(
             "decompressed size {} != sidecar original_size {}",
             new_size,
             info.original_size
         );
     }
-    fs::rename(&tmp, blob_path).await?;
     Ok(())
 }
 
@@ -386,6 +447,7 @@ async fn decompress_blob_in_place(
 mod tests {
     use super::*;
     use arca_core::store::blob::{BlobEncryptionInfo, CompositePart};
+    use std::sync::Arc;
 
     fn test_config(data_dir: &Path) -> Config {
         toml::from_str(&format!(
@@ -567,5 +629,219 @@ mod tests {
 
         assert_eq!(fs::read(&blob).await.unwrap(), body);
         assert_eq!(fs::read(&mp).await.unwrap(), sidecar_before);
+    }
+
+    // ----- Crash-safe rewrite -----
+
+    /// Reads a blob back through the real store stack (FsBlobStore under a
+    /// CompressingBlobStore), exactly as the server would.
+    async fn read_back(tmp: &Path, id: &str) -> Vec<u8> {
+        use arca_core::store::{BlobStore, MetadataStore};
+        use tokio_stream::StreamExt;
+        let fs_store = Arc::new(FsBlobStore::new(&tmp.join("blobs"), 2).await.unwrap());
+        let metadata: Arc<dyn MetadataStore> =
+            Arc::new(arca_storage::SqliteStore::open(&tmp.join("read-back.db")).await.unwrap());
+        let store = arca_storage::CompressingBlobStore::new(
+            fs_store.clone() as Arc<dyn BlobStore>,
+            fs_store,
+            metadata,
+        );
+        let mut stream = store.get(&BlobId(id.to_string()), None).await.unwrap().stream;
+        let mut out = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            out.extend_from_slice(&chunk.unwrap());
+        }
+        out
+    }
+
+    fn dir_names(path: &Path) -> Vec<String> {
+        let mut v: Vec<String> = std::fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        v.sort();
+        v
+    }
+
+    #[tokio::test]
+    async fn compress_and_decompress_read_back_and_leave_no_temp_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = payload();
+        let (blob, mp) = fixture(tmp.path(), ID1, &meta(body.len() as u64), Some(&body)).await;
+        let config = test_config(tmp.path());
+        let expected = vec![ID1.to_string(), format!("{ID1}.meta")];
+
+        run_compress_existing(&config, false, None, Some("zstd")).await.unwrap();
+        assert!(read_sidecar(&mp).await.unwrap().compression.is_some());
+        assert_ne!(fs::read(&blob).await.unwrap(), body);
+        assert_eq!(read_back(tmp.path(), ID1).await, body);
+        assert_eq!(dir_names(&blob), expected);
+
+        run_decompress_existing(&config, false, None).await.unwrap();
+        assert_eq!(fs::read(&blob).await.unwrap(), body);
+        assert_eq!(read_back(tmp.path(), ID1).await, body);
+        assert_eq!(dir_names(&blob), expected);
+    }
+
+    #[tokio::test]
+    async fn failed_rewrite_keeps_original_blob_and_sidecar_readable() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = payload();
+        let (blob, mp) = fixture(tmp.path(), ID1, &meta(body.len() as u64), Some(&body)).await;
+        let sidecar_before = fs::read(&mp).await.unwrap();
+        // Make the journal write (the first step of the commit) fail.
+        let pending = inplace::pending_sidecar_path(&mp);
+        fs::create_dir(&pending).await.unwrap();
+        fs::write(pending.join("keep"), b"x").await.unwrap();
+
+        let err = run_compress_existing(&test_config(tmp.path()), false, None, Some("zstd")).await;
+
+        assert!(err.is_err());
+        assert_eq!(fs::read(&blob).await.unwrap(), body);
+        assert_eq!(fs::read(&mp).await.unwrap(), sidecar_before);
+        assert_eq!(read_back(tmp.path(), ID1).await, body);
+        assert!(!inplace::rewrite_tmp_path(&blob).exists(), "temp blob must be removed");
+    }
+
+    /// Runs the compress steps up to (and excluding) the commit, like a process
+    /// that dies right before it: returns the new sidecar.
+    async fn stage_compress(blob: &Path, body_len: u64, old: &SidecarMeta) -> SidecarMeta {
+        let info = compress_blob_to_tmp(
+            blob,
+            CompressionAlgorithm::Zstd,
+            3,
+            arca_storage::compressed_blob::DEFAULT_CHUNK_SIZE,
+            body_len,
+        )
+        .await
+        .unwrap();
+        let mut new = old.clone();
+        new.compression = Some(info);
+        new
+    }
+
+    #[tokio::test]
+    async fn crash_after_journal_before_blob_rename_is_discarded_on_rerun() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = payload();
+        let m = meta(body.len() as u64);
+        let (blob, mp) = fixture(tmp.path(), ID1, &m, Some(&body)).await;
+        let new = stage_compress(&blob, body.len() as u64, &m).await;
+        fs::write(inplace::pending_sidecar_path(&mp), serde_json::to_string(&new).unwrap())
+            .await
+            .unwrap();
+        // Old pair intact, as after the crash.
+        assert_eq!(read_back(tmp.path(), ID1).await, body);
+
+        run_compress_existing(&test_config(tmp.path()), false, None, Some("zstd"))
+            .await
+            .unwrap();
+
+        assert!(read_sidecar(&mp).await.unwrap().compression.is_some());
+        assert_eq!(read_back(tmp.path(), ID1).await, body);
+        assert_eq!(dir_names(&blob), vec![ID1.to_string(), format!("{ID1}.meta")]);
+    }
+
+    #[tokio::test]
+    async fn crash_between_blob_and_sidecar_rename_is_completed_on_rerun() {
+        // The dangerous window: compressed blob in place, sidecar still old.
+        let tmp = tempfile::tempdir().unwrap();
+        let body = payload();
+        let m = meta(body.len() as u64);
+        let (blob, mp) = fixture(tmp.path(), ID1, &m, Some(&body)).await;
+        let new = stage_compress(&blob, body.len() as u64, &m).await;
+        fs::write(inplace::pending_sidecar_path(&mp), serde_json::to_string(&new).unwrap())
+            .await
+            .unwrap();
+        fs::rename(inplace::rewrite_tmp_path(&blob), &blob).await.unwrap();
+        assert!(read_sidecar(&mp).await.unwrap().compression.is_none());
+
+        let config = test_config(tmp.path());
+        run_compress_existing(&config, false, None, Some("zstd")).await.unwrap();
+
+        assert!(read_sidecar(&mp).await.unwrap().compression.is_some());
+        assert_eq!(read_back(tmp.path(), ID1).await, body, "no double compression");
+        assert_eq!(dir_names(&blob), vec![ID1.to_string(), format!("{ID1}.meta")]);
+    }
+
+    #[tokio::test]
+    async fn dry_run_does_not_touch_leftovers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = payload();
+        let (blob, _mp) = fixture(tmp.path(), ID1, &meta(body.len() as u64), Some(&body)).await;
+        fs::write(inplace::rewrite_tmp_path(&blob), b"partial").await.unwrap();
+
+        run_compress_existing(&test_config(tmp.path()), true, None, Some("zstd"))
+            .await
+            .unwrap();
+
+        assert!(inplace::rewrite_tmp_path(&blob).exists());
+    }
+
+    fn marker_present(tmp: &Path) -> bool {
+        crate::rewrite_marker::marker_path(tmp).exists()
+    }
+
+    #[tokio::test]
+    async fn marker_not_written_in_dry_run_and_removed_after_clean_run() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = payload();
+        fixture(tmp.path(), ID1, &meta(body.len() as u64), Some(&body)).await;
+        let config = test_config(tmp.path());
+
+        run_compress_existing(&config, true, None, Some("zstd")).await.unwrap();
+        assert!(!marker_present(tmp.path()));
+
+        // A marker seeded directly (independent of `begin`) must be removed by
+        // `finish` after a clean run, and left alone by a dry run.
+        let marker = crate::rewrite_marker::Marker {
+            command: "compress-existing".into(),
+            args: vec![],
+            started_at: "2026-01-01T00:00:00Z".into(),
+            pid: 1,
+        };
+        let seed = || {
+            std::fs::write(
+                crate::rewrite_marker::marker_path(tmp.path()),
+                serde_json::to_vec(&marker).unwrap(),
+            )
+            .unwrap()
+        };
+        seed();
+        run_compress_existing(&config, true, None, Some("zstd")).await.unwrap();
+        assert!(marker_present(tmp.path()));
+
+        run_compress_existing(&config, false, None, Some("zstd")).await.unwrap();
+        assert!(!marker_present(tmp.path()));
+    }
+
+    #[tokio::test]
+    async fn marker_kept_when_the_run_fails_midway_and_cleared_by_same_command() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = payload();
+        fixture(tmp.path(), ID1, &meta(body.len() as u64), Some(&body)).await;
+        let config = test_config(tmp.path());
+
+        // Unknown algorithm: fails on the first candidate, after the marker.
+        assert!(run_compress_existing(&config, false, Some("b"), Some("bogus")).await.is_err());
+        let crate::rewrite_marker::MarkerState::Present(m) =
+            crate::rewrite_marker::read(tmp.path()).unwrap()
+        else {
+            panic!("marker must stay");
+        };
+        assert_eq!(m.command, "compress-existing");
+        assert_eq!(m.args, vec!["--bucket", "b", "--algorithm", "bogus"]);
+
+        // Another rewrite command is refused, and does not touch the blob.
+        let err = run_decompress_existing(&config, false, None).await.unwrap_err().to_string();
+        assert!(err.contains("arca compress-existing"), "{err}");
+        assert!(marker_present(tmp.path()));
+
+        // Dry run is still allowed.
+        run_decompress_existing(&config, true, None).await.unwrap();
+
+        // The same command clears it.
+        run_compress_existing(&config, false, None, Some("zstd")).await.unwrap();
+        assert!(!marker_present(tmp.path()));
     }
 }

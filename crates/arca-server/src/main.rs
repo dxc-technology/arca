@@ -18,6 +18,7 @@ mod migrate_topology;
 mod recover;
 mod recrypt_existing;
 mod replicator;
+mod rewrite_marker;
 mod sigv4_http;
 mod tls;
 mod tls_generate;
@@ -84,6 +85,13 @@ async fn async_main(cli: Cli) -> Result<()> {
             let initial_log_level = config.server.log_level.clone()
                 .unwrap_or_else(|| "info".to_string());
             let log_reloader = init_tracing(&log_format, &initial_log_level);
+
+            // Before any store is opened or port bound: an unfinished offline
+            // rewrite may have left blobs and sidecars mismatched.
+            rewrite_marker::ensure_none(
+                std::path::Path::new(&config.storage.data_dir),
+                "start the server",
+            )?;
 
             tracing::info!(
                 version = env!("CARGO_PKG_VERSION"),
@@ -995,6 +1003,7 @@ async fn async_main(cli: Cli) -> Result<()> {
             let _ = init_tracing(&LogFormat::Text, "info");
 
             let config = config::load_config(&config_path)?;
+            rewrite_marker::ensure_none(std::path::Path::new(&config.storage.data_dir), "recover")?;
             recover::run_recover(&config, dry_run, skip_verify).await?;
         }
 
@@ -1005,6 +1014,7 @@ async fn async_main(cli: Cli) -> Result<()> {
             let _ = init_tracing(&LogFormat::Text, "info");
 
             let config = config::load_config(&config_path)?;
+            rewrite_marker::warn_if_present(std::path::Path::new(&config.storage.data_dir));
             let exit_code = fsck::run_fsck(&config, verify_checksums).await?;
             std::process::exit(exit_code);
         }
@@ -1018,6 +1028,7 @@ async fn async_main(cli: Cli) -> Result<()> {
             let _ = init_tracing(&LogFormat::Text, "info");
 
             let config = config::load_config(&config_path)?;
+            rewrite_marker::ensure_none(std::path::Path::new(&config.storage.data_dir), "run gc")?;
             gc::run_gc(
                 &config,
                 !reclaim,
@@ -1096,6 +1107,7 @@ async fn async_main(cli: Cli) -> Result<()> {
         } => {
             let _ = init_tracing(&LogFormat::Text, "info");
             let config = config::load_config(&config_path)?;
+            rewrite_marker::ensure_none(std::path::Path::new(&config.storage.data_dir), "migrate the database")?;
             migrate_db::run_migrate_db(&config, to.as_str(), force).await?;
         }
 
@@ -1108,6 +1120,7 @@ async fn async_main(cli: Cli) -> Result<()> {
         } => {
             let _ = init_tracing(&LogFormat::Text, "info");
             let config = config::load_config(&config_path)?;
+            rewrite_marker::ensure_none(std::path::Path::new(&config.storage.data_dir), "migrate the topology")?;
             if to_cluster {
                 migrate_topology::run_to_cluster(&config, output.as_deref()).await?;
             } else if to_single {

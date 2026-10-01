@@ -15,7 +15,7 @@
 //! live encrypted path and reads back transparently (same `AENC` framing, same
 //! per-object DEK wrapped by the master KEK, same chunk size).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use base64::Engine as _;
@@ -190,15 +190,11 @@ async fn is_encrypted_file(path: &Path) -> Result<bool, ArcaError> {
     Ok(n >= 4 && &head[0..4] == format::MAGIC)
 }
 
-/// Drives `stream` into a fresh temp file next to `path`, then atomically
-/// renames it over `path`. The temp uses `extension` so concurrent jobs on
-/// distinct blobs never collide.
-async fn stream_to_file_atomic(
-    mut stream: ByteStream,
-    path: &Path,
-    extension: &str,
-) -> Result<(), ArcaError> {
-    let tmp = path.with_extension(extension);
+/// Drives `stream` into the rewrite temp file of `path` and fsyncs it. The
+/// temp is NOT renamed: the caller publishes it with
+/// [`crate::inplace::commit_rewrite`], together with the new sidecar.
+async fn stream_to_rewrite_tmp(mut stream: ByteStream, path: &Path) -> Result<PathBuf, ArcaError> {
+    let tmp = crate::inplace::rewrite_tmp_path(path);
     let file = tokio::fs::File::create(&tmp)
         .await
         .map_err(|e| ArcaError::Internal(format!("create {}: {e}", tmp.display())))?;
@@ -220,25 +216,33 @@ async fn stream_to_file_atomic(
         .sync_all()
         .await
         .map_err(|e| ArcaError::Internal(format!("fsync {}: {e}", tmp.display())))?;
-
-    tokio::fs::rename(&tmp, path)
-        .await
-        .map_err(|e| ArcaError::Internal(format!("rename {} -> {}: {e}", tmp.display(), path.display())))?;
-    Ok(())
+    Ok(tmp)
 }
 
-/// Encrypts a plaintext blob file in place (atomic temp + rename).
+/// An encrypted copy of a blob, written and fsynced next to it but not yet
+/// published.
+#[derive(Debug)]
+pub struct PreparedEncrypt {
+    /// The encrypted temp file ([`crate::inplace::rewrite_tmp_path`] of the blob).
+    pub tmp: PathBuf,
+    /// Sidecar data for the new bytes. Carries the only copy of the wrapped DEK:
+    /// persist it with the swap, via [`crate::inplace::commit_rewrite`].
+    pub outcome: EncryptOutcome,
+}
+
+/// Encrypts a plaintext blob file into its rewrite temp file (fsynced), leaving
+/// the blob itself untouched. The caller finishes the job with
+/// [`crate::inplace::commit_rewrite`] and the sidecar built from the outcome;
+/// on any earlier failure it removes the temp.
 ///
 /// Idempotent: returns `Ok(None)` if the file is already an `AENC`-encrypted
-/// blob (so re-running a job never double-encrypts). On success returns the
-/// [`EncryptOutcome`] so the caller can persist the sidecar and the object row
-/// (`encryption_algorithm`, `encryption_key_id`). The plaintext ETag in the
-/// outcome MUST match the object's existing ETag — re-encryption preserves the
+/// blob (so re-running a job never double-encrypts). The plaintext ETag in the
+/// outcome MUST match the object's existing ETag: re-encryption preserves the
 /// logical object byte-for-byte.
-pub async fn encrypt_file_in_place(
+pub async fn prepare_encrypt_file(
     path: &Path,
     master_key: &MasterKey,
-) -> Result<Option<EncryptOutcome>, ArcaError> {
+) -> Result<Option<PreparedEncrypt>, ArcaError> {
     if is_encrypted_file(path).await? {
         return Ok(None);
     }
@@ -249,32 +253,34 @@ pub async fn encrypt_file_in_place(
     let plain: ByteStream = Box::pin(ReaderStream::with_capacity(file, 65536));
 
     let (enc_stream, stats, info) = build_encryptor(plain, master_key)?;
-    stream_to_file_atomic(enc_stream, path, "aenc-tmp").await?;
+    let tmp = stream_to_rewrite_tmp(enc_stream, path).await?;
 
     let stats = stats.lock().unwrap();
     let md5 = stats
         .md5
         .ok_or_else(|| ArcaError::Internal("plaintext MD5 not computed".into()))?;
-    Ok(Some(EncryptOutcome {
-        plaintext_size: stats.size,
-        plaintext_etag: hex::encode(md5),
-        encryption: info,
+    Ok(Some(PreparedEncrypt {
+        tmp,
+        outcome: EncryptOutcome {
+            plaintext_size: stats.size,
+            plaintext_etag: hex::encode(md5),
+            encryption: info,
+        },
     }))
 }
 
-/// Decrypts an `AES256` blob file back to plaintext in place (atomic).
-///
-/// Idempotent: returns `Ok(false)` if the file is not an `AENC` blob (already
-/// plaintext). `enc_info` is the blob's encryption metadata (from its sidecar).
-/// On success the file holds the original plaintext and the caller should clear
-/// `encryption` from the sidecar and the object row.
-pub async fn decrypt_file_in_place(
+/// Decrypts an `AES256` blob file into its rewrite temp file (fsynced), leaving
+/// the blob itself untouched. Returns the temp path, or `Ok(None)` if the file
+/// is not an `AENC` blob (already plaintext, idempotent). `enc_info` is the
+/// blob's encryption metadata (from its sidecar). The caller finishes the job
+/// with [`crate::inplace::commit_rewrite`] and a sidecar without `encryption`.
+pub async fn prepare_decrypt_file(
     path: &Path,
     enc_info: &BlobEncryptionInfo,
     master_key: &MasterKey,
-) -> Result<bool, ArcaError> {
+) -> Result<Option<PathBuf>, ArcaError> {
     if !is_encrypted_file(path).await? {
-        return Ok(false);
+        return Ok(None);
     }
 
     let mut file = tokio::fs::File::open(path)
@@ -292,8 +298,7 @@ pub async fn decrypt_file_in_place(
 
     let cipher: ByteStream = Box::pin(ReaderStream::with_capacity(file, 65536));
     let plain = build_decryptor(cipher, enc_info, master_key)?;
-    stream_to_file_atomic(plain, path, "plain-tmp").await?;
-    Ok(true)
+    Ok(Some(stream_to_rewrite_tmp(plain, path).await?))
 }
 
 #[cfg(test)]
@@ -433,18 +438,38 @@ mod tests {
         assert_eq!(decrypted, plaintext);
     }
 
+    async fn commit_encrypted(path: &Path, prepared: &PreparedEncrypt) {
+        // Minimal sidecar; the commit only needs it to be valid JSON.
+        let mut meta = sidecar_with(Some(prepared.outcome.encryption.clone()));
+        meta.size = prepared.outcome.plaintext_size;
+        crate::inplace::commit_rewrite(path, &sidecar_path_of(path), &meta)
+            .await
+            .unwrap();
+    }
+
+    fn sidecar_path_of(blob: &Path) -> PathBuf {
+        blob.with_file_name(format!("{}.meta", blob.file_name().unwrap().to_str().unwrap()))
+    }
+
     #[tokio::test]
     async fn file_roundtrip_and_idempotency() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("blob");
         let plaintext = b"in-place re-encryption payload \x00\x01\x02".repeat(5000);
         tokio::fs::write(&path, &plaintext).await.unwrap();
+        tokio::fs::write(sidecar_path_of(&path), serde_json::to_string(&sidecar_with(None)).unwrap())
+            .await
+            .unwrap();
 
         let mk = master_key();
 
-        // Encrypt in place.
-        let outcome = encrypt_file_in_place(&path, &mk).await.unwrap().unwrap();
-        assert_eq!(outcome.plaintext_size, plaintext.len() as u64);
+        // Preparing leaves the blob untouched until the commit.
+        let prepared = prepare_encrypt_file(&path, &mk).await.unwrap().unwrap();
+        assert_eq!(tokio::fs::read(&path).await.unwrap(), plaintext);
+        assert_eq!(prepared.outcome.plaintext_size, plaintext.len() as u64);
+
+        commit_encrypted(&path, &prepared).await;
+        let outcome = prepared.outcome;
         let on_disk = tokio::fs::read(&path).await.unwrap();
         assert_eq!(&on_disk[..4], format::MAGIC);
         assert_ne!(on_disk, plaintext);
@@ -459,18 +484,31 @@ mod tests {
         assert_eq!(outcome.plaintext_etag, expected_etag);
 
         // Encrypting again is a no-op (already AENC).
-        assert!(encrypt_file_in_place(&path, &mk).await.unwrap().is_none());
+        assert!(prepare_encrypt_file(&path, &mk).await.unwrap().is_none());
 
-        // Decrypt in place restores the exact original bytes.
-        assert!(decrypt_file_in_place(&path, &outcome.encryption, &mk)
+        // Decrypt restores the exact original bytes once committed.
+        let tmp = prepare_decrypt_file(&path, &outcome.encryption, &mk)
             .await
-            .unwrap());
-        let restored = tokio::fs::read(&path).await.unwrap();
-        assert_eq!(restored, plaintext);
+            .unwrap()
+            .unwrap();
+        assert_eq!(tokio::fs::read(&tmp).await.unwrap(), plaintext);
+        crate::inplace::commit_rewrite(&path, &sidecar_path_of(&path), &sidecar_with(None))
+            .await
+            .unwrap();
+        assert_eq!(tokio::fs::read(&path).await.unwrap(), plaintext);
 
         // Decrypting again is a no-op (already plaintext).
-        assert!(!decrypt_file_in_place(&path, &outcome.encryption, &mk)
+        assert!(prepare_decrypt_file(&path, &outcome.encryption, &mk)
             .await
-            .unwrap());
+            .unwrap()
+            .is_none());
+
+        // Nothing but the blob and its sidecar is left behind.
+        let mut names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        names.sort();
+        assert_eq!(names, vec!["blob", "blob.meta"]);
     }
 }

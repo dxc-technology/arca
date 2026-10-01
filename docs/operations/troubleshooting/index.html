@@ -1365,6 +1365,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#arca-serve-refuses-to-start-offline-rewrite-in-progress" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "arca serve" refuses to start: offline rewrite in progress
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1855,6 +1866,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#arca-serve-refuses-to-start-offline-rewrite-in-progress" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        "arca serve" refuses to start: offline rewrite in progress
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2260,6 +2282,10 @@
 </code></pre></div>
 </li>
 </ul>
+<h3 id="arca-serve-refuses-to-start-offline-rewrite-in-progress">"arca serve" refuses to start: offline rewrite in progress<a class="headerlink" href="#arca-serve-refuses-to-start-offline-rewrite-in-progress" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom</strong>: <code>arca serve</code> exits immediately with <code>refusing to start the server. An offline rewrite was started at ... and did not finish cleanly</code>, naming a command (for example <code>arca encrypt-existing --bucket photos</code>) and the path <code>&lt;data_dir&gt;/.offline-rewrite-in-progress</code>.</p>
+<p><strong>Cause</strong>: <code>compress-existing</code>, <code>decompress-existing</code>, <code>encrypt-existing</code> or <code>decrypt-existing</code> was interrupted (crash, power cut, <code>Ctrl-C</code>) or finished with errors. Some blob may not match its sidecar until the tool is run again, and the server refuses to serve it.</p>
+<p><strong>Solution</strong>: run the command shown in the error, with the same <code>--config-path</code>, until it ends with <code>Done.</code> and no errors. It repairs the pending journals and removes the marker; then start the server. If you started a different rewrite command meanwhile, it was refused for the same reason. Do not delete the marker file by hand: see <a href="../../guide/cli/#the-in-progress-marker">the in-progress marker</a>.</p>
 <h2 id="encryption">Encryption<a class="headerlink" href="#encryption" title="Permanent link">&para;</a></h2>
 <h3 id="cannot-read-objects-after-changing-master-key">Cannot read objects after changing master key<a class="headerlink" href="#cannot-read-objects-after-changing-master-key" title="Permanent link">&para;</a></h3>
 <p><strong>Symptom</strong>: <code>GetObject</code> returns errors for objects that were encrypted with a previous master key.</p>

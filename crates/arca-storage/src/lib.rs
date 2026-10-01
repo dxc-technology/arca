@@ -12,6 +12,7 @@ pub mod compression;
 pub mod encrypted_blob;
 pub mod encryption;
 pub mod fs;
+pub mod inplace;
 pub mod migration;
 #[cfg(feature = "postgres")]
 pub mod pg;

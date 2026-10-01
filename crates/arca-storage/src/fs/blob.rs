@@ -17,6 +17,54 @@ use arca_core::store::{
 };
 use arca_core::types::BlobId;
 
+// ----- Durability helpers -----
+//
+// A durable write needs (1) the file data fsynced, (2) the rename that
+// publishes it and (3) the containing directory fsynced, so a power loss
+// cannot lose or truncate it. All of these block, so callers run them on
+// `spawn_blocking` (or on tokio's file offload, which does the same). The
+// offline rewrite tools use them (`crate::inplace`); the live write path does
+// not fsync yet (TD-038).
+
+/// fsyncs a directory, persisting the entries (creations, renames) made in it.
+pub fn sync_dir(dir: &std::path::Path) -> io::Result<()> {
+    std::fs::File::open(dir)?.sync_all()
+}
+
+/// Atomically publishes `tmp` as `dest` (rename) and fsyncs the parent
+/// directory. The caller must already have fsynced `tmp`'s data.
+pub fn rename_durable(tmp: &std::path::Path, dest: &std::path::Path) -> io::Result<()> {
+    std::fs::rename(tmp, dest)?;
+    match dest.parent() {
+        Some(parent) => sync_dir(parent),
+        None => Ok(()),
+    }
+}
+
+/// Writes `bytes` to `dest` atomically and durably: temp file in the same
+/// directory, fsync, rename, directory fsync. On failure the temp file is
+/// removed and any existing `dest` is left untouched.
+pub fn write_file_atomic(dest: &std::path::Path, bytes: &[u8]) -> io::Result<()> {
+    use std::io::Write as _;
+    let mut name = dest.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(".{}.tmp", uuid::Uuid::new_v4().simple()));
+    let tmp = dest.with_file_name(name);
+    let result = (|| {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        rename_durable(&tmp, dest)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
+}
+
 /// Filesystem-backed blob store.
 ///
 /// Blobs are stored in a sharded directory hierarchy under `base_dir`.

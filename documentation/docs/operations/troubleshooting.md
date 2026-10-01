@@ -277,6 +277,14 @@ services:
     connection_string = "postgresql://arca:secret@db:5432/arca"
     ```
 
+### "arca serve" refuses to start: offline rewrite in progress
+
+**Symptom**: `arca serve` exits immediately with `refusing to start the server. An offline rewrite was started at ... and did not finish cleanly`, naming a command (for example `arca encrypt-existing --bucket photos`) and the path `<data_dir>/.offline-rewrite-in-progress`.
+
+**Cause**: `compress-existing`, `decompress-existing`, `encrypt-existing` or `decrypt-existing` was interrupted (crash, power cut, `Ctrl-C`) or finished with errors. Some blob may not match its sidecar until the tool is run again, and the server refuses to serve it.
+
+**Solution**: run the command shown in the error, with the same `--config-path`, until it ends with `Done.` and no errors. It repairs the pending journals and removes the marker; then start the server. If you started a different rewrite command meanwhile, it was refused for the same reason. Do not delete the marker file by hand: see [the in-progress marker](../guide/cli.md#the-in-progress-marker).
+
 ## Encryption
 
 ### Cannot read objects after changing master key

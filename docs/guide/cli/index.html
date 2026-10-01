@@ -1047,6 +1047,40 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="arca encrypt-existing / arca decrypt-existing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#durability-of-the-offline-rewrite-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Durability of the offline rewrite tools
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Durability of the offline rewrite tools">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-in-progress-marker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The in-progress marker
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1822,6 +1856,40 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="arca encrypt-existing / arca decrypt-existing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#durability-of-the-offline-rewrite-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Durability of the offline rewrite tools
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Durability of the offline rewrite tools">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-in-progress-marker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The in-progress marker
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2446,7 +2514,7 @@ trusting every renewed server certificate for the CA's whole lifetime.</p>
 </code></pre></div>
 <p>The <code>arca_blob_delete_failures_total</code> Prometheus metric reports how often a blob delete failed during object deletion (each one leaves an orphan for <code>arca gc</code>), so you can tell whether reclamation needs to run.</p>
 <h2 id="arca-compress-existing"><code>arca compress-existing</code><a class="headerlink" href="#arca-compress-existing" title="Permanent link">&para;</a></h2>
-<p>Walks the blobs directory and compresses any blob that does not already carry compression metadata, honoring the live-write MIME and size filters. Atomic per-blob (writes a <code>.compressing.tmp</code> then renames) and resumable: re-running skips already-compressed blobs. Encrypted blobs (SSE-S3, SSE-KMS, SSE-C) and composite (multipart) blobs are skipped with a <code>SKIP</code> message and counted in <code>skipped=</code>; the run continues. See the <a href="../compression/#offline-retrofit">Compression guide</a>.</p>
+<p>Walks the blobs directory and compresses any blob that does not already carry compression metadata, honoring the live-write MIME and size filters. Crash-safe and durable per blob (see <a href="#durability-of-the-offline-rewrite-tools">Durability of the offline rewrite tools</a>) and resumable: re-running skips already-compressed blobs. Encrypted blobs (SSE-S3, SSE-KMS, SSE-C) and composite (multipart) blobs are skipped with a <code>SKIP</code> message and counted in <code>skipped=</code>; the run continues. See the <a href="../compression/#offline-retrofit">Compression guide</a>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>arca compress-existing [--config-path &lt;PATH&gt;] [--dry-run]
 <a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>                       [--bucket &lt;NAME&gt;] [--algorithm &lt;NAME&gt;]
 </code></pre></div>
@@ -2482,14 +2550,15 @@ trusting every renewed server certificate for the CA's whole lifetime.</p>
 <a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a>arca<span class="w"> </span>compress-existing<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--algorithm<span class="w"> </span>brotli
 </code></pre></div>
 <h2 id="arca-decompress-existing"><code>arca decompress-existing</code><a class="headerlink" href="#arca-decompress-existing" title="Permanent link">&para;</a></h2>
-<p>Inverse of <code>compress-existing</code> — reads each sidecar, and for compressed blobs, rewrites the plaintext to disk and removes the compression metadata. Same atomicity and resume properties. Composite blobs and encrypted blobs (which hold compressed data under the encryption layer) are skipped with a <code>SKIP</code> message; the run continues.</p>
+<p>Inverse of <code>compress-existing</code> — reads each sidecar, and for compressed blobs, rewrites the plaintext to disk and removes the compression metadata. Same durability and resume properties. Composite blobs and encrypted blobs (which hold compressed data under the encryption layer) are skipped with a <code>SKIP</code> message; the run continues.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>arca decompress-existing [--config-path &lt;PATH&gt;] [--dry-run] [--bucket &lt;NAME&gt;]
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>arca<span class="w"> </span>decompress-existing<span class="w"> </span>--dry-run
 <a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>arca<span class="w"> </span>decompress-existing<span class="w"> </span>--bucket<span class="w"> </span>my-bucket
 </code></pre></div>
+<p><strong>Exit code.</strong> <code>compress-existing</code> and <code>decompress-existing</code> abort with a non-zero exit on the first object that fails (the marker is kept); they exit <code>0</code> only after a clean run or a <code>--dry-run</code>.</p>
 <h2 id="arca-encrypt-existing-arca-decrypt-existing"><code>arca encrypt-existing</code> / <code>arca decrypt-existing</code><a class="headerlink" href="#arca-encrypt-existing-arca-decrypt-existing" title="Permanent link">&para;</a></h2>
-<p>Offline counterparts of the <code>encrypt</code> / <code>decrypt</code> maintenance jobs, run with the server <strong>stopped</strong>. <code>encrypt-existing</code> encrypts plaintext blobs to SSE-S3; <code>decrypt-existing</code> decrypts SSE-S3 blobs back to plaintext. Each blob is rewritten in place (atomic temp file + rename), and its <code>.meta</code> sidecar and database row are updated. Re-running is safe: blobs already in the target state are skipped. See the <a href="../maintenance/#offline-cli">Migration &amp; Maintenance guide</a>.</p>
+<p>Offline counterparts of the <code>encrypt</code> / <code>decrypt</code> maintenance jobs, run with the server <strong>stopped</strong>. <code>encrypt-existing</code> encrypts plaintext blobs to SSE-S3; <code>decrypt-existing</code> decrypts SSE-S3 blobs back to plaintext. Each blob is rewritten in place (durable, crash-safe, see <a href="#durability-of-the-offline-rewrite-tools">Durability of the offline rewrite tools</a>), and its <code>.meta</code> sidecar and database row are updated. Re-running is safe: blobs already in the target state are skipped. See the <a href="../maintenance/#offline-cli">Migration &amp; Maintenance guide</a>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>arca<span class="w"> </span>encrypt-existing<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--dry-run<span class="o">]</span><span class="w"> </span><span class="o">[</span>--bucket<span class="w"> </span>&lt;NAME&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--prefix<span class="w"> </span>&lt;PREFIX&gt;<span class="o">]</span>
 <a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>arca<span class="w"> </span>decrypt-existing<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--dry-run<span class="o">]</span><span class="w"> </span><span class="o">[</span>--bucket<span class="w"> </span>&lt;NAME&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--prefix<span class="w"> </span>&lt;PREFIX&gt;<span class="o">]</span>
 </code></pre></div>
@@ -2520,6 +2589,54 @@ trusting every renewed server certificate for the CA's whole lifetime.</p>
 </tbody>
 </table>
 <p>Multipart objects and SSE-C objects are skipped (TD-018).</p>
+<p><strong>Exit code.</strong> <code>0</code> when every object was processed or skipped (and always for <code>--dry-run</code>). <strong>Non-zero</strong> when one or more objects failed: the usual summary (<code>Done. ... errors=N</code>) is still printed, the <a href="#the-in-progress-marker">in-progress marker</a> is kept so <code>arca serve</code> stays blocked, and the error names the command to re-run. Scripts can rely on the exit status. Before this change these commands exited <code>0</code> even when objects had failed.</p>
+<h3 id="durability-of-the-offline-rewrite-tools">Durability of the offline rewrite tools<a class="headerlink" href="#durability-of-the-offline-rewrite-tools" title="Permanent link">&para;</a></h3>
+<p><code>compress-existing</code>, <code>decompress-existing</code>, <code>encrypt-existing</code> and <code>decrypt-existing</code> replace blobs that are already safely on disk, so a power cut must never turn good data into bad. For each blob they:</p>
+<ol>
+<li>write the new bytes to <code>&lt;blob-id&gt;.rewrite.tmp</code> next to the blob and <code>fsync</code> it;</li>
+<li>write the new sidecar durably to <code>&lt;blob-id&gt;.meta.pending.tmp</code> (a journal; for encryption it holds the only copy of the new wrapped key);</li>
+<li>rename the temp file over the blob and <code>fsync</code> the directory;</li>
+<li>rename the journal over the sidecar and <code>fsync</code> the directory.</li>
+</ol>
+<p>The original blob and sidecar are untouched until step 3, and an error before then removes the temp files. If the process or the machine dies part-way, simply <strong>run the same command again</strong>: before looking at each sidecar it discards a rewrite that never replaced the blob, or completes one that did (printing <code>recovered &lt;path&gt;: ...</code>), then carries on. After completing an <code>encrypt-existing</code>/<code>decrypt-existing</code> rewrite it also brings the database row in line. Do not delete a <code>*.meta.pending.tmp</code> file by hand; <code>arca fsck</code> lists these files as <code>STALE_TMP</code>, which is expected after a crash and cleared by the re-run. A <code>--dry-run</code> never repairs or removes anything.</p>
+<h4 id="the-in-progress-marker">The in-progress marker<a class="headerlink" href="#the-in-progress-marker" title="Permanent link">&para;</a></h4>
+<p>Until the re-run, an object caught between steps 3 and 4 has a blob that does not match its sidecar (for example ciphertext described as plaintext), and the server would serve it silently. To make that impossible, every real (non <code>--dry-run</code>) run first writes a marker file, durably, in the data directory: <code>&lt;data_dir&gt;/.offline-rewrite-in-progress</code>. It is a small JSON document with the command name, the arguments needed to re-run it (<code>--bucket</code>, <code>--prefix</code>, <code>--algorithm</code>), the start time and the pid. The marker is removed (and the directory fsynced) only when the run finished cleanly: every sidecar was processed and nothing failed. If the run aborts, reports errors, or the process or machine dies, the marker stays.</p>
+<p>While the marker exists:</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>arca serve</code></td>
+<td>Refuses to start (non-zero exit) before opening any store or binding a port. The error names the command and arguments to re-run and the marker path. There is no override flag.</td>
+</tr>
+<tr>
+<td>The same rewrite command</td>
+<td>Allowed, with any filters: it repairs every pending journal (the repair runs on all sidecars before the filters apply) and removes the marker when it finishes cleanly.</td>
+</tr>
+<tr>
+<td>Another rewrite command</td>
+<td>Refused, with the command to re-run first.</td>
+</tr>
+<tr>
+<td><code>recover</code>, <code>gc</code>, <code>migrate-db</code>, <code>migrate-topology</code></td>
+<td>Refused: they would rebuild the database from, delete based on, or copy state derived from mismatched sidecars.</td>
+</tr>
+<tr>
+<td><code>fsck</code></td>
+<td>Runs (it is read-only) but prints a warning, since its findings may be misleading until the rewrite is completed.</td>
+</tr>
+<tr>
+<td><code>--dry-run</code> of a rewrite command</td>
+<td>Allowed, touches nothing.</td>
+</tr>
+</tbody>
+</table>
+<p>To resolve it, run the command named in the error, with the same <code>--config-path</code>, and wait for <code>Done.</code> without errors. <strong>Never delete the marker by hand.</strong> Doing so would let the server start on blobs and sidecars that may not match, and a pending <code>*.meta.pending.tmp</code> journal of <code>encrypt-existing</code> holds the only copy of the new wrapped key, which only the re-run commits.</p>
 <h2 id="arca-migrate-db"><code>arca migrate-db</code><a class="headerlink" href="#arca-migrate-db" title="Permanent link">&para;</a></h2>
 <p>Copy <strong>all</strong> metadata from the configured backend into the other one (SQLite to PostgreSQL or the reverse), in place and offline. Blob files are not touched. After a successful run, switch <code>metadata_backend</code> in the config (adding <code>[storage.postgres]</code> when moving to PostgreSQL) and restart. See the <a href="../maintenance/#metadata-migration-migrate-db">Migration &amp; Maintenance guide</a>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>arca<span class="w"> </span>migrate-db<span class="w"> </span>--to<span class="w"> </span>&lt;BACKEND&gt;<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--force<span class="o">]</span>
