@@ -2446,7 +2446,7 @@ trusting every renewed server certificate for the CA's whole lifetime.</p>
 </code></pre></div>
 <p>The <code>arca_blob_delete_failures_total</code> Prometheus metric reports how often a blob delete failed during object deletion (each one leaves an orphan for <code>arca gc</code>), so you can tell whether reclamation needs to run.</p>
 <h2 id="arca-compress-existing"><code>arca compress-existing</code><a class="headerlink" href="#arca-compress-existing" title="Permanent link">&para;</a></h2>
-<p>Walks the blobs directory and compresses any blob that does not already carry compression metadata, honoring the live-write MIME and size filters. Atomic per-blob (writes a <code>.compressing.tmp</code> then renames) and resumable: re-running skips already-compressed blobs. See the <a href="../compression/#offline-retrofit">Compression guide</a>.</p>
+<p>Walks the blobs directory and compresses any blob that does not already carry compression metadata, honoring the live-write MIME and size filters. Atomic per-blob (writes a <code>.compressing.tmp</code> then renames) and resumable: re-running skips already-compressed blobs. Encrypted blobs (SSE-S3, SSE-KMS, SSE-C) and composite (multipart) blobs are skipped with a <code>SKIP</code> message and counted in <code>skipped=</code>; the run continues. See the <a href="../compression/#offline-retrofit">Compression guide</a>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>arca compress-existing [--config-path &lt;PATH&gt;] [--dry-run]
 <a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>                       [--bucket &lt;NAME&gt;] [--algorithm &lt;NAME&gt;]
 </code></pre></div>
@@ -2482,7 +2482,7 @@ trusting every renewed server certificate for the CA's whole lifetime.</p>
 <a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a>arca<span class="w"> </span>compress-existing<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--algorithm<span class="w"> </span>brotli
 </code></pre></div>
 <h2 id="arca-decompress-existing"><code>arca decompress-existing</code><a class="headerlink" href="#arca-decompress-existing" title="Permanent link">&para;</a></h2>
-<p>Inverse of <code>compress-existing</code> — reads each sidecar, and for compressed blobs, rewrites the plaintext to disk and removes the compression metadata. Same atomicity and resume properties.</p>
+<p>Inverse of <code>compress-existing</code> — reads each sidecar, and for compressed blobs, rewrites the plaintext to disk and removes the compression metadata. Same atomicity and resume properties. Composite blobs and encrypted blobs (which hold compressed data under the encryption layer) are skipped with a <code>SKIP</code> message; the run continues.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>arca decompress-existing [--config-path &lt;PATH&gt;] [--dry-run] [--bucket &lt;NAME&gt;]
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>arca<span class="w"> </span>decompress-existing<span class="w"> </span>--dry-run

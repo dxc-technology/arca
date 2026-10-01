@@ -25,6 +25,24 @@ use arca_storage::FsBlobStore;
 
 type ByteStream = Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>>;
 
+/// Why the offline tools must leave a blob alone, if they must. Encrypted
+/// blobs cannot be touched without the key (compressing the ciphertext would
+/// make the object unreadable: the live order is compress, then encrypt), and
+/// composite (multipart) blobs have no file of their own.
+fn skip_reason(meta: &SidecarMeta) -> Option<&'static str> {
+    if meta.composite.is_some() {
+        Some("composite (multipart) blob has no file of its own")
+    } else if let Some(enc) = &meta.encryption {
+        if enc.algorithm == "SSE-C" {
+            Some("SSE-C encrypted blob, the key is held by the client")
+        } else {
+            Some("encrypted blob, this offline tool cannot rewrite it without going through the encryption layer")
+        }
+    } else {
+        None
+    }
+}
+
 pub async fn run_compress_existing(
     config: &Config,
     dry_run: bool,
@@ -70,6 +88,11 @@ pub async fn run_compress_existing(
                 skipped += 1;
                 continue;
             }
+        }
+        if let Some(reason) = skip_reason(&meta) {
+            eprintln!("SKIP {}: {}", meta_path.display(), reason);
+            skipped += 1;
+            continue;
         }
         // Same MIME/size filters as the live path.
         if meta.size < arca_storage::compressed_blob::DEFAULT_MIN_SIZE {
@@ -173,6 +196,11 @@ pub async fn run_decompress_existing(
                 skipped += 1;
                 continue;
             }
+        }
+        if let Some(reason) = skip_reason(&meta) {
+            eprintln!("SKIP {}: {}", meta_path.display(), reason);
+            skipped += 1;
+            continue;
         }
         let info = meta.compression.clone().unwrap();
         let blob_id = blob_id_from_meta_path(&meta_path)?;
@@ -352,4 +380,192 @@ async fn decompress_blob_in_place(
     }
     fs::rename(&tmp, blob_path).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arca_core::store::blob::{BlobEncryptionInfo, CompositePart};
+
+    fn test_config(data_dir: &Path) -> Config {
+        toml::from_str(&format!(
+            "[server]\nbind = \"127.0.0.1\"\nport = 9000\n\n[storage]\ndata_dir = \"{}\"\n",
+            data_dir.display()
+        ))
+        .unwrap()
+    }
+
+    fn payload() -> Vec<u8> {
+        b"compressible text line\n".repeat(400)
+    }
+
+    fn meta(size: u64) -> SidecarMeta {
+        SidecarMeta {
+            bucket: "b".into(),
+            key: "k".into(),
+            size,
+            etag: "e".into(),
+            content_type: Some("text/plain".into()),
+            last_modified: "2026-01-01T00:00:00Z".into(),
+            metadata: Default::default(),
+            encryption: None,
+            compression: None,
+            version_id: None,
+            composite: None,
+        }
+    }
+
+    fn enc(algorithm: &str) -> BlobEncryptionInfo {
+        BlobEncryptionInfo {
+            algorithm: algorithm.into(),
+            encrypted_dek: String::new(),
+            dek_nonce: String::new(),
+            nonce_prefix: "AAAAAA==".into(),
+            key_id: String::new(),
+        }
+    }
+
+    /// Writes a sidecar (and optionally a blob file) under `<tmp>/blobs`.
+    /// Returns (blob path, sidecar path).
+    async fn fixture(
+        tmp: &Path,
+        id: &str,
+        meta: &SidecarMeta,
+        body: Option<&[u8]>,
+    ) -> (PathBuf, PathBuf) {
+        let store = FsBlobStore::new(&tmp.join("blobs"), 2).await.unwrap();
+        let blob_path = store.blob_path(&BlobId(id.to_string()));
+        fs::create_dir_all(blob_path.parent().unwrap()).await.unwrap();
+        if let Some(b) = body {
+            fs::write(&blob_path, b).await.unwrap();
+        }
+        let meta_path = PathBuf::from(format!("{}.meta", blob_path.display()));
+        fs::write(&meta_path, serde_json::to_string(meta).unwrap())
+            .await
+            .unwrap();
+        (blob_path, meta_path)
+    }
+
+    const ID1: &str = "aabbccdd-0000-4000-8000-000000000001";
+    const ID2: &str = "aabbccdd-0000-4000-8000-000000000002";
+
+    #[tokio::test]
+    async fn compress_skips_sse_s3_blob_untouched() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = payload();
+        let mut m = meta(body.len() as u64);
+        m.encryption = Some(enc("AES256"));
+        let (blob, mp) = fixture(tmp.path(), ID1, &m, Some(&body)).await;
+        let sidecar_before = fs::read(&mp).await.unwrap();
+
+        run_compress_existing(&test_config(tmp.path()), false, None, Some("zstd"))
+            .await
+            .unwrap();
+
+        assert_eq!(fs::read(&blob).await.unwrap(), body);
+        assert_eq!(fs::read(&mp).await.unwrap(), sidecar_before);
+    }
+
+    #[tokio::test]
+    async fn compress_skips_sse_c_blob_untouched() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = payload();
+        let mut m = meta(body.len() as u64);
+        m.encryption = Some(enc("SSE-C"));
+        let (blob, mp) = fixture(tmp.path(), ID1, &m, Some(&body)).await;
+        let sidecar_before = fs::read(&mp).await.unwrap();
+
+        run_compress_existing(&test_config(tmp.path()), false, None, Some("zstd"))
+            .await
+            .unwrap();
+
+        assert_eq!(fs::read(&blob).await.unwrap(), body);
+        assert_eq!(fs::read(&mp).await.unwrap(), sidecar_before);
+    }
+
+    #[tokio::test]
+    async fn compress_skips_composite_and_continues_with_plain_blob() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut comp = meta(4096);
+        comp.composite = Some(vec![CompositePart {
+            blob_id: BlobId("part-1".into()),
+            plaintext_size: 4096,
+            plaintext_etag: "e".into(),
+            encryption: None,
+        }]);
+        let (comp_blob, comp_mp) = fixture(tmp.path(), ID1, &comp, None).await;
+        let body = payload();
+        let plain = meta(body.len() as u64);
+        let (plain_blob, plain_mp) = fixture(tmp.path(), ID2, &plain, Some(&body)).await;
+        let comp_sidecar = fs::read(&comp_mp).await.unwrap();
+
+        run_compress_existing(&test_config(tmp.path()), false, None, Some("zstd"))
+            .await
+            .unwrap();
+
+        assert!(!comp_blob.exists());
+        assert_eq!(fs::read(&comp_mp).await.unwrap(), comp_sidecar);
+        let after = read_sidecar(&plain_mp).await.unwrap();
+        assert!(after.compression.is_some());
+        assert_ne!(fs::read(&plain_blob).await.unwrap(), body);
+    }
+
+    #[tokio::test]
+    async fn decompress_skips_composite_and_continues() {
+        let tmp = tempfile::tempdir().unwrap();
+        let body = payload();
+        let plain = meta(body.len() as u64);
+        let (plain_blob, plain_mp) = fixture(tmp.path(), ID2, &plain, Some(&body)).await;
+        let config = test_config(tmp.path());
+        run_compress_existing(&config, false, None, Some("zstd"))
+            .await
+            .unwrap();
+
+        let mut comp = meta(4096);
+        comp.compression = Some(BlobCompressionInfo {
+            algorithm: CompressionAlgorithm::Zstd,
+            chunk_size: 1024,
+            original_size: 4096,
+            compressed_size: 100,
+        });
+        comp.composite = Some(vec![CompositePart {
+            blob_id: BlobId("part-1".into()),
+            plaintext_size: 4096,
+            plaintext_etag: "e".into(),
+            encryption: None,
+        }]);
+        let (_cb, comp_mp) = fixture(tmp.path(), ID1, &comp, None).await;
+        let comp_sidecar = fs::read(&comp_mp).await.unwrap();
+
+        run_decompress_existing(&config, false, None).await.unwrap();
+
+        assert_eq!(fs::read(&comp_mp).await.unwrap(), comp_sidecar);
+        assert_eq!(fs::read(&plain_blob).await.unwrap(), body);
+        assert!(read_sidecar(&plain_mp).await.unwrap().compression.is_none());
+    }
+
+    #[tokio::test]
+    async fn decompress_skips_encrypted_over_compressed_blob() {
+        // Live path layout: compress, then encrypt. The file starts with the
+        // encryption magic, not the compression one.
+        let tmp = tempfile::tempdir().unwrap();
+        let mut m = meta(4096);
+        m.encryption = Some(enc("AES256"));
+        m.compression = Some(BlobCompressionInfo {
+            algorithm: CompressionAlgorithm::Zstd,
+            chunk_size: 1024,
+            original_size: 4096,
+            compressed_size: 64,
+        });
+        let body = [b"AENC".as_slice(), &[7u8; 60]].concat();
+        let (blob, mp) = fixture(tmp.path(), ID1, &m, Some(&body)).await;
+        let sidecar_before = fs::read(&mp).await.unwrap();
+
+        run_decompress_existing(&test_config(tmp.path()), false, None)
+            .await
+            .unwrap();
+
+        assert_eq!(fs::read(&blob).await.unwrap(), body);
+        assert_eq!(fs::read(&mp).await.unwrap(), sidecar_before);
+    }
 }

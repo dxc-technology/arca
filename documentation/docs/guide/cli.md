@@ -379,7 +379,7 @@ The `arca_blob_delete_failures_total` Prometheus metric reports how often a blob
 
 ## `arca compress-existing`
 
-Walks the blobs directory and compresses any blob that does not already carry compression metadata, honoring the live-write MIME and size filters. Atomic per-blob (writes a `.compressing.tmp` then renames) and resumable: re-running skips already-compressed blobs. See the [Compression guide](compression.md#offline-retrofit).
+Walks the blobs directory and compresses any blob that does not already carry compression metadata, honoring the live-write MIME and size filters. Atomic per-blob (writes a `.compressing.tmp` then renames) and resumable: re-running skips already-compressed blobs. Encrypted blobs (SSE-S3, SSE-KMS, SSE-C) and composite (multipart) blobs are skipped with a `SKIP` message and counted in `skipped=`; the run continues. See the [Compression guide](compression.md#offline-retrofit).
 
 ```
 arca compress-existing [--config-path <PATH>] [--dry-run]
@@ -405,7 +405,7 @@ arca compress-existing --bucket my-bucket --algorithm brotli
 
 ## `arca decompress-existing`
 
-Inverse of `compress-existing` — reads each sidecar, and for compressed blobs, rewrites the plaintext to disk and removes the compression metadata. Same atomicity and resume properties.
+Inverse of `compress-existing` — reads each sidecar, and for compressed blobs, rewrites the plaintext to disk and removes the compression metadata. Same atomicity and resume properties. Composite blobs and encrypted blobs (which hold compressed data under the encryption layer) are skipped with a `SKIP` message; the run continues.
 
 ```
 arca decompress-existing [--config-path <PATH>] [--dry-run] [--bucket <NAME>]

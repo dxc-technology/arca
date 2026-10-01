@@ -1609,6 +1609,14 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>crates/arca-proto/src/handlers/{object,multipart}.rs</code></td>
 </tr>
 <tr>
+<td>TD-044</td>
+<td><code>compress-existing</code> compresses ciphertext of encrypted blobs (guard shipped, repair open)</td>
+<td><strong>Guard shipped (Unreleased):</strong> <code>compress-existing</code> now skips encrypted (SSE-S3/KMS and SSE-C) and composite blobs, and <code>decompress-existing</code> skips composite and encrypted blobs, each with a <code>SKIP</code> message, never aborting the run. <strong>Remaining:</strong> repairing stores damaged by the old behaviour. Original problem: <code>arca compress-existing</code> (<code>run_compress_existing</code>) never checks <code>meta.encryption</code> (nor composite blobs): on an SSE-S3 encrypted blob it compresses the <strong>ciphertext file</strong> in place and records <code>compression</code> in the sidecar, producing <code>ACMP(AENC…)</code>, the reverse of the live compress-then-encrypt order, with <code>original_size</code> set to the plaintext size although the frame holds ciphertext. Such objects are unreadable (<code>parse header: invalid magic bytes</code>); the bytes and DEK are intact, so they are recoverable. <code>decompress-existing</code> cannot undo it (its decompressed-size check against <code>original_size</code> fails, and the error aborts the whole run), and either tool aborts on composite blobs, which have no file. Found 2026-10-01 while fixing TD-029.</td>
+<td>Repair only (the going-forward guard is done; routing encrypted blobs through the real store stack is optional future work): for sidecars with both <code>encryption</code> and <code>compression</code> whose raw file starts with <code>ACMP</code>, decompress the raw file back to the <code>AENC</code> ciphertext (verify against the ciphertext length, not <code>original_size</code>), then clear <code>compression</code> or re-layer properly. Tests with encrypted and composite fixtures.</td>
+<td>None</td>
+<td><code>crates/arca-server/src/compress_existing.rs</code></td>
+</tr>
+<tr>
 <td>TD-043</td>
 <td>Remaining test tooling that disturbs the developer's stack</td>
 <td>After TD-030 the self-contained <code>bin/test</code> modes run in their own compose projects, but: <code>bin/screenshots</code> still runs in the developer's project (overwrites <code>config/.generated.toml</code>, <code>up -d arca</code>, <code>down</code>, and its cleanup deletes <code>.arca-env</code>); the cluster suite (<code>-p arca-cluster</code>) publishes host ports 9000-9003, which collide with a running dev server; <code>arca-tls-test-certs</code> is one fixed-name volume shared by <code>bin/test tls</code> and <code>bin/perf-test --tls</code>, so the two cannot run concurrently. (<code>bin/s3-tests</code> wiping <code>docker_arca-data</code> is deliberate: the Ceph suite needs a clean state; <code>--no-clean</code> skips it.)</td>

@@ -1788,6 +1788,7 @@
 <a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>arca<span class="w"> </span>decompress-existing<span class="w"> </span>--config<span class="w"> </span>/etc/arca/config.toml
 </code></pre></div>
 <p>Both tools are atomic per-blob (writes a <code>.compressing.tmp</code> then renames) and resumable: re-running skips already-processed blobs because the sidecar is the source of truth. <code>arca fsck</code> recognizes and removes abandoned <code>.compressing.tmp</code> files.</p>
+<p>Both tools <strong>skip</strong> encrypted blobs (SSE-S3, SSE-KMS and SSE-C) and composite (multipart-assembled) blobs, printing a <code>SKIP</code> line for each and carrying on: compression sits above encryption, so an offline tool without the key cannot rewrite them, and composite blobs have no file of their own. Objects written while compression is enabled are compressed by the live path regardless. Skipped blobs are counted in the final <code>skipped=</code> figure.</p>
 <p>Default when no <code>--algorithm</code> is passed: <code>auto</code> (same rule table as the live path).</p>
 <h2 id="metrics">Metrics<a class="headerlink" href="#metrics" title="Permanent link">&para;</a></h2>
 <p>The Prometheus endpoint always exposes these series:</p>

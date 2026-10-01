@@ -122,6 +122,8 @@ arca decompress-existing --config /etc/arca/config.toml
 
 Both tools are atomic per-blob (writes a `.compressing.tmp` then renames) and resumable: re-running skips already-processed blobs because the sidecar is the source of truth. `arca fsck` recognizes and removes abandoned `.compressing.tmp` files.
 
+Both tools **skip** encrypted blobs (SSE-S3, SSE-KMS and SSE-C) and composite (multipart-assembled) blobs, printing a `SKIP` line for each and carrying on: compression sits above encryption, so an offline tool without the key cannot rewrite them, and composite blobs have no file of their own. Objects written while compression is enabled are compressed by the live path regardless. Skipped blobs are counted in the final `skipped=` figure.
+
 Default when no `--algorithm` is passed: `auto` (same rule table as the live path).
 
 ## Metrics
