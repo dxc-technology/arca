@@ -301,6 +301,35 @@ Dependency direction: `arca-server` -> `arca-proto`, `arca-storage`, `arca-auth`
 - **Console Alpine.js scopes** — Each view is a separate `x-data` scope, they do NOT share state. Store needed data locally in each view's `load()` method.
 - **TLS auto-detect limitation** — Fails when multiple key files exist in the cert directory. Tests use `tls-explicit` fragment with explicit filenames to avoid ambiguity.
 
+## Code Navigation with graft
+
+Some developers index the repo locally with [graft](https://github.com/trailhq/Graft)
+(`graft/` is gitignored). When its tools are available, use them to locate code,
+but never as the sole basis for an impact analysis: graft resolves calls by name
+only, with no type information, and that has two blind spots in Arca.
+
+- **Trait methods are largely invisible to `graft callers` / `graft_trace_calls`.**
+  When a name has more than one definition, graft drops cross-file callers
+  instead of guessing — and every `MetadataStore` / `BlobStore` method has about
+  five (trait, SQLite, PostgreSQL, caching layer, cluster wrapper). Measured:
+  `get_bucket_config` has 29 call sites, graft reports 2; `put_object_if` is
+  missing both its production callers in `handlers/object.rs` and
+  `handlers/multipart.rs`.
+- **Calls inside macros are not edges** (`assert!`, `format!`, `json!`,
+  `tokio::select!`, …), even for uniquely named functions.
+
+Rules:
+
+- Treat `trace_calls` output as a lower bound, trustworthy only for uniquely
+  named free functions.
+- For "what does this change affect?" use an exhaustive text search
+  (`graft grep` / `graft_find_all` / `grep -rn`), then read each hit to discard
+  same-named sibling implementations.
+- A signature change is backstopped by the compiler; a **behaviour change with
+  an unchanged signature is not** — read every call site before calling it done.
+- Read the real code around a span before editing it; a graft excerpt is a
+  pointer, not the whole context.
+
 ## Technical Debt
 
 Workarounds and known shortcuts are tracked in `TECH_DEBT.md` at the repo root. The roadmap (`documentation/docs/roadmap.md`) also has a tech debt section that should be kept in sync.
