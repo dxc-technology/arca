@@ -3,10 +3,10 @@
 Regression coverage for the check-then-commit race fixed by making every
 conditional write atomic at commit (early header check as an optimisation
 only, authoritative check inside the same transaction as the write). See
-`.claude/plans/arca-conditional-write-atomicity.md`.
+CHANGELOG 0.30.0 and TD-025.
 
 Sequential tests cover the S3 semantics that had no coverage at all before
-this fix. Concurrent tests reproduce the race from the vulnerability report:
+this fix. Concurrent tests reproduce the race fixed in v0.30.0:
 before the fix, N racing writers against the same `If-Match` ETag could all
 observe a "match" and all commit, instead of exactly one winning.
 """
@@ -405,7 +405,7 @@ class TestConditionalDeleteRacesOverwrite:
 
 
 class TestDeleteObjectsBatchTargetsExactVersion:
-    """Regression pin for the M3 fix: a version-specific batch delete must
+    """Regression pin (v0.30.0): a version-specific batch delete must
     check the precondition against the TARGETED version, not the bucket's
     current latest object."""
 

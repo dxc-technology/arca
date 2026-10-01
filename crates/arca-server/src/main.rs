@@ -120,7 +120,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                 _ => None,
             };
 
-            // R4: verified inter-node TLS material ([cluster.tls]) — loaded
+            // Verified inter-node TLS material ([cluster.tls]) — loaded
             // once and shared by the membership prober and the transport
             // client. Config validation makes it mandatory over HTTPS, so a
             // load failure here aborts startup (fail closed).
@@ -137,7 +137,7 @@ async fn async_main(cli: Cli) -> Result<()> {
             // Start the membership manager (peer discovery + health pings) when
             // clustering is enabled. Detached task; refreshes cluster_state.
             if let (Some(c), Some(cstate)) = (config.cluster.as_ref(), cluster_state.clone()) {
-                // M5: the hard floor (length, placeholders) is enforced by
+                // Cluster secret strength: the hard floor (length, placeholders) is enforced by
                 // config validation; the softer heuristic only warns, here
                 // because tracing was not yet initialized at config load.
                 if c.secret_looks_low_entropy() {
@@ -213,8 +213,8 @@ async fn async_main(cli: Cli) -> Result<()> {
 
             // Stamp this node's cluster-config fingerprint (captured before the
             // master key is moved into the blob store) so peers can flag drift in
-            // the alignment-critical config (cluster_id / secret / mode /
-            // cluster_size / master key).
+            // the alignment-critical config (cluster_id / mode / write_quorum /
+            // secret / master key id).
             let master_key_id: Option<String> =
                 master_key.as_ref().map(|k| k.key_id().to_string());
             if let (Some(c), Some(cstate)) = (
@@ -384,7 +384,7 @@ async fn async_main(cli: Cli) -> Result<()> {
 
             let metadata_backend = config.storage.metadata_backend.clone();
 
-            // Cluster decorators (Phase 29 M3): when clustering is enabled, wrap
+            // Cluster decorators (Phase 29): when clustering is enabled, wrap
             // the blob and metadata stores so writes replicate to peers under the
             // consistency policy. They sit ABOVE caching/compression/encryption,
             // shipping already-encoded bytes and canonical rows verbatim. The
@@ -394,8 +394,8 @@ async fn async_main(cli: Cli) -> Result<()> {
             // /cluster/v1/op receive path applies control-plane ops without
             // re-fanning them out.
             let mut cluster_inner: Option<arca_proto::ClusterInnerStores> = None;
-            // Signed transport for the console's `?node=` admin proxy (review
-            // D6, decision H9) — handed to arca-proto as a trait object.
+            // Signed transport for the console's `?node=` admin proxy (per-node
+            // admin views, decision H9), handed to arca-proto as a trait object.
             let mut cluster_admin_proxy: Option<
                 Arc<dyn arca_core::cluster::ClusterAdminProxy>,
             > = None;
@@ -451,7 +451,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                 // write_sidecar goes through the cluster-wrapped BlobStore);
                 // this wrap adds the synchronous read-repair to get_with_key
                 // so a node missing the bytes serves the GET instead of
-                // erroring until the next anti-entropy pass (§3.6).
+                // erroring until the next anti-entropy pass.
                 ssec_blob = Arc::new(cluster::cluster_blob::ClusterSsecBlobStore::new(
                     ssec_blob.clone(),
                     raw.clone(),
@@ -863,7 +863,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                 }
                 Some(tls_config) => {
                     let paths = tls_config.resolve_paths()?;
-                    // R4: the cluster CA (when clustered over HTTPS) makes the
+                    // The cluster CA (when clustered over HTTPS) makes the
                     // listener request — and verify — optional client certs.
                     let cluster_ca = config
                         .cluster

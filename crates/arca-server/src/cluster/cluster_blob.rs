@@ -1,4 +1,4 @@
-//! Cluster blob store decorator (Phase 29 M3 — data-plane write path).
+//! Cluster blob store decorator (Phase 29 — data-plane write path).
 //!
 //! Wraps the local blob store and replicates blobs to peers, keeping the
 //! `BlobStore` trait so handlers and `AppState` are unchanged. It sits at the
@@ -14,10 +14,13 @@
 //!   typical "peer received the object row but not the blob" case — fetch it
 //!   from a live peer, store it, then serve.
 //! - **`delete` is local-only**: orphaned blobs on peers are reclaimed by the
-//!   anti-entropy GC (M4), not by an explicit cross-node blob delete.
+//!   anti-entropy orphan-blob GC, not by an explicit cross-node blob delete.
 //!
-//! Fan-out is best-effort: peers that are unreachable now are reconciled by
-//! hinted-handoff / anti-entropy (M4). Today a failed fan-out is logged.
+//! The blob fan-out itself does not decide durability: a failed send is
+//! logged, and the peer's blob presence is certified by the `has_blob` field
+//! of its ACK to the subsequent object-row fan-out (decision H2), so a peer
+//! that missed the bytes cannot count toward the write quorum. Peers missed
+//! now are healed by read-repair and the anti-entropy blob-repair sweep.
 
 use std::sync::Arc;
 
@@ -62,9 +65,9 @@ impl ClusterBlobStore {
 
     /// Endpoints of peers eligible for replication (membership already
     /// excludes this node): alive AND authenticated (proved possession of the
-    /// cluster secret — decision H12) AND config-aligned (H7). Blob bytes are
-    /// never shipped to — nor repaired from — a peer that has not proven
-    /// itself (review §3.7(A)).
+    /// cluster secret — decision H12) AND config-aligned (decision H7). Blob
+    /// bytes are never shipped to — nor repaired from — a peer that has not
+    /// proven itself.
     fn live_peers(&self) -> Vec<String> {
         self.cluster
             .peers()
@@ -74,8 +77,8 @@ impl ClusterBlobStore {
             .collect()
     }
 
-    /// Replicates a blob (raw bytes + sidecar) to every live peer IN PARALLEL
-    /// (§2.4). Best-effort: failures are logged and left for anti-entropy to
+    /// Replicates a blob (raw bytes + sidecar) to every live peer IN PARALLEL.
+    /// Best-effort: failures are logged and left for anti-entropy to
     /// reconcile — durability is accounted for at the object-row fan-out, where
     /// each peer self-certifies blob presence in its ack (decision H2), so a
     /// peer this fan-out missed simply cannot contribute to the write quorum.
@@ -149,7 +152,7 @@ async fn repair_from_peers(
     false
 }
 
-/// SSE-C blob-ops decorator (§3.6). SSE-C blobs already REPLICATE like any
+/// SSE-C blob-ops decorator. SSE-C blobs already REPLICATE like any
 /// other blob: the handler writes the object sidecar through the
 /// cluster-wrapped `BlobStore`, whose fan-out ships the on-disk (customer-key
 /// encrypted) bytes verbatim — peers store them without ever seeing the key.
@@ -269,7 +272,7 @@ impl BlobStore for ClusterBlobStore {
     }
 
     async fn delete(&self, blob_id: &BlobId) -> Result<(), ArcaError> {
-        // Local only — peers reclaim the orphaned blob via anti-entropy GC (M4).
+        // Local only — peers reclaim the orphaned blob via anti-entropy GC.
         self.inner.delete(blob_id).await
     }
 
@@ -296,7 +299,7 @@ impl BlobStore for ClusterBlobStore {
         // blob fan-out failed, or the upload spanned a partition). Repair the
         // missing parts from peers BEFORE assembling — the inner concat needs
         // every part sidecar (and, on the byte-copy fallback, the bytes) to
-        // be present locally (D4).
+        // be present locally.
         for part_id in part_blob_ids {
             match self.raw.read_sidecar(part_id).await {
                 Ok(None) => {
@@ -430,7 +433,7 @@ mod tests {
         (format!("http://{addr}"), handle)
     }
 
-    /// D4: CompleteMultipartUpload on a node that has the part ROWS but is
+    /// CompleteMultipartUpload on a node that has the part ROWS but is
     /// missing some part BYTES must fetch them from a peer before assembling,
     /// instead of failing the concat.
     #[tokio::test]
@@ -469,7 +472,7 @@ mod tests {
         assert_eq!(parts.len(), 2);
     }
 
-    /// §3.6: an SSE-C GET on a node that has the object row but not (yet) the
+    /// An SSE-C GET on a node that has the object row but not (yet) the
     /// bytes must repair them from a peer — verbatim, still encrypted with the
     /// customer key — and decrypt locally with the caller's key.
     #[tokio::test]

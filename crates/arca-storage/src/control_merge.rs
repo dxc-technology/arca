@@ -36,7 +36,7 @@ where
         + ServerConfigStore
         + ControlTombstoneStore,
 {
-    // Tombstones are adopted BEFORE the deletes execute (review §2.3): each
+    // Tombstones are adopted BEFORE the deletes execute: each
     // call commits in its own transaction, so a crash (or a concurrent
     // snapshot) part-way through must leave the safe state — tombstone present,
     // row possibly still alive — which converges to the delete on the next
@@ -434,7 +434,7 @@ mod tests {
         }
     }
 
-    /// Review §2.3 (P0): a crash between a delete and its tombstone adoption
+    /// A crash between a delete and its tombstone adoption
     /// must never leave "row gone + no tombstone" (a peer would resurrect it —
     /// for a revoked credential, a security hole). Tombstones are adopted FIRST,
     /// so any interruption leaves the safe state (tombstone present, row maybe
@@ -488,7 +488,7 @@ mod tests {
             delete_teams: vec!["t-dead".into()],
             delete_grants: vec!["g-dead".into()],
             delete_buckets: vec![],
-            // R5 family deletes also count as "deletes" for the ordering pin.
+            // Control-reconcile family (TD-016) deletes also count as "deletes" for the ordering pin.
             delete_user_grants: vec![("u-dead".into(), "g-dead".into())],
             delete_team_members: vec![("t-dead".into(), "u-dead".into())],
             delete_server_configs: vec!["sc-dead".into()],

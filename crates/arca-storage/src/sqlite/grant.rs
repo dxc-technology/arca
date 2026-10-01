@@ -193,7 +193,7 @@ impl GrantStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 // Refresh updated_at on an idempotent re-attach too: the LWW
-                // reconcile (R5) must see a re-attach as newer than any
+                // reconcile must see a re-attach as newer than any
                 // concurrent detach tombstone, or the user's intent is lost.
                 conn.execute(
                     "INSERT INTO user_grants (user_id, grant_id, updated_at) VALUES (?1, ?2, ?3)

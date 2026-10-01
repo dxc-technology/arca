@@ -117,8 +117,9 @@ impl ControlSnapshotStore for SqliteStore {
             })
             .collect();
 
-        // R5 (TD-016) + D4 families. Read with their LWW timestamps; the
-        // node-local server_config keys never leave this node.
+        // Control-reconcile families (TD-016), in-progress multipart uploads
+        // and parts included. Read with their LWW timestamps; the node-local
+        // server_config keys never leave this node.
         let (
             user_grants,
             team_grants,
@@ -560,7 +561,7 @@ mod tests {
             .any(|t| t.entity_key == "AK"));
     }
 
-    // --- R5 (TD-016) families -------------------------------------------------
+    // --- control-reconcile (TD-016) families -------------------------------------------------
 
     fn user(id: &str) -> arca_core::types::User {
         arca_core::types::User {
@@ -595,7 +596,7 @@ mod tests {
         }
     }
 
-    /// Seeds one entity of every R5 family and checks the snapshot carries
+    /// Seeds one entity of every control-reconcile family and checks the snapshot carries
     /// them all, with node-local server_config excluded.
     #[tokio::test]
     async fn snapshot_includes_r5_families() {

@@ -4,18 +4,20 @@
 //! tasks, used by the metrics snapshot, retention purge, and lifecycle
 //! evaluation workers.
 //!
-//! # Cluster awareness (R6, review §3.3, decision H5)
+//! # Cluster awareness (decision H5)
 //!
 //! In a cluster the workers fall into two classes, audited one by one:
 //!
 //! - **Leader-gated** — work that reads REPLICATED state and would be
 //!   duplicated N times if every node ran it. Only the worker leader (lowest
 //!   `node_id` among eligible nodes, [`arca_core::cluster::ClusterState::is_worker_leader`])
-//!   runs the tick; the others skip it. Today this is the **lifecycle
-//!   evaluator** alone (expirations, noncurrent-version deletes and stale
+//!   runs the tick; the others skip it. Today these are the **lifecycle
+//!   evaluator** (expirations, noncurrent-version deletes and stale
 //!   multipart aborts — including `AbortIncompleteMultipartUpload`, which is
-//!   part of the same tick). Its deletes go through the cluster-decorated
-//!   stores, so they replicate and tombstone exactly like client deletes.
+//!   part of the same tick) and the **maintenance-jobs worker**
+//!   (`maintenance::spawn_maintenance_worker`). The lifecycle deletes go
+//!   through the cluster-decorated stores, so they replicate and tombstone
+//!   exactly like client deletes.
 //! - **NOT gated, by design** — work over strictly NODE-LOCAL state, which
 //!   every node must keep doing for itself: the **metrics snapshot** (this
 //!   node's gauges), the **retention purge** (this node's audit/metrics/
@@ -374,7 +376,7 @@ async fn resolve_retention(
 /// Periodically evaluates lifecycle rules on all buckets: expires objects,
 /// deletes noncurrent versions, and aborts stale multipart uploads.
 ///
-/// In a cluster the tick is leader-gated (decision H5, review §3.3): the
+/// In a cluster the tick is leader-gated (decision H5): the
 /// object table is fully replicated, so without the gate every node would
 /// expire the same objects — ×N² delete fan-out, duplicate audit entries and
 /// races between concurrent deleters.

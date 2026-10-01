@@ -175,7 +175,7 @@ spec:
               mountPath: /data
           # /admin/health answers 200 on a serving node and 503 while draining
           # or SYNCING (a node back from downtime re-pulling what it missed —
-          # readiness reflects data completeness, review D2, so the Service
+          # readiness reflects data completeness, so the Service
           # routes nothing to it until it is coherent). It does NOT 503 when
           # the node merely loses write quorum: a lone survivor stays in
           # rotation and serves reads; writes correctly return 503 until

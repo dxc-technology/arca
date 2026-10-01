@@ -32,12 +32,13 @@ use crate::cluster::cluster_meta::check_write_gate;
 /// The consistency-policy admission gate, shared by the identity decorators.
 /// `available` mode is always `Ok`; `quorum` mode refuses with `503` when too
 /// few ELIGIBLE nodes are live, or when more eligible nodes than
-/// `cluster_size` are live (H6 fail-closed) — see `check_write_gate`.
+/// `cluster_size` are live (cluster-size guard, decision H6, fail-closed);
+/// see `check_write_gate`.
 fn check_write_quorum(cluster: &ClusterState) -> Result<(), ArcaError> {
     check_write_gate(cluster)
 }
 
-/// Fan out a control-plane op to every ELIGIBLE peer IN PARALLEL (§2.4):
+/// Fan out a control-plane op to every ELIGIBLE peer IN PARALLEL:
 /// alive, authenticated (decision H12 — never hand identity state to a peer
 /// that has not proven possession of the cluster secret) and config-aligned.
 /// Best-effort by design (decision H4): identity mutations are rare and the
@@ -392,7 +393,7 @@ impl GrantStore for ClusterGrantStore {
     async fn attach_to_user(&self, user_id: &str, grant_id: &str) -> Result<(), ArcaError> {
         check_write_quorum(&self.cluster)?;
         self.inner.attach_to_user(user_id, grant_id).await?;
-        // An attach revives the pair: drop any stale detach tombstone (R5).
+        // An attach revives the pair: drop any stale detach tombstone.
         clear_tombstone(
             &self.tombstones,
             TOMBSTONE_USER_GRANT,
@@ -416,7 +417,7 @@ impl GrantStore for ClusterGrantStore {
         let existed = self.inner.detach_from_user(user_id, grant_id).await?;
         if existed {
             // Tombstone so the detach converges via the snapshot reconcile and
-            // a peer that was down cannot resurrect the attachment (R5).
+            // a peer that was down cannot resurrect the attachment.
             record_tombstone(
                 &self.tombstones,
                 TOMBSTONE_USER_GRANT,
@@ -583,7 +584,7 @@ impl TeamStore for ClusterTeamStore {
     async fn add_member(&self, team_id: &str, user_id: &str) -> Result<(), ArcaError> {
         check_write_quorum(&self.cluster)?;
         self.inner.add_member(team_id, user_id).await?;
-        // An add revives the membership: drop any stale remove tombstone (R5).
+        // An add revives the membership: drop any stale remove tombstone.
         clear_tombstone(
             &self.tombstones,
             TOMBSTONE_TEAM_MEMBER,
@@ -606,7 +607,7 @@ impl TeamStore for ClusterTeamStore {
         check_write_quorum(&self.cluster)?;
         let existed = self.inner.remove_member(team_id, user_id).await?;
         if existed {
-            // Tombstone so the removal converges via the snapshot reconcile (R5).
+            // Tombstone so the removal converges via the snapshot reconcile.
             record_tombstone(
                 &self.tombstones,
                 TOMBSTONE_TEAM_MEMBER,
@@ -642,7 +643,7 @@ impl TeamStore for ClusterTeamStore {
 /// Server-config store decorator: replicates cluster-wide instance settings to
 /// peers. Node-local keys (see
 /// [`arca_core::cluster::is_node_local_server_config_key`], shared with the
-/// D12.1 receive-side filter) are persisted locally only — they skip both the
+/// receive-side filter) are persisted locally only — they skip both the
 /// quorum gate and the fan-out, so node identity bootstrap works even when the
 /// cluster has no write quorum.
 pub struct ClusterServerConfigStore {
@@ -681,7 +682,7 @@ impl ServerConfigStore for ClusterServerConfigStore {
         }
         check_write_quorum(&self.cluster)?;
         self.inner.set_server_config(key, value).await?;
-        // A set revives the key: drop any stale delete tombstone (R5).
+        // A set revives the key: drop any stale delete tombstone.
         clear_tombstone(&self.tombstones, TOMBSTONE_SERVER_CONFIG, key).await;
         fan_out_op(
             &self.client,
@@ -702,7 +703,7 @@ impl ServerConfigStore for ClusterServerConfigStore {
         check_write_quorum(&self.cluster)?;
         let existed = self.inner.delete_server_config(key).await?;
         if existed {
-            // Tombstone so the delete converges via the snapshot reconcile (R5).
+            // Tombstone so the delete converges via the snapshot reconcile.
             record_tombstone(&self.tombstones, TOMBSTONE_SERVER_CONFIG, key).await;
             fan_out_op(
                 &self.client,

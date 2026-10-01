@@ -88,7 +88,8 @@ impl ControlSnapshotStore for PgStore {
             })
             .collect();
 
-        // R5 (TD-016) + D4 families, with their LWW timestamps; node-local
+        // Control-reconcile families (TD-016), in-progress multipart uploads
+        // and parts included, with their LWW timestamps; node-local
         // server_config keys never leave this node.
         let fetch =
             |sql: &'static str| sqlx_core::query::query(sql).fetch_all(&self.pool);

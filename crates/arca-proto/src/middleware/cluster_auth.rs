@@ -27,7 +27,7 @@ use super::within_replay_window;
 
 /// Request extension recorded by the TLS accept loop when the connection
 /// presented a client certificate that validated against the cluster CA
-/// (R4/H12). Presenting one is OPTIONAL at the TLS layer — S3 clients share
+/// (decision H12). Presenting one is OPTIONAL at the TLS layer — S3 clients share
 /// the same listener — so [`cluster_auth_middleware`] enforces it here, on the
 /// cluster routes only, whenever `[cluster.tls]` is configured.
 #[derive(Clone, Copy, Debug)]
@@ -72,10 +72,10 @@ pub async fn cluster_auth_middleware(
         }
     };
 
-    // R4 (H12): when inter-node mTLS is configured, the TLS layer has already
-    // validated any PRESENTED client certificate against the cluster CA — but
-    // presenting one is optional there (S3 clients share the listener), so the
-    // requirement is enforced here, on the cluster routes only.
+    // Decision H12: when inter-node mTLS is configured, the TLS layer has
+    // already validated any PRESENTED client certificate against the cluster CA
+    // — but presenting one is optional there (S3 clients share the listener),
+    // so the requirement is enforced here, on the cluster routes only.
     if state.cluster_mtls
         && request
             .extensions()
@@ -181,7 +181,7 @@ pub async fn cluster_auth_middleware(
         return json_error(StatusCode::FORBIDDEN, "AccessDenied", "missing x-amz-date");
     }
 
-    // §3.1 anti-replay: reject signed requests whose timestamp is outside the
+    // Anti-replay: reject signed requests whose timestamp is outside the
     // window. The signature covers x-amz-date, so an attacker cannot refresh
     // the timestamp of a captured request without breaking it.
     if !within_replay_window(&request_datetime, Utc::now()) {
@@ -199,11 +199,11 @@ pub async fn cluster_auth_middleware(
         .unwrap_or("UNSIGNED-PAYLOAD")
         .to_string();
 
-    // H8 dual-secret: try the current secret first, then (during a rotation)
-    // the previous one. Each attempt is a full constant-time verification;
-    // outbound signing always uses the current secret, so accepting the
-    // previous one INBOUND is what lets a rolling restart onto a new secret
-    // keep replication flowing in both directions.
+    // Decision H8 dual-secret: try the current secret first, then (during a
+    // rotation) the previous one. Each attempt is a full constant-time
+    // verification; outbound signing always uses the current secret, so
+    // accepting the previous one INBOUND is what lets a rolling restart onto a
+    // new secret keep replication flowing in both directions.
     let mut matched: Option<&str> = None;
     for candidate in std::iter::once(secret.as_str()).chain(
         state
@@ -235,7 +235,7 @@ pub async fn cluster_auth_middleware(
     };
 
     // Let the ping handler MAC its challenge with the secret that actually
-    // verified this request (H8 — see [`MatchedClusterSecret`]).
+    // verified this request (decision H8 — see [`MatchedClusterSecret`]).
     let mut request = request;
     request
         .extensions_mut()

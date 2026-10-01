@@ -66,7 +66,7 @@ async fn fetch_latest_object(
 /// Fetches the current object exactly as `MetadataStore::get_object` would see
 /// it: the latest version, with delete markers filtered out. Used by
 /// `put_object_if` to evaluate `WritePrecondition` against what the
-/// handler-side early check already saw (see plan §3.5).
+/// handler-side early check already saw.
 async fn fetch_current_object(
     tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
     bucket: &str,
@@ -105,13 +105,13 @@ async fn fetch_null_version(
 ///
 /// The `UPDATE ... RETURNING` takes the counter's row lock until commit, which
 /// serializes the assignment: seq order = commit order, so a peer's
-/// changed-since manifest cursor can never skip a row still in flight (review
-/// §2.2 — the previous SEQUENCE was not transactional and lost rows). Mirrors
-/// the SQLite `next_object_seq`.
+/// changed-since manifest cursor can never skip a row still in flight
+/// (commit-ordered seq cursor, decision H3: the previous SEQUENCE was not
+/// transactional and lost rows). Mirrors the SQLite `next_object_seq`.
 ///
 /// LOCK-ORDER RULE: every objects-writing transaction must call this BEFORE
-/// its first row-mutating statement (uniform seq → rows order). Transactions
-/// that never take a seq (plain single-node deletes) only lock rows and cannot
+/// its first row-mutating statement (uniform seq → rows order). Bulk paths
+/// that never take a seq (such as `purge_tombstones`) only lock rows and cannot
 /// form a cycle with seq holders over the single counter resource.
 async fn next_object_seq(
     tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
@@ -308,7 +308,7 @@ fn row_to_bucket_info(row: &sqlx_postgres::PgRow) -> BucketInfo {
 }
 
 /// Converts a PostgreSQL row to a `MultipartUploadRecord`.
-// `pub(super)`: the control-snapshot builder reads these tables too (R5/D4).
+// `pub(super)`: the control-snapshot builder reads these tables too (TD-016).
 pub(super) fn row_to_multipart_upload_record(row: &sqlx_postgres::PgRow) -> MultipartUploadRecord {
     let metadata_json: serde_json::Value = row.get("metadata");
     let metadata: HashMap<String, String> =
@@ -326,7 +326,7 @@ pub(super) fn row_to_multipart_upload_record(row: &sqlx_postgres::PgRow) -> Mult
 }
 
 /// Converts a PostgreSQL row to a `PartRecord`.
-// `pub(super)`: the control-snapshot builder reads these tables too (R5/D4).
+// `pub(super)`: the control-snapshot builder reads these tables too (TD-016).
 pub(super) fn row_to_part_record(row: &sqlx_postgres::PgRow) -> PartRecord {
     PartRecord {
         upload_id: row.get("upload_id"),
@@ -716,7 +716,7 @@ impl MetadataStore for PgStore {
         // `MetadataStore::get_latest_object` would see it (includes a delete
         // marker). An absent object is always `Ok(())` — DeleteObject on a
         // missing key is a no-op, never a precondition failure (existing
-        // behaviour, plan §3.5).
+        // behaviour).
         if !pre.is_empty() {
             let current = fetch_latest_object(&mut tx, bucket, key)
                 .await
@@ -1114,9 +1114,9 @@ impl MetadataStore for PgStore {
         // replaces the whole row; on a tie the lock register (lock_updated_at)
         // and the content register (content_updated_at) are merged
         // independently so a re-encryption and a lock change never clobber each
-        // other (N2 ordering + Phase 30 WORM safety, TD-021), and an identical
+        // other (lock-state ordering + Phase 30 WORM safety, TD-021), and an identical
         // redelivery is skipped without a rewrite so two caught-up nodes don't
-        // redeliver forever (M7).
+        // redeliver forever.
         let existing: Option<ObjectRecord> = match &record.version_id {
             Some(vid) => {
                 let sql = format!(
@@ -1353,7 +1353,7 @@ impl MetadataStore for PgStore {
 
     async fn current_object_seq(&self) -> Result<u64, ArcaError> {
         // The counter, not MAX(seq) over rows: purged tombstones make the row
-        // maximum go backwards, which would false-alarm D3c rewind detection.
+        // maximum go backwards, which would false-alarm cursor rewind detection.
         let row = sqlx_core::query::query("SELECT value FROM object_seq")
             .fetch_one(&self.pool)
             .await
@@ -1363,7 +1363,7 @@ impl MetadataStore for PgStore {
 
     async fn seed_object_seq_to_max(&self) -> Result<u64, ArcaError> {
         // Bump the counter UP to MAX(seq) when it lags; never rewind it (a
-        // rewind would trip peer D3c rewind detection). A single statement
+        // rewind would trip peer cursor rewind detection). A single statement
         // does the conditional update atomically.
         let row = sqlx_core::query::query(
             "UPDATE object_seq \
@@ -1533,7 +1533,7 @@ impl MetadataStore for PgStore {
             .await
             .map_err(|e| ArcaError::Internal(format!("put_bucket_tags: {e}")))?;
 
-        // One timestamp for the whole set: the control reconcile (R5) treats a
+        // One timestamp for the whole set: the control reconcile treats a
         // bucket's tags as a single LWW entity (replace-all semantics).
         let now = Utc::now();
         for (k, v) in tags {
@@ -1574,7 +1574,7 @@ impl MetadataStore for PgStore {
         updated_at: DateTime<Utc>,
     ) -> Result<(), ArcaError> {
         // Like set_bucket_config, but preserving the source's updated_at (the
-        // R5 reconcile LWW key) instead of stamping now().
+        // control reconcile LWW key) instead of stamping now().
         sqlx_core::query::query(
             "INSERT INTO bucket_config (bucket, config_key, config_value, updated_at)
              VALUES ($1, $2, $3, $4)
@@ -1974,9 +1974,9 @@ impl MetadataStore for PgStore {
             .await
             .map_err(|e| ArcaError::Internal(format!("set_object_retention: {e}")))?;
         // Fresh seq so the lock change travels via the changed-since manifest
-        // to peers that miss the real-time fan-out (N1). Taken before the row
+        // to peers that miss the real-time fan-out. Taken before the row
         // UPDATE per the next_object_seq lock-order rule. lock_updated_at
-        // orders the lock state across nodes (N2): last_modified does not
+        // orders the lock state across nodes: last_modified does not
         // change here, so without it a stale equal-timestamp copy applied
         // later would clobber this.
         let seq = next_object_seq(&mut tx)
@@ -2032,8 +2032,8 @@ impl MetadataStore for PgStore {
             .begin()
             .await
             .map_err(|e| ArcaError::Internal(format!("set_object_legal_hold: {e}")))?;
-        // Fresh seq for manifest visibility (N1) and lock_updated_at for the
-        // lock-state LWW (N2) — see set_object_retention.
+        // Fresh seq for manifest visibility and lock_updated_at for the
+        // lock-state LWW — see set_object_retention.
         let seq = next_object_seq(&mut tx)
             .await
             .map_err(|e| ArcaError::Internal(format!("set_object_legal_hold: {e}")))?;

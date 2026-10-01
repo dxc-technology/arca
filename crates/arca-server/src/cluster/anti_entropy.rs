@@ -1,4 +1,4 @@
-//! Cluster anti-entropy worker (Phase 29 M4) — the self-heal.
+//! Cluster anti-entropy worker (Phase 29) — the self-heal.
 //!
 //! Periodically reconciles this node with its peers so a node that was down,
 //! lagging, or that missed a real-time fan-out catches up on its own. This is
@@ -11,17 +11,21 @@
 //!   and are never resurrected.
 //! - **Control plane**: for each live peer, pull its full
 //!   [`ControlSnapshot`] and merge it last-writer-wins
-//!   ([`plan_control_merge`]) — credentials, users, teams, grants, buckets, with
-//!   deletions carried as tombstones so a peer that still holds a deleted entity
-//!   cannot resurrect it. The control plane is small, so shipping the whole
+//!   ([`plan_control_merge`]) — every control-plane family: credentials,
+//!   users, teams, grants, the user/team grant attachments and team
+//!   memberships, buckets, bucket config and bucket tags, cluster-wide
+//!   `server_config` settings, and in-progress multipart uploads with their
+//!   parts — with deletions carried as tombstones so a peer that still holds a
+//!   deleted entity cannot resurrect it. Object tags are NOT in the snapshot
+//!   and are never reconciled (TD-033). The control plane is small, so shipping the whole
 //!   snapshot each pass is cheap and also bootstraps a long-absent node past
 //!   tombstone GC.
 //! - **Tombstone GC**: drop object AND control tombstones older than the
 //!   configured grace window (which must exceed the longest expected node
-//!   downtime). Guarded by liveness (§3.2): while any known peer has been
+//!   downtime). Guarded by liveness (the tombstone-GC liveness guard): while any known peer has been
 //!   unseen beyond the grace, the purge is skipped (warn + the
 //!   `tombstone_gc_blocked` flag in `/admin/cluster`) so the returning peer
-//!   still finds the tombstones; membership pruning (M3) eventually evicts a
+//!   still finds the tombstones; membership pruning eventually evicts a
 //!   never-returning peer and unblocks the GC.
 //! - **Blobs** (slower cadence): proactively REPAIR blob bytes missing for local
 //!   object rows (fetch from a peer), then GC orphan blob files no live row /
@@ -36,25 +40,25 @@
 //!
 //! The high-water mark is per-peer and **in-memory** (now carried by
 //! [`ClusterState`] as part of the per-peer [`PeerSyncStatus`], so the
-//! health/admin endpoints can expose it — review D2): this node's view of how
+//! health/admin endpoints can expose it): this node's view of how
 //! far it has consumed each peer's `seq`. It is node-local and must never be
 //! replicated (it is meaningless elsewhere). On restart it resets to 0, costing
 //! one extra full manifest pass per peer — idempotent, then incremental.
 //!
-//! R7 operability additions:
-//! - **Syncing readiness (D2)**: the completion of the first full pass toward
+//! Operability additions (v0.26.0):
+//! - **Syncing readiness gate**: the completion of the first full pass toward
 //!   each peer is recorded in [`ClusterState`]; until every eligible peer has
 //!   one, `/admin/health` reports `syncing` (503) and the LB keeps this node
 //!   out of rotation, so a re-entering node serves no stale 404s/listings.
-//! - **Rewind detection (D3c)**: a peer restored from backup reports (via the
+//! - **Cursor rewind detection**: a peer restored from backup reports (via the
 //!   authenticated ping) a `max_seq` below our HWM — detected per-tick
 //!   ([`arca_core::cluster::sync_rewound`]) and answered by resetting the HWM
 //!   to 0 (one idempotent full re-pull).
-//! - **Stuck-HWM skip (M1)**: a manifest entry that persistently fails to
+//! - **Stuck-entry skip**: a manifest entry that persistently fails to
 //!   apply is skipped after [`STUCK_SKIP_AFTER`] consecutive passes (warn +
 //!   `skipped_entries` evidence in `/admin/cluster`) instead of blocking that
 //!   peer's incremental sync forever.
-//! - **Repair budget (M2)**: the proactive blob-repair sweep attempts at most
+//! - **Blob-repair budget**: the proactive blob-repair sweep attempts at most
 //!   `[cluster] blob_repair_budget` peer fetches per tick, resuming where it
 //!   left off on the next tick, so a huge backlog cannot monopolize the worker.
 
@@ -81,7 +85,7 @@ const MANIFEST_BATCH: u32 = 500;
 /// on-access correctness between sweeps).
 const BLOB_SCAN_EVERY_TICKS: u64 = 10;
 
-/// M1 — skip a manifest entry after this many CONSECUTIVE passes failed to
+/// Stuck-entry skip: skip a manifest entry after this many CONSECUTIVE passes failed to
 /// apply the same `seq`. Below the threshold a failure is treated as transient
 /// (the safe default: the unapplied tail is simply retried next tick); past it
 /// the entry is blocking that peer's whole incremental sync — a liveness
@@ -108,9 +112,9 @@ pub fn spawn(
         timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         timer.tick().await; // skip the immediate first tick
         let mut tick: u64 = 0;
-        // M1: per-peer (failing seq, consecutive-failure count).
+        // Stuck-entry skip: per-peer (failing seq, consecutive-failure count).
         let mut stuck = StuckTracker::default();
-        // M2: where the budget-bounded blob-repair sweep resumes mid-flight.
+        // Blob-repair budget: where the bounded repair sweep resumes mid-flight.
         let mut repair_cursor: Option<BlobId> = None;
 
         loop {
@@ -124,7 +128,7 @@ pub fn spawn(
             // poisoning via LWW), and blobs repaired from a wrong-master-key
             // node would be undecryptable here.
             for peer in cluster.peers().into_iter().filter(|p| p.eligible()) {
-                // 0) D3c — restore/rewind detection: the peer's ping-reported
+                // 0) Cursor rewind detection (restore from backup): the peer's ping-reported
                 // seq counter fell below what we already consumed (it was
                 // restored from a backup). Reset the HWM: its post-restore
                 // writes re-use seq values below the old HWM and would
@@ -151,7 +155,7 @@ pub fn spawn(
                 {
                     Ok(outcome) => {
                         let mut cursor = outcome.cursor;
-                        // M1: a pass that keeps dying on the SAME entry is
+                        // Stuck-entry skip: a pass that keeps dying on the SAME entry is
                         // skipped past after STUCK_SKIP_AFTER attempts.
                         if stuck.observe(&peer.node_id, outcome.failed_seq) {
                             let seq = outcome.failed_seq.unwrap_or(cursor);
@@ -192,7 +196,7 @@ pub fn spawn(
                 .await
                 {
                     Ok(()) => {
-                        // D2: a FULL pass (objects caught up + control merged)
+                        // Syncing readiness gate: a FULL pass (objects caught up + control merged)
                         // completed — stamp it; the first one per peer flips
                         // this node's readiness toward that peer.
                         if objects_caught_up {
@@ -210,11 +214,11 @@ pub fn spawn(
             }
 
             // 3) Tombstone GC: drop object AND control tombstones past the grace
-            // — but ONLY while every known peer has been seen within it (§3.2
-            // liveness guard). A tombstone purged while a peer is unreachable
+            // — but ONLY while every known peer has been seen within it (the
+            // tombstone-GC liveness guard). A tombstone purged while a peer is unreachable
             // beyond the grace would be gone before that peer ever learns of
             // the deletion; its stale rows would resurrect the data on
-            // re-entry. Membership pruning (M3) eventually removes a
+            // re-entry. Membership pruning eventually removes a
             // never-returning peer so it cannot block GC forever.
             let grace = chrono::Duration::from_std(tombstone_grace)
                 .unwrap_or_else(|_| chrono::Duration::days(7));
@@ -257,7 +261,7 @@ pub fn spawn(
             // 4) Blob scan (slower cadence): proactively fetch bytes for rows
             // whose blob is missing locally (so durability does not wait for a
             // GET to trigger the lazy read-repair), then reclaim orphan blobs.
-            // M2: the repair sweep is budget-bounded; while one is mid-flight
+            // Blob-repair budget: the repair sweep is bounded; while one is mid-flight
             // (cursor set) it continues on EVERY tick — only complete sweeps
             // wait for the slower cadence — so a big backlog drains at
             // `budget / interval` without monopolizing any single tick.
@@ -283,7 +287,7 @@ pub fn spawn(
     BackgroundWorker::from_handle(handle)
 }
 
-/// M1 — per-peer stuck-entry bookkeeping: counts consecutive reconcile passes
+/// Stuck-entry skip — per-peer bookkeeping: counts consecutive reconcile passes
 /// that failed at the same manifest `seq`. [`StuckTracker::observe`] returns
 /// `true` when the entry has hit [`STUCK_SKIP_AFTER`] and should be skipped
 /// NOW (the streak resets — a later failure on the same seq starts over).
@@ -316,7 +320,7 @@ impl StuckTracker {
 /// by metadata, if the physical file is absent, fetch it (or, for a composite,
 /// its missing parts) from a live peer.
 ///
-/// M2 — budget-bounded: at most `budget` peer fetches are attempted per call
+/// Blob-repair budget: at most `budget` peer fetches are attempted per call
 /// (the local existence checks are cheap stats and are not budgeted; network
 /// fetches are what monopolize the worker). The sweep iterates the referenced
 /// ids in sorted order so `resume` (the last fully-processed id of the
@@ -342,7 +346,7 @@ async fn repair_blobs(
         }
     };
     referenced.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-    // Repair only from ELIGIBLE peers (H12): bytes fetched from an
+    // Repair only from ELIGIBLE peers (decision H12): bytes fetched from an
     // unauthenticated endpoint could be fabricated, and a wrong-master-key
     // peer's bytes would be undecryptable under our key.
     let peers: Vec<String> = cluster
@@ -444,10 +448,10 @@ async fn fetch_and_store(
 /// entities + tombstones go through the control-snapshot store; buckets go
 /// through the metadata store so the metadata cache stays coherent.
 ///
-// Covers EVERY control-plane family (R5 closed TD-016): the 5 original
-// tombstoned families, the grant attachments/memberships, bucket_config,
-// bucket_tags, cluster-wide server_config, and the in-progress multipart
-// uploads with their parts (D4).
+// Covers EVERY control-plane family (since v0.26.0, closing TD-016): the 5
+// original tombstoned families, the grant attachments/memberships,
+// bucket_config, bucket_tags, cluster-wide server_config, and the in-progress
+// multipart uploads with their parts. Object tags are not covered (TD-033).
 async fn reconcile_peer_control(
     client: &ClusterClient,
     control_snapshot: &dyn ControlSnapshotStore,
@@ -468,7 +472,7 @@ async fn reconcile_peer_control(
     // metadata-owned deletes below: it adopts ALL tombstones (bucket and
     // multipart ones included) first, so a crash between the two leaves the
     // safe state — tombstone present, row still alive — which converges on the
-    // next round instead of resurrecting the deleted entity (review §2.3).
+    // next round instead of resurrecting the deleted entity (tombstone-first).
     control_snapshot
         .apply_control_merge(&plan)
         .await
@@ -536,9 +540,9 @@ struct ObjectsReconcileOutcome {
     /// The high-water mark reached (highest `seq` successfully applied).
     cursor: u64,
     /// Whether the peer's manifest was drained to the end with every entry
-    /// applied — the "objects half" of a completed full pass (D2).
+    /// applied — the "objects half" of a completed full pass (syncing readiness gate).
     caught_up: bool,
-    /// The `seq` of the entry whose apply failed, when one did (feeds the M1
+    /// The `seq` of the entry whose apply failed, when one did (feeds the
     /// stuck-entry tracker).
     failed_seq: Option<u64>,
 }
@@ -575,7 +579,7 @@ async fn reconcile_peer_objects(
 /// Applies manifest entries in ascending `seq` order, stopping at the first
 /// failure so the unapplied tail is retried on the next pass. Returns the
 /// highest `seq` successfully applied (or `floor` if none applied) and the
-/// failing entry's `seq`, if any (M1 evidence).
+/// failing entry's `seq`, if any (stuck-entry evidence).
 async fn apply_entries(
     metadata: &dyn MetadataStore,
     entries: &[ManifestEntry],
@@ -679,7 +683,7 @@ mod tests {
         );
     }
 
-    // --- M1: stuck-entry skip decision ---------------------------------------
+    // --- stuck-entry skip decision -------------------------------------------
 
     #[test]
     fn stuck_tracker_skips_after_consecutive_failures_on_same_seq() {
@@ -815,7 +819,7 @@ mod tests {
         );
     }
 
-    // --- M2: budget-bounded, resumable blob-repair sweep ---------------------
+    // --- blob-repair budget: bounded, resumable sweep ------------------------
 
     /// Minimal HTTP/1.1 peer answering every GET with `200 OK`, a plain
     /// sidecar in the cluster sidecar header and one byte of body — what

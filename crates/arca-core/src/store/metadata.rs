@@ -6,7 +6,9 @@ use crate::types::{BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, 
 
 /// Compare-and-swap preconditions for a write (S3 `If-Match` /
 /// `If-None-Match`), evaluated inside the same transaction that installs the
-/// new version — see `.claude/plans/arca-conditional-write-atomicity.md`.
+/// new version. This is the decision point: the handler-side checks are only an
+/// early-reject optimisation (see the Conditional Writes section of the
+/// architecture docs).
 #[derive(Debug, Clone, Default)]
 pub struct WritePrecondition {
     /// `If-Match`: proceed only if the current latest object exists and its
@@ -550,7 +552,7 @@ pub trait MetadataStore: Send + Sync {
     }
 
     /// Upserts a bucket-config key preserving the given `updated_at` verbatim
-    /// (the LWW key of the control-plane reconcile, R5/TD-016) — unlike
+    /// (the LWW key of the control-plane reconcile, TD-016) — unlike
     /// [`MetadataStore::set_bucket_config`], which stamps `now()`.
     ///
     /// Default implementation: unsupported.
@@ -568,7 +570,7 @@ pub trait MetadataStore: Send + Sync {
     }
 
     /// Replaces a bucket's whole tag set preserving the given `updated_at`
-    /// verbatim (R5/TD-016) — unlike [`MetadataStore::put_bucket_tags`], which
+    /// verbatim (TD-016) — unlike [`MetadataStore::put_bucket_tags`], which
     /// stamps `now()`.
     ///
     /// Default implementation: unsupported.
@@ -614,7 +616,7 @@ pub trait MetadataStore: Send + Sync {
     /// of the write counter), `0` when no write has ever taken one. Reported
     /// by the authenticated cluster ping so a peer can detect a seq REWIND
     /// (this node restored from an older backup while the peer's high-water
-    /// mark still points past it — D3c). Reads the counter, not `MAX(seq)`
+    /// mark still points past it). Reads the counter, not `MAX(seq)`
     /// over rows: purged tombstones make the row maximum go backwards, which
     /// would false-alarm the rewind detection.
     ///
@@ -630,10 +632,11 @@ pub trait MetadataStore: Send + Sync {
     /// write is then guaranteed a strictly-larger seq than any pre-cluster row,
     /// so a peer's changed-since cursor never skips this node's existing
     /// objects. The counter is only ever bumped UP, never rewound (a rewind
-    /// would false-alarm peer D3c rewind detection), so this is idempotent and
-    /// safe even when the counter is already consistent (the normal case, since
-    /// every local write advances it) — it repairs counters left behind by an
-    /// offline `recover`/`migrate-db` that rebuilt rows out of band.
+    /// would false-alarm the peers' cursor rewind detection), so this is
+    /// idempotent and safe even when the counter is already consistent (the
+    /// normal case, since every local write advances it) — it repairs counters
+    /// left behind by an offline `recover`/`migrate-db` that rebuilt rows out
+    /// of band.
     ///
     /// Default implementation: no-op (`Ok(0)`) — backends without the counter.
     async fn seed_object_seq_to_max(&self) -> Result<u64, crate::error::ArcaError> {
@@ -771,7 +774,7 @@ mod precondition_tests {
     #[test]
     fn write_if_none_match_specific_etag_refused_on_match_allowed_otherwise() {
         // AWS documents only `*` for PutObject's If-None-Match, but Arca keeps
-        // standard HTTP semantics for a specific ETag (see plan §3.5).
+        // standard HTTP semantics for a specific ETag.
         let pre = WritePrecondition {
             if_match: None,
             if_none_match: Some("\"abc\"".to_string()),

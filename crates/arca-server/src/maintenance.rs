@@ -2,7 +2,7 @@
 //!
 //! A single background worker processes at most one maintenance job at a time,
 //! committing progress per item so pause / cancel / restart are always safe. It
-//! is leader-gated in a cluster (decision H5/R6): the job mutates fully
+//! is leader-gated in a cluster (decision H5): the job mutates fully
 //! replicated data, so only the worker-leader node runs it.
 //!
 //! A job declaring `mode = maintenance` drains the S3 API on this node for its
@@ -89,7 +89,9 @@ pub fn spawn_maintenance_worker(
         async move {
             let Some(store) = store else { return };
             // In a cluster only the worker-leader runs jobs (the data is fully
-            // replicated). A non-leader must not hold the drain.
+            // replicated). Jobs themselves are node-local, so one created on a
+            // non-leader waits until that node leads (TD-040). A non-leader
+            // must not hold the drain.
             if let Some(ref c) = cluster {
                 if !c.is_worker_leader() {
                     set_drain(&drain_tx, false);
@@ -149,8 +151,8 @@ pub async fn maintenance_tick(
     }
 }
 
-/// Dispatches a job to its processor. New job types plug in here (M3: migrate-db;
-/// M4: migrate-topology).
+/// Dispatches a job to its processor. New job types plug in here (M3 added
+/// migrate-db; migrate-topology is offline-only and has no job type).
 async fn process_job(
     store: &dyn MaintenanceStore,
     recrypt: Option<&RecryptCtx>,

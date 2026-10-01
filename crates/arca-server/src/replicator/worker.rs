@@ -5,7 +5,7 @@
 //! client, and updates the entry's status plus the object's
 //! `replication_status` column.
 //!
-//! # Deliberately NOT leader-gated in a cluster (R6, review §3.3)
+//! # Deliberately NOT leader-gated in a cluster
 //!
 //! The journal is strictly node-local: entries are inserted only by
 //! `arca_proto::replication::maybe_emit`, called from the S3 handlers of the
@@ -13,8 +13,8 @@
 //! (`/cluster/v1/*`, anti-entropy) never emit. Each S3 write is therefore
 //! journaled exactly once cluster-wide, on the serving node, and duplicate
 //! deliveries to the external destination cannot occur. Gating this worker
-//! on the H5 leader would instead orphan every entry journaled on a
-//! non-leader node. Confirmed with the review findings on 2026-06-12.
+//! on the worker leader (decision H5) would instead orphan every entry
+//! journaled on a non-leader node.
 //! Caveat (documented in `ha.md`): a node lost for good takes its pending
 //! journal entries with it — those objects reach the external destination
 //! only when re-written.

@@ -1,5 +1,5 @@
-//! `?node=` dispatch for the node-local admin view families (review D6,
-//! decision H9).
+//! `?node=` dispatch for the node-local admin view families (per-node admin
+//! views, decision H9).
 //!
 //! Four admin endpoints serve strictly node-local data: the audit log, the
 //! metrics history, the notification event log, and the replication journal.
@@ -20,7 +20,7 @@
 //!   with cross-node cursors.
 //!
 //! Only ELIGIBLE peers (alive + authenticated + config-aligned) are valid
-//! targets, consistent with every other H12 gate: an unauthenticated or
+//! targets, consistent with every other decision H12 gate: an unauthenticated or
 //! drifted node is not part of the cluster for any purpose, reads included.
 
 use std::sync::Arc;
@@ -219,7 +219,7 @@ fn merge_node_pages(
 
 /// Maps a peer's HTTP-level answer to an admin error: 4xx pass through with
 /// the peer's own message (e.g. "audit logging is not enabled" on that node, or
-/// a 404 from a pre-R8 peer with no admin proxy routes); anything else becomes
+/// a 404 from a pre-v0.26.0 peer with no admin proxy routes); anything else becomes
 /// a 502 — the peer misbehaved, not the caller.
 fn map_peer_error(node_id: &str, err: ClusterProxyError) -> AdminError {
     match err {
@@ -321,8 +321,9 @@ where
                 .map_err(|e| AdminError::internal(e.to_string()))?;
             let (self_id, peers) = cluster_view.expect("All implies a cluster view");
 
-            // Query every eligible peer in parallel (§2.4 spirit: one dead
-            // peer must not serialize the rest) while the local page builds.
+            // Query every eligible peer in parallel (like the replication
+            // fan-out: one dead peer must not serialize the rest) while the
+            // local page builds.
             let handles: Vec<(String, tokio::task::JoinHandle<Result<Vec<u8>, ClusterProxyError>>)> =
                 peers
                     .into_iter()

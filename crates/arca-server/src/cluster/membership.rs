@@ -10,21 +10,21 @@
 //! - `dns`: a name resolving to all peers (e.g. a Kubernetes headless Service).
 //!
 //! Regardless of source, a candidate endpoint only supplies an address; the
-//! authoritative signal is the probe. Since R3 (decision H12, review §3.7(A))
-//! the probe is the **authenticated challenge-response ping**: a signed
+//! authoritative signal is the probe. Since v0.26.0 (decision H12) the probe
+//! is the **authenticated challenge-response ping**: a signed
 //! `GET /cluster/v1/ping` carrying a fresh nonce, whose response must contain
 //! `HMAC(secret, nonce)`. A peer that answers correctly has *proven possession
 //! of the cluster secret* and becomes `authenticated` (eligible for
 //! replication fan-out and quorum accounting). A peer that merely answers
 //! HTTP — a rogue mDNS registrant, a node with a different secret (403), a
-//! legacy pre-ping node (404 → public-health fallback, H10) — stays visible
-//! as alive but is NOT eligible.
+//! legacy pre-ping node (404 → public-health fallback, decision H10) — stays
+//! visible as alive but is NOT eligible.
 //!
-//! Failure detection tolerates one missed probe (D12.3): a peer is declared
-//! dead after [`DEAD_AFTER_FAILURES`] consecutive failures and alive again at
-//! the first success. Peers unreachable beyond the pruning window (M3,
-//! default = the tombstone grace) are evicted from membership so they cannot
-//! block tombstone GC (§3.2) forever.
+//! Failure detection tolerates one missed probe: a peer is declared dead
+//! after [`DEAD_AFTER_FAILURES`] consecutive failures and alive again at the
+//! first success. Peers unreachable beyond the pruning window (membership
+//! pruning, default = the tombstone grace) are evicted from membership so
+//! they cannot block tombstone GC (the tombstone-GC liveness guard) forever.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
@@ -40,7 +40,7 @@ use crate::config::{ClusterConfig, DiscoveryMode};
 /// mDNS service type for Arca cluster nodes.
 const SERVICE_TYPE: &str = "_arca._tcp.local.";
 
-/// D12.3 — failure-detector tolerance: a peer is declared dead only after this
+/// Failure-detector tolerance: a peer is declared dead only after this
 /// many CONSECUTIVE probe failures (and alive again at the first success). One
 /// missed probe is routinely a GC pause, a dropped packet, or a slow accept —
 /// flapping a node out of the quorum for that causes far more churn (spurious
@@ -74,8 +74,8 @@ pub fn spawn(
     let scheme = scheme.to_string();
     let self_node_id = state.node_id().to_string();
 
-    // Signed client for the authenticated ping probe (H12). Verified TLS when
-    // [cluster.tls] is configured (R4 — TD-015 resolved).
+    // Signed client for the authenticated ping probe (decision H12). Verified
+    // TLS when [cluster.tls] is configured (TD-015 resolved).
     let ping_client = match ClusterClient::new(&self_node_id, &secret, request_timeout, tls.as_ref())
     {
         Ok(c) => c,
@@ -85,9 +85,9 @@ pub fn spawn(
         }
     };
 
-    // Plain client for the public-health fallback (legacy peers, H10, and
-    // identity recovery on a 403). Same verified-TLS posture as the ping
-    // client: certificate verification is never disabled.
+    // Plain client for the public-health fallback (legacy peers per decision
+    // H10, and identity recovery on a 403). Same verified-TLS posture as the
+    // ping client: certificate verification is never disabled.
     let health_client = {
         crate::crypto::ensure_default_crypto_provider();
         let builder = reqwest::Client::builder().timeout(request_timeout);
@@ -138,7 +138,7 @@ pub fn spawn(
         let mut mismatched: BTreeSet<String> = BTreeSet::new();
         let mut legacy: BTreeSet<String> = BTreeSet::new();
         let mut unproven: BTreeSet<String> = BTreeSet::new();
-        // H6 size gate: log on transitions only.
+        // Cluster-size guard (decision H6): log on transitions only.
         let mut size_exceeded_prev = false;
         let mut timer = tokio::time::interval(health_interval);
 
@@ -153,7 +153,7 @@ pub fn spawn(
             }
 
             // 2) Probe every known endpoint in parallel (one slow/dead peer must
-            // not serialize the tick — same rationale as the §2.4 fan-out).
+            // not serialize the tick — same rationale as the parallel fan-out).
             let probes = known.keys().cloned().map(|endpoint| {
                 let ping_client = ping_client.clone();
                 let health_client = health_client.clone();
@@ -217,9 +217,9 @@ pub fn spawn(
                 }
             }
 
-            // 4) M3 pruning: evict peers unreachable beyond the window (default
+            // 4) Membership pruning: evict peers unreachable beyond the window (default
             // = the tombstone grace). A pruned peer stops blocking tombstone GC
-            // (§3.2); if it ever returns it is re-discovered and re-probed like
+            // (the tombstone-GC liveness guard); if it ever returns it is re-discovered and re-probed like
             // a brand-new candidate (a beyond-grace re-entry is the documented
             // residual resurrection risk — see the HA guide).
             known.retain(|endpoint, ps| {
@@ -248,8 +248,9 @@ pub fn spawn(
             let peers: Vec<PeerNode> = known.values().filter_map(emit_peer).collect();
             state.set_peers(peers);
 
-            // 6) H6 (D3a) size gate: shout on transitions (the gate itself is
-            // enforced by ClusterState::write_gate in the store decorators).
+            // 6) Cluster-size guard (decision H6): shout on transitions (the
+            // gate itself is enforced by ClusterState::write_gate in the store
+            // decorators).
             match state.write_gate() {
                 WriteGate::SizeExceeded {
                     eligible,
@@ -282,14 +283,14 @@ pub fn spawn(
 struct ProbeState {
     /// Last known identity (kept while dead so the peer is still reported).
     node_id: Option<String>,
-    /// Consecutive failed probes; reset on any successful contact (D12.3).
+    /// Consecutive failed probes; reset on any successful contact.
     consecutive_failures: u32,
     /// Wall-clock time of the last successful contact: the `last_seen`
-    /// reported for dead peers, and what pruning (M3) and the tombstone-GC
-    /// guard (§3.2) measure staleness against.
+    /// reported for dead peers, and what membership pruning and the
+    /// tombstone-GC liveness guard measure staleness against.
     last_contact: Option<DateTime<Utc>>,
     /// The peer view built from the last successful contact, re-emitted
-    /// verbatim during the D12.3 tolerance window (one tick of stale disk
+    /// verbatim during the failure-detector tolerance window (one tick of stale disk
     /// stats is far cheaper than flapping the quorum).
     last_live: Option<PeerNode>,
 }
@@ -305,8 +306,8 @@ enum AuthState {
     /// Our signed ping was rejected (403): the peer verifies with a DIFFERENT
     /// secret — config drift at the auth layer.
     AuthRejected,
-    /// No ping route (404): a pre-R3 node — legacy fallback via public health
-    /// (H10). Excluded from fan-out/quorum until upgraded.
+    /// No ping route (404): a pre-v0.26.0 node — legacy fallback via public
+    /// health (decision H10). Excluded from fan-out/quorum until upgraded.
     Legacy,
 }
 
@@ -318,7 +319,7 @@ struct ContactInfo {
     disk_total: Option<u64>,
     disk_available: Option<u64>,
     /// The peer's object write cursor, reported by the authenticated ping
-    /// (D3c rewind detection). `None` from the legacy public-health fallback.
+    /// (cursor rewind detection). `None` from the legacy public-health fallback.
     max_seq: Option<u64>,
 }
 
@@ -328,7 +329,8 @@ enum ProbeOutcome {
     Contact(ContactInfo),
     /// The endpoint is this node itself (the loop-prevention 409).
     SelfNode,
-    /// Network-level failure or an unusable answer — counts toward D12.3.
+    /// Network-level failure or an unusable answer — counts toward
+    /// [`DEAD_AFTER_FAILURES`].
     Failure,
 }
 
@@ -336,8 +338,8 @@ enum ProbeOutcome {
 /// nonce), falling back to the public health probe to identify peers that
 /// cannot answer it (legacy 404, secret-mismatch 403).
 ///
-/// `secret_previous` (H8) keeps a rotation tolerant on the verify side too: a
-/// peer normally MACs the challenge with the secret OUR request verified
+/// `secret_previous` (decision H8) keeps a rotation tolerant on the verify
+/// side too: a peer normally MACs the challenge with the secret OUR request verified
 /// under, but accepting a MAC keyed by either rotation secret costs nothing
 /// and shields mixed-version windows.
 async fn probe_peer(
@@ -421,9 +423,10 @@ fn contact_config_ok(info: &ContactInfo, my_fingerprint: &Option<String>) -> boo
 }
 
 /// Builds the published [`PeerNode`] for one probe state, if it should be
-/// visible at all (identity known). Implements the D12.3 tolerance: within the
-/// failure window the last live view is re-emitted; at [`DEAD_AFTER_FAILURES`]
-/// the peer turns dead, keeping `last_seen` (the §3.2 GC guard and the admin
+/// visible at all (identity known). Implements the failure-detector
+/// tolerance: within the failure window the last live view is re-emitted; at
+/// [`DEAD_AFTER_FAILURES`] the peer turns dead, keeping `last_seen` (the
+/// tombstone-GC liveness guard and the admin
 /// view reason about how long it has been unseen) and dropping its disk stats
 /// (stale free space must not gate writes).
 fn emit_peer(ps: &ProbeState) -> Option<PeerNode> {
@@ -443,7 +446,7 @@ fn emit_peer(ps: &ProbeState) -> Option<PeerNode> {
         config_ok: true, // no fresh evidence to judge a dead peer
         disk_total: None,
         disk_available: None,
-        max_seq: None, // a stale cursor must not feed the D3c rewind check
+        max_seq: None, // a stale cursor must not feed the rewind check
     })
 }
 
@@ -461,7 +464,7 @@ fn log_contact_transitions(
 
     // Config drift — one flag, two causes: the peer rejects our secret (403),
     // or it authenticated fine but its fingerprint differs (e.g. another
-    // master key). Either way it is out of fan-out and quorum (H7).
+    // master key). Either way it is out of fan-out and quorum (decision H7).
     if !config_ok {
         if mismatched.insert(id.clone()) {
             if info.auth == AuthState::AuthRejected {
@@ -477,7 +480,7 @@ fn log_contact_transitions(
                     peer = %endpoint,
                     peer_node_id = %id,
                     "cluster config mismatch: this peer's cluster-critical config \
-                     (cluster_id / mode / cluster_size / master key) differs from ours — \
+                     (cluster_id / mode / write_quorum / secret / master key) differs from ours — \
                      it is excluded from replication fan-out and the write quorum until \
                      the configs align."
                 );
@@ -487,7 +490,7 @@ fn log_contact_transitions(
         tracing::info!(peer = %endpoint, peer_node_id = %id, "cluster config mismatch resolved");
     }
 
-    // Legacy (no ping route — pre-upgrade version, H10).
+    // Legacy (no ping route — pre-upgrade version, decision H10).
     if info.auth == AuthState::Legacy {
         if legacy.insert(id.clone()) {
             tracing::warn!(
@@ -519,8 +522,9 @@ fn log_contact_transitions(
     }
 }
 
-/// What a peer reports on its (legacy) public `/cluster/v1/health`. R3
-/// minimized that endpoint to `{status, node_id}` (§3.5), but pre-R3 peers
+/// What a peer reports on its (legacy) public `/cluster/v1/health`. v0.26.0
+/// minimized that endpoint to `{status, node_id}` (it no longer leaks disk
+/// stats or the fingerprint unauthenticated), but pre-v0.26.0 peers
 /// still publish their fingerprint and disk stats there — read them when
 /// present so a legacy peer keeps its drift detection and capacity accounting
 /// through the rolling-upgrade window.
@@ -691,7 +695,7 @@ mod tests {
         );
     }
 
-    // --- probe-state integration (D12.3 tolerance, dead view, §3.2 inputs) ---
+    // --- probe-state integration (failure tolerance, dead view, GC-guard inputs) ---
 
     fn contacted(auth: AuthState) -> ContactInfo {
         ContactInfo {
@@ -735,14 +739,14 @@ mod tests {
         let live = emit_peer(&ps).unwrap();
         assert!(live.alive && live.authenticated);
 
-        // First miss (D12.3): still reported alive, last view re-emitted.
+        // First miss (tolerated): still reported alive, last view re-emitted.
         ps.consecutive_failures += 1;
         let blip = emit_peer(&ps).unwrap();
         assert!(blip.alive, "one missed probe must not flap the peer");
         assert_eq!(blip.last_seen, Some(ts(100)));
 
-        // Second consecutive miss: dead, with last_seen preserved (the §3.2
-        // guard and the admin view need how long it has been unseen) and the
+        // Second consecutive miss: dead, with last_seen preserved (the
+        // tombstone-GC liveness guard and the admin view need how long it has been unseen) and the
         // stale disk stats dropped.
         ps.consecutive_failures += 1;
         let dead = emit_peer(&ps).unwrap();
@@ -868,7 +872,7 @@ mod tests {
             ProbeOutcome::Contact(info) => {
                 assert_eq!(info.node_id, "fake-peer");
                 assert_eq!(info.auth, AuthState::Proven);
-                assert_eq!(info.max_seq, Some(3), "ping seq cursor surfaced (D3c)");
+                assert_eq!(info.max_seq, Some(3), "ping seq cursor surfaced (cursor rewind detection)");
             }
             _ => panic!("expected an authenticated contact"),
         }
@@ -891,7 +895,7 @@ mod tests {
 
     #[tokio::test]
     async fn probe_accepts_mac_keyed_by_previous_secret_during_rotation() {
-        // H8 belt-and-braces: a peer normally MACs the challenge with the
+        // Decision H8 belt-and-braces: a peer normally MACs the challenge with the
         // secret OUR request verified under (so the current secret suffices),
         // but a peer that keys the MAC with the other rotation secret — e.g. a
         // different/older echo implementation in a mixed-version window — must

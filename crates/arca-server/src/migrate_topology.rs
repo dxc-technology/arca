@@ -147,7 +147,7 @@ pub async fn run_to_cluster(
     println!("  4. Bring up the OTHER nodes EMPTY with the SAME [cluster] stanza (same");
     println!("     cluster_id and secret; per-node TLS cert/key). They start blank and");
     println!("     anti-entropy pulls the full dataset from this seed node — no data copy.");
-    println!("  5. Verify convergence with `arca cluster status` and `GET /admin/cluster`.");
+    println!("  5. Verify convergence via `GET /admin/cluster` (syncing, sync.first_pass_done, sync.lag).");
 
     Ok(())
 }
@@ -171,8 +171,8 @@ pub async fn run_to_single(config: &Config, force: bool) -> Result<()> {
     if !force {
         anyhow::bail!(
             "PRECONDITION: run this ONLY on the surviving authoritative node, after \
-             confirming every peer reported in-sync (first_pass_done) via \
-             `GET /admin/cluster` or `arca cluster status` AND every peer is stopped. \
+             confirming in `GET /admin/cluster` that every peer is in sync \
+             (sync.first_pass_done true, sync.lag 0) AND every peer is stopped. \
              Collapsing while a peer is behind LOSES that peer's un-replicated writes. \
              Re-run with --force once you have confirmed this."
         );

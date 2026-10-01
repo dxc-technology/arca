@@ -1,7 +1,7 @@
 //! Admin API handlers for audit log and metrics history.
 //!
 //! Both stores are strictly node-local, so the list endpoints accept the
-//! `?node=` selector (review D6, decision H9) and route through
+//! `?node=` selector (per-node admin views, decision H9) and route through
 //! [`admin_proxy::dispatch`]: local data, one eligible peer (server-side
 //! proxy), or the timestamp-merged all-nodes view.
 
@@ -29,7 +29,7 @@ pub struct AuditQueryParams {
     pub to: Option<String>,
     pub offset: Option<u32>,
     pub limit: Option<u32>,
-    /// `?node=` selector (review D6): absent/self = local, a peer's id =
+    /// `?node=` selector (decision H9): absent/self = local, a peer's id =
     /// proxy, `all` = merged view.
     #[serde(skip_serializing, default)]
     pub node: Option<String>,
@@ -162,7 +162,7 @@ pub struct MetricsHistoryParams {
     pub from: Option<String>,
     pub to: Option<String>,
     pub limit: Option<u32>,
-    /// `?node=` selector (review D6): absent/self = local, a peer's id =
+    /// `?node=` selector (decision H9): absent/self = local, a peer's id =
     /// proxy, `all` = merged view.
     #[serde(skip_serializing, default)]
     pub node: Option<String>,

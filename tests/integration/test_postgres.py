@@ -352,7 +352,7 @@ class TestRangeRead:
 
 class TestConcurrentWrites:
     """Concurrency smoke test for the commit-ordered object_seq counter
-    (HA hardening review §2.2, pg migration 0009).
+    (decision H3, pg migration 0009).
 
     Every object write serializes its final stretch on the single-row counter;
     this exercises many concurrent writers (puts, overwrites and deletes mixed,

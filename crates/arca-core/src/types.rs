@@ -109,7 +109,7 @@ pub struct ObjectRecord {
     /// whose `last_modified` ties: without it a stale lock-free copy
     /// re-applied after a node restart silently clobbers a newer lock state
     /// and the clobber's fresh `seq` propagates the regression cluster-wide
-    /// (finding N2, Phase 29.1 R7). `Option` ordering (`None < Some`) makes a
+    /// (lock-state ordering, since v0.26.0). `Option` ordering (`None < Some`) makes a
     /// row that ever saw a lock change beat one that never did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lock_updated_at: Option<DateTime<Utc>>,
@@ -144,7 +144,7 @@ impl ObjectRecord {
     ///
     /// Used by `apply_remote_object` to skip the rewrite — and the fresh `seq`
     /// it would stamp — when a peer redelivers a row this node already holds
-    /// (finding M7): without the skip, two caught-up nodes redeliver their
+    /// (identical-row redelivery no-op): without the skip, two caught-up nodes redeliver their
     /// whole object tables to each other on every anti-entropy pass, forever.
     /// Compares via `PartialEq` on normalized clones so a future field is
     /// included automatically (a missed field would resurface as churn, never
@@ -161,7 +161,7 @@ impl ObjectRecord {
     /// (`local`) for the same (bucket, key, version). Returns the row to
     /// persist, or `None` to keep the local row unchanged (the incoming record
     /// lost the LWW, or is identical → skip the rewrite so two caught-up nodes
-    /// don't redeliver forever, finding M7).
+    /// don't redeliver forever).
     ///
     /// `last_modified` is the primary clock: a new PUT bumps it and replaces the
     /// whole row. On a `last_modified` TIE the row carries two INDEPENDENT
@@ -200,7 +200,7 @@ impl ObjectRecord {
                 } else {
                     // Same content lineage: merge the two in-place registers.
                     // Each adopts the incoming value only when STRICTLY newer, so
-                    // a tie keeps the local row (idempotent redelivery, N2).
+                    // a tie keeps the local row (idempotent redelivery).
                     let mut merged = local.clone();
                     if self.lock_updated_at > local.lock_updated_at {
                         merged.retention_mode = self.retention_mode.clone();

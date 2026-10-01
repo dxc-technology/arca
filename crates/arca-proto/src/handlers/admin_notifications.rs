@@ -2,7 +2,7 @@
 //!
 //! The event log is node-local (events are recorded by the node that served
 //! the originating S3 write), so the list endpoint accepts the `?node=`
-//! selector (review D6, decision H9) via [`admin_proxy::dispatch`].
+//! selector (per-node admin views, decision H9) via [`admin_proxy::dispatch`].
 
 use axum::extract::{Query, State};
 use axum::response::IntoResponse;
@@ -25,7 +25,7 @@ pub struct NotificationEventQueryParams {
     pub delivery_status: Option<String>,
     pub offset: Option<u32>,
     pub limit: Option<u32>,
-    /// `?node=` selector (review D6): absent/self = local, a peer's id =
+    /// `?node=` selector (decision H9): absent/self = local, a peer's id =
     /// proxy, `all` = merged view.
     #[serde(skip_serializing, default)]
     pub node: Option<String>,

@@ -24,13 +24,13 @@ topology it needs via a marker, and the runner selects them with `pytest -m`:
     cluster_available_split      available overlay, arca-3 partitioned (split brain)
     cluster_available_converged  available overlay, split healed (LWW winner only)
     cluster_available_minority   available overlay, only node 1 up (still writable)
-    cluster_leader_full          all 3 up; verifies the R6 worker-leader gate
+    cluster_leader_full          all 3 up; verifies the worker-leader gate
     cluster_leader_failover      worker leader stopped; verifies role failover
     cluster_syncing_seed         all 3 up, seeds state for the readiness phase
     cluster_syncing_while_down   node 3 down; writes the data it must catch up on
     cluster_syncing_readiness    node 3 JUST restarted (no wait): 503 syncing must
                                  hold until the catch-up completes, then 200
-    cluster_node_views_full      all 3 up; verifies the R8 ?node= admin proxy
+    cluster_node_views_full      all 3 up; verifies the ?node= admin proxy
                                  (specific peer, self, all-merged, unknown node)
     cluster_node_views_degraded  node 3 down; ?node=<dead> answers 503 and the
                                  merged view shrinks to the eligible nodes
@@ -120,8 +120,10 @@ DRIFT_BUCKET = "cluster-drift"
 DRIFT_KEY = "written-with-one-drifted-node"
 DRIFT_BODY = b"written with one drifted node excluded from the quorum"
 
-# R5 (TD-016/D4/N1) catch-up state, seeded with all 3 up (phase A), mutated
-# while node 3 is down (phase B), verified on node 3 after re-entry (phase D).
+# Control-plane catch-up state (TD-016, in-progress multipart reconcile, lock
+# changes stamp a fresh seq; the R5_* names are historical), seeded with all 3
+# up (phase A), mutated while node 3 is down (phase B), verified on node 3
+# after re-entry (phase D).
 # Server-generated ids (user_id, grant_id, upload_id) are recovered in later
 # phases by their deterministic username / grant name / object key.
 R5_USERNAME = "cluster-r5-user"
@@ -187,7 +189,7 @@ def _admin_request(method, endpoint, path, payload=None):
 
 
 def _r5_user_id(endpoint):
-    """Resolves the R5 user's server-generated id by its deterministic username."""
+    """Resolves the catch-up user's server-generated id by its deterministic username."""
     users = _admin_get(endpoint, "/admin/users")
     for u in users:
         if u.get("username") == R5_USERNAME:
@@ -196,7 +198,7 @@ def _r5_user_id(endpoint):
 
 
 def _r5_grant_id(endpoint):
-    """Resolves the R5 grant's server-generated id by its deterministic name."""
+    """Resolves the catch-up grant's server-generated id by its deterministic name."""
     grants = _admin_get(endpoint, "/admin/grants")
     for g in grants:
         if g.get("name") == R5_GRANT_NAME:
@@ -299,7 +301,8 @@ def test_read_after_write_via_lb():
 
 @pytest.mark.cluster_full
 def test_conditional_put_is_per_node_not_cluster_wide():
-    """Pins the documented CAS boundary (TD-025, plan §4 option A).
+    """Pins the documented CAS boundary (TD-025: CAS is exact per node by design;
+    owner-node forwarding is the tracked fix).
 
     Compare-and-swap is exact PER NODE, not cluster-wide: `put_object`
     commits locally, then fans out — there is no authoritative node per key.
@@ -388,7 +391,7 @@ def test_writable_with_quorum():
 
 @pytest.mark.cluster_full
 def test_r5_seed_control_state_everywhere():
-    """Seed the R5 control-plane state with all 3 nodes up.
+    """Seed the control-plane catch-up state with all 3 nodes up.
 
     A user with an attached grant, an Object-Lock bucket with one object, and
     an in-progress multipart upload — each verified to have replicated to node
@@ -455,7 +458,7 @@ def test_r5_seed_control_state_everywhere():
             break
         time.sleep(2)
     else:
-        pytest.fail("R5 seed state did not replicate to node 3 within 60s")
+        pytest.fail("catch-up seed state did not replicate to node 3 within 60s")
     _wait_object(node3, R5_LOCK_BUCKET, R5_LOCK_KEY, R5_LOCK_BODY, timeout=30)
 
 
@@ -493,15 +496,15 @@ def test_control_plane_write_while_node_down():
 
 @pytest.mark.cluster_two_thirds
 def test_r5_detach_grant_while_node_down():
-    """Revoke the R5 grant attachment while node 3 is down (TD-016).
+    """Revoke the catch-up grant attachment while node 3 is down (TD-016).
 
     Node 3 holds the attachment: only the user_grant tombstone in the snapshot
     reconcile can revoke it at re-entry — real-time fan-out cannot reach a dead
-    node, and before R5 this family was not reconciled at all.
+    node, and before v0.26.0 this family was not reconciled at all.
     """
     uid = _r5_user_id(LB)
     gid = _r5_grant_id(LB)
-    assert uid and gid, "R5 user/grant must exist from phase A"
+    assert uid and gid, "catch-up user/grant must exist from phase A"
     _admin_request("DELETE", LB, f"/admin/users/{uid}/grants/{gid}")
 
 
@@ -521,7 +524,7 @@ def test_r5_bucket_config_and_tags_while_node_down():
 
 @pytest.mark.cluster_two_thirds
 def test_r5_retention_change_while_node_down():
-    """Set Object-Lock retention while node 3 is down (N1): the lock UPDATE now
+    """Set Object-Lock retention while node 3 is down: the lock UPDATE now
     stamps a fresh seq, so the changed-since manifest carries it at re-entry."""
     import datetime
 
@@ -538,7 +541,7 @@ def test_r5_retention_change_while_node_down():
 
 @pytest.mark.cluster_two_thirds
 def test_r5_abort_multipart_while_node_down():
-    """Abort the phase-A multipart upload while node 3 is down (D4): node 3
+    """Abort the phase-A multipart upload while node 3 is down: node 3
     still holds the upload row — only the multipart tombstone can close it at
     re-entry (and stop it from resurrecting on nodes 1/2)."""
     lb = _s3(LB)
@@ -551,7 +554,7 @@ def test_r5_abort_multipart_while_node_down():
 
 @pytest.mark.cluster_two_thirds
 def test_r5_create_multipart_while_node_down():
-    """Begin a NEW multipart upload while node 3 is down (D4): at re-entry node
+    """Begin a NEW multipart upload while node 3 is down: at re-entry node
     3 must learn the upload AND its part row from the snapshot, then be able to
     Complete it by fetching the part bytes from a peer."""
     lb = _s3(LB)
@@ -661,7 +664,7 @@ def test_r5_bucket_config_and_tags_reconciled_on_returned_node():
 
 @pytest.mark.cluster_catchup_verify
 def test_r5_retention_reconciled_on_returned_node():
-    """The retention set while node 3 was down appears on it (N1): the lock
+    """The retention set while node 3 was down appears on it: the lock
     UPDATE stamped a fresh seq, so the changed-since manifest re-delivered the
     row with the lock columns."""
     node3 = _s3(NODES[3])
@@ -684,7 +687,7 @@ def test_r5_retention_reconciled_on_returned_node():
 @pytest.mark.cluster_catchup_verify
 def test_r5_aborted_multipart_gone_everywhere():
     """The upload aborted while node 3 was down is closed on it at re-entry and
-    does NOT resurrect on nodes 1/2 from node 3's stale row (D4 tombstone)."""
+    does NOT resurrect on nodes 1/2 from node 3's stale row (multipart tombstone)."""
     deadline = time.time() + 90
     while time.time() < deadline:
         if _mp_upload_id(_s3(NODES[3]), R5_MP_BUCKET, R5_MP_ABORT_KEY) is None:
@@ -700,7 +703,7 @@ def test_r5_aborted_multipart_gone_everywhere():
 
 @pytest.mark.cluster_catchup_verify
 def test_r5_multipart_completes_on_returned_node():
-    """The upload begun while node 3 was down can be COMPLETED on node 3 (D4):
+    """The upload begun while node 3 was down can be COMPLETED on node 3:
     the upload + part rows arrive via the snapshot reconcile, and the part
     bytes — never fanned out to a dead node — are fetched from a peer by the
     concat pre-check (or already repaired by anti-entropy)."""
@@ -789,7 +792,7 @@ def test_config_drift_is_detected():
         f"expected config_aligned=False, got: {data}"
     )
     # Exactly the drifted node reports config_ok=False — and, with a different
-    # secret, it cannot answer the authenticated ping either (R3/H12).
+    # secret, it cannot answer the authenticated ping either (decision H12).
     bad = [n for n in data["nodes"] if n.get("config_ok") is False]
     assert len(bad) >= 1, f"expected at least one node with config_ok=False: {data['nodes']}"
     assert all(n.get("authenticated") is False for n in bad), (
@@ -799,8 +802,8 @@ def test_config_drift_is_detected():
 
 @pytest.mark.cluster_config_drift
 def test_quorum_holds_with_one_drifted_node():
-    """One drifted node of three does NOT break the quorum (H7): the two
-    aligned nodes still are 2 eligible >= write_quorum 2, so writes succeed —
+    """One drifted node of three does NOT break the quorum (decision H7): the
+    two aligned nodes still are 2 eligible >= write_quorum 2, so writes succeed —
     while the drifted node is excluded from the count and the fan-out."""
     # Wait until node 1 sees the drift (so we measure the post-exclusion state,
     # not a not-yet-noticed one) and reports exactly 2 eligible nodes.
@@ -829,7 +832,8 @@ def test_writes_refused_with_drifted_majority():
     """With 2 of 3 nodes drifted (each with a DIFFERENT wrong secret), the
     aligned node alone is 1 eligible < write_quorum 2: it must refuse writes
     with 503 even though all three processes are alive — a drifted node must
-    not sustain a quorum it cannot correctly participate in (H7/H12)."""
+    not sustain a quorum it cannot correctly participate in (decisions
+    H7/H12)."""
     deadline = time.time() + 60
     data = None
     while time.time() < deadline:
@@ -884,7 +888,8 @@ def test_seed_object_before_partition():
 @pytest.mark.cluster_partition_minority
 def test_isolated_node_refuses_writes():
     """The isolated node refuses writes with 503 — even before its membership
-    notices the partition, the missing fan-out ACKs close the window (§2.1)."""
+    notices the partition, the missing fan-out ACKs close the window (write
+    quorum, decision H1)."""
     node3 = _s3(NODES[3])
     with pytest.raises(ClientError) as exc:
         node3.put_object(Bucket=PARTITION_BUCKET, Key="isolated-write", Body=b"x")
@@ -978,7 +983,7 @@ def test_available_minority_still_writable():
     assert node1.get_object(Bucket=AVAIL_BUCKET, Key="minority-write")["Body"].read() == body
 
 
-# ── Phase: worker-leader gate (R6, decision H5) ───────────────────────────────
+# ── Phase: worker-leader gate (decision H5) ───────────────────────────────────
 #
 # The lifecycle evaluator is a cluster-singleton: only the node with the lowest
 # node_id among the ELIGIBLE nodes runs the tick. The cluster configs set
@@ -1134,7 +1139,7 @@ def test_failover_expiry_happens_exactly_once():
     _assert_exactly_one_expiry(LEADER_KEY_FAILOVER)
 
 
-# ── Phase: syncing readiness (R7, review D2) ──────────────────────────────────
+# ── Phase: syncing readiness gate ─────────────────────────────────────────────
 #
 # A node returning from downtime must not serve stale 404s/partial listings:
 # /admin/health answers 503 {"status":"syncing"} until its first anti-entropy
@@ -1174,7 +1179,7 @@ def test_syncing_write_catchup_data_while_node_down():
 @pytest.mark.cluster_syncing_readiness
 def test_restarted_node_syncs_before_reporting_ready():
     """From the instant node 3 restarts: every health answer before the first
-    200 must be a 503 "syncing" (with the M4 Retry-After hint), the verbose
+    200 must be a 503 "syncing" (with the Retry-After hint), the verbose
     health must stay inspectable (200) meanwhile, and the moment the plain
     health turns 200 the catch-up object must ALREADY be readable on the node
     — readiness implies correctness, not just liveness."""
@@ -1193,7 +1198,7 @@ def test_restarted_node_syncs_before_reporting_ready():
         assert resp.status_code == 503, f"unexpected health status {resp.status_code}"
         body = resp.json()
         assert body.get("status") == "syncing", f"unexpected 503 body: {body}"
-        assert resp.headers.get("Retry-After") == "5", "M4: retriable 503 must hint a delay"
+        assert resp.headers.get("Retry-After") == "5", "retriable 503 must hint a delay"
         if not saw_syncing:
             saw_syncing = True
             # The verbose health never 503s: an operator/console can always
@@ -1218,7 +1223,7 @@ def test_restarted_node_syncs_before_reporting_ready():
     )
 
     # The admin topology now reports the sync state: not syncing, first pass
-    # done toward every peer, per-peer cursors exposed (D2 — exposed lag).
+    # done toward every peer, per-peer cursors exposed (the lag is visible).
     cluster = _admin_get(NODES[3], "/admin/cluster")
     assert cluster["syncing"] is False
     peer_syncs = [n["sync"] for n in cluster["nodes"] if not n["local"]]
@@ -1229,7 +1234,7 @@ def test_restarted_node_syncs_before_reporting_ready():
         assert "hwm" in sync
 
 
-# ── Phase: per-node admin views (R8, review D6, decision H9) ──────────────────
+# ── Phase: per-node admin views (decision H9) ─────────────────────────────────
 #
 # The audit log, metrics history, notification event log, and replication
 # journal are strictly NODE-LOCAL (each node records what IT served). Behind
@@ -1237,7 +1242,7 @@ def test_restarted_node_syncs_before_reporting_ready():
 # accept `?node=<node_id>` (server-side proxy to that peer over the signed
 # cluster transport) and `?node=all` (parallel fan-out to every eligible node,
 # rows merged newest-first and labeled with their source node). Only ELIGIBLE
-# peers are valid targets, consistent with every other H12 gate.
+# peers are valid targets, consistent with every other decision H12 gate.
 
 NODEVIEW_BUCKET_PREFIX = "cluster-nodeview"
 NODEVIEW_FAMILIES = [
@@ -1385,11 +1390,11 @@ def test_node_view_merged_shrinks_to_eligible_nodes():
         assert _audit_creates(page["entries"], f"{NODEVIEW_BUCKET_PREFIX}-{n}")
 
 
-# ── Phase: D5 write-aware health (asserted inside existing phases A and C) ────
+# ── Phase: write-aware health (asserted inside existing phases A and C) ───────
 
 @pytest.mark.cluster_full
 def test_writable_health_is_ok_with_full_cluster():
-    """`?writable=1` (review D5): with the write gate open, the write-aware
+    """`?writable=1`: with the write gate open, the write-aware
     health answers 200 on every node — a write pool would route to all of them."""
     for n in (1, 2, 3):
         resp = requests.get(f"{NODES[n]}/admin/health?writable=1", timeout=5)
@@ -1408,10 +1413,10 @@ def test_writable_health_reports_read_only_without_quorum():
     resp = requests.get(f"{NODES[1]}/admin/health?writable=1", timeout=5)
     assert resp.status_code == 503, f"writable health: {resp.status_code} {resp.text}"
     assert resp.json()["status"] == "read_only"
-    assert resp.headers.get("Retry-After") == "5", "M4: retriable 503 must hint a delay"
+    assert resp.headers.get("Retry-After") == "5", "retriable 503 must hint a delay"
 
 
-# ── Phase: proactive blob repair (§5.4) ───────────────────────────────────────
+# ── Phase: proactive blob repair ──────────────────────────────────────────────
 #
 # Runs on a FRESH cluster (gc overlay) so the repair-seed object owns the only
 # payload file under blobs/. The runner then deletes that file from node 3's
@@ -1445,7 +1450,7 @@ def test_repaired_blob_serves_intact_bytes():
     assert body == REPAIR_BODY
 
 
-# ── Phase: tombstone-GC liveness guard (§3.2 / §5.4) ──────────────────────────
+# ── Phase: tombstone-GC liveness guard ────────────────────────────────────────
 #
 # Same fresh cluster, gc overlay (`tombstone_grace_seconds = 20`). An object is
 # deleted while node 3 is down; once node 3 has been unseen beyond the grace,

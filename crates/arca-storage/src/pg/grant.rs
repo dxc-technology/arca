@@ -177,7 +177,7 @@ impl GrantStore for PgStore {
 
     async fn attach_to_user(&self, user_id: &str, grant_id: &str) -> Result<(), ArcaError> {
         // Refresh updated_at on an idempotent re-attach too: the LWW reconcile
-        // (R5) must see a re-attach as newer than any concurrent detach
+        // must see a re-attach as newer than any concurrent detach
         // tombstone, or the user's intent is lost.
         sqlx_core::query::query(
             "INSERT INTO user_grants (user_id, grant_id, updated_at)

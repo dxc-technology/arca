@@ -5,13 +5,16 @@
 //! and fully replicates both the data plane (objects) and the control plane
 //! (credentials, users, teams, grants, server config, bucket metadata).
 //!
-//! Submodules are added milestone by milestone (see the Phase 29 plan):
+//! Design and operations are documented in the HA guide and the architecture
+//! / HA design decisions reference pages. Submodules:
 //! - [`identity`] — self-assigned, persisted node identity.
 //! - [`membership`] — peer discovery (mDNS / static / dns) + health pings.
 //! - [`status`] — `arca cluster status` CLI output.
 //! - [`client`] — signed inter-node transport to peers' `/cluster/v1/*`.
-//! - [`cluster_blob`] / [`cluster_meta`] — M3 write-path decorators that
+//! - [`cluster_blob`] / [`cluster_meta`] — write-path decorators that
 //!   replicate blobs and object rows to peers under the consistency policy.
+//! - [`cluster_control`] — control-plane (identity) replication decorators.
+//! - [`anti_entropy`] — the periodic reconcile / self-heal worker.
 
 pub mod anti_entropy;
 pub mod client;

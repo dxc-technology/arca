@@ -39,7 +39,7 @@ async function extractS3Error(resp) {
 // side detail panel, auto-refresh, pagination.
 export function replicationView() {
   return {
-    // Cluster node selector (R8): the journal is node-local (each entry is
+    // Cluster node selector: the journal is node-local (each entry is
     // recorded by the node that served the originating S3 write).
     ...nodeSelectorMixin('repl'),
 

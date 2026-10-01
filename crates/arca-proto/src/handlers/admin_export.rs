@@ -135,8 +135,8 @@ pub async fn export(
     );
 
     // Settings. Node-local keys (node_id) are omitted: an export imported on
-    // another node must never carry this node's identity (D12.2, double
-    // defense together with the import-side skip).
+    // another node must never carry this node's identity (double defense
+    // together with the import-side skip).
     if has("settings") {
         let pairs = state
             .server_config

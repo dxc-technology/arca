@@ -5,7 +5,7 @@ import { nodeSelectorMixin } from '../node-selector.js?v=node-views-2';
 // ==================== MONITORING VIEW ====================
 export function monitoringView() {
   return {
-    // Cluster node selector (R8): the metrics history is node-local. With
+    // Cluster node selector: the metrics history is node-local. With
     // "All nodes" selected the charts draw one series per node.
     ...nodeSelectorMixin('monitoring'),
 

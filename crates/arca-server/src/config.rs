@@ -819,10 +819,10 @@ pub struct ClusterConfig {
     pub cluster_id: String,
     /// Shared secret authenticating inter-node `/cluster/v1/*` requests
     /// (identical on every node). Must be a high-entropy value of at least 16
-    /// characters (M5/§3.7(B)); the shipped placeholders are refused.
+    /// characters; the shipped placeholders are refused.
     pub secret: String,
     /// Previous shared secret, accepted INBOUND only, for zero-downtime
-    /// rotation (H8/D3b). Outbound requests, the ping challenge MAC and the
+    /// rotation (decision H8). Outbound requests, the ping challenge MAC and the
     /// config fingerprint always use `secret`. Runbook: set `secret_previous`
     /// to the old value and `secret` to the new one on every node, rolling
     /// restart, then remove `secret_previous`.
@@ -864,23 +864,23 @@ pub struct ClusterConfig {
     #[serde(default = "default_cluster_tombstone_grace_days")]
     pub tombstone_grace_days: u64,
     /// Advanced override of `tombstone_grace_days` with seconds granularity.
-    /// Exists for integration tests and demos that must observe the GC
-    /// liveness guard (§3.2) within seconds — production deployments should
+    /// Exists for integration tests and demos that must observe the
+    /// tombstone-GC liveness guard within seconds — production deployments should
     /// size the grace in days. When set it wins over `tombstone_grace_days`.
     pub tombstone_grace_seconds: Option<u64>,
     /// How long an unreachable peer stays in membership before it is pruned
-    /// (M3), in days. Defaults to `tombstone_grace_days`: while a dead peer is
+    /// (membership pruning), in days. Defaults to `tombstone_grace_days`: while a dead peer is
     /// still remembered it blocks tombstone GC (a purge it missed could
-    /// resurrect deletions on its return — review §3.2); once pruned it stops
+    /// resurrect deletions on its return); once pruned it stops
     /// blocking, and a later return must be treated as a re-sync.
     pub peer_prune_days: Option<u64>,
-    /// Review M2: maximum blob repairs (peer fetches) attempted per
+    /// Blob-repair budget: maximum blob repairs (peer fetches) attempted per
     /// anti-entropy tick by the proactive blob-repair sweep (default 100).
     /// A sweep that exhausts the budget resumes where it left off on the NEXT
     /// tick, so one huge repair backlog cannot monopolize the worker for hours
     /// while still draining at `budget / anti_entropy_interval` per node.
     pub blob_repair_budget: Option<u32>,
-    /// Inter-node mutual TLS (R4/H12 — resolves TD-015). REQUIRED when the
+    /// Inter-node mutual TLS (decision H12, resolves TD-015). REQUIRED when the
     /// cluster runs over HTTPS (`[server.tls]` enabled): there is no insecure
     /// fallback. Meaningless (and rejected) without `[server.tls]`.
     pub tls: Option<ClusterTlsConfig>,
@@ -920,13 +920,13 @@ impl ClusterTlsConfig {
     }
 }
 
-/// Shipped placeholder secrets (M5/§3.7(B)): they appear verbatim in the
+/// Shipped placeholder secrets: they appear verbatim in the
 /// reference configs and deploy manifests, so they are the first guess of any
 /// attacker. Startup refuses them outright.
 const PLACEHOLDER_CLUSTER_SECRETS: &[&str] =
     &["dev-cluster-secret-change-me", "CHANGEME-CLUSTER-SECRET"];
 
-/// M5/§3.7(B): the cluster secret keys ALL inter-node authentication (the
+/// The cluster secret keys ALL inter-node authentication (the
 /// SigV4 signatures and the peer challenge MAC), so a guessable value hands an
 /// attacker the whole cluster. Hard floor enforced here; the softer
 /// "looks low-entropy" heuristic is [`ClusterConfig::secret_looks_low_entropy`].
@@ -1001,7 +1001,7 @@ impl ClusterConfig {
         Ok(())
     }
 
-    /// M5 heuristic for the "secret looks low-entropy" warning: fewer than 8
+    /// Heuristic for the "secret looks low-entropy" warning: fewer than 8
     /// distinct characters, or a single character class (only lowercase, only
     /// digits, ...). The caller logs the warning — config loads before tracing
     /// is initialized in `serve`, so it cannot be emitted here.
@@ -1040,7 +1040,7 @@ impl ClusterConfig {
         }
     }
 
-    /// Effective membership prune window in days (M3): the configured
+    /// Effective membership prune window in days (membership pruning): the configured
     /// `peer_prune_days`, defaulting to `tombstone_grace_days` so a dead peer
     /// stops blocking tombstone GC exactly when keeping its tombstones can no
     /// longer help it.
@@ -1048,7 +1048,7 @@ impl ClusterConfig {
         self.peer_prune_days.unwrap_or(self.tombstone_grace_days)
     }
 
-    /// Effective per-tick blob-repair budget (M2; see
+    /// Effective per-tick blob-repair budget (see
     /// [`ClusterConfig::blob_repair_budget`]).
     pub fn blob_repair_budget(&self) -> u32 {
         self.blob_repair_budget.unwrap_or(100)
@@ -1182,7 +1182,7 @@ pub fn load_config(path: &Path) -> Result<Config> {
     Ok(config)
 }
 
-/// R4 (decision H12, resolves TD-015): inter-node TLS is VERIFIED — there is
+/// Decision H12 (resolves TD-015): inter-node TLS is VERIFIED — there is
 /// no insecure fallback. A cluster over HTTPS therefore requires the
 /// `[cluster.tls]` material (fail closed, confirmed 2026-06-11); without
 /// `[server.tls]` that material is meaningless. The existing `[server.tls]
@@ -2214,7 +2214,7 @@ cluster_size = 3
         assert_eq!(cluster.health_interval_seconds, 5);
         assert_eq!(cluster.anti_entropy_interval_seconds, 30);
         assert_eq!(cluster.request_timeout_seconds, 10);
-        // M3: the prune window defaults to the tombstone grace.
+        // Membership pruning: the prune window defaults to the tombstone grace.
         assert_eq!(cluster.peer_prune_days, None);
         assert_eq!(cluster.peer_prune_days(), cluster.tombstone_grace_days);
     }
@@ -2305,7 +2305,7 @@ cluster_size = 3
 
         cluster.blob_repair_budget = None;
         assert!(cluster.validate().is_ok());
-        assert_eq!(cluster.blob_repair_budget(), 100, "M2 default");
+        assert_eq!(cluster.blob_repair_budget(), 100, "blob-repair budget default");
         cluster.blob_repair_budget = Some(5);
         assert!(cluster.validate().is_ok());
         assert_eq!(cluster.blob_repair_budget(), 5, "explicit value wins");
@@ -2389,7 +2389,7 @@ cluster_size = 3
 
     #[test]
     fn cluster_secret_strength_enforced() {
-        // Shipped placeholders are refused outright (M5/§3.7(B)).
+        // Shipped placeholders are refused outright.
         for placeholder in ["dev-cluster-secret-change-me", "CHANGEME-CLUSTER-SECRET"] {
             let cluster = ClusterConfig {
                 secret: placeholder.to_string(),
@@ -2415,7 +2415,7 @@ cluster_size = 3
 
     #[test]
     fn cluster_secret_previous_validated() {
-        // The previous secret gets the same floor as the current one (H8).
+        // The previous secret gets the same floor as the current one (decision H8).
         let cluster = ClusterConfig {
             secret_previous: Some("short".to_string()),
             ..test_cluster_config()
@@ -2495,7 +2495,7 @@ cluster_size = 3
             ca_file: None,
         };
 
-        // Fail closed (R4/TD-015): an HTTPS cluster without the cluster CA
+        // Fail closed (TD-015): an HTTPS cluster without the cluster CA
         // material refuses to start, pointing at the generator.
         let err = validate_cluster_transport(Some(&server_tls), &test_cluster_config())
             .unwrap_err()

@@ -17,8 +17,8 @@ use arca_core::store::maintenance::{
 use crate::handlers::admin::AdminError;
 use crate::state::AppState;
 
-/// Job types the admin API will accept. Extended per milestone (M4:
-/// migrate-topology).
+/// Job types the admin API will accept. `migrate-topology` is offline-only
+/// (the `arca migrate-topology` CLI), so it has no job type.
 const KNOWN_JOB_TYPES: &[&str] = &["noop", "encrypt", "decrypt", "migrate-db"];
 
 /// Default page size for the job-history list.

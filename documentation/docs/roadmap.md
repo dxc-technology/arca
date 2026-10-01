@@ -519,11 +519,10 @@ High availability beyond single-node: a symmetric, self-configuring, fully-repli
 ### Phase 29.1 — HA Hardening [P1]
 
 Remediation of all findings from an in-depth post-release review of the Phase 29 HA cluster
-(design and implementation, `v0.24.0 → v0.25.1`). The full working plan — fixed design decisions,
-per-milestone detail, and a finding-by-finding traceability table — is published as a living
-document: see the [HA Hardening plan](ha-hardening.md). The review it stems from is in the
-repository: [arca-phase-29-ha-review.md](https://github.com/dxc-technology/arca/blob/main/.claude/reviews/arca-phase-29-ha-review.md).
-The whole phase ships as a **single release** when all nine milestones are done (plan decision H11).
+(design and implementation, `v0.24.0 → v0.25.1`). The design decisions it fixed (H1 to H12, with
+rationale and rejected alternatives) are recorded in [HA Design Decisions](reference/ha-design-decisions.md);
+the per-change detail is in the [changelog](changelog.md) under v0.26.0. The whole phase shipped as a
+**single release**, v0.26.0, once all nine milestones were done (decision H11).
 
 - [x] R1 — P0 correctness: true write quorum (ACK counting), commit-ordered PostgreSQL manifest cursor, tombstone-first control merge
 - [x] R2 — Cluster test infrastructure: real network partitions, available-mode suite, control-plane catch-up test, flakiness fixes
@@ -535,9 +534,9 @@ The whole phase ships as a **single release** when all nine milestones are done 
 - [x] R8 — Console: node selector for the node-local views behind the load balancer (audit, metrics history, notification events, replication journal) via a server-side `?node=` proxy over the signed cluster transport (eligible peers only — every H12 gate applies; clear 404/503/502 errors), including an "All nodes" merged view (parallel fan-out, rows merged newest-first and labeled with their source node, per-source result report; pagination is per-source-page by design) and per-node chart series in Monitoring; every response is labeled with the node that answered, so the default LB view always says what it shows (decision H9)
 - [x] R9 — Documentation, deploy and closure: **write-aware health check** (`?writable=1` answers 503 `read_only` while the write gate is closed — a separate LB write pool drops read-only nodes, commented reference backends in both HAProxy configs), §5.4 integration tests (proactive blob repair observed on the node volume without a masking GET; tombstone-GC liveness guard blocking, no-resurrection at re-entry, release — on a `tombstone_grace_seconds` test overlay), honest consistency docs (available-mode silent LWW losers + RPO window, the real read-staleness window under partitions, the 503-behind-LB cost and mitigations, the WORM-in-cluster trust model), six operational runbooks (dead-node replacement, restore from backup, cluster resize, secret rotation, coherent backups, non-empty merge), deploy alignment (HAProxy fall/rise motivated per environment + sticky example; k8s readiness 5s/2 and liveness moved off the syncing path)
 
-It also closes a **security workstream** (review §3.7): the cluster authenticates the *sender* of every replication request but never the *receiver* of a fan-out, so a rogue peer discovered over mDNS can receive all newly written data without holding the shared secret. R3 (peer authentication, public-health minimisation) and R4 (verified inter-node TLS, secret-strength enforcement, anti-replay) close it; on an untrusted cluster network this carries P0 urgency.
+It also closed a **security workstream** (the rogue-peer gap): the cluster authenticated the *sender* of every replication request but never the *receiver* of a fan-out, so a rogue peer discovered over mDNS could receive all newly written data without holding the shared secret. R3 (peer authentication, public-health minimisation) and R4 (verified inter-node TLS, secret-strength enforcement, anti-replay) closed it (decision H12).
 
-**Depends on**: Phase 29. Critical for production `[cluster]` deployments: it closes the gap between the consistency guarantees the cluster declares and those it enforces, and the inter-node trust gaps found in review §3.7.
+**Depends on**: Phase 29. Critical for production `[cluster]` deployments: it closes the gap between the consistency guarantees the cluster declares and those it enforces, and the inter-node trust gaps found by the Phase 29 review.
 
 ---
 

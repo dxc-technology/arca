@@ -10,7 +10,7 @@
 //! of whole objects in memory (the limitation Phase 28 accepted via its
 //! `collect_stream`).
 //!
-//! The `send_*` / `fetch_blob` methods are consumed by the M3 write-path
+//! The `send_*` / `fetch_blob` methods are consumed by the write-path
 //! decorators (`ClusterBlobStore` / `ClusterMetadataStore`).
 
 use std::time::Duration;
@@ -47,7 +47,7 @@ pub enum ClusterError {
     Serde(String),
 }
 
-/// PEM material for VERIFIED inter-node TLS (`[cluster.tls]`, R4/H12 —
+/// PEM material for VERIFIED inter-node TLS (`[cluster.tls]`, decision H12,
 /// resolves TD-015): the cluster CA joins the trust roots of every inter-node
 /// client, and this node's CA-signed cert+key is presented as the client
 /// identity (the peer's route layer requires it). Loaded once at startup,
@@ -80,7 +80,7 @@ impl ClusterTlsMaterial {
     /// Applies the material to a `reqwest` builder: trust the cluster CA (on
     /// top of the system roots, so a publicly-signed listener cert keeps
     /// working) and present this node's client identity. Certificate
-    /// verification stays ON — that is the point of R4.
+    /// verification stays ON: that is the whole point of verified inter-node TLS.
     pub fn apply(&self, builder: reqwest::ClientBuilder) -> reqwest::Result<reqwest::ClientBuilder> {
         let ca = reqwest::Certificate::from_pem(&self.ca_pem)?;
         let identity = reqwest::Identity::from_pem(&self.identity_pem)?;
@@ -133,7 +133,7 @@ impl ClusterClient {
     /// (`POST /cluster/v1/object`). The peer applies it via
     /// `MetadataStore::apply_remote_object` (idempotent, LWW) and returns a
     /// [`ClusterObjectAck`] self-certifying what it durably holds, which the
-    /// origin counts against the write quorum (review §2.1).
+    /// origin counts against the write quorum (decision H1, full ACK per decision H2).
     pub async fn send_object(
         &self,
         endpoint: &str,
@@ -168,10 +168,12 @@ impl ClusterClient {
         Ok(Self::parse_ack(&bytes))
     }
 
-    /// Parses a [`ClusterObjectAck`] from a 2xx response body. A peer running a
-    /// pre-ACK version answers `200 OK` with an empty body (rolling-upgrade
-    /// path, decision H10): treat it as a full ACK — the 200 already meant
-    /// "applied", and the legacy contract had no blob self-certification.
+    /// Parses a [`ClusterObjectAck`] from a 2xx response body (decision H2:
+    /// a full ACK is `applied && has_blob`). A body that does not parse as an
+    /// ack is treated as a full ACK: a peer running a pre-ACK version answers
+    /// `200 OK` with an empty body (rolling-upgrade path, decision H10), the
+    /// 200 already meant "applied", and the legacy contract had no blob
+    /// self-certification.
     fn parse_ack(body: &[u8]) -> ClusterObjectAck {
         serde_json::from_slice(body).unwrap_or(ClusterObjectAck {
             applied: true,
@@ -354,7 +356,7 @@ impl ClusterClient {
     }
 
     /// Proxies a node-local admin query to a peer's `/cluster/v1/admin/*`
-    /// receive route (review D6, decision H9): POSTs the JSON-encoded filter
+    /// receive route (per-node admin views, decision H9): POSTs the JSON-encoded filter
     /// and returns the peer's page bytes. Same transport discipline as the
     /// manifest pull — the filter travels in the body, never in a signed
     /// query string.
@@ -492,7 +494,7 @@ impl ClusterClient {
 }
 
 /// [`arca_core::cluster::ClusterAdminProxy`] over the cluster transport
-/// (review D6, decision H9). `arca-proto` consumes the trait object because it
+/// (per-node admin views, decision H9). `arca-proto` consumes the trait object because it
 /// cannot see [`ClusterClient`] — the same dependency rationale as
 /// `RawBlobOps`.
 pub struct ClusterAdminProxyImpl {

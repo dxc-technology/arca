@@ -24,7 +24,7 @@ pub fn s3_error_response(err: S3Error) -> Response {
     let mut builder = Response::builder()
         .status(status)
         .header("Content-Type", "application/xml");
-    // Every retriable 503 carries a Retry-After hint (review M4): the cluster
+    // Every retriable 503 carries a Retry-After hint: the cluster
     // quorum/syncing refusals flow through ServiceUnavailable, and well-behaved
     // clients honor the header instead of hammering. (SlowDown 503s come from
     // the rate-limit middleware, which sets its own.)
@@ -70,7 +70,7 @@ pub fn internal_error_response(err: ArcaError, resource: &str) -> Response {
 mod tests {
     use super::*;
 
-    /// Review M4 — every retriable 503 must hint a retry delay: the cluster
+    /// Every retriable 503 must hint a retry delay: the cluster
     /// quorum/size-gate/syncing refusals all flow through ServiceUnavailable
     /// here, so this single assertion covers them all.
     #[test]

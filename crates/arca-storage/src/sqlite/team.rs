@@ -143,7 +143,7 @@ impl TeamStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 // updated_at refreshed on an idempotent re-add too: the LWW
-                // reconcile (R5) must see it as newer than any concurrent
+                // reconcile must see it as newer than any concurrent
                 // remove-member tombstone.
                 conn.execute(
                     "INSERT INTO team_members (team_id, user_id, updated_at) VALUES (?1, ?2, ?3)

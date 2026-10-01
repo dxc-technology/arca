@@ -30,7 +30,7 @@ const OP_PRESETS = {
 // ==================== AUDIT LOG VIEW ====================
 export function auditView() {
   return {
-    // Cluster node selector (R8): the audit log is node-local.
+    // Cluster node selector: the audit log is node-local.
     ...nodeSelectorMixin('audit'),
 
     // Raw data from server

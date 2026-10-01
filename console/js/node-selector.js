@@ -1,6 +1,6 @@
 import { api } from './api.js';
 
-// ==================== CLUSTER NODE SELECTOR (R8, review D6) ====================
+// ==================== CLUSTER NODE SELECTOR (decision H9) ======================
 // Shared mixin for the four node-local admin views (audit log, monitoring,
 // notification event log, replication journal). Behind a load balancer those
 // stores answer with whichever node the LB picked, so each view offers a node

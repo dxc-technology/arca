@@ -402,7 +402,7 @@ const MIGRATIONS: &[Migration] = &[
         // The counter is a standalone table, NOT MAX(seq)+1: rewriting the
         // highest-seq object would DELETE+INSERT it, dropping MAX below a
         // caught-up peer's cursor and hiding the rewrite. A monotonic counter
-        // immune to deletes (the PG side uses a SEQUENCE for the same reason)
+        // immune to deletes (the PG side uses an `object_seq` counter table too)
         // avoids that. Existing rows are backfilled with distinct positive seqs
         // (via rowid) so a from-zero manifest scan (seq > 0) returns them, and
         // the counter starts above them.
@@ -463,7 +463,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 22,
         description: "Add updated_at to grant attachments, memberships and bucket_tags (R5 control reconcile)",
-        // HA hardening R5 (TD-016): these families join the control-snapshot
+        // HA hardening (TD-016): these families join the control-snapshot
         // LWW reconcile, which needs a last-write timestamp per row
         // (bucket_config and server_config already carry one). The join tables
         // have no created_at to backfill from, so existing rows backfill to
@@ -486,7 +486,7 @@ const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 23,
         description: "Add lock_updated_at to objects (N2: lock-state LWW dimension)",
-        // HA hardening R7 (finding N2): retention/legal-hold changes are the
+        // HA hardening, lock-state ordering: retention/legal-hold changes are the
         // only in-place row updates that do not bump last_modified (matching
         // S3), so two copies of the same version can differ ONLY in lock state
         // while their LWW key ties. Without an ordering, whichever copy is

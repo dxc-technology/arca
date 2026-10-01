@@ -1,4 +1,4 @@
--- Phase 29.1 HA hardening (review §2.2) — commit-ordered seq cursor.
+-- Phase 29.1 HA hardening: commit-ordered seq cursor (decision H3).
 --
 -- The v5 SEQUENCE is not transactional: a transaction holding seq=N can still
 -- be in flight while seq=N+1 commits. A peer pulling the changed-since
@@ -13,7 +13,7 @@
 -- and visible or aborted forever (a harmless gap). The cost is serializing the
 -- final stretch of concurrent object writes on the counter row — accepted, and
 -- no worse than the SQLite backend, whose single write connection serializes
--- every write entirely (decision H3 of the hardening plan).
+-- every write entirely (decision H3).
 --
 -- Seeded with GREATEST(MAX(seq), sequence last_value): MAX(seq) alone could
 -- re-issue values consumed by the sequence for since-deleted rows, and a

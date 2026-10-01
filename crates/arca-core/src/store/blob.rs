@@ -236,11 +236,13 @@ pub struct BlobPutResult {
     pub encryption: Option<BlobEncryptionInfo>,
     /// Compression metadata, if the blob was compressed.
     pub compression: Option<BlobCompressionInfo>,
-    /// When `Some`, this blob is a composite of already-encrypted parts and
+    /// When `Some`, this blob is a composite of already-stored parts and
     /// must NOT have a physical file written; the caller is expected to
     /// write a sidecar with `composite: Some(parts)` and skip part cleanup.
-    /// Set by `EncryptingBlobStore::concat` to avoid the decrypt+re-encrypt
-    /// cost of a default `concat` implementation. `None` for normal blobs.
+    /// Set by `EncryptingBlobStore::concat` for encrypted parts (avoiding the
+    /// decrypt+re-encrypt cost) and by `FsBlobStore::concat` for plain
+    /// (unencrypted, uncompressed) parts (avoiding the copy). `None` for
+    /// normal blobs.
     pub composite_parts: Option<Vec<CompositePart>>,
 }
 
@@ -319,8 +321,9 @@ pub struct SidecarMeta {
     /// Version ID for versioned objects. Absent for unversioned (backward compat).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version_id: Option<String>,
-    /// Composite parts, when this blob is the result of an encrypted
-    /// `CompleteMultipartUpload`. Absent for non-composite blobs (backward
+    /// Composite parts, when this blob is the result of a
+    /// `CompleteMultipartUpload` assembled without copying (encrypted parts,
+    /// or plain unencrypted and uncompressed ones). Absent for non-composite blobs (backward
     /// compatible). When present, the on-disk file `{blob_path}` does not
     /// exist; reads stream from each part in order.
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -710,7 +710,7 @@ fn walk_files(
                         // Falling back to `now` is the safe direction for the
                         // GC (a blob that always looks fresh is never
                         // reclaimed) — but silently so on a filesystem without
-                        // mtimes the GC would never collect anything (M8).
+                        // mtimes the GC would never collect anything.
                         tracing::warn!(
                             file = %name,
                             "blob walk: file mtime unreadable; treating it as just \

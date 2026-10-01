@@ -140,7 +140,7 @@ fn client_verifier(
 
 /// Build a rustls `ServerConfig` from resolved cert/key/ca paths.
 ///
-/// `cluster_ca` is the `[cluster.tls]` CA (R4): when set — and the stricter
+/// `cluster_ca` is the `[cluster.tls]` CA: when set — and the stricter
 /// global `[tls].ca_file` is not (config validation rejects the combination) —
 /// client certificates are REQUESTED and validated against it, but remain
 /// optional at the TLS layer because S3 clients share this listener; the
@@ -162,7 +162,7 @@ pub fn load_rustls_config(
             .with_single_cert(certs, key)
             .context("building TLS config with mTLS")?
     } else if let Some(ca_path) = cluster_ca {
-        // R4 cluster mTLS: optional at the TLS layer, enforced per-route.
+        // Cluster mTLS: optional at the TLS layer, enforced per-route.
         let verifier = client_verifier(ca_path, true)?;
         RustlsServerConfig::builder()
             .with_client_cert_verifier(verifier)
@@ -191,7 +191,7 @@ pub fn load_rustls_config(
 pub struct TlsReloader {
     state: ArcSwap<Arc<RustlsServerConfig>>,
     tls_config: TlsConfig,
-    /// `[cluster.tls]` CA path (R4), kept so a SIGHUP reload rebuilds the same
+    /// `[cluster.tls]` CA path, kept so a SIGHUP reload rebuilds the same
     /// optional client-certificate policy.
     cluster_ca: Option<PathBuf>,
 }
@@ -323,7 +323,7 @@ async fn serve_tls_connection(
         }
     };
 
-    // R4: did the connection present a client certificate? The verifier
+    // Did the connection present a client certificate? The verifier
     // already validated any presented certificate against the configured CA
     // during the handshake (an invalid one fails the accept above), so
     // presence here means "CA-signed client identity". Stamped on every
@@ -589,7 +589,7 @@ mod tests {
         assert_ne!(before, after);
     }
 
-    /// R4 end-to-end over real sockets: with the cluster CA configured the
+    /// Cluster mTLS end-to-end over real sockets: with the cluster CA configured the
     /// listener accepts BOTH bare-TLS and client-cert connections (optional at
     /// the TLS layer, as S3 clients share the port), surfaces the verified
     /// client identity to the accept loop (the signal `serve_tls_connection`

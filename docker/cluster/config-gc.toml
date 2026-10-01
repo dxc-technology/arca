@@ -1,8 +1,8 @@
 # Tombstone-GC / blob-repair variant: IDENTICAL to config.toml except for a
-# seconds-granularity tombstone grace. Mounted on ALL THREE nodes by the §5.4
-# integration tests (the symmetry invariant still holds): the §3.2 GC liveness
-# guard only engages once a peer has been unseen BEYOND the grace, so the test
-# needs a grace it can outwait in seconds, not days.
+# seconds-granularity tombstone grace. Mounted on ALL THREE nodes by the
+# integration tests (the symmetry invariant still holds): the tombstone-GC
+# liveness guard only engages once a peer has been unseen BEYOND the grace, so
+# the test needs a grace it can outwait in seconds, not days.
 [server]
 bind = "0.0.0.0"
 port = 9000
@@ -14,7 +14,7 @@ data_dir = "/data"
 enabled = true
 cluster_id = "arca-cluster"
 # Shared secret authenticating inter-node /cluster/v1/* requests. DEV value
-# (passes the M5 strength floor) — change for any real deployment
+# (passes the 16-character secret floor) — change for any real deployment
 # (`openssl rand -hex 32`). Same value as config.toml: the overlay changes
 # ONLY the tombstone grace.
 secret = "arca-itest-cluster-secret-3f9c2a71"

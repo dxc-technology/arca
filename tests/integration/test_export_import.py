@@ -232,7 +232,7 @@ class TestImport:
 
     def test_import_skips_node_local_settings(self, endpoint, creds):
         """node_id is node identity: import must refuse it even in overwrite
-        mode, and a subsequent export must not contain it (D12.2)."""
+        mode, and a subsequent export must not contain it."""
         payload = {
             "settings": {"node_id": "imported-evil-node-id"},
         }

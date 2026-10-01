@@ -83,7 +83,7 @@ pub async fn import_config(
             for (key, value) in obj {
                 // Node-local keys (node_id) are refused even if present in the
                 // document (e.g. an export taken before they were filtered):
-                // applying one would rewrite this node's identity (D12.2).
+                // applying one would rewrite this node's identity.
                 if arca_core::cluster::is_node_local_server_config_key(key) {
                     tracing::warn!(key = %key, "import: skipping node-local settings key");
                     sr.skipped += 1;

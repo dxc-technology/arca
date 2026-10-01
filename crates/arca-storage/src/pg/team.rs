@@ -152,7 +152,7 @@ impl TeamStore for PgStore {
 
     async fn add_member(&self, team_id: &str, user_id: &str) -> Result<(), ArcaError> {
         // updated_at refreshed on an idempotent re-add too: the LWW reconcile
-        // (R5) must see it as newer than any concurrent remove-member tombstone.
+        // must see it as newer than any concurrent remove-member tombstone.
         sqlx_core::query::query(
             "INSERT INTO team_members (team_id, user_id, updated_at)
              VALUES ($1, $2, NOW())

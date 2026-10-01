@@ -16,8 +16,13 @@ use crate::state::AppState;
 
 /// Builds the Axum router with all S3 routes, Admin API routes, and middleware.
 ///
-/// Layer order (outermost → innermost, i.e. request flows top-down):
-///   RequestId → TraceLayer → Auth → [VirtualHost] → handlers
+/// Layer order for S3 requests (outermost → innermost, i.e. request flows
+/// top-down):
+///   RequestId → Validate → IP RateLimit → Audit → Trace → CORS →
+///   MaintenanceDrain → Auth → Credential RateLimit → [VirtualHost] → handlers
+///
+/// The first six wrap every route (see the end of this function); the rest
+/// apply to the S3 router only.
 ///
 /// Admin routes live under `/admin/*` with their own auth middleware
 /// (JSON errors instead of S3 XML). `/admin/health` is unauthenticated.
@@ -242,15 +247,16 @@ pub fn build_router(state: AppState) -> Router {
 
     // --- Cluster router (Phase 29 HA) ---
     // Public inter-node liveness/identity probe — minimized to {status, node_id}
-    // (review §3.5): everything else lives on the authenticated ping.
+    // (no fingerprint or disk stats): everything else lives on the
+    // authenticated ping.
     let cluster_public = Router::new().route("/v1/health", get(cluster::health));
 
     // Authenticated peer data endpoints: verbatim blob + object-row replication,
-    // plus the H12 challenge-response ping the membership manager probes.
+    // plus the decision H12 challenge-response ping the membership manager probes.
     // The cluster_auth middleware verifies the shared cluster credential and
     // enforces loop prevention; handlers no-op (404/503) when clustering is off.
     //
-    // §3.4: the JSON endpoints carry small payloads (rows, control ops, manifest
+    // Body limit: the JSON endpoints carry small payloads (rows, control ops, manifest
     // cursors) — cap their bodies explicitly at 2 MiB instead of relying on the
     // framework default, so an authenticated-but-compromised peer cannot make a
     // receiver buffer arbitrary JSON. The blob route is added AFTER the
@@ -263,7 +269,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/op", post(cluster::receive_op))
         .route("/v1/manifest", post(cluster::manifest))
         .route("/v1/control-snapshot", get(cluster::control_snapshot))
-        // Admin proxy receive routes (review D6, decision H9): serve THIS
+        // Admin proxy receive routes (decision H9): serve THIS
         // node's node-local admin pages (audit, metrics history, notification
         // events, replication journal) to a peer proxying a console `?node=`
         // query. Query filters travel as small JSON bodies (like the manifest
@@ -352,7 +358,9 @@ pub fn build_router(state: AppState) -> Router {
     // --- Merge everything ---
     // Admin routes are nested under /admin, S3 routes at root.
     // Layer order (outermost → innermost):
-    //   RequestId → Validate → IP RateLimit → Audit → Trace → CORS → Auth → [Credential RateLimit] → Handlers
+    //   RequestId → Validate → IP RateLimit → Audit → Trace → CORS → then the
+    //   per-router layers (S3: MaintenanceDrain → Auth → Credential RateLimit
+    //   → [VirtualHost]; admin and cluster: their own auth) → Handlers
     Router::new()
         .nest("/admin", admin)
         .nest("/cluster", cluster_router)

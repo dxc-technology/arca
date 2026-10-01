@@ -11,7 +11,7 @@ use chrono::{DateTime, Utc};
 /// nodes).
 ///
 /// Shared by all three header-auth paths: S3 ([`auth`]), admin
-/// ([`admin_auth`]) and inter-node ([`cluster_auth`], §3.1).
+/// ([`admin_auth`]) and inter-node ([`cluster_auth`]).
 pub const REPLAY_WINDOW_SECS: i64 = 15 * 60;
 
 /// Returns true when `amz_date` (SigV4 `YYYYMMDDTHHMMSSZ`) falls within

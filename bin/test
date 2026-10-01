@@ -730,7 +730,7 @@ _node_live() {
         | jq -r '.cluster.live_node_count // empty' 2>/dev/null
 }
 
-# Node number (1-3) of the current worker leader (R6, decision H5), found by
+# Node number (1-3) of the current worker leader (decision H5), found by
 # asking each node whether it claims the role via verbose health.
 _leader_node() {
     local n
@@ -751,7 +751,7 @@ wait_live() {
     for _ in $(seq 1 "$max"); do
         if [[ "$(_node_live "$port")" == "$want" ]]; then
             # Membership convergence on one node does not mean the LB has any
-            # ready backend yet: since R7 (review D2) a node answers 503
+            # ready backend yet: since v0.26.0 a node answers 503
             # "syncing" on /admin/health until its first anti-entropy pass, so
             # on a cold cluster start ALL nodes can be briefly out of rotation.
             # Wait until the LB actually routes a health check...
@@ -784,8 +784,9 @@ run_cluster() {
     trap cleanup_cluster EXIT
 
     # On a phase failure, preserve the node logs BEFORE `down -v` destroys
-    # them — needed to diagnose the rare anti-entropy flakes (M1 class, see
-    # the hardening plan): by the time a human looks, the volumes are gone.
+    # them — needed to diagnose the rare anti-entropy flakes (a node failing
+    # to converge on a replicated entry within the poll window): by the time
+    # a human looks, the volumes are gone.
     dump_logs_on_failure() {
         local rc="$1"; shift
         if [[ "$rc" -ne 0 ]]; then
@@ -853,7 +854,7 @@ run_cluster() {
         echo "── Phase F: config-drift detection (mismatched secret) ──"
         # The liveness probe answers everyone, so all 3 nodes stay "live" —
         # but the drifted node fails the authenticated ping (403) and is
-        # flagged AND excluded from the quorum (R3, decisions H7/H12).
+        # flagged AND excluded from the quorum (decisions H7/H12).
         local CDRIFT="$C -f docker/docker-compose.cluster.drift.yml"
         $CDRIFT up -d
         wait_live 9001 3 90 || rc=1
@@ -893,7 +894,7 @@ run_cluster() {
             bin/cluster partition 3 || rc=$?
             # No wait_live here, on purpose: the 503 on the isolated node must
             # hold even before membership notices the partition (the missing
-            # fan-out ACKs close that window — review §2.1).
+            # fan-out ACKs close that window, decision H1).
             [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_partition_minority -v "$@" || rc=$?; }
             bin/cluster heal 3 || rc=$?
         fi
@@ -953,7 +954,7 @@ run_cluster() {
     fi
 
     if [[ $rc -eq 0 ]]; then
-        echo "── Phase J: syncing readiness (R7, review D2) ──"
+        echo "── Phase J: syncing readiness ──"
         # A node restarted after downtime must answer 503 "syncing" on
         # /admin/health until its first anti-entropy pass toward every peer
         # completes — and the moment it answers 200, the data written during
@@ -978,7 +979,7 @@ run_cluster() {
     fi
 
     if [[ $rc -eq 0 ]]; then
-        echo "── Phase K: per-node admin views (R8, review D6 — ?node= proxy) ──"
+        echo "── Phase K: per-node admin views (?node= proxy) ──"
         # The audit/metrics/events/journal stores are strictly node-local;
         # ?node=<id> proxies the query server-side to that peer, ?node=all
         # merges every eligible node's page. Second half stops node 3 to
@@ -997,9 +998,9 @@ run_cluster() {
     fi
 
     if [[ $rc -eq 0 ]]; then
-        echo "── Phase L: proactive blob repair + tombstone-GC liveness guard (§5.4) ──"
+        echo "── Phase L: proactive blob repair + tombstone-GC liveness guard ──"
         # gc overlay: identical config with tombstone_grace_seconds = 20, so the
-        # §3.2 guard is observable within the run. First half: the seeded
+        # tombstone-GC liveness guard is observable within the run. First half: the seeded
         # object's payload file is deleted straight from node 3's volume and
         # must come back via the PROACTIVE repair sweep — the volume is polled
         # shell-side, never with a GET, which would trigger the lazy

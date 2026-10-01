@@ -124,7 +124,7 @@ struct HealthResponse {
 pub struct HealthQuery {
     #[serde(default)]
     verbose: Option<String>,
-    /// `?writable=1` — write-aware variant (review D5): additionally answer
+    /// `?writable=1` — write-aware variant: additionally answer
     /// 503 `{"status":"read_only"}` while the cluster write gate is closed
     /// (lost quorum / size exceeded), so a load balancer can keep a separate
     /// write pool that only routes to nodes currently able to accept writes.
@@ -191,13 +191,13 @@ pub struct CreateCredentialRequest {
 /// not-ready windows — `{"status": "draining"}` while the graceful-shutdown
 /// drain runs (drain takes precedence), `{"status": "syncing"}` while a
 /// clustered node has not completed its first anti-entropy pass toward every
-/// eligible peer since startup (review D2: until then it could answer stale
-/// 404s / partial listings, so the LB / k8s readiness probe must keep it out
-/// of rotation). With no eligible peers there is nothing to sync from and the
-/// node reports `ok` (degraded-but-serving). This default shape is what the LB
-/// health check consumes.
+/// eligible peer since startup (syncing readiness gate: until then it could
+/// answer stale 404s / partial listings, so the LB / k8s readiness probe must
+/// keep it out of rotation). With no eligible peers there is nothing to sync
+/// from and the node reports `ok` (degraded-but-serving). This default shape is
+/// what the LB health check consumes.
 ///
-/// `?writable=1` (review D5) makes the plain shape write-aware: a node whose
+/// `?writable=1` makes the plain shape write-aware: a node whose
 /// cluster write gate is closed (lost quorum, size exceeded) additionally
 /// answers 503 `{"status":"read_only"}`. Point a load balancer's *write pool*
 /// health check here to route writes only to nodes that would accept them,
@@ -234,7 +234,7 @@ pub async fn health(State(state): State<AppState>, Query(q): Query<HealthQuery>)
         return Response::builder()
             .status(StatusCode::SERVICE_UNAVAILABLE)
             .header("Content-Type", "application/json")
-            // M4: like every retriable cluster 503 (see s3_error_response).
+            // Retry-After like every retriable cluster 503 (see s3_error_response).
             .header("Retry-After", "5")
             .body(Body::from(format!(r#"{{"status":"{status}"}}"#)))
             .expect("build not-ready response");
@@ -244,9 +244,9 @@ pub async fn health(State(state): State<AppState>, Query(q): Query<HealthQuery>)
 
 /// Resolves the plain (load-balancer) health shape: the status string and
 /// whether the node is ready (`false` → 503). Precedence: a graceful-shutdown
-/// drain wins over everything, then the D2 syncing gate, then — only when the
-/// caller asked for the write-aware variant and passed `writable = false` —
-/// the D5 `read_only` state.
+/// drain wins over everything, then the syncing readiness gate, then — only
+/// when the caller asked for the write-aware variant and passed `writable =
+/// false` — the write-aware `read_only` state.
 fn plain_health_status(draining: bool, syncing: bool, writable: bool) -> (&'static str, bool) {
     if draining {
         ("draining", false)
@@ -279,15 +279,16 @@ struct ClusterNodeView {
     authenticated: bool,
     /// Whether this node's cluster-critical config matches the local node's.
     config_ok: bool,
-    /// This node's anti-entropy pull status toward the peer (review D2/M1);
+    /// This node's anti-entropy pull status toward the peer (sync lag and
+    /// stuck-entry skip evidence);
     /// `null` for the local node (a node does not sync from itself).
     #[serde(skip_serializing_if = "Option::is_none")]
     sync: Option<NodeSyncView>,
 }
 
 /// Per-peer anti-entropy pull status in the `GET /admin/cluster` view: how far
-/// THIS node has consumed the peer's changes (review D2 — exposed lag; M1 —
-/// skipped-entry evidence).
+/// THIS node has consumed the peer's changes (exposed lag and stuck-entry skip
+/// evidence).
 #[derive(Serialize)]
 struct NodeSyncView {
     /// High-water mark: the highest peer `seq` applied by the incremental
@@ -301,11 +302,11 @@ struct NodeSyncView {
     #[serde(skip_serializing_if = "Option::is_none")]
     last_reconcile: Option<String>,
     /// Whether the first full pass since this node's startup completed (the
-    /// D2 readiness signal; `false` contributes to `syncing`).
+    /// syncing readiness signal; `false` contributes to `syncing`).
     first_pass_done: bool,
-    /// M1: manifest entries skipped after persistent apply failures — a
-    /// non-zero count means some key may not converge here until it changes
-    /// again on the peer.
+    /// Stuck-entry skip: manifest entries skipped after persistent apply
+    /// failures — a non-zero count means some key may not converge here until
+    /// it changes again on the peer.
     skipped_entries: u64,
 }
 
@@ -332,7 +333,7 @@ struct ClusterAdminResponse {
     live_node_count: Option<usize>,
     /// Nodes that count for replication (alive + authenticated +
     /// config-aligned, including self) — what the write quorum is measured
-    /// against (decisions H12/H7).
+    /// against (decisions H12 and H7).
     #[serde(skip_serializing_if = "Option::is_none")]
     eligible_node_count: Option<usize>,
     /// Total known nodes (including self).
@@ -341,24 +342,25 @@ struct ClusterAdminResponse {
     /// False when any live peer's cluster-critical config differs from ours.
     #[serde(skip_serializing_if = "Option::is_none")]
     config_aligned: Option<bool>,
-    /// Decision H6 (D3a): true when more eligible nodes than `cluster_size`
-    /// are live — the write gate is closed (fail-closed) until resized.
+    /// Cluster-size guard (decision H6): true when more eligible nodes than
+    /// `cluster_size` are live — the write gate is closed (fail-closed) until
+    /// resized.
     #[serde(skip_serializing_if = "Option::is_none")]
     size_exceeded: Option<bool>,
-    /// Review §3.2: true while tombstone GC is skipped because a known peer
-    /// has been unreachable beyond the grace window.
+    /// Tombstone-GC liveness guard: true while tombstone GC is skipped because
+    /// a known peer has been unreachable beyond the grace window.
     #[serde(skip_serializing_if = "Option::is_none")]
     tombstone_gc_blocked: Option<bool>,
-    /// Decision H5 (review §3.3): true when THIS node holds the worker-leader
+    /// Decision H5: true when THIS node holds the worker-leader
     /// role (lowest `node_id` among eligible nodes) and runs the
     /// cluster-singleton background work (the lifecycle evaluator). In a
     /// stable cluster exactly one node reports `true`.
     #[serde(skip_serializing_if = "Option::is_none")]
     worker_leader: Option<bool>,
-    /// Review D2: true while this node has not completed its first
+    /// Syncing readiness gate: true while this node has not completed its first
     /// anti-entropy pass toward every eligible peer since startup — it may
-    /// still be missing rows and `/admin/health` answers 503 to keep it out
-    /// of LB rotation.
+    /// still be missing rows and `/admin/health` answers 503 to keep it out of
+    /// LB rotation.
     #[serde(skip_serializing_if = "Option::is_none")]
     syncing: Option<bool>,
     /// Cluster-effective disk capacity (bytes): the MINIMUM total across live
@@ -983,7 +985,7 @@ mod tests {
         assert_eq!(plain_health_status(true, false, true), ("draining", false));
     }
 
-    /// D5 write-aware shape: a closed write gate turns the node not-ready
+    /// Write-aware shape: a closed write gate turns the node not-ready
     /// with the dedicated `read_only` status.
     #[test]
     fn health_writable_shape_reports_read_only() {

@@ -684,8 +684,8 @@ pub async fn put_object(
     };
     // Authoritative CAS check: evaluated inside the same metadata transaction
     // that installs this record, so a concurrent conflicting write cannot
-    // slip past both writers' early checks (object.rs:485-516, an
-    // optimisation only — this is the actual decision point).
+    // slip past both writers' early checks (the `check_conditionals` early
+    // check above, an optimisation only — this is the actual decision point).
     let write_pre = WritePrecondition {
         if_match: headers
             .get("if-match")

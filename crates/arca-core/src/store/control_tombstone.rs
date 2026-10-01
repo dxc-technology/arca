@@ -4,7 +4,9 @@
 //! bucket) leaves a tombstone row here so the deletion converges via the
 //! periodic control-snapshot reconcile and is NOT resurrected by a peer that
 //! still holds the live row (the same resurrection trap the object tombstones
-//! solve for the data plane — decision 8/12).
+//! solve for the data plane). In cluster mode every hard delete leaves a
+//! tombstone, which the full-snapshot + per-row LWW reconcile (no op-log)
+//! propagates.
 //!
 //! Tombstones are reconcile-only: reads of the entities are unaffected (the
 //! entity really is gone). They are GC'd after a grace window that must exceed
@@ -24,12 +26,12 @@ pub const TOMBSTONE_TEAM: &str = "team";
 pub const TOMBSTONE_GRANT: &str = "grant";
 pub const TOMBSTONE_BUCKET: &str = "bucket";
 
-/// HA hardening R5 (TD-016): the families that previously replicated in real
-/// time only. Two-part keys use [`crate::cluster::pair_key`]; `bucket_tags` is
+/// Families added to the reconcile in v0.26.0 (TD-016); before that they
+/// replicated in real time only. Two-part keys use [`crate::cluster::pair_key`]; `bucket_tags` is
 /// keyed by bucket name alone (the whole tag SET is one LWW entity, matching
 /// the replace-all semantics of `PutBucketTagging` and `ControlOp::BucketTags`);
 /// `server_config` by config key; `multipart` by upload id (a tombstone marks a
-/// Complete/Abort so a closed upload cannot resurrect, D4).
+/// Complete/Abort so a closed upload cannot resurrect).
 pub const TOMBSTONE_USER_GRANT: &str = "user_grant";
 pub const TOMBSTONE_TEAM_GRANT: &str = "team_grant";
 pub const TOMBSTONE_TEAM_MEMBER: &str = "team_member";

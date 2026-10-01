@@ -11,7 +11,7 @@ use arca_core::store::server_config::ServerConfigStore;
 
 /// `server_config` key under which the persisted node identity is stored.
 /// Defined in `arca-core` (re-exported here) because BOTH replication sides
-/// must denylist it: the sender decorator and the receive handler (D12.1).
+/// must denylist it: the sender decorator and the receive-side filter.
 pub use arca_core::cluster::NODE_ID_KEY;
 
 /// Returns this node's stable identity, generating and persisting a fresh UUID

@@ -33,7 +33,7 @@ const CREDENTIAL_PREFIX: &str = "replication.credentials.";
 /// the proxied `POST /cluster/v1/admin/replication-journal` (`node` never
 /// forwarded) — the journal is strictly node-local (each entry is recorded by
 /// the node that served the originating S3 write), hence the `?node=` selector
-/// (review D6, decision H9).
+/// (per-node admin views, decision H9).
 #[derive(Serialize, Deserialize)]
 pub struct ListJournalQuery {
     pub bucket: Option<String>,
@@ -41,7 +41,7 @@ pub struct ListJournalQuery {
     pub rule_id: Option<String>,
     pub offset: Option<u32>,
     pub limit: Option<u32>,
-    /// `?node=` selector (review D6): absent/self = local, a peer's id =
+    /// `?node=` selector (decision H9): absent/self = local, a peer's id =
     /// proxy, `all` = merged view.
     #[serde(skip_serializing, default)]
     pub node: Option<String>,

@@ -1,4 +1,4 @@
--- HA hardening R5 (TD-016) — last-write timestamps for the control-plane
+-- HA hardening (TD-016) — last-write timestamps for the control-plane
 -- families that previously replicated in real time only.
 --
 -- user_grants / team_grants / team_members / bucket_tags join the

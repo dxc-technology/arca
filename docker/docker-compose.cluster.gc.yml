@@ -1,7 +1,7 @@
-# Overlay for the §5.4 tombstone-GC / blob-repair integration tests.
+# Overlay for the tombstone-GC / blob-repair integration tests.
 #
 # Swaps every node's config for config-gc.toml — IDENTICAL to the base config
-# except `tombstone_grace_seconds = 20`: the §3.2 GC liveness guard engages
+# except `tombstone_grace_seconds = 20`: the tombstone-GC liveness guard engages
 # once a peer has been unseen beyond the grace, which must be outwaitable in
 # a test run (production sizes the grace in days).
 #

@@ -1,4 +1,4 @@
-//! Cluster metadata store decorator (Phase 29 M3 — data-plane write path).
+//! Cluster metadata store decorator (Phase 29 — data-plane write path).
 //!
 //! Wraps the local `MetadataStore` and replicates object-table mutations to
 //! peers, keeping the trait so handlers and `AppState` are unchanged. It is the
@@ -11,7 +11,7 @@
 //!   versioned delete marker → replicated as a row.
 //! - `delete_object_version` — hard delete of a specific version.
 //!
-//! Consistency policy (review §2.1, decisions H1/H2/H4):
+//! Consistency policy (decisions H1, H2 and H4):
 //! - `available`: always writable; fan-out is best-effort, ACKs are ignored.
 //! - `quorum`: a write is acknowledged to the client only when at least
 //!   `write_quorum` nodes durably hold it AT ACK TIME — the local copy plus
@@ -32,7 +32,8 @@
 //!
 //! ACK-counting scope (decision H4): object data-plane mutations only —
 //! `put_object`, the delete marker, version hard-deletes. Control-plane and tag
-//! ops remain best-effort fan-out + anti-entropy reconcile (rare mutations).
+//! ops remain best-effort fan-out + anti-entropy reconcile (rare mutations);
+//! object tags are the exception, fan-out only and never reconciled (TD-033).
 //!
 //! Control plane replicated via `/cluster/v1/op` (`ControlOp`): bucket create /
 //! delete, `bucket_config` (versioning, encryption, ...), bucket tags, object
@@ -41,8 +42,9 @@
 //! an upload begun elsewhere, can serve and finish it. Retention and legal-hold
 //! replicate by re-sending the mutated object row: its `last_modified` does not
 //! change (S3 semantics), so the apply guards order it by the row's
-//! `lock_updated_at` — the dedicated lock-state LWW dimension (N1 delivery, N2
-//! ordering) — and a stale lock-free copy can never clobber a newer lock state.
+//! `lock_updated_at` — the dedicated lock-state LWW dimension (a lock change
+//! also stamps a fresh `seq`, so the manifest redelivers it) — and a stale
+//! lock-free copy can never clobber a newer lock state.
 //!
 //! The IDENTITY control plane (credentials, users, teams, grants, server_config)
 //! has its own store decorators in `cluster_control.rs` and reuses the same
@@ -72,9 +74,10 @@ use crate::cluster::client::ClusterClient;
 
 /// Maps the cluster admission gate to the client-facing `503` (shared by the
 /// metadata and control-plane decorators). [`WriteGate::NoQuorum`] is the
-/// fail-fast half of the §2.1 quorum (the ACK count is authoritative);
-/// [`WriteGate::SizeExceeded`] is the H6 fail-closed guard against an
-/// over-sized membership (D3a) — two distinct, actionable messages.
+/// fail-fast half of the write quorum (decision H1; the ACK count is
+/// authoritative); [`WriteGate::SizeExceeded`] is the fail-closed
+/// cluster-size guard (decision H6) against an over-sized membership — two
+/// distinct, actionable messages.
 pub(crate) fn check_write_gate(cluster: &ClusterState) -> Result<(), ArcaError> {
     match cluster.write_gate() {
         WriteGate::Open => Ok(()),
@@ -127,9 +130,9 @@ impl ClusterMetadataStore {
 
     /// Endpoints of peers eligible for replication: alive AND authenticated
     /// (proved possession of the cluster secret — decision H12) AND
-    /// config-aligned (H7). Fanning out to anything less would hand new writes
-    /// to a rogue mDNS registrant or to a node that cannot store them
-    /// correctly (review §3.7(A), D1).
+    /// config-aligned (decision H7). Fanning out to anything less would hand
+    /// new writes to a rogue mDNS registrant or to a node that cannot store
+    /// them correctly, and would let it count toward the quorum.
     fn live_peers(&self) -> Vec<String> {
         self.cluster
             .peers()
@@ -149,7 +152,7 @@ impl ClusterMetadataStore {
         check_write_gate(&self.cluster)
     }
 
-    /// The durability quorum check (review §2.1, decision H1): `acks` counts
+    /// The durability quorum check (decision H1): `acks` counts
     /// the nodes durably holding the write (local + full peer ACKs). On a
     /// shortfall in quorum mode the client gets `503`; the local copy is NOT
     /// rolled back (anti-entropy propagates or LWW overwrites it — the error
@@ -173,7 +176,7 @@ impl ClusterMetadataStore {
     }
 
     /// Replicates a fully-formed object row to every live peer IN PARALLEL
-    /// (§2.4) and returns how many peers returned a FULL ack — row applied and
+    /// and returns how many peers returned a FULL ack — row applied and
     /// referenced blob present (decision H2). Failures are logged and left to
     /// anti-entropy; the caller decides whether the count satisfies the quorum.
     async fn fan_out_object(&self, record: &ObjectRecord) -> usize {
@@ -210,7 +213,7 @@ impl ClusterMetadataStore {
         join_all(sends).await.into_iter().filter(|ok| *ok).count()
     }
 
-    /// Replicates a version hard-delete to every live peer IN PARALLEL (§2.4)
+    /// Replicates a version hard-delete to every live peer IN PARALLEL
     /// and returns how many peers acknowledged it (no blob involved, so
     /// `applied` alone is a full ack — decision H2).
     async fn fan_out_version_delete(&self, bucket: &str, key: &str, version_id: &str) -> usize {
@@ -239,11 +242,15 @@ impl ClusterMetadataStore {
     }
 
     /// Re-sends the row whose lock columns (retention / legal-hold) just
-    /// changed. The mutation leaves `(last_modified, version_id, blob_id)`
-    /// unchanged, and `apply_remote_object`'s LWW guard accepts an equal tuple
-    /// (`>=`), so peers adopt the new retention/legal-hold without minting a new
+    /// changed (also reused for the re-encryption row changes). The mutation
+    /// leaves `last_modified` unchanged, so `apply_remote_object` resolves it
+    /// with `ObjectRecord::resolve_replicated`: on a `last_modified` tie it
+    /// adopts the lock columns only when `lock_updated_at` is STRICTLY newer,
+    /// and the content columns (`blob_id`, encryption) only when
+    /// `content_updated_at` is strictly newer. The local mutation bumped the
+    /// relevant register, so peers adopt the new state without minting a new
     /// version. `version_id == None` targets the current version. Best-effort
-    /// (outside the H4 ACK-counting scope) — the ack count is ignored.
+    /// (outside the decision H4 ACK-counting scope) — the ack count is ignored.
     async fn replicate_lock_change(&self, bucket: &str, key: &str, version_id: Option<&str>) {
         let row = match version_id {
             Some(vid) => self.inner.get_object_version(bucket, key, vid).await,
@@ -254,7 +261,7 @@ impl ClusterMetadataStore {
         }
     }
 
-    /// Replicates a control-plane op to every live peer IN PARALLEL (§2.4).
+    /// Replicates a control-plane op to every live peer IN PARALLEL.
     /// Best-effort by design (decision H4): control-plane mutations are rare
     /// and reconciled by anti-entropy, so no ACK counting here.
     async fn fan_out_op(&self, op: &ControlOp) {
@@ -276,7 +283,7 @@ impl ClusterMetadataStore {
 
 #[async_trait::async_trait]
 impl MetadataStore for ClusterMetadataStore {
-    // -- Bucket operations (delegate; control-plane replication is a follow-up) --
+    // -- Bucket operations (replicated via ControlOp, best-effort) --
 
     async fn list_buckets(&self) -> Result<Vec<BucketInfo>, ArcaError> {
         self.inner.list_buckets().await
@@ -341,8 +348,9 @@ impl MetadataStore for ClusterMetadataStore {
     // against THIS node's local state. Two nodes can each locally admit a
     // conflicting conditional write (e.g. both see no current object and both
     // accept `If-None-Match: *`) and both return 200 — cluster mode has no
-    // per-key authoritative node to arbitrate across peers (plan §4 decision
-    // A). Anti-entropy converges the row by last-writer-wins afterward, same
+    // per-key authoritative node to arbitrate across peers (TD-025: CAS is
+    // exact per node by design; owner-node forwarding is the tracked fix).
+    // Anti-entropy converges the row by last-writer-wins afterward, same
     // as any unconditional write. Mitigate by pinning conditional-write
     // traffic for a given key to one node (sticky routing / a session-aware
     // load balancer) when strict cross-node CAS matters. See TECH_DEBT.md.
@@ -364,7 +372,7 @@ impl MetadataStore for ClusterMetadataStore {
         replicated.is_delete_marker = false;
         let acks = self.fan_out_object(&replicated).await;
 
-        // True quorum (§2.1): local copy + full peer ACKs must reach the
+        // True quorum (decision H1): local copy + full peer ACKs must reach the
         // threshold, else 503. On failure the local row (and any blob it
         // overwrote, now orphaned) stays — the anti-entropy GC reclaims
         // orphaned blobs and the manifest propagates the row.
@@ -400,7 +408,7 @@ impl MetadataStore for ClusterMetadataStore {
         if old.is_some() {
             // A versioned bucket creates a delete marker (a new latest row);
             // an unversioned bucket hard-deletes. Replicate whichever happened
-            // and hold it to the same durability quorum as a put (§2.1/H4).
+            // and hold it to the same durability quorum as a put (decisions H1 and H4).
             let acks = match self.inner.get_latest_object(bucket, key).await {
                 Ok(Some(marker)) if marker.is_delete_marker => {
                     self.fan_out_object(&marker).await
@@ -520,7 +528,7 @@ impl MetadataStore for ClusterMetadataStore {
         let parts = self.inner.delete_multipart_upload(upload_id).await?;
         // Both Complete and Abort end here: tombstone the upload so a peer
         // that was down cannot resurrect a closed upload via the snapshot
-        // reconcile (D4).
+        // reconcile.
         record_tombstone(&self.tombstones, TOMBSTONE_MULTIPART, upload_id).await;
         self.fan_out_op(&ControlOp::MultipartDelete {
             upload_id: upload_id.to_string(),
@@ -583,8 +591,9 @@ impl MetadataStore for ClusterMetadataStore {
             .inner
             .update_object_encryption(bucket, key, version_id, algorithm, key_id)
             .await?;
-        // The in-place variant keeps `blob_id` unchanged, so the re-sent row's
-        // LWW tuple is equal and peers adopt the new encryption columns. NOTE:
+        // The in-place variant keeps `blob_id` and `last_modified` unchanged
+        // but bumps `content_updated_at`, so peers adopt the new encryption
+        // columns through the content register of the LWW merge. NOTE:
         // the rewritten bytes are NOT shipped here — in a cluster the worker
         // uses the copy-on-write path (`update_object_encryption_cas`) so peers
         // pull the new blob; the in-place path is for single-node deployments.
@@ -613,15 +622,16 @@ impl MetadataStore for ClusterMetadataStore {
             .await?;
         // CAS succeeded: the row now points at the new (encrypted) blob_id. Re-send
         // it so peers learn the new id; anti-entropy / read-repair then pulls the
-        // new blob bytes + sidecar. (Convergence of the changed blob_id under LWW
-        // is exercised on the 3-node harness in M2.)
+        // new blob bytes + sidecar. (Peers adopt the changed blob_id via the
+        // bumped `content_updated_at` register; this Phase 30 M2 convergence is
+        // pinned by the `apply_remote_reencrypted_row_*` storage unit tests.)
         if swapped {
             self.replicate_lock_change(bucket, key, version_id).await;
         }
         Ok(swapped)
     }
 
-    // -- Bucket config operations (delegate; control-plane follow-up) --
+    // -- Bucket config operations (replicated via ControlOp, best-effort) --
 
     async fn get_bucket_config(
         &self,
@@ -641,7 +651,7 @@ impl MetadataStore for ClusterMetadataStore {
         self.inner
             .set_bucket_config(bucket, config_key, config_value)
             .await?;
-        // A set revives the key: drop any stale delete tombstone (R5).
+        // A set revives the key: drop any stale delete tombstone.
         clear_tombstone(
             &self.tombstones,
             TOMBSTONE_BUCKET_CONFIG,
@@ -665,7 +675,7 @@ impl MetadataStore for ClusterMetadataStore {
         self.check_write_quorum()?;
         let existed = self.inner.delete_bucket_config(bucket, config_key).await?;
         if existed {
-            // Tombstone so the delete converges via the snapshot reconcile (R5).
+            // Tombstone so the delete converges via the snapshot reconcile.
             record_tombstone(
                 &self.tombstones,
                 TOMBSTONE_BUCKET_CONFIG,
@@ -681,7 +691,7 @@ impl MetadataStore for ClusterMetadataStore {
         Ok(existed)
     }
 
-    // -- Tag operations (delegate; replication is a follow-up) --
+    // -- Tag operations (replicated via ControlOp, best-effort) --
 
     async fn get_bucket_tags(&self, bucket: &str) -> Result<Vec<(String, String)>, ArcaError> {
         self.inner.get_bucket_tags(bucket).await
@@ -694,7 +704,7 @@ impl MetadataStore for ClusterMetadataStore {
     ) -> Result<(), ArcaError> {
         self.check_write_quorum()?;
         self.inner.put_bucket_tags(bucket, tags).await?;
-        // The whole tag set is one LWW entity in the snapshot reconcile (R5):
+        // The whole tag set is one LWW entity in the snapshot reconcile:
         // a non-empty replace revives it (drop any stale tombstone); an empty
         // replace IS a clear (record one — an empty set never travels in the
         // snapshot).
@@ -715,7 +725,7 @@ impl MetadataStore for ClusterMetadataStore {
         self.check_write_quorum()?;
         let existed = self.inner.delete_bucket_tags(bucket).await?;
         if existed {
-            // Tombstone so the clear converges via the snapshot reconcile (R5).
+            // Tombstone so the clear converges via the snapshot reconcile.
             record_tombstone(&self.tombstones, TOMBSTONE_BUCKET_TAGS, bucket).await;
             // Replicate as a tags-replace with an empty set, clearing peers' tags.
             self.fan_out_op(&ControlOp::BucketTags {
@@ -1059,10 +1069,10 @@ mod tests {
         assert!(store.get_object("b", "k").await.unwrap().is_some());
     }
 
-    /// Review §2.1 (P0): the admission gate alone is NOT a quorum. A peer that
+    /// The admission gate alone is NOT a quorum. A peer that
     /// membership still believes alive but that does not ACK the fan-out must
     /// fail the write — otherwise an acknowledged PUT exists on one machine
-    /// only (a ghost write). This pins the true-quorum semantics (H1/H2).
+    /// only (a ghost write). This pins the true-quorum semantics (decisions H1 and H2).
     #[tokio::test]
     async fn quorum_mode_refuses_write_when_acks_below_quorum() {
         let (inner, _dir) = temp_store().await;
@@ -1076,7 +1086,7 @@ mod tests {
             ArcaError::S3(e) => assert_eq!(e.code, S3ErrorCode::ServiceUnavailable),
             other => panic!("expected ServiceUnavailable, got {other:?}"),
         }
-        // No rollback (H1): the local copy stays for anti-entropy to propagate.
+        // No rollback (decision H1): the local copy stays for anti-entropy to propagate.
         assert!(store.get_object("b", "k").await.unwrap().is_some());
     }
 
@@ -1114,7 +1124,7 @@ mod tests {
     }
 
     /// A legacy peer (pre-ACK wire format) answers 200 with an empty body; the
-    /// rolling-upgrade contract (H10) counts it as a full ack.
+    /// rolling-upgrade contract (decision H10) counts it as a full ack.
     #[tokio::test]
     async fn quorum_mode_legacy_empty_ack_counts() {
         let (inner, _dir) = temp_store().await;
@@ -1126,7 +1136,7 @@ mod tests {
         store.put_object(&sample_record()).await.unwrap();
     }
 
-    /// Deletes are held to the same quorum as puts (H4): an unreachable peer
+    /// Deletes are held to the same quorum as puts (decision H4): an unreachable peer
     /// fails the delete with 503, and the local delete is NOT rolled back.
     #[tokio::test]
     async fn quorum_mode_refuses_delete_when_acks_below_quorum() {

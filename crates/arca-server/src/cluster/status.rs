@@ -1,8 +1,8 @@
 //! `arca cluster status` — prints this node's identity and configured topology.
 //!
-//! Phase 29 M1 prints the self identity and the static configuration. Live peer
-//! state (reachability, replication lag) is added once the membership manager
-//! and the admin API land (M2+).
+//! Offline command: it prints the self identity (`node_id`) and the static
+//! configuration only. Live peer state (reachability, replication lag) comes
+//! from the running server's `GET /admin/cluster` endpoint.
 
 use crate::config::{ClusterConfig, ClusterMode, DiscoveryMode};
 

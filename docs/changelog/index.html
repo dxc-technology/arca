@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://dxc-technology.github.io/arca/changelog/">
       
       
-        <link rel="prev" href="../ha-hardening/">
+        <link rel="prev" href="../roadmap/">
       
       
         <link rel="next" href="../tech-debt/">
@@ -1168,33 +1168,6 @@
       
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../ha-hardening/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    HA Hardening Plan
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
     
   
   
@@ -1285,6 +1258,17 @@
     <span class="md-ellipsis">
       
         Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#removed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Removed
       
     </span>
   </a>
@@ -1503,7 +1487,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#removed" class="md-nav__link">
+  <a href="#removed_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Removed
@@ -2120,7 +2104,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#removed_1" class="md-nav__link">
+  <a href="#removed_2" class="md-nav__link">
     <span class="md-ellipsis">
       
         Removed
@@ -3168,6 +3152,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#removed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Removed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#fixed" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3379,7 +3374,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#removed" class="md-nav__link">
+  <a href="#removed_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Removed
@@ -3996,7 +3991,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#removed_1" class="md-nav__link">
+  <a href="#removed_2" class="md-nav__link">
     <span class="md-ellipsis">
       
         Removed
@@ -4989,6 +4984,11 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Image names.</strong> The production images are now named after their registry repository everywhere: the Compose files, <code>bin/test</code>, the Kubernetes manifests (<code>deploy/kubernetes/</code>, which now reference the published images) and the documentation. Local builds are tagged after their build target, <code>ghcr.io/dxc-technology/arca:production</code> / <code>:development</code> and <code>ghcr.io/dxc-technology/arca-console:production</code>, never with a release tag, so a working-tree build can neither pass for a release nor shadow the published <code>latest</code>. Images built locally under the old <code>arca</code> / <code>arca-console</code> names are no longer used and can be removed with <code>docker rmi arca arca-console</code>. Test and tooling images keep their names and are never published.</li>
+<li><strong>Documentation audited against the code.</strong> The architecture reference is rewritten from the current code: real crate graph and middleware order (there is no use-case layer), every storage trait and decorator and how they are stacked, the table list with what a cluster replicates, the write path, multipart composite blobs, how conditional writes are made atomic on each backend, and a clustering section with the design rationale. A new <strong>HA Design Decisions</strong> page records decisions H1 to H12 (what the code does today, why, the alternatives rejected), which code comments cite as "decision H<em>n</em>". The S3 API reference gains a conditional-writes section and two documented divergences from AWS (a refused conditional <code>CompleteMultipartUpload</code> is always <code>412</code>, never <code>409</code>; <code>If-None-Match</code> accepts a specific ETag). The HA guide is corrected where it promised more than the code does: the drift fingerprint covers the write quorum, not <code>cluster_size</code>; only object writes are ACK-counted in quorum mode; object tags do not self-heal; sync state is read from <code>GET /admin/cluster</code>, not <code>arca cluster status</code>; TD-025 needs per-key load-balancer routing. The Admin API, CLI, Disaster Recovery, Configuration and TLS pages are completed or corrected likewise (health states, <code>/admin/cluster</code>, <code>?node=</code>, five missing CLI commands, what <code>arca recover</code> really restores). The help of <code>arca cluster status</code> and the instructions printed by <code>arca migrate-topology</code> now point at <code>GET /admin/cluster</code> for sync state. Bugs found during the audit are tracked as TD-029 to TD-042.</li>
+</ul>
+<h3 id="removed">Removed<a class="headerlink" href="#removed" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>The "HA Hardening Plan" documentation page and the <code>.claude/</code> planning documents.</strong> Plans and reviews were working documents for a single task. Their durable content (design decisions and rationale, invariants, known limits) now lives in the architecture reference, the HA Design Decisions page, the HA guide and <code>TECH_DEBT.md</code>, and code comments no longer cite IDs defined only there.</li>
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
@@ -5085,7 +5085,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <ul>
 <li><strong>Admin access follows the user, not the credential.</strong> A credential carried its own <code>admin</code> boolean, and the <code>/admin/*</code> gate required BOTH a root user AND <code>credential.admin = true</code>. Two paths minted credentials that could never satisfy it: <code>POST /admin/users/{id}/credentials</code> (the console's "create credential" flow) hardcoded <code>admin = false</code>, so a second credential created on the <strong>root</strong> user signed in as a plain user with no admin reach at all, while <code>POST /admin/credentials</code> honoured the request's <code>admin</code> field — the same identity therefore got different privileges depending on which endpoint created its key. Privileges are a property of the identity, so the flag is gone: the gate now allows a request when the credential's user <code>is_root</code>, or when the user's effective grants allow the <code>arca:*</code> action mapped from the admin path (which also, for the first time, lets a non-root user reach the specific admin endpoints its grants cover). The <code>credentials.admin</code> column is dropped (SQLite migration v26 / PostgreSQL <code>0014</code>), <code>admin</code> is removed from the Admin API request and response bodies (replaced by <code>user_id</code>, the owning user), from <code>arca credential add --admin</code>, and from the console's create-credential form and card badge (now the owner's username, linking to that user). An incoming <code>admin</code> field is silently ignored rather than rejected, so an older cluster peer can still replicate credentials to an upgraded node. The reverse direction is <em>not</em> supported: a 0.29 node replicates credentials without the field, and a pre-0.29 peer requires it, so a cluster must not be left with mixed versions across this release. The lockout guards on delete/deactivate now key on "last active credential belonging to a root user".</li>
 </ul>
-<h3 id="removed">Removed<a class="headerlink" href="#removed" title="Permanent link">&para;</a></h3>
+<h3 id="removed_1">Removed<a class="headerlink" href="#removed_1" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong><code>admin</code> flag on credentials.</strong> Dropped from the core type, the database (SQLite migration v26 / PostgreSQL <code>0014</code>), the Admin API request/response bodies, the <code>arca credential add</code> CLI and the console. See the entry above for the reasoning; incoming <code>admin</code> fields are ignored rather than rejected, so older clients and export files keep working, but a cluster must not be left running mixed versions across this release.</li>
 </ul>
@@ -5382,7 +5382,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <ul>
 <li><strong>Kafka/AMQP connector integration tests</strong>: resolved TD-013. The AMQP tests used to fail because <code>wait_for_amqp_receiver</code> ran <code>docker exec rabbitmq-diagnostics</code> as root in a tight loop, racing with RabbitMQ's <code>.erlang.cookie</code> initialization and crashing the container (EACCES). Switched the AMQP and Kafka readiness helpers to <code>docker inspect</code>-based health polling so they never exec into the receiver. Also fixed the Kafka test subscriber (manual partition assignment + <code>seek_to_end</code> avoids consumer-group coordination races) and raised the SigV4 admin-API default timeout so the <code>test-connector</code> failure path for Kafka's unreachable host does not time out the HTTP client before Arca can respond</li>
 </ul>
-<h3 id="removed_1">Removed<a class="headerlink" href="#removed_1" title="Permanent link">&para;</a></h3>
+<h3 id="removed_2">Removed<a class="headerlink" href="#removed_2" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>AMQP DNS pre-resolution workaround</strong>: the <code>resolve_uri</code> helper that rewrote AMQP URIs to use a tokio-resolved IP was added under the false TD-013 diagnosis. With the real fix in place, <code>lapin</code>/<code>tcp-stream</code> resolves hostnames correctly from the Alpine/musl <code>arca</code> binary, so the workaround is gone and the connector passes the URI straight to <code>Connection::connect</code></li>
 <li><strong>ONVIF connector</strong>: dropped from Phase 26 before any implementation shipped. The <code>ConnectorType::Onvif</code> enum variant, the console picker entry, and the roadmap checklist item have been removed. ONVIF integration was judged too niche to justify its maintenance cost; an external adapter can bridge ONVIF events into Arca via the webhook or gRPC connector when needed</li>

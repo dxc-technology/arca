@@ -139,7 +139,7 @@ pub struct AppState {
     /// rolling restart onto a new secret never interrupts replication.
     /// Outbound signing and the config fingerprint always use the current one.
     pub cluster_secret_previous: Option<String>,
-    /// True when inter-node mutual TLS is configured (`[cluster.tls]`, R4):
+    /// True when inter-node mutual TLS is configured (`[cluster.tls]`, decision H12):
     /// `cluster_auth` then refuses `/cluster/v1/*` requests whose TLS session
     /// did not present a client certificate signed by the cluster CA (the
     /// accept loop records that as a request extension).
@@ -149,7 +149,7 @@ pub struct AppState {
     /// clustering is enabled (all inner handles are present together).
     pub cluster_inner: Option<ClusterInnerStores>,
     /// Signed transport for proxying node-local admin queries (`?node=` on the
-    /// audit/metrics/events/journal endpoints — review D6, decision H9) to a
+    /// audit/metrics/events/journal endpoints — decision H9) to a
     /// peer's `/cluster/v1/admin/*` routes. `Some` only when clustering is
     /// enabled.
     pub cluster_admin_proxy: Option<Arc<dyn arca_core::cluster::ClusterAdminProxy>>,

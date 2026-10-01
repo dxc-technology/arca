@@ -16,7 +16,7 @@
         <link rel="prev" href="../operations/troubleshooting/">
       
       
-        <link rel="next" href="../ha-hardening/">
+        <link rel="next" href="../changelog/">
       
       
         
@@ -1714,33 +1714,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../ha-hardening/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    HA Hardening Plan
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../changelog/" class="md-nav__link">
         
   
@@ -2957,11 +2930,10 @@ coexist transparently.</p>
 <hr />
 <h3 id="phase-291-ha-hardening-p1">Phase 29.1 — HA Hardening [P1]<a class="headerlink" href="#phase-291-ha-hardening-p1" title="Permanent link">&para;</a></h3>
 <p>Remediation of all findings from an in-depth post-release review of the Phase 29 HA cluster
-(design and implementation, <code>v0.24.0 → v0.25.1</code>). The full working plan — fixed design decisions,
-per-milestone detail, and a finding-by-finding traceability table — is published as a living
-document: see the <a href="../ha-hardening/">HA Hardening plan</a>. The review it stems from is in the
-repository: <a href="https://github.com/dxc-technology/arca/blob/main/.claude/reviews/arca-phase-29-ha-review.md">arca-phase-29-ha-review.md</a>.
-The whole phase ships as a <strong>single release</strong> when all nine milestones are done (plan decision H11).</p>
+(design and implementation, <code>v0.24.0 → v0.25.1</code>). The design decisions it fixed (H1 to H12, with
+rationale and rejected alternatives) are recorded in <a href="../reference/ha-design-decisions/">HA Design Decisions</a>;
+the per-change detail is in the <a href="../changelog/">changelog</a> under v0.26.0. The whole phase shipped as a
+<strong>single release</strong>, v0.26.0, once all nine milestones were done (decision H11).</p>
 <ul class="task-list">
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> R1 — P0 correctness: true write quorum (ACK counting), commit-ordered PostgreSQL manifest cursor, tombstone-first control merge</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> R2 — Cluster test infrastructure: real network partitions, available-mode suite, control-plane catch-up test, flakiness fixes</li>
@@ -2973,8 +2945,8 @@ The whole phase ships as a <strong>single release</strong> when all nine milesto
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> R8 — Console: node selector for the node-local views behind the load balancer (audit, metrics history, notification events, replication journal) via a server-side <code>?node=</code> proxy over the signed cluster transport (eligible peers only — every H12 gate applies; clear 404/503/502 errors), including an "All nodes" merged view (parallel fan-out, rows merged newest-first and labeled with their source node, per-source result report; pagination is per-source-page by design) and per-node chart series in Monitoring; every response is labeled with the node that answered, so the default LB view always says what it shows (decision H9)</li>
 <li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled checked/><span class="task-list-indicator"></span></label> R9 — Documentation, deploy and closure: <strong>write-aware health check</strong> (<code>?writable=1</code> answers 503 <code>read_only</code> while the write gate is closed — a separate LB write pool drops read-only nodes, commented reference backends in both HAProxy configs), §5.4 integration tests (proactive blob repair observed on the node volume without a masking GET; tombstone-GC liveness guard blocking, no-resurrection at re-entry, release — on a <code>tombstone_grace_seconds</code> test overlay), honest consistency docs (available-mode silent LWW losers + RPO window, the real read-staleness window under partitions, the 503-behind-LB cost and mitigations, the WORM-in-cluster trust model), six operational runbooks (dead-node replacement, restore from backup, cluster resize, secret rotation, coherent backups, non-empty merge), deploy alignment (HAProxy fall/rise motivated per environment + sticky example; k8s readiness 5s/2 and liveness moved off the syncing path)</li>
 </ul>
-<p>It also closes a <strong>security workstream</strong> (review §3.7): the cluster authenticates the <em>sender</em> of every replication request but never the <em>receiver</em> of a fan-out, so a rogue peer discovered over mDNS can receive all newly written data without holding the shared secret. R3 (peer authentication, public-health minimisation) and R4 (verified inter-node TLS, secret-strength enforcement, anti-replay) close it; on an untrusted cluster network this carries P0 urgency.</p>
-<p><strong>Depends on</strong>: Phase 29. Critical for production <code>[cluster]</code> deployments: it closes the gap between the consistency guarantees the cluster declares and those it enforces, and the inter-node trust gaps found in review §3.7.</p>
+<p>It also closed a <strong>security workstream</strong> (the rogue-peer gap): the cluster authenticated the <em>sender</em> of every replication request but never the <em>receiver</em> of a fan-out, so a rogue peer discovered over mDNS could receive all newly written data without holding the shared secret. R3 (peer authentication, public-health minimisation) and R4 (verified inter-node TLS, secret-strength enforcement, anti-replay) closed it (decision H12).</p>
+<p><strong>Depends on</strong>: Phase 29. Critical for production <code>[cluster]</code> deployments: it closes the gap between the consistency guarantees the cluster declares and those it enforces, and the inter-node trust gaps found by the Phase 29 review.</p>
 <hr />
 <h3 id="phase-30-migration-and-maintenance-p3">Phase 30 — Migration and Maintenance [P3]<a class="headerlink" href="#phase-30-migration-and-maintenance-p3" title="Permanent link">&para;</a></h3>
 <p>In-place migration and maintenance tooling — change the metadata backend, the

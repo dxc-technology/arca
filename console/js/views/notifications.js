@@ -7,7 +7,7 @@ import { nodeSelectorMixin } from '../node-selector.js?v=node-views-2';
 // side panel detail, pagination bar, clear-all with confirmation.
 export function notificationsView() {
   return {
-    // Cluster node selector (R8): the event log is node-local.
+    // Cluster node selector: the event log is node-local.
     ...nodeSelectorMixin('notif'),
 
     _rawEntries: [],

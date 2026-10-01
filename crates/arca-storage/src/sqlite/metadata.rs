@@ -198,9 +198,8 @@ impl MetadataStore for SqliteStore {
 
                 // Authoritative CAS check, evaluated inside this transaction
                 // so no concurrent writer can commit between the check and
-                // the read (see plan §3: this replaces the handler's early
-                // check, which stays only as a cheap non-authoritative
-                // optimisation).
+                // the read. The handler's early check stays as a cheap early
+                // reject; this check is authoritative.
                 if !pre.is_empty() {
                     let current = fetch_current_object(&tx, &record.bucket, &record.key)?;
                     if let Err(code) = pre.evaluate(current.as_ref()) {
@@ -426,7 +425,7 @@ impl MetadataStore for SqliteStore {
                 // as `MetadataStore::get_latest_object` would see it
                 // (includes a delete marker). An absent object is always
                 // `Ok(())` — DeleteObject on a missing key is a no-op, never
-                // a precondition failure (existing behaviour, plan §3.5).
+                // a precondition failure (existing behaviour).
                 if !pre.is_empty() {
                     let current = fetch_latest_object(&tx, &bucket, &key)?;
                     if let Err(code) = pre.evaluate(current.as_ref()) {
@@ -709,9 +708,9 @@ impl MetadataStore for SqliteStore {
                 // replaces the whole row; on a tie the lock register
                 // (lock_updated_at) and the content register (content_updated_at)
                 // are merged independently so a re-encryption and a lock change
-                // never clobber each other (N2 ordering + Phase 30 WORM safety),
+                // never clobber each other (lock-state ordering + Phase 30 WORM safety),
                 // and an identical redelivery is skipped without a rewrite so two
-                // caught-up nodes don't redeliver forever (M7).
+                // caught-up nodes don't redeliver forever.
                 let (select_sql, delete_sql) = match &record.version_id {
                     Some(_) => (
                         format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3"),
@@ -922,7 +921,7 @@ impl MetadataStore for SqliteStore {
 
     async fn current_object_seq(&self) -> Result<u64, ArcaError> {
         // The counter, not MAX(seq) over rows: purged tombstones make the row
-        // maximum go backwards, which would false-alarm D3c rewind detection.
+        // maximum go backwards, which would false-alarm cursor rewind detection.
         self.read_conn()
             .call(move |conn| {
                 let v: i64 = conn.query_row("SELECT value FROM object_seq", [], |row| row.get(0))?;
@@ -934,7 +933,7 @@ impl MetadataStore for SqliteStore {
 
     async fn seed_object_seq_to_max(&self) -> Result<u64, ArcaError> {
         // Bump the counter UP to MAX(seq) over the rows when it lags; never
-        // rewind it (a rewind would trip peer D3c rewind detection). Both the
+        // rewind it (a rewind would trip peer cursor rewind detection). Both the
         // read and the conditional update run on the write connection in one
         // call so no concurrent write races between them (this tool runs with
         // the server stopped, but keep it correct regardless).
@@ -1117,7 +1116,7 @@ impl MetadataStore for SqliteStore {
         updated_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<(), ArcaError> {
         // Like set_bucket_config, but preserving the source's updated_at (the
-        // R5 reconcile LWW key) instead of stamping now().
+        // control reconcile LWW key) instead of stamping now().
         let bucket = bucket.to_string();
         let config_key = config_key.to_string();
         let config_value = config_value.to_string();
@@ -1197,7 +1196,7 @@ impl MetadataStore for SqliteStore {
             .call(move |conn| {
                 let tx = conn.transaction()?;
                 tx.execute("DELETE FROM bucket_tags WHERE bucket = ?1", params![bucket])?;
-                // One timestamp for the whole set: the control reconcile (R5)
+                // One timestamp for the whole set: the control reconcile
                 // treats a bucket's tags as a single LWW entity (replace-all
                 // semantics), keyed by MAX(updated_at) — equal here by design.
                 let now = chrono::Utc::now().to_rfc3339();
@@ -1590,9 +1589,9 @@ impl MetadataStore for SqliteStore {
             .call(move |conn| {
                 let tx = conn.transaction()?;
                 // Fresh seq so the lock change travels via the changed-since
-                // manifest to peers that miss the real-time fan-out (N1). Taken
+                // manifest to peers that miss the real-time fan-out. Taken
                 // before the row UPDATE per the next_object_seq lock-order rule.
-                // lock_updated_at orders the lock state across nodes (N2): the
+                // lock_updated_at orders the lock state across nodes: the
                 // row's last_modified does not change here, so without it a
                 // stale equal-timestamp copy applied later would clobber this.
                 let seq = next_object_seq(&tx)?;
@@ -1632,8 +1631,8 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;
-                // Fresh seq for manifest visibility (N1) and lock_updated_at
-                // for the lock-state LWW (N2) — see set_object_retention.
+                // Fresh seq for manifest visibility and lock_updated_at
+                // for the lock-state LWW — see set_object_retention.
                 let seq = next_object_seq(&tx)?;
                 let lock_updated_at = chrono::Utc::now().to_rfc3339();
                 let rows = if let Some(ref vid) = version_id {
@@ -1971,7 +1970,7 @@ fn fetch_latest_object(
 /// Fetches the current object exactly as `MetadataStore::get_object` would
 /// see it: the latest version, with delete markers filtered out. Used by
 /// `put_object_if` to evaluate `WritePrecondition` against what the
-/// handler-side early check already saw (see plan §3.5).
+/// handler-side early check already saw.
 fn fetch_current_object(
     conn: &Connection,
     bucket: &str,
@@ -2181,7 +2180,7 @@ fn row_to_bucket_info(row: &rusqlite::Row) -> Result<BucketInfo, rusqlite::Error
 /// Converts a SQLite row to a `MultipartUploadRecord`.
 ///
 /// Expects columns: upload_id, bucket, key, content_type, initiated_at, metadata.
-/// `pub(super)`: the control-snapshot builder reads these tables too (R5/D4).
+/// `pub(super)`: the control-snapshot builder reads these tables too (TD-016).
 pub(super) fn row_to_multipart_upload_record(
     row: &rusqlite::Row,
 ) -> Result<MultipartUploadRecord, rusqlite::Error> {
@@ -2216,7 +2215,7 @@ pub(super) fn row_to_multipart_upload_record(
 /// Converts a SQLite row to a `PartRecord`.
 ///
 /// Expects columns: upload_id, part_number, blob_id, size, etag, checksum_value, last_modified.
-/// `pub(super)`: the control-snapshot builder reads these tables too (R5/D4).
+/// `pub(super)`: the control-snapshot builder reads these tables too (TD-016).
 pub(super) fn row_to_part_record(row: &rusqlite::Row) -> Result<PartRecord, rusqlite::Error> {
     let checksum_value: Option<String> = row.get(5).unwrap_or(None);
     let last_modified_str: Option<String> = row.get(6).unwrap_or(None);
@@ -3483,7 +3482,7 @@ mod tests {
 
     #[tokio::test]
     async fn lock_changes_stamp_a_fresh_seq() {
-        // N1: retention/legal-hold UPDATEs must advance the row's seq so a peer
+        // Lock changes stamp a fresh seq: retention/legal-hold UPDATEs must advance the row's seq so a peer
         // that was down during the lock change pulls it via changed-since
         // (real-time fan-out is otherwise the only path that carries it).
         let store = test_store().await;
@@ -3508,7 +3507,7 @@ mod tests {
 
     #[tokio::test]
     async fn lock_changes_stamp_a_fresh_seq_on_versioned_rows() {
-        // Same N1 guarantee for the explicit version_id branch. Seeded via
+        // Same fresh-seq guarantee for the explicit version_id branch. Seeded via
         // apply_remote_object (verbatim insert): put_object generates its own
         // version ids.
         let store = test_store().await;
@@ -3555,7 +3554,7 @@ mod tests {
 
     #[tokio::test]
     async fn apply_remote_object_noops_on_identical_rows() {
-        // M7: re-applying a row a node already holds must not rewrite it nor
+        // Identical-row redelivery no-op: re-applying a row a node already holds must not rewrite it nor
         // stamp a fresh seq, otherwise two caught-up nodes redeliver their
         // whole object tables to each other on every anti-entropy pass.
         let store = test_store().await;
@@ -3585,7 +3584,7 @@ mod tests {
 
     #[tokio::test]
     async fn apply_remote_object_still_applies_lock_only_changes() {
-        // N1+N2+M7 interplay: a row equal on the LWW tuple (last_modified,
+        // Fresh seq + lock-state ordering + identical-row no-op interplay: a row equal on the LWW tuple (last_modified,
         // blob_id) but with a NEWER lock state (lock_updated_at) must still be
         // applied — the equal-timestamp lock tiebreak exists for exactly this
         // case (set_object_retention stamps lock_updated_at, so the fanned-out
@@ -3615,7 +3614,7 @@ mod tests {
 
     #[tokio::test]
     async fn apply_remote_object_stale_copy_cannot_clobber_newer_lock_state() {
-        // N2 regression (the phase-D retention clobber): after a lock change,
+        // Lock-state ordering regression (the retention clobber): after a lock change,
         // re-applying the STALE pre-lock copy of the same version (same
         // last_modified, no lock columns, no lock_updated_at) — exactly what a
         // restarted peer redelivers from its full manifest — must be a no-op,
@@ -3651,7 +3650,7 @@ mod tests {
 
     #[tokio::test]
     async fn apply_remote_object_stale_copy_cannot_clobber_lock_on_null_version() {
-        // N2, null-version branch: same regression for unversioned objects —
+        // Lock-state ordering, null-version branch: same regression for unversioned objects —
         // the (last_modified, blob_id) register ties, and lock_updated_at must
         // break the tie instead of the old blob_id `>=` pass-through.
         let store = test_store().await;
@@ -3675,7 +3674,7 @@ mod tests {
 
     #[tokio::test]
     async fn lock_updates_stamp_lock_updated_at() {
-        // N2: both lock mutations must record WHEN the lock state changed —
+        // Lock-state ordering: both lock mutations must record WHEN the lock state changed —
         // the LWW dimension the apply guards order ties by.
         let store = test_store().await;
         store.create_bucket("b").await.unwrap();
@@ -3959,7 +3958,7 @@ mod tests {
         assert_eq!(merged2.retention_mode.as_deref(), Some("GOVERNANCE"), "lock not reverted by re-encryption");
     }
 
-    // -- §7.2: conditional-write CAS (put_object_if / delete_object_if /
+    // -- conditional-write CAS unit tests (put_object_if / delete_object_if /
     // delete_object_version_if) --
 
     fn expect_precondition_failed(err: &ArcaError) {

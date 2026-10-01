@@ -1,4 +1,4 @@
--- HA hardening R7 (finding N2): retention/legal-hold changes are the only
+-- HA hardening, lock-state ordering: retention/legal-hold changes are the only
 -- in-place row updates that do not bump last_modified (matching S3), so two
 -- copies of the same version can differ ONLY in lock state while their LWW key
 -- ties. Without an ordering, whichever copy is applied later wins: a node

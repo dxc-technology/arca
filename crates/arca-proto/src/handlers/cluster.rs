@@ -1,7 +1,9 @@
 //! Cluster (HA) HTTP endpoints (Phase 29).
 //!
-//! - `GET /cluster/v1/health` — public liveness + identity (M1, minimized §3.5).
-//! - `GET /cluster/v1/ping` — authenticated identity/health + challenge MAC (H12).
+//! - `GET /cluster/v1/health` — public liveness + identity (minimal: no
+//!   fingerprint or disk stats).
+//! - `GET /cluster/v1/ping` — authenticated identity/health + challenge MAC
+//!   (decision H12).
 //! - `PUT /cluster/v1/blob/{id}` — receive a blob's raw bytes + sidecar verbatim.
 //! - `GET /cluster/v1/blob/{id}` — serve a blob's raw bytes + sidecar (repair).
 //! - `POST /cluster/v1/object` — receive an object row verbatim (LWW upsert).
@@ -40,13 +42,13 @@ struct ClusterHealthResponse {
 
 /// `GET /cluster/v1/health` — public liveness + identity for peers.
 ///
-/// Returns ONLY `{status, node_id}` (review §3.5/§3.7(B)): the config
-/// fingerprint would hand an attacker an offline brute-force oracle for the
-/// cluster secret, and disk stats are nobody's business unauthenticated — that
-/// detail now lives on the authenticated [`ping`]. `node_id` stays public so a
-/// peer's membership manager can identify a node (and recognise itself) before
-/// it can authenticate it. Responds 404 when this node is not part of a
-/// cluster, so a misconfigured probe gets a clear signal.
+/// Returns ONLY `{status, node_id}`: the config fingerprint would hand an
+/// attacker an offline brute-force oracle for the cluster secret, and disk
+/// stats are nobody's business unauthenticated — that detail now lives on the
+/// authenticated [`ping`]. `node_id` stays public so a peer's membership
+/// manager can identify a node (and recognise itself) before it can
+/// authenticate it. Responds 404 when this node is not part of a cluster, so a
+/// misconfigured probe gets a clear signal.
 pub async fn health(State(state): State<AppState>) -> Response {
     match &state.cluster {
         Some(cluster) => Json(ClusterHealthResponse {
@@ -59,15 +61,15 @@ pub async fn health(State(state): State<AppState>) -> Response {
 }
 
 /// `GET /cluster/v1/ping` — authenticated peer liveness + challenge-response
-/// (decision H12, review §3.7(A)).
+/// (decision H12).
 ///
 /// Sits behind `cluster_auth`, so only a holder of the cluster secret can read
-/// the detail that used to be public (fingerprint, disk stats — §3.5). The
-/// prober sends a fresh nonce in [`CLUSTER_PING_NONCE_HEADER`] (signed); the
+/// the detail that used to be public (fingerprint, disk stats). The prober
+/// sends a fresh nonce in [`CLUSTER_PING_NONCE_HEADER`] (signed); the
 /// response's `nonce_mac = HMAC(secret, nonce)` proves to the prober that THIS
-/// node holds the secret — answering 200 alone proves nothing (a rogue
-/// controls its own server), and a recorded MAC is useless against a fresh
-/// nonce. `max_seq` reports the object write cursor for D3c rewind detection.
+/// node holds the secret — answering 200 alone proves nothing (a rogue controls
+/// its own server), and a recorded MAC is useless against a fresh nonce.
+/// `max_seq` reports the object write cursor for cursor rewind detection.
 pub async fn ping(
     State(state): State<AppState>,
     matched: Option<axum::Extension<crate::middleware::cluster_auth::MatchedClusterSecret>>,
@@ -79,11 +81,11 @@ pub async fn ping(
             return (StatusCode::NOT_FOUND, "node is not part of a cluster").into_response()
         }
     };
-    // H8: MAC the challenge with the secret that verified THIS request — the
-    // prober signed with it and verifies the response against it, so during a
-    // rotation a peer probing with the old secret still gets a MAC it can
-    // check. Falls back to the current secret (the extension is always set by
-    // cluster_auth in practice).
+    // Decision H8: MAC the challenge with the secret that verified THIS request
+    // — the prober signed with it and verifies the response against it, so
+    // during a rotation a peer probing with the old secret still gets a MAC it
+    // can check. Falls back to the current secret (the extension is always set
+    // by cluster_auth in practice).
     let mac_secret = matched
         .map(|ext| ext.0 .0.to_string())
         .or_else(|| state.cluster_secret.clone());
@@ -216,7 +218,7 @@ pub async fn get_blob(State(state): State<AppState>, Path(blob_id): Path<String>
 /// [`arca_core::store::MetadataStore::apply_remote_object`] (idempotent upsert,
 /// LWW conflict resolution, deterministic `is_latest` recompute).
 ///
-/// Responds with a [`ClusterObjectAck`] (review §2.1, decision H2): this peer
+/// Responds with a [`ClusterObjectAck`] (decision H2): this peer
 /// self-certifies that the row is applied AND that the referenced blob is
 /// durably here (sidecar present — the blob fans out on `write_sidecar` before
 /// the origin sends the row, so a missing sidecar means that fan-out failed).
@@ -349,7 +351,7 @@ pub async fn receive_op(State(state): State<AppState>, body: Bytes) -> Response 
         ControlOp::TeamMemberRemove { team_id, user_id } => {
             teams.remove_member(&team_id, &user_id).await.map(|_| ())
         }
-        // D12.1: node-local keys (the node identity) must never be applied
+        // Node-local keys (the node identity) must never be applied
         // from a peer — the sender already filters them, but a buggy or older
         // peer must not be able to rewrite THIS node's identity. Dropping the
         // op is the correct outcome, so answer 200 (Ok), not an error.
@@ -459,12 +461,12 @@ pub async fn control_snapshot(State(state): State<AppState>) -> Response {
     }
 }
 
-/// Generic receive side of the admin proxy (review D6, decision H9): parses
-/// the forwarded query filter from the body and serves THIS node's page via
-/// the same function the local admin handler uses. Behind `cluster_auth`
-/// (+ the mTLS marker when `[cluster.tls]` is on) like every peer endpoint;
-/// errors come back as the admin `{"error","message"}` JSON the proxying side
-/// surfaces to the console.
+/// Generic receive side of the admin proxy (per-node admin views, decision H9):
+/// parses the forwarded query filter from the body and serves THIS node's page
+/// via the same function the local admin handler uses. Behind `cluster_auth` (+
+/// the mTLS marker when `[cluster.tls]` is on) like every peer endpoint; errors
+/// come back as the admin `{"error","message"}` JSON the proxying side surfaces
+/// to the console.
 macro_rules! admin_proxy_receiver {
     ($(#[$doc:meta])* $name:ident, $params:ty, $page:path) => {
         $(#[$doc])*
@@ -521,7 +523,7 @@ admin_proxy_receiver!(
     crate::handlers::admin_replication::journal_page
 );
 
-/// M6: blob ids are UUIDs minted by this codebase — refuse anything else
+/// Blob ids are UUIDs minted by this codebase — refuse anything else
 /// before the value reaches the blob layer, where it becomes a file name
 /// (defense in depth on top of the storage layer's own path handling).
 fn parse_blob_id(raw: &str) -> Result<BlobId, Response> {

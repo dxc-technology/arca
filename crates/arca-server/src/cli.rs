@@ -221,7 +221,7 @@ pub enum Command {
         action: UserAction,
     },
 
-    /// Inspect the HA cluster (this node's identity, peers, quorum)
+    /// Show this node's cluster identity and configured [cluster] settings
     Cluster {
         /// Path to the configuration file
         #[arg(long, default_value = "/etc/arca/config.toml")]
@@ -344,7 +344,7 @@ pub enum UserAction {
 
 #[derive(Subcommand)]
 pub enum ClusterAction {
-    /// Show this node's identity and the current cluster topology
+    /// Show this node's ID and its configured [cluster] settings (live state: GET /admin/cluster)
     Status,
 }
 

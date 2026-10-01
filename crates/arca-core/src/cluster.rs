@@ -3,8 +3,8 @@
 //! A dependency-light, observable view of the cluster shared between:
 //! - the membership manager (`arca-server`) which discovers peers via mDNS /
 //!   seeds and refreshes this state from health checks;
-//! - request handlers (`arca-proto`) which expose it via `/cluster/v1/health`,
-//!   `/admin/cluster`, and the console dashboard;
+//! - request handlers (`arca-proto`) which expose it via the authenticated
+//!   `/cluster/v1/ping`, `/admin/cluster`, and the console dashboard;
 //! - the cluster store decorators (`arca-server`) which read it for the write
 //!   quorum gate.
 //!
@@ -63,7 +63,7 @@ pub const NODE_ID_KEY: &str = "node_id";
 /// overwrite a peer's own identity. Every other setting (region, retention
 /// windows, log level, preview limits, lifecycle interval) is cluster-wide.
 /// Applied on BOTH sides — the sender's fan-out skips these keys, and the
-/// receive handler drops them (D12.1) — so one buggy or older peer cannot
+/// receive handler drops them too — so one buggy or older peer cannot
 /// rewrite another node's identity.
 pub fn is_node_local_server_config_key(key: &str) -> bool {
     key == NODE_ID_KEY
@@ -113,12 +113,12 @@ pub fn verify_ping_nonce_mac(secret: &str, nonce: &str, mac_hex: &str) -> bool {
     mac.verify_slice(&received).is_ok()
 }
 
-/// Response of the authenticated `GET /cluster/v1/ping` (decision H12, review
-/// §3.5): the peer-facing identity/health detail that used to live on the
+/// Response of the authenticated `GET /cluster/v1/ping` (decision H12): the
+/// peer-facing identity/health detail that used to live on the
 /// public `/cluster/v1/health`. Only an authenticated peer (signed request)
 /// can read it, and `nonce_mac` proves the responder's own possession of the
 /// secret to the prober. `max_seq` reports the node's object write cursor for
-/// restore/rewind detection (D3c). Shared contract between the ping handler
+/// restore/rewind detection. Shared contract between the ping handler
 /// (producer) and the membership prober (consumer).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClusterPingResponse {
@@ -142,15 +142,15 @@ pub struct ClusterPingResponse {
     pub nonce_mac: Option<String>,
 }
 
-/// Computes a fingerprint of the cluster-alignment-critical configuration —
-/// the fields that MUST be identical on every node for the cluster to work:
-/// `cluster_id`, the consistency contract (`mode` + effective write quorum), the
-/// shared `secret`, and the encryption master-key id. Nodes exchange this hash
-/// (via `/cluster/v1/health`) and flag any peer whose value differs, catching
-/// the silent misconfigurations: a wrong `secret` (replication 403s while the
-/// node still looks alive) or a different master key (encrypted blobs unreadable
-/// on the peer). Sensitive inputs (the secret) only feed the one-way hash; the
-/// output reveals nothing.
+/// Computes a fingerprint of the cluster-alignment-critical configuration — the
+/// fields that MUST be identical on every node for the cluster to work:
+/// `cluster_id`, the consistency contract (`mode` + effective write quorum),
+/// the shared `secret`, and the encryption master-key id. Nodes exchange this
+/// hash on the authenticated `/cluster/v1/ping` and flag any peer whose value
+/// differs, catching the silent misconfigurations: a wrong `secret`
+/// (replication 403s while the node still looks alive) or a different master
+/// key (encrypted blobs unreadable on the peer). Sensitive inputs (the secret)
+/// only feed the one-way hash; the output reveals nothing.
 pub fn config_fingerprint(
     cluster_id: &str,
     mode: &str,
@@ -187,7 +187,7 @@ pub struct ClusterVersionDelete {
 
 /// Response of `POST /cluster/v1/object` and `POST /cluster/v1/object/delete`:
 /// the receiving peer self-certifies what it durably holds, so the origin can
-/// count true replication ACKs for the write quorum (review §2.1, decision H2).
+/// count true replication ACKs for the write quorum (decision H2).
 /// Shared contract between the receive handler (producer) and the cluster
 /// client (consumer).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -201,7 +201,7 @@ pub struct ClusterObjectAck {
     pub has_blob: bool,
 }
 
-/// Whether a replicated write reached its durability quorum (review §2.1,
+/// Whether a replicated write reached its durability quorum (write quorum,
 /// decision H1): `acks` counts the nodes that durably hold the write — the
 /// local copy plus every peer that returned a full [`ClusterObjectAck`].
 ///
@@ -216,12 +216,12 @@ pub fn quorum_satisfied(acks: usize, write_quorum: Option<u32>) -> bool {
     }
 }
 
-/// Error of a [`ClusterAdminProxy`] query (review D6, decision H9).
+/// Error of a [`ClusterAdminProxy`] query (per-node admin views, decision H9).
 #[derive(Debug)]
 pub enum ClusterProxyError {
     /// The peer answered with a non-2xx HTTP status — its own admin-layer
     /// error (e.g. "audit logging is not enabled" on that node), or a 404
-    /// from a pre-R8 peer that has no `/cluster/v1/admin/*` routes yet.
+    /// from a pre-v0.26.0 peer that has no `/cluster/v1/admin/*` routes yet.
     Http { status: u16, body: String },
     /// The peer could not be reached at all (network error / timeout).
     Unreachable(String),
@@ -236,13 +236,13 @@ impl std::fmt::Display for ClusterProxyError {
     }
 }
 
-/// Signed transport for proxying node-local admin queries to a peer (review
-/// D6, decision H9): the console's per-node views (audit log, metrics history,
-/// notification events, replication journal) reach a specific node THROUGH
-/// whichever node the LB picked, via `POST /cluster/v1/admin/*` on the peer —
-/// browsers cannot reach cluster nodes directly in the typical deployment
-/// (only the LB is exposed), and the cluster credential never leaves the
-/// server side.
+/// Signed transport for proxying node-local admin queries to a peer (per-node
+/// admin views, decision H9): the console's per-node views (audit log, metrics
+/// history, notification events, replication journal) reach a specific node
+/// THROUGH whichever node the LB picked, via `POST /cluster/v1/admin/*` on the
+/// peer — browsers cannot reach cluster nodes directly in the typical
+/// deployment (only the LB is exposed), and the cluster credential never leaves
+/// the server side.
 ///
 /// Implemented in `arca-server` on top of the cluster transport client (which
 /// `arca-proto` cannot see — same dependency rationale as `RawBlobOps`).
@@ -399,7 +399,7 @@ pub struct TimestampedTeam {
     pub updated_at: DateTime<Utc>,
 }
 
-/// A user↔grant attachment with its last-write timestamp (HA hardening R5,
+/// A user↔grant attachment with its last-write timestamp (since v0.26.0,
 /// TD-016). The timestamp is a DB column (migration sqlite v22 / pg 0010)
 /// refreshed on every attach — including idempotent re-attaches, so a
 /// re-attach made while a peer concurrently detached still wins LWW.
@@ -453,7 +453,7 @@ pub struct TimestampedBucketTags {
 /// A cluster-wide server-config key/value with its last-write timestamp.
 /// Node-local keys ([`is_node_local_server_config_key`]) never appear in a
 /// snapshot — excluded at build AND ignored on apply (same double defense as
-/// the real-time D12.1 filter).
+/// the real-time receive-side filter).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimestampedServerConfig {
     pub key: String,
@@ -463,14 +463,15 @@ pub struct TimestampedServerConfig {
 
 /// Full control-plane state of a node, exchanged via `GET
 /// /cluster/v1/control-snapshot` and merged last-writer-wins by the reconcile
-/// pass (decision 12). Small and bounded (the control plane rarely changes), so
-/// shipping the whole thing each cycle is cheap and lets a long-absent node
-/// bootstrap past tombstone GC.
+/// pass: the control plane converges by full snapshot + per-row LWW +
+/// tombstones rather than an op-log. Small and bounded (the control plane
+/// rarely changes), so shipping the whole thing each cycle is cheap and lets a
+/// long-absent node bootstrap past tombstone GC.
 ///
-/// SCOPE: every control-plane family (HA hardening R5 closed TD-016).
+/// SCOPE: every control-plane family (since v0.26.0, which closed TD-016).
 /// Identity parents — credentials, users, teams, grants — plus buckets, the
 /// attachment/membership joins, bucket config/tags, cluster-wide server config
-/// and in-progress multipart uploads with their parts (D4). Grants travel with
+/// and in-progress multipart uploads with their parts. Grants travel with
 /// their struct-level `updated_at`; buckets are create/delete-only and
 /// reconcile on `created_at`; multipart uploads on `initiated_at` (immutable
 /// rows) and parts on `last_modified`; the remaining families pair the entity
@@ -478,9 +479,10 @@ pub struct TimestampedServerConfig {
 /// for every family except parts (a part disappears only with its upload —
 /// parent-dead filtering — or by being replaced under the same key).
 ///
-/// The R5 fields are `#[serde(default)]`: a snapshot from a pre-R5 peer
-/// (rolling upgrade, H10) deserializes with the families empty, which the
-/// merge treats as "no information" — nothing is deleted on either side.
+/// The families added in v0.26.0 are `#[serde(default)]`: a snapshot from an
+/// older peer (rolling upgrade, decision H10) deserializes with the families
+/// empty, which the merge treats as "no information" — nothing is deleted on
+/// either side.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ControlSnapshot {
     pub credentials: Vec<TimestampedCredential>,
@@ -524,9 +526,9 @@ pub struct ControlMergePlan {
     pub delete_teams: Vec<String>,
     pub delete_grants: Vec<String>,
     pub delete_buckets: Vec<String>,
-    /// R5 families. Child upserts (joins, bucket config/tags, parts) are
-    /// already parent-filtered by [`plan_control_merge`]: an entry whose parent
-    /// resolved dead never appears here.
+    /// Families added in v0.26.0. Child upserts (joins, bucket config/tags,
+    /// parts) are already parent-filtered by [`plan_control_merge`]: an entry
+    /// whose parent resolved dead never appears here.
     pub upsert_user_grants: Vec<TimestampedUserGrant>,
     pub upsert_team_grants: Vec<TimestampedTeamGrant>,
     pub upsert_team_members: Vec<TimestampedTeamMember>,
@@ -669,12 +671,12 @@ fn tombstone_map<'a>(
         .collect()
 }
 
-/// Computes the local writes needed to converge with `remote` (decision 12):
-/// last-writer-wins per entity, with deletions represented by tombstones so a
-/// peer that still holds a deleted entity cannot resurrect it. Pure: no I/O, so
-/// it is exhaustively unit-tested.
+/// Computes the local writes needed to converge with `remote` (full snapshot,
+/// per-row LWW and tombstones, no op-log): last-writer-wins per entity, with
+/// deletions represented by tombstones so a peer that still holds a deleted
+/// entity cannot resurrect it. Pure: no I/O, so it is exhaustively unit-tested.
 ///
-/// Covers every control-plane family (R5/TD-016): the parent families
+/// Covers every control-plane family (TD-016): the parent families
 /// (credentials, users, teams, grants, buckets, multipart uploads) resolve
 /// first and record which keys stay alive; the child families (grant
 /// attachments, memberships, bucket config/tags, parts) then skip any upsert
@@ -861,7 +863,7 @@ pub fn plan_control_merge(local: &ControlSnapshot, remote: &ControlSnapshot) -> 
         }
     }
 
-    // -- User↔grant attachments (R5; child of users AND grants) --
+    // -- User↔grant attachments (child of users AND grants) --
     {
         let l_alive: HashMap<String, &TimestampedUserGrant> = local
             .user_grants
@@ -897,7 +899,7 @@ pub fn plan_control_merge(local: &ControlSnapshot, remote: &ControlSnapshot) -> 
         }
     }
 
-    // -- Team↔grant attachments (R5; child of teams AND grants) --
+    // -- Team↔grant attachments (child of teams AND grants) --
     {
         let l_alive: HashMap<String, &TimestampedTeamGrant> = local
             .team_grants
@@ -933,7 +935,7 @@ pub fn plan_control_merge(local: &ControlSnapshot, remote: &ControlSnapshot) -> 
         }
     }
 
-    // -- Team memberships (R5; child of teams AND users) --
+    // -- Team memberships (child of teams AND users) --
     {
         let l_alive: HashMap<String, &TimestampedTeamMember> = local
             .team_members
@@ -969,7 +971,7 @@ pub fn plan_control_merge(local: &ControlSnapshot, remote: &ControlSnapshot) -> 
         }
     }
 
-    // -- Bucket config keys (R5; child of buckets) --
+    // -- Bucket config keys (child of buckets) --
     {
         let l_alive: HashMap<String, &TimestampedBucketConfig> = local
             .bucket_configs
@@ -1005,7 +1007,7 @@ pub fn plan_control_merge(local: &ControlSnapshot, remote: &ControlSnapshot) -> 
         }
     }
 
-    // -- Bucket tag sets (R5; child of buckets; the whole set is one entity) --
+    // -- Bucket tag sets (child of buckets; the whole set is one entity) --
     {
         let l_alive: HashMap<&str, &TimestampedBucketTags> = local
             .bucket_tags
@@ -1040,10 +1042,10 @@ pub fn plan_control_merge(local: &ControlSnapshot, remote: &ControlSnapshot) -> 
         }
     }
 
-    // -- Cluster-wide server config (R5; no parent). Node-local keys are
+    // -- Cluster-wide server config (no parent). Node-local keys are
     // excluded at snapshot build; filtered again here so even a buggy or
     // malicious snapshot cannot rewrite another node's identity (the same
-    // double defense as the real-time D12.1 filter). --
+    // double defense as the real-time receive-side filter). --
     {
         let l_alive: HashMap<&str, &TimestampedServerConfig> = local
             .server_configs
@@ -1081,7 +1083,7 @@ pub fn plan_control_merge(local: &ControlSnapshot, remote: &ControlSnapshot) -> 
         }
     }
 
-    // -- Multipart uploads (D4; immutable rows keyed by upload_id, alive ts =
+    // -- Multipart uploads (immutable rows keyed by upload_id, alive ts =
     // initiated_at; a Complete/Abort records a `multipart` tombstone so a
     // closed upload cannot resurrect from a peer that missed the close) --
     {
@@ -1119,7 +1121,7 @@ pub fn plan_control_merge(local: &ControlSnapshot, remote: &ControlSnapshot) -> 
         }
     }
 
-    // -- Multipart parts (D4; replace-only children of an upload). No
+    // -- Multipart parts (replace-only children of an upload). No
     // tombstones: a part disappears only with its upload (parent-dead filter,
     // delete_multipart_upload cascades the rows) or by being replaced under
     // the same (upload_id, part_number) key. --
@@ -1216,7 +1218,7 @@ fn union_keys<A, B, C, D>(
     keys.into_iter().collect()
 }
 
-/// [`union_keys`] for the composite-keyed R5 families, whose alive maps are
+/// [`union_keys`] for the composite-keyed families, whose alive maps are
 /// keyed by an owned [`pair_key`] (the dead maps stay borrowed: tombstones
 /// store the composite key verbatim).
 fn union_keys_owned<A, B, C, D>(
@@ -1244,7 +1246,7 @@ pub struct PeerNode {
     pub alive: bool,
     /// Timestamp of the last successful contact, if any. Kept on a DEAD peer
     /// (the last time it WAS reachable): the tombstone-GC liveness guard
-    /// (review §3.2) and membership pruning (M3) both reason about how long a
+    /// and membership pruning both reason about how long a
     /// peer has been unseen.
     pub last_seen: Option<DateTime<Utc>>,
     /// Whether the peer proved possession of the cluster secret on its most
@@ -1260,16 +1262,18 @@ pub struct PeerNode {
     /// know — don't cry wolf).
     #[serde(default = "default_true")]
     pub config_ok: bool,
-    /// Peer's total disk capacity (bytes), as it reported via health. `None`
-    /// until known. With full replication the smallest node bounds the cluster.
+    /// Peer's total disk capacity (bytes), as it reported on the authenticated
+    /// ping. `None` until known. With full replication the smallest node bounds
+    /// the cluster.
     #[serde(default)]
     pub disk_total: Option<u64>,
-    /// Peer's available disk space (bytes), as it reported via health.
+    /// Peer's available disk space (bytes), as it reported on the authenticated
+    /// ping.
     #[serde(default)]
     pub disk_available: Option<u64>,
     /// Highest object `seq` the peer reported on its most recent successful
     /// probe ([`ClusterPingResponse::max_seq`]). `None` for a legacy (pre-ping)
-    /// peer or a dead one. Feeds the D3c restore/rewind detection
+    /// peer or a dead one. Feeds the restore/rewind detection
     /// ([`sync_rewound`]): a peer restored from backup reports a counter lower
     /// than the high-water mark this node already consumed.
     #[serde(default)]
@@ -1282,7 +1286,7 @@ impl PeerNode {
     /// and config-aligned (decision H7). This single predicate gates the
     /// fan-out target list, the write-quorum count, anti-entropy pulls, and
     /// the capacity minimum — an unauthenticated or drifted peer can neither
-    /// receive replicas nor sustain a quorum (review §3.7(A), D1).
+    /// receive replicas nor sustain a quorum (no rogue peer, no "ghost quorum").
     pub fn eligible(&self) -> bool {
         self.alive && self.authenticated && self.config_ok
     }
@@ -1292,13 +1296,13 @@ fn default_true() -> bool {
     true
 }
 
-/// §3.2 — tombstone-GC liveness guard: the known peers whose last contact is
+/// Tombstone-GC liveness guard: the known peers whose last contact is
 /// missing or older than the grace window. While any exist, purging tombstones
 /// is unsafe: a tombstone recorded while such a peer was already unreachable
 /// would be gone before the peer ever learns of the deletion, and its stale
 /// live row would resurrect the object on re-entry. (A peer seen within the
 /// grace necessarily saw — or will pull, it is reachable — every tombstone
-/// older than the grace, so purging those is safe.) Membership pruning (M3)
+/// older than the grace, so purging those is safe.) Membership pruning
 /// eventually removes never-returning peers so they cannot block GC forever;
 /// a beyond-grace re-entry after pruning is a documented residual risk.
 pub fn tombstone_gc_blockers(
@@ -1315,7 +1319,7 @@ pub fn tombstone_gc_blockers(
 }
 
 /// This node's anti-entropy pull-synchronization status toward ONE peer
-/// (review D2 — syncing readiness; M1 — stuck-entry evidence). Node-local and
+/// (syncing readiness gate; stuck-entry skip evidence). Node-local and
 /// in-memory, like the high-water mark itself: it describes how far THIS node
 /// has consumed a peer's changes since its own startup, so it resets on
 /// restart (costing one extra idempotent full pass) and must never be
@@ -1325,7 +1329,7 @@ pub struct PeerSyncStatus {
     /// High-water mark: the highest peer `seq` the incremental object
     /// reconcile has applied.
     pub hwm: u64,
-    /// When the HWM last advanced. Freshness anchor for the D3c rewind check
+    /// When the HWM last advanced. Freshness anchor for the rewind check
     /// ([`sync_rewound`]): a peer-reported `max_seq` older than this may
     /// legitimately predate rows already pulled.
     pub hwm_at: Option<DateTime<Utc>>,
@@ -1333,22 +1337,22 @@ pub struct PeerSyncStatus {
     /// (objects caught up + control snapshot merged).
     pub last_reconcile: Option<DateTime<Utc>>,
     /// Whether at least one full pass completed since this node started. The
-    /// D2 readiness gate: until true for every eligible peer, this node may
+    /// syncing readiness gate: until true for every eligible peer, this node may
     /// still be missing rows and `/admin/health` reports `syncing`.
     pub first_pass_done: bool,
-    /// M1: manifest entries skipped after persistently failing to apply
-    /// (operator evidence — a skipped entry means that key may not converge
+    /// Stuck-entry skip: manifest entries skipped after persistently failing to
+    /// apply (operator evidence — a skipped entry means that key may not converge
     /// here until it changes again on the peer).
     pub skipped_entries: u64,
 }
 
-/// D3c — restore/rewind detection: whether a peer's reported object-seq
-/// counter ([`PeerNode::max_seq`], from the authenticated ping) has rewound
-/// below the high-water mark this node already consumed from it. That happens
-/// when the peer was restored from a backup: its post-restore writes re-use
-/// seq values below our HWM and would stay invisible to the incremental sync
-/// until this node restarts. The caller's remedy is to reset the HWM to 0 (one
-/// idempotent full re-pull).
+/// Cursor rewind detection (restore from backup): whether a peer's reported
+/// object-seq counter ([`PeerNode::max_seq`], from the authenticated ping) has
+/// rewound below the high-water mark this node already consumed from it. That
+/// happens when the peer was restored from a backup: its post-restore writes
+/// re-use seq values below our HWM and would stay invisible to the incremental
+/// sync until this node restarts. The caller's remedy is to reset the HWM to 0
+/// (one idempotent full re-pull).
 ///
 /// The freshness guard (`peer_last_seen > hwm_at`) avoids the false alarm
 /// under sustained writes: probe and reconcile run on independent cadences, so
@@ -1396,10 +1400,11 @@ pub enum WriteGate {
     /// Quorum mode: too few eligible nodes (authenticated + config-aligned,
     /// including self) to possibly reach the write quorum.
     NoQuorum { eligible: usize, quorum: u32 },
-    /// Quorum mode, decision H6 (D3a): MORE eligible nodes than the configured
-    /// `cluster_size`. The write majority is derived from `cluster_size`, so an
-    /// over-sized membership can form two disjoint "majorities" (split-brain).
-    /// A misconfiguration this dangerous fails closed — no escape hatch.
+    /// Quorum mode, cluster-size guard (decision H6): MORE eligible nodes than
+    /// the configured `cluster_size`. The write majority is derived from
+    /// `cluster_size`, so an over-sized membership can form two disjoint
+    /// "majorities" (split-brain). A misconfiguration this dangerous fails
+    /// closed — no escape hatch.
     SizeExceeded { eligible: usize, cluster_size: u32 },
 }
 
@@ -1422,20 +1427,23 @@ pub struct ClusterSnapshot {
     /// config-aligned peers, plus this node). This is the number the write
     /// quorum is measured against.
     pub eligible_node_count: usize,
-    /// Decision H6 (D3a): true when eligible nodes exceed the configured
-    /// `cluster_size` — the write gate is closed until the operator resizes.
+    /// Cluster-size guard (decision H6): true when eligible nodes exceed the
+    /// configured `cluster_size` — the write gate is closed until the operator
+    /// resizes.
     pub size_exceeded: bool,
-    /// Review §3.2: true when the anti-entropy worker is skipping tombstone GC
-    /// because a known peer has been unreachable beyond the grace window.
+    /// Tombstone-GC liveness guard: true when the anti-entropy worker is
+    /// skipping tombstone GC because a known peer has been unreachable beyond
+    /// the grace window.
     pub tombstone_gc_blocked: bool,
-    /// Decision H5 (review §3.3): true when THIS node currently holds the
+    /// Decision H5: true when THIS node currently holds the
     /// worker-leader role (lowest `node_id` among eligible nodes) and so runs
     /// the cluster-singleton background work. In a stable cluster exactly one
     /// node reports `true`.
     pub worker_leader: bool,
-    /// Review D2: true while this node has not completed its first anti-entropy
-    /// pass toward every eligible peer since startup — it may still be missing
-    /// rows and should not receive LB traffic (`/admin/health` answers 503).
+    /// Syncing readiness gate: true while this node has not completed its first
+    /// anti-entropy pass toward every eligible peer since startup — it may
+    /// still be missing rows and should not receive LB traffic (`/admin/health`
+    /// answers 503).
     pub syncing: bool,
     /// All known peers (alive or not).
     pub peers: Vec<PeerNode>,
@@ -1452,7 +1460,8 @@ pub struct ClusterState {
     /// "available" mode: any single node may ACK (W=1).
     write_quorum: Option<u32>,
     /// Configured expected cluster size (quorum mode; `None` in available
-    /// mode). The H6 (D3a) gate refuses writes when eligible nodes exceed it.
+    /// mode). The cluster-size guard (decision H6) refuses writes when eligible
+    /// nodes exceed it.
     cluster_size: Option<u32>,
     /// Currently known peers (excluding self).
     peers: RwLock<Vec<PeerNode>>,
@@ -1464,10 +1473,12 @@ pub struct ClusterState {
     /// set (e.g. before the master key is resolved). Peers' fingerprints are
     /// compared against this to flag config drift.
     config_fingerprint: RwLock<Option<String>>,
-    /// Review §3.2: set by the anti-entropy worker while it is skipping
-    /// tombstone GC because a known peer is unseen beyond the grace window.
+    /// Tombstone-GC liveness guard: set by the anti-entropy worker while it is
+    /// skipping tombstone GC because a known peer is unseen beyond the grace
+    /// window.
     tombstone_gc_blocked: AtomicBool,
-    /// Review D2/D3c/M1: per-peer pull-sync status (keyed by peer `node_id`),
+    /// Per-peer pull-sync status (keyed by peer `node_id`) behind the syncing
+    /// readiness gate, cursor rewind detection and the stuck-entry skip,
     /// written by the anti-entropy worker and read by the health/admin
     /// endpoints. In-memory by design, like the HWM it carries.
     sync: RwLock<std::collections::HashMap<String, PeerSyncStatus>>,
@@ -1476,8 +1487,8 @@ pub struct ClusterState {
 impl ClusterState {
     /// Creates cluster state for this node. `write_quorum` is the majority
     /// threshold in quorum mode, or `None` in available mode; `cluster_size`
-    /// is the configured expected size (quorum mode only — it drives the H6
-    /// over-size write gate).
+    /// is the configured expected size (quorum mode only — it drives the
+    /// decision H6 over-size write gate).
     pub fn new(
         node_id: impl Into<String>,
         write_quorum: Option<u32>,
@@ -1562,9 +1573,9 @@ impl ClusterState {
     }
 
     /// Replaces the known peer set (called by the membership manager). Sync
-    /// statuses of peers no longer known (pruned by M3) are dropped with them;
-    /// a dead-but-remembered peer keeps its entry, so a returning node resumes
-    /// from its incremental HWM instead of a full re-pull.
+    /// statuses of peers no longer known (membership pruning) are dropped with
+    /// them; a dead-but-remembered peer keeps its entry, so a returning node
+    /// resumes from its incremental HWM instead of a full re-pull.
     pub fn set_peers(&self, peers: Vec<PeerNode>) {
         self.sync
             .write()
@@ -1594,7 +1605,7 @@ impl ClusterState {
     }
 
     /// Records an object-reconcile HWM advance toward a peer (`at` anchors the
-    /// D3c freshness guard — see [`sync_rewound`]).
+    /// rewind-detection freshness guard — see [`sync_rewound`]).
     pub fn set_sync_hwm(&self, node_id: &str, hwm: u64, at: DateTime<Utc>) {
         let mut sync = self.sync.write().expect("cluster sync lock poisoned");
         let entry = sync.entry(node_id.to_string()).or_default();
@@ -1602,9 +1613,9 @@ impl ClusterState {
         entry.hwm_at = Some(at);
     }
 
-    /// D3c: resets a peer's HWM to 0 after its seq counter was observed to
-    /// rewind (restore from backup) — the next pass re-pulls its full
-    /// manifest (idempotent).
+    /// Cursor rewind detection: resets a peer's HWM to 0 after its seq counter
+    /// was observed to rewind (restore from backup) — the next pass re-pulls
+    /// its full manifest (idempotent).
     pub fn reset_sync_hwm(&self, node_id: &str) {
         let mut sync = self.sync.write().expect("cluster sync lock poisoned");
         let entry = sync.entry(node_id.to_string()).or_default();
@@ -1614,7 +1625,7 @@ impl ClusterState {
 
     /// Marks a completed FULL reconcile pass toward a peer (objects caught up
     /// + control snapshot merged): stamps `last_reconcile` and latches
-    /// `first_pass_done` (the D2 readiness signal).
+    /// `first_pass_done` (the syncing readiness signal).
     pub fn record_reconcile_complete(&self, node_id: &str, at: DateTime<Utc>) {
         let mut sync = self.sync.write().expect("cluster sync lock poisoned");
         let entry = sync.entry(node_id.to_string()).or_default();
@@ -1622,14 +1633,14 @@ impl ClusterState {
         entry.first_pass_done = true;
     }
 
-    /// M1: counts a manifest entry skipped after persistent apply failures
-    /// (operator evidence in `/admin/cluster`).
+    /// Stuck-entry skip: counts a manifest entry skipped after persistent apply
+    /// failures (operator evidence in `/admin/cluster`).
     pub fn record_skipped_entry(&self, node_id: &str) {
         let mut sync = self.sync.write().expect("cluster sync lock poisoned");
         sync.entry(node_id.to_string()).or_default().skipped_entries += 1;
     }
 
-    /// Review D2 — the readiness gate: true while any ELIGIBLE peer lacks a
+    /// Syncing readiness gate: true while any ELIGIBLE peer lacks a
     /// completed first reconcile pass since this node started. Until then this
     /// node may answer 404s / partial listings for data it has not pulled yet,
     /// so `/admin/health` reports `syncing` (503) and the LB keeps it out of
@@ -1685,13 +1696,13 @@ impl ClusterState {
     }
 
     /// Nodes that count for replication, including this node. The write
-    /// quorum and the H6 size gate are measured against this.
+    /// quorum and the decision H6 size gate are measured against this.
     pub fn eligible_node_count(&self) -> usize {
         self.eligible_peer_count() + 1
     }
 
     /// The admission write gate under the configured consistency policy
-    /// (decisions H12/H7/H6 — review §3.7(A), D1, D3a).
+    /// (decisions H12, H7 and H6).
     ///
     /// - Available mode (`write_quorum == None`): always [`WriteGate::Open`].
     /// - Quorum mode: counts ELIGIBLE nodes (authenticated + config-aligned
@@ -1726,20 +1737,20 @@ impl ClusterState {
         self.write_gate() == WriteGate::Open
     }
 
-    /// Decision H5 (review §3.3) — the symmetric worker-leader gate: this
+    /// Decision H5 — the symmetric worker-leader gate: this
     /// node runs the cluster-singleton background work (the lifecycle
     /// evaluator) iff it has the lowest `node_id` among the ELIGIBLE nodes
     /// (authenticated + config-aligned peers, plus self). Counting eligible —
     /// not merely alive — nodes is deliberate: an unauthenticated rogue or a
     /// drifted peer with a low `node_id` must not be able to steal the role
     /// and silence the workers cluster-wide (the same rationale that gates
-    /// the quorum and `min_disk` on eligibility — review §3.7(A), D1).
+    /// the quorum and `min_disk` on eligibility).
     ///
     /// Trivially true single-node (no peers). Failover is automatic: when the
     /// leader dies, the next-lowest eligible node observes it at its next
     /// membership tick and takes the role. During a membership disagreement
-    /// two nodes can briefly both claim it — a double-execution window H5
-    /// explicitly accepts (the gated work is idempotent and converges).
+    /// two nodes can briefly both claim it — a double-execution window decision
+    /// H5 explicitly accepts (the gated work is idempotent and converges).
     pub fn is_worker_leader(&self) -> bool {
         self.peers
             .read()
@@ -1750,12 +1761,12 @@ impl ClusterState {
     }
 
     /// Records whether the anti-entropy worker is currently skipping tombstone
-    /// GC because of an unseen-beyond-grace peer (review §3.2).
+    /// GC because of an unseen-beyond-grace peer (tombstone-GC liveness guard).
     pub fn set_tombstone_gc_blocked(&self, blocked: bool) {
         self.tombstone_gc_blocked.store(blocked, Ordering::Relaxed);
     }
 
-    /// Whether tombstone GC is currently blocked by the §3.2 liveness guard.
+    /// Whether tombstone GC is currently blocked by the liveness guard.
     pub fn tombstone_gc_blocked(&self) -> bool {
         self.tombstone_gc_blocked.load(Ordering::Relaxed)
     }
@@ -1814,7 +1825,7 @@ mod tests {
         // 3-node cluster, write_quorum = 2: local + 1 peer ACK suffices.
         assert!(quorum_satisfied(2, Some(2)));
         assert!(quorum_satisfied(3, Some(2)));
-        // Local copy alone is NOT a quorum: the write must error (review §2.1 —
+        // Local copy alone is NOT a quorum: the write must error (decision H1 —
         // an admitted write whose fan-out failed everywhere is a ghost write).
         assert!(!quorum_satisfied(1, Some(2)));
         assert!(!quorum_satisfied(0, Some(2)));
@@ -2312,7 +2323,7 @@ mod tests {
         assert!(plan.delete_credentials.is_empty());
     }
 
-    // --- plan_control_merge: R5 families (TD-016) ----------------------------
+    // --- plan_control_merge: families added in v0.26.0 (TD-016) ------------
 
     fn tuser(id: &str, updated: i64) -> TimestampedUser {
         TimestampedUser {
@@ -2551,7 +2562,8 @@ mod tests {
     #[test]
     fn merge_server_config_skips_node_local_keys() {
         // Even a snapshot that (wrongly or maliciously) carries node_id must
-        // not rewrite this node's identity — same double defense as D12.1.
+        // not rewrite this node's identity — same double defense as the
+        // real-time receive-side filter.
         let sc = |key: &str, value: &str, at: i64| TimestampedServerConfig {
             key: key.to_string(),
             value: value.to_string(),
@@ -2620,9 +2632,9 @@ mod tests {
 
     #[test]
     fn merge_legacy_snapshot_without_r5_families_deletes_nothing() {
-        // Rolling upgrade (H10): a pre-R5 peer's snapshot deserializes with the
-        // new families empty. That must read as "no information", never as
-        // "everything was deleted".
+        // Rolling upgrade (decision H10): a pre-v0.26.0 peer's snapshot
+        // deserializes with the new families empty. That must read as "no
+        // information", never as "everything was deleted".
         let legacy_json = r#"{
             "credentials": [], "users": [], "teams": [], "grants": [],
             "buckets": [], "tombstones": []
@@ -2681,7 +2693,7 @@ mod tests {
         assert_eq!(back.node_id, "n1");
         assert_eq!(back.max_seq, 7);
         assert_eq!(back.nonce_mac.as_deref(), Some("deadbeef"));
-        // Additive wire change (H10): a minimal body still parses.
+        // Additive wire change (decision H10): a minimal body still parses.
         let minimal: ClusterPingResponse =
             serde_json::from_str(r#"{"status":"ok","node_id":"n2"}"#).unwrap();
         assert_eq!(minimal.node_id, "n2");
@@ -2689,7 +2701,7 @@ mod tests {
         assert!(minimal.nonce_mac.is_none());
     }
 
-    // --- peer eligibility (decisions H12/H7 — §3.7(A), D1) ------------------
+    // --- peer eligibility (decisions H12 and H7) ---------------------------
 
     #[test]
     fn eligible_requires_alive_authenticated_and_aligned() {
@@ -2698,7 +2710,7 @@ mod tests {
         p.authenticated = false; // a rogue / legacy peer: alive, not eligible
         assert!(!p.eligible());
         p.authenticated = true;
-        p.config_ok = false; // drifted config: not eligible (H7)
+        p.config_ok = false; // drifted config: not eligible (decision H7)
         assert!(!p.eligible());
         p.config_ok = true;
         p.alive = false;
@@ -2713,7 +2725,7 @@ mod tests {
         rogue.authenticated = false;
         state.set_peers(vec![rogue]);
         // The rogue is alive (visible) but must not make the quorum (ghost
-        // quorum, review §3.7(A)): counting it would fan out all new writes
+        // quorum, rogue-peer gap): counting it would fan out all new writes
         // to a node that never proved possession of the secret.
         assert_eq!(state.live_node_count(), 2);
         assert_eq!(state.eligible_node_count(), 1);
@@ -2735,7 +2747,7 @@ mod tests {
         assert_eq!(state.live_node_count(), 2, "still visible as alive");
     }
 
-    // --- cluster_size write gate (decision H6 — D3a) -------------------------
+    // --- cluster_size write gate (decision H6) ------------------------------
 
     #[test]
     fn size_exceeded_closes_the_write_gate() {
@@ -2774,7 +2786,7 @@ mod tests {
 
     #[test]
     fn available_mode_never_size_gates() {
-        // H6 applies to quorum mode only (available mode has no derived
+        // Decision H6 applies to quorum mode only (available mode has no derived
         // majority to corrupt).
         let state = ClusterState::new("self", None, None);
         state.set_peers(vec![
@@ -2817,7 +2829,7 @@ mod tests {
         assert_eq!(state.min_disk(Some(100), Some(50)), (Some(100), Some(50)));
     }
 
-    // --- tombstone GC liveness guard (review §3.2) ---------------------------
+    // --- tombstone GC liveness guard -----------------------------------------
 
     #[test]
     fn gc_blockers_flags_peers_unseen_beyond_grace() {
@@ -2862,7 +2874,7 @@ mod tests {
 
     #[test]
     fn peer_node_deserializes_legacy_payload_as_unauthenticated() {
-        // A payload without the `authenticated` field (pre-R3 producer) must
+        // A payload without the `authenticated` field (pre-v0.26.0 producer) must
         // default to NOT authenticated — the secure default.
         let json = r#"{"node_id":"n2","endpoint":"http://n2:9000","alive":true,"last_seen":null}"#;
         let p: PeerNode = serde_json::from_str(json).unwrap();
@@ -2871,7 +2883,7 @@ mod tests {
         assert_eq!(p.max_seq, None, "no seq report from a legacy payload");
     }
 
-    // --- syncing readiness (review D2) ---------------------------------------
+    // --- syncing readiness gate -----------------------------------------------
 
     #[test]
     fn syncing_until_first_pass_completes_toward_every_eligible_peer() {
@@ -2939,7 +2951,7 @@ mod tests {
         assert_eq!(state.sync_status().len(), 1);
     }
 
-    // --- restore/rewind detection (review D3c) --------------------------------
+    // --- restore/rewind detection (cursor rewind detection) -------------------
 
     #[test]
     fn rewind_detected_only_on_fresh_lower_report() {

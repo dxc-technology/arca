@@ -14,7 +14,7 @@ data_dir = "/data"
 enabled = true
 cluster_id = "arca-cluster"
 # Shared secret authenticating inter-node /cluster/v1/* requests. DEV value
-# (passes the M5 strength floor) — change for any real deployment
+# (passes the 16-character secret floor) — change for any real deployment
 # (`openssl rand -hex 32`). Same value as config.toml: the overlay changes
 # ONLY the consistency mode.
 secret = "arca-itest-cluster-secret-3f9c2a71"
@@ -31,7 +31,7 @@ anti_entropy_interval_seconds = 5
 # during partition tests (not part of the config-drift fingerprint).
 request_timeout_seconds = 5
 
-# Short lifecycle-evaluation interval so the R6 worker-leader tests observe an
+# Short lifecycle-evaluation interval so the worker-leader tests observe an
 # expiry within seconds (default: 3600). Not part of the drift fingerprint.
 [lifecycle]
 interval_seconds = 5
