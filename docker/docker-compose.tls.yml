@@ -26,7 +26,7 @@ services:
     environment:
       - ARCA_ENDPOINT=
     # The console runs as uid 100, Arca as 65532, and both read the same key
-    # from ./certs. The key is group-readable by Arca's service GID (0640,
+    # from ${ARCA_CERTS_DIR} (see the header). The key is group-readable by Arca's service GID (0640,
     # group 65532), so the console needs that GID as a supplementary group —
     # the compose equivalent of the fsGroup in deploy/kubernetes.
     group_add: ["65532"]

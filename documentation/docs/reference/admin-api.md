@@ -4,7 +4,7 @@ JSON-based administration API for managing the Arca server. All endpoints live u
 
 ## Authentication
 
-All endpoints except `/admin/health` require **AWS SigV4** authentication — the same mechanism used for S3 requests. Only credentials with the **admin** flag can access admin endpoints. Non-admin credentials receive a `403 AccessDenied` response but can still use the S3 API normally.
+All endpoints except `/admin/health` require **AWS SigV4** authentication — the same mechanism used for S3 requests. Access follows the credential's **user**, not the credential itself: a request is allowed when the user is root, or when the user's effective grants allow the `arca:*` action mapped from the admin path. Other credentials receive a `403 AccessDenied` response but can still use the S3 API normally.
 
 Authorization is controlled through grants (policy documents) attached to users and teams. Root users have unrestricted access to all endpoints. Non-root users need grants with the appropriate `arca:*` actions to access admin endpoints.
 
@@ -40,13 +40,166 @@ GET /admin/health
 
 **Auth**: None (designed for load balancer probes).
 
-**Response** `200`:
+**Query parameters**:
+
+| Parameter | Description |
+|-----------|-------------|
+| `writable` | Write-aware variant (`?writable=1`): additionally answers `503 read_only` while the node's cluster write gate is closed. |
+| `verbose` | Detailed view (`?verbose=1`): always answers `200` with the state and the cluster snapshot. |
+
+Both flags accept `1`, `true` or an empty value (`?verbose`).
+
+**Response** `200` (the node is ready):
 
 ```json
 {
     "status": "ok"
 }
 ```
+
+**Response** `503` (the node is not ready), with a `Retry-After: 5` header:
+
+```json
+{
+    "status": "syncing"
+}
+```
+
+The `status` value is resolved in this order of precedence:
+
+| Status | When |
+|--------|------|
+| `draining` | A graceful shutdown is in progress, or a maintenance-mode job is draining the S3 API on this node. Wins over every other state. |
+| `syncing` | Clustered node only: it has not yet completed its first anti-entropy pass toward every eligible peer since startup, so it could still answer stale reads. A node with no eligible peers has nothing to sync from and reports `ok`. |
+| `read_only` | Only with `?writable=1`: the cluster write gate is closed (write quorum lost, or more eligible nodes than `cluster_size`). Without `writable=1` a read-only node answers `200 ok`, because it can still serve reads. Single-node deployments and `available` mode are always writable. |
+| `ok` | None of the above. |
+
+Point the default load balancer check at plain `/admin/health`, and the health check of a separate *write pool* at `/admin/health?writable=1`. See the [High Availability guide](../guide/ha.md#load-balancer) for the operator view.
+
+**Response with `?verbose=1`** `200` (never `503`, so an inspector always gets the detail; the state is in `status`):
+
+```json
+{
+    "status": "ok",
+    "draining": false,
+    "cluster": {
+        "node_id": "node-a",
+        "local_endpoint": "https://10.0.0.1:9000",
+        "write_quorum": 2,
+        "has_write_quorum": true,
+        "live_node_count": 3,
+        "eligible_node_count": 3,
+        "size_exceeded": false,
+        "tombstone_gc_blocked": false,
+        "worker_leader": true,
+        "syncing": false,
+        "peers": [ "...one entry per known peer..." ]
+    }
+}
+```
+
+`cluster` is `null` on a single-node deployment. Its fields mirror [`GET /admin/cluster`](#cluster-topology) (`write_quorum` is `null` in `available` mode); each `peers` entry carries `node_id`, `endpoint`, `alive`, `last_seen`, `authenticated`, `config_ok`, `disk_total`, `disk_available` and `max_seq`.
+
+---
+
+### Cluster Topology
+
+```
+GET /admin/cluster
+```
+
+**Auth**: SigV4
+
+Returns the cluster topology and consistency state as seen by the node serving the request (this is what the console topology card renders). This is the live view: `arca cluster status` on the command line only prints the node identity and the static configuration.
+
+**Response** `200` (single-node deployment):
+
+```json
+{
+    "enabled": false
+}
+```
+
+**Response** `200` (clustered):
+
+```json
+{
+    "enabled": true,
+    "mode": "quorum",
+    "node_id": "node-a",
+    "write_quorum": 2,
+    "has_write_quorum": true,
+    "live_node_count": 3,
+    "eligible_node_count": 3,
+    "node_count": 3,
+    "config_aligned": true,
+    "size_exceeded": false,
+    "tombstone_gc_blocked": false,
+    "worker_leader": true,
+    "syncing": false,
+    "disk_total_bytes": 107374182400,
+    "disk_available_bytes": 53687091200,
+    "nodes": [
+        {
+            "node_id": "node-a",
+            "endpoint": "https://10.0.0.1:9000",
+            "alive": true,
+            "local": true,
+            "authenticated": true,
+            "config_ok": true
+        },
+        {
+            "node_id": "node-b",
+            "endpoint": "https://10.0.0.2:9000",
+            "alive": true,
+            "last_seen": "2026-06-24T10:02:11+00:00",
+            "local": false,
+            "authenticated": true,
+            "config_ok": true,
+            "sync": {
+                "hwm": 1532,
+                "lag": 0,
+                "last_reconcile": "2026-06-24T10:01:40+00:00",
+                "first_pass_done": true,
+                "skipped_entries": 0
+            }
+        }
+    ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | boolean | `false` on a single-node deployment, in which case every other field is omitted |
+| `mode` | string | `quorum` (a majority must hold a write) or `available` (always writable, best-effort replication) |
+| `node_id` | string | Identity of the node serving the request |
+| `write_quorum` | integer? | Durable copies required to acknowledge a write. Omitted in `available` mode. |
+| `has_write_quorum` | boolean | Whether writes can currently be acknowledged |
+| `live_node_count` | integer | Reachable nodes, including this one (unauthenticated and config-drifted nodes included) |
+| `eligible_node_count` | integer | Nodes that count for replication and quorum (alive, authenticated and config-aligned, including this one) |
+| `node_count` | integer | Total known nodes, including this one |
+| `config_aligned` | boolean | `false` when any live peer's cluster-critical configuration differs from this node's |
+| `size_exceeded` | boolean | `true` when more eligible nodes than `cluster_size` are live: the write gate is closed until the cluster is resized |
+| `tombstone_gc_blocked` | boolean | `true` while tombstone GC is skipped because a known peer has been unreachable beyond the grace window |
+| `worker_leader` | boolean | `true` when this node runs the cluster-singleton background work (exactly one node in a stable cluster) |
+| `syncing` | boolean | `true` until this node completes its first anti-entropy pass toward every eligible peer (`/admin/health` answers `503` meanwhile) |
+| `disk_total_bytes` / `disk_available_bytes` | integer? | Cluster-effective disk capacity and free space: the minimum across this node and the live peers. Omitted if unavailable. |
+| `nodes` | array | This node first, then every known peer |
+
+Each `nodes` entry:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `node_id` | string | Node identity |
+| `endpoint` | string? | Peer base URL. On the local node, present only once it has learned its own advertised endpoint. |
+| `alive` | boolean | Whether the most recent probe succeeded (always `true` for the local node) |
+| `last_seen` | string? | Last successful contact (RFC 3339), kept on a dead peer. Omitted on the local node and on peers never reached. |
+| `local` | boolean | `true` for the node serving the request |
+| `authenticated` | boolean | Whether the node proved possession of the cluster secret on its last probe |
+| `config_ok` | boolean | Whether the node's cluster-critical configuration matches this node's |
+| `sync` | object? | Peers only: this node's anti-entropy pull state toward the peer, with `hwm` (highest peer sequence applied), `lag` (entries still to pull, omitted until the peer reports its cursor), `last_reconcile` (RFC 3339, omitted before the first full pass), `first_pass_done` and `skipped_entries` (entries skipped after persistent apply failures) |
+
+See the [High Availability guide](../guide/ha.md#observability) for how to read these fields.
 
 ---
 
@@ -1135,6 +1288,132 @@ Deletes the grant and removes all user and team associations.
 **Response** `204`: Grant deleted successfully (no body).
 
 **Response** `404`: Grant not found.
+
+---
+
+## Node-Local Logs
+
+The audit log, the metrics history, the notification event log and the replication journal are strictly **node-local**: each node records its own entries and they are not replicated across a cluster. Their list endpoints accept a `?node=` selector so that, behind a load balancer, an operator can still choose which node's data to read. See [Per-node views](../guide/ha.md#per-node-views-audit-metrics-events-replication-journal) in the High Availability guide for the operator view.
+
+### Node Selector (`?node=`)
+
+Accepted by `GET /admin/audit`, `GET /admin/metrics/history`, `GET /admin/notifications/events` and `GET /admin/replication/journal` (not by the count, stats or clear endpoints).
+
+| Value | Behaviour |
+|-------|-----------|
+| absent, empty, or this node's own `node_id` | Answers from this node's data. On a clustered node the response carries a top-level `"node": "<node_id>"` naming the node that answered. |
+| a peer's `node_id` | The serving node proxies the same query server-side to that peer over the signed inter-node transport. The response carries `"node": "<peer node_id>"`. |
+| `all` | Merged view: the query fans out to every eligible node in parallel and the rows are merged newest first. Every row gains a `node` field naming its source, the top-level total is the sum across nodes, the response carries `"node": "all"`, and a `sources` array reports each node's total, or its `error` if that node failed (the other nodes' rows are still returned). Every node is asked for the same `offset`/`limit` window and the newest `limit` rows are kept, so deep pages are an approximation. |
+
+Only **eligible** peers (alive, authenticated and config-aligned) can be targeted.
+
+**Response** `400`: `?node=` was given but this node is not part of a cluster.
+
+**Response** `404`: no known peer has that `node_id`.
+
+**Response** `503`: the peer is known but not currently eligible (dead, unauthenticated, or config-drifted).
+
+**Response** `502`: the peer could not be reached, answered with a server error, or returned malformed JSON.
+
+A peer's own `4xx` error (for example audit logging disabled on that node) is forwarded with its original status. Peers running a version without the proxy routes answer `404`.
+
+---
+
+### List Audit Log Entries
+
+```
+GET /admin/audit
+```
+
+**Auth**: SigV4
+
+**Query parameters**: `bucket`, `operation`, `user_id` (exact-match filters), `from` / `to` (RFC 3339 timestamps), `offset` (default 0), `limit` (default 100, max 1000), `node` ([node selector](#node-selector-node)).
+
+**Response** `200`:
+
+```json
+{
+    "entries": [ "...audit entries, newest first..." ],
+    "total": 1280,
+    "offset": 0,
+    "limit": 100
+}
+```
+
+**Response** `400`: audit logging is not enabled.
+
+Related endpoints (this node only, no `?node=`): `GET /admin/audit/stats` returns `{"total_entries": N}`; `DELETE /admin/audit` with body `{"confirm": "CLEAR AUDIT LOG"}` clears the log and returns `{"deleted": N}`.
+
+---
+
+### Metrics History
+
+```
+GET /admin/metrics/history
+```
+
+**Auth**: SigV4
+
+**Query parameters**: `from` / `to` (RFC 3339 timestamps), `limit` (default 500, max 5000), `node` ([node selector](#node-selector-node)).
+
+**Response** `200`:
+
+```json
+{
+    "snapshots": [ "...periodic metrics snapshots..." ],
+    "count": 500
+}
+```
+
+**Response** `400`: metrics collection is not enabled.
+
+---
+
+### List Notification Events
+
+```
+GET /admin/notifications/events
+```
+
+**Auth**: SigV4
+
+**Query parameters**: `bucket`, `event_name`, `delivery_status` (filters), `offset` (default 0), `limit` (default 100, max 1000), `node` ([node selector](#node-selector-node)).
+
+**Response** `200`:
+
+```json
+{
+    "entries": [ "...notification events..." ],
+    "total": 42,
+    "offset": 0,
+    "limit": 100
+}
+```
+
+Related endpoints (this node only, no `?node=`): `GET /admin/notifications/events/count` takes the same filters and returns `{"count": N}`; `DELETE /admin/notifications/events` with body `{"confirm": "CLEAR EVENTS"}` clears the log and returns `{"deleted": N}`.
+
+---
+
+### List Replication Journal Entries
+
+```
+GET /admin/replication/journal
+```
+
+**Auth**: SigV4
+
+Each journal entry is recorded by the node that served the originating S3 write.
+
+**Query parameters**: `bucket`, `status`, `rule_id` (filters), `offset` (default 0), `limit` (default 100), `node` ([node selector](#node-selector-node)).
+
+**Response** `200`:
+
+```json
+{
+    "entries": [ "...journal entries..." ],
+    "total": 7
+}
+```
 
 ---
 

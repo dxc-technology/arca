@@ -61,6 +61,7 @@ nav:
     - CLI Reference: guide/cli.md
   - Reference:
     - Architecture: reference/architecture.md
+    - HA Design Decisions: reference/ha-design-decisions.md
     - S3 API: reference/s3-api.md
     - Admin API: reference/admin-api.md
   - Operations:

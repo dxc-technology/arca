@@ -1,6 +1,6 @@
 # CLI Reference
 
-The `arca` binary provides subcommands for starting the server, managing credentials, and performing disaster recovery. All subcommands accept `--config-path` (default: `/etc/arca/config.toml`) to locate the configuration file.
+The `arca` binary provides subcommands for starting the server, managing credentials and users, generating TLS material, maintaining the data in place, inspecting a cluster, and performing disaster recovery. Every subcommand that reads the configuration accepts `--config-path` (default: `/etc/arca/config.toml`) to locate the configuration file; `arca tls` and `arca encryption generate-key` do not read it.
 
 ## `arca serve`
 
@@ -214,6 +214,36 @@ arca tls ensure --output-dir /certs/local --ca-dir /certs/local-ca \
     --sans "localhost,127.0.0.1,::1,arca"
 ```
 
+## `arca tls generate-cluster`
+
+Generate a cluster CA and one certificate per node for the verified mutual TLS between cluster nodes (`[cluster.tls]`). See the [High Availability guide](ha.md#inter-node-transport-security-tls-mutual-tls) for when it is required.
+
+```bash
+arca tls generate-cluster --node <SPEC> [--node <SPEC> ...] [--output-dir <PATH>] [--days <N>]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--node` | *(required, repeatable)* | One per node: `name` or `name=san1,san2,...`. The SANs must cover every DNS name and IP address peers use to reach the node (seeds entries, advertised addresses); without them the SAN is the name itself. The name becomes a file name, so only letters, digits, `-`, `_` and `.` are allowed. |
+| `--output-dir` | `/etc/arca/certs/cluster` | Directory to write certificate files |
+| `--days` | `365` | Node certificate validity in days (the CA is valid twice as long) |
+
+| File | Mode | Description |
+|------|------|-------------|
+| `arca-cluster-ca.crt` | `0644` | Cluster CA certificate: the same `ca_file` on every node |
+| `arca-cluster-ca.key` | `0600` | Cluster CA private key: keep it offline, it is only needed to mint more node certificates |
+| `<name>.crt` | `0644` | Node certificate, signed by the cluster CA, valid for both server and client authentication |
+| `<name>.key` | `0640` | Node private key |
+
+Each node uses its own certificate and key both as its listener certificate (`[server.tls]`) and as its inter-node client identity (`[cluster.tls]`); the command prints the matching configuration snippet. S3 clients must then trust the cluster CA too, or you keep a separate public certificate in `[server.tls]`.
+
+```bash
+arca tls generate-cluster --output-dir /etc/arca/certs/cluster \
+    --node node-a=node-a.example.com,10.0.0.1 \
+    --node node-b=node-b.example.com,10.0.0.2 \
+    --node node-c=node-c.example.com,10.0.0.3
+```
+
 ## `arca encryption generate-key`
 
 Generate a random 256-bit master key for server-side encryption.
@@ -257,6 +287,9 @@ The recover command:
 5. Recreates all buckets and objects from sidecar data
 
 Multipart objects (ETag contains `-`) skip checksum verification since the composite ETag is not a simple MD5 of the assembled blob. Encrypted objects also skip checksum verification since the on-disk ciphertext MD5 differs from the plaintext ETag. Orphaned sidecars (no blob file), malformed JSON, and checksum mismatches are skipped with warnings.
+
+!!! warning
+    The rebuilt database is not equivalent to the original: only buckets, objects and credentials are restored, the oldest version of each key wins, multipart (composite) objects are dropped, compressed objects are skipped unless `--skip-verify` is given, and the command always writes a SQLite database, even on a PostgreSQL deployment (TD-014, TD-032). Read [Disaster Recovery](../operations/recovery.md) before running it.
 
 ```bash
 # Preview what would be recovered
@@ -382,3 +415,71 @@ arca decompress-existing [--config-path <PATH>] [--dry-run] [--bucket <NAME>]
 arca decompress-existing --dry-run
 arca decompress-existing --bucket my-bucket
 ```
+
+## `arca encrypt-existing` / `arca decrypt-existing`
+
+Offline counterparts of the `encrypt` / `decrypt` maintenance jobs, run with the server **stopped**. `encrypt-existing` encrypts plaintext blobs to SSE-S3; `decrypt-existing` decrypts SSE-S3 blobs back to plaintext. Each blob is rewritten in place (atomic temp file + rename), and its `.meta` sidecar and database row are updated. Re-running is safe: blobs already in the target state are skipped. See the [Migration & Maintenance guide](maintenance.md#offline-cli).
+
+```bash
+arca encrypt-existing [--config-path <PATH>] [--dry-run] [--bucket <NAME>] [--prefix <PREFIX>]
+arca decrypt-existing [--config-path <PATH>] [--dry-run] [--bucket <NAME>] [--prefix <PREFIX>]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--config-path` | Path to the configuration file (default: `/etc/arca/config.toml`) |
+| `--dry-run` | Only report what would change; no files or rows written |
+| `--bucket` | Restrict to a single bucket |
+| `--prefix` | Restrict to keys with this prefix |
+
+Multipart objects and SSE-C objects are skipped (TD-018).
+
+## `arca migrate-db`
+
+Copy **all** metadata from the configured backend into the other one (SQLite to PostgreSQL or the reverse), in place and offline. Blob files are not touched. After a successful run, switch `metadata_backend` in the config (adding `[storage.postgres]` when moving to PostgreSQL) and restart. See the [Migration & Maintenance guide](maintenance.md#metadata-migration-migrate-db).
+
+```bash
+arca migrate-db --to <BACKEND> [--config-path <PATH>] [--force]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--to` | *(required)* Target backend: `sqlite` or `postgres`. The source is the configured backend. |
+| `--config-path` | Path to the configuration file (default: `/etc/arca/config.toml`) |
+| `--force` | Overwrite a non-empty target: delete every destination row first |
+
+```bash
+arca migrate-db --to postgres
+arca migrate-db --to sqlite --force
+```
+
+## `arca migrate-topology`
+
+Guided, offline transition between a standalone node and an HA cluster. The cluster is fully replicated, so nothing is redistributed: the command generates the `[cluster]` configuration stanza, runs a few small database operations and prints the next steps. Run it with the server stopped. Exactly one of `--to-cluster` and `--to-single` is required. See the [Migration & Maintenance guide](maintenance.md#topology-migration-migrate-topology) and the [High Availability guide](ha.md#guided-topology-transition-arca-migrate-topology).
+
+```bash
+arca migrate-topology --to-cluster [--output <FILE>] [--config-path <PATH>]
+arca migrate-topology --to-single --force [--config-path <PATH>]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--to-cluster` | Single to HA: make this standalone instance the **first** node of a new cluster. Prints a `[cluster]` stanza with a generated `cluster_id` and `secret` (`mode = "quorum"`, `cluster_size = 3`, `discovery = "mdns"`) and reconciles the object write counter. Refused if the instance is already clustered. |
+| `--to-single` | HA to single: collapse the cluster back to **this** surviving node. Purges the cluster-only tombstones and runs `VACUUM` on SQLite. Refused if the instance is not clustered, and requires `--force`. |
+| `--output` | (`--to-cluster`) Also write the generated stanza to this file |
+| `--force` | (`--to-single`) Confirms that every peer is in sync and stopped. Collapsing while a peer is behind loses that peer's un-replicated writes. |
+| `--config-path` | Path to the configuration file (default: `/etc/arca/config.toml`) |
+
+Check that every peer is in sync (`first_pass_done` on every peer in [`GET /admin/cluster`](../reference/admin-api.md#cluster-topology)) before running `--to-single --force`.
+
+## `arca cluster status`
+
+Print this node's identity and its static cluster configuration.
+
+```bash
+arca cluster status [--config-path <PATH>]
+```
+
+It prints the `node_id`, the `cluster_id`, the consistency mode (with the write majority in `quorum` mode) and the discovery method (with the seeds for `static` discovery), all read from the configuration and the local database. When the node has no `node_id` yet, one is generated and stored, exactly as on the first server start. Without `[cluster] enabled = true` it only reports that clustering is not enabled.
+
+It does **not** show live state: peer liveness, authentication, sync progress and quorum status come from the running server's [`GET /admin/cluster`](../reference/admin-api.md#cluster-topology) endpoint (and the console topology card).

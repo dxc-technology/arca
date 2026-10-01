@@ -16,7 +16,7 @@
         <link rel="prev" href="../../guide/cli/">
       
       
-        <link rel="next" href="../s3-api/">
+        <link rel="next" href="../ha-design-decisions/">
       
       
         
@@ -907,34 +907,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Crate Structure">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#dependency-graph" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Dependency Graph
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#layered-architecture" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Layered Architecture
-      
-    </span>
-  </a>
-  
 </li>
       
         <li class="md-nav__item">
@@ -945,6 +917,34 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Request Flow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#middleware-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Middleware order
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#s3-query-parameter-routing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        S3 query-parameter routing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -961,10 +961,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#trait-based-abstraction" class="md-nav__link">
+  <a href="#storage-traits" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Trait-Based Abstraction
+        Storage traits
       
     </span>
   </a>
@@ -972,10 +972,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#metadata-caching" class="md-nav__link">
+  <a href="#implementations-and-decorators" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Metadata Caching
+        Implementations and decorators
       
     </span>
   </a>
@@ -983,38 +983,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#sqlite-metadata-credentials" class="md-nav__link">
+  <a href="#composition-as-wired" class="md-nav__link">
     <span class="md-ellipsis">
       
-        SQLite (Metadata + Credentials)
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="SQLite (Metadata + Credentials)">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#database-schema" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Database Schema
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#filesystem-blob-storage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Filesystem (Blob Storage)
+        Composition as wired
       
     </span>
   </a>
@@ -1022,10 +994,32 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#write-order-and-disaster-recovery" class="md-nav__link">
+  <a href="#metadata-backends" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Write Order and Disaster Recovery
+        Metadata backends
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#database-tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filesystem-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filesystem layout
       
     </span>
   </a>
@@ -1036,7 +1030,7 @@
   <a href="#sidecar-meta-format" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Sidecar .meta Format
+        Sidecar .meta format
       
     </span>
   </a>
@@ -1044,10 +1038,32 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#data-integrity" class="md-nav__link">
+  <a href="#putobject-write-path" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Data Integrity
+        PutObject write path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#write-order-and-crash-consistency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Write order and crash consistency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multipart-uploads-and-composite-blobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multipart uploads and composite blobs
       
     </span>
   </a>
@@ -1056,6 +1072,122 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#conditional-writes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conditional Writes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authentication-and-request-integrity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication and Request Integrity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#clustering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clustering
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Clustering">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#decorators-over-the-storage-traits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decorators over the storage traits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dedicated-inter-node-transport" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dedicated inter-node transport
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#change-tracking-the-seq-cursor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Change tracking: the seq cursor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deletes-and-conflict-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deletes and conflict resolution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#anti-entropy-and-the-control-plane" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Anti-entropy and the control plane
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#background-workers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Background Workers
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1075,7 +1207,7 @@
   <a href="#configuration-migration-without-data-migration" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Configuration Migration Without Data Migration
+        Configuration migration without data migration
       
     </span>
   </a>
@@ -1086,18 +1218,7 @@
   <a href="#no-s3s-crate" class="md-nav__link">
     <span class="md-ellipsis">
       
-        No s3s Crate
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#s3-query-parameter-routing" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        S3 Query-Parameter Routing
+        No s3s crate
       
     </span>
   </a>
@@ -1108,7 +1229,7 @@
   <a href="#streaming-first-io" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Streaming-First I/O
+        Streaming-first I/O
       
     </span>
   </a>
@@ -1116,10 +1237,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#put_object-returns-old-record" class="md-nav__link">
+  <a href="#copy-is-a-real-data-copy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        put_object Returns Old Record
+        Copy is a real data copy
       
     </span>
   </a>
@@ -1127,10 +1248,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#multipart-composite-etag" class="md-nav__link">
+  <a href="#opaque-continuation-tokens" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Multipart Composite ETag
+        Opaque continuation tokens
       
     </span>
   </a>
@@ -1138,10 +1259,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#auth-body-hash-strategy" class="md-nav__link">
+  <a href="#admin-api-on-the-same-port-console-as-a-separate-application" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Auth Body Hash Strategy
+        Admin API on the same port, console as a separate application
       
     </span>
   </a>
@@ -1154,10 +1275,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#cli-architecture" class="md-nav__link">
+  <a href="#cli" class="md-nav__link">
     <span class="md-ellipsis">
       
-        CLI Architecture
+        CLI
       
     </span>
   </a>
@@ -1176,10 +1297,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#whats-not-yet-implemented" class="md-nav__link">
+  <a href="#known-limitations" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What's NOT Yet Implemented
+        Known Limitations
       
     </span>
   </a>
@@ -1190,6 +1311,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ha-design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HA Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1611,34 +1760,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Crate Structure">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#dependency-graph" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Dependency Graph
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#layered-architecture" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Layered Architecture
-      
-    </span>
-  </a>
-  
 </li>
       
         <li class="md-nav__item">
@@ -1649,6 +1770,34 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Request Flow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#middleware-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Middleware order
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#s3-query-parameter-routing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        S3 query-parameter routing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1665,10 +1814,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#trait-based-abstraction" class="md-nav__link">
+  <a href="#storage-traits" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Trait-Based Abstraction
+        Storage traits
       
     </span>
   </a>
@@ -1676,10 +1825,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#metadata-caching" class="md-nav__link">
+  <a href="#implementations-and-decorators" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Metadata Caching
+        Implementations and decorators
       
     </span>
   </a>
@@ -1687,38 +1836,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#sqlite-metadata-credentials" class="md-nav__link">
+  <a href="#composition-as-wired" class="md-nav__link">
     <span class="md-ellipsis">
       
-        SQLite (Metadata + Credentials)
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="SQLite (Metadata + Credentials)">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#database-schema" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Database Schema
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#filesystem-blob-storage" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Filesystem (Blob Storage)
+        Composition as wired
       
     </span>
   </a>
@@ -1726,10 +1847,32 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#write-order-and-disaster-recovery" class="md-nav__link">
+  <a href="#metadata-backends" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Write Order and Disaster Recovery
+        Metadata backends
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#database-tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filesystem-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filesystem layout
       
     </span>
   </a>
@@ -1740,7 +1883,7 @@
   <a href="#sidecar-meta-format" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Sidecar .meta Format
+        Sidecar .meta format
       
     </span>
   </a>
@@ -1748,10 +1891,32 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#data-integrity" class="md-nav__link">
+  <a href="#putobject-write-path" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Data Integrity
+        PutObject write path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#write-order-and-crash-consistency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Write order and crash consistency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multipart-uploads-and-composite-blobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multipart uploads and composite blobs
       
     </span>
   </a>
@@ -1760,6 +1925,122 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#conditional-writes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conditional Writes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#authentication-and-request-integrity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authentication and Request Integrity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#clustering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clustering
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Clustering">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#decorators-over-the-storage-traits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decorators over the storage traits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dedicated-inter-node-transport" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dedicated inter-node transport
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#change-tracking-the-seq-cursor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Change tracking: the seq cursor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deletes-and-conflict-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deletes and conflict resolution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#anti-entropy-and-the-control-plane" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Anti-entropy and the control plane
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#background-workers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Background Workers
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1779,7 +2060,7 @@
   <a href="#configuration-migration-without-data-migration" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Configuration Migration Without Data Migration
+        Configuration migration without data migration
       
     </span>
   </a>
@@ -1790,18 +2071,7 @@
   <a href="#no-s3s-crate" class="md-nav__link">
     <span class="md-ellipsis">
       
-        No s3s Crate
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#s3-query-parameter-routing" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        S3 Query-Parameter Routing
+        No s3s crate
       
     </span>
   </a>
@@ -1812,7 +2082,7 @@
   <a href="#streaming-first-io" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Streaming-First I/O
+        Streaming-first I/O
       
     </span>
   </a>
@@ -1820,10 +2090,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#put_object-returns-old-record" class="md-nav__link">
+  <a href="#copy-is-a-real-data-copy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        put_object Returns Old Record
+        Copy is a real data copy
       
     </span>
   </a>
@@ -1831,10 +2101,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#multipart-composite-etag" class="md-nav__link">
+  <a href="#opaque-continuation-tokens" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Multipart Composite ETag
+        Opaque continuation tokens
       
     </span>
   </a>
@@ -1842,10 +2112,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#auth-body-hash-strategy" class="md-nav__link">
+  <a href="#admin-api-on-the-same-port-console-as-a-separate-application" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Auth Body Hash Strategy
+        Admin API on the same port, console as a separate application
       
     </span>
   </a>
@@ -1858,10 +2128,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#cli-architecture" class="md-nav__link">
+  <a href="#cli" class="md-nav__link">
     <span class="md-ellipsis">
       
-        CLI Architecture
+        CLI
       
     </span>
   </a>
@@ -1880,10 +2150,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#whats-not-yet-implemented" class="md-nav__link">
+  <a href="#known-limitations" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What's NOT Yet Implemented
+        Known Limitations
       
     </span>
   </a>
@@ -1911,65 +2181,61 @@
 
 
 <h1 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h1>
-<p>Arca is a ground-up implementation of the S3 API in Rust. Rather than wrapping an existing library, every layer — from HTTP protocol handling to storage — is built from first principles, giving us full control over behavior, performance, and correctness.</p>
-<p>This page describes the system architecture, the reasoning behind key decisions, and how the pieces fit together at runtime.</p>
+<p>Arca implements the S3 API from the HTTP layer down to the storage layer in Rust, without wrapping an existing S3 library. This page describes how the code is organised today, how a request travels through it, how data and metadata are stored, and the design decisions (with their rationale) that contributors must preserve.</p>
+<p>It is a reference for contributors and operators. Operating procedures live in the guides, which this page links to rather than repeats.</p>
 <h2 id="system-overview">System Overview<a class="headerlink" href="#system-overview" title="Permanent link">&para;</a></h2>
-<p>Arca is a single-binary server that accepts S3-compatible HTTP requests on port 9000. It stores object data as UUID-named blob files on a local filesystem and tracks metadata (buckets, objects, credentials) in a SQLite database. A JSON sidecar file accompanies every blob, enabling full database reconstruction without any external backup.</p>
+<p>Arca ships as one server binary (<code>arca</code>) plus a separate web console (<code>console/</code>, a static web application that talks to the Admin API like any other client). A node serves the S3 API, the Admin API (<code>/admin/*</code>) and, when clustered, the inter-node API (<code>/cluster/v1/*</code>) on a single port.</p>
+<p>Object bytes live as UUID-named blob files on the local filesystem, each with a JSON sidecar (<code>.meta</code>). Metadata (buckets, objects, versions, identities, configuration, journals) lives in a metadata backend: embedded SQLite (default) or an external PostgreSQL server.</p>
 <pre class="mermaid"><code>graph LR
-    C["S3 Client&lt;br/&gt;aws-cli · boto3 · mc · rclone"] --&gt;|"HTTP :9000"| A["Arca Server"]
-    A --&gt; DB[("SQLite&lt;br/&gt;metadata + credentials")]
+    C["S3 clients&lt;br/&gt;aws-cli · boto3 · mc · rclone"] --&gt;|"S3 API"| A["Arca node"]
+    CON["Web console"] --&gt;|"Admin API /admin/*"| A
+    A --&gt; DB[("Metadata backend&lt;br/&gt;SQLite or PostgreSQL")]
     A --&gt; FS["Filesystem&lt;br/&gt;UUID blobs + .meta sidecars"]
-
-    style C fill:#4527a0,stroke:#7e57c2,stroke-width:2px,color:#fff
-    style A fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
-    style DB fill:#00695c,stroke:#26a69a,stroke-width:2px,color:#fff
-    style FS fill:#00695c,stroke:#26a69a,stroke-width:2px,color:#fff</code></pre>
-<p>The server is organized as a <strong>five-crate Cargo workspace</strong> with strict layered dependencies. Each crate has a single, well-defined responsibility and a minimal dependency surface.</p>
+    A &lt;--&gt;|"/cluster/v1/* (HA only)"| P["Peer nodes"]</code></pre>
 <h2 id="crate-structure">Crate Structure<a class="headerlink" href="#crate-structure" title="Permanent link">&para;</a></h2>
+<p>The server is a five-crate Cargo workspace:</p>
 <table>
 <thead>
 <tr>
 <th>Crate</th>
 <th>Role</th>
-<th style="text-align: center;">I/O</th>
+<th>Depends on</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><strong>arca-core</strong></td>
-<td>Shared types, traits (<code>BlobStore</code>, <code>MetadataStore</code>, <code>CredentialStore</code>), error types</td>
-<td style="text-align: center;">None</td>
+<td>Domain types (<code>ObjectRecord</code>, <code>BlobId</code>, ...), every storage trait, policy evaluation, S3 XML types, cluster wire types and pure merge logic, error codes. No I/O.</td>
+<td>(none)</td>
 </tr>
 <tr>
 <td><strong>arca-auth</strong></td>
-<td>AWS Signature V4 verification</td>
-<td style="text-align: center;">None</td>
+<td>AWS Signature V4: request and presigned-URL verification, presigned-URL generation, outbound signing. No I/O.</td>
+<td>(no workspace crate)</td>
 </tr>
 <tr>
 <td><strong>arca-proto</strong></td>
-<td>S3 HTTP protocol adapter — Axum 0.8 router, handlers, XML ser/de, middleware</td>
-<td style="text-align: center;">Network</td>
+<td>S3 and Admin HTTP adapter: Axum router, handlers, middleware, XML error responses, <code>AppState</code>. Handlers call the storage traits directly.</td>
+<td>arca-core, arca-auth</td>
 </tr>
 <tr>
 <td><strong>arca-storage</strong></td>
-<td>Storage implementations — <code>SqliteStore</code>, filesystem blob store (planned)</td>
-<td style="text-align: center;">Disk + DB</td>
+<td>Storage implementations: SQLite and PostgreSQL metadata stores, filesystem blob store, encryption/compression/SSE-C decorators, metadata cache, backend migration copier.</td>
+<td>arca-core</td>
 </tr>
 <tr>
 <td><strong>arca-server</strong></td>
-<td>Binary crate — config, CLI, use-case layer, dependency wiring</td>
-<td style="text-align: center;">All</td>
+<td>The binary: configuration, CLI, store composition and wiring, background workers, cluster decorators and membership, TLS, notification connectors, outbound replication, offline tools (<code>recover</code>, <code>fsck</code>, <code>gc</code>, migrations).</td>
+<td>all four</td>
 </tr>
 </tbody>
 </table>
-<p><strong>arca-core</strong> is the foundation: it defines the domain model and storage traits with zero I/O dependencies, making it independently testable and portable. Every other crate depends on it but never on each other horizontally.</p>
-<h3 id="dependency-graph">Dependency Graph<a class="headerlink" href="#dependency-graph" title="Permanent link">&para;</a></h3>
 <pre class="mermaid"><code>graph TD
-    SERVER["arca-server&lt;br/&gt;binary · config · CLI · use cases"]
-    PROTO["arca-proto&lt;br/&gt;Axum router · handlers · XML · middleware"]
-    STORAGE["arca-storage&lt;br/&gt;SqliteStore · FsBlobStore"]
-    AUTH["arca-auth&lt;br/&gt;AWS SigV4 verification"]
-    CORE["arca-core&lt;br/&gt;types · traits · errors"]
+    SERVER["arca-server"]
+    PROTO["arca-proto"]
+    STORAGE["arca-storage"]
+    AUTH["arca-auth"]
+    CORE["arca-core"]
 
     SERVER --&gt; PROTO
     SERVER --&gt; STORAGE
@@ -1977,412 +2243,619 @@
     SERVER --&gt; CORE
     PROTO --&gt; AUTH
     PROTO --&gt; CORE
-    AUTH --&gt; CORE
-    STORAGE --&gt; CORE
-
-    style CORE fill:#2e7d32,stroke:#4caf50,stroke-width:2px,color:#fff
-    style SERVER fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
-    style PROTO fill:#00695c,stroke:#26a69a,stroke-width:2px,color:#fff
-    style AUTH fill:#4527a0,stroke:#7e57c2,stroke-width:2px,color:#fff
-    style STORAGE fill:#bf360c,stroke:#ff7043,stroke-width:2px,color:#fff</code></pre>
-<p>Dependencies flow strictly downward. There are no cycles: <code>arca-proto</code> never imports <code>arca-storage</code>, and <code>arca-storage</code> never imports <code>arca-proto</code>. The binary crate (<code>arca-server</code>) is the only place where all crates meet — it wires the storage implementations into the protocol handlers through the trait abstractions defined in <code>arca-core</code>.</p>
-<h2 id="layered-architecture">Layered Architecture<a class="headerlink" href="#layered-architecture" title="Permanent link">&para;</a></h2>
-<p>The system is organized into four distinct layers, each with clear responsibilities and boundaries:</p>
+    STORAGE --&gt; CORE</code></pre>
+<p><code>arca-auth</code> is a leaf: it shares no types with the rest of the workspace. <code>arca-proto</code> never depends on <code>arca-storage</code>; where a handler needs a capability that only a concrete store has (SSE-C keys, raw blob access for the cluster endpoints), <code>arca-core</code> defines a trait for it (<code>SsecBlobOps</code>, <code>RawBlobOps</code>) and <code>arca-server</code> injects the implementation into <code>AppState</code>.</p>
+<p>There is no separate use-case layer: S3 and Admin handlers in <code>arca-proto/src/handlers/</code> orchestrate the work themselves, calling <code>state.metadata</code>, <code>state.blob</code> (or <code>state.blob_for_write(bucket)</code>) and the other stores held by <code>AppState</code>.</p>
+<h2 id="request-flow">Request Flow<a class="headerlink" href="#request-flow" title="Permanent link">&para;</a></h2>
+<h3 id="middleware-order">Middleware order<a class="headerlink" href="#middleware-order" title="Permanent link">&para;</a></h3>
+<p>The order below is the one built by <code>build_router</code> (<code>arca-proto/src/router.rs</code>) and <code>async_main</code> (<code>arca-server/src/main.rs</code>), outermost first:</p>
+<pre class="mermaid"><code>flowchart TD
+    REQ(["HTTP request"]) --&gt; L1["CloseOnUnreadBodyLayer&lt;br/&gt;Connection: close if the body was left unread"]
+    L1 --&gt; L2["NormalizeLayer&lt;br/&gt;save OriginalUri, strip trailing slash"]
+    L2 --&gt; L3["Request ID"] --&gt; L4["Validate&lt;br/&gt;header count, null bytes, metadata size"]
+    L4 --&gt; L5["Per-IP rate limit"] --&gt; L6["Audit"] --&gt; L7["Trace"] --&gt; L8["CORS"]
+    L8 --&gt; R{"Route"}
+    R --&gt;|"/admin/*"| ADM["Admin auth (JSON errors)&lt;br/&gt;health and metrics are public"]
+    R --&gt;|"/cluster/v1/*"| CL["Cluster auth&lt;br/&gt;(v1/health is public)"]
+    R --&gt;|"S3 routes"| S1["Maintenance drain"]
+    S1 --&gt; S2["SigV4 auth + authorization"] --&gt; S3["Per-credential rate limit"] --&gt; S4["Virtual-host rewrite&lt;br/&gt;(only when server.domain is set)"]
+    S4 --&gt; H["S3 handler"]</code></pre>
+<ul>
+<li><strong>Outside the router.</strong> <code>NormalizeLayer</code> and <code>CloseOnUnreadBodyLayer</code> wrap the <code>Router</code> as plain Tower layers, because middleware attached with Axum's <code>Router::layer</code> runs only <em>after</em> a route has been matched. <code>NormalizeLayer</code> must rewrite the path before routing (clients such as <code>mc</code> send <code>/bucket/</code>); auth then verifies the signature against the saved <code>OriginalUri</code>. <code>CloseOnUnreadBodyLayer</code> is outermost so it also sees responses produced by middleware (an auth reject answers before any handler runs); on HTTP/1.x it adds <code>Connection: close</code> whenever the request body was not read to the end, so unread bytes cannot desync the next request on a keep-alive connection.</li>
+<li><strong>Common layers.</strong> Request ID, validation, per-IP rate limiting, audit, tracing and CORS apply to every route. Rate limiters and the audit writer are no-ops when disabled in configuration; audit entries are handed to a background writer over a bounded channel.</li>
+<li><strong>S3 layers.</strong> The maintenance drain answers <code>503</code> to every S3 request while a maintenance-mode job runs on the node (the Admin API stays live). SigV4 auth resolves the identity and its effective policies, then the per-credential rate limiter runs.</li>
+<li><strong>Virtual-host rewrite.</strong> <code>virtual_host_middleware</code> is attached with <code>Router::layer</code>, so it rewrites the URI after the route and its path parameters have already been bound to the original path. Virtual-hosted-style addressing is therefore suspected not to work; this is tracked as TD-037 in <a href="../../tech-debt/">Technical Debt</a> and has no test coverage.</li>
+</ul>
+<h3 id="s3-query-parameter-routing">S3 query-parameter routing<a class="headerlink" href="#s3-query-parameter-routing" title="Permanent link">&para;</a></h3>
+<p>S3 overloads the same method and path with query parameters and headers. Axum routes on method and path only (<code>/</code>, <code>/{bucket}</code>, <code>/{bucket}/{*key}</code>), so each handler dispatches internally. The main cases:</p>
 <table>
 <thead>
 <tr>
-<th>Layer</th>
-<th>Crate</th>
+<th>Route</th>
+<th>Without query parameters</th>
+<th>With query parameters / headers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /{bucket}</code></td>
+<td>ListObjects (V1)</td>
+<td><code>?list-type=2</code> ListObjectsV2, <code>?versions</code> ListObjectVersions, <code>?uploads</code> ListMultipartUploads, <code>?location</code>, <code>?versioning</code>, <code>?encryption</code>, <code>?tagging</code>, <code>?lifecycle</code>, <code>?object-lock</code>, <code>?notification</code>, <code>?replication</code>, <code>?compression</code></td>
+</tr>
+<tr>
+<td><code>HEAD /{bucket}</code></td>
+<td>HeadBucket</td>
+<td></td>
+</tr>
+<tr>
+<td><code>POST /{bucket}</code></td>
+<td>(501)</td>
+<td><code>?delete</code> DeleteObjects</td>
+</tr>
+<tr>
+<td><code>PUT /{bucket}/{*key}</code></td>
+<td>PutObject; CopyObject when <code>x-amz-copy-source</code> is present</td>
+<td><code>?partNumber=&amp;uploadId=</code> UploadPart (UploadPartCopy with <code>x-amz-copy-source</code>), <code>?tagging</code>, <code>?retention</code>, <code>?legal-hold</code></td>
+</tr>
+<tr>
+<td><code>POST /{bucket}/{*key}</code></td>
+<td></td>
+<td><code>?uploads</code> CreateMultipartUpload, <code>?uploadId=</code> CompleteMultipartUpload</td>
+</tr>
+<tr>
+<td><code>DELETE /{bucket}/{*key}</code></td>
+<td>DeleteObject</td>
+<td><code>?uploadId=</code> AbortMultipartUpload, <code>?tagging</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>mc</code> sends <code>?uploads=</code> and <code>?delete=</code> (with <code>=</code>); the dispatchers accept both forms. The full operation list is in the <a href="../s3-api/">S3 API reference</a>.</p>
+<h2 id="storage-architecture">Storage Architecture<a class="headerlink" href="#storage-architecture" title="Permanent link">&para;</a></h2>
+<h3 id="storage-traits">Storage traits<a class="headerlink" href="#storage-traits" title="Permanent link">&para;</a></h3>
+<p>All storage is reached through async traits defined in <code>arca-core/src/store/</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Trait</th>
 <th>Responsibility</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>Protocol</strong></td>
-<td>arca-proto</td>
-<td>HTTP routing, S3 XML parsing/generation, middleware (auth, virtual host)</td>
+<td><code>MetadataStore</code></td>
+<td>Buckets, bucket config, objects and versions (including conditional writes), multipart uploads and parts, tags, object lock, re-encryption updates, cluster apply/manifest/tombstone operations</td>
 </tr>
 <tr>
-<td><strong>Use Case</strong></td>
-<td>arca-server</td>
-<td>Business logic orchestration — validates inputs, coordinates storage calls, enforces invariants</td>
+<td><code>BlobStore</code></td>
+<td>Streamed blob put/get/delete, sidecar writes, multipart <code>concat</code></td>
 </tr>
 <tr>
-<td><strong>Domain</strong></td>
-<td>arca-core</td>
-<td>Types, traits, error codes — defines <em>what</em> storage does, not <em>how</em></td>
+<td><code>SsecBlobOps</code></td>
+<td>SSE-C blob put/get with a per-request customer key</td>
 </tr>
 <tr>
-<td><strong>Infrastructure</strong></td>
-<td>arca-storage</td>
-<td>Concrete implementations — SQLite queries, filesystem I/O, blob management</td>
+<td><code>RawBlobOps</code></td>
+<td>Verbatim on-disk blob and sidecar access (cluster transfer, blob GC)</td>
+</tr>
+<tr>
+<td><code>CredentialStore</code>, <code>UserStore</code>, <code>TeamStore</code>, <code>GrantStore</code></td>
+<td>Identities and RBAC grants</td>
+</tr>
+<tr>
+<td><code>ServerConfigStore</code></td>
+<td>Instance settings managed from the console</td>
+</tr>
+<tr>
+<td><code>AuditStore</code>, <code>MetricsStore</code></td>
+<td>Audit log and metrics history</td>
+</tr>
+<tr>
+<td><code>NotificationStore</code>, <code>NotificationConnector</code></td>
+<td>Notification event log; delivery connectors (registered in a <code>ConnectorRegistry</code>)</td>
+</tr>
+<tr>
+<td><code>ReplicationStore</code></td>
+<td>Outbound replication journal</td>
+</tr>
+<tr>
+<td><code>PresignedUrlStore</code></td>
+<td>Tracking of generated presigned URLs</td>
+</tr>
+<tr>
+<td><code>MaintenanceStore</code></td>
+<td>Maintenance jobs and their logs</td>
+</tr>
+<tr>
+<td><code>ControlTombstoneStore</code>, <code>ControlSnapshotStore</code></td>
+<td>Cluster control-plane deletions and snapshot reconcile</td>
 </tr>
 </tbody>
 </table>
-<p>This separation means the business logic never depends on a specific database or filesystem layout. Swapping SQLite for Postgres, or local disk for cloud storage, requires only a new trait implementation — no changes to handlers or use cases.</p>
-<h2 id="request-flow">Request Flow<a class="headerlink" href="#request-flow" title="Permanent link">&para;</a></h2>
-<p>Every S3 request passes through a pipeline of middleware layers before reaching business logic:</p>
-<pre class="mermaid"><code>flowchart TD
-    REQ(["HTTP Request"]) --&gt; MW0
-
-    subgraph MIDDLEWARE["Tower Middleware Stack"]
-        MW0["Request ID&lt;br/&gt;assign UUID · set x-amz-request-id"]
-        MW1["Validate&lt;br/&gt;header count · null bytes · metadata size"]
-        MW2["IP Rate Limit&lt;br/&gt;per-IP GCRA · X-Forwarded-For aware"]
-        MW3["Audit&lt;br/&gt;record operation · status · latency"]
-        MW4["Tracing&lt;br/&gt;method · URI · status · latency_ms"]
-        MW5["SigV4 Auth&lt;br/&gt;verify signature · inject identity"]
-        MW6["Credential Rate Limit&lt;br/&gt;per-credential GCRA"]
-        MW7["Virtual Host Rewrite&lt;br/&gt;bucket.s3.domain → /bucket/path"]
-    end
-
-    MW0 --&gt; MW1 --&gt; MW2 --&gt; MW3 --&gt; MW4 --&gt; MW5 --&gt; MW6 --&gt; MW7
-
-    MW7 --&gt; ROUTER["Axum Router&lt;br/&gt;route by method + path&lt;br/&gt;dispatch by query params"]
-
-    ROUTER --&gt; UC["Use Case Layer&lt;br/&gt;BucketUsecase · ObjectUsecase · MultipartUsecase"]
-
-    UC --&gt; CACHE["CachingMetadataStore&lt;br/&gt;LRU cache (moka)"]
-    UC --&gt; BLOB["BlobStore&lt;br/&gt;(trait)"]
-
-    CACHE --&gt; META["MetadataStore&lt;br/&gt;(trait)"]
-
-    META --&gt; SQLITE[("SqliteStore&lt;br/&gt;WAL mode")]
-    BLOB --&gt; FS["FsBlobStore&lt;br/&gt;UUID + .meta sidecar"]
-
-    FS --&gt; DISK[("/data/blobs/")]
-    SQLITE --&gt; DB[("/data/arca.db")]
-
-    style REQ fill:#4527a0,stroke:#7e57c2,stroke-width:2px,color:#fff
-    style MW0 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
-    style MW1 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
-    style MW2 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
-    style MW3 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
-    style MW4 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
-    style MW5 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
-    style MW6 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
-    style MW7 fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
-    style ROUTER fill:#00695c,stroke:#26a69a,stroke-width:2px,color:#fff
-    style UC fill:#2e7d32,stroke:#4caf50,stroke-width:2px,color:#fff
-    style CACHE fill:#ef6c00,stroke:#ff9800,stroke-width:2px,color:#fff
-    style BLOB fill:#ef6c00,stroke:#ff9800,stroke-width:2px,color:#fff
-    style META fill:#ef6c00,stroke:#ff9800,stroke-width:2px,color:#fff
-    style SQLITE fill:#bf360c,stroke:#ff7043,stroke-width:2px,color:#fff
-    style FS fill:#bf360c,stroke:#ff7043,stroke-width:2px,color:#fff
-    style DISK fill:#37474f,stroke:#78909c,stroke-width:2px,color:#fff
-    style DB fill:#37474f,stroke:#78909c,stroke-width:2px,color:#fff</code></pre>
-<p>The middleware stack is built with <a href="https://docs.rs/tower">Tower</a>, the standard Rust middleware framework. Each layer is independently testable and can be reordered or replaced without affecting the others. Rate limiting and request validation layers are no-ops when disabled in configuration.</p>
-<h2 id="storage-architecture">Storage Architecture<a class="headerlink" href="#storage-architecture" title="Permanent link">&para;</a></h2>
-<h3 id="trait-based-abstraction">Trait-Based Abstraction<a class="headerlink" href="#trait-based-abstraction" title="Permanent link">&para;</a></h3>
-<p>All storage operations are defined as async traits in <code>arca-core</code>:</p>
+<p><code>SqliteStore</code> and <code>PgStore</code> each implement every store trait except the blob and connector ones; <code>open_stores</code> in <code>main.rs</code> turns the chosen backend into a set of trait objects.</p>
+<h3 id="implementations-and-decorators">Implementations and decorators<a class="headerlink" href="#implementations-and-decorators" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Crate</th>
+<th>Kind</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SqliteStore</code></td>
+<td>arca-storage</td>
+<td>Metadata backend (embedded)</td>
+</tr>
+<tr>
+<td><code>PgStore</code></td>
+<td>arca-storage</td>
+<td>Metadata backend (PostgreSQL)</td>
+</tr>
+<tr>
+<td><code>CachingMetadataStore</code></td>
+<td>arca-storage</td>
+<td><code>MetadataStore</code> decorator: in-memory LRU + TTL cache of bucket lookups and latest-object lookups, invalidated on writes</td>
+</tr>
+<tr>
+<td><code>FsBlobStore</code></td>
+<td>arca-storage</td>
+<td><code>BlobStore</code> and <code>RawBlobOps</code> on the local filesystem</td>
+</tr>
+<tr>
+<td><code>EncryptingBlobStore</code></td>
+<td>arca-storage</td>
+<td><code>BlobStore</code> decorator: SSE-S3 / SSE-KMS (AES-256-GCM, see <a href="../../guide/encryption/">Encryption</a>)</td>
+</tr>
+<tr>
+<td><code>CompressingBlobStore</code></td>
+<td>arca-storage</td>
+<td><code>BlobStore</code> decorator: per-bucket transparent compression (see <a href="../../guide/compression/">Compression</a>)</td>
+</tr>
+<tr>
+<td><code>SsecBlobStore</code></td>
+<td>arca-storage</td>
+<td><code>SsecBlobOps</code> over <code>FsBlobStore</code></td>
+</tr>
+<tr>
+<td><code>ClusterMetadataStore</code></td>
+<td>arca-server (<code>cluster/cluster_meta.rs</code>)</td>
+<td><code>MetadataStore</code> decorator: replicates object rows and bucket-level control ops to peers</td>
+</tr>
+<tr>
+<td><code>ClusterBlobStore</code>, <code>ClusterSsecBlobStore</code></td>
+<td>arca-server (<code>cluster/cluster_blob.rs</code>)</td>
+<td>Blob decorators: replicate blobs to peers, read-repair missing blobs</td>
+</tr>
+<tr>
+<td><code>ClusterCredentialStore</code>, <code>ClusterUserStore</code>, <code>ClusterGrantStore</code>, <code>ClusterTeamStore</code>, <code>ClusterServerConfigStore</code></td>
+<td>arca-server (<code>cluster/cluster_control.rs</code>)</td>
+<td>Identity and settings decorators: replicate control-plane mutations</td>
+</tr>
+</tbody>
+</table>
+<h3 id="composition-as-wired">Composition as wired<a class="headerlink" href="#composition-as-wired" title="Permanent link">&para;</a></h3>
+<p><code>async_main</code> in <code>arca-server/src/main.rs</code> builds the following stacks (outer to inner; bracketed layers are present only when the condition holds):</p>
+<table>
+<thead>
+<tr>
+<th><code>AppState</code> field</th>
+<th>Stack</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>metadata</code></td>
+<td>[<code>ClusterMetadataStore</code>, cluster] → [<code>CachingMetadataStore</code>, <code>[server.cache] enabled</code>, default on] → <code>SqliteStore</code> or <code>PgStore</code></td>
+</tr>
+<tr>
+<td><code>blob</code></td>
+<td>[<code>ClusterBlobStore</code>, cluster] → <code>CompressingBlobStore</code> → [<code>EncryptingBlobStore</code>, master key configured] → <code>FsBlobStore</code></td>
+</tr>
+<tr>
+<td><code>plain_blob</code> (only when a master key is configured)</td>
+<td>[<code>ClusterBlobStore</code>, cluster] → <code>CompressingBlobStore</code> → <code>FsBlobStore</code></td>
+</tr>
+<tr>
+<td><code>ssec_blob</code></td>
+<td>[<code>ClusterSsecBlobStore</code>, cluster] → <code>SsecBlobStore</code> → <code>FsBlobStore</code></td>
+</tr>
+<tr>
+<td><code>cluster_raw_blob</code> (cluster only)</td>
+<td><code>FsBlobStore</code> as <code>RawBlobOps</code></td>
+</tr>
+<tr>
+<td><code>credentials</code>, <code>users</code>, <code>grants</code>, <code>teams</code>, <code>server_config</code></td>
+<td>[cluster decorator, cluster] → backend store</td>
+</tr>
+<tr>
+<td>audit, metrics, notification, replication, presigned-URL, maintenance stores</td>
+<td>backend store, never cluster-wrapped</td>
+</tr>
+</tbody>
+</table>
+<p>Rules that follow from this wiring:</p>
 <ul>
-<li><strong><code>BlobStore</code></strong> — binary data operations (write, read, delete blobs)</li>
-<li><strong><code>MetadataStore</code></strong> — structured data operations (buckets, objects, multipart uploads)</li>
-<li><strong><code>CredentialStore</code></strong> — credential management (CRUD for access keys)</li>
-<li><strong><code>UserStore</code></strong> — user management (CRUD for users)</li>
-<li><strong><code>TeamStore</code></strong> — team and membership management</li>
-<li><strong><code>GrantStore</code></strong> — grant (policy) management, attachment to users/teams, effective policy resolution</li>
+<li><strong>Compression sits above encryption</strong>: plaintext is compressed, then the compressed bytes are encrypted. (TD-029 in <a href="../../tech-debt/">Technical Debt</a>: reading a compressed object on a server with encryption enabled currently fails.)</li>
+<li><strong>Write routing</strong>: <code>AppState::blob_for_write(bucket)</code> returns <code>blob</code> when encryption is on globally or for that bucket (a <code>bucket_config</code> lookup cached for 30 seconds), otherwise <code>plain_blob</code>. Reads always go through <code>blob</code>; the encryption layer reads the sidecar to tell encrypted blobs from plain ones, so mixed content coexists.</li>
+<li><strong>Cluster decorators sit on top</strong>, above cache, compression and encryption, so they ship already-encoded bytes and canonical rows verbatim. The receive endpoints and anti-entropy apply through the inner (pre-decorator) stores, so a replicated write is never fanned out again.</li>
 </ul>
-<p>The use-case layer depends only on these traits, never on concrete implementations. This enables:</p>
-<ul>
-<li><strong>Testing</strong>: use cases are tested against in-memory implementations</li>
-<li><strong>Flexibility</strong>: swap SQLite for Postgres without touching business logic</li>
-<li><strong>Separation</strong>: storage internals are encapsulated behind clean interfaces</li>
-</ul>
-<h3 id="metadata-caching">Metadata Caching<a class="headerlink" href="#metadata-caching" title="Permanent link">&para;</a></h3>
-<p><code>CachingMetadataStore</code> wraps any <code>MetadataStore</code> implementation with an in-memory LRU cache (via the <code>moka</code> crate). It caches <code>head_bucket</code> and <code>get_latest_object</code> results, and invalidates entries on writes. This reduces SQLite query pressure for the most frequent operations (bucket existence checks on every request, HEAD object for conditional operations). The cache is enabled by default and configurable via <code>[server.cache]</code>.</p>
-<h3 id="sqlite-metadata-credentials">SQLite (Metadata + Credentials)<a class="headerlink" href="#sqlite-metadata-credentials" title="Permanent link">&para;</a></h3>
-<p>Arca uses SQLite via <code>tokio-rusqlite</code>, which runs all database operations on a dedicated background thread to avoid blocking the async runtime.</p>
-<p>Key characteristics:</p>
-<ul>
-<li><strong>WAL mode</strong> — allows concurrent readers during writes</li>
-<li><strong>Version-tracked migrations</strong> — a <code>_migrations</code> table tracks applied schema changes; new migrations run automatically at startup</li>
-<li><strong>Single database file</strong> — stored at <code>{data_dir}/arca.db</code></li>
-</ul>
-<h4 id="database-schema">Database Schema<a class="headerlink" href="#database-schema" title="Permanent link">&para;</a></h4>
-<p>The schema is managed through version-tracked migrations (currently at version 9). The entity-relationship diagram below shows all tables and their relationships:</p>
-<pre class="mermaid"><code>erDiagram
-    users {
-        TEXT user_id PK
-        TEXT username UK "unique"
-        TEXT description
-        INTEGER is_root "0 or 1"
-        TEXT created_at
-    }
-
-    credentials {
-        TEXT access_key_id PK
-        TEXT secret_access_key
-        TEXT description
-        TEXT created_at
-        INTEGER active "0 or 1"
-        INTEGER admin "0 or 1"
-        TEXT user_id FK
-    }
-
-    teams {
-        TEXT team_id PK
-        TEXT name UK "unique"
-        TEXT description
-        TEXT created_at
-    }
-
-    team_members {
-        TEXT team_id PK,FK
-        TEXT user_id PK,FK
-    }
-
-    grants {
-        TEXT grant_id PK
-        TEXT name UK "unique"
-        TEXT description
-        TEXT document "JSON policy"
-        TEXT created_at
-        TEXT updated_at
-    }
-
-    user_grants {
-        TEXT user_id PK,FK
-        TEXT grant_id PK,FK
-    }
-
-    team_grants {
-        TEXT team_id PK,FK
-        TEXT grant_id PK,FK
-    }
-
-    buckets {
-        TEXT name PK
-        TEXT created_at
-        TEXT owner FK "default: root"
-    }
-
-    objects {
-        TEXT bucket FK
-        TEXT key
-        TEXT version_id "nullable"
-        TEXT blob_id
-        INTEGER size
-        TEXT etag
-        TEXT content_type
-        TEXT last_modified
-        TEXT metadata "JSON"
-        TEXT encryption_algorithm "nullable"
-        TEXT encryption_key_id "nullable"
-        TEXT owner FK "default: root"
-        INTEGER is_latest "0 or 1, default 1"
-        INTEGER is_delete_marker "0 or 1, default 0"
-    }
-
-    multipart_uploads {
-        TEXT upload_id PK
-        TEXT bucket
-        TEXT key
-        TEXT content_type
-        TEXT initiated_at
-        TEXT metadata "JSON"
-    }
-
-    parts {
-        TEXT upload_id PK,FK
-        INTEGER part_number PK
-        TEXT blob_id
-        INTEGER size
-        TEXT etag
-    }
-
-    bucket_config {
-        TEXT bucket PK
-        TEXT config_key PK
-        TEXT config_value
-        TEXT updated_at
-    }
-
-    users ||--o{ credentials : "has"
-    users ||--o{ team_members : "belongs to"
-    teams ||--o{ team_members : "contains"
-    users ||--o{ user_grants : "has"
-    grants ||--o{ user_grants : "attached to"
-    teams ||--o{ team_grants : "has"
-    grants ||--o{ team_grants : "attached to"
-    buckets ||--o{ objects : "contains"
-    buckets ||--o{ bucket_config : "configured by"
-    multipart_uploads ||--o{ parts : "has"</code></pre>
-<p><strong>Authentication model</strong>: users don't log in directly. Each user has one or more <strong>credentials</strong> (access key + secret key pairs), and authentication happens via AWS SigV4 signature verification against a credential. The credential's <code>user_id</code> links back to the owning user, and from there the RBAC system resolves effective permissions through direct grants and team grants.</p>
-<p><strong>RBAC model</strong>: permissions are defined in <strong>grants</strong>, which contain an IAM-style JSON policy document. Grants can be attached directly to users (via <code>user_grants</code>) or to teams (via <code>team_grants</code>). A user's effective permissions are the union of their direct grants plus all grants from teams they belong to. Three built-in grants are seeded at database creation: <code>AdministratorAccess</code>, <code>S3FullAccess</code>, and <code>S3ReadOnlyAccess</code>.</p>
-<p><strong>Ownership</strong>: both <code>buckets</code> and <code>objects</code> track an <code>owner</code> field that records which user created the resource.</p>
-<p><strong>Encryption</strong>: the <code>objects</code> table has optional <code>encryption_algorithm</code> and <code>encryption_key_id</code> columns for SSE-S3 and SSE-KMS. The <code>bucket_config</code> table stores per-bucket settings such as default encryption configuration and versioning status.</p>
-<p><strong>Versioning</strong>: the <code>objects</code> table supports object versioning through <code>version_id</code>, <code>is_latest</code>, and <code>is_delete_marker</code> columns. When versioning is enabled on a bucket (via <code>bucket_config</code>), each write creates a new version with a unique <code>version_id</code> rather than overwriting the existing row. A partial unique index on <code>(bucket, key) WHERE is_latest = 1</code> guarantees exactly one current version per key, while previous versions remain queryable. Delete operations insert a delete marker (a zero-size row with <code>is_delete_marker = 1</code>) instead of removing the object.</p>
-<h3 id="filesystem-blob-storage">Filesystem (Blob Storage)<a class="headerlink" href="#filesystem-blob-storage" title="Permanent link">&para;</a></h3>
-<p>Object data is stored as UUID-named files under a dedicated <code>blobs/</code> subdirectory, keeping the top-level data directory clean:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>/data/
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── arca.db                      # SQLite database
+<h3 id="metadata-backends">Metadata backends<a class="headerlink" href="#metadata-backends" title="Permanent link">&para;</a></h3>
+<p><strong>SQLite</strong> (<code>arca-storage/src/sqlite/</code>, via <code>tokio-rusqlite</code>): one write connection serialises every mutation, and a pool of read-only connections (<code>PRAGMA query_only</code>) serves SELECTs round-robin. Every connection runs in WAL mode, which lets readers proceed during a write. The database is <code>{data_dir}/arca.db</code>.</p>
+<p><strong>PostgreSQL</strong> (<code>arca-storage/src/pg/</code>, via <code>sqlx</code>): an async connection pool, with the server's default READ COMMITTED isolation (Arca does not raise it). Enabled with <code>metadata_backend = "postgres"</code> and a <code>[storage.postgres]</code> section.</p>
+<p>Both backends keep a version-tracked <code>_migrations</code> table and apply pending migrations at startup. The two migration sequences are numbered independently (<code>sqlite/migrations.rs</code>, <code>pg/migrations/*.sql</code>) but converge on the same logical schema. Switching backend in place is <code>arca migrate-db</code> (see <a href="#configuration-migration-without-data-migration">Configuration migration</a>).</p>
+<h3 id="database-tables">Database tables<a class="headerlink" href="#database-tables" title="Permanent link">&para;</a></h3>
+<p>The same tables exist in both backends:</p>
+<table>
+<thead>
+<tr>
+<th>Table</th>
+<th>Content</th>
+<th>In a cluster</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>buckets</code></td>
+<td>Bucket name, creation time</td>
+<td>Replicated</td>
+</tr>
+<tr>
+<td><code>bucket_config</code></td>
+<td>Per-bucket settings as key/value (versioning, encryption, compression, lifecycle, object lock, policy, notifications, replication, ...)</td>
+<td>Replicated</td>
+</tr>
+<tr>
+<td><code>bucket_tags</code></td>
+<td>Bucket tags</td>
+<td>Replicated</td>
+</tr>
+<tr>
+<td><code>objects</code></td>
+<td>One row per object version: blob id, size, ETag, content type, metadata JSON, encryption, lock state, checksum, replication status, <code>version_id</code> / <code>is_latest</code> / <code>is_delete_marker</code>, cluster fields (<code>seq</code>, <code>is_tombstone</code>, <code>lock_updated_at</code>, <code>content_updated_at</code>)</td>
+<td>Replicated</td>
+</tr>
+<tr>
+<td><code>object_seq</code></td>
+<td>Single-row node-local counter that stamps <code>objects.seq</code></td>
+<td>Node-local</td>
+</tr>
+<tr>
+<td><code>object_tags</code></td>
+<td>Object tags per version</td>
+<td>Replicated best-effort (TD-033)</td>
+</tr>
+<tr>
+<td><code>multipart_uploads</code>, <code>parts</code></td>
+<td>In-progress multipart uploads and their parts</td>
+<td>Replicated</td>
+</tr>
+<tr>
+<td><code>users</code>, <code>credentials</code>, <code>teams</code>, <code>team_members</code>, <code>grants</code>, <code>user_grants</code>, <code>team_grants</code></td>
+<td>Identities and RBAC (see <a href="../../guide/access-control/">Access Control</a>)</td>
+<td>Replicated</td>
+</tr>
+<tr>
+<td><code>server_config</code></td>
+<td>Console-managed instance settings, plus this node's <code>node_id</code></td>
+<td>Replicated, except node-local keys such as <code>node_id</code></td>
+</tr>
+<tr>
+<td><code>control_tombstones</code></td>
+<td>Deleted control-plane entities, for cluster convergence</td>
+<td>Shipped in control snapshots</td>
+</tr>
+<tr>
+<td><code>audit_log</code></td>
+<td>Audit entries</td>
+<td>Node-local</td>
+</tr>
+<tr>
+<td><code>metrics_snapshot</code></td>
+<td>Metrics history</td>
+<td>Node-local</td>
+</tr>
+<tr>
+<td><code>notification_events</code></td>
+<td>Notification event log and delivery status</td>
+<td>Node-local</td>
+</tr>
+<tr>
+<td><code>replication_journal</code></td>
+<td>Outbound replication work queue</td>
+<td>Node-local</td>
+</tr>
+<tr>
+<td><code>presigned_urls</code></td>
+<td>Generated presigned URLs</td>
+<td>Node-local</td>
+</tr>
+<tr>
+<td><code>maintenance_jobs</code>, <code>maintenance_job_logs</code></td>
+<td>Maintenance jobs and logs</td>
+<td>Node-local</td>
+</tr>
+</tbody>
+</table>
+<p>A partial unique index on <code>objects(bucket, key) WHERE is_latest</code> guarantees at most one current version per key. In a versioned bucket every write adds a row and demotes the previous latest; a delete adds a delete-marker row. In an unversioned bucket a write replaces the key's row.</p>
+<h3 id="filesystem-layout">Filesystem layout<a class="headerlink" href="#filesystem-layout" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>{data_dir}/
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── arca.db                     # SQLite only
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>└── blobs/
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    ├── ab/cd/
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    │   ├── abcd1234-...uuid       # Blob file (raw object bytes)
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    │   └── abcd1234-...uuid.meta  # JSON sidecar (metadata)
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    └── ef/01/
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        ├── ef012345-...uuid
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        └── ef012345-...uuid.meta
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    └── 55/0e/                  # prefix directories (blob_prefix_depth, default 2)
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>        ├── 550e8400-...-446655440000        # blob file
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>        ├── 550e8400-...-446655440000.meta   # JSON sidecar
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>        └── 550e8400-...-446655440000.tmp    # only while a write is in progress
 </code></pre></div>
-<p>UUID-based naming eliminates path-traversal risks entirely — object keys (which can contain arbitrary characters like <code>../</code>) are never used in filesystem paths.</p>
-<p><strong>Integrity guarantees:</strong></p>
-<ul>
-<li><strong>No duplicate UUIDs</strong> — blob files are created with <code>O_CREAT | O_EXCL</code> (<code>create_new(true)</code> in Rust), which atomically fails if the file already exists</li>
-<li><strong>No duplicate latest versions</strong> — a partial unique index on <code>(bucket, key) WHERE is_latest = 1</code> ensures at most one "current" version per object key. When versioning is disabled, <code>put_object</code> returns the old record so the caller can delete the orphaned blob. When versioning is enabled, previous versions are preserved alongside the new latest version</li>
-<li><strong>Conflict detection</strong> — <code>arca fsck</code> detects orphaned blobs (no DB record) and conflicting sidecars (multiple <code>.meta</code> files claiming the same <code>bucket + key</code>). <code>arca recover</code> resolves conflicts by keeping the newest sidecar (by <code>created_at</code>) and reporting discarded duplicates</li>
-<li><strong>Sidecar integrity</strong> — the <code>objects</code> table stores a SHA-256 checksum of each <code>.meta</code> sidecar file, enabling <code>arca fsck</code> to detect corruption or tampering</li>
-</ul>
-<h3 id="write-order-and-disaster-recovery">Write Order and Disaster Recovery<a class="headerlink" href="#write-order-and-disaster-recovery" title="Permanent link">&para;</a></h3>
-<p>The write order for storing an object is deliberate:</p>
-<pre class="mermaid"><code>flowchart LR
-    A[1. Write blob file] --&gt; B[2. Write .meta sidecar] --&gt; C[3. Insert into SQLite]
-
-    style A fill:#1565c0,stroke:#42a5f5,stroke-width:2px,color:#fff
-    style B fill:#2e7d32,stroke:#4caf50,stroke-width:2px,color:#fff
-    style C fill:#00695c,stroke:#26a69a,stroke-width:2px,color:#fff</code></pre>
-<p>If the server crashes at any point:</p>
-<ul>
-<li><strong>After step 1 only</strong>: orphaned blob, no sidecar → <code>arca fsck</code> detects and cleans up</li>
-<li><strong>After step 2</strong>: blob + sidecar exist but DB doesn't know → <code>arca recover</code> rebuilds the DB entry from the sidecar</li>
-<li><strong>After step 3</strong>: fully consistent</li>
-</ul>
-<p>The <code>arca recover</code> command walks the <code>blobs/</code> directory, reads every <code>.meta</code> sidecar file, and reconstructs the SQLite database from scratch. This means the filesystem is the <strong>source of truth</strong> — the database is a queryable index that can always be rebuilt.</p>
-<h3 id="sidecar-meta-format">Sidecar <code>.meta</code> Format<a class="headerlink" href="#sidecar-meta-format" title="Permanent link">&para;</a></h3>
-<p>Every blob is accompanied by a JSON sidecar file containing all metadata needed to reconstruct the database entry:</p>
+<p><code>FsBlobStore::blob_path</code> builds the path from the <code>BlobId</code> alone: the UUID's hex digits (hyphens removed) give 1 to 4 two-character prefix directories (<code>[storage] blob_prefix_depth</code>, clamped to 1..4), then the UUID itself is the file name. Object keys never reach the filesystem, so a key such as <code>../../etc/passwd</code> cannot cause path traversal. Blob ids are minted with <code>BlobId::new()</code> (UUID v4); the cluster blob endpoints (<code>/cluster/v1/blob/{blob_id}</code>) reject any path parameter that is not a UUID before it reaches the blob layer. Blob ids carried inside replicated records and sidecars from (authenticated) peers are not yet validated (TD-041).</p>
+<h3 id="sidecar-meta-format">Sidecar <code>.meta</code> format<a class="headerlink" href="#sidecar-meta-format" title="Permanent link">&para;</a></h3>
+<p>Each blob has a sidecar holding <code>SidecarMeta</code> (<code>arca-core/src/store/blob.rs</code>) as JSON:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;bucket&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;my-bucket&quot;</span><span class="p">,</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">&quot;key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;photos/2024/vacation.jpg&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">&quot;content_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;image/jpeg&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="nt">&quot;size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1234567</span><span class="p">,</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">&quot;etag&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;d41d8cd98f00b204e9800998ecf8427e&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="nt">&quot;user_metadata&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;x-amz-meta-author&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;pietro&quot;</span><span class="p">},</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">  </span><span class="nt">&quot;created_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-02-27T14:30:00Z&quot;</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">&quot;size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1234567</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="nt">&quot;etag&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;d41d8cd98f00b204e9800998ecf8427e&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">&quot;content_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;image/jpeg&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="nt">&quot;last_modified&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-02-27T14:30:00+00:00&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">  </span><span class="nt">&quot;metadata&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;x-amz-meta-author&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;pietro&quot;</span><span class="p">}</span>
 <a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="p">}</span>
 </code></pre></div>
-<h3 id="data-integrity">Data Integrity<a class="headerlink" href="#data-integrity" title="Permanent link">&para;</a></h3>
-<p>Blob content integrity is verified via MD5 checksums:</p>
 <table>
 <thead>
 <tr>
-<th>What</th>
-<th>Hash</th>
-<th>Stored in</th>
-<th>Why this hash</th>
+<th>Field</th>
+<th>Meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Blob content</td>
-<td>MD5</td>
-<td><code>objects.etag</code> + <code>.meta</code> sidecar</td>
-<td>Required by the S3 protocol — the ETag for non-multipart objects is defined by AWS as the MD5 hex digest</td>
+<td><code>bucket</code>, <code>key</code></td>
+<td>Owning object. Part blobs use the key <code>{key}#{upload_id}#{part_number}</code></td>
+</tr>
+<tr>
+<td><code>size</code>, <code>etag</code></td>
+<td>Plaintext size and ETag</td>
+</tr>
+<tr>
+<td><code>content_type</code>, <code>last_modified</code>, <code>metadata</code></td>
+<td>Object attributes (<code>metadata</code> holds <code>x-amz-meta-*</code> and system headers)</td>
+</tr>
+<tr>
+<td><code>encryption</code> (optional)</td>
+<td><code>BlobEncryptionInfo</code>: algorithm, wrapped DEK, nonces, key id</td>
+</tr>
+<tr>
+<td><code>compression</code> (optional)</td>
+<td><code>BlobCompressionInfo</code>: algorithm, chunk size, original and compressed size</td>
+</tr>
+<tr>
+<td><code>version_id</code> (optional)</td>
+<td>Version id (currently never set: sidecars are written before the commit assigns the version, TD-032)</td>
+</tr>
+<tr>
+<td><code>composite</code> (optional)</td>
+<td>List of <code>CompositePart</code> for a composite blob (see below)</td>
 </tr>
 </tbody>
 </table>
-<p>This gives <code>arca fsck</code> coverage for blob corruption: recompute MD5 of the blob file and compare with the ETag in the database.</p>
-<p>Note that this check requires the database to be intact. During <code>arca recover</code> (database is lost), the sidecars are trusted by necessity since there is nothing to compare against.</p>
+<p>Sidecars serve two purposes: runtime reads (the encryption, compression and composite layers read them to decide how to decode a blob) and offline rebuilds (<code>arca recover</code>). The sidecar format is documented for operators in <a href="../../operations/recovery/">Disaster Recovery</a>.</p>
+<h3 id="putobject-write-path">PutObject write path<a class="headerlink" href="#putobject-write-path" title="Permanent link">&para;</a></h3>
+<pre class="mermaid"><code>sequenceDiagram
+    participant H as put_object handler
+    participant B as Blob stack
+    participant F as FsBlobStore
+    participant M as Metadata stack
+
+    H-&gt;&gt;H: early checks (bucket, early precondition reject, size, tags)
+    H-&gt;&gt;B: put_with_hints(blob_id, body stream)
+    B-&gt;&gt;F: put (after compression / encryption, if any)
+    F-&gt;&gt;F: bounded channel to blocking worker: MD5 + write {id}.tmp, rename to {id}
+    H-&gt;&gt;B: write_sidecar (cluster: blob + sidecar fan out here)
+    H-&gt;&gt;M: put_object_if(record, precondition)
+    M--&gt;&gt;H: (old record, version id) or 412 / 404
+    H-&gt;&gt;B: refused: delete the new blob; accepted: delete the old blob in background</code></pre>
+<ol>
+<li>The request body becomes a <code>ByteStream</code> (<code>handlers/body.rs</code>); AWS chunked encoding (<code>x-amz-content-sha256: STREAMING-*</code>) is decoded on the fly and <code>max_body_size</code> is enforced while streaming.</li>
+<li><code>FsBlobStore::put</code> runs a producer/consumer pipeline: the async task forwards chunks through a bounded channel (capacity 4) to a <code>spawn_blocking</code> worker that MD5-hashes and writes each chunk. The worker writes <code>{id}.tmp</code>, opened with <code>create_new</code> (<code>O_CREAT | O_EXCL</code>), and the file is renamed to its final name when the stream ends. The ETag is the hex MD5 of the plaintext: the encryption and compression layers report the plaintext digest.</li>
+<li>The handler writes the sidecar, then commits the metadata row through <code>put_object_if</code>, which evaluates the precondition and assigns the version id in one transaction (see <a href="#conditional-writes">Conditional writes</a>).</li>
+<li><code>MetadataStore::put_object</code> and <code>put_object_if</code> return <code>(Option&lt;ObjectRecord&gt;, Option&lt;String&gt;)</code>: the record that was overwritten (so the caller can delete its now-orphaned blob, done in a background task) and the version id assigned to the new row.</li>
+</ol>
+<p>GetObject streams the blob back through the same stack (<code>ReaderStream</code> over the file, 64 KiB reads); range requests seek and limit the read.</p>
+<h3 id="write-order-and-crash-consistency">Write order and crash consistency<a class="headerlink" href="#write-order-and-crash-consistency" title="Permanent link">&para;</a></h3>
+<p>The order is always <strong>blob file → sidecar → metadata row</strong>. If the process dies in between:</p>
+<table>
+<thead>
+<tr>
+<th>Crash after</th>
+<th>State left behind</th>
+<th>Detected / handled by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>part of the blob</td>
+<td><code>{id}.tmp</code></td>
+<td><code>arca fsck</code> (stale temp files)</td>
+</tr>
+<tr>
+<td>blob</td>
+<td>blob without sidecar or row</td>
+<td><code>arca fsck</code> (orphaned blob); reclaimed by <a href="../../operations/gc/">blob GC</a></td>
+</tr>
+<tr>
+<td>sidecar</td>
+<td>blob and sidecar, no row</td>
+<td><code>arca fsck</code>; <code>arca recover</code> can rebuild the row from the sidecar</td>
+</tr>
+<tr>
+<td>row</td>
+<td>consistent</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Known gaps, tracked in <a href="../../tech-debt/">Technical Debt</a>:</p>
+<ul>
+<li><strong>No fsync (TD-038).</strong> Blob writes flush and rename but never <code>sync_all</code> the file or its directory, and sidecars are written with a plain non-atomic <code>fs::write</code>. After a power loss an acknowledged write can be lost or truncated, which also weakens the ordering above.</li>
+<li><strong><code>recover</code> is lossy (TD-014, TD-032).</strong> It drops multipart (composite) objects, re-creates parts as bogus objects, keeps the oldest version of each key, restores only buckets, objects and credentials, and always writes a SQLite database. Treat it as a last resort; see <a href="../../operations/recovery/">Disaster Recovery</a>.</li>
+<li><strong><code>fsck</code></strong> compares the database with the files on disk (missing blobs, orphaned blobs and sidecars, sidecar/row mismatches, stale temp files, and MD5 checksums with <code>--verify-checksums</code>). It does not understand composite blobs and reports them as orphaned sidecars (TD-014).</li>
+</ul>
+<h3 id="multipart-uploads-and-composite-blobs">Multipart uploads and composite blobs<a class="headerlink" href="#multipart-uploads-and-composite-blobs" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>UploadPart</strong> stores each part as an ordinary UUID blob through the same write stack as PutObject, with a sidecar whose key is <code>{key}#{upload_id}#{part_number}</code>, and a row in <code>parts</code>. Re-uploading a part number deletes the previous part blob. (UploadPartCopy writes a part sidecar only when the part is encrypted.)</li>
+<li><strong>CompleteMultipartUpload</strong> validates the part list (ETags, order, 5 MiB minimum for all but the last part), then calls <code>BlobStore::concat</code>:<ul>
+<li><code>FsBlobStore::concat</code>: when every part has a sidecar and is plain (no encryption, no compression), it returns a <strong>composite</strong> result without copying any byte. Otherwise it copies the parts into a new blob.</li>
+<li><code>EncryptingBlobStore::concat</code>: when every part is SSE-S3 encrypted and uncompressed, it returns a composite that keeps each part's own DEK and nonce. Otherwise it decrypts and re-encrypts into a new blob.</li>
+</ul>
+</li>
+<li>A <strong>composite blob</strong> has no file of its own: its sidecar lists the part blobs (<code>composite</code>), and reads stream the overlapping byte range of each part in order. The part blobs stay on disk for as long as the composite exists; <code>FsBlobStore::delete</code> on a composite cascades into its parts, while <code>delete_assembled</code> removes only the assembled blob's own file and sidecar (used when a conditional Complete is refused, so the client can retry with the same parts). For non-composite results the part blobs are deleted after the commit.</li>
+<li>The composite <strong>ETag</strong> is computed by the handler as <code>hex(MD5(binary_MD5(part1) || binary_MD5(part2) || ...))-{count}</code>: the 16-byte binary digests are concatenated, not their hex strings.</li>
+<li>SSE-C is not supported for multipart uploads (TD-010). Re-encryption maintenance jobs skip composite objects (TD-018).</li>
+</ul>
+<h2 id="conditional-writes">Conditional Writes<a class="headerlink" href="#conditional-writes" title="Permanent link">&para;</a></h2>
+<p><code>If-Match</code> / <code>If-None-Match</code> on PutObject and CompleteMultipartUpload, and the conditional headers of DeleteObject and DeleteObjects, are compare-and-swap operations on the object's current state.</p>
+<ul>
+<li><strong>The authoritative check is inside the metadata transaction.</strong> <code>put_object_if</code>, <code>delete_object_if</code> and <code>delete_object_version_if</code> (<code>arca-core/src/store/metadata.rs</code>) take a <code>WritePrecondition</code> / <code>DeletePrecondition</code> and evaluate it, with the same <code>evaluate</code> function, inside the transaction that installs the new version, delete marker or tombstone. On a mismatch nothing is written and the store returns <code>PreconditionFailed</code> (or <code>NoSuchKey</code> for <code>If-Match</code> on a missing object). The unconditional <code>put_object</code> / <code>delete_object</code> / <code>delete_object_version</code> are default methods that pass an empty precondition.</li>
+<li><strong>Handler checks are only an optimisation.</strong> Handlers may reject a stale request before reading its body; that early check cannot decide a race, the commit-time check does.</li>
+<li><strong>SQLite</strong> is atomic by construction: every write runs on the single writer connection, so no other writer can commit between the check and the write (<code>sqlite/metadata.rs</code>).</li>
+<li><strong>PostgreSQL</strong> runs at READ COMMITTED, where a plain SELECT never blocks. Each objects-writing transaction therefore takes its first lock with <code>next_object_seq</code> (an <code>UPDATE ... RETURNING</code> on the <code>object_seq</code> row) and only then runs the CAS read. Once the lock is granted, every previously serialised writer has committed, so the read sees current state. A CAS read placed before that statement would read a stale snapshot and let two conflicting writers both succeed (<code>pg/metadata.rs</code>; regression coverage is missing, TD-039).</li>
+<li><strong>A losing writer has already uploaded its whole body.</strong> The blob is written before the commit, so on refusal the handler deletes it and answers <code>412</code> (Arca never returns AWS's <code>409 ConditionalRequestConflict</code>).</li>
+<li><strong>In a cluster the CAS is exact per node only (TD-025).</strong> The serving node commits locally and then fans out; two conditional writes for the same key on two different nodes can both succeed and are then resolved by last-writer-wins. See <a href="../../guide/ha/">High Availability</a> for the operational mitigation.</li>
+</ul>
+<h2 id="authentication-and-request-integrity">Authentication and Request Integrity<a class="headerlink" href="#authentication-and-request-integrity" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>SigV4</strong> verification lives in <code>arca-auth</code> (<code>verify_request</code>, <code>verify_presigned_request</code>), shared by three middlewares: S3 (<code>middleware/auth.rs</code>, S3 XML errors), Admin (<code>middleware/admin_auth.rs</code>, JSON errors) and inter-node (<code>middleware/cluster_auth.rs</code>). The computed and provided signatures are compared in constant time (<code>subtle::ConstantTimeEq</code>).</li>
+<li><strong>Anti-replay</strong>: header-signed requests are accepted only when <code>x-amz-date</code> is within 15 minutes of the server clock (<code>REPLAY_WINDOW_SECS</code>); presigned URLs carry their own expiry (at most 7 days).</li>
+<li><strong>Authorization</strong>: after authentication the S3 middleware loads the user's effective grants and evaluates them (deny overrides allow); root bypasses policy evaluation. See <a href="../../guide/access-control/">Access Control</a>.</li>
+<li><strong>HTTP/2</strong>: browsers send <code>:authority</code> instead of <code>Host</code>; the S3 and Admin auth middlewares synthesise <code>host</code> from the URI authority when it is missing.</li>
+</ul>
+<div class="admonition warning">
+<p class="admonition-title">No request body integrity check</p>
+<p>Signatures cover the method, URI, query and signed headers. The body is <strong>not</strong> verified today: <code>Content-MD5</code> is never read, <code>x-amz-checksum-*</code> values are stored and echoed back but never compared with the body, a hex <code>x-amz-content-sha256</code> is signed but never compared with the body, and <code>STREAMING-*</code> chunk signatures are stripped without verification. A corrupted upload is stored and acknowledged. Tracked as TD-034 in <a href="../../tech-debt/">Technical Debt</a>.</p>
+</div>
+<h2 id="clustering">Clustering<a class="headerlink" href="#clustering" title="Permanent link">&para;</a></h2>
+<p>This section covers the architecture only; <a href="../../guide/ha/">High Availability</a> is the operator guide and <a href="../ha-design-decisions/">HA Design Decisions</a> records the individual decisions. A cluster is fully replicated (every node holds every object), symmetric (byte-identical configuration on every node, each node self-assigns and persists its <code>node_id</code> in <code>server_config</code>) and has no leader for the data path.</p>
+<h3 id="decorators-over-the-storage-traits">Decorators over the storage traits<a class="headerlink" href="#decorators-over-the-storage-traits" title="Permanent link">&para;</a></h3>
+<p>Clustering adds no code to the S3 handlers. When <code>[cluster] enabled = true</code>, <code>main.rs</code> wraps the stores with the cluster decorators listed <a href="#implementations-and-decorators">above</a>:</p>
+<ul>
+<li><code>ClusterBlobStore</code> writes locally, and on <code>write_sidecar</code> (when bytes and sidecar are both on disk) ships both to peers. On <code>get</code>, a blob missing locally is fetched from a live peer (read-repair). <code>delete</code> is local only; peers reclaim orphaned blobs with their own GC.</li>
+<li><code>ClusterMetadataStore</code> commits locally, then sends the row exactly as stored (including the version id the origin minted) to every peer. In <code>quorum</code> mode an admission gate refuses writes when too few nodes are live, and the write is acknowledged only when the local copy plus peer ACKs (row applied and blob present) reach the write quorum, otherwise <code>503</code> (the local copy is not rolled back). In <code>available</code> mode fan-out is best-effort. Bucket-level operations (create/delete, <code>bucket_config</code>, tags) and in-progress multipart state are sent as control operations to <code>/cluster/v1/op</code>.</li>
+<li>The identity and settings decorators replicate credential, user, team, grant and server-config mutations, which is what lets a client authenticate against any node.</li>
+</ul>
+<h3 id="dedicated-inter-node-transport">Dedicated inter-node transport<a class="headerlink" href="#dedicated-inter-node-transport" title="Permanent link">&para;</a></h3>
+<p>Replication uses the internal <code>/cluster/v1/*</code> endpoints (<code>arca-proto/src/handlers/cluster.rs</code>, client in <code>arca-server/src/cluster/client.rs</code>), never the public S3 API. A replica must keep the original <code>blob_id</code> and <code>version_id</code> identities and store the bytes verbatim, still encrypted and compressed, which an S3 PUT cannot express. Requests are SigV4-signed with the shared <code>[cluster] secret</code>, carry the sender's node id for loop prevention, and can additionally use mutual TLS (<code>[cluster.tls]</code>). Peer liveness is an authenticated challenge-response ping: a peer that cannot prove it holds the secret is never eligible for fan-out or quorum. JSON endpoints cap bodies at 2 MiB; blob bodies stream.</p>
+<h3 id="change-tracking-the-seq-cursor">Change tracking: the <code>seq</code> cursor<a class="headerlink" href="#change-tracking-the-seq-cursor" title="Permanent link">&para;</a></h3>
+<p>Every write to <code>objects</code> on a node, including rows applied from a peer, stamps a fresh value of a node-local, commit-ordered counter into <code>objects.seq</code>. A peer pulls <code>POST /cluster/v1/manifest</code> with "everything after <code>seq</code> N" and advances its per-peer high-water mark (in memory; it restarts from zero after a restart, which costs one idempotent full pass).</p>
+<ul>
+<li><strong>SQLite</strong>: the <code>object_seq</code> counter is incremented on the single writer connection, inside the row's transaction.</li>
+<li><strong>PostgreSQL</strong>: the <code>object_seq</code> counter row is updated with <code>UPDATE ... RETURNING</code> inside the row's transaction. Its row lock is held until commit, so seq order equals commit order. A PostgreSQL SEQUENCE (used before) is not transactional: a row holding seq N could commit after seq N+1, and a peer that had already advanced past N would never receive it.</li>
+<li><strong>Why not <code>last_modified</code></strong>: a wall-clock cursor breaks under clock skew between nodes and under several writes sharing a timestamp, and either case makes the cursor skip rows. A counter written in commit order cannot skip.</li>
+</ul>
+<h3 id="deletes-and-conflict-resolution">Deletes and conflict resolution<a class="headerlink" href="#deletes-and-conflict-resolution" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Tombstones only in cluster mode.</strong> <code>SqliteStore</code> / <code>PgStore::set_cluster_mode</code> is turned on when clustering is enabled; a hard delete then marks the row <code>is_tombstone</code> (blob cleared, <code>last_modified</code> set to the delete time, fresh <code>seq</code>) instead of removing it. A tombstone is an ordinary row in the manifest, so last-writer-wins converges deletions with no special case and anti-entropy cannot resurrect a deleted object. Single-node deployments delete rows outright. Tombstones older than the configured grace are purged, unless a known peer has been unseen for longer than the grace.</li>
+<li><strong>Replica conflict rule</strong> (<code>ObjectRecord::resolve_replicated</code>, <code>arca-core/src/types.rs</code>), for an incoming row against the local row of the same version:<ol>
+<li>A strictly newer <code>last_modified</code> replaces the whole row; a strictly older one loses.</li>
+<li>Equal <code>last_modified</code> with a different ETag is a concurrent overwrite: the row with the greater <code>blob_id</code> wins as a whole.</li>
+<li>Equal <code>last_modified</code> and equal ETag is the same content lineage, and two in-place registers merge independently, each adopting the incoming value only if strictly newer: the <strong>lock register</strong> (retention mode, retain-until date, legal hold) ordered by <code>lock_updated_at</code>, and the <strong>content register</strong> (<code>blob_id</code>, encryption algorithm and key id, changed by re-encryption) ordered by <code>content_updated_at</code>. Merging them separately keeps a re-encryption from reverting a newer legal hold and vice versa.</li>
+<li>If the result is identical to the local row, nothing is rewritten (no new <code>seq</code>), so caught-up nodes do not redeliver to each other forever.</li>
+</ol>
+</li>
+</ul>
+<h3 id="anti-entropy-and-the-control-plane">Anti-entropy and the control plane<a class="headerlink" href="#anti-entropy-and-the-control-plane" title="Permanent link">&para;</a></h3>
+<p>The anti-entropy worker (<code>cluster/anti_entropy.rs</code>) runs on every node:</p>
+<ul>
+<li><strong>Objects</strong>: pulls each live peer's manifest incrementally and applies rows through the inner store (no re-fan-out).</li>
+<li><strong>Control plane</strong>: pulls each peer's full <code>ControlSnapshot</code> (credentials, users, teams, grants, memberships and attachments, buckets, bucket config and tags, server config, in-progress multipart uploads and parts, control tombstones) and merges it per row by last-writer-wins (<code>plan_control_merge</code>), with tombstones for deletions. Real-time changes also go over <code>/cluster/v1/op</code>; the snapshot is the convergence mechanism. A full snapshot is used instead of an operation log because the control plane is tiny, an op-log grows without bound, and an op-log cannot bootstrap a node that has been away past its GC horizon.</li>
+<li><strong>Blobs</strong>: repairs blobs missing for local rows (budgeted per tick) and garbage-collects orphan blob files, composite-aware and grace-protected.</li>
+<li><strong>Not reconciled</strong>: object tags are replicated only by best-effort fan-out (TD-033).</li>
+</ul>
+<p>Node-local tables (<code>audit_log</code>, <code>metrics_snapshot</code>, <code>notification_events</code>, <code>replication_journal</code>, <code>presigned_urls</code>, <code>maintenance_jobs</code>, <code>maintenance_job_logs</code>, <code>object_seq</code>) are never replicated; the console reads another node's audit log, metrics history, notification events and replication journal through a signed admin proxy (<code>/cluster/v1/admin/*</code>).</p>
+<h3 id="discovery">Discovery<a class="headerlink" href="#discovery" title="Permanent link">&para;</a></h3>
+<p>Peers are found by mDNS (<code>_arca._tcp.local</code>), a static seed list or a DNS name resolving to all nodes (<code>cluster/membership.rs</code>), and verified by the authenticated ping. Discovery only supplies addresses. A gossip protocol was not adopted: at the small cluster sizes Arca targets it adds complexity without benefit.</p>
+<h2 id="background-workers">Background Workers<a class="headerlink" href="#background-workers" title="Permanent link">&para;</a></h2>
+<p>Spawned by <code>async_main</code> (<code>arca-server/src/worker.rs</code>, <code>maintenance.rs</code>, <code>replicator/</code>, <code>cluster/</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Worker</th>
+<th>Purpose</th>
+<th>Guide</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Audit writer</td>
+<td>Batched inserts of audit entries</td>
+<td><a href="../../operations/monitoring/">Monitoring</a></td>
+</tr>
+<tr>
+<td>Metrics</td>
+<td>Periodic metrics snapshots</td>
+<td><a href="../../operations/monitoring/">Monitoring</a></td>
+</tr>
+<tr>
+<td>Retention</td>
+<td>Purges old audit, metrics, notification and replication-journal entries and expired presigned-URL records</td>
+<td><a href="../../guide/configuration/">Configuration</a></td>
+</tr>
+<tr>
+<td>Lifecycle</td>
+<td>Applies bucket lifecycle rules</td>
+<td><a href="../s3-api/">S3 API</a></td>
+</tr>
+<tr>
+<td>Notification</td>
+<td>Delivers S3 events through the connector registry</td>
+<td><a href="../../guide/connectors/">Connectors</a></td>
+</tr>
+<tr>
+<td>Replication</td>
+<td>Drains the outbound replication journal to S3 destinations</td>
+<td><a href="../../guide/replication/">Replication</a></td>
+</tr>
+<tr>
+<td>Maintenance</td>
+<td>Runs maintenance jobs (<code>encrypt</code>, <code>decrypt</code>, <code>migrate-db</code>)</td>
+<td><a href="../../guide/maintenance/">Maintenance</a></td>
+</tr>
+<tr>
+<td>Blob GC</td>
+<td>Single node, opt-in: reclaims orphan blob files</td>
+<td><a href="../../operations/gc/">Storage Reclamation</a></td>
+</tr>
+<tr>
+<td>Membership, anti-entropy</td>
+<td>Cluster only</td>
+<td><a href="../../guide/ha/">High Availability</a></td>
+</tr>
+</tbody>
+</table>
+<p>Outbound replication to external S3 endpoints is a separate feature from clustering: it uses the public S3 API of the destination and its own journal.</p>
 <h2 id="key-design-decisions">Key Design Decisions<a class="headerlink" href="#key-design-decisions" title="Permanent link">&para;</a></h2>
-<h3 id="configuration-migration-without-data-migration">Configuration Migration Without Data Migration<a class="headerlink" href="#configuration-migration-without-data-migration" title="Permanent link">&para;</a></h3>
-<p>A core architectural principle: <strong>any configuration change must be possible without migrating data to a new instance</strong>. This includes switching storage backends (SQLite to PostgreSQL), enabling encryption on existing data, changing node topology, and any other setting change.</p>
-<p>Many S3-compatible servers (notably MinIO) make certain configuration choices permanent — for example, you cannot move from a multi-node erasure-coded setup to a single node without standing up a fresh instance and copying all data over. Arca explicitly rejects this pattern.</p>
-<p>Instead, Arca provides offline CLI migration tools (e.g., <code>arca migrate-db</code>) that transform data and metadata in place. When designing new features, this constraint means:</p>
+<h3 id="configuration-migration-without-data-migration">Configuration migration without data migration<a class="headerlink" href="#configuration-migration-without-data-migration" title="Permanent link">&para;</a></h3>
+<p>Any configuration change must be possible in place, on the existing data directory, without standing up a new instance and copying data over (as MinIO requires for some topology changes). The current tools:</p>
 <ul>
-<li><strong>Storage formats must be evolvable</strong> — sidecars, blob layouts, and DB schemas must support incremental migration.</li>
-<li><strong>Configuration changes must have a migration path</strong> — every new config option that affects data layout must include a CLI command or startup procedure that converts existing data.</li>
-<li><strong>The data directory is sacred</strong> — users should never need to re-upload objects because of an infrastructure change.</li>
+<li><code>arca migrate-db --to sqlite|postgres</code> copies all metadata to the other backend; blob files are not touched.</li>
+<li><code>arca migrate-topology --to-cluster | --to-single</code> moves between standalone and HA: the cluster is fully replicated, so no data is redistributed.</li>
+<li><code>arca encrypt-existing</code> / <code>decrypt-existing</code> and <code>compress-existing</code> / <code>decompress-existing</code> rewrite blobs in place.</li>
+<li>Re-encryption and <code>migrate-db</code> (PostgreSQL to SQLite only, TD-019) also run online as <a href="../../guide/maintenance/">maintenance jobs</a>.</li>
 </ul>
-<h3 id="no-s3s-crate">No <code>s3s</code> Crate<a class="headerlink" href="#no-s3s-crate" title="Permanent link">&para;</a></h3>
-<p>We build our own S3 HTTP protocol adapter with Axum rather than depending on the <a href="https://crates.io/crates/s3s"><code>s3s</code></a> crate. This was an explicit decision to avoid pre-1.0 dependency risk and maintain full control over the protocol layer. The S3 protocol has many subtle behaviors (error formats, header handling, query-parameter routing) where we need precise control.</p>
-<h3 id="s3-query-parameter-routing">S3 Query-Parameter Routing<a class="headerlink" href="#s3-query-parameter-routing" title="Permanent link">&para;</a></h3>
-<p>S3 overloads the same HTTP method + path with different query parameters. Since Axum routes by method + path only, handlers dispatch internally based on query params:</p>
-<table>
-<thead>
-<tr>
-<th>Route</th>
-<th>Without query params</th>
-<th>With query params</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>PUT /:bucket/*key</code></td>
-<td>PutObject</td>
-<td>UploadPart (<code>?partNumber=&amp;uploadId=</code>)</td>
-</tr>
-<tr>
-<td><code>GET /:bucket</code></td>
-<td>HeadBucket</td>
-<td>ListObjectsV2 (<code>?list-type=2</code>)</td>
-</tr>
-<tr>
-<td><code>POST /:bucket/*key</code></td>
-<td>—</td>
-<td>CreateMultipartUpload (<code>?uploads</code>) or CompleteMultipartUpload (<code>?uploadId=</code>)</td>
-</tr>
-<tr>
-<td><code>DELETE /:bucket/*key</code></td>
-<td>DeleteObject</td>
-<td>AbortMultipartUpload (<code>?uploadId=</code>)</td>
-</tr>
-</tbody>
-</table>
-<p>This is the same approach used by MinIO, Ceph RGW, and RustFS.</p>
-<h3 id="streaming-first-io">Streaming-First I/O<a class="headerlink" href="#streaming-first-io" title="Permanent link">&para;</a></h3>
-<p>Arca never buffers full objects in memory:</p>
-<ul>
-<li><strong>PutObject</strong>: the request body stream is teed to an MD5 hasher and a file writer concurrently. The ETag (MD5 hex digest) is computed on-the-fly without ever holding the full object in memory.</li>
-<li><strong>GetObject</strong>: a <code>tokio::fs::File</code> is wrapped in a <code>ReaderStream</code> and sent directly as the response body. Range requests use seek + take for efficient partial reads.</li>
-<li><strong>UploadPart</strong>: same streaming pattern as PutObject, writing to a temporary part file.</li>
-</ul>
-<p>This means Arca can handle multi-gigabyte objects with constant memory usage.</p>
-<h3 id="put_object-returns-old-record"><code>put_object</code> Returns Old Record<a class="headerlink" href="#put_object-returns-old-record" title="Permanent link">&para;</a></h3>
-<p><code>MetadataStore::put_object</code> returns <code>Option&lt;ObjectRecord&gt;</code> of the overwritten object so the caller can delete the orphaned blob. Without this, blob files would accumulate unboundedly on repeated writes to the same key.</p>
-<h3 id="multipart-composite-etag">Multipart Composite ETag<a class="headerlink" href="#multipart-composite-etag" title="Permanent link">&para;</a></h3>
-<p>The composite ETag follows the S3 standard:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>hex(MD5(binary_MD5(part1) || binary_MD5(part2) || ...))-{count}
-</code></pre></div>
-<p>The binary MD5 bytes of each part are concatenated (not hex strings), then hashed again. The result is formatted as <code>"&lt;hex&gt;-&lt;count&gt;"</code>.</p>
-<h3 id="auth-body-hash-strategy">Auth Body Hash Strategy<a class="headerlink" href="#auth-body-hash-strategy" title="Permanent link">&para;</a></h3>
-<p>For streaming uploads, buffering multi-gigabyte objects for SHA-256 hashing is impractical. S3 clients send <code>x-amz-content-sha256: UNSIGNED-PAYLOAD</code>, indicating the body is not covered by the signature. Auth middleware verifies the request signature (headers + URI) only. Body integrity is separately guaranteed by <code>Content-MD5</code> headers.</p>
-<h2 id="cli-architecture">CLI Architecture<a class="headerlink" href="#cli-architecture" title="Permanent link">&para;</a></h2>
-<p>The <code>arca</code> binary exposes subcommands via <a href="https://docs.rs/clap">clap</a>:</p>
-<table>
-<thead>
-<tr>
-<th>Command</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>arca serve</code></td>
-<td>Start the S3 server</td>
-</tr>
-<tr>
-<td><code>arca credential add</code></td>
-<td>Generate a new access key pair (<code>--user</code> selects the owning user)</td>
-</tr>
-<tr>
-<td><code>arca credential list</code></td>
-<td>List all credentials (shows the owning user)</td>
-</tr>
-<tr>
-<td><code>arca credential remove</code></td>
-<td>Delete a credential by access key ID</td>
-</tr>
-<tr>
-<td><code>arca recover</code></td>
-<td>Rebuild SQLite DB from <code>.meta</code> sidecar files</td>
-</tr>
-<tr>
-<td><code>arca fsck</code></td>
-<td>Check consistency between DB and filesystem</td>
-</tr>
-</tbody>
-</table>
-<p>All subcommands accept <code>--config-path</code> (default: <code>/etc/arca/config.toml</code>) to locate the configuration file, which provides the <code>data_dir</code> path used to find the database and blob storage.</p>
+<p>For new features this means: storage formats (sidecars, blob layout, schema) must be evolvable, every option that affects data layout needs a migration path, and users must never have to re-upload objects because of an infrastructure change.</p>
+<h3 id="no-s3s-crate">No <code>s3s</code> crate<a class="headerlink" href="#no-s3s-crate" title="Permanent link">&para;</a></h3>
+<p>The S3 protocol adapter is built on Axum instead of the <a href="https://crates.io/crates/s3s"><code>s3s</code></a> crate, to avoid a pre-1.0 dependency at the core and to keep precise control over error formats, header handling and query-parameter routing.</p>
+<h3 id="streaming-first-io">Streaming-first I/O<a class="headerlink" href="#streaming-first-io" title="Permanent link">&para;</a></h3>
+<p>No path buffers a whole object in memory: PutObject and UploadPart stream to disk while hashing, GetObject streams from the file, CopyObject streams source to destination, and the cluster transport streams blob bodies. CPU-heavy work (MD5, AEAD) runs on blocking threads so the async runtime keeps pulling network bytes.</p>
+<h3 id="copy-is-a-real-data-copy">Copy is a real data copy<a class="headerlink" href="#copy-is-a-real-data-copy" title="Permanent link">&para;</a></h3>
+<p>CopyObject (and UploadPartCopy) reads the source and writes a new blob with a new <code>BlobId</code>; there is no reference counting between objects. Deleting either object never affects the other. The only blobs shared across records are composite parts, and those belong to exactly one composite.</p>
+<h3 id="opaque-continuation-tokens">Opaque continuation tokens<a class="headerlink" href="#opaque-continuation-tokens" title="Permanent link">&para;</a></h3>
+<p>ListObjectsV2 continuation tokens are opaque to clients. Today the token is the base64 encoding of the last key returned; clients must not depend on that.</p>
+<h3 id="admin-api-on-the-same-port-console-as-a-separate-application">Admin API on the same port, console as a separate application<a class="headerlink" href="#admin-api-on-the-same-port-console-as-a-separate-application" title="Permanent link">&para;</a></h3>
+<p>The Admin API lives under <code>/admin/*</code> on the S3 port, authenticated with SigV4 and answering JSON. The console is a separate application, so the server binary stays small, the two can be deployed and released independently, and the storage engine does not serve a web UI. See <a href="../admin-api/">Admin API</a> and <a href="../../guide/console/">Web Console</a>.</p>
+<h2 id="cli">CLI<a class="headerlink" href="#cli" title="Permanent link">&para;</a></h2>
+<p>The <code>arca</code> binary exposes these subcommands (clap): <code>serve</code>, <code>credential</code>, <code>user</code>, <code>recover</code>, <code>fsck</code>, <code>gc</code>, <code>tls</code>, <code>encryption</code>, <code>compress-existing</code>, <code>decompress-existing</code>, <code>encrypt-existing</code>, <code>decrypt-existing</code>, <code>migrate-db</code>, <code>migrate-topology</code>, <code>cluster</code>. Options and examples are in the <a href="../../guide/cli/">CLI Reference</a>.</p>
 <h2 id="technology-choices">Technology Choices<a class="headerlink" href="#technology-choices" title="Permanent link">&para;</a></h2>
+<p>Exact versions are pinned in <code>Cargo.toml</code> and the Dockerfiles.</p>
 <table>
 <thead>
 <tr>
@@ -2395,48 +2868,62 @@
 <tr>
 <td>Language</td>
 <td>Rust</td>
-<td>Memory safety, predictable performance, zero-cost abstractions</td>
+<td>Memory safety, predictable performance</td>
 </tr>
 <tr>
-<td>HTTP framework</td>
-<td>Axum 0.8 + Tower</td>
-<td>Tokio-native, excellent middleware ecosystem, type-safe extractors</td>
+<td>HTTP</td>
+<td>Axum + Tower; hyper-util for the TLS listener</td>
+<td>Tokio-native, composable middleware</td>
+</tr>
+<tr>
+<td>TLS</td>
+<td>rustls (<code>ring</code> provider) + tokio-rustls, certificates hot-reloaded on SIGHUP</td>
+<td>Pure-Rust TLS with the <code>ring</code> crypto backend</td>
 </tr>
 <tr>
 <td>XML</td>
 <td>quick-xml + serde</td>
-<td>10-50x faster than xml-rs, first-class serde integration</td>
+<td>Fast, serde integration</td>
 </tr>
 <tr>
-<td>Metadata DB</td>
-<td>SQLite via tokio-rusqlite</td>
-<td>Embedded, zero-config, WAL mode for concurrency; trait abstraction allows future Postgres swap</td>
+<td>Metadata</td>
+<td>SQLite (tokio-rusqlite) or PostgreSQL (sqlx)</td>
+<td>Embedded zero-config default, external database when needed</td>
+</tr>
+<tr>
+<td>Metadata cache</td>
+<td>moka</td>
+<td>Bounded LRU with TTL</td>
 </tr>
 <tr>
 <td>Auth</td>
-<td>Custom SigV4 (hmac + sha2)</td>
-<td>Well-documented algorithm, testable against AWS official test vectors</td>
+<td>Own SigV4 implementation (hmac, sha2, subtle)</td>
+<td>Testable against AWS test vectors</td>
 </tr>
 <tr>
-<td>Blob storage</td>
-<td>UUID files + <code>.meta</code> sidecars</td>
-<td>No path-traversal risks, enables disaster recovery without external backups</td>
+<td>Encryption</td>
+<td>AES-256-GCM via <code>ring</code>, 64 KiB chunks, per-object DEK wrapped by the master key</td>
+<td>Streaming, envelope encryption</td>
+</tr>
+<tr>
+<td>Cluster discovery</td>
+<td>mdns-sd, static list or DNS</td>
+<td>Zero-config on a LAN, explicit elsewhere</td>
 </tr>
 <tr>
 <td>CLI</td>
 <td>clap (derive)</td>
-<td>Standard Rust CLI framework, type-safe argument parsing</td>
+<td>Type-safe argument parsing</td>
 </tr>
 <tr>
 <td>Logging</td>
 <td>tracing + tracing-subscriber</td>
-<td>Structured, async-aware, supports JSON output for production</td>
+<td>Structured logs, JSON output, runtime-reloadable level</td>
 </tr>
 </tbody>
 </table>
-<h2 id="whats-not-yet-implemented">What's NOT Yet Implemented<a class="headerlink" href="#whats-not-yet-implemented" title="Permanent link">&para;</a></h2>
-<p>Object tagging, lifecycle rules, object lock, metrics endpoint, replication, multi-node / distributed mode.</p>
-<p>These are deferred by design. The trait-based architecture ensures they can be added incrementally without architectural changes. See the <a href="../../roadmap/">roadmap</a> for the full post-MVP plan.</p>
+<h2 id="known-limitations">Known Limitations<a class="headerlink" href="#known-limitations" title="Permanent link">&para;</a></h2>
+<p>Open workarounds and bugs, each with an ID referenced in the code, are listed in <a href="../../tech-debt/">Technical Debt</a>; planned work is in the <a href="../../roadmap/">Roadmap</a>. The items most relevant to this page are TD-014 and TD-032 (<code>recover</code> / <code>fsck</code>), TD-025 (cluster CAS), TD-029 (compression with encryption), TD-033 (object tags in a cluster), TD-034 (no body integrity check), TD-037 (virtual-hosted-style addressing) and TD-038 (no fsync).</p>
 
 
 

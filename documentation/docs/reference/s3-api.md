@@ -257,9 +257,35 @@ DELETE /{bucket}/{key+}?uploadId={id} HTTP/1.1
 
 Returns `204 No Content` on success.
 
+## Conditional writes
+
+`PutObject`, `CompleteMultipartUpload`, `DeleteObject` (including version-specific deletes) and `DeleteObjects` accept preconditions, so that clients can implement optimistic concurrency (compare-and-swap) on an object:
+
+| Operation | Headers / fields | Fails with |
+|---|---|---|
+| PutObject, CompleteMultipartUpload | `If-Match: <etag>` (or `*`), `If-None-Match: <etag>` (or `*`) | `412 PreconditionFailed`; `404 NoSuchKey` for `If-Match` when the object does not exist |
+| DeleteObject | `If-Match`, `x-amz-if-match-last-modified-time`, `x-amz-if-match-size` | `412 PreconditionFailed` |
+| DeleteObjects | per-key `ETag`, `LastModifiedTime`, `Size` | a per-key `PreconditionFailed` entry in the `DeleteResult` errors |
+
+`If-None-Match: *` is the "create only if absent" primitive. Deleting a key that does not exist is never a precondition failure (it is a no-op, as for an unconditional delete). A version-specific delete is checked against that exact version, not against the latest one.
+
+**Atomicity.** The precondition is evaluated inside the same metadata transaction that installs the new version or removes the old one, so two concurrent conditional writes against the same ETag cannot both succeed: exactly one commits, the other gets `412`. The check the handler performs before reading the body is only an optimisation that rejects stale requests early. See [Architecture › Conditional writes](architecture.md#conditional-writes) for how each metadata backend guarantees this.
+
+**Cost of losing a race.** The authoritative check runs at commit time, after the body has been received and stored, so a writer that loses a race has uploaded its whole body for nothing: the blob is deleted and the response is `412`. For a refused `CompleteMultipartUpload` only the assembled object is discarded; the upload and its parts are kept, so the client can retry.
+
+**Clusters.** In an HA cluster the check is exact per node, not cluster-wide: two conditional writes for the same key served by two different nodes at the same moment can both succeed (TD-025). Route a key's conditional writes to a single node, see [High Availability](../guide/ha.md).
+
 ## Intentional divergences from AWS S3
 
 Arca targets drop-in AWS S3 compatibility: what AWS accepts, Arca accepts; what AWS rejects, Arca rejects — with the following deliberate, documented exceptions.
+
+### Conditional `CompleteMultipartUpload` never returns 409
+
+AWS can answer a conditional `CompleteMultipartUpload` with `409 ConditionalRequestConflict` when a conflicting operation is in flight. Arca evaluates the precondition once, at commit time, and has no "conflict in flight" state, so every refused precondition is `412 PreconditionFailed`. Clients that retry on 409 should treat 412 the same way: re-read the object and decide again.
+
+### `If-None-Match` with a specific ETag
+
+AWS documents `If-None-Match` on writes only with the value `*`. Arca also accepts a specific ETag (or a list), with standard HTTP semantics: the write proceeds unless the current object's ETag matches. Code that relies on this is not portable to AWS.
 
 ### Object Lock on existing empty buckets
 

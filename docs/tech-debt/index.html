@@ -852,6 +852,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../reference/ha-design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HA Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../reference/s3-api/" class="md-nav__link">
         
   
@@ -1481,7 +1509,7 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 </tr>
 <tr>
 <td>TD-022</td>
-<td><code>migrate-db</code> / <code>migrate-topology</code> online jobs are not cancellable mid-copy</td>
+<td><code>migrate-db</code> online job is not cancellable mid-copy (there is no online <code>migrate-topology</code> job; that is CLI-only)</td>
 <td>The <code>migrate-db</code> maintenance job copies every metadata table in one pass; unlike the re-encryption jobs it does not check the pause/cancel flag between tables, so a cancel request only takes effect once the whole copy finishes (or the job errors). The destination is left with a partial copy on error, which the operator must drop before retrying.</td>
 <td>Check the job status between tables (and ideally between row batches) and abort cleanly, truncating or dropping the partially-populated destination tables on cancel. Surface a "not resumable, will restart from scratch" note in the console.</td>
 <td>None</td>
@@ -1530,7 +1558,7 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <tr>
 <td>TD-014</td>
 <td><code>recover</code> / <code>fsck</code> composite blobs</td>
-<td>Composite blobs (the result of the optimised <code>CompleteMultipartUpload</code>) live as a sidecar that lists the part blob ids — no on-disk file exists at the composite's blob path. <code>recover::process_sidecar</code> rejects them as "orphaned sidecar (blob file missing)"; the caller prints a <code>WARNING</code> and <strong>skips</strong> the sidecar, so every multipart object is silently dropped from the rebuilt database. Worse, the retained part blobs carry ordinary sidecars whose key is <code>{key}#{upload_id}#{part_number}</code> (<code>handlers/multipart.rs</code>), so <code>recover</code> re-creates each part as a bogus object under that key. <code>fsck</code> reports the composite sidecar as an <code>orphaned_sidecars</code> entry (the parts themselves are not orphaned because they each carry their own sidecar). Both tools therefore misbehave on any data directory that has experienced multipart uploads after the composite-concat optimisation. Runtime S3 reads/writes are unaffected — the request path fully handles composites.</td>
+<td>Composite blobs (the result of the optimised <code>CompleteMultipartUpload</code>) live as a sidecar that lists the part blob ids — no on-disk file exists at the composite's blob path. <code>recover::process_sidecar</code> rejects them as "orphaned sidecar (blob file missing)"; the caller prints a <code>WARNING</code> and <strong>skips</strong> the sidecar, so every multipart object is silently dropped from the rebuilt database. Worse, the retained part blobs carry ordinary sidecars whose key is <code>{key}#{upload_id}#{part_number}</code> (<code>handlers/multipart.rs</code>), so <code>recover</code> re-creates each part as a bogus object under that key. Parts produced by <code>UploadPartCopy</code> get a sidecar only when encrypted, so a plain copied part is invisible to <code>recover</code> and forces <code>FsBlobStore::concat</code> off the composite fast path (full byte copy). <code>fsck</code> reports the composite sidecar as an <code>orphaned_sidecars</code> entry (the parts themselves are not orphaned because they each carry their own sidecar). Both tools therefore misbehave on any data directory that has experienced multipart uploads after the composite-concat optimisation. Runtime S3 reads/writes are unaffected — the request path fully handles composites.</td>
 <td>(1) <code>recover</code>: when a sidecar has <code>composite: Some(parts)</code>, skip the blob-existence check, walk the part list, and verify each referenced part blob exists. Insert one <code>ObjectRecord</code> per composite that points at the composite blob_id (the part records are not surfaced to the metadata DB — they are a storage-layer detail). (2) <code>fsck</code>: treat composite sidecars as valid (no blob file expected); cross-check each referenced part exists; report a new <code>dangling_part</code> category when a composite references a missing part. Add unit tests for both tools using fixtures that mix composite and ordinary blobs.</td>
 <td>None at the runtime level; recovery / fsck workflows on data with composites currently fail</td>
 <td><code>crates/arca-server/src/recover.rs:206</code>, <code>crates/arca-server/src/fsck.rs</code> (<code>orphaned_sidecars</code> collection, around line 112)</td>
@@ -1562,7 +1590,7 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <tr>
 <td>TD-032</td>
 <td><code>arca recover</code> rebuilds a wrong database</td>
-<td>Besides TD-014: (1) entries are sorted by <code>last_modified</code> <strong>descending</strong> and buckets are re-created unversioned, so each <code>put_object</code> overwrites the previous one and the <strong>oldest</strong> version of every key wins, while the code comment says the newest is inserted last; (2) only buckets, objects and credentials are restored — users, teams, grants, every <code>bucket_config</code> (versioning, encryption, lifecycle, lock, policy, notifications, replication), bucket/object tags, retention and legal hold are lost, and <code>owner</code> is forced to <code>root</code>; (3) compressed objects fail checksum verification (the ETag is the plaintext MD5, recover hashes the on-disk bytes) and are skipped unless <code>--skip-verify</code>; (4) it always opens a SQLite store, so on a PostgreSQL deployment it writes an unused SQLite file. <code>operations/recovery.md</code> documents none of this and claims the opposite for (1).</td>
+<td>Besides TD-014: (1) entries are sorted by <code>last_modified</code> <strong>descending</strong> and buckets are re-created unversioned, so each <code>put_object</code> overwrites the previous one and the <strong>oldest</strong> version of every key wins, while the code comment says the newest is inserted last; (2) only buckets, objects and credentials are restored — users, teams, grants, every <code>bucket_config</code> (versioning, encryption, lifecycle, lock, policy, notifications, replication), bucket/object tags, retention and legal hold are lost, and <code>owner</code> is forced to <code>root</code>; (3) compressed objects fail checksum verification (the ETag is the plaintext MD5, recover hashes the on-disk bytes) and are skipped unless <code>--skip-verify</code>; (4) it always opens a SQLite store, so on a PostgreSQL deployment it writes an unused SQLite file; (5) PutObject, CopyObject and CompleteMultipartUpload write the sidecar with <code>version_id: None</code> before the metadata commit assigns the version, so sidecars never carry it and a rebuild cannot restore version ids. <code>operations/recovery.md</code> documents none of this and claims the opposite for (1).</td>
 <td>Insert newest-last (and re-create versioned buckets as versioned, keeping <code>version_id</code>), verify compressed objects against the decompressed stream, support the configured backend, and document precisely what a sidecar rebuild can and cannot restore. Unit tests with multi-version, compressed and composite fixtures.</td>
 <td>None (no integration coverage of <code>recover</code> on such data)</td>
 <td><code>crates/arca-server/src/recover.rs</code>, <code>documentation/docs/operations/recovery.md</code></td>
@@ -1616,6 +1644,30 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>crates/arca-storage/src/fs/blob.rs</code></td>
 </tr>
 <tr>
+<td>TD-040</td>
+<td>Cluster maintenance jobs can stall on a non-leader node</td>
+<td>Maintenance jobs are stored in each node's local <code>MaintenanceStore</code> (not cluster-wrapped, not part of <code>ControlSnapshot</code>), while only the worker-leader (lowest eligible <code>node_id</code>, decision H5) runs the maintenance worker. A job created through the load balancer on any other node is never picked up until that node happens to become leader; the API accepts it and it stays <code>pending</code>. <code>guide/maintenance.md</code> and <code>guide/console.md</code> do not mention this.</td>
+<td>Route job creation (and pause/cancel) to the worker-leader over <code>/cluster/v1/*</code>, or replicate the jobs table as a control-plane family and let the leader claim jobs. Until then, document that jobs must be created on the leader node.</td>
+<td>None</td>
+<td><code>crates/arca-server/src/maintenance.rs</code> (<code>spawn_maintenance_worker</code>), <code>crates/arca-proto/src/handlers/maintenance.rs</code>, <code>crates/arca-server/src/main.rs</code> (store wiring)</td>
+</tr>
+<tr>
+<td>TD-041</td>
+<td>Blob ids received from cluster peers are not validated</td>
+<td><code>parse_blob_id</code> (UUID check) guards only the <code>/cluster/v1/blob/{blob_id}</code> path parameter. Blob ids inside a received <code>ObjectRecord</code> (<code>receive_object</code> passes <code>record.blob_id</code> to <code>read_sidecar</code>), inside the composite parts of a received sidecar, and inside manifest rows pulled by anti-entropy reach <code>FsBlobStore::blob_path</code> unchecked, which pushes the id onto the blobs path (path traversal with <code>..</code> or <code>/</code>) and slices it by byte index (panic on short or multi-byte ids). Exposure is limited to authenticated peers (decision H12), so this is defence in depth, not an open hole.</td>
+<td>Validate every blob id at the cluster deserialization boundary (or make <code>BlobId</code> construction itself validating), and make <code>blob_path</code> reject non-UUID ids instead of trusting callers.</td>
+<td>None</td>
+<td><code>crates/arca-proto/src/handlers/cluster.rs</code>, <code>crates/arca-server/src/cluster/anti_entropy.rs</code>, <code>crates/arca-storage/src/fs/blob.rs</code> (<code>blob_path</code>)</td>
+</tr>
+<tr>
+<td>TD-042</td>
+<td>Object owner is always <code>root</code></td>
+<td>PutObject, CopyObject and CompleteMultipartUpload build the <code>ObjectRecord</code> with <code>owner: "root"</code> regardless of the authenticated user, so object ownership (ListObjects <code>fetch-owner</code>, <code>Owner</code> in listings, any owner-based policy check) is wrong for every non-root writer. TD-001 (resolved) states that objects store the creator's username; that is true for buckets only.</td>
+<td>Take the owner from the request's authenticated identity, as bucket creation does; add an integration test with a non-root user.</td>
+<td>None</td>
+<td><code>crates/arca-proto/src/handlers/{object,multipart}.rs</code></td>
+</tr>
+<tr>
 <td>TD-039</td>
 <td>PostgreSQL conditional writes have no regression test</td>
 <td>Atomic conditional writes on PostgreSQL rely on the CAS read coming <em>after</em> the transaction's first locking statement (<code>next_object_seq</code>), as required under READ COMMITTED; the first implementation got this order wrong (fixed in c3a995b). <code>pg/metadata.rs</code> has no CAS unit tests and <code>bin/test postgres</code> runs only <code>test_postgres.py</code>, not <code>test_conditional_writes.py</code>, so a reordering would go unnoticed.</td>
@@ -1654,7 +1706,7 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <tr>
 <td>TD-001</td>
 <td>Owner identity</td>
-<td>Owner ID derived from credential's user. Buckets and objects store creator's username. Migration v8 adds <code>owner</code> columns and <code>user_id</code> on credentials. Phase 16</td>
+<td>Owner ID derived from credential's user. Buckets and objects store creator's username (correction 2026-10-01: true for buckets only, objects are always written as <code>root</code>, see TD-042). Migration v8 adds <code>owner</code> columns and <code>user_id</code> on credentials. Phase 16</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>

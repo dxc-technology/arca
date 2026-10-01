@@ -934,6 +934,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#arca-tls-generate-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca tls generate-cluster
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#arca-encryption-generate-key" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1027,6 +1038,50 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#arca-encrypt-existing-arca-decrypt-existing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca encrypt-existing / arca decrypt-existing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arca-migrate-db" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca migrate-db
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arca-migrate-topology" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca migrate-topology
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arca-cluster-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca cluster status
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1110,6 +1165,34 @@
     
   
     Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/ha-design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HA Design Decisions
   
 
     
@@ -1653,6 +1736,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#arca-tls-generate-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca tls generate-cluster
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#arca-encryption-generate-key" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1746,6 +1840,50 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#arca-encrypt-existing-arca-decrypt-existing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca encrypt-existing / arca decrypt-existing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arca-migrate-db" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca migrate-db
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arca-migrate-topology" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca migrate-topology
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arca-cluster-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arca cluster status
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1767,7 +1905,7 @@
 
 
 <h1 id="cli-reference">CLI Reference<a class="headerlink" href="#cli-reference" title="Permanent link">&para;</a></h1>
-<p>The <code>arca</code> binary provides subcommands for starting the server, managing credentials, and performing disaster recovery. All subcommands accept <code>--config-path</code> (default: <code>/etc/arca/config.toml</code>) to locate the configuration file.</p>
+<p>The <code>arca</code> binary provides subcommands for starting the server, managing credentials and users, generating TLS material, maintaining the data in place, inspecting a cluster, and performing disaster recovery. Every subcommand that reads the configuration accepts <code>--config-path</code> (default: <code>/etc/arca/config.toml</code>) to locate the configuration file; <code>arca tls</code> and <code>arca encryption generate-key</code> do not read it.</p>
 <h2 id="arca-serve"><code>arca serve</code><a class="headerlink" href="#arca-serve" title="Permanent link">&para;</a></h2>
 <p>Start the S3-compatible server.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>arca<span class="w"> </span>serve<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--log-format<span class="w"> </span>&lt;FORMAT&gt;<span class="o">]</span>
@@ -2081,21 +2219,88 @@ trusting every renewed server certificate for the CA's whole lifetime.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>arca<span class="w"> </span>tls<span class="w"> </span>ensure<span class="w"> </span>--output-dir<span class="w"> </span>/certs/local<span class="w"> </span>--ca-dir<span class="w"> </span>/certs/local-ca<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">    </span>--sans<span class="w"> </span><span class="s2">&quot;localhost,127.0.0.1,::1,arca&quot;</span>
 </code></pre></div>
+<h2 id="arca-tls-generate-cluster"><code>arca tls generate-cluster</code><a class="headerlink" href="#arca-tls-generate-cluster" title="Permanent link">&para;</a></h2>
+<p>Generate a cluster CA and one certificate per node for the verified mutual TLS between cluster nodes (<code>[cluster.tls]</code>). See the <a href="../ha/#inter-node-transport-security-tls-mutual-tls">High Availability guide</a> for when it is required.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>arca<span class="w"> </span>tls<span class="w"> </span>generate-cluster<span class="w"> </span>--node<span class="w"> </span>&lt;SPEC&gt;<span class="w"> </span><span class="o">[</span>--node<span class="w"> </span>&lt;SPEC&gt;<span class="w"> </span>...<span class="o">]</span><span class="w"> </span><span class="o">[</span>--output-dir<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--days<span class="w"> </span>&lt;N&gt;<span class="o">]</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--node</code></td>
+<td><em>(required, repeatable)</em></td>
+<td>One per node: <code>name</code> or <code>name=san1,san2,...</code>. The SANs must cover every DNS name and IP address peers use to reach the node (seeds entries, advertised addresses); without them the SAN is the name itself. The name becomes a file name, so only letters, digits, <code>-</code>, <code>_</code> and <code>.</code> are allowed.</td>
+</tr>
+<tr>
+<td><code>--output-dir</code></td>
+<td><code>/etc/arca/certs/cluster</code></td>
+<td>Directory to write certificate files</td>
+</tr>
+<tr>
+<td><code>--days</code></td>
+<td><code>365</code></td>
+<td>Node certificate validity in days (the CA is valid twice as long)</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Mode</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>arca-cluster-ca.crt</code></td>
+<td><code>0644</code></td>
+<td>Cluster CA certificate: the same <code>ca_file</code> on every node</td>
+</tr>
+<tr>
+<td><code>arca-cluster-ca.key</code></td>
+<td><code>0600</code></td>
+<td>Cluster CA private key: keep it offline, it is only needed to mint more node certificates</td>
+</tr>
+<tr>
+<td><code>&lt;name&gt;.crt</code></td>
+<td><code>0644</code></td>
+<td>Node certificate, signed by the cluster CA, valid for both server and client authentication</td>
+</tr>
+<tr>
+<td><code>&lt;name&gt;.key</code></td>
+<td><code>0640</code></td>
+<td>Node private key</td>
+</tr>
+</tbody>
+</table>
+<p>Each node uses its own certificate and key both as its listener certificate (<code>[server.tls]</code>) and as its inter-node client identity (<code>[cluster.tls]</code>); the command prints the matching configuration snippet. S3 clients must then trust the cluster CA too, or you keep a separate public certificate in <code>[server.tls]</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>arca<span class="w"> </span>tls<span class="w"> </span>generate-cluster<span class="w"> </span>--output-dir<span class="w"> </span>/etc/arca/certs/cluster<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">    </span>--node<span class="w"> </span>node-a<span class="o">=</span>node-a.example.com,10.0.0.1<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">    </span>--node<span class="w"> </span>node-b<span class="o">=</span>node-b.example.com,10.0.0.2<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">    </span>--node<span class="w"> </span>node-c<span class="o">=</span>node-c.example.com,10.0.0.3
+</code></pre></div>
 <h2 id="arca-encryption-generate-key"><code>arca encryption generate-key</code><a class="headerlink" href="#arca-encryption-generate-key" title="Permanent link">&para;</a></h2>
 <p>Generate a random 256-bit master key for server-side encryption.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>arca<span class="w"> </span>encryption<span class="w"> </span>generate-key
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>arca<span class="w"> </span>encryption<span class="w"> </span>generate-key
 </code></pre></div>
 <p>Outputs a base64-encoded 32-byte key to stdout. Use this value for the <code>master_key</code> field in the <code>[encryption]</code> config section.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># Generate a key and add it to config</span>
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="nv">KEY</span><span class="o">=</span><span class="k">$(</span>arca<span class="w"> </span>encryption<span class="w"> </span>generate-key<span class="k">)</span>
-<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;[encryption]&quot;</span>
-<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;enabled = true&quot;</span>
-<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;master_key = \&quot;</span><span class="nv">$KEY</span><span class="s2">\&quot;&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c1"># Generate a key and add it to config</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="nv">KEY</span><span class="o">=</span><span class="k">$(</span>arca<span class="w"> </span>encryption<span class="w"> </span>generate-key<span class="k">)</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;[encryption]&quot;</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;enabled = true&quot;</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;master_key = \&quot;</span><span class="nv">$KEY</span><span class="s2">\&quot;&quot;</span>
 </code></pre></div>
 <p>See the <a href="../encryption/">Encryption guide</a> for setup instructions.</p>
 <h2 id="arca-recover"><code>arca recover</code><a class="headerlink" href="#arca-recover" title="Permanent link">&para;</a></h2>
 <p>Rebuild the SQLite database from <code>.meta</code> sidecar files. Use this for disaster recovery when the database is lost or corrupted. See <a href="../../operations/recovery/">Disaster Recovery</a> for a detailed guide.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>arca<span class="w"> </span>recover<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--dry-run<span class="o">]</span><span class="w"> </span><span class="o">[</span>--skip-verify<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>arca<span class="w"> </span>recover<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--dry-run<span class="o">]</span><span class="w"> </span><span class="o">[</span>--skip-verify<span class="o">]</span>
 </code></pre></div>
 <table>
 <thead>
@@ -2128,18 +2333,22 @@ trusting every renewed server certificate for the CA's whole lifetime.</p>
 <li>Recreates all buckets and objects from sidecar data</li>
 </ol>
 <p>Multipart objects (ETag contains <code>-</code>) skip checksum verification since the composite ETag is not a simple MD5 of the assembled blob. Encrypted objects also skip checksum verification since the on-disk ciphertext MD5 differs from the plaintext ETag. Orphaned sidecars (no blob file), malformed JSON, and checksum mismatches are skipped with warnings.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c1"># Preview what would be recovered</span>
-<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>arca<span class="w"> </span>recover<span class="w"> </span>--dry-run
-<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>
-<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="c1"># Full recovery (with checksum verification)</span>
-<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>arca<span class="w"> </span>recover
-<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>
-<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="c1"># Fast recovery (skip checksum verification)</span>
-<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a>arca<span class="w"> </span>recover<span class="w"> </span>--skip-verify
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>The rebuilt database is not equivalent to the original: only buckets, objects and credentials are restored, the oldest version of each key wins, multipart (composite) objects are dropped, compressed objects are skipped unless <code>--skip-verify</code> is given, and the command always writes a SQLite database, even on a PostgreSQL deployment (TD-014, TD-032). Read <a href="../../operations/recovery/">Disaster Recovery</a> before running it.</p>
+</div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="c1"># Preview what would be recovered</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>arca<span class="w"> </span>recover<span class="w"> </span>--dry-run
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="c1"># Full recovery (with checksum verification)</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>arca<span class="w"> </span>recover
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="c1"># Fast recovery (skip checksum verification)</span>
+<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>arca<span class="w"> </span>recover<span class="w"> </span>--skip-verify
 </code></pre></div>
 <h2 id="arca-fsck"><code>arca fsck</code><a class="headerlink" href="#arca-fsck" title="Permanent link">&para;</a></h2>
 <p>Check database and filesystem consistency. See <a href="../../operations/recovery/">Disaster Recovery</a> for a detailed guide.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>arca<span class="w"> </span>fsck<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--verify-checksums<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>arca<span class="w"> </span>fsck<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--verify-checksums<span class="o">]</span>
 </code></pre></div>
 <table>
 <thead>
@@ -2213,16 +2422,16 @@ trusting every renewed server certificate for the CA's whole lifetime.</p>
 </tr>
 </tbody>
 </table>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="c1"># Quick consistency check</span>
-<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>arca<span class="w"> </span>fsck
-<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>
-<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="c1"># Full check including blob checksums (slow for large datasets)</span>
-<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>arca<span class="w"> </span>fsck<span class="w"> </span>--verify-checksums
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="c1"># Quick consistency check</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>arca<span class="w"> </span>fsck
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="c1"># Full check including blob checksums (slow for large datasets)</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>arca<span class="w"> </span>fsck<span class="w"> </span>--verify-checksums
 </code></pre></div>
 <h2 id="arca-gc"><code>arca gc</code><a class="headerlink" href="#arca-gc" title="Permanent link">&para;</a></h2>
 <p>Reclaim orphaned blob files — on-disk blobs referenced by no live object row, in-progress multipart part, or non-orphan composite sidecar. Orphans accumulate from interrupted uploads, overwrites, crashes between the metadata and blob delete, and blob-delete failures (which are logged but do not fail the request, because the object's metadata is already gone). Where <code>arca fsck</code> only <em>reports</em> orphans (<code>ORPHANED_BLOB</code>), <code>arca gc</code> <em>removes</em> them, using the same composite-aware, fail-safe selection as the cluster anti-entropy worker.</p>
 <p>On a <strong>single-node</strong> deployment there is no anti-entropy worker, so <code>arca gc</code> (typically from cron) is the reclamation path. Alternatively, enable the opt-in background worker with <code>[storage] blob_gc_enabled = true</code> (see <a href="../configuration/#storage">Configuration</a>) to reclaim on a schedule without an external cron job; on very large stores cron-ing this command is preferable so the scan runs outside the serving process. On a cluster the anti-entropy worker already reclaims orphans automatically.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>arca<span class="w"> </span>gc<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--reclaim<span class="o">]</span><span class="w"> </span><span class="o">[</span>--grace-seconds<span class="w"> </span>&lt;SECONDS&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--verbose<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>arca<span class="w"> </span>gc<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--reclaim<span class="o">]</span><span class="w"> </span><span class="o">[</span>--grace-seconds<span class="w"> </span>&lt;SECONDS&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--verbose<span class="o">]</span>
 </code></pre></div>
 <table>
 <thead>
@@ -2253,20 +2462,20 @@ trusting every renewed server certificate for the CA's whole lifetime.</p>
 <p>The <code>--grace-seconds</code> window protects freshly-written blobs whose object row may not be committed yet (a blob file is written before its metadata row). Keep it comfortably above your longest in-flight upload when running against a <strong>live</strong> server; drop it to <code>0</code> for an immediate full reclaim only when the server is <strong>stopped</strong>.</p>
 <p>Fail-safe: if any enumeration (referenced ids, sidecars, on-disk blobs) fails, the command aborts and deletes nothing.</p>
 <p>Currently supports the <code>sqlite</code> metadata backend only (like <code>arca recover</code> / <code>arca fsck</code>).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="c1"># Preview what would be reclaimed (safe; nothing is deleted)</span>
-<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>arca<span class="w"> </span>gc
-<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>
-<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="c1"># List each orphan, then delete them</span>
-<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>arca<span class="w"> </span>gc<span class="w"> </span>--reclaim<span class="w"> </span>--verbose
-<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a>
-<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a><span class="c1"># Immediate full reclaim with the server stopped</span>
-<a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a>arca<span class="w"> </span>gc<span class="w"> </span>--reclaim<span class="w"> </span>--grace-seconds<span class="w"> </span><span class="m">0</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="c1"># Preview what would be reclaimed (safe; nothing is deleted)</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>arca<span class="w"> </span>gc
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="c1"># List each orphan, then delete them</span>
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a>arca<span class="w"> </span>gc<span class="w"> </span>--reclaim<span class="w"> </span>--verbose
+<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a>
+<a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a><span class="c1"># Immediate full reclaim with the server stopped</span>
+<a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a>arca<span class="w"> </span>gc<span class="w"> </span>--reclaim<span class="w"> </span>--grace-seconds<span class="w"> </span><span class="m">0</span>
 </code></pre></div>
 <p>The <code>arca_blob_delete_failures_total</code> Prometheus metric reports how often a blob delete failed during object deletion (each one leaves an orphan for <code>arca gc</code>), so you can tell whether reclamation needs to run.</p>
 <h2 id="arca-compress-existing"><code>arca compress-existing</code><a class="headerlink" href="#arca-compress-existing" title="Permanent link">&para;</a></h2>
 <p>Walks the blobs directory and compresses any blob that does not already carry compression metadata, honoring the live-write MIME and size filters. Atomic per-blob (writes a <code>.compressing.tmp</code> then renames) and resumable: re-running skips already-compressed blobs. See the <a href="../compression/#offline-retrofit">Compression guide</a>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>arca compress-existing [--config-path &lt;PATH&gt;] [--dry-run]
-<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>                       [--bucket &lt;NAME&gt;] [--algorithm &lt;NAME&gt;]
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>arca compress-existing [--config-path &lt;PATH&gt;] [--dry-run]
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>                       [--bucket &lt;NAME&gt;] [--algorithm &lt;NAME&gt;]
 </code></pre></div>
 <table>
 <thead>
@@ -2290,22 +2499,125 @@ trusting every renewed server certificate for the CA's whole lifetime.</p>
 </tr>
 </tbody>
 </table>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="c1"># Preview</span>
-<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>arca<span class="w"> </span>compress-existing<span class="w"> </span>--dry-run
-<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>
-<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="c1"># Apply compression to everything</span>
-<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a>arca<span class="w"> </span>compress-existing
-<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a>
-<a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a><span class="c1"># One bucket, force Brotli</span>
-<a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a>arca<span class="w"> </span>compress-existing<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--algorithm<span class="w"> </span>brotli
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="c1"># Preview</span>
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>arca<span class="w"> </span>compress-existing<span class="w"> </span>--dry-run
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a><span class="c1"># Apply compression to everything</span>
+<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a>arca<span class="w"> </span>compress-existing
+<a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a>
+<a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a><span class="c1"># One bucket, force Brotli</span>
+<a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a>arca<span class="w"> </span>compress-existing<span class="w"> </span>--bucket<span class="w"> </span>my-bucket<span class="w"> </span>--algorithm<span class="w"> </span>brotli
 </code></pre></div>
 <h2 id="arca-decompress-existing"><code>arca decompress-existing</code><a class="headerlink" href="#arca-decompress-existing" title="Permanent link">&para;</a></h2>
 <p>Inverse of <code>compress-existing</code> — reads each sidecar, and for compressed blobs, rewrites the plaintext to disk and removes the compression metadata. Same atomicity and resume properties.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>arca decompress-existing [--config-path &lt;PATH&gt;] [--dry-run] [--bucket &lt;NAME&gt;]
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>arca decompress-existing [--config-path &lt;PATH&gt;] [--dry-run] [--bucket &lt;NAME&gt;]
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>arca<span class="w"> </span>decompress-existing<span class="w"> </span>--dry-run
-<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>arca<span class="w"> </span>decompress-existing<span class="w"> </span>--bucket<span class="w"> </span>my-bucket
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>arca<span class="w"> </span>decompress-existing<span class="w"> </span>--dry-run
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>arca<span class="w"> </span>decompress-existing<span class="w"> </span>--bucket<span class="w"> </span>my-bucket
 </code></pre></div>
+<h2 id="arca-encrypt-existing-arca-decrypt-existing"><code>arca encrypt-existing</code> / <code>arca decrypt-existing</code><a class="headerlink" href="#arca-encrypt-existing-arca-decrypt-existing" title="Permanent link">&para;</a></h2>
+<p>Offline counterparts of the <code>encrypt</code> / <code>decrypt</code> maintenance jobs, run with the server <strong>stopped</strong>. <code>encrypt-existing</code> encrypts plaintext blobs to SSE-S3; <code>decrypt-existing</code> decrypts SSE-S3 blobs back to plaintext. Each blob is rewritten in place (atomic temp file + rename), and its <code>.meta</code> sidecar and database row are updated. Re-running is safe: blobs already in the target state are skipped. See the <a href="../maintenance/#offline-cli">Migration &amp; Maintenance guide</a>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>arca<span class="w"> </span>encrypt-existing<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--dry-run<span class="o">]</span><span class="w"> </span><span class="o">[</span>--bucket<span class="w"> </span>&lt;NAME&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--prefix<span class="w"> </span>&lt;PREFIX&gt;<span class="o">]</span>
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>arca<span class="w"> </span>decrypt-existing<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--dry-run<span class="o">]</span><span class="w"> </span><span class="o">[</span>--bucket<span class="w"> </span>&lt;NAME&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--prefix<span class="w"> </span>&lt;PREFIX&gt;<span class="o">]</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--config-path</code></td>
+<td>Path to the configuration file (default: <code>/etc/arca/config.toml</code>)</td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Only report what would change; no files or rows written</td>
+</tr>
+<tr>
+<td><code>--bucket</code></td>
+<td>Restrict to a single bucket</td>
+</tr>
+<tr>
+<td><code>--prefix</code></td>
+<td>Restrict to keys with this prefix</td>
+</tr>
+</tbody>
+</table>
+<p>Multipart objects and SSE-C objects are skipped (TD-018).</p>
+<h2 id="arca-migrate-db"><code>arca migrate-db</code><a class="headerlink" href="#arca-migrate-db" title="Permanent link">&para;</a></h2>
+<p>Copy <strong>all</strong> metadata from the configured backend into the other one (SQLite to PostgreSQL or the reverse), in place and offline. Blob files are not touched. After a successful run, switch <code>metadata_backend</code> in the config (adding <code>[storage.postgres]</code> when moving to PostgreSQL) and restart. See the <a href="../maintenance/#metadata-migration-migrate-db">Migration &amp; Maintenance guide</a>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>arca<span class="w"> </span>migrate-db<span class="w"> </span>--to<span class="w"> </span>&lt;BACKEND&gt;<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--force<span class="o">]</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--to</code></td>
+<td><em>(required)</em> Target backend: <code>sqlite</code> or <code>postgres</code>. The source is the configured backend.</td>
+</tr>
+<tr>
+<td><code>--config-path</code></td>
+<td>Path to the configuration file (default: <code>/etc/arca/config.toml</code>)</td>
+</tr>
+<tr>
+<td><code>--force</code></td>
+<td>Overwrite a non-empty target: delete every destination row first</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>arca<span class="w"> </span>migrate-db<span class="w"> </span>--to<span class="w"> </span>postgres
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a>arca<span class="w"> </span>migrate-db<span class="w"> </span>--to<span class="w"> </span>sqlite<span class="w"> </span>--force
+</code></pre></div>
+<h2 id="arca-migrate-topology"><code>arca migrate-topology</code><a class="headerlink" href="#arca-migrate-topology" title="Permanent link">&para;</a></h2>
+<p>Guided, offline transition between a standalone node and an HA cluster. The cluster is fully replicated, so nothing is redistributed: the command generates the <code>[cluster]</code> configuration stanza, runs a few small database operations and prints the next steps. Run it with the server stopped. Exactly one of <code>--to-cluster</code> and <code>--to-single</code> is required. See the <a href="../maintenance/#topology-migration-migrate-topology">Migration &amp; Maintenance guide</a> and the <a href="../ha/#guided-topology-transition-arca-migrate-topology">High Availability guide</a>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>arca<span class="w"> </span>migrate-topology<span class="w"> </span>--to-cluster<span class="w"> </span><span class="o">[</span>--output<span class="w"> </span>&lt;FILE&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span>
+<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a>arca<span class="w"> </span>migrate-topology<span class="w"> </span>--to-single<span class="w"> </span>--force<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--to-cluster</code></td>
+<td>Single to HA: make this standalone instance the <strong>first</strong> node of a new cluster. Prints a <code>[cluster]</code> stanza with a generated <code>cluster_id</code> and <code>secret</code> (<code>mode = "quorum"</code>, <code>cluster_size = 3</code>, <code>discovery = "mdns"</code>) and reconciles the object write counter. Refused if the instance is already clustered.</td>
+</tr>
+<tr>
+<td><code>--to-single</code></td>
+<td>HA to single: collapse the cluster back to <strong>this</strong> surviving node. Purges the cluster-only tombstones and runs <code>VACUUM</code> on SQLite. Refused if the instance is not clustered, and requires <code>--force</code>.</td>
+</tr>
+<tr>
+<td><code>--output</code></td>
+<td>(<code>--to-cluster</code>) Also write the generated stanza to this file</td>
+</tr>
+<tr>
+<td><code>--force</code></td>
+<td>(<code>--to-single</code>) Confirms that every peer is in sync and stopped. Collapsing while a peer is behind loses that peer's un-replicated writes.</td>
+</tr>
+<tr>
+<td><code>--config-path</code></td>
+<td>Path to the configuration file (default: <code>/etc/arca/config.toml</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>Check that every peer is in sync (<code>first_pass_done</code> on every peer in <a href="../../reference/admin-api/#cluster-topology"><code>GET /admin/cluster</code></a>) before running <code>--to-single --force</code>.</p>
+<h2 id="arca-cluster-status"><code>arca cluster status</code><a class="headerlink" href="#arca-cluster-status" title="Permanent link">&para;</a></h2>
+<p>Print this node's identity and its static cluster configuration.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>arca<span class="w"> </span>cluster<span class="w"> </span>status<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span>
+</code></pre></div>
+<p>It prints the <code>node_id</code>, the <code>cluster_id</code>, the consistency mode (with the write majority in <code>quorum</code> mode) and the discovery method (with the seeds for <code>static</code> discovery), all read from the configuration and the local database. When the node has no <code>node_id</code> yet, one is generated and stored, exactly as on the first server start. Without <code>[cluster] enabled = true</code> it only reports that clustering is not enabled.</p>
+<p>It does <strong>not</strong> show live state: peer liveness, authentication, sync progress and quorum status come from the running server's <a href="../../reference/admin-api/#cluster-topology"><code>GET /admin/cluster</code></a> endpoint (and the console topology card).</p>
 
 
 

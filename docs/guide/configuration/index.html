@@ -1151,6 +1151,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../reference/ha-design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HA Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../reference/s3-api/" class="md-nav__link">
         
   
@@ -1909,7 +1937,7 @@
 <tr>
 <td><code>server.tls.ca_file</code></td>
 <td><em>(none)</em></td>
-<td>Client CA certificate for mTLS (relative to <code>cert_dir</code>, or absolute).</td>
+<td>Client CA certificate for mTLS (relative to <code>cert_dir</code>, or absolute). Mutually exclusive with <code>[cluster.tls]</code> on an enabled cluster: the listener can enforce only one client-certificate policy, so the server refuses to start with both.</td>
 </tr>
 </tbody>
 </table>
@@ -2323,7 +2351,7 @@
 <tr>
 <td><code>cluster.tls.ca_file</code></td>
 <td><em>(required over HTTPS)</em></td>
-<td>Cluster CA certificate (PEM), identical on every node. The whole <code>[cluster.tls]</code> section is REQUIRED when <code>[server.tls]</code> is enabled (verified mutual TLS between nodes — no insecure fallback) and rejected when it is not. Mint the material with <code>arca tls generate-cluster</code>.</td>
+<td>Cluster CA certificate (PEM), identical on every node. The whole <code>[cluster.tls]</code> section is REQUIRED when <code>[server.tls]</code> is enabled (verified mutual TLS between nodes — no insecure fallback) and rejected when it is not. Mutually exclusive with <code>server.tls.ca_file</code> (global client mTLS): set one or the other. Mint the material with <code>arca tls generate-cluster</code>.</td>
 </tr>
 <tr>
 <td><code>cluster.tls.cert_file</code></td>

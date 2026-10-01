@@ -854,6 +854,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../reference/ha-design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HA Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../reference/s3-api/" class="md-nav__link">
         
   
@@ -3256,7 +3284,7 @@ tests but need proper implementation for production use. These are tracked in
 with unique IDs (<code>TD-XXX</code>) referenced in source code comments.</p>
 <p>Remaining items:</p>
 <ul>
-<li>~~<strong>Ownership model</strong> (TD-001)~~: <strong>Resolved</strong> — Owner ID derived from credential's user; buckets/objects track creator's username</li>
+<li>~~<strong>Ownership model</strong> (TD-001)~~: <strong>Resolved</strong> — Owner ID derived from credential's user; buckets track creator's username (objects do not yet, TD-042)</li>
 <li><strong>Storage classes</strong> (TD-002): Always <code>STANDARD</code> — no storage tiering</li>
 <li>~~<strong>Versioning</strong> (TD-003)~~: <strong>Resolved</strong> — Full object versioning implemented in Phase 17</li>
 <li>~~<strong>Region support</strong> (TD-004)~~: <strong>Resolved</strong> — Configurable region in <code>[server]</code> TOML or Admin API, per-bucket via <code>bucket_config</code>. Phase 18</li>
@@ -3290,6 +3318,9 @@ with unique IDs (<code>TD-XXX</code>) referenced in source code comments.</p>
 <li><strong>Virtual-hosted-style requests probably routed wrong</strong> (TD-037): the rewrite middleware runs after routing; untested.</li>
 <li><strong>No fsync on the write path</strong> (TD-038): an acknowledged write can be lost or truncated on power loss.</li>
 <li><strong>PostgreSQL conditional writes have no regression test</strong> (TD-039): <code>bin/test postgres</code> does not run the conditional-write suite.</li>
+<li><strong>Cluster maintenance jobs can stall on a non-leader node</strong> (TD-040): jobs are node-local but only the worker-leader runs them, so a job created on another node stays pending.</li>
+<li><strong>Blob ids received from cluster peers are not validated</strong> (TD-041): only the blob route's path parameter is checked; ids inside replicated records reach the filesystem layer unchecked (authenticated peers only, defence in depth).</li>
+<li><strong>Object owner is always <code>root</code></strong> (TD-042): object writes ignore the authenticated user; TD-001 is resolved for buckets only.</li>
 <li>~~<strong>Cluster inter-node TLS</strong> (TD-015)~~: <strong>Resolved</strong> — verified mutual TLS with an operator-distributed cluster CA (<code>[cluster.tls]</code>, required when the cluster runs over HTTPS), <code>danger_accept_invalid_certs</code> removed, client certificates enforced on <code>/cluster/v1/*</code>, material minted by <code>arca tls generate-cluster</code>. HA hardening R4 (Phase 29.1)</li>
 <li>~~<strong>Partial cluster control-plane reconcile</strong> (TD-016)~~: <strong>Resolved</strong> — the anti-entropy snapshot merge now covers every control-plane family (grant attachments, memberships, bucket config keys, bucket tag sets, cluster-wide server settings, plus multipart uploads and parts) with per-row LWW timestamps, deletion tombstones and parent-dead filtering, so a returning node fully self-heals. HA hardening R5 (Phase 29.1)</li>
 </ul>

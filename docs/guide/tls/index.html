@@ -1103,6 +1103,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../reference/ha-design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HA Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../reference/s3-api/" class="md-nav__link">
         
   
@@ -1790,7 +1818,7 @@ removing them falls back to the local ones. Nothing in <code>certs/</code> itsel
 written, moved or deleted by Arca's tooling; <code>local/</code> and <code>local-ca/</code> are the
 only directories it manages, and they are ignored while your certificates are
 present. The choice is remembered in <code>.arca-env</code>, so <code>bin/console</code> serves the
-same certificates.</p>
+same certificates, and <code>bin/test integration</code> verifies against them.</p>
 <h3 id="running-the-tests">Running the tests<a class="headerlink" href="#running-the-tests" title="Permanent link">&para;</a></h3>
 <p>The self-contained TLS suites (<code>bin/test tls</code>, <code>bin/perf-test --tls</code>) never
 use <code>certs/</code>: they generate a throwaway CA into a Docker volume and verify
@@ -1859,7 +1887,8 @@ Authorities → Import</em>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="k">[server.tls]</span>
 <a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">cert_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs&quot;</span>
 </code></pre></div>
-<p>Arca scans the directory for PEM files (<code>.pem</code>, <code>.crt</code>, <code>.key</code>, <code>.cert</code>) and classifies them by reading PEM headers. Requires exactly one key file and at least one certificate file. Fails with a clear error if ambiguous.</p>
+<p>Arca scans the directory for PEM files (<code>.pem</code>, <code>.crt</code>, <code>.key</code>, <code>.cert</code>) and classifies them by reading PEM headers. Requires exactly one key file and exactly one certificate file (a file holding a private key counts as the key file). Fails with a clear error if ambiguous.</p>
+<p>A certbot-style directory (<code>cert.pem</code>, <code>chain.pem</code> and <code>fullchain.pem</code> next to <code>privkey.pem</code>) holds three certificate files, so auto-detection refuses it: set <code>cert_file = "fullchain.pem"</code> and <code>key_file = "privkey.pem"</code> explicitly (scenario 2 below).</p>
 <h3 id="2-directory-relative-filenames">2. Directory + Relative Filenames<a class="headerlink" href="#2-directory-relative-filenames" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">[server.tls]</span>
 <a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="n">cert_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/etc/arca/certs&quot;</span>
@@ -2032,7 +2061,7 @@ Authorities → Import</em>.</p>
 <p>Self-signed certificates are suitable for development and internal testing. For production, use certificates issued by a trusted Certificate Authority.</p>
 </div>
 <h2 id="console-https">Console HTTPS<a class="headerlink" href="#console-https" title="Permanent link">&para;</a></h2>
-<p>When using <code>--tls</code>, the web console also serves over HTTPS. The console entrypoint auto-detects certificate and key PEM files in the mounted <code>certs/</code> directory (skipping CA files) and switches nginx to TLS mode.</p>
+<p>When using <code>--tls</code>, the web console also serves over HTTPS. The console entrypoint auto-detects certificate and key PEM files in its mounted certificate directory (skipping CA files) and switches nginx to TLS mode. That directory is the same one Arca serves from, <code>${ARCA_CERTS_DIR}</code> in <code>docker/docker-compose.tls.yml</code>: <code>certs/</code> when it holds your own certificates, otherwise <code>certs/local/</code> (see <a href="#your-certificates-or-the-local-ones">Your certificates or the local ones</a>).</p>
 <p>The console runs as uid <code>100</code>, not as Arca's <code>65532</code>, so it reads the private key through the supplementary group described in <a href="#file-permissions">File Permissions</a>. If the key is there but unreadable, the entrypoint logs a <code>WARNING</code> and keeps serving plain HTTP on port 80 — check <code>bin/console logs</code> when port 9443 refuses connections.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--tls
 </code></pre></div>

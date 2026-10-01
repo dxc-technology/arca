@@ -4,9 +4,9 @@ This file provides guidance to coding agents (Claude Code and any other AGENTS.m
 
 ## Project
 
-Arca is an open source S3-compatible object storage server written in Rust. It is designed as a drop-in replacement for AWS S3, MinIO, and other S3-compatible storage services, targeting 100% S3 API compatibility for a focused MVP subset (15 operations). Starts as single-node with eventual production scale in mind. Licensed under AGPL-3.0-or-later.
+Arca is an open source S3-compatible object storage server written in Rust. It is designed as a drop-in replacement for AWS S3, MinIO, and other S3-compatible storage services. It runs single-node or as a symmetric HA cluster, with SQLite or PostgreSQL metadata. Licensed under AGPL-3.0-or-later.
 
-The full architecture plan lives in `.claude/plans/arca-s3-mvp-architecture.md`.
+The architecture is documented in `documentation/docs/reference/architecture.md`; the HA design decisions cited in code as "decision H<n>" are in `documentation/docs/reference/ha-design-decisions.md`.
 
 ## Dependency Licensing Policy (HARD CONSTRAINT)
 
@@ -32,7 +32,7 @@ Arca's own license (AGPL-3.0-or-later) does not exempt its dependencies: a copyl
 
 ## Language
 
-Arca is an international project: **everything committed to the repository must be in English** — code, comments, documentation, commit messages, and the planning/review documents under `.claude/`. Conversations with Pietro may happen in Italian, but no Italian may end up in tracked files.
+Arca is an international project: **everything committed to the repository must be in English** — code, comments, documentation, commit messages, and any planning or review document. Conversations with Pietro may happen in Italian, but no Italian may end up in tracked files.
 
 ## Build & Test
 
@@ -255,12 +255,12 @@ The console user manual lives at `documentation/docs/guide/console.md`. Screensh
 Five-crate Cargo workspace with strict dependency graph (no cycles):
 
 - **arca-core** — Shared types, traits (`BlobStore`, `MetadataStore`), error types. Zero I/O dependencies.
-- **arca-auth** — AWS SigV4 verification. Zero I/O dependencies, independently testable against AWS test vectors.
-- **arca-proto** — S3 HTTP protocol adapter (Axum 0.8 + Tower). Handlers, XML ser/de, middleware (virtual-host rewrite, auth).
-- **arca-storage** — Storage implementations: `FsBlobStore` (UUID + sidecar), `SqliteMetadataStore` (tokio-rusqlite, WAL mode).
-- **arca-server** — Binary crate. Wires dependencies, config (TOML + env), CLI (clap: `serve`, `recover`, `fsck`), use-case layer (`BucketUsecase`, `ObjectUsecase`, `MultipartUsecase`).
+- **arca-auth** — AWS SigV4 verification. Zero I/O dependencies and no dependency on any other Arca crate, independently testable against AWS test vectors.
+- **arca-proto** — S3 and admin HTTP protocol adapter (Axum 0.8 + Tower). Handlers (which hold the request logic and call the storage traits directly, there is no separate use-case layer), XML ser/de, middleware (auth, virtual-host rewrite, CORS, rate limiting, audit).
+- **arca-storage** — Storage implementations: `FsBlobStore` (UUID + sidecar) and its decorators (`EncryptingBlobStore`, `CompressingBlobStore`, `SsecBlobStore`), `SqliteStore` (tokio-rusqlite, WAL, one writer + read pool), `PgStore` (PostgreSQL), `CachingMetadataStore`.
+- **arca-server** — Binary crate. Wires dependencies, config (TOML + env), CLI (clap; full list in `crates/arca-server/src/cli.rs` and `documentation/docs/guide/cli.md`), background workers, HA cluster decorators (`src/cluster/`).
 
-Dependency direction: `arca-server` -> `arca-proto`, `arca-storage`, `arca-auth` -> `arca-core`.
+Dependency direction: `arca-server` -> `arca-proto`, `arca-storage`, `arca-auth`, `arca-core`; `arca-proto` -> `arca-core`, `arca-auth`; `arca-storage` -> `arca-core`. `arca-auth` and `arca-core` are leaves.
 
 ## Key Design Constraints
 
@@ -270,13 +270,13 @@ Dependency direction: `arca-server` -> `arca-proto`, `arca-storage`, `arca-auth`
 
 **Streaming-first** — never buffer full objects in memory. PutObject streams through MD5 hasher + file writer concurrently. GetObject streams from tokio::fs::File via ReaderStream.
 
-**Storage write order** — blob file -> sidecar `.meta` JSON -> SQLite insert. This ordering enables disaster recovery: `arca recover` walks the `blobs/` directory, reads `.meta` files, and rebuilds the DB from scratch. Blob files use `O_CREAT | O_EXCL` to prevent UUID collision; `UNIQUE(bucket, key)` in the objects table prevents duplicate keys; `arca fsck` detects orphaned blobs and conflicting sidecars.
+**Storage write order** — blob file -> sidecar `.meta` JSON -> SQLite insert. This ordering enables disaster recovery: `arca recover` walks the `blobs/` directory, reads `.meta` files, and rebuilds the DB from scratch (with known gaps: TD-014, TD-032; there is no fsync on this path yet, TD-038). Blobs are written to a temp file opened with `create_new` (`O_CREAT | O_EXCL`), then renamed; a partial unique index on `(bucket, key) WHERE is_latest = 1` prevents two current versions of a key; `arca fsck` reports orphaned blobs, missing blobs, sidecar/DB mismatches, orphaned sidecars, stale temp files and (optionally) checksum errors.
 
-**`put_object` returns old record** — `MetadataStore::put_object` returns `Option<ObjectRecord>` of the overwritten object so the caller can delete the orphaned blob.
+**`put_object` returns old record** — `MetadataStore::put_object` returns `(Option<ObjectRecord>, Option<String>)`: the overwritten object (so the caller can delete its orphaned blob) and the new version id. It delegates to `put_object_if`, which evaluates conditional-write preconditions inside the same transaction (see `reference/architecture.md`).
 
 **Multipart composite ETag** — `hex(MD5(binary_MD5(part1) || binary_MD5(part2) || ...))-{count}`. Note: concat the binary MD5 bytes, not hex strings.
 
-**Auth body hash** — Accept `UNSIGNED-PAYLOAD` for streaming uploads. Verify request signature only (headers + URI), not body hash. Body integrity relies on Content-MD5.
+**Auth body hash** — Accept `UNSIGNED-PAYLOAD` for streaming uploads. Verify request signature only (headers + URI), not body hash. Body integrity is currently **not** verified at all: `Content-MD5`, `x-amz-checksum-*` and a hex `x-amz-content-sha256` are never compared with the body (TD-034).
 
 **Configuration migration without data migration** — Arca must allow any configuration change (storage backend, encryption, node topology, etc.) without requiring data migration to a new instance. Changes are applied via offline CLI tools (`arca migrate-*`) or live reconfiguration that operate in-place on the existing data directory. This is a hard architectural constraint: unlike MinIO, which forces a fresh instance when changing topology, Arca must always provide a migration path that preserves existing data in place.
 
@@ -329,6 +329,12 @@ Rules:
   an unchanged signature is not** — read every call site before calling it done.
 - Read the real code around a span before editing it; a graft excerpt is a
   pointer, not the whole context.
+
+## Planning Large Changes
+
+Plans and reviews are working documents for a single task: keep them out of the repository, or delete them when the task is done. Before deleting, move anything durable (design decisions and their rationale, invariants, known limits) into `documentation/docs/` or `TECH_DEBT.md`, and make sure no code comment depends on an ID defined only in the plan.
+
+Lesson from the Phase 29 HA review, for any feature that spans many subsystems: for every guarantee, design its failure path too (what happens when the guarantee cannot be met); include an operations-lifecycle section (deploy, upgrade, resize, recover); and audit every existing subsystem for how it behaves when the new feature changes its assumptions (e.g. N nodes instead of one).
 
 ## Technical Debt
 

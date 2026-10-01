@@ -854,6 +854,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../../reference/ha-design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HA Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../reference/s3-api/" class="md-nav__link">
         
   
@@ -1031,10 +1059,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#filesystem-as-source-of-truth" class="md-nav__link">
+  <a href="#filesystem-as-source-of-object-data" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Filesystem as Source of Truth
+        Filesystem as Source of Object Data
       
     </span>
   </a>
@@ -1087,6 +1115,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#what-is-restored-and-what-is-lost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Is Restored and What Is Lost
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#options" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1113,6 +1152,17 @@
     <span class="md-ellipsis">
       
         Credential Preservation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#duplicate-keys-and-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Duplicate Keys and Versions
       
     </span>
   </a>
@@ -1459,10 +1509,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#filesystem-as-source-of-truth" class="md-nav__link">
+  <a href="#filesystem-as-source-of-object-data" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Filesystem as Source of Truth
+        Filesystem as Source of Object Data
       
     </span>
   </a>
@@ -1515,6 +1565,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#what-is-restored-and-what-is-lost" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What Is Restored and What Is Lost
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#options" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1541,6 +1602,17 @@
     <span class="md-ellipsis">
       
         Credential Preservation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#duplicate-keys-and-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Duplicate Keys and Versions
       
     </span>
   </a>
@@ -1645,15 +1717,27 @@
 
 
 <h1 id="disaster-recovery">Disaster Recovery<a class="headerlink" href="#disaster-recovery" title="Permanent link">&para;</a></h1>
-<p>Arca is designed so that the filesystem is the <strong>source of truth</strong>. The SQLite database is a queryable index that can always be rebuilt from the <code>.meta</code> sidecar files stored alongside every blob. This page explains the recovery architecture and tools.</p>
-<h2 id="filesystem-as-source-of-truth">Filesystem as Source of Truth<a class="headerlink" href="#filesystem-as-source-of-truth" title="Permanent link">&para;</a></h2>
+<p>Arca writes a <code>.meta</code> sidecar file alongside every blob, so that the object index can be rebuilt from the filesystem if the metadata database is lost. This page explains the recovery architecture, the tools, and what a rebuild from sidecars can and cannot restore.</p>
+<div class="admonition warning">
+<p class="admonition-title">Known limitations of <code>arca recover</code></p>
+<p>Until <a href="../../tech-debt/">TD-014 and TD-032</a> are fixed, a database rebuilt by <code>arca recover</code> is <strong>not</strong> equivalent to the one it replaces:</p>
+<ul>
+<li><strong>Only buckets, objects and credentials are restored.</strong> Users, teams, grants, every bucket configuration (versioning, encryption, lifecycle, Object Lock, policy, notifications, replication), bucket and object tags, retention and legal hold are lost, and every object's owner is set to <code>root</code>.</li>
+<li><strong>The oldest version of each key wins</strong>, not the newest (see <a href="#duplicate-keys-and-versions">Duplicate keys and versions</a>).</li>
+<li><strong>Multipart objects are dropped</strong>, and their parts reappear as bogus <code>key#uploadId#n</code> objects.</li>
+<li><strong>Compressed objects are skipped</strong> unless you pass <code>--skip-verify</code>.</li>
+<li><strong>It always writes a SQLite database</strong>, even on a PostgreSQL deployment.</li>
+</ul>
+<p>Treat <code>arca recover</code> as a last resort for salvaging object data, and prefer restoring a backup of the metadata database (see <a href="#backup-strategy">Backup Strategy</a>).</p>
+</div>
+<h2 id="filesystem-as-source-of-object-data">Filesystem as Source of Object Data<a class="headerlink" href="#filesystem-as-source-of-object-data" title="Permanent link">&para;</a></h2>
 <p>Every object stored in Arca produces two files:</p>
 <ol>
-<li><strong>Blob file</strong> — the raw object bytes, named by UUID</li>
-<li><strong><code>.meta</code> sidecar</strong> — a JSON file containing all metadata needed to reconstruct the database entry</li>
+<li><strong>Blob file</strong>: the object bytes (encrypted and/or compressed when those features are enabled), named by UUID</li>
+<li><strong><code>.meta</code> sidecar</strong>: a JSON file describing the object (bucket, key, size, ETag, content type, metadata, encryption and compression parameters)</li>
 </ol>
 <p>The deliberate write order ensures recoverability:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>1. Write blob file  →  2. Write .meta sidecar  →  3. Insert into SQLite
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>1. Write blob file  →  2. Write .meta sidecar  →  3. Insert into the metadata database
 </code></pre></div>
 <p>If the server crashes at any point:</p>
 <ul>
@@ -1666,13 +1750,63 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;bucket&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;my-bucket&quot;</span><span class="p">,</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">&quot;key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;photos/2024/vacation.jpg&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">&quot;content_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;image/jpeg&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="nt">&quot;size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1234567</span><span class="p">,</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">&quot;etag&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;d41d8cd98f00b204e9800998ecf8427e&quot;</span><span class="p">,</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="nt">&quot;user_metadata&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;x-amz-meta-author&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;pietro&quot;</span><span class="p">},</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">  </span><span class="nt">&quot;created_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-02-27T14:30:00Z&quot;</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">&quot;size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1234567</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="nt">&quot;etag&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;d41d8cd98f00b204e9800998ecf8427e&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">&quot;content_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;image/jpeg&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="nt">&quot;last_modified&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-02-27T14:30:00Z&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">  </span><span class="nt">&quot;metadata&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;x-amz-meta-author&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;pietro&quot;</span><span class="p">}</span>
 <a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="p">}</span>
 </code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bucket</code>, <code>key</code></td>
+<td>Object location</td>
+</tr>
+<tr>
+<td><code>size</code></td>
+<td>Plaintext size in bytes</td>
+</tr>
+<tr>
+<td><code>etag</code></td>
+<td>S3 ETag (the MD5 of the plaintext for single-part objects)</td>
+</tr>
+<tr>
+<td><code>content_type</code></td>
+<td>Content type, or <code>null</code></td>
+</tr>
+<tr>
+<td><code>last_modified</code></td>
+<td>RFC 3339 timestamp</td>
+</tr>
+<tr>
+<td><code>metadata</code></td>
+<td>User and system metadata (<code>x-amz-meta-*</code>, <code>cache-control</code>, ...); empty when absent</td>
+</tr>
+<tr>
+<td><code>encryption</code></td>
+<td><em>Optional.</em> Present on encrypted blobs: <code>algorithm</code> (<code>AES256</code> or <code>SSE-C</code>), <code>encrypted_dek</code>, <code>dek_nonce</code>, <code>nonce_prefix</code>, <code>key_id</code></td>
+</tr>
+<tr>
+<td><code>compression</code></td>
+<td><em>Optional.</em> Present on compressed blobs: <code>algorithm</code>, <code>chunk_size</code>, <code>original_size</code>, <code>compressed_size</code></td>
+</tr>
+<tr>
+<td><code>version_id</code></td>
+<td><em>Optional.</em> Version ID of an object written to a versioned bucket</td>
+</tr>
+<tr>
+<td><code>composite</code></td>
+<td><em>Optional.</em> Present on a multipart object assembled without copying its parts: the list of parts (<code>blob_id</code>, <code>plaintext_size</code>, <code>plaintext_etag</code>, optional <code>encryption</code>). No blob file exists for a composite sidecar; reads stream from the parts.</td>
+</tr>
+</tbody>
+</table>
 <h2 id="backup-strategy">Backup Strategy<a class="headerlink" href="#backup-strategy" title="Permanent link">&para;</a></h2>
 <p>To back up an Arca instance, you need:</p>
 <table>
@@ -1690,9 +1824,9 @@
 <td>Object data + metadata for recovery</td>
 </tr>
 <tr>
-<td>SQLite database</td>
-<td><code>{data_dir}/arca.db</code></td>
-<td>Credentials, metadata index (can be rebuilt)</td>
+<td>Metadata database</td>
+<td><code>{data_dir}/arca.db</code> (SQLite), or your PostgreSQL database</td>
+<td>Everything else: users, teams, grants, credentials, bucket configuration, tags, versions, retention, and the object index</td>
 </tr>
 <tr>
 <td>Config file</td>
@@ -1703,7 +1837,7 @@
 </table>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
-<p>Even if you lose the SQLite database, you can recover all objects from the blobs directory alone using <code>arca recover</code>. The only data stored exclusively in the database is <strong>credentials</strong> — these are preserved during recovery when the old database is still readable.</p>
+<p>Back up the metadata database together with the blobs directory. <code>arca recover</code> can salvage the objects from the blobs directory alone, but most of the database content cannot be rebuilt from sidecars (see the warning at the top of this page).</p>
 </div>
 <h2 id="arca-recover"><code>arca recover</code><a class="headerlink" href="#arca-recover" title="Permanent link">&para;</a></h2>
 <p>Rebuild the database from sidecar files.</p>
@@ -1713,10 +1847,51 @@
 <ol>
 <li>Walks <code>{data_dir}/blobs/</code> recursively, reading all <code>.meta</code> sidecar files</li>
 <li>Verifies each blob file exists and its MD5 matches the sidecar ETag (unless <code>--skip-verify</code>)</li>
-<li>Preserves credentials from the existing database (if any)</li>
-<li>Deletes the old database and creates a fresh one</li>
-<li>Recreates all buckets and objects from sidecar data</li>
+<li>Preserves credentials from the existing SQLite database at <code>{data_dir}/arca.db</code> (if any)</li>
+<li>Deletes that SQLite database and creates a fresh one (which contains only the root user and the built-in grants)</li>
+<li>Restores the saved credentials</li>
+<li>Recreates every bucket found in the sidecars (unversioned, with no configuration) and inserts one object per sidecar, owned by <code>root</code></li>
 </ol>
+<p><code>arca recover</code> always works on the SQLite file in <code>data_dir</code>, regardless of <code>metadata_backend</code>. On a PostgreSQL deployment it does not touch the PostgreSQL database: it writes an SQLite file the server will not use (TD-032).</p>
+<h3 id="what-is-restored-and-what-is-lost">What Is Restored and What Is Lost<a class="headerlink" href="#what-is-restored-and-what-is-lost" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Restored</th>
+<th>Lost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Buckets (names only)</td>
+<td>Users, teams and grants (only the root user and the built-in grants of a fresh database exist afterwards; credentials of other users are restored, their owning users are not)</td>
+</tr>
+<tr>
+<td>Objects: bucket, key, size, ETag, content type, last-modified, metadata, encryption parameters</td>
+<td>Bucket configuration: versioning, encryption, lifecycle, Object Lock, policy, notifications, replication</td>
+</tr>
+<tr>
+<td>Credentials, when the old SQLite database is still readable</td>
+<td>Bucket and object tags</td>
+</tr>
+<tr>
+<td></td>
+<td>Retention and legal hold</td>
+</tr>
+<tr>
+<td></td>
+<td>Object ownership (every object is owned by <code>root</code>)</td>
+</tr>
+<tr>
+<td></td>
+<td>Older versions of versioned objects, and version IDs</td>
+</tr>
+<tr>
+<td></td>
+<td>Multipart (composite) objects</td>
+</tr>
+</tbody>
+</table>
 <h3 id="options">Options<a class="headerlink" href="#options" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -1732,7 +1907,7 @@
 </tr>
 <tr>
 <td><code>--skip-verify</code></td>
-<td>Skip MD5 checksum verification of blob files (faster)</td>
+<td>Skip MD5 checksum verification of blob files (faster, and required to keep compressed objects)</td>
 </tr>
 <tr>
 <td><code>--config-path</code></td>
@@ -1753,13 +1928,16 @@
 </code></pre></div>
 <h3 id="credential-preservation">Credential Preservation<a class="headerlink" href="#credential-preservation" title="Permanent link">&para;</a></h3>
 <p>During recovery, credentials are read from the existing database before it is replaced. If the old database is readable, credentials survive the recovery. If the database is completely lost, you'll need to let Arca generate new root credentials on the next startup.</p>
+<h3 id="duplicate-keys-and-versions">Duplicate Keys and Versions<a class="headerlink" href="#duplicate-keys-and-versions" title="Permanent link">&para;</a></h3>
+<p>When several sidecars claim the same <code>bucket + key</code> (the versions of a versioned object, or overwritten objects whose old blob was not yet reclaimed), the <strong>oldest</strong> one wins. This is a known bug (TD-032 in <a href="../../tech-debt/">Technical Debt</a>): sidecars are inserted newest first by <code>last_modified</code>, the buckets are re-created unversioned, and every insert overwrites the previous one, so the last insert (the oldest sidecar) is what remains. The version IDs are discarded.</p>
 <h3 id="edge-cases">Edge Cases<a class="headerlink" href="#edge-cases" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Multipart objects</strong> (ETag contains <code>-</code>): checksum verification is skipped because the composite ETag is not a simple MD5 of the assembled blob</li>
+<li><strong>Multipart objects</strong>: a multipart object assembled as a composite has a sidecar but no blob file, so it is reported as an orphaned sidecar, skipped with a warning, and missing from the rebuilt database. Its part blobs carry ordinary sidecars whose key is <code>{key}#{upload_id}#{part_number}</code>, so each part is re-created as a separate, bogus object under that key (TD-014 in <a href="../../tech-debt/">Technical Debt</a>). Other objects with a multipart ETag (containing <code>-</code>) skip checksum verification, because the composite ETag is not the MD5 of the blob.</li>
+<li><strong>Encrypted objects</strong>: checksum verification is skipped (with a note), because the ciphertext on disk cannot be compared with the plaintext ETag</li>
+<li><strong>Compressed objects</strong>: the ETag is the MD5 of the plaintext but recover hashes the compressed bytes on disk, so verification fails and the object is skipped with a checksum-mismatch warning. Run with <code>--skip-verify</code> to keep them (TD-032).</li>
 <li><strong>Orphaned sidecars</strong> (no blob file): skipped with a warning</li>
 <li><strong>Malformed JSON</strong>: skipped with a warning</li>
 <li><strong>Checksum mismatches</strong>: skipped with a warning (blob may be corrupted)</li>
-<li><strong>Duplicate keys</strong>: when multiple sidecars claim the same <code>bucket + key</code>, the newest (by <code>created_at</code>) wins</li>
 </ul>
 <h2 id="arca-fsck"><code>arca fsck</code><a class="headerlink" href="#arca-fsck" title="Permanent link">&para;</a></h2>
 <p>Check consistency between the database and filesystem without modifying anything.</p>
@@ -1827,32 +2005,28 @@
 <a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>arca<span class="w"> </span>fsck<span class="w"> </span>--verify-checksums
 </code></pre></div>
 <h3 id="data-integrity">Data Integrity<a class="headerlink" href="#data-integrity" title="Permanent link">&para;</a></h3>
-<p>Arca uses two complementary checksums:</p>
+<p><code>arca fsck</code> relies on two checks:</p>
 <table>
 <thead>
 <tr>
 <th>What</th>
-<th>Hash</th>
-<th>Stored in</th>
-<th>Purpose</th>
+<th>How</th>
+<th>Check</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>Blob content</td>
-<td>MD5</td>
-<td><code>objects.etag</code> + <code>.meta</code> sidecar</td>
-<td>Required by S3 protocol — ETag for non-multipart objects is the MD5 hex digest</td>
+<td>MD5 of the blob file compared with the ETag stored in the database (the ETag of a single-part object is its MD5 hex digest, as the S3 protocol requires)</td>
+<td><code>CORRUPT</code> (only with <code>--verify-checksums</code>)</td>
 </tr>
 <tr>
 <td><code>.meta</code> sidecar</td>
-<td>SHA-256</td>
-<td><code>objects.sidecar_sha256</code></td>
-<td>Internal integrity — detects sidecar corruption or tampering</td>
+<td>Field-by-field comparison of <code>bucket</code>, <code>key</code>, <code>size</code> and <code>etag</code> with the database record; an unreadable or malformed sidecar is also reported</td>
+<td><code>SIDECAR_MISMATCH</code></td>
 </tr>
 </tbody>
 </table>
-<p>This gives <code>arca fsck</code> full coverage: blob corruption is caught by MD5 comparison, sidecar corruption by SHA-256 comparison.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>These checks require the database to be intact. During <code>arca recover</code>, sidecars are trusted by necessity since there is nothing to compare against.</p>

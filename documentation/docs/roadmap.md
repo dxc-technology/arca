@@ -844,7 +844,7 @@ with unique IDs (`TD-XXX`) referenced in source code comments.
 
 Remaining items:
 
-- ~~**Ownership model** (TD-001)~~: **Resolved** — Owner ID derived from credential's user; buckets/objects track creator's username
+- ~~**Ownership model** (TD-001)~~: **Resolved** — Owner ID derived from credential's user; buckets track creator's username (objects do not yet, TD-042)
 - **Storage classes** (TD-002): Always `STANDARD` — no storage tiering
 - ~~**Versioning** (TD-003)~~: **Resolved** — Full object versioning implemented in Phase 17
 - ~~**Region support** (TD-004)~~: **Resolved** — Configurable region in `[server]` TOML or Admin API, per-bucket via `bucket_config`. Phase 18
@@ -878,5 +878,8 @@ Remaining items:
 - **Virtual-hosted-style requests probably routed wrong** (TD-037): the rewrite middleware runs after routing; untested.
 - **No fsync on the write path** (TD-038): an acknowledged write can be lost or truncated on power loss.
 - **PostgreSQL conditional writes have no regression test** (TD-039): `bin/test postgres` does not run the conditional-write suite.
+- **Cluster maintenance jobs can stall on a non-leader node** (TD-040): jobs are node-local but only the worker-leader runs them, so a job created on another node stays pending.
+- **Blob ids received from cluster peers are not validated** (TD-041): only the blob route's path parameter is checked; ids inside replicated records reach the filesystem layer unchecked (authenticated peers only, defence in depth).
+- **Object owner is always `root`** (TD-042): object writes ignore the authenticated user; TD-001 is resolved for buckets only.
 - ~~**Cluster inter-node TLS** (TD-015)~~: **Resolved** — verified mutual TLS with an operator-distributed cluster CA (`[cluster.tls]`, required when the cluster runs over HTTPS), `danger_accept_invalid_certs` removed, client certificates enforced on `/cluster/v1/*`, material minted by `arca tls generate-cluster`. HA hardening R4 (Phase 29.1)
 - ~~**Partial cluster control-plane reconcile** (TD-016)~~: **Resolved** — the anti-entropy snapshot merge now covers every control-plane family (grant attachments, memberships, bucket config keys, bucket tag sets, cluster-wide server settings, plus multipart uploads and parts) with per-row LWW timestamps, deletion tombstones and parent-dead filtering, so a returning node fully self-heals. HA hardening R5 (Phase 29.1)

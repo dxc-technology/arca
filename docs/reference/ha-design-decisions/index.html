@@ -1,0 +1,1957 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Open source S3-compatible object storage server written in Rust">
+      
+      
+      
+        <link rel="canonical" href="https://dxc-technology.github.io/arca/reference/ha-design-decisions/">
+      
+      
+        <link rel="prev" href="../architecture/">
+      
+      
+        <link rel="next" href="../s3-api/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/logo.svg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>HA Design Decisions - Arca</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#ha-design-decisions" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Arca" class="md-header__button md-logo" aria-label="Arca" data-md-component="logo">
+      
+  <img src="../../assets/logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Arca
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              HA Design Decisions
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/dxc-technology/arca" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    dxc-technology/arca
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Arca" class="md-nav__button md-logo" aria-label="Arca" data-md-component="logo">
+      
+  <img src="../../assets/logo.svg" alt="logo">
+
+    </a>
+    Arca
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/dxc-technology/arca" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    dxc-technology/arca
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/access-control/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Access Control
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/tls/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    TLS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/encryption/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encryption
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/compression/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compression
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/replication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Replication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/ha/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    High Availability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/maintenance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration & Maintenance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/connectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Notification Connectors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/console/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Web Console
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HA Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HA Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#h1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H1: True write quorum
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H2: An ACK means "row applied and blob present"
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H3: PostgreSQL commit-ordered seq cursor
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H4: Scope of ACK counting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H5: Symmetric worker-leader gate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H6: Over-sized membership fails closed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H7: A config-drifted peer is out of the quorum
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H8: Secret rotation via secret_previous
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H9: Per-node admin views through a server-side proxy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H10: Rolling upgrades across mixed versions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H11: One release for the whole hardening plan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H12: Authenticate the peer, not just the request
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#other-named-mechanisms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other named mechanisms
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../s3-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    S3 API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operations/recovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Disaster Recovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operations/gc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage Reclamation (GC)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operations/monitoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Monitoring & Logging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operations/deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Production Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../operations/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ha-hardening/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HA Hardening Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tech-debt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Technical Debt
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#h1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H1: True write quorum
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H2: An ACK means "row applied and blob present"
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H3: PostgreSQL commit-ordered seq cursor
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H4: Scope of ACK counting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H5: Symmetric worker-leader gate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H6: Over-sized membership fails closed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H7: A config-drifted peer is out of the quorum
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H8: Secret rotation via secret_previous
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H9: Per-node admin views through a server-side proxy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H10: Rolling upgrades across mixed versions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H11: One release for the whole hardening plan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H12: Authenticate the peer, not just the request
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#other-named-mechanisms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other named mechanisms
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="ha-design-decisions">HA Design Decisions<a class="headerlink" href="#ha-design-decisions" title="Permanent link">&para;</a></h1>
+<p>These are the design decisions behind Arca's HA clustering, taken during the HA hardening that shipped in <strong>v0.26.0</strong> (Phase 29.1, the remediation of the Phase 29 review). Code comments cite them as "decision H<em>n</em>" (for example <code>decision H4</code> in <code>cluster_meta.rs</code>); each section below has a stable anchor (<code>#h1</code> to <code>#h12</code>) so those citations stay resolvable.</p>
+<p>Each decision states what the code does <strong>today</strong>, which is not always what was first planned: where a decision was refined later, the section says so.</p>
+<ul>
+<li>For how to run a cluster, see the operator guide: <a href="../../guide/ha/">High Availability</a>.</li>
+<li>For the overall system design, see <a href="../architecture/">Architecture</a>.</li>
+<li>The review and planning labels that code comments and the changelog still use (§3.2, D3a, M1, N2, ...) are explained in <a href="#other-named-mechanisms">Other named mechanisms</a> at the end of this page.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Decision</th>
+<th>Since</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#h1">H1</a></td>
+<td>True write quorum: count fan-out ACKs, <code>503</code> on shortfall, no rollback</td>
+<td>v0.26.0</td>
+</tr>
+<tr>
+<td><a href="#h2">H2</a></td>
+<td>An ACK means "row applied and blob present"</td>
+<td>v0.26.0</td>
+</tr>
+<tr>
+<td><a href="#h3">H3</a></td>
+<td>PostgreSQL commit-ordered <code>seq</code> cursor via a counter table</td>
+<td>v0.26.0</td>
+</tr>
+<tr>
+<td><a href="#h4">H4</a></td>
+<td>ACK counting covers object data-plane mutations only</td>
+<td>v0.26.0</td>
+</tr>
+<tr>
+<td><a href="#h5">H5</a></td>
+<td>Symmetric worker-leader gate (lowest eligible <code>node_id</code>)</td>
+<td>v0.26.0 (maintenance worker since v0.28.0)</td>
+</tr>
+<tr>
+<td><a href="#h6">H6</a></td>
+<td>Over-sized membership closes the write gate, no escape hatch</td>
+<td>v0.26.0</td>
+</tr>
+<tr>
+<td><a href="#h7">H7</a></td>
+<td>A config-drifted peer is out of the quorum</td>
+<td>v0.26.0</td>
+</tr>
+<tr>
+<td><a href="#h8">H8</a></td>
+<td>Secret rotation via <code>secret_previous</code></td>
+<td>v0.26.0</td>
+</tr>
+<tr>
+<td><a href="#h9">H9</a></td>
+<td>Per-node admin views through a server-side proxy</td>
+<td>v0.26.0</td>
+</tr>
+<tr>
+<td><a href="#h10">H10</a></td>
+<td>Rolling upgrades: additive wire changes</td>
+<td>v0.26.0 (broken once by v0.29.0)</td>
+</tr>
+<tr>
+<td><a href="#h11">H11</a></td>
+<td>One release for the whole hardening plan</td>
+<td>v0.26.0 (release history)</td>
+</tr>
+<tr>
+<td><a href="#h12">H12</a></td>
+<td>Authenticate the peer, not just the request</td>
+<td>v0.26.0</td>
+</tr>
+</tbody>
+</table>
+<h2 id="h1">H1: True write quorum<a class="headerlink" href="#h1" title="Permanent link">&para;</a></h2>
+<p><strong>Decision.</strong> In <code>quorum</code> mode an object write is acknowledged only when at least <code>write_quorum</code> nodes (<code>floor(cluster_size / 2) + 1</code>) durably hold it at acknowledgement time: the local copy plus every peer that returned a full ACK (see <a href="#h2">H2</a>). The origin writes locally, fans out to all eligible peers in parallel, counts the ACKs and, if <code>1 + acks &lt; write_quorum</code>, answers <code>503 ServiceUnavailable</code> with <code>Retry-After: 5</code>. A fast admission gate runs before the local write and refuses early when membership already knows too few eligible nodes are reachable; the ACK count is the authoritative check, because it also sees peers that membership still believes alive but that did not receive the copy.</p>
+<p>The local copy is <strong>not rolled back</strong> on a shortfall. The error means "not acknowledged as replicated", not "undone": anti-entropy later propagates the local copy, or a client retry overwrites it. In <code>available</code> mode the ACKs are ignored.</p>
+<p><strong>Rationale.</strong> Before v0.26.0 the quorum was only an admission gate: the fan-out swallowed every error, so a write admitted with two live nodes could exist on one disk and still be answered <code>200 OK</code>. That broke the CP promise in two ways: a lost acknowledged write if that node died, and conflicting acknowledged writes inside the failure-detection window right after a partition. The fan-out was already awaited before the response, so counting its results cost almost nothing.</p>
+<p><strong>Alternatives rejected.</strong></p>
+<ul>
+<li><em>Keep the admission gate and reword the documentation</em> ("admission-gated, best-effort replication"). Near-zero cost, but it would have emptied quorum mode of its value.</li>
+<li><em>Roll back the local copy on failure.</em> That needs a distributed transaction (or a compensating delete that can itself fail and race); no quorum system without distributed transactions offers it, and anti-entropy convergence already gives a well-defined outcome.</li>
+</ul>
+<p><strong>Where in the code.</strong> <code>quorum_satisfied</code> and <code>ClusterState::write_gate</code> / <code>WriteGate</code> in <code>crates/arca-core/src/cluster.rs</code>; <code>check_write_gate</code>, <code>ClusterMetadataStore::enforce_ack_quorum</code>, <code>fan_out_object</code> and <code>fan_out_version_delete</code> in <code>crates/arca-server/src/cluster/cluster_meta.rs</code>; the <code>Retry-After</code> header is added for every <code>ServiceUnavailable</code> by <code>s3_error_response</code> in <code>crates/arca-proto/src/xml/error_response.rs</code>.</p>
+<p><strong>Since.</strong> v0.26.0.</p>
+<h2 id="h2">H2: An ACK means "row applied and blob present"<a class="headerlink" href="#h2" title="Permanent link">&para;</a></h2>
+<p><strong>Decision.</strong> <code>POST /cluster/v1/object</code> and <code>POST /cluster/v1/object/delete</code> answer with a JSON <code>ClusterObjectAck { applied, has_blob }</code>. The receiving peer self-certifies what it holds: <code>applied</code> means the idempotent LWW upsert (or delete) succeeded, <code>has_blob</code> means the sidecar of the blob the row references is present (for a composite multipart object, the composite sidecar). For rows that reference no blob (delete markers, tombstones, version deletes) <code>has_blob</code> is vacuously true. Only <code>applied &amp;&amp; has_blob</code> counts toward <a href="#h1">H1</a>.</p>
+<p><strong>Rationale.</strong> Blob bytes and the metadata row travel separately (the blob first, then the row). Letting the peer certify both in one response avoids threading per-write state between the blob fan-out and the row fan-out on the origin. Multipart parts already fan out individually as they are uploaded, so the composite sidecar is the right thing to certify at completion.</p>
+<p><strong>Alternatives rejected.</strong> Tracking blob delivery on the origin and correlating it with the row ACK: more state, more failure modes, and the peer is the only party that knows what it durably holds.</p>
+<p><strong>Where in the code.</strong> <code>ClusterObjectAck</code> in <code>crates/arca-core/src/cluster.rs</code>; <code>receive_object</code> and <code>receive_version_delete</code> in <code>crates/arca-proto/src/handlers/cluster.rs</code> (producers); <code>ClusterClient::send_object</code>, <code>send_version_delete</code> and <code>parse_ack</code> in <code>crates/arca-server/src/cluster/client.rs</code>; <code>fan_out_object</code> in <code>crates/arca-server/src/cluster/cluster_meta.rs</code> (consumer).</p>
+<p><strong>Since.</strong> v0.26.0.</p>
+<h2 id="h3">H3: PostgreSQL commit-ordered <code>seq</code> cursor<a class="headerlink" href="#h3" title="Permanent link">&para;</a></h2>
+<p><strong>Decision.</strong> On PostgreSQL the node-local object write cursor (<code>seq</code>, the key of the changed-since manifest that anti-entropy pulls) comes from a single-row counter table, <code>object_seq</code>, advanced with <code>UPDATE object_seq SET value = value + 1 RETURNING value</code> <strong>inside the same transaction as the row</strong>. The counter's row lock is held until commit, so <code>seq</code> order equals commit order: by the time a reader sees <code>seq = N+1</code> committed, <code>N</code> is either committed and visible or aborted for good (a harmless gap). This mirrors the SQLite backend, which already used a counter table. Every objects-writing transaction takes the <code>seq</code> before its first row-mutating statement (a uniform lock order that rules out deadlocks).</p>
+<p><strong>Rationale.</strong> The original PostgreSQL <code>SEQUENCE</code> is not transactional: a transaction holding <code>seq = 100</code> could still be in flight while <code>seq = 101</code> committed. A peer pulling the manifest saw 101, moved its high-water mark past 100, and the row committed later with 100 was never delivered by the incremental sync: silent replication loss under concurrent writes.</p>
+<p><strong>Cost.</strong> Concurrent object writes on PostgreSQL serialize on the counter row for the final stretch of their transaction (from taking the <code>seq</code> to commit). Accepted: it is no worse than SQLite, whose single write connection serializes every write entirely.</p>
+<p><strong>Alternatives rejected.</strong> A probabilistic guard window (do not return the newest N rows, or the last T milliseconds, or read only up to a snapshot-safe watermark). It closes most of the window but not all of it, and makes correctness depend on a tuning value. A commit-ordered cursor is exact.</p>
+<p><strong>Where in the code.</strong> Migration <code>crates/arca-storage/src/pg/migrations/0009_commit_ordered_seq.sql</code> (creates <code>object_seq</code>, seeded from the larger of <code>MAX(seq)</code> and the old sequence, and drops the sequence); <code>next_object_seq</code> in <code>crates/arca-storage/src/pg/metadata.rs</code>, called by every write path.</p>
+<p><strong>Since.</strong> v0.26.0.</p>
+<h2 id="h4">H4: Scope of ACK counting<a class="headerlink" href="#h4" title="Permanent link">&para;</a></h2>
+<p><strong>Decision.</strong> <a href="#h1">H1</a> ACK counting covers <strong>object data-plane mutations only</strong>: <code>PutObject</code> (and every path that writes an object row), the versioned delete marker, and version hard deletes (tombstones in cluster mode). Everything else passes <strong>only the admission gate</strong> and then fans out <strong>best-effort</strong> (the ACKs are not counted):</p>
+<ul>
+<li>control-plane operations: buckets, bucket config, bucket tags, multipart upload and part rows, credentials, users, teams, grants, server settings;</li>
+<li>object tags;</li>
+<li>Object Lock changes (retention, legal hold) and the re-encryption row updates of the maintenance jobs.</li>
+</ul>
+<p>These are repaired by anti-entropy if a peer missed the fan-out (the control-plane snapshot merge, or the object manifest for lock and re-encryption changes, which stamp a fresh <code>seq</code>). <strong>Object tags are the exception</strong>: they bump no <code>seq</code> and are not part of the control-plane snapshot, so a peer that misses the fan-out keeps its old tags until the object is rewritten (TD-033 in <a href="../../tech-debt/">Technical Debt</a>).</p>
+<p><strong>Rationale.</strong> Control-plane mutations are rare and small, and the periodic full-snapshot reconcile converges them. Extending ACK counting to them was possible but not needed to close the review's data-loss findings; it stays a possible later extension.</p>
+<p><strong>Alternatives rejected.</strong> ACK-counting every replicated mutation in v0.26.0: a much larger change (every control-plane decorator, every receive handler) for mutations whose loss window is already bounded by one reconcile cycle.</p>
+<p><strong>Where in the code.</strong> The scope note in the module doc of <code>crates/arca-server/src/cluster/cluster_meta.rs</code>; <code>put_object_if</code>, <code>delete_object_if</code> and <code>delete_object_version_if</code> (counted) versus <code>fan_out_op</code> and <code>replicate_lock_change</code> (best-effort) in the same file; <code>fan_out_op</code> in <code>crates/arca-server/src/cluster/cluster_control.rs</code> for the identity control plane.</p>
+<p><strong>Since.</strong> v0.26.0.</p>
+<h2 id="h5">H5: Symmetric worker-leader gate<a class="headerlink" href="#h5" title="Permanent link">&para;</a></h2>
+<p><strong>Decision.</strong> Background work that reads fully replicated state runs on one node only: the <strong>worker leader</strong>, the node whose <code>node_id</code> is the lowest among the <strong>eligible</strong> nodes (alive, authenticated and config-aligned peers, plus itself). Every node computes this locally from its membership view; there is no election. When the leader dies, the next-lowest eligible node takes over at its next tick. Two gated workers exist today:</p>
+<ul>
+<li>the <strong>lifecycle worker</strong> (expirations, noncurrent-version deletes, stale multipart aborts);</li>
+<li>the <strong>maintenance worker</strong> (the re-encryption and migration jobs added in v0.28.0); a non-leader also never holds the maintenance drain.</li>
+</ul>
+<p>The <strong>Phase 28 bucket replication worker is deliberately not gated</strong>: its journal is node-local (an entry is written only by the node that served the client write, never by cluster replication), so each write is journaled exactly once cluster-wide and deliveries are already exactly-once. Gating it would orphan the entries journaled on non-leader nodes. The metrics snapshot, the retention purge and the notification delivery worker are not gated either: they work on node-local state.</p>
+<p>During a membership disagreement two nodes can briefly both claim the role; the resulting double execution is accepted because the gated work is idempotent and converges.</p>
+<p><strong>Rationale.</strong> Without a gate every node ran the lifecycle tick over the same replicated table: N times the deletes, N times the fan-out, duplicate audit entries, racing deleters. The predicate is <em>eligible</em>, not merely <em>alive</em>, for the same reason the quorum uses it: an unauthenticated rogue (or a drifted peer) with a low <code>node_id</code> must not be able to take the role and silence the workers cluster-wide.</p>
+<p><strong>Alternatives rejected.</strong> A leader election or lease protocol: more machinery than a deterministic, locally computed rule for idempotent work. Gating the replication worker, as the review originally proposed: based on the wrong premise that every node journals every write.</p>
+<p><strong>Where in the code.</strong> <code>ClusterState::is_worker_leader</code> in <code>crates/arca-core/src/cluster.rs</code>; the gate in the lifecycle worker in <code>crates/arca-server/src/worker.rs</code> and in <code>spawn_maintenance_worker</code> in <code>crates/arca-server/src/maintenance.rs</code>; the reason the replication worker is not gated is in the module doc of <code>crates/arca-server/src/replicator/worker.rs</code>. Exposed as <code>worker_leader</code> on <code>/admin/cluster</code> and in <code>/admin/health?verbose=1</code>.</p>
+<p><strong>Since.</strong> v0.26.0 (lifecycle worker); the maintenance worker has been gated since it was introduced in v0.28.0.</p>
+<h2 id="h6">H6: Over-sized membership fails closed<a class="headerlink" href="#h6" title="Permanent link">&para;</a></h2>
+<p><strong>Decision.</strong> In <code>quorum</code> mode, if a node observes <strong>more eligible nodes than <code>cluster_size</code></strong> (itself included), its write gate closes: writes are refused with a distinct <code>503</code> message pointing at the resize runbook, <code>/admin/cluster</code> reports <code>size_exceeded: true</code>, and an error is logged on each transition. There is no configuration switch to turn the guard off.</p>
+<p>Only eligible nodes count, so an unauthenticated stranger cannot close the gate (no write denial of service via an mDNS registration), while a correctly configured extra node can.</p>
+<p><strong>Rationale.</strong> The majority is derived from <code>cluster_size</code>, not from what is observed. With four nodes and <code>cluster_size = 3</code> every node computes a quorum of 2, so two partitioned pairs can both accept conflicting writes: split-brain in the very mode that promises to exclude it. The identical config means drift detection cannot catch it. A misconfiguration that dangerous must fail closed rather than warn.</p>
+<p><strong>Alternatives rejected.</strong></p>
+<ul>
+<li><em>A warning only</em>: leaves the split-brain possible.</li>
+<li><em>An escape-hatch setting</em> to accept the over-sized membership: a foot-gun. It would be turned on during some incident and forgotten, silently re-enabling split-brain. The supported path is the cold resize runbook in the <a href="../../guide/ha/#resizing-the-cluster">HA guide</a>.</li>
+</ul>
+<p><strong>Where in the code.</strong> <code>WriteGate::SizeExceeded</code> and <code>ClusterState::write_gate</code> in <code>crates/arca-core/src/cluster.rs</code>; the 503 mapping in <code>check_write_gate</code> in <code>crates/arca-server/src/cluster/cluster_meta.rs</code>; the transition log in <code>crates/arca-server/src/cluster/membership.rs</code>.</p>
+<p><strong>Since.</strong> v0.26.0.</p>
+<h2 id="h7">H7: A config-drifted peer is out of the quorum<a class="headerlink" href="#h7" title="Permanent link">&para;</a></h2>
+<p><strong>Decision.</strong> A peer whose cluster-critical configuration differs from ours (<code>config_ok = false</code>) is <strong>not eligible</strong>: it receives no fan-out, is not pulled from by anti-entropy, does not count toward the write quorum or the capacity minimum, and cannot be the worker leader. It stays visible in <code>/admin/cluster</code> with the drift flag. Drift is detected two ways: the peer's config fingerprint (exchanged on the authenticated ping) differs from ours, or the peer answers our ping with <code>403</code> because it rejects our secret.</p>
+<p><strong>Rationale.</strong> A node with a different secret cannot authenticate the replicas it is sent; a node with a different master key cannot decrypt them. Counting it toward the quorum would acknowledge writes that are not really held by a majority.</p>
+<p><strong>Alternatives rejected.</strong> Refusing to start, or isolating the drifted peer's process: a node cannot know its peers' configuration at startup, and one misconfigured node must not take down the healthy ones. The cluster surfaces the problem loudly and keeps running.</p>
+<p><strong>Where in the code.</strong> <code>PeerNode::eligible</code> and <code>config_fingerprint</code> in <code>crates/arca-core/src/cluster.rs</code>; <code>contact_config_ok</code> and the probe verdicts in <code>crates/arca-server/src/cluster/membership.rs</code>. The fingerprint covers <code>cluster_id</code>, <code>mode</code>, the write quorum, the secret and the master-key id; it does not include <code>cluster_size</code> itself (TD-036 in <a href="../../tech-debt/">Technical Debt</a>).</p>
+<p><strong>Since.</strong> v0.26.0.</p>
+<h2 id="h8">H8: Secret rotation via <code>secret_previous</code><a class="headerlink" href="#h8" title="Permanent link">&para;</a></h2>
+<p><strong>Decision.</strong> An optional <code>[cluster] secret_previous</code> makes a secret rotation a rolling operation. Inbound authentication tries <code>secret</code> first and then <code>secret_previous</code> (each with a full constant-time verification); outbound signing and the config fingerprint always use <code>secret</code> only. The ping handler computes its challenge MAC with whichever secret verified the request, so a prober on either side of the rotation can verify the answer; the prober also accepts a MAC keyed by either of its own secrets. Validation applies the same strength rules to <code>secret_previous</code> and rejects it when it equals <code>secret</code>.</p>
+<p>Runbook: set <code>secret_previous</code> to the old secret and <code>secret</code> to the new one on every node, rolling-restart, then remove <code>secret_previous</code>.</p>
+<p><strong>Rationale.</strong> Without a dual-secret window, changing the secret meant stopping the whole cluster: downtime in an HA product.</p>
+<p><strong>Alternatives rejected.</strong> A full stop-and-restart rotation (downtime), or a set of N accepted secrets (more state for no practical gain over one previous secret).</p>
+<p><strong>Where in the code.</strong> <code>ClusterConfig::secret_previous</code> and its validation in <code>crates/arca-server/src/config.rs</code>; <code>cluster_auth_middleware</code> and <code>MatchedClusterSecret</code> in <code>crates/arca-proto/src/middleware/cluster_auth.rs</code>; <code>ping</code> in <code>crates/arca-proto/src/handlers/cluster.rs</code>; the dual-key MAC check in <code>crates/arca-server/src/cluster/membership.rs</code>.</p>
+<p><strong>Since.</strong> v0.26.0.</p>
+<h2 id="h9">H9: Per-node admin views through a server-side proxy<a class="headerlink" href="#h9" title="Permanent link">&para;</a></h2>
+<p><strong>Decision.</strong> Four admin data families are node-local by design: the audit log, the metrics history, the notification event log and the replication journal. Their list endpoints take a <code>?node=</code> selector:</p>
+<ul>
+<li>absent: the serving node's own data (the load balancer's pick), with a top-level <code>node</code> field naming it;</li>
+<li><code>?node=&lt;node_id&gt;</code>: the serving node proxies the query to that peer over the signed inter-node transport (<code>POST /cluster/v1/admin/*</code>). Only eligible peers are valid targets: unknown node <code>404</code>, known but ineligible <code>503</code>, unreachable <code>502</code>, and a peer's own error is forwarded with its status;</li>
+<li><code>?node=all</code>: the query fans out to every eligible node, rows are merged newest-first by parsed timestamp, each labelled with its source node, and a <code>sources</code> array reports each node's total or error. Pagination is per source page, an accepted approximation.</li>
+</ul>
+<p>The console exposes this as a node selector in the four views.</p>
+<p><strong>Rationale.</strong> Behind a round-robin balancer every console refresh could show a different node with nothing saying which. The typical deployment exposes only the balancer, so the browser often cannot reach individual nodes at all, and the cluster credential must stay on the server side.</p>
+<p><strong>Alternatives rejected.</strong> Direct browser-to-node calls (CORS, nodes unreachable from the browser, credentials in the browser); cross-node pagination cursors for the merged view (complexity out of proportion to an operator view).</p>
+<p><strong>Where in the code.</strong> <code>ClusterAdminProxy</code> in <code>crates/arca-core/src/cluster.rs</code>; <code>ClusterAdminProxyImpl</code> in <code>crates/arca-server/src/cluster/client.rs</code>; <code>select_node</code> and <code>dispatch</code> in <code>crates/arca-proto/src/handlers/admin_proxy.rs</code>; the <code>/cluster/v1/admin/*</code> receive handlers in <code>crates/arca-proto/src/handlers/cluster.rs</code>; <code>console/js/node-selector.js</code>.</p>
+<p><strong>Since.</strong> v0.26.0.</p>
+<h2 id="h10">H10: Rolling upgrades across mixed versions<a class="headerlink" href="#h10" title="Permanent link">&para;</a></h2>
+<p><strong>Decision.</strong> Wire changes to the inter-node protocol are meant to be <strong>additive</strong>: new JSON fields are optional (<code>#[serde(default)]</code>) and ignored by older nodes, so a cluster can be upgraded one node at a time. Concretely:</p>
+<ul>
+<li>The membership probe uses the authenticated <code>GET /cluster/v1/ping</code>; a <code>404</code> means a pre-0.26 peer, which is then read through the public <code>/cluster/v1/health</code>. Such a peer is visible as alive but cannot prove it holds the secret, so it is <strong>not eligible</strong> (no fan-out, no quorum contribution) and a warning is logged once. In a 3-node <code>quorum</code> cluster the first upgraded node therefore refuses writes until a second node is upgraded.</li>
+<li>Snapshots, ACKs and object rows gained fields with defaults (for example a pre-0.26 control snapshot reads as "no information", never as "everything deleted").</li>
+<li><code>ClusterClient::parse_ack</code> treats a <code>2xx</code> response whose body does not parse as a <code>ClusterObjectAck</code> as a <strong>full ACK</strong> (the pre-ACK contract answered an empty <code>200</code>). This legacy path is practically unreachable today, because fan-out only targets eligible peers and a legacy peer is never eligible.</li>
+</ul>
+<p><strong>The rule was broken once, by v0.29.0.</strong> That release removed the <code>admin</code> field from credentials. An upgraded node ignores an incoming <code>admin</code> field, but a pre-0.29 node requires it, so credentials replicated from a 0.29 node to an older one fail. <strong>A cluster must not run mixed versions across 0.29.0</strong> (see the <a href="../../changelog/">changelog</a>).</p>
+<p><strong>Rationale.</strong> An HA product must be upgradable without a full outage.</p>
+<p><strong>Alternatives rejected.</strong> Protocol version negotiation: unnecessary while changes stay additive, and the one break so far was handled by a release note.</p>
+<p><strong>Where in the code.</strong> <code>probe_peer</code> and <code>probe_health</code> in <code>crates/arca-server/src/cluster/membership.rs</code>; <code>ClusterClient::parse_ack</code> in <code>crates/arca-server/src/cluster/client.rs</code>; the <code>#[serde(default)]</code> fields on <code>ControlSnapshot</code>, <code>ClusterPingResponse</code> and <code>ObjectRecord</code> in <code>crates/arca-core/src/cluster.rs</code> and <code>crates/arca-core/src/types.rs</code>.</p>
+<p><strong>Since.</strong> v0.26.0.</p>
+<h2 id="h11">H11: One release for the whole hardening plan<a class="headerlink" href="#h11" title="Permanent link">&para;</a></h2>
+<p><em>Release-process history.</em> The hardening was first planned as a release after its first two milestones followed by per-milestone releases. It was revised to a <strong>single release</strong> at the end of all nine milestones, at least a minor version because quorum mode changed observable behaviour, and that release became <strong>v0.26.0</strong>. Milestones were still committed and pushed as they completed. Nothing in the code depends on this decision.</p>
+<h2 id="h12">H12: Authenticate the peer, not just the request<a class="headerlink" href="#h12" title="Permanent link">&para;</a></h2>
+<p><strong>Decision.</strong> Before v0.26.0 the cluster authenticated the <em>sender</em> of every <code>/cluster/v1/*</code> request but never the <em>receiver</em> of a fan-out: membership admitted any endpoint that answered with the right <code>cluster_id</code>, so a rogue process registering itself over mDNS received every new write without knowing the secret. Today a peer must prove itself before it can receive or supply anything, in two layers:</p>
+<ol>
+<li><strong>HMAC challenge-response, for every cluster</strong> (plain HTTP included). Each membership probe sends a fresh random nonce on the signed <code>GET /cluster/v1/ping</code>; the peer must answer with <code>HMAC-SHA256(secret, nonce)</code> (domain-separated, verified in constant time). A peer that answers <code>200</code> without a valid MAC is alive but not authenticated. Only authenticated and config-aligned peers (<a href="#h7">H7</a>) are eligible: eligibility gates the fan-out targets, the write quorum, anti-entropy pulls (pulling from an unauthenticated endpoint would be a data-poisoning vector), the capacity minimum, the worker leader and the <code>?node=</code> proxy. The public <code>/cluster/v1/health</code> was reduced to <code>{status, node_id}</code>, so it no longer leaks a fingerprint that could be brute-forced offline for the secret.</li>
+<li><strong>Verified mutual TLS with an operator-distributed CA, on HTTPS clusters, fail-closed.</strong> When <code>[server.tls]</code> is enabled, <code>[cluster.tls]</code> (<code>ca_file</code>, <code>cert_file</code>, <code>key_file</code>) is <strong>required</strong>; the node refuses to start without it, and there is no "accept invalid certificates" fallback. Inter-node clients verify peers against the cluster CA (in addition to the system roots) and present the node's CA-signed certificate; the listener requests a client certificate without requiring it at the TLS layer (S3 clients share the port), and <code>cluster_auth</code> refuses <code>/cluster/v1/*</code> requests whose connection did not present a verified one. <code>arca tls generate-cluster</code> mints the CA and the per-node certificates.</li>
+</ol>
+<p><code>[cluster.tls]</code> without <code>[server.tls]</code> is rejected, and so is <code>[server.tls] ca_file</code> (mandatory client certificates for every connection) together with <code>[cluster.tls]</code>: one listener cannot enforce two client-certificate policies.</p>
+<p>Around these layers: a <code>±15</code> minute <code>x-amz-date</code> replay window on cluster requests, a 2 MiB body limit on the JSON cluster routes, and a minimum secret strength (at least 16 characters, shipped placeholders rejected, a warning for low-entropy values).</p>
+<p><strong>Rationale.</strong> Authenticating requests protects the receiver; only authenticating peers protects the sender's data. The challenge must be answered <em>to us</em> over a nonce we chose: a signed <code>/ping</code> alone proves nothing, because a rogue controls its own server and can answer <code>200</code> unconditionally. The challenge-response is not a fallback for mTLS: it is the baseline that also protects plain-HTTP deployments (where no certificates exist) against the easy attack, a rogue mDNS registrant. Sniffing and man-in-the-middle on an untrusted network still need TLS, which is where the second, independent factor applies.</p>
+<p><strong>Alternatives rejected.</strong> <em>Kubernetes-style auto-enrollment</em> (the first node generates a CA and joining peers get their certificate requests signed over a channel authenticated by the cluster secret). Issuance gated by the standing secret would collapse mTLS to the strength of the secret: whoever has the secret could mint a certificate. An operator-distributed CA is an independent second factor: pushing or pulling cluster data requires the secret <strong>and</strong> a CA-signed key. (Kubernetes mitigates the same problem with short-lived join tokens; that remains a possible future evolution.)</p>
+<p><strong>Where in the code.</strong> <code>ping_nonce_mac</code>, <code>verify_ping_nonce_mac</code>, <code>ClusterPingResponse</code> and <code>PeerNode::eligible</code> in <code>crates/arca-core/src/cluster.rs</code>; <code>probe_peer</code> in <code>crates/arca-server/src/cluster/membership.rs</code>; <code>ping</code> and <code>health</code> in <code>crates/arca-proto/src/handlers/cluster.rs</code>; <code>cluster_auth_middleware</code> and <code>ClusterPeerCertVerified</code> in <code>crates/arca-proto/src/middleware/cluster_auth.rs</code>; the client-certificate verifier in <code>crates/arca-server/src/tls.rs</code>; <code>ClusterTlsConfig</code> and <code>validate_cluster_transport</code> in <code>crates/arca-server/src/config.rs</code>; <code>generate_cluster</code> in <code>crates/arca-server/src/tls_generate.rs</code>; <code>REPLAY_WINDOW_SECS</code> in <code>crates/arca-proto/src/middleware/mod.rs</code>.</p>
+<p><strong>Since.</strong> v0.26.0.</p>
+<h2 id="other-named-mechanisms">Other named mechanisms<a class="headerlink" href="#other-named-mechanisms" title="Permanent link">&para;</a></h2>
+<p>The review and the hardening plan labelled findings with section numbers and short IDs. Code comments and the changelog still use some of them; this glossary gives each a plain name. All shipped in v0.26.0.</p>
+<table>
+<thead>
+<tr>
+<th>Label</th>
+<th>Plain name</th>
+<th>What it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>§3.2</td>
+<td>Tombstone-GC liveness guard</td>
+<td>Tombstones are not purged while any known peer has been unseen for longer than the grace window (it could still need them); the purge is skipped with a warning and <code>tombstone_gc_blocked</code> on <code>/admin/cluster</code>. <code>tombstone_gc_blockers</code> in <code>arca-core</code>.</td>
+</tr>
+<tr>
+<td>§3.7</td>
+<td>Peer trust (the rogue-peer gap)</td>
+<td>The security finding that fan-out authenticated no receiver, so a rogue peer got every write without the secret. Closed by <a href="#h12">H12</a>.</td>
+</tr>
+<tr>
+<td>D2</td>
+<td>Syncing readiness gate</td>
+<td>Until a node completes its first reconcile pass toward every eligible peer since startup, the plain <code>/admin/health</code> answers <code>503 {"status":"syncing"}</code>, keeping it out of load-balancer rotation. <code>ClusterState::is_syncing</code>.</td>
+</tr>
+<tr>
+<td>D3a</td>
+<td>Cluster-size guard</td>
+<td>More eligible nodes than <code>cluster_size</code> closes the write gate. See <a href="#h6">H6</a>.</td>
+</tr>
+<tr>
+<td>D3c</td>
+<td>Cursor rewind detection</td>
+<td>A peer reporting (on the ping) an object <code>seq</code> counter below what this node already consumed was restored from a backup; the high-water mark is reset and the peer is re-pulled in full. <code>sync_rewound</code> in <code>arca-core</code>.</td>
+</tr>
+<tr>
+<td>D6</td>
+<td>Per-node admin views</td>
+<td>The <code>?node=</code> selector and merged view for the four node-local admin families. See <a href="#h9">H9</a>.</td>
+</tr>
+<tr>
+<td>M1</td>
+<td>Stuck-entry skip</td>
+<td>A manifest entry that fails to apply on 5 consecutive passes is skipped with a warning and counted in <code>skipped_entries</code> per peer, so one poison row cannot block a peer's sync forever. <code>StuckTracker</code> in <code>anti_entropy.rs</code>.</td>
+</tr>
+<tr>
+<td>M2</td>
+<td>Blob-repair budget</td>
+<td>The proactive blob-repair sweep fetches at most <code>[cluster] blob_repair_budget</code> blobs (default 100) per anti-entropy tick and resumes where it stopped. <code>repair_blobs</code> in <code>anti_entropy.rs</code>.</td>
+</tr>
+<tr>
+<td>M3</td>
+<td>Membership pruning</td>
+<td>A peer unreachable for longer than <code>[cluster] peer_prune_days</code> (default: the tombstone grace) is removed from membership, which also stops it blocking the §3.2 guard. <code>membership.rs</code>.</td>
+</tr>
+<tr>
+<td>M7</td>
+<td>Identical-row redelivery no-op</td>
+<td><code>apply_remote_object</code> skips an incoming row identical to the local one (no rewrite, no fresh <code>seq</code>); without it two caught-up nodes redelivered their whole object tables to each other on every pass. <code>ObjectRecord::same_replicated_content</code>.</td>
+</tr>
+<tr>
+<td>N1</td>
+<td>Lock changes visible to anti-entropy</td>
+<td>Retention and legal-hold changes stamp a fresh <code>seq</code>, so the changed-since manifest redelivers the row to a peer that missed the fan-out.</td>
+</tr>
+<tr>
+<td>N2</td>
+<td>Lock-state ordering</td>
+<td>Lock changes do not bump <code>last_modified</code>, so they carry their own LWW timestamp, <code>lock_updated_at</code>, and a stale lock-free copy can never overwrite a newer lock state. Re-encryption later got a second, independent register, <code>content_updated_at</code>. <code>ObjectRecord::resolve_replicated</code>.</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Contains AI-generated code, see the <a href="https://github.com/dxc-technology/arca/blob/main/NOTICE">NOTICE</a> file.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.code.copy", "content.code.annotate", "navigation.sections", "navigation.top", "search.highlight", "search.share"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

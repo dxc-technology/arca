@@ -88,7 +88,7 @@ removing them falls back to the local ones. Nothing in `certs/` itself is ever
 written, moved or deleted by Arca's tooling; `local/` and `local-ca/` are the
 only directories it manages, and they are ignored while your certificates are
 present. The choice is remembered in `.arca-env`, so `bin/console` serves the
-same certificates.
+same certificates, and `bin/test integration` verifies against them.
 
 ### Running the tests
 
@@ -152,7 +152,9 @@ Three configuration scenarios are supported:
 cert_dir = "/etc/arca/certs"
 ```
 
-Arca scans the directory for PEM files (`.pem`, `.crt`, `.key`, `.cert`) and classifies them by reading PEM headers. Requires exactly one key file and at least one certificate file. Fails with a clear error if ambiguous.
+Arca scans the directory for PEM files (`.pem`, `.crt`, `.key`, `.cert`) and classifies them by reading PEM headers. Requires exactly one key file and exactly one certificate file (a file holding a private key counts as the key file). Fails with a clear error if ambiguous.
+
+A certbot-style directory (`cert.pem`, `chain.pem` and `fullchain.pem` next to `privkey.pem`) holds three certificate files, so auto-detection refuses it: set `cert_file = "fullchain.pem"` and `key_file = "privkey.pem"` explicitly (scenario 2 below).
 
 ### 2. Directory + Relative Filenames
 
@@ -327,7 +329,7 @@ arca tls generate \
 
 ## Console HTTPS
 
-When using `--tls`, the web console also serves over HTTPS. The console entrypoint auto-detects certificate and key PEM files in the mounted `certs/` directory (skipping CA files) and switches nginx to TLS mode.
+When using `--tls`, the web console also serves over HTTPS. The console entrypoint auto-detects certificate and key PEM files in its mounted certificate directory (skipping CA files) and switches nginx to TLS mode. That directory is the same one Arca serves from, `${ARCA_CERTS_DIR}` in `docker/docker-compose.tls.yml`: `certs/` when it holds your own certificates, otherwise `certs/local/` (see [Your certificates or the local ones](#your-certificates-or-the-local-ones)).
 
 The console runs as uid `100`, not as Arca's `65532`, so it reads the private key through the supplementary group described in [File Permissions](#file-permissions). If the key is there but unreadable, the entrypoint logs a `WARNING` and keeps serving plain HTTP on port 80 — check `bin/console logs` when port 9443 refuses connections.
 

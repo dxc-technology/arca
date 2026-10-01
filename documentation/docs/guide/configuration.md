@@ -36,7 +36,7 @@ The default config file is `config/default.toml` in the repository. At runtime, 
 | `server.tls.cert_dir` | *(none)* | Base directory for certificates. Enables auto-detection or relative path resolution. |
 | `server.tls.cert_file` | *(none)* | Certificate chain PEM file (relative to `cert_dir`, or absolute). |
 | `server.tls.key_file` | *(none)* | Private key PEM file (relative to `cert_dir`, or absolute). |
-| `server.tls.ca_file` | *(none)* | Client CA certificate for mTLS (relative to `cert_dir`, or absolute). |
+| `server.tls.ca_file` | *(none)* | Client CA certificate for mTLS (relative to `cert_dir`, or absolute). Mutually exclusive with `[cluster.tls]` on an enabled cluster: the listener can enforce only one client-certificate policy, so the server refuses to start with both. |
 
 When `[server.tls]` is present, the server listens on HTTPS. See the [TLS guide](tls.md) for details on the three configuration scenarios (auto-detect, relative paths, absolute paths).
 
@@ -161,7 +161,7 @@ The cache is transparent to clients: write operations (create/delete bucket, put
 | `cluster.tombstone_grace_seconds` | unset | Advanced seconds-granularity override of `tombstone_grace_days` (≥ 1), for tests and demos that must observe tombstone GC within seconds. Production deployments size the grace in days. |
 | `cluster.peer_prune_days` | `tombstone_grace_days` | Evict a peer from membership after it has been unreachable this long (≥ 1). While remembered, an absent peer blocks tombstone GC; once pruned, a return beyond the grace risks resurrecting deleted data. |
 | `cluster.blob_repair_budget` | `100` | Maximum blob fetches per anti-entropy tick by the proactive blob-repair sweep (≥ 1). An unfinished sweep resumes on the next tick, so a large repair backlog drains steadily without monopolizing the worker. |
-| `cluster.tls.ca_file` | *(required over HTTPS)* | Cluster CA certificate (PEM), identical on every node. The whole `[cluster.tls]` section is REQUIRED when `[server.tls]` is enabled (verified mutual TLS between nodes — no insecure fallback) and rejected when it is not. Mint the material with `arca tls generate-cluster`. |
+| `cluster.tls.ca_file` | *(required over HTTPS)* | Cluster CA certificate (PEM), identical on every node. The whole `[cluster.tls]` section is REQUIRED when `[server.tls]` is enabled (verified mutual TLS between nodes — no insecure fallback) and rejected when it is not. Mutually exclusive with `server.tls.ca_file` (global client mTLS): set one or the other. Mint the material with `arca tls generate-cluster`. |
 | `cluster.tls.cert_file` | *(with `ca_file`)* | This node's certificate (PEM), signed by the cluster CA. Presented to peers as the client identity; `/cluster/v1/*` refuses requests without one. |
 | `cluster.tls.key_file` | *(with `ca_file`)* | This node's private key (PEM). |
 

@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://dxc-technology.github.io/arca/reference/s3-api/">
       
       
-        <link rel="prev" href="../architecture/">
+        <link rel="prev" href="../ha-design-decisions/">
       
       
         <link rel="next" href="../admin-api/">
@@ -853,6 +853,34 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../ha-design-decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HA Design Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -1175,6 +1203,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#conditional-writes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conditional writes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#intentional-divergences-from-aws-s3" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1185,6 +1224,28 @@
   
     <nav class="md-nav" aria-label="Intentional divergences from AWS S3">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#conditional-completemultipartupload-never-returns-409" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conditional CompleteMultipartUpload never returns 409
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#if-none-match-with-a-specific-etag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        If-None-Match with a specific ETag
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#object-lock-on-existing-empty-buckets" class="md-nav__link">
@@ -1839,6 +1900,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#conditional-writes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conditional writes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#intentional-divergences-from-aws-s3" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1849,6 +1921,28 @@
   
     <nav class="md-nav" aria-label="Intentional divergences from AWS S3">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#conditional-completemultipartupload-never-returns-409" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conditional CompleteMultipartUpload never returns 409
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#if-none-match-with-a-specific-etag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        If-None-Match with a specific ETag
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#object-lock-on-existing-empty-buckets" class="md-nav__link">
@@ -2227,8 +2321,44 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>DELETE /{bucket}/{key+}?uploadId={id} HTTP/1.1
 </code></pre></div>
 <p>Returns <code>204 No Content</code> on success.</p>
+<h2 id="conditional-writes">Conditional writes<a class="headerlink" href="#conditional-writes" title="Permanent link">&para;</a></h2>
+<p><code>PutObject</code>, <code>CompleteMultipartUpload</code>, <code>DeleteObject</code> (including version-specific deletes) and <code>DeleteObjects</code> accept preconditions, so that clients can implement optimistic concurrency (compare-and-swap) on an object:</p>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Headers / fields</th>
+<th>Fails with</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PutObject, CompleteMultipartUpload</td>
+<td><code>If-Match: &lt;etag&gt;</code> (or <code>*</code>), <code>If-None-Match: &lt;etag&gt;</code> (or <code>*</code>)</td>
+<td><code>412 PreconditionFailed</code>; <code>404 NoSuchKey</code> for <code>If-Match</code> when the object does not exist</td>
+</tr>
+<tr>
+<td>DeleteObject</td>
+<td><code>If-Match</code>, <code>x-amz-if-match-last-modified-time</code>, <code>x-amz-if-match-size</code></td>
+<td><code>412 PreconditionFailed</code></td>
+</tr>
+<tr>
+<td>DeleteObjects</td>
+<td>per-key <code>ETag</code>, <code>LastModifiedTime</code>, <code>Size</code></td>
+<td>a per-key <code>PreconditionFailed</code> entry in the <code>DeleteResult</code> errors</td>
+</tr>
+</tbody>
+</table>
+<p><code>If-None-Match: *</code> is the "create only if absent" primitive. Deleting a key that does not exist is never a precondition failure (it is a no-op, as for an unconditional delete). A version-specific delete is checked against that exact version, not against the latest one.</p>
+<p><strong>Atomicity.</strong> The precondition is evaluated inside the same metadata transaction that installs the new version or removes the old one, so two concurrent conditional writes against the same ETag cannot both succeed: exactly one commits, the other gets <code>412</code>. The check the handler performs before reading the body is only an optimisation that rejects stale requests early. See <a href="../architecture/#conditional-writes">Architecture › Conditional writes</a> for how each metadata backend guarantees this.</p>
+<p><strong>Cost of losing a race.</strong> The authoritative check runs at commit time, after the body has been received and stored, so a writer that loses a race has uploaded its whole body for nothing: the blob is deleted and the response is <code>412</code>. For a refused <code>CompleteMultipartUpload</code> only the assembled object is discarded; the upload and its parts are kept, so the client can retry.</p>
+<p><strong>Clusters.</strong> In an HA cluster the check is exact per node, not cluster-wide: two conditional writes for the same key served by two different nodes at the same moment can both succeed (TD-025). Route a key's conditional writes to a single node, see <a href="../../guide/ha/">High Availability</a>.</p>
 <h2 id="intentional-divergences-from-aws-s3">Intentional divergences from AWS S3<a class="headerlink" href="#intentional-divergences-from-aws-s3" title="Permanent link">&para;</a></h2>
 <p>Arca targets drop-in AWS S3 compatibility: what AWS accepts, Arca accepts; what AWS rejects, Arca rejects — with the following deliberate, documented exceptions.</p>
+<h3 id="conditional-completemultipartupload-never-returns-409">Conditional <code>CompleteMultipartUpload</code> never returns 409<a class="headerlink" href="#conditional-completemultipartupload-never-returns-409" title="Permanent link">&para;</a></h3>
+<p>AWS can answer a conditional <code>CompleteMultipartUpload</code> with <code>409 ConditionalRequestConflict</code> when a conflicting operation is in flight. Arca evaluates the precondition once, at commit time, and has no "conflict in flight" state, so every refused precondition is <code>412 PreconditionFailed</code>. Clients that retry on 409 should treat 412 the same way: re-read the object and decide again.</p>
+<h3 id="if-none-match-with-a-specific-etag"><code>If-None-Match</code> with a specific ETag<a class="headerlink" href="#if-none-match-with-a-specific-etag" title="Permanent link">&para;</a></h3>
+<p>AWS documents <code>If-None-Match</code> on writes only with the value <code>*</code>. Arca also accepts a specific ETag (or a list), with standard HTTP semantics: the write proceeds unless the current object's ETag matches. Code that relies on this is not portable to AWS.</p>
 <h3 id="object-lock-on-existing-empty-buckets">Object Lock on existing empty buckets<a class="headerlink" href="#object-lock-on-existing-empty-buckets" title="Permanent link">&para;</a></h3>
 <p>AWS only allows Object Lock to be enabled at bucket creation (<code>x-amz-bucket-object-lock-enabled: true</code>); <code>PutObjectLockConfiguration</code> on a bucket that was not created with Object Lock returns <code>409 InvalidBucketState</code>.</p>
 <p>Arca additionally accepts <code>PutObjectLockConfiguration</code> on an <strong>existing bucket that is still empty</strong> (auto-enabling versioning, as AWS does at creation). A late enable on an empty bucket cannot retroactively weaken WORM protection on any object, so it is safe; non-empty buckets are still rejected with <code>409 InvalidBucketState</code>. This is a console-UX convenience: enable Object Lock from a bucket's settings page without recreating the bucket.</p>
