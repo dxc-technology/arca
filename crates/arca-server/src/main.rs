@@ -873,10 +873,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                     // work should swap `axum::serve` for the manual accept
                     // loop pattern used by `tls::serve_tls`. Defaults are
                     // adequate for current workloads.
-                    // TECHDEBT(TD-047): accepted connections keep Nagle on
-                    // (the TLS path sets TCP_NODELAY), so keep-alive GETs
-                    // wait ~40 ms for the client's delayed ACK.
-                    axum::serve(listener, service)
+                    axum::serve(plain_http_listener(listener), service)
                         .with_graceful_shutdown(shutdown_signal(drain_tx, drain_timeout))
                         .await?;
                 }
@@ -1438,6 +1435,19 @@ fn init_tracing(format: &LogFormat, initial_level: &str) -> LogLevelReloader {
     })
 }
 
+/// Wraps the plain-HTTP listener so every accepted connection has
+/// `TCP_NODELAY`, like the TLS listener (`tls::serve_tls`). With Nagle on, a
+/// response written as headers then body (every GetObject) waits for the
+/// client's delayed ACK: about 40 ms per request on a keep-alive connection.
+fn plain_http_listener(listener: TcpListener) -> impl axum::serve::Listener<Io = tokio::net::TcpStream, Addr = std::net::SocketAddr> {
+    use axum::serve::ListenerExt as _;
+    listener.tap_io(|tcp| {
+        if let Err(e) = tcp.set_nodelay(true) {
+            tracing::debug!(error = %e, "Failed to set TCP_NODELAY");
+        }
+    })
+}
+
 /// Waits for a shutdown signal (SIGINT or SIGTERM), then enters drain mode
 /// for `drain_timeout` seconds before completing.
 async fn shutdown_signal(
@@ -1473,4 +1483,23 @@ async fn shutdown_signal(
     );
     tokio::time::sleep(drain_timeout).await;
     tracing::info!("Shutting down...");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::plain_http_listener;
+    use axum::serve::Listener as _;
+    use tokio::net::{TcpListener, TcpStream};
+
+    #[tokio::test]
+    async fn plain_http_connections_disable_nagle() {
+        // Without TCP_NODELAY a response written as headers + body is held
+        // back until the client's delayed ACK: ~40 ms per keep-alive GET.
+        let mut listener = plain_http_listener(TcpListener::bind("127.0.0.1:0").await.unwrap());
+        let addr = listener.local_addr().unwrap();
+        let client = tokio::spawn(async move { TcpStream::connect(addr).await.unwrap() });
+        let (accepted, _) = listener.accept().await;
+        assert!(accepted.nodelay().unwrap(), "accepted connection must have TCP_NODELAY");
+        drop(client.await.unwrap());
+    }
 }
