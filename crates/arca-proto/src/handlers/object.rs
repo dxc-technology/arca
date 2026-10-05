@@ -1379,9 +1379,9 @@ async fn upload_part_copy(
         Err(e) => return internal_error_response(e, &resource),
     };
 
-    // Write sidecar for the part blob, exactly like UploadPart: it lets
-    // EncryptingBlobStore.get() decrypt an encrypted part and lets
-    // FsBlobStore::concat assemble plain parts as a composite.
+    // Write sidecar for the part blob, exactly like UploadPart: it makes the
+    // blob durable, lets EncryptingBlobStore.get() decrypt an encrypted part
+    // and lets FsBlobStore::concat assemble plain parts as a composite.
     let sidecar = part_sidecar(&bucket, &key, &upload_id, part_number, &put_result);
     if let Err(resp) =
         write_sidecar_or_discard(state.blob.as_ref(), &blob_id, &sidecar, &resource).await

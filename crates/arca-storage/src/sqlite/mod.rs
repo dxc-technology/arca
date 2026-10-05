@@ -35,14 +35,29 @@ pub(crate) type TrError = tokio_rusqlite::Error<rusqlite::Error>;
 /// Default number of read-only connections in the pool.
 const DEFAULT_READ_POOL_SIZE: usize = 20;
 
-/// PRAGMAs applied to every connection (writer and readers).
+/// PRAGMAs applied to every connection (writer and readers), followed by the
+/// `synchronous` level chosen by [`synchronous_pragma`].
 const COMMON_PRAGMAS: &str = "\
     PRAGMA journal_mode=WAL;\
-    PRAGMA synchronous=NORMAL;\
     PRAGMA cache_size=-64000;\
     PRAGMA mmap_size=268435456;\
     PRAGMA temp_store=MEMORY;\
     PRAGMA busy_timeout=5000;";
+
+/// `PRAGMA synchronous` for `[storage] fsync`. FULL fsyncs the WAL at every
+/// commit, so an acknowledged write survives a power loss; NORMAL (WAL mode)
+/// fsyncs only at checkpoints, so the last commits can be lost (the database
+/// itself stays consistent).
+// TECHDEBT(TD-048): with FULL every commit on the single writer connection is
+// an fsync, so a slow disk caps the commit rate; group commit would share one
+// fsync among concurrent writes.
+fn synchronous_pragma(fsync: bool) -> &'static str {
+    if fsync {
+        "PRAGMA synchronous=FULL;"
+    } else {
+        "PRAGMA synchronous=NORMAL;"
+    }
+}
 
 /// Async wrapper around a SQLite database with a read pool.
 pub struct SqliteStore {
@@ -60,17 +75,26 @@ pub struct SqliteStore {
 }
 
 impl SqliteStore {
-    /// Opens (or creates) a SQLite database at the given path.
+    /// Opens (or creates) a SQLite database at the given path, durably
+    /// (`synchronous=FULL`). The offline tools use this.
+    pub async fn open(path: &Path) -> Result<Self, ArcaError> {
+        Self::open_with_fsync(path, true).await
+    }
+
+    /// Opens (or creates) a SQLite database at the given path, with commits
+    /// fsynced or not according to `[storage] fsync`.
     ///
     /// Enables WAL mode, applies pending migrations on the write connection,
     /// then opens a pool of read-only connections.
-    pub async fn open(path: &Path) -> Result<Self, ArcaError> {
+    pub async fn open_with_fsync(path: &Path, fsync: bool) -> Result<Self, ArcaError> {
+        let pragmas = format!("{COMMON_PRAGMAS}{}", synchronous_pragma(fsync));
         let conn = tokio_rusqlite::Connection::open(path)
             .await
             .map_err(|e| ArcaError::Internal(format!("opening database: {e}")))?;
 
-        conn.call(|conn| {
-            conn.execute_batch(COMMON_PRAGMAS)?;
+        let writer_pragmas = pragmas.clone();
+        conn.call(move |conn| {
+            conn.execute_batch(&writer_pragmas)?;
             migrations::run_migrations(conn)?;
             Ok(())
         })
@@ -83,10 +107,9 @@ impl SqliteStore {
             let rc = tokio_rusqlite::Connection::open(path)
                 .await
                 .map_err(|e| ArcaError::Internal(format!("opening read connection: {e}")))?;
-            rc.call(|conn| {
-                conn.execute_batch(&format!(
-                    "{COMMON_PRAGMAS}PRAGMA query_only=ON;"
-                ))?;
+            let reader_pragmas = format!("{pragmas}PRAGMA query_only=ON;");
+            rc.call(move |conn| {
+                conn.execute_batch(&reader_pragmas)?;
                 Ok(())
             })
             .await
@@ -97,6 +120,7 @@ impl SqliteStore {
         tracing::info!(
             path = %path.display(),
             read_pool_size = DEFAULT_READ_POOL_SIZE,
+            fsync,
             "SQLite database ready"
         );
         Ok(Self { conn, read_pool, read_idx: AtomicUsize::new(0), cluster_mode: AtomicBool::new(false) })
@@ -168,5 +192,42 @@ impl SqliteStore {
         }
         let idx = self.read_idx.fetch_add(1, Ordering::Relaxed) % self.read_pool.len();
         &self.read_pool[idx]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `PRAGMA synchronous` of a connection: 1 = NORMAL, 2 = FULL.
+    async fn synchronous(conn: &tokio_rusqlite::Connection) -> i64 {
+        conn.call(|c| Ok(c.query_row("PRAGMA synchronous", [], |r| r.get(0))?))
+            .await
+            .map_err(|e: TrError| e)
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn open_is_durable_by_default() {
+        // Offline tools use `open`: they always commit with FULL.
+        let dir = tempfile::tempdir().unwrap();
+        let store = SqliteStore::open(&dir.path().join("arca.db")).await.unwrap();
+        assert_eq!(synchronous(store.write_conn()).await, 2);
+    }
+
+    #[tokio::test]
+    async fn fsync_on_commits_with_full() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SqliteStore::open_with_fsync(&dir.path().join("arca.db"), true).await.unwrap();
+        assert_eq!(synchronous(store.write_conn()).await, 2);
+        assert_eq!(synchronous(store.read_conn()).await, 2);
+    }
+
+    #[tokio::test]
+    async fn fsync_off_commits_with_normal() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SqliteStore::open_with_fsync(&dir.path().join("arca.db"), false).await.unwrap();
+        assert_eq!(synchronous(store.write_conn()).await, 1);
+        assert_eq!(synchronous(store.read_conn()).await, 1);
     }
 }

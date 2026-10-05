@@ -567,7 +567,8 @@ async fn recrypt_one(
         version_id: version_id.clone(),
         composite: None,
     };
-    // Without its sidecar the new blob must not be swapped in: discard it.
+    // The sidecar also makes the new blob durable (same directory, its write
+    // fsyncs it): without it the blob must not be swapped in.
     if let Err(e) = write_store.write_sidecar(&new_blob_id, &sidecar).await {
         let _ = write_store.delete_assembled(&new_blob_id).await;
         return Err(format!("write sidecar: {e}"));

@@ -98,8 +98,14 @@ async fn async_main(cli: Cli) -> Result<()> {
                 commit = env!("ARCA_GIT_COMMIT"),
                 "Starting Arca"
             );
+            if !config.storage.fsync {
+                tracing::warn!(
+                    "[storage] fsync = false: writes are not fsynced, a power loss or kernel \
+                     crash can lose recently acknowledged objects"
+                );
+            }
 
-            let stores = open_stores(&config).await?;
+            let stores = open_stores(&config, config.storage.fsync).await?;
             credential::ensure_root_credential(stores.credentials.as_ref()).await?;
 
             // Cluster node identity: self-assigned and persisted in server_config
@@ -182,7 +188,8 @@ async fn async_main(cli: Cli) -> Result<()> {
                 config.storage.blobs_dir(),
                 config.storage.blob_prefix_depth,
             )
-            .await?;
+            .await?
+            .with_fsync(config.storage.fsync);
 
             // Set up encryption stores.
             // When a master key is available (from config or KMS), we create
@@ -364,6 +371,7 @@ async fn async_main(cli: Cli) -> Result<()> {
 
             // Drain mode watch channel (set to true on shutdown signal).
             let (drain_tx, drain_rx) = tokio::sync::watch::channel(false);
+            let audit_drain_rx = drain_rx.clone();
 
             // Maintenance-job drain channel (Phase 30): a maintenance-mode job
             // drains the S3 API on this node for its lifetime. The worker owns
@@ -650,7 +658,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                 bucket_replication_cache: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
                 compression_invalidator,
                 audit_tx: if audit_enabled {
-                    stores.audit.as_ref().map(|a| arca_proto::state::spawn_audit_writer(a.clone()))
+                    stores.audit.as_ref().map(|a| arca_proto::state::spawn_audit_writer(a.clone(), audit_drain_rx))
                 } else {
                     None
                 },
@@ -865,6 +873,9 @@ async fn async_main(cli: Cli) -> Result<()> {
                     // work should swap `axum::serve` for the manual accept
                     // loop pattern used by `tls::serve_tls`. Defaults are
                     // adequate for current workloads.
+                    // TECHDEBT(TD-047): accepted connections keep Nagle on
+                    // (the TLS path sets TCP_NODELAY), so keep-alive GETs
+                    // wait ~40 ms for the client's delayed ACK.
                     axum::serve(listener, service)
                         .with_graceful_shutdown(shutdown_signal(drain_tx, drain_timeout))
                         .await?;
@@ -925,7 +936,7 @@ async fn async_main(cli: Cli) -> Result<()> {
             let _ = init_tracing(&LogFormat::Text, "info");
 
             let config = config::load_config(&config_path)?;
-            let stores = open_stores(&config).await?;
+            let stores = open_stores(&config, true).await?;
 
             match action {
                 CredentialAction::Add {
@@ -1191,7 +1202,7 @@ async fn async_main(cli: Cli) -> Result<()> {
             let _ = init_tracing(&LogFormat::Text, "info");
 
             let config = config::load_config(&config_path)?;
-            let stores = open_stores(&config).await?;
+            let stores = open_stores(&config, true).await?;
 
             match action {
                 UserAction::Create {
@@ -1284,7 +1295,7 @@ async fn async_main(cli: Cli) -> Result<()> {
             match action {
                 ClusterAction::Status => match config.cluster.as_ref() {
                     Some(c) if c.enabled => {
-                        let stores = open_stores(&config).await?;
+                        let stores = open_stores(&config, true).await?;
                         let node_id =
                             cluster::identity::ensure_node_id(stores.server_config.as_ref())
                                 .await?;
@@ -1357,14 +1368,17 @@ where
 }
 
 /// Opens the appropriate metadata store based on the config.
-async fn open_stores(config: &config::Config) -> Result<StoreSet> {
+///
+/// `fsync` selects SQLite's commit durability (`[storage] fsync`): the server
+/// passes the configured value, the CLI commands always pass `true`.
+async fn open_stores(config: &config::Config, fsync: bool) -> Result<StoreSet> {
     // In a cluster, hard deletes must leave tombstones (so deletions converge
     // and aren't resurrected by anti-entropy); single-node deletes outright.
     let cluster_enabled = config.cluster.as_ref().is_some_and(|c| c.enabled);
     match config.storage.metadata_backend.as_str() {
         "sqlite" => {
             let store = Arc::new(
-                arca_storage::SqliteStore::open(&config.storage.db_path()).await?,
+                arca_storage::SqliteStore::open_with_fsync(&config.storage.db_path(), fsync).await?,
             );
             store.set_cluster_mode(cluster_enabled);
             tracing::info!(backend = "sqlite", "Metadata backend ready");

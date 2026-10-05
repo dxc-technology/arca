@@ -211,8 +211,8 @@ pub async fn upload_part(
         }
     };
 
-    // Write sidecar for the part blob (a failure fails the request). Two
-    // readers depend on it:
+    // Write sidecar for the part blob (it also makes the blob durable, so a
+    // failure fails the request). Two readers depend on it:
     // * `EncryptingBlobStore.get()` reads it to find the per-part DEK during
     //   CompleteMultipartUpload assembly (when parts are encrypted).
     // * `FsBlobStore::concat` reads it to capture each part's etag/size and

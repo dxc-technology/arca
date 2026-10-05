@@ -273,7 +273,7 @@ Dependency direction: `arca-server` -> `arca-proto`, `arca-storage`, `arca-auth`
 
 **Streaming-first** — never buffer full objects in memory. PutObject streams through MD5 hasher + file writer concurrently. GetObject streams from tokio::fs::File via ReaderStream.
 
-**Storage write order** — blob file -> sidecar `.meta` JSON -> SQLite insert. This ordering enables disaster recovery: `arca recover` walks the `blobs/` directory, reads `.meta` files, and rebuilds the DB from scratch (with known gaps: TD-014, TD-032; there is no fsync on this path yet, TD-038). Blobs are written to a temp file opened with `create_new` (`O_CREAT | O_EXCL`), then renamed; a partial unique index on `(bucket, key) WHERE is_latest = 1` prevents two current versions of a key; `arca fsck` reports orphaned blobs, missing blobs, sidecar/DB mismatches, orphaned sidecars, stale temp files and (optionally) checksum errors.
+**Storage write order** — blob file -> sidecar `.meta` JSON -> SQLite insert. This ordering enables disaster recovery: `arca recover` walks the `blobs/` directory, reads `.meta` files, and rebuilds the DB from scratch (with known gaps: TD-014, TD-032). Every step is durable: blob and sidecar data are `fsync`ed before the atomic rename that publishes them, and the sidecar write `fsync`s the directory after its rename (helpers in `arca-storage/src/fs/blob.rs`: `rename_durable`, `write_file_atomic`, `create_dir_all_durable`), so a new writer must use them rather than plain `fs::write`/`rename`. **A blob is durable once its sidecar has been written**: blob renames (`put`, `write_raw`, the `concat` fallback) skip their own directory fsync because the sidecar lives in the same directory and its fsync covers both (3 fsyncs per small PUT, not 4). So every blob writer must write the sidecar, and fail the request (discarding the fresh blob) if that write fails, before committing the metadata row (`handlers/sidecar.rs`: `write_sidecar_or_discard`); a writer with no sidecar must use `rename_durable` instead. SQLite commits with `synchronous=FULL`. All of this is `[storage] fsync = true` (default); `false` makes `FsBlobStore` (`with_fsync`) and `SqliteStore::open_with_fsync` skip the fsyncs but keep temp + rename. Only the live server reads the setting: offline tools build their stores with `FsBlobStore::new` / `SqliteStore::open`, which are always durable, and must stay so. Blobs are written to a temp file opened with `create_new` (`O_CREAT | O_EXCL`), then renamed; a partial unique index on `(bucket, key) WHERE is_latest = 1` prevents two current versions of a key; `arca fsck` reports orphaned blobs, missing blobs, sidecar/DB mismatches, orphaned sidecars, stale temp files and (optionally) checksum errors.
 
 **`put_object` returns old record** — `MetadataStore::put_object` returns `(Option<ObjectRecord>, Option<String>)`: the overwritten object (so the caller can delete its orphaned blob) and the new version id. It delegates to `put_object_if`, which evaluates conditional-write preconditions inside the same transaction (see `reference/architecture.md`).
 
@@ -303,35 +303,6 @@ Dependency direction: `arca-server` -> `arca-proto`, `arca-storage`, `arca-auth`
 - **Multipart + encryption** — Parts MUST have sidecars written after `put()` when encryption is enabled, so `get()` during `CompleteMultipartUpload` assembly can detect and decrypt them.
 - **Console Alpine.js scopes** — Each view is a separate `x-data` scope, they do NOT share state. Store needed data locally in each view's `load()` method.
 - **TLS auto-detect limitation** — Fails when multiple key files exist in the cert directory. Tests use `tls-explicit` fragment with explicit filenames to avoid ambiguity.
-
-## Code Navigation with graft
-
-Some developers index the repo locally with [graft](https://github.com/trailhq/Graft)
-(`graft/` is gitignored). When its tools are available, use them to locate code,
-but never as the sole basis for an impact analysis: graft resolves calls by name
-only, with no type information, and that has two blind spots in Arca.
-
-- **Trait methods are largely invisible to `graft callers` / `graft_trace_calls`.**
-  When a name has more than one definition, graft drops cross-file callers
-  instead of guessing — and every `MetadataStore` / `BlobStore` method has about
-  five (trait, SQLite, PostgreSQL, caching layer, cluster wrapper). Measured:
-  `get_bucket_config` has 29 call sites, graft reports 2; `put_object_if` is
-  missing both its production callers in `handlers/object.rs` and
-  `handlers/multipart.rs`.
-- **Calls inside macros are not edges** (`assert!`, `format!`, `json!`,
-  `tokio::select!`, …), even for uniquely named functions.
-
-Rules:
-
-- Treat `trace_calls` output as a lower bound, trustworthy only for uniquely
-  named free functions.
-- For "what does this change affect?" use an exhaustive text search
-  (`graft grep` / `graft_find_all` / `grep -rn`), then read each hit to discard
-  same-named sibling implementations.
-- A signature change is backstopped by the compiler; a **behaviour change with
-  an unchanged signature is not** — read every call site before calling it done.
-- Read the real code around a span before editing it; a graft excerpt is a
-  pointer, not the whole context.
 
 ## Planning Large Changes
 

@@ -354,6 +354,13 @@ pub struct StorageConfig {
     /// an upload in progress.
     #[serde(default = "default_blob_gc_grace_seconds")]
     pub blob_gc_grace_seconds: u64,
+    /// Whether the server fsyncs its writes (default true): blob data,
+    /// sidecars and new shard directories, plus SQLite `synchronous=FULL`.
+    /// `false` skips them (SQLite `NORMAL`) for throughput, at the cost of
+    /// losing recently acknowledged writes on a power loss or kernel crash.
+    /// The offline tools are always durable whatever this says.
+    #[serde(default = "default_true")]
+    pub fsync: bool,
 }
 
 fn default_blob_prefix_depth() -> u8 {
@@ -1252,6 +1259,7 @@ bind = "0.0.0.0"
             blob_gc_enabled: false,
             blob_gc_interval_seconds: 3600,
             blob_gc_grace_seconds: 86400,
+            fsync: true,
         };
         assert_eq!(
             storage.db_path(),
@@ -1269,6 +1277,7 @@ bind = "0.0.0.0"
             blob_gc_enabled: false,
             blob_gc_interval_seconds: 3600,
             blob_gc_grace_seconds: 86400,
+            fsync: true,
         };
         assert_eq!(
             storage.blobs_dir(),
@@ -1304,6 +1313,35 @@ data_dir = "/data"
         assert!(!config.storage.blob_gc_enabled);
         assert_eq!(config.storage.blob_gc_interval_seconds, 3600);
         assert_eq!(config.storage.blob_gc_grace_seconds, 86400);
+    }
+
+    #[test]
+    fn fsync_defaults_on() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.storage.fsync);
+    }
+
+    #[test]
+    fn fsync_can_be_turned_off() {
+        let toml_str = r#"
+[server]
+bind = "0.0.0.0"
+port = 9000
+
+[storage]
+data_dir = "/data"
+fsync = false
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(!config.storage.fsync);
     }
 
     #[test]
@@ -1858,6 +1896,7 @@ data_dir = "/data"
                 blob_gc_enabled: false,
                 blob_gc_interval_seconds: 3600,
                 blob_gc_grace_seconds: 86400,
+                fsync: true,
             },
             encryption: None,
             monitoring: None,

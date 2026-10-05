@@ -442,6 +442,7 @@ mod tests {
                 blob_gc_enabled: false,
                 blob_gc_interval_seconds: 3600,
                 blob_gc_grace_seconds: 86400,
+                fsync: true,
             },
             encryption: None,
             monitoring: None,

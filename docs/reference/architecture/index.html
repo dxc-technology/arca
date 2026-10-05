@@ -2664,7 +2664,7 @@
     H-&gt;&gt;B: refused: delete the new blob; accepted: delete the old blob in background</code></pre>
 <ol>
 <li>The request body becomes a <code>ByteStream</code> (<code>handlers/body.rs</code>); AWS chunked encoding (<code>x-amz-content-sha256: STREAMING-*</code>) is decoded on the fly, its trailing headers are collected, <code>max_body_size</code> is enforced while streaming, and the digests the request declares are computed (see <a href="#request-body-integrity">Request body integrity</a>).</li>
-<li><code>FsBlobStore::put</code> runs a producer/consumer pipeline: the async task forwards chunks through a bounded channel (capacity 4) to a <code>spawn_blocking</code> worker that MD5-hashes and writes each chunk. The worker writes <code>{id}.tmp</code>, opened with <code>create_new</code> (<code>O_CREAT | O_EXCL</code>), and the file is renamed to its final name when the stream ends. The ETag is the hex MD5 of the plaintext: the encryption and compression layers report the plaintext digest.</li>
+<li><code>FsBlobStore::put</code> runs a producer/consumer pipeline: the async task forwards chunks through a bounded channel (capacity 4) to a <code>spawn_blocking</code> worker that MD5-hashes and writes each chunk. The worker writes <code>{id}.tmp</code>, opened with <code>create_new</code> (<code>O_CREAT | O_EXCL</code>), <code>fsync</code>s it when the stream ends, and the file is then renamed to its final name and the directory <code>fsync</code>ed. The ETag is the hex MD5 of the plaintext: the encryption and compression layers report the plaintext digest.</li>
 <li>The handler verifies the body digests against the stored blob (deleting it on a mismatch), writes the sidecar, then commits the metadata row through <code>put_object_if</code>, which evaluates the precondition and assigns the version id in one transaction (see <a href="#conditional-writes">Conditional writes</a>).</li>
 <li><code>MetadataStore::put_object</code> and <code>put_object_if</code> return <code>(Option&lt;ObjectRecord&gt;, Option&lt;String&gt;)</code>: the record that was overwritten (so the caller can delete its now-orphaned blob, done in a background task) and the version id assigned to the new row.</li>
 </ol>
@@ -2702,9 +2702,9 @@
 </tr>
 </tbody>
 </table>
+<p>Durability: a write is acknowledged only after its data is on stable storage. The blob temp file is <code>fsync</code>ed before it is renamed to its final name (newly created shard directories are <code>fsync</code>ed too). Sidecars are written atomically (temp file in the same directory, <code>fsync</code>, rename, directory <code>fsync</code>), so a sidecar is either the old one or the complete new one, never partial. The blob rename itself is not followed by a directory <code>fsync</code>: <strong>a blob is durable once its sidecar has been written.</strong> Blob and sidecar live in the same directory, so the sidecar's directory <code>fsync</code> persists both entries, and every writer (PutObject, CopyObject, UploadPart, UploadPartCopy, CompleteMultipartUpload, cluster receive and repair, re-encryption) writes the sidecar before committing the metadata row, failing the request and discarding the fresh blob when the sidecar write fails. That makes 3 <code>fsync</code>s per small PUT: blob data, sidecar data, directory. The same applies to the replicated raw blob writes and the <code>concat</code> fallback; the offline in-place re-encryption keeps a directory <code>fsync</code> on its own rename. SQLite commits with <code>synchronous=FULL</code> (an fsync of the WAL per transaction), so the metadata row is durable too; PostgreSQL follows its own <code>synchronous_commit</code>. All of this is the <code>[storage] fsync = true</code> default; <code>false</code> skips every fsync and uses SQLite <code>NORMAL</code>, keeping the temp + rename protocol, so writes stay atomic but are no longer durable (live server only: the offline tools are always durable). The cost depends on the disk's synchronous-write latency: on 1 KiB PUTs at concurrency 16, -37% on local NVMe and -78% on gp3 EBS, almost nothing on large objects (see <a href="../../guide/configuration/#durability-fsync">Configuration</a>). On slow disks the single SQLite writer caps the commit rate at one per fsync (TD-048). The audit writer commits in batches (1024 entries or 1 s, at once on drain) so that audit logging does not add an fsync per request.</p>
 <p>Known gaps, tracked in <a href="../../tech-debt/">Technical Debt</a>:</p>
 <ul>
-<li><strong>No fsync (TD-038).</strong> Blob writes flush and rename but never <code>sync_all</code> the file or its directory, and sidecars are written with a plain non-atomic <code>fs::write</code>. After a power loss an acknowledged write can be lost or truncated, which also weakens the ordering above.</li>
 <li><strong><code>recover</code> is lossy (TD-014, TD-032).</strong> It drops multipart (composite) objects, re-creates parts as bogus objects, keeps the oldest version of each key, restores only buckets, objects and credentials, and always writes a SQLite database. Treat it as a last resort; see <a href="../../operations/recovery/">Disaster Recovery</a>.</li>
 <li><strong><code>fsck</code></strong> compares the database with the files on disk (missing blobs, orphaned blobs and sidecars, sidecar/row mismatches, stale temp files, and MD5 checksums with <code>--verify-checksums</code>). It does not understand composite blobs and reports them as orphaned sidecars (TD-014).</li>
 </ul>
@@ -2828,7 +2828,7 @@
 <tbody>
 <tr>
 <td>Audit writer</td>
-<td>Batched inserts of audit entries</td>
+<td>Batched inserts of audit entries (1024 entries or 1 s, at once on drain)</td>
 <td><a href="../../operations/monitoring/">Monitoring</a></td>
 </tr>
 <tr>
@@ -2965,7 +2965,7 @@
 </tbody>
 </table>
 <h2 id="known-limitations">Known Limitations<a class="headerlink" href="#known-limitations" title="Permanent link">&para;</a></h2>
-<p>Open workarounds and bugs, each with an ID referenced in the code, are listed in <a href="../../tech-debt/">Technical Debt</a>; planned work is in the <a href="../../roadmap/">Roadmap</a>. The items most relevant to this page are TD-014 and TD-032 (<code>recover</code> / <code>fsck</code>), TD-025 (cluster CAS), TD-033 (object tags in a cluster), TD-034 (no body integrity check), TD-037 (virtual-hosted-style addressing) and TD-038 (no fsync).</p>
+<p>Open workarounds and bugs, each with an ID referenced in the code, are listed in <a href="../../tech-debt/">Technical Debt</a>; planned work is in the <a href="../../roadmap/">Roadmap</a>. The items most relevant to this page are TD-014 and TD-032 (<code>recover</code> / <code>fsck</code>), TD-025 (cluster CAS), TD-033 (object tags in a cluster), TD-034 (no body integrity check), and TD-037 (virtual-hosted-style addressing).</p>
 
 
 

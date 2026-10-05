@@ -316,15 +316,45 @@ impl AppState {
     }
 }
 
+/// How long an audit entry may wait for its batch to fill before it is
+/// committed. Audit rows share the metadata database: with
+/// `[storage] fsync = true` every commit is an fsync, so committing at most
+/// once per window keeps audit logging from adding one per request (even a
+/// GET). A crash loses at most this window of entries, which were only in
+/// memory anyway.
+pub const AUDIT_BATCH_WINDOW: Duration = Duration::from_secs(1);
+
+/// A batch is committed as soon as it holds this many entries, without
+/// waiting for the window.
+pub const AUDIT_BATCH_MAX: usize = 1024;
+
 /// Spawn the dedicated audit batch writer task.
 /// Returns the sender end of the channel for AppState.
+///
+/// Entries are committed in batches: when [`AUDIT_BATCH_MAX`] entries are
+/// queued or [`AUDIT_BATCH_WINDOW`] after the first one, whichever comes
+/// first. Once `draining` turns true (graceful shutdown) the pending batch is
+/// committed at once and later entries are no longer held back.
 pub fn spawn_audit_writer(
     audit_store: Arc<dyn AuditStore>,
+    draining: tokio::sync::watch::Receiver<bool>,
+) -> tokio::sync::mpsc::Sender<AuditData> {
+    spawn_audit_writer_with(audit_store, draining, AUDIT_BATCH_WINDOW, AUDIT_BATCH_MAX)
+}
+
+/// [`spawn_audit_writer`] with an explicit window and batch size (tests).
+pub(crate) fn spawn_audit_writer_with(
+    audit_store: Arc<dyn AuditStore>,
+    mut draining: tokio::sync::watch::Receiver<bool>,
+    window: Duration,
+    max_batch: usize,
 ) -> tokio::sync::mpsc::Sender<AuditData> {
     let (tx, mut rx) = tokio::sync::mpsc::channel::<AuditData>(10_000);
 
     tokio::spawn(async move {
-        let mut batch: Vec<AuditEntry> = Vec::with_capacity(128);
+        let mut batch: Vec<AuditEntry> = Vec::with_capacity(max_batch);
+        let mut drained = *draining.borrow();
+        let mut watching = true;
 
         loop {
             // Wait for the first entry or channel close.
@@ -333,26 +363,29 @@ pub fn spawn_audit_writer(
                 None => break, // channel closed, shut down
             }
 
-            // Drain up to 127 more entries without waiting.
-            while batch.len() < 128 {
-                match rx.try_recv() {
-                    Ok(data) => batch.push(data.entry),
-                    Err(_) => break,
+            // Collect more entries until the batch is full, the window
+            // expires or the server starts draining.
+            let deadline = tokio::time::Instant::now() + window;
+            while batch.len() < max_batch && !drained {
+                tokio::select! {
+                    received = rx.recv() => match received {
+                        Some(data) => batch.push(data.entry),
+                        None => break,
+                    },
+                    _ = tokio::time::sleep_until(deadline) => break,
+                    // A dropped sender means no drain signal can come any
+                    // more: stop watching and batch on the window alone.
+                    changed = draining.changed(), if watching => match changed {
+                        Ok(()) => drained = *draining.borrow(),
+                        Err(_) => watching = false,
+                    },
                 }
             }
 
-            // Flush the batch.
-            if !batch.is_empty() {
-                if let Err(e) = audit_store.insert_audit_entries_batch(&batch).await {
-                    tracing::warn!(error = %e, count = batch.len(), "Failed to write audit batch");
-                }
-                batch.clear();
+            if let Err(e) = audit_store.insert_audit_entries_batch(&batch).await {
+                tracing::warn!(error = %e, count = batch.len(), "Failed to write audit batch");
             }
-        }
-
-        // Flush remaining on shutdown.
-        if !batch.is_empty() {
-            let _ = audit_store.insert_audit_entries_batch(&batch).await;
+            batch.clear();
         }
     });
 
@@ -404,5 +437,139 @@ mod tests {
         let later = now + Duration::from_secs(5);
         cache_bucket_flag(&cache, "b", false, later);
         assert_eq!(cached_bucket_flag(&cache, "b", later), Some(false));
+    }
+}
+
+#[cfg(test)]
+mod audit_writer_tests {
+    use super::{spawn_audit_writer_with, AuditData};
+    use arca_core::error::ArcaError;
+    use arca_core::store::audit::{AuditEntry, AuditFilter};
+    use arca_core::store::AuditStore;
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    /// Records the size of every committed batch.
+    #[derive(Default)]
+    struct RecordingAuditStore {
+        batches: Mutex<Vec<usize>>,
+    }
+
+    impl RecordingAuditStore {
+        fn batches(&self) -> Vec<usize> {
+            self.batches.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl AuditStore for RecordingAuditStore {
+        async fn insert_audit_entry(&self, _entry: &AuditEntry) -> Result<(), ArcaError> {
+            self.batches.lock().unwrap().push(1);
+            Ok(())
+        }
+        async fn insert_audit_entries_batch(&self, entries: &[AuditEntry]) -> Result<(), ArcaError> {
+            self.batches.lock().unwrap().push(entries.len());
+            Ok(())
+        }
+        async fn list_audit_entries(&self, _filter: &AuditFilter) -> Result<Vec<AuditEntry>, ArcaError> {
+            Ok(Vec::new())
+        }
+        async fn count_audit_entries(&self, _filter: &AuditFilter) -> Result<u64, ArcaError> {
+            Ok(0)
+        }
+        async fn purge_audit_entries(&self, _before: chrono::DateTime<chrono::Utc>) -> Result<u64, ArcaError> {
+            Ok(0)
+        }
+    }
+
+    fn entry() -> AuditData {
+        AuditData {
+            entry: AuditEntry {
+                id: 0,
+                timestamp: chrono::Utc::now(),
+                request_id: "req".to_string(),
+                operation: "GetObject".to_string(),
+                bucket: None,
+                key: None,
+                version_id: None,
+                user_id: None,
+                access_key_id: None,
+                source_ip: None,
+                http_method: "GET".to_string(),
+                http_status: 200,
+                error_code: None,
+                bytes_sent: 0,
+                bytes_received: 0,
+                duration_ms: 0,
+                user_agent: None,
+            },
+        }
+    }
+
+    /// Polls until `cond` holds, failing after 5 s.
+    async fn eventually(cond: impl Fn() -> bool) {
+        for _ in 0..500 {
+            if cond() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        panic!("condition not met within 5 s");
+    }
+
+    #[tokio::test]
+    async fn entries_wait_for_the_window_and_commit_in_one_batch() {
+        let store = Arc::new(RecordingAuditStore::default());
+        let (_drain_tx, drain_rx) = tokio::sync::watch::channel(false);
+        let tx = spawn_audit_writer_with(store.clone(), drain_rx, Duration::from_millis(300), 1024);
+
+        for _ in 0..5 {
+            tx.send(entry()).await.unwrap();
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(store.batches().is_empty(), "nothing is committed inside the window");
+
+        eventually(|| store.batches() == vec![5]).await;
+    }
+
+    #[tokio::test]
+    async fn a_full_batch_commits_without_waiting_for_the_window() {
+        let store = Arc::new(RecordingAuditStore::default());
+        let (_drain_tx, drain_rx) = tokio::sync::watch::channel(false);
+        let tx = spawn_audit_writer_with(store.clone(), drain_rx, Duration::from_secs(3600), 3);
+
+        for _ in 0..7 {
+            tx.send(entry()).await.unwrap();
+        }
+        eventually(|| store.batches() == vec![3, 3]).await;
+    }
+
+    #[tokio::test]
+    async fn draining_flushes_the_pending_batch_and_disables_the_window() {
+        let store = Arc::new(RecordingAuditStore::default());
+        let (drain_tx, drain_rx) = tokio::sync::watch::channel(false);
+        let tx = spawn_audit_writer_with(store.clone(), drain_rx, Duration::from_secs(3600), 1024);
+
+        tx.send(entry()).await.unwrap();
+        tx.send(entry()).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        drain_tx.send(true).unwrap();
+        eventually(|| store.batches() == vec![2]).await;
+
+        // Requests still finishing during the drain are committed at once.
+        tx.send(entry()).await.unwrap();
+        eventually(|| store.batches() == vec![2, 1]).await;
+    }
+
+    #[tokio::test]
+    async fn closing_the_channel_flushes_the_pending_batch() {
+        let store = Arc::new(RecordingAuditStore::default());
+        let (_drain_tx, drain_rx) = tokio::sync::watch::channel(false);
+        let tx = spawn_audit_writer_with(store.clone(), drain_rx, Duration::from_secs(3600), 1024);
+
+        tx.send(entry()).await.unwrap();
+        tx.send(entry()).await.unwrap();
+        drop(tx);
+        eventually(|| store.batches() == vec![2]).await;
     }
 }

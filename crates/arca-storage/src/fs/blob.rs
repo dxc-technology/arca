@@ -19,12 +19,18 @@ use arca_core::types::BlobId;
 
 // ----- Durability helpers -----
 //
-// A durable write needs (1) the file data fsynced, (2) the rename that
-// publishes it and (3) the containing directory fsynced, so a power loss
-// cannot lose or truncate it. All of these block, so callers run them on
-// `spawn_blocking` (or on tokio's file offload, which does the same). The
-// offline rewrite tools use them (`crate::inplace`); the live write path does
-// not fsync yet (TD-038).
+// A write is acknowledged only after (1) the file data is fsynced, (2) the
+// rename that publishes it is done and (3) the containing directory is
+// fsynced, so a power loss cannot lose or truncate an acknowledged blob or
+// sidecar. All of these block, so callers run them on `spawn_blocking`
+// (or on tokio's file offload, which does the same).
+//
+// Blob files skip step (3): a blob is durable once its sidecar has been
+// written. The sidecar lives in the same directory as the blob and
+// `write_sidecar` fsyncs that directory after its own rename, which persists
+// the blob's directory entry too. Every caller writes the sidecar (and fails
+// on a sidecar error) before committing the metadata row, so 3 fsyncs per
+// blob write instead of 4. See the `BlobStore::put` docs.
 
 /// fsyncs a directory, persisting the entries (creations, renames) made in it.
 pub fn sync_dir(dir: &std::path::Path) -> io::Result<()> {
@@ -45,6 +51,12 @@ pub fn rename_durable(tmp: &std::path::Path, dest: &std::path::Path) -> io::Resu
 /// directory, fsync, rename, directory fsync. On failure the temp file is
 /// removed and any existing `dest` is left untouched.
 pub fn write_file_atomic(dest: &std::path::Path, bytes: &[u8]) -> io::Result<()> {
+    write_file_atomic_with(dest, bytes, true)
+}
+
+/// [`write_file_atomic`], with the two fsyncs skipped when `fsync` is false
+/// (`[storage] fsync = false`): still atomic, no longer durable.
+fn write_file_atomic_with(dest: &std::path::Path, bytes: &[u8], fsync: bool) -> io::Result<()> {
     use std::io::Write as _;
     let mut name = dest.file_name().unwrap_or_default().to_os_string();
     name.push(format!(".{}.tmp", uuid::Uuid::new_v4().simple()));
@@ -55,6 +67,10 @@ pub fn write_file_atomic(dest: &std::path::Path, bytes: &[u8]) -> io::Result<()>
             .create_new(true)
             .open(&tmp)?;
         file.write_all(bytes)?;
+        if !fsync {
+            drop(file);
+            return std::fs::rename(&tmp, dest);
+        }
         file.sync_all()?;
         drop(file);
         rename_durable(&tmp, dest)
@@ -64,6 +80,40 @@ pub fn write_file_atomic(dest: &std::path::Path, bytes: &[u8]) -> io::Result<()>
     }
     result
 }
+
+/// Creates `dir` (and missing ancestors) and fsyncs every directory that
+/// gained an entry, so freshly created shard directories survive a power loss.
+/// The common case (directory already exists) is a single async `stat`.
+/// With `fsync` false it is a plain `create_dir_all`.
+pub(crate) async fn create_dir_all_durable(dir: &std::path::Path, fsync: bool) -> io::Result<()> {
+    if !fsync {
+        return fs::create_dir_all(dir).await;
+    }
+    if fs::try_exists(dir).await? {
+        return Ok(());
+    }
+    let dir = dir.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        let mut missing = Vec::new();
+        let mut existing = dir.as_path();
+        while !existing.exists() {
+            missing.push(existing);
+            match existing.parent() {
+                Some(p) => existing = p,
+                None => break,
+            }
+        }
+        std::fs::create_dir_all(&dir)?;
+        sync_dir(existing)?;
+        for d in missing.iter().rev() {
+            sync_dir(d)?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| io::Error::other(e.to_string()))?
+}
+
 
 /// Filesystem-backed blob store.
 ///
@@ -78,6 +128,9 @@ pub fn write_file_atomic(dest: &std::path::Path, bytes: &[u8]) -> io::Result<()>
 pub struct FsBlobStore {
     base_dir: PathBuf,
     prefix_depth: u8,
+    /// Whether writes are fsynced (`[storage] fsync`, default true). Only the
+    /// live server can turn it off; the offline tools keep the default.
+    fsync: bool,
 }
 
 impl FsBlobStore {
@@ -93,7 +146,21 @@ impl FsBlobStore {
         Ok(Self {
             base_dir,
             prefix_depth,
+            fsync: true,
         })
+    }
+
+    /// Turns the write-path fsyncs on or off (`[storage] fsync`). Off, every
+    /// writer keeps its temp + rename protocol but skips the fsyncs, so an
+    /// acknowledged write can be lost or truncated by a power loss.
+    pub fn with_fsync(mut self, fsync: bool) -> Self {
+        self.fsync = fsync;
+        self
+    }
+
+    /// Whether writes are fsynced.
+    pub fn fsync(&self) -> bool {
+        self.fsync
     }
 
     /// Computes the full path for a blob ID using the configured prefix depth.
@@ -163,7 +230,7 @@ impl FsBlobStore {
     pub async fn write_raw(&self, blob_id: &BlobId, stream: ByteStream) -> Result<u64, ArcaError> {
         let blob_path = self.blob_path(blob_id);
         if let Some(parent) = blob_path.parent() {
-            fs::create_dir_all(parent)
+            create_dir_all_durable(parent, self.fsync)
                 .await
                 .map_err(|e| ArcaError::Internal(format!("create blob dir: {e}")))?;
         }
@@ -183,7 +250,14 @@ impl FsBlobStore {
         file.flush()
             .await
             .map_err(|e| ArcaError::Internal(format!("flush raw blob: {e}")))?;
+        if self.fsync {
+            file.sync_all()
+                .await
+                .map_err(|e| ArcaError::Internal(format!("fsync raw blob: {e}")))?;
+        }
         drop(file);
+        // No directory fsync: a blob is durable once its sidecar has been
+        // written (the caller ships it next, same directory).
         fs::rename(&tmp_path, &blob_path)
             .await
             .map_err(|e| ArcaError::Internal(format!("rename raw blob: {e}")))?;
@@ -372,7 +446,7 @@ impl BlobStore for FsBlobStore {
 
         // Ensure parent directory exists.
         if let Some(parent) = blob_path.parent() {
-            fs::create_dir_all(parent)
+            create_dir_all_durable(parent, self.fsync)
                 .await
                 .map_err(|e| ArcaError::Internal(format!("create blob dir: {e}")))?;
         }
@@ -387,6 +461,7 @@ impl BlobStore for FsBlobStore {
         // still backpressuring it ahead of the disk.
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Bytes>(4);
         let tmp_for_worker = tmp_path.clone();
+        let fsync = self.fsync;
         let worker = tokio::task::spawn_blocking(move || -> io::Result<(u64, [u8; 16])> {
             use std::io::Write as _;
             let mut file = std::fs::OpenOptions::new()
@@ -401,6 +476,10 @@ impl BlobStore for FsBlobStore {
                 file.write_all(&chunk)?;
             }
             file.flush()?;
+            // Data must be on disk before the rename publishes the blob.
+            if fsync {
+                file.sync_all()?;
+            }
             let digest: [u8; 16] = hasher.finalize().into();
             Ok((size, digest))
         });
@@ -443,7 +522,8 @@ impl BlobStore for FsBlobStore {
             }
         };
 
-        // Atomic rename: tmp → final.
+        // Atomic rename: tmp → final. No directory fsync: a blob is durable
+        // once its sidecar has been written (same directory, see above).
         fs::rename(&tmp_path, &blob_path)
             .await
             .map_err(|e| ArcaError::Internal(format!("rename blob: {e}")))?;
@@ -618,7 +698,7 @@ impl BlobStore for FsBlobStore {
         let tmp_path = self.tmp_path(output_blob_id);
 
         if let Some(parent) = output_path.parent() {
-            fs::create_dir_all(parent)
+            create_dir_all_durable(parent, self.fsync)
                 .await
                 .map_err(|e| ArcaError::Internal(format!("create blob dir: {e}")))?;
         }
@@ -658,8 +738,15 @@ impl BlobStore for FsBlobStore {
         out_file.flush()
             .await
             .map_err(|e| ArcaError::Internal(format!("flush concat blob: {e}")))?;
+        if self.fsync {
+            out_file.sync_all()
+                .await
+                .map_err(|e| ArcaError::Internal(format!("fsync concat blob: {e}")))?;
+        }
         drop(out_file);
 
+        // No directory fsync: a blob is durable once its sidecar has been
+        // written (CompleteMultipartUpload writes it next, same directory).
         fs::rename(&tmp_path, &output_path)
             .await
             .map_err(|e| ArcaError::Internal(format!("rename concat blob: {e}")))?;
@@ -675,17 +762,23 @@ impl BlobStore for FsBlobStore {
         meta: &SidecarMeta,
     ) -> Result<(), ArcaError> {
         let sidecar_path = self.sidecar_path(blob_id);
+        // `write_file_atomic` fsyncs the directory after the rename: that one
+        // fsync also persists the entry of the blob published next to it by
+        // `put` / `write_raw` / `concat`, which skip their own.
+        //
         // Composite blobs never go through `put` (no on-disk file at this
         // blob_id), so the prefix directory may not exist yet. Make it.
         if let Some(parent) = sidecar_path.parent() {
-            fs::create_dir_all(parent)
+            create_dir_all_durable(parent, self.fsync)
                 .await
                 .map_err(|e| ArcaError::Internal(format!("create sidecar dir: {e}")))?;
         }
         let json = serde_json::to_string(meta)
             .map_err(|e| ArcaError::Internal(format!("serialize sidecar: {e}")))?;
-        fs::write(&sidecar_path, json.as_bytes())
+        let fsync = self.fsync;
+        tokio::task::spawn_blocking(move || write_file_atomic_with(&sidecar_path, json.as_bytes(), fsync))
             .await
+            .map_err(|e| ArcaError::Internal(format!("sidecar writer join: {e}")))?
             .map_err(|e| ArcaError::Internal(format!("write sidecar: {e}")))?;
         Ok(())
     }
@@ -1343,5 +1436,148 @@ mod tests {
 
         assert!(result.composite_parts.is_none());
         assert_eq!(std::fs::read(store.blob_path(&output_id)).unwrap(), full);
+    }
+
+    #[tokio::test]
+    async fn sidecar_lives_in_the_blob_directory_at_every_depth() {
+        // The single directory fsync done by write_sidecar covers the blob's
+        // own directory entry only because both live in the same directory.
+        for depth in 1..=4 {
+            let (store, _dir) = test_store(depth).await;
+            let blob_id = BlobId::new();
+            assert_eq!(
+                store.blob_path(&blob_id).parent(),
+                store.sidecar_path(&blob_id).parent(),
+                "depth {depth}"
+            );
+        }
+    }
+
+    fn test_sidecar(etag: &str) -> SidecarMeta {
+        SidecarMeta {
+            bucket: "b".to_string(),
+            key: "k".to_string(),
+            size: 1,
+            etag: etag.to_string(),
+            content_type: None,
+            last_modified: "t".to_string(),
+            metadata: std::collections::HashMap::new(),
+            encryption: None,
+            compression: None,
+            version_id: None,
+            composite: None,
+        }
+    }
+
+    /// Names of every file in the directory holding `blob_id`'s files.
+    fn dir_entries(store: &FsBlobStore, blob_id: &BlobId) -> Vec<String> {
+        let dir = store.blob_path(blob_id).parent().unwrap().to_path_buf();
+        std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect()
+    }
+
+    // fsync itself is not observable from a unit test (it only matters on
+    // power loss); these tests cover the atomic temp+rename protocol around it.
+
+    #[tokio::test]
+    async fn put_leaves_no_temp_file() {
+        let (store, _dir) = test_store(2).await;
+        let blob_id = BlobId::new();
+        store.put(&blob_id, bytes_to_stream(b"data")).await.unwrap();
+        assert_eq!(dir_entries(&store, &blob_id), vec![blob_id.0.clone()]);
+    }
+
+    #[tokio::test]
+    async fn write_sidecar_is_atomic_and_leaves_no_temp_file() {
+        let (store, _dir) = test_store(2).await;
+        let blob_id = BlobId::new();
+        store.put(&blob_id, bytes_to_stream(b"data")).await.unwrap();
+
+        store.write_sidecar(&blob_id, &test_sidecar("one")).await.unwrap();
+        store.write_sidecar(&blob_id, &test_sidecar("two")).await.unwrap();
+
+        let read = store.read_sidecar(&blob_id).await.unwrap().unwrap();
+        assert_eq!(read.etag, "two");
+        let mut entries = dir_entries(&store, &blob_id);
+        entries.sort();
+        let mut expected = vec![blob_id.0.clone(), format!("{}.meta", blob_id.0)];
+        expected.sort();
+        assert_eq!(entries, expected, "no .tmp file may remain");
+    }
+
+    #[tokio::test]
+    async fn failed_sidecar_write_leaves_target_and_no_temp_file() {
+        let (store, _dir) = test_store(2).await;
+        let blob_id = BlobId::new();
+        store.put(&blob_id, bytes_to_stream(b"data")).await.unwrap();
+        // Make the final rename fail: the sidecar path is a non-empty directory.
+        let sidecar_path = store.sidecar_path(&blob_id);
+        std::fs::create_dir(&sidecar_path).unwrap();
+        std::fs::write(sidecar_path.join("keep"), b"x").unwrap();
+
+        let err = store.write_sidecar(&blob_id, &test_sidecar("x")).await;
+        assert!(err.is_err());
+        assert!(sidecar_path.join("keep").exists(), "existing target untouched");
+        assert!(
+            !dir_entries(&store, &blob_id).iter().any(|n| n.ends_with(".tmp")),
+            "temp file must be cleaned up on failure"
+        );
+    }
+
+    #[tokio::test]
+    async fn write_sidecar_creates_missing_shard_directories() {
+        let (store, _dir) = test_store(3).await;
+        let blob_id = BlobId::new();
+        store.write_sidecar(&blob_id, &test_sidecar("e")).await.unwrap();
+        assert!(store.read_sidecar(&blob_id).await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn write_raw_leaves_no_temp_file() {
+        let (store, _dir) = test_store(2).await;
+        let raw_id = BlobId::new();
+        store.write_raw(&raw_id, bytes_to_stream(b"raw")).await.unwrap();
+        assert_eq!(dir_entries(&store, &raw_id), vec![raw_id.0.clone()]);
+    }
+
+    #[tokio::test]
+    async fn new_store_fsyncs_by_default() {
+        // Offline tools build the store with `new`: they are always durable.
+        let (store, _dir) = test_store(2).await;
+        assert!(store.fsync());
+        assert!(!store.with_fsync(false).fsync());
+    }
+
+    #[tokio::test]
+    async fn fsync_off_keeps_every_writer_working_and_atomic() {
+        // `[storage] fsync = false` only drops the fsyncs: the temp + rename
+        // protocol (no partial sidecar, no stray temp file) stays.
+        let (store, _dir) = test_store(3).await;
+        let store = store.with_fsync(false);
+
+        let blob_id = BlobId::new();
+        store.put(&blob_id, bytes_to_stream(b"data")).await.unwrap();
+        store.write_sidecar(&blob_id, &test_sidecar("one")).await.unwrap();
+        store.write_sidecar(&blob_id, &test_sidecar("two")).await.unwrap();
+        assert_eq!(store.read_sidecar(&blob_id).await.unwrap().unwrap().etag, "two");
+        let mut entries = dir_entries(&store, &blob_id);
+        entries.sort();
+        let mut expected = vec![blob_id.0.clone(), format!("{}.meta", blob_id.0)];
+        expected.sort();
+        assert_eq!(entries, expected, "no .tmp file may remain");
+
+        let raw_id = BlobId::new();
+        store.write_raw(&raw_id, bytes_to_stream(b"raw")).await.unwrap();
+        assert_eq!(dir_entries(&store, &raw_id), vec![raw_id.0.clone()]);
+
+        // concat fallback path (a part without a sidecar forces a byte copy).
+        let bare = BlobId::new();
+        store.put(&bare, bytes_to_stream(b"no sidecar")).await.unwrap();
+        let output_id = BlobId::new();
+        let result = store.concat(&[bare], &output_id).await.unwrap();
+        assert!(result.composite_parts.is_none());
+        assert_eq!(std::fs::read(store.blob_path(&output_id)).unwrap(), b"no sidecar");
     }
 }

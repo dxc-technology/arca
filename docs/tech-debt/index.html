@@ -1577,14 +1577,6 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>crates/arca-proto/src/router.rs</code>, <code>crates/arca-proto/src/middleware/virtual_host.rs</code></td>
 </tr>
 <tr>
-<td>TD-038</td>
-<td>No fsync on the write path</td>
-<td>Blob writes <code>flush()</code> and <code>rename()</code> but never <code>sync_all()</code> the file or its directory, and <code>write_sidecar</code> uses a plain, non-atomic <code>fs::write</code>. Only re-encryption (<code>recrypt.rs</code>) fsyncs. A power loss after a <code>200 OK</code> can lose or truncate the blob or sidecar of an acknowledged write, which also undermines the blob → sidecar → DB ordering that <code>recover</code> relies on.</td>
-<td><code>sync_all</code> the blob before rename and fsync the parent directory after; write sidecars to a temp file, fsync, rename. Measure the throughput cost and consider a config switch only if it is significant.</td>
-<td>None</td>
-<td><code>crates/arca-storage/src/fs/blob.rs</code></td>
-</tr>
-<tr>
 <td>TD-040</td>
 <td>Cluster maintenance jobs can stall on a non-leader node</td>
 <td>Maintenance jobs are stored in each node's local <code>MaintenanceStore</code> (not cluster-wrapped, not part of <code>ControlSnapshot</code>), while only the worker-leader (lowest eligible <code>node_id</code>, decision H5) runs the maintenance worker. A job created through the load balancer on any other node is never picked up until that node happens to become leader; the API accepts it and it stays <code>pending</code>. <code>guide/maintenance.md</code> and <code>guide/console.md</code> do not mention this.</td>
@@ -1639,6 +1631,22 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>At Complete: when the upload has an algorithm, require and compare each part's checksum, compute the COMPOSITE value (and, for CRC types, the FULL_OBJECT value through a CRC-combine function; <code>x-amz-checksum-type</code> decides), check it against the request header, store it on the object and return it in the response, HEAD/GET and GetObjectAttributes. Keep part checksums with the object so <code>ObjectParts</code> can report them.</td>
 <td><code>test_multipart_checksum_sha256</code>, <code>test_multipart_use_cksum_helper_{sha256,crc32,crc32c,crc64nvme}</code>, <code>test_get_multipart_checksum_object_attributes</code></td>
 <td><code>crates/arca-proto/src/handlers/multipart.rs</code> (<code>complete_multipart_upload</code>), <code>crates/arca-core/src/s3/xml_types.rs</code></td>
+</tr>
+<tr>
+<td>TD-047</td>
+<td>Plain-HTTP listener does not set <code>TCP_NODELAY</code></td>
+<td>The plain-HTTP path serves with <code>axum::serve(listener, ...)</code>, which leaves Nagle's algorithm on for accepted connections (the TLS path sets <code>set_nodelay(true)</code> in <code>tls::serve_tls</code>). A response whose headers and body go out in separate writes (every GetObject) is held back until the client's delayed ACK: on a keep-alive connection each GET after the first takes about 40 ms more than it should (measured 2026-10-02: 3 ms for the first GET on a connection, 42 ms for each following one, 1 KiB objects, Linux). All real S3 clients use keep-alive, so every plain-HTTP deployment (e.g. behind a TLS-terminating reverse proxy) is affected; PutObject is not (its response has no body). Found 2026-10-02 during the TD-038 benchmark.</td>
+<td>Set <code>TCP_NODELAY</code> on every accepted plain-HTTP connection (<code>axum::serve::ListenerExt::tap_io</code> with a closure that calls <code>set_nodelay(true)</code>), so both listeners behave the same. Regression test: several GETs over one keep-alive connection against the plain-HTTP server, each well under the 40 ms delayed-ACK window.</td>
+<td>None (no test covers keep-alive GET latency)</td>
+<td><code>crates/arca-server/src/main.rs</code> (plain-HTTP <code>axum::serve</code>), <code>crates/arca-server/src/tls.rs</code> (reference behaviour)</td>
+</tr>
+<tr>
+<td>TD-048</td>
+<td>SQLite commits are not grouped: with <code>[storage] fsync = true</code> every commit is an fsync on the single writer connection</td>
+<td><code>SqliteStore</code> serializes all writes on one connection, and with <code>synchronous=FULL</code> (the <code>[storage] fsync = true</code> default since TD-038) each transaction fsyncs the WAL before the next one can start, so the commit rate is capped at one per fsync latency of the database disk, whatever the client concurrency. Measured 2026-10-02..05 with warp, 1 KiB PUTs: about 200-225 PUT/s at concurrency 16-64 on a 3 ms disk (AWS gp3 EBS, Hyper-V virtual disk; -73..-78% against no fsync, against -43..-53% with the file fsyncs alone), 15-25 PUT/s on a LUKS HDD; on local NVMe (0.16 ms) the cap is above the server's other limits (FULL costs 2-5 points over NORMAL). The audit writer already commits in 1 s batches, so only metadata commits are affected. <code>[storage] fsync = false</code> removes the cap at the cost of durability.</td>
+<td>Group commit: let concurrent metadata writes queue while one commit is in flight and commit the queued ones in a single transaction (one fsync for many requests), acknowledging each request only after the transaction holding it is durable. Must keep each request's own constraints (conditional-write CAS, unique <code>is_latest</code> index) failing only that request, not the whole group.</td>
+<td>None (throughput only)</td>
+<td><code>crates/arca-storage/src/sqlite/mod.rs</code> (<code>synchronous_pragma</code>), <code>crates/arca-storage/src/sqlite/metadata.rs</code> (write transactions)</td>
 </tr>
 </tbody>
 </table>
@@ -1774,6 +1782,12 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>TD-034</td>
 <td>Request body integrity was never verified</td>
 <td>PutObject and UploadPart now verify (through every blob stack: plain, SSE-S3/KMS, compressed, and SSE-C for PutObject) the body as AWS does, in <code>handlers/integrity.rs</code> with the body stream from <code>body::verified_body_stream</code>: <code>Content-MD5</code> against the plaintext MD5 the blob store already returns as the ETag (mismatch <code>BadDigest</code>, malformed <code>InvalidDigest</code>); <code>x-amz-checksum-{crc32,crc32c,crc64nvme,sha1,sha256}</code> from a header or from an aws-chunked trailer named by <code>x-amz-trailer</code> (the decoder now parses trailers instead of stopping at the last chunk), computed while the body streams (mismatch <code>BadDigest</code> "The <ALGO> you specified did not match the calculated checksum.", malformed or several at once <code>InvalidRequest</code>); a hex <code>x-amz-content-sha256</code> (mismatch <code>XAmzContentSHA256Mismatch</code>). Malformed declarations are refused before the body is read; a mismatch deletes the written blob before any sidecar or row exists. Trailer checksums (boto3 over HTTPS) are now recorded too, SHA1 is supported, UploadPart returns and stores its checksum, CreateMultipartUpload records <code>x-amz-checksum-algorithm</code>. <code>FsBlobStore::put</code> now removes its temp file when the body stream fails (it leaked one, e.g. on <code>EntityTooLarge</code>). Left out: chunk-signature verification (TD-045) and multipart object checksums (TD-046). Unit tests in <code>integrity.rs</code> / <code>body.rs</code>, integration suite <code>test_integrity.py</code> (41)</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-038</td>
+<td>No fsync on the write path</td>
+<td>Every blob and sidecar writer in <code>arca-storage</code> is now durable: the blob temp file is <code>sync_all</code>ed before the rename (in the <code>spawn_blocking</code> worker of <code>FsBlobStore::put</code>; <code>write_raw</code>, the <code>concat</code> fallback and re-encryption likewise), newly created shard directories are fsynced up to the first existing ancestor (<code>create_dir_all_durable</code>), and <code>write_sidecar</code> writes a temp file in the same directory, fsyncs it, renames it and fsyncs the directory (<code>write_file_atomic</code>), so a sidecar is never partial. Invariant: <strong>a blob is durable once its sidecar has been written</strong> — the blob rename in <code>put</code> / <code>write_raw</code> / the <code>concat</code> fallback does not fsync the directory, because the sidecar lives in the same directory and its directory fsync covers both entries; every handler writes the sidecar before the metadata commit and fails the request (discarding the fresh blob, <code>handlers/sidecar.rs</code>) when that write fails, and <code>UploadPartCopy</code> now writes a part sidecar for every part. 3 fsyncs per small PUT; the in-place re-encryption rename, whose follow-up sidecar write is not durable, keeps <code>rename_durable</code>. SQLite commits with <code>synchronous=FULL</code>, so the metadata row survives a power loss too. The cost is significant on slow disks, so it is switchable: <code>[storage] fsync</code> (default <code>true</code>; <code>false</code> = no fsync and SQLite <code>NORMAL</code>, the old behaviour, still atomic) applies to the live server only, the offline tools are always durable. Audit entries are committed in batches (1024 entries or 1 s, at once on drain) so that audit logging does not add an fsync per request. Measured 2026-10-02..05 with warp, 1 KiB PUTs at concurrency 16, against no fsync: local NVMe -37%, gp3 EBS -78%, Hyper-V virtual disk -77%, LUKS HDD about -90%; 1 MiB -6..-20% on NVMe and concurrent gp3; 512 MiB 0-2%. The single-writer FULL ceiling on slow disks is tracked as TD-048. Unit tests cover the atomic temp + rename protocol in both modes and the <code>synchronous</code> level (fsync itself cannot be observed without a power cut)</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 </tbody>

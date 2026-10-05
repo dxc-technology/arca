@@ -25,6 +25,7 @@ The default config file is `config/default.toml` in the repository. At runtime, 
 |---------|---------|-------------|
 | `storage.data_dir` | `/data` | Root directory for SQLite database (`arca.db`) and blob storage (`blobs/` subdirectory) |
 | `storage.blob_prefix_depth` | `2` | Number of 2-char prefix directory levels for blob file sharding (1–4). Higher values spread files across more directories, reducing files-per-directory at the cost of deeper paths. See [blob storage](#blob-storage) below. |
+| `storage.fsync` | `true` | Make every acknowledged write survive a power loss or kernel crash: blob data, sidecars and new shard directories are fsynced and SQLite commits with `synchronous=FULL`. `false` skips the fsyncs (SQLite `NORMAL`): faster on slow disks, but objects acknowledged shortly before a power loss can be lost or truncated (writes stay atomic). Applies to the live server only, the offline tools are always durable. See [durability](#durability-fsync) below. |
 | `storage.blob_gc_enabled` | `false` | Enable the opt-in single-node background worker that periodically reclaims orphaned blob files (see [`arca gc`](cli.md#arca-gc)). Ignored under clustering, where the anti-entropy worker reclaims orphans. On very large stores, prefer cron-ing `arca gc` so the full-store scan runs outside the serving process. |
 | `storage.blob_gc_interval_seconds` | `3600` | How often the blob GC worker runs (when enabled). |
 | `storage.blob_gc_grace_seconds` | `86400` | Protect blobs written within this many seconds from reclamation. Must exceed the longest in-flight upload (a blob file exists on disk before its object row is committed). |
@@ -127,7 +128,7 @@ The cache is transparent to clients: write operations (create/delete bucket, put
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `monitoring.audit.enabled` | `true` | Enable audit logging (every S3/admin operation is recorded). |
+| `monitoring.audit.enabled` | `true` | Enable audit logging (every S3/admin operation is recorded). Entries are committed in batches: when 1024 are queued or 1 second after the first one, and at once on graceful shutdown, so a crash can lose up to the last second of entries. |
 | `monitoring.audit.retention_days` | *(console-managed)* | Days to retain audit entries. When set in TOML, the value is locked (read-only in console). |
 | `monitoring.metrics.enabled` | `true` | Enable Prometheus metrics collection. |
 | `monitoring.metrics.retention_days` | *(console-managed)* | Days to retain metrics snapshots. When set in TOML, the value is locked. |
@@ -201,6 +202,7 @@ port = 9000
 [storage]
 data_dir = "/data"
 # blob_prefix_depth = 2  # optional, default is 2
+# fsync = true           # optional, default is true (see Durability below)
 
 # [encryption]               # optional, enables SSE-S3
 # enabled = true
@@ -232,6 +234,23 @@ Each blob has a `.meta` sidecar file containing JSON metadata for disaster recov
 | 3     | 16.7M           | ~6                        |
 
 The default depth of 2 works well for most deployments. Increase to 3 for very large installations (tens of millions of objects) where filesystem performance degrades with many files per directory.
+
+### Durability (fsync)
+
+With `fsync = true` (the default) a `200 OK` means the object survives a power loss: before answering, Arca fsyncs the blob data, writes the sidecar atomically (temp file, fsync, rename, directory fsync, which also persists the blob's own directory entry) and commits the metadata row with SQLite `synchronous=FULL`. With PostgreSQL the database side follows PostgreSQL's own `synchronous_commit` instead.
+
+The price depends on how fast the disk completes a synchronous write. Measured with warp, PUT throughput against `fsync = false`:
+
+| Disk (synchronous 4 KiB write) | 1 KiB, 1 client | 1 KiB, 16 clients | 1 MiB, 16 clients | 512 MiB |
+|---|---|---|---|---|
+| Local NVMe (0.16 ms) | -34% | -37% | -20% | -2% |
+| AWS gp3 EBS, 3000 IOPS (3.3 ms) | -89% | -78% | -8% | 0% |
+
+On a slow disk small writes are capped at roughly one metadata commit per synchronous write latency (about 200 PUT/s at 3 ms, whatever the concurrency, TD-048). Large objects are almost unaffected.
+
+`fsync = false` restores the throughput of releases before 0.30.3, at the cost of durability: writes stay atomic (a sidecar is never half written, the database stays consistent), but objects acknowledged shortly before a power loss or kernel crash can be missing or truncated afterwards. A process crash alone loses nothing, the data is already in the operating system. The server logs a warning at startup when `fsync` is off. Choose it only when lost uploads can be re-sent, for example for a cache or a copy that can be rebuilt from elsewhere.
+
+Audit-log entries are committed in batches whatever this setting says (when 1024 entries are queued or 1 second after the first one, and at once on graceful shutdown), so a crash can lose up to the last second of audit entries.
 
 ## Credentials
 

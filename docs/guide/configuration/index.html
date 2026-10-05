@@ -719,6 +719,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#durability-fsync" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Durability (fsync)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1740,6 +1751,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#durability-fsync" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Durability (fsync)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1864,6 +1886,11 @@
 <td><code>storage.blob_prefix_depth</code></td>
 <td><code>2</code></td>
 <td>Number of 2-char prefix directory levels for blob file sharding (1–4). Higher values spread files across more directories, reducing files-per-directory at the cost of deeper paths. See <a href="#blob-storage">blob storage</a> below.</td>
+</tr>
+<tr>
+<td><code>storage.fsync</code></td>
+<td><code>true</code></td>
+<td>Make every acknowledged write survive a power loss or kernel crash: blob data, sidecars and new shard directories are fsynced and SQLite commits with <code>synchronous=FULL</code>. <code>false</code> skips the fsyncs (SQLite <code>NORMAL</code>): faster on slow disks, but objects acknowledged shortly before a power loss can be lost or truncated (writes stay atomic). Applies to the live server only, the offline tools are always durable. See <a href="#durability-fsync">durability</a> below.</td>
 </tr>
 <tr>
 <td><code>storage.blob_gc_enabled</code></td>
@@ -2180,7 +2207,7 @@
 <tr>
 <td><code>monitoring.audit.enabled</code></td>
 <td><code>true</code></td>
-<td>Enable audit logging (every S3/admin operation is recorded).</td>
+<td>Enable audit logging (every S3/admin operation is recorded). Entries are committed in batches: when 1024 are queued or 1 second after the first one, and at once on graceful shutdown, so a crash can lose up to the last second of entries.</td>
 </tr>
 <tr>
 <td><code>monitoring.audit.retention_days</code></td>
@@ -2371,16 +2398,17 @@
 <a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="k">[storage]</span>
 <a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="n">data_dir</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;/data&quot;</span>
 <a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="c1"># blob_prefix_depth = 2  # optional, default is 2</span>
-<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>
-<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a><span class="c1"># [encryption]               # optional, enables SSE-S3</span>
-<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a><span class="c1"># enabled = true</span>
-<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a><span class="c1"># master_key = &quot;base64...&quot;   # generate with: arca encryption generate-key</span>
-<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>
-<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a><span class="c1"># Alternative: fetch master key from Vault/OpenBAO</span>
-<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a><span class="c1"># [encryption.kms]</span>
-<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a><span class="c1"># endpoint = &quot;http://vault:8200&quot;</span>
-<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a><span class="c1"># auth_method = &quot;token&quot;</span>
-<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a><span class="c1"># token = &quot;s.my-vault-token&quot;</span>
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="c1"># fsync = true           # optional, default is true (see Durability below)</span>
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a><span class="c1"># [encryption]               # optional, enables SSE-S3</span>
+<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a><span class="c1"># enabled = true</span>
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a><span class="c1"># master_key = &quot;base64...&quot;   # generate with: arca encryption generate-key</span>
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a><span class="c1"># Alternative: fetch master key from Vault/OpenBAO</span>
+<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a><span class="c1"># [encryption.kms]</span>
+<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a><span class="c1"># endpoint = &quot;http://vault:8200&quot;</span>
+<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a><span class="c1"># auth_method = &quot;token&quot;</span>
+<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a><span class="c1"># token = &quot;s.my-vault-token&quot;</span>
 </code></pre></div>
 <h3 id="blob-storage">Blob Storage<a class="headerlink" href="#blob-storage" title="Permanent link">&para;</a></h3>
 <p>Object data is stored as blob files under <code>{data_dir}/blobs/</code>, sharded into a hierarchy of 2-character prefix directories derived from the blob UUID. The <code>blob_prefix_depth</code> setting controls how many levels of prefix directories are used.</p>
@@ -2415,6 +2443,39 @@
 </tbody>
 </table>
 <p>The default depth of 2 works well for most deployments. Increase to 3 for very large installations (tens of millions of objects) where filesystem performance degrades with many files per directory.</p>
+<h3 id="durability-fsync">Durability (fsync)<a class="headerlink" href="#durability-fsync" title="Permanent link">&para;</a></h3>
+<p>With <code>fsync = true</code> (the default) a <code>200 OK</code> means the object survives a power loss: before answering, Arca fsyncs the blob data, writes the sidecar atomically (temp file, fsync, rename, directory fsync, which also persists the blob's own directory entry) and commits the metadata row with SQLite <code>synchronous=FULL</code>. With PostgreSQL the database side follows PostgreSQL's own <code>synchronous_commit</code> instead.</p>
+<p>The price depends on how fast the disk completes a synchronous write. Measured with warp, PUT throughput against <code>fsync = false</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Disk (synchronous 4 KiB write)</th>
+<th>1 KiB, 1 client</th>
+<th>1 KiB, 16 clients</th>
+<th>1 MiB, 16 clients</th>
+<th>512 MiB</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Local NVMe (0.16 ms)</td>
+<td>-34%</td>
+<td>-37%</td>
+<td>-20%</td>
+<td>-2%</td>
+</tr>
+<tr>
+<td>AWS gp3 EBS, 3000 IOPS (3.3 ms)</td>
+<td>-89%</td>
+<td>-78%</td>
+<td>-8%</td>
+<td>0%</td>
+</tr>
+</tbody>
+</table>
+<p>On a slow disk small writes are capped at roughly one metadata commit per synchronous write latency (about 200 PUT/s at 3 ms, whatever the concurrency, TD-048). Large objects are almost unaffected.</p>
+<p><code>fsync = false</code> restores the throughput of releases before 0.30.3, at the cost of durability: writes stay atomic (a sidecar is never half written, the database stays consistent), but objects acknowledged shortly before a power loss or kernel crash can be missing or truncated afterwards. A process crash alone loses nothing, the data is already in the operating system. The server logs a warning at startup when <code>fsync</code> is off. Choose it only when lost uploads can be re-sent, for example for a cache or a copy that can be rebuilt from elsewhere.</p>
+<p>Audit-log entries are committed in batches whatever this setting says (when 1024 entries are queued or 1 second after the first one, and at once on graceful shutdown), so a crash can lose up to the last second of audit entries.</p>
 <h2 id="credentials">Credentials<a class="headerlink" href="#credentials" title="Permanent link">&para;</a></h2>
 <p>Credentials are stored in the SQLite database (<code>{data_dir}/arca.db</code>) and managed via the <a href="../cli/#arca-credential"><code>arca credential</code></a> CLI command:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Add a credential (auto-generates access key and secret key)</span>

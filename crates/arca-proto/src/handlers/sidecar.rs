@@ -1,10 +1,10 @@
 //! Sidecar helpers shared by the handlers that write blobs.
 //!
-//! Every freshly written blob needs its sidecar: `EncryptingBlobStore` reads
-//! it to decrypt, `FsBlobStore::concat` to assemble composites and
-//! `arca recover` to rebuild the database. A handler must therefore write the
-//! sidecar, and see it succeed, before it commits the metadata row that makes
-//! the blob reachable.
+//! A freshly written blob is durable only once its sidecar has been written:
+//! `FsBlobStore` does not fsync the directory after publishing the blob file,
+//! the sidecar write (same directory) does it for both entries. A handler must
+//! therefore write the sidecar, and see it succeed, before it commits the
+//! metadata row that makes the blob reachable.
 
 use axum::response::Response;
 
@@ -40,12 +40,13 @@ pub(crate) fn part_sidecar(
     }
 }
 
-/// Writes the sidecar of a just-written blob (see the module docs).
+/// Writes the sidecar of a just-written blob, which also makes the blob
+/// durable (see the module docs).
 ///
 /// On failure the blob is discarded (its own file and sidecar only, never the
 /// parts a composite points at) and the error response is returned, so the
-/// caller answers with it instead of committing a row for a blob without a
-/// sidecar.
+/// caller answers with it instead of committing a row for a blob that may not
+/// survive a power loss.
 pub(crate) async fn write_sidecar_or_discard(
     blob: &dyn BlobStore,
     blob_id: &BlobId,

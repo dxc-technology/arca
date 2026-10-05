@@ -334,6 +334,15 @@ pub struct SidecarMeta {
 #[async_trait::async_trait]
 pub trait BlobStore: Send + Sync {
     /// Writes a blob from a byte stream, computing MD5 as it goes.
+    ///
+    /// Durability contract: **a blob is durable once its sidecar has been
+    /// written.** The file data is fsynced before it is published, but the
+    /// directory entry is not: the sidecar lives in the same directory and
+    /// [`BlobStore::write_sidecar`] fsyncs that directory, covering both. So
+    /// every caller of `put` / `put_with_hints` / `concat` (and of
+    /// [`RawBlobOps::write_raw`]) must write the blob's sidecar, and fail if
+    /// that write fails, before committing any metadata that references the
+    /// blob.
     async fn put(
         &self,
         blob_id: &BlobId,
@@ -371,7 +380,13 @@ pub trait BlobStore: Send + Sync {
     /// (not-yet-visible) assembled blob goes away.
     async fn delete_assembled(&self, blob_id: &BlobId) -> Result<(), crate::error::ArcaError>;
 
-    /// Writes sidecar metadata alongside the blob file.
+    /// Writes sidecar metadata alongside the blob file, atomically and
+    /// durably (temp file, fsync, rename, directory fsync).
+    ///
+    /// This is also the point where the blob written by `put` /
+    /// `put_with_hints` / `concat` becomes durable (see [`BlobStore::put`]):
+    /// an `Err` means the blob may not survive a power loss, so the caller
+    /// must discard it and fail the request instead of committing metadata.
     async fn write_sidecar(
         &self,
         blob_id: &BlobId,
@@ -379,6 +394,7 @@ pub trait BlobStore: Send + Sync {
     ) -> Result<(), crate::error::ArcaError>;
 
     /// Concatenates multiple blobs into a single output blob, computing MD5.
+    /// The output follows the same durability contract as [`BlobStore::put`].
     ///
     /// Default implementation reads each blob via `get()` and writes via `put()`.
     /// `FsBlobStore` overrides this with direct file-level concatenation
@@ -403,7 +419,8 @@ pub trait BlobStore: Send + Sync {
 #[async_trait::async_trait]
 pub trait SsecBlobOps: Send + Sync {
     /// Writes a blob encrypted with the customer-provided key.
-    /// Returns `(BlobPutResult, nonce_prefix)`.
+    /// Returns `(BlobPutResult, nonce_prefix)`. Same durability contract as
+    /// [`BlobStore::put`]: the blob is durable once its sidecar is written.
     async fn put_with_key(
         &self,
         blob_id: &BlobId,
@@ -450,7 +467,8 @@ pub trait RawBlobOps: Send + Sync {
 
     /// Writes raw bytes to a blob verbatim. Idempotent: re-delivering the same
     /// `blob_id` overwrites with identical bytes. No MD5, no sidecar (shipped
-    /// separately via [`RawBlobOps::write_sidecar`]).
+    /// separately via [`RawBlobOps::write_sidecar`]). Same durability contract
+    /// as [`BlobStore::put`]: the blob is durable once that sidecar is written.
     async fn write_raw(
         &self,
         blob_id: &BlobId,
@@ -460,7 +478,8 @@ pub trait RawBlobOps: Send + Sync {
     /// Whether the blob's physical file exists (anti-entropy / repair probe).
     async fn exists(&self, blob_id: &BlobId) -> Result<bool, crate::error::ArcaError>;
 
-    /// Writes sidecar metadata alongside the blob file (verbatim).
+    /// Writes sidecar metadata alongside the blob file (verbatim), durably;
+    /// this also makes a blob written by [`RawBlobOps::write_raw`] durable.
     async fn write_sidecar(
         &self,
         blob_id: &BlobId,
