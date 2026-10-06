@@ -1,7 +1,6 @@
 """Tests for report.py's AWS-divergence reclassification.
 
-Run inside the s3-tests image (it has pytest):
-    docker run --rm -v "$PWD/docker/s3-tests:/t" -w /t --entrypoint pytest arca-s3-tests report_test.py
+Run with: bin/test s3-report
 """
 
 import json

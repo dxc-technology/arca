@@ -17,6 +17,7 @@ set -euo pipefail
 #   bin/test kms          Run KMS integration tests
 #   bin/test postgres     Run PostgreSQL backend integration tests
 #   bin/test s3-compat    Run Ceph s3-tests compatibility suite
+#   bin/test s3-report    Run the Ceph report generator tests (docker/s3-tests/report_test.py)
 #   bin/test connectors redis        Run Redis connector integration tests
 #   bin/test connectors nats         Run NATS connector integration tests
 #   bin/test connectors mqtt         Run MQTT connector integration tests
@@ -1567,6 +1568,18 @@ run_s3_compat() {
     exec "$(git rev-parse --show-toplevel)/bin/s3-tests" "$@"
 }
 
+# Unit tests of the Ceph report generator. They run in the s3-tests image,
+# which has pytest and the Python report.py is written for; no server is
+# started. The directory is mounted read-only: pytest writes nothing there.
+run_s3_report() {
+    echo "==> Running Ceph report generator tests..."
+    COMPOSE="$(compose_cmd)"
+    $COMPOSE build s3-tests
+    docker run --rm -v "$PWD/docker/s3-tests:/t:ro" -w /t \
+        -e PYTHONDONTWRITEBYTECODE=1 --entrypoint pytest arca-s3-tests \
+        -p no:cacheprovider report_test.py "$@"
+}
+
 case "${1:-all}" in
     unit)
         shift
@@ -1647,6 +1660,10 @@ case "${1:-all}" in
         shift
         run_s3_compat "$@"
         ;;
+    s3-report)
+        shift
+        run_s3_report "$@"
+        ;;
     all)
         run_unit
         echo ""
@@ -1676,6 +1693,7 @@ case "${1:-all}" in
         echo "  replication          Run replication integration tests (two Arca instances)"
         echo "  cluster              Run 3-node HA cluster integration tests (phased node up/down)"
         echo "  s3-compat            Run Ceph s3-tests compatibility suite"
+        echo "  s3-report            Run the Ceph report generator tests (docker/s3-tests/report_test.py)"
         echo ""
         echo "Extra args are passed to the test runner (cargo test or pytest)."
         echo "Example: bin/test unit -p arca-core"

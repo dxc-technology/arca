@@ -1715,10 +1715,13 @@ published <code>latest</code>.</p>
 <a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="c1"># Integration tests only (server must be running)</span>
 <a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>bin/test<span class="w"> </span>integration
 <a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>
-<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="c1"># Ceph s3-tests compatibility suite (server must be running)</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="c1"># Ceph s3-tests compatibility suite (stops your server and wipes its data volume)</span>
 <a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>bin/s3-tests
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="c1"># Tests of the s3-tests report generator (no server needed)</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>bin/test<span class="w"> </span>s3-report
 </code></pre></div>
-<p>The <a href="https://github.com/ceph/s3-tests">Ceph s3-tests</a> suite runs 829 industry-standard S3 compatibility tests. Results are saved to <code>s3-tests/results.xml</code>, an HTML report to <code>s3-tests/report.html</code>, and a machine-readable summary to <code>s3-tests/summary.json</code>.</p>
+<p>The <a href="https://github.com/ceph/s3-tests">Ceph s3-tests</a> suite runs the industry-standard S3 compatibility tests against a fresh Arca instance with encryption enabled: <code>bin/s3-tests</code> stops the running server, deletes its data volume for a clean state and leaves the server stopped at the end. Results are saved to <code>s3-tests/results.xml</code>, an HTML report to <code>s3-tests/report.html</code>, and a machine-readable summary to <code>s3-tests/summary.json</code>. Ceph/RGW-only extensions are excluded from the score, and a test where Ceph expects RGW's answer while Arca deliberately gives AWS's counts as passed only when it fails on exactly that documented assertion (listed under "AWS Divergences" in the report).</p>
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="../quick-start/">Quick Start</a> — create buckets and upload objects</li>

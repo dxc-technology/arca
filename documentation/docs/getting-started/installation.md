@@ -169,11 +169,14 @@ bin/test unit
 # Integration tests only (server must be running)
 bin/test integration
 
-# Ceph s3-tests compatibility suite (server must be running)
+# Ceph s3-tests compatibility suite (stops your server and wipes its data volume)
 bin/s3-tests
+
+# Tests of the s3-tests report generator (no server needed)
+bin/test s3-report
 ```
 
-The [Ceph s3-tests](https://github.com/ceph/s3-tests) suite runs 829 industry-standard S3 compatibility tests. Results are saved to `s3-tests/results.xml`, an HTML report to `s3-tests/report.html`, and a machine-readable summary to `s3-tests/summary.json`.
+The [Ceph s3-tests](https://github.com/ceph/s3-tests) suite runs the industry-standard S3 compatibility tests against a fresh Arca instance with encryption enabled: `bin/s3-tests` stops the running server, deletes its data volume for a clean state and leaves the server stopped at the end. Results are saved to `s3-tests/results.xml`, an HTML report to `s3-tests/report.html`, and a machine-readable summary to `s3-tests/summary.json`. Ceph/RGW-only extensions are excluded from the score, and a test where Ceph expects RGW's answer while Arca deliberately gives AWS's counts as passed only when it fails on exactly that documented assertion (listed under "AWS Divergences" in the report).
 
 ## Next Steps
 
