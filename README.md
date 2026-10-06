@@ -15,7 +15,7 @@ Arca is a ground-up implementation of the S3 API, designed as a **drop-in replac
 
 ## Status
 
-Production-grade and actively developed. **30 of 31** planned phases are complete (latest release **v0.30.2**), covering 60+ S3 operations plus encryption, versioning, RBAC, monitoring, lifecycle, object lock, tagging, notifications, compression, replication, and high-availability clustering. Arca passes the [Ceph s3-tests](https://github.com/ceph/s3-tests) compatibility suite with **369/825 passing and 0 unexpected failures** (100% pass rate on implemented features; RGW-only extensions out of scope). See the [roadmap](https://dxc-technology.github.io/arca/roadmap/) for what's next.
+Production-grade and actively developed. **30 of 31** planned phases are complete (latest release **v0.30.2**), covering 60+ S3 operations plus encryption, versioning, RBAC, monitoring, lifecycle, object lock, tagging, notifications, compression, replication, and high-availability clustering. Arca passes the [Ceph s3-tests](https://github.com/ceph/s3-tests) compatibility suite with **371/825 passing and 0 unexpected failures** (100% pass rate on implemented features; RGW-only extensions out of scope). See the [roadmap](https://dxc-technology.github.io/arca/roadmap/) for what's next.
 
 ## Features
 
@@ -35,7 +35,7 @@ Production-grade and actively developed. **30 of 31** planned phases are complet
 - **Monitoring** — Prometheus metrics, audit log, and an admin API under `/admin/*`
 - **Web console** — browser-based UI for buckets, objects, credentials, users, policies, notifications, replication, and cluster topology
 - **Presigned URLs** — query-string auth for GET/PUT/HEAD/DELETE
-- **S3 compatibility tested** — 369/825 Ceph s3-tests passing, 0 unexpected failures
+- **S3 compatibility tested** — 371/825 Ceph s3-tests passing, 0 unexpected failures
 
 ## S3 API Surface
 
@@ -209,7 +209,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — Migrate Topology | 1 | single→cluster config emission + DB ops, then →single round-trip |
 | Connector integrations | 84 | Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Kafka, AMQP, Elasticsearch, Syslog, SMTP, gRPC — each: delivery, custom destination, delete event, multiple events, payload format, connectivity test |
 | **Arca tests** | **2,001** | **All tests written for this project** |
-| [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 825 | 369 pass, 365 fail, 91 skip — 0 unexpected failures (RGW-only extensions excluded) |
+| [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 825 | 371 pass, 363 fail, 91 skip — 0 unexpected failures (RGW-only extensions excluded; 2 pass on AWS behaviour where RGW differs) |
 | **Total** | **2,826** | |
 
 ## License

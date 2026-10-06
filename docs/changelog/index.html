@@ -1286,6 +1286,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1304,7 +1315,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#security" class="md-nav__link">
+  <a href="#security_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Security
@@ -1376,7 +1387,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#security_1" class="md-nav__link">
+  <a href="#security_2" class="md-nav__link">
     <span class="md-ellipsis">
       
         Security
@@ -1437,7 +1448,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#security_2" class="md-nav__link">
+  <a href="#security_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         Security
@@ -1465,7 +1476,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#security_3" class="md-nav__link">
+  <a href="#security_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         Security
@@ -1621,7 +1632,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#security_4" class="md-nav__link">
+  <a href="#security_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         Security
@@ -1671,7 +1682,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#security_5" class="md-nav__link">
+  <a href="#security_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         Security
@@ -3173,6 +3184,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3191,7 +3213,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#security" class="md-nav__link">
+  <a href="#security_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Security
@@ -3263,7 +3285,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#security_1" class="md-nav__link">
+  <a href="#security_2" class="md-nav__link">
     <span class="md-ellipsis">
       
         Security
@@ -3324,7 +3346,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#security_2" class="md-nav__link">
+  <a href="#security_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         Security
@@ -3352,7 +3374,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#security_3" class="md-nav__link">
+  <a href="#security_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         Security
@@ -3508,7 +3530,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#security_4" class="md-nav__link">
+  <a href="#security_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         Security
@@ -3558,7 +3580,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#security_5" class="md-nav__link">
+  <a href="#security_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         Security
@@ -4986,6 +5008,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 </ul>
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
 <ul>
+<li><strong>The Ceph s3-tests report counts documented AWS divergences as passed.</strong> <code>docker/s3-tests/report.py</code> has a table of tests where Ceph expects RGW's answer and Arca deliberately gives AWS's; such a test counts as passed only when it fails on exactly the listed assertion (every earlier check in it passed), never on any other failure or error, and the HTML report and <code>summary.json</code> (<code>aws_divergences</code>) list them with the reason. Two entries so far: <code>test_object_checksum_sha256</code> and <code>test_object_checksum_crc64nvme</code>, which expect <code>BadDigest</code> for a malformed checksum value where AWS answers <code>InvalidRequest</code>. Latest run: 371/825 (was 369), 0 unexpected failures. Covered by <code>docker/s3-tests/report_test.py</code>.</li>
 <li><strong>Audit-log entries are committed in batches of up to 1 second.</strong> The audit writer shares the metadata database, so with SQLite FULL every audit commit was an fsync, paid even by a GET. It now commits when 1024 entries are queued or 1 second after the first one, and at once when the server starts a graceful shutdown. A crash can lose up to the last second of audit entries, which until then were only held in memory.</li>
 <li><strong>Image names.</strong> The production images are now named after their registry repository everywhere: the Compose files, <code>bin/test</code>, the Kubernetes manifests (<code>deploy/kubernetes/</code>, which now reference the published images) and the documentation. Local builds are tagged after their build target, <code>ghcr.io/dxc-technology/arca:production</code> / <code>:development</code> and <code>ghcr.io/dxc-technology/arca-console:production</code>, never with a release tag, so a working-tree build can neither pass for a release nor shadow the published <code>latest</code>. Images built locally under the old <code>arca</code> / <code>arca-console</code> names are no longer used and can be removed with <code>docker rmi arca arca-console</code>. Test and tooling images keep their names and are never published.</li>
 <li><strong>Documentation audited against the code.</strong> The architecture reference is rewritten from the current code: real crate graph and middleware order (there is no use-case layer), every storage trait and decorator and how they are stacked, the table list with what a cluster replicates, the write path, multipart composite blobs, how conditional writes are made atomic on each backend, and a clustering section with the design rationale. A new <strong>HA Design Decisions</strong> page records decisions H1 to H12 (what the code does today, why, the alternatives rejected), which code comments cite as "decision H<em>n</em>". The S3 API reference gains a conditional-writes section and two documented divergences from AWS (a refused conditional <code>CompleteMultipartUpload</code> is always <code>412</code>, never <code>409</code>; <code>If-None-Match</code> accepts a specific ETag). The HA guide is corrected where it promised more than the code does: the drift fingerprint covers the write quorum, not <code>cluster_size</code>; only object writes are ACK-counted in quorum mode; object tags do not self-heal; sync state is read from <code>GET /admin/cluster</code>, not <code>arca cluster status</code>; TD-025 needs per-key load-balancer routing. The Admin API, CLI, Disaster Recovery, Configuration and TLS pages are completed or corrected likewise (health states, <code>/admin/cluster</code>, <code>?node=</code>, five missing CLI commands, what <code>arca recover</code> really restores). The help of <code>arca cluster status</code> and the instructions printed by <code>arca migrate-topology</code> now point at <code>GET /admin/cluster</code> for sync state. Bugs found during the audit are tracked as TD-029 to TD-042.</li>
@@ -5020,8 +5043,12 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>The TLS test suites no longer touch <code>certs/</code>, and work on Linux</strong> (TD-026). <code>bin/test tls</code> generated its self-signed certificates into the repository's <code>certs/</code> bind mount and deleted them afterwards — destroying any file of the user's with the same names — and on a real Linux host it failed outright, because the <code>tls-init</code> container runs as <code>65532</code> and cannot write the invoking user's directory (invisible on macOS, where Docker Desktop fakes bind-mount ownership). <code>bin/test tls</code> and <code>bin/perf-test --tls</code> now generate a throwaway CA + server certificate into a named volume (<code>arca-tls-test-certs</code>), serve it through the same compose overlay, and remove it at the end. <code>bin/perf-test --tls</code> also stops disabling certificate verification: its client now trusts the throwaway CA, and with <code>--tls-fqdn</code> your own certificates are used in place instead of being symlinked into <code>certs/</code>. The <code>tls-init</code> compose service, which was the only writer into <code>certs/</code>, is removed.</li>
 <li><strong>A request right after an early reject could be misread on the same connection.</strong> When Arca answered a request before reading its body — any authentication or authorization reject in the S3 auth middleware, a missing bucket, a failed precondition — it kept the HTTP/1.1 connection alive although the body was still owed. With <code>Expect: 100-continue</code>, which botocore sends on every PutObject, the client, having received a final status instead of <code>100 Continue</code>, legitimately never sends that body, and the server cannot tell the bytes that arrive next from the owed body: hyper sometimes swallowed the first bytes of the next request as the body and parsed the rest as a mangled request line. A DeleteObject sent after a denied PutObject then arrived as <code>TE /bucket/key</code> and failed with <code>SignatureDoesNotMatch</code> instead of <code>AccessDenied</code> — the intermittent failure of <code>test_readonly_user_can_read_not_write</code>, reproduced on the wire in 14% of raced follow-up requests. A new outermost layer (<code>CloseOnUnreadBodyLayer</code>) now wraps every request body, records whether it was read to the end, and adds <code>Connection: close</code> to any response that leaves it unread, as RFC 9110 §10.1.1 asks and AWS S3 does — whichever middleware or handler produced the response, and whatever its status. It replaces the per-call-site <code>close_after</code> that covered only PutObject's own early rejects (commit <code>eb7eb6e</code>) and left the auth middleware, UploadPart and the configuration PUTs exposed. HTTP/2 is left alone: each stream is framed, so an unread body cannot desync the next request. <code>http-body</code> (MIT, already in the dependency tree through axum and hyper) becomes a direct dependency of <code>arca-proto</code>.</li>
 </ul>
-<h2 id="0302-2026-09-23"><a href="https://github.com/dxc-technology/arca/compare/v0.30.1...v0.30.2">0.30.2</a> — 2026-09-23<a class="headerlink" href="#0302-2026-09-23" title="Permanent link">&para;</a></h2>
 <h3 id="security">Security<a class="headerlink" href="#security" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Dependency updates for five advisories</strong> (all compatible point releases, <code>Cargo.lock</code> only): <code>rustls</code> 0.23.40 → 0.23.45 (GHSA-2mjx-qc3c-rqvc, TLS 1.3 handshake messages accepted across encryption-level boundaries; pulls <code>rustls-webpki</code> 0.103.15 and <code>aws-lc-rs</code> 1.18.1 / <code>aws-lc-sys</code> 0.45.0), <code>hickory-resolver</code>, <code>hickory-proto</code> and <code>hickory-net</code> 0.26.1 → 0.26.2 (GHSA-5j98-2g5x-46v6, GHSA-6w6g-hm98-mhgm, GHSA-6f2x-v7q7-m7m5: hidden DNSSEC validation failures, an unbounded truncated-response retry loop, irrelevant CNAME records followed), <code>xxhash-rust</code> 0.8.15 → 0.8.19 (GHSA-6g2r-675j-hx59). <code>trivy fs --scanners vuln Cargo.lock</code> reports 0 findings; the transitive licence audit is unchanged (no copyleft) and <code>THIRD-PARTY-NOTICES.md</code> is regenerated.</li>
+</ul>
+<h2 id="0302-2026-09-23"><a href="https://github.com/dxc-technology/arca/compare/v0.30.1...v0.30.2">0.30.2</a> — 2026-09-23<a class="headerlink" href="#0302-2026-09-23" title="Permanent link">&para;</a></h2>
+<h3 id="security_1">Security<a class="headerlink" href="#security_1" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong><code>arca tls generate</code> wrote every file world-readable, private keys included.</strong> All four outputs of <code>arca tls generate</code> — and the CA plus every per-node key of <code>arca tls generate-cluster</code> — went through <code>std::fs::write</code>, which creates a file <code>0666 &amp; ~umask</code>, i.e. <code>0644</code> under the usual umask. The private keys were therefore readable by every local user on the host and by every process in any container sharing that directory. Modes are now explicit and split by role: certificates <code>0644</code> (public material), server and node private keys <code>0640</code>, the CA private key <code>0600</code>. The server key is deliberately group-readable rather than owner-only, because the group <em>is</em> the access channel: Arca runs as <code>65532:65532</code> and the web console runs as a different user (<code>100:101</code>), and in the Compose dev setup both read the same key — the console reaches it through a supplementary group, never through world-readable bits. The CA key is <code>0600</code>: nothing reads it at runtime, it only signs. The mode is applied at creation time (<code>OpenOptions::mode</code>) so a key is never even briefly world-readable, and re-applied afterwards for two reasons — the creation mode is masked by the process umask, which must not be allowed to strip the group bit a key needs, and it does not apply at all to a file left behind by an earlier run, which is what makes re-running <code>arca tls generate</code> tighten keys an older version wrote loose. <strong>Action required:</strong> keys generated by an earlier version keep their old mode until they are regenerated or <code>chmod</code>'d by hand; treat a key that has been sitting world-readable on a shared host as disclosed and rotate it.</li>
 </ul>
@@ -5058,7 +5085,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <ul>
 <li><strong>Base images of every distributed image are now pinned to exact versions.</strong> <code>rust:alpine</code> → <code>rust:1.98.1-alpine3.24</code> (builder, and the <code>dev</code> stage that inherits it), <code>debian:stable-slim</code> → <code>debian:13.6-slim</code> (development runtime) and <code>alpine</code> → <code>alpine:3.24.1</code> (console); <code>production</code> stays <code>FROM scratch</code>, which has no tag to pin. Each pin is digest-identical to what the floating tag resolved to when it was set, so this changes nothing about the images today — it stops them changing underneath us tomorrow, which matters because the in-Dockerfile package pins (<code>libcrypto3&gt;=3.5.8-r0</code>, <code>libssl3&gt;=3.5.8-r0</code>, <code>libuuid&gt;=2.42.3-r1</code>) are each relative to a <em>specific</em> base image version and go stale silently when the base moves. The Rust tag deliberately keeps its <code>-alpine3.24</code> suffix, which fixes the apk repository branch the builder's C dependencies (<code>ring</code>, <code>rdkafka</code>) come from, not just the compiler version; Debian uses the numeric point release rather than <code>stable-slim</code> because the numeric tag also pins the apt suite to the codename (<code>trixie</code>), so <code>apt-get install</code> in that stage cannot silently cross a Debian major release. Note that pinning the Alpine rootfs does not freeze the apk index: the <code>v3.24</code> branch keeps publishing updates, which is why <code>alpine:3.24.1</code> still installs openssl 3.5.7-r0 while the pinned constraint pulls 3.5.8-r0 from the repository. Images used <strong>only</strong> for testing and tooling (<code>python:alpine</code>, <code>python:3-slim</code>, the Playwright screenshot image, and the third-party services in the connector/KMS/cluster compose overlays) stay on floating tags on purpose: they are never distributed. <code>AGENTS.md</code> gained a "Base Image Pinning and Upgrades" section with the upgrade procedure — how to find and verify a new tag, and, critically, how to re-check every package pin against the new base and <em>remove</em> the ones it has overtaken instead of leaving a constraint whose CVE list is no longer true. The <code>FROM</code> lines are the single source of truth for the tags in force: the documentation states the pinning <em>principle</em> and points at the Dockerfiles rather than repeating version numbers that would need rewriting at every bump, and this changelog is the only file where exact versions are recorded.</li>
 </ul>
-<h3 id="security_1">Security<a class="headerlink" href="#security_1" title="Permanent link">&para;</a></h3>
+<h3 id="security_2">Security<a class="headerlink" href="#security_2" title="Permanent link">&para;</a></h3>
 <ul>
 <li>
 <p><strong>Console image rebuilt on plain <code>alpine</code> + the <code>nginx</code> package instead of <code>nginx:alpine</code>.</strong> The official image ships the image-filter, xslt, geoip, njs and acme modules, none of which the console loads (it serves static files and has no <code>load_module</code> directive anywhere), and they drag in <code>libgd</code> → <code>libxpm</code> → <code>libxt</code> → <code>libsm</code> → <code>libuuid</code> along with <code>tiff</code>, <code>freetype</code>, <code>libx11</code>, <code>libavif</code>, <code>libxml2</code>, <code>libxslt</code>, <code>curl</code> and <code>geoip</code>. That transitive <code>libuuid</code> (util-linux) is what a container scan flagged: CVE-2026-53612, CVE-2026-53613, CVE-2026-53614, CVE-2026-76642, CVE-2026-78408, CVE-2026-78409, CVE-2026-78410 (High) and CVE-2026-27456 (Medium), all against 2.42.1-r0. Rather than upgrade the package, the whole unused dependency chain is gone: the image drops from 70 packages / ~65 MB to 18 packages / ~13 MB, and <code>libuuid</code> is no longer installed at all, so future util-linux advisories cannot reach the console. Alpine's nginx includes <code>/etc/nginx/http.d/*.conf</code> rather than <code>conf.d</code>, so the server config and the entrypoint's TLS rewrite moved to that path. Arca's own image is unaffected (<code>FROM scratch</code>, no OS packages).</p>
@@ -5091,7 +5118,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <ul>
 <li><strong><code>license</code> field in the Cargo manifests.</strong> The workspace declared no licence at all in its package metadata, so <code>cargo metadata</code>, <code>cargo package</code> and any downstream tooling reading the manifests saw Arca as unlicensed even though the repository has always carried the licence file and the notices in <code>README.md</code>. <code>[workspace.package]</code> now sets <code>license = "AGPL-3.0-or-later"</code> and all five crates inherit it with <code>license.workspace = true</code>. Metadata only: no code, dependency or behaviour change.</li>
 </ul>
-<h3 id="security_2">Security<a class="headerlink" href="#security_2" title="Permanent link">&para;</a></h3>
+<h3 id="security_3">Security<a class="headerlink" href="#security_3" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Dependency vulnerability remediation.</strong> <code>quick-xml</code> 0.40.1 → 0.41.0 (RUSTSEC-2026-0194, RUSTSEC-2026-0195), <code>h2</code> 0.4.14 → 0.4.17 (RUSTSEC-2026-0258, transitive via <code>hyper</code>), <code>crossbeam-epoch</code> 0.9.18 → 0.9.20 (RUSTSEC-2026-0204, transitive via <code>moka</code>), <code>event-listener</code> 5.4.1 → 5.4.2 (RUSTSEC-2026-0221, transitive via <code>async-lock</code>/<code>lapin</code>/<code>moka</code>/<code>sqlx-core</code>). The <code>grpc-receiver</code> connector-test tooling's <code>protobuf</code> bumped 5.28.2 → 5.29.6 (CVE-2025-4565, CVE-2026-0994) — library-only, never part of the distributed <code>arca</code> binary. <code>rustls-webpki</code> 0.102.8 (4 published advisories, transitive via <code>rumqttc</code>'s MQTT connector) remains unfixed: <code>rumqttc</code> 0.25.1, the latest published release, hard-pins <code>rustls-webpki = "^0.102.8"</code> with no newer version available — tracked as TD-024 rather than patched with an unvetted override.</li>
 <li><strong>All Docker images now run as non-root by default.</strong> The production (<code>scratch</code>) and development (<code>debian:stable-slim</code>) Arca runtimes, the nginx-based console, and every auxiliary test/tooling image (<code>Dockerfile.test</code>, <code>Dockerfile.perf</code>, <code>grpc-receiver</code>, <code>webhook-receiver</code>, <code>s3-tests</code>) drop root and run as a fixed non-root user — except <code>s3-tests</code>, which runs as the invoking host user (<code>docker/docker-compose.yml</code>'s <code>S3TESTS_UID</code>/<code>S3TESTS_GID</code>, set by <code>bin/s3-tests</code>) since it writes results into a bind-mounted host directory. <code>HEALTHCHECK</code> instructions were added to every long-running server image that lacked one. See the <a href="https://github.com/dxc-technology/arca/blob/main/documentation/docs/guide/tls.md">TLS guide</a> for a permissions caveat this introduces for bind-mounted certificate files on Linux hosts.</li>
@@ -5100,7 +5127,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Bootstrap credential no longer uses AWS's published SigV4 documentation example.</strong> Every dev/test default (Docker Compose, <code>s3-tests</code> config, console login-form placeholder, screenshot automation, storage unit-test fixtures, integration/perf test defaults, and the admin-API docs example) used <code>AKIAIOSFODNN7EXAMPLE</code> / <code>wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY</code>, which secret scanners and password managers flag as a known/compromised credential even though it was never a real secret. Replaced with a freshly generated random credential everywhere it served as a bootstrap default. The same string still appears, deliberately unchanged, in <code>crates/arca-auth</code>'s SigV4 conformance tests, where it is AWS's own published test vector with hardcoded expected signatures rather than a credential.</li>
 </ul>
 <h2 id="0290-2026-07-28"><a href="https://github.com/dxc-technology/arca/compare/v0.28.0...v0.29.0">0.29.0</a> — 2026-07-28<a class="headerlink" href="#0290-2026-07-28" title="Permanent link">&para;</a></h2>
-<h3 id="security_3">Security<a class="headerlink" href="#security_3" title="Permanent link">&para;</a></h3>
+<h3 id="security_4">Security<a class="headerlink" href="#security_4" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Anti-replay window on header-signed S3 and admin requests.</strong> The <code>Authorization</code>-header SigV4 paths (S3 API and <code>/admin/*</code>) never validated <code>x-amz-date</code> against the server clock, so a captured signed request — sniffed off a plain-HTTP hop, or lifted from an access log or proxy trace — stayed replayable forever. Both paths now reject a request whose <code>x-amz-date</code> lies more than 15 minutes from the server clock (the AWS SigV4 convention, and the same window <code>/cluster/v1/*</code> already enforced since 0.26.0), returning <code>403 AccessDenied</code>. The signature covers <code>x-amz-date</code>, so an attacker cannot re-date a captured request without the secret key. Presigned (query-string) requests were already bounded by their own <code>X-Amz-Expires</code>. Clients whose clock drifts beyond ±15 minutes from the server's will now be refused — run NTP.</li>
 <li><strong>Auth fails closed when a credential's user no longer exists.</strong> A valid credential whose <code>user_id</code> did not resolve to a <code>users</code> row was silently promoted to a <strong>synthetic root identity</strong> (a leftover backward-compatibility accommodation for pre-users-table credentials), which meant a dangling credential — one left behind after its user was deleted — authenticated as root and bypassed all policy evaluation. Both the S3 and admin auth paths now deny such a request (<code>403 AccessDenied</code>), and a genuine metadata-backend failure is a <code>500 InternalError</code> instead of being collapsed into the same root fallback. To remove the source of dangling credentials, <code>UserStore::delete_user</code> now deletes the user's credentials in the same transaction on both backends (SQLite and PostgreSQL), so a credential can no longer outlive its user. This is not merely defensive: <code>DELETE /admin/users/{id}</code> refuses with <code>409 Conflict</code> while credentials exist (unchanged), but two paths reach the store without that check and could mint a dangling credential that authenticated as <strong>root</strong> — the <code>arca user delete</code> CLI, which validated only "not root", and the cluster control-plane apply of a <code>UserDelete</code> op, where the deleting node's check cannot see a credential another node created concurrently. In the cluster the cascade is also what converges the two nodes on "user gone, its keys gone" instead of leaving one peer with a permanently denied key. <code>arca user delete</code> now prints each access key it revokes rather than dropping them silently. Credentials predating the users table are unaffected: the migration that added <code>credentials.user_id</code> backfilled them to the root user, which exists.</li>
@@ -5143,7 +5170,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Console: shared bucket links now land on the bucket after login.</strong> Opening a deep-link URL (e.g. a bucket link sent by another user) and then logging in previously always dropped you on the dashboard (admin) or the buckets list (non-admin), discarding the link. The console now preserves the deep link and routes to it after login, only defaulting to home when no destination was given. If the target bucket is inaccessible or missing, the user is bounced home with an explanatory toast — <code>403</code> → "You don't have access to bucket …", <code>404</code> → "Bucket … does not exist". Because S3 returns no error for a non-existent <em>prefix</em>, a missing sub-folder (a non-empty prefix whose listing is entirely empty, with no folder marker) is inferred client-side and returns the user to the bucket root with a "Folder … does not exist" toast; genuinely empty folders still open normally.</li>
 </ul>
 <h2 id="0261-2026-06-12"><a href="https://github.com/dxc-technology/arca/compare/v0.26.0...v0.26.1">0.26.1</a> — 2026-06-12<a class="headerlink" href="#0261-2026-06-12" title="Permanent link">&para;</a></h2>
-<h3 id="security_4">Security<a class="headerlink" href="#security_4" title="Permanent link">&para;</a></h3>
+<h3 id="security_5">Security<a class="headerlink" href="#security_5" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong><code>time</code> 0.3.41 → 0.3.47 — CVE-2026-25727 fix picked up (resolves TD-011).</strong> The Docker builder moved from <code>rust:1.85-alpine</code> to <code>rust:alpine</code> (currently Rust 1.96), unblocking the <code>time</code> versions that contain the stack-exhaustion fix; the MSRV pins (<code>home</code>, <code>serde_with</code>, <code>darling</code>) became unnecessary and were removed from the Dockerfile. <code>time</code> 0.3.48 remains excluded for a non-security reason (a coherence clash with <code>rcgen</code> — tracked as TD-017).</li>
 <li><strong><code>rustls-pemfile</code> retired (resolves TD-012, RUSTSEC-2025-0134).</strong> PEM parsing migrated to <code>rustls-pki-types</code> (<code>PemObject</code>), which is maintained as part of the rustls project; the unmaintained dependency is gone from the workspace.</li>
@@ -5170,7 +5197,7 @@ and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semant
 <li><strong>Integration tests aligned with current S3/SDK semantics</strong> (no server changes — the server was right): checksum assertions now request <code>ChecksumMode=ENABLED</code> on HEAD/GET as S3 requires; suspending versioning on an Object-Lock bucket expects AWS's real <code>409 InvalidBucketState</code> (not 400); the notification event-log test signs with <code>S3SigV4Auth</code> like every other admin test (the generic <code>SigV4Auth</code> signs the payload hash over http but never sends <code>x-amz-content-sha256</code>, which the server rightly rejects).</li>
 </ul>
 <h2 id="0260-2026-06-12"><a href="https://github.com/dxc-technology/arca/compare/v0.25.1...v0.26.0">0.26.0</a> — 2026-06-12<a class="headerlink" href="#0260-2026-06-12" title="Permanent link">&para;</a></h2>
-<h3 id="security_5">Security<a class="headerlink" href="#security_5" title="Permanent link">&para;</a></h3>
+<h3 id="security_6">Security<a class="headerlink" href="#security_6" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Verified inter-node mutual TLS with a cluster CA (Phase 29.1 R4, review §3.7(C), decision H12 — resolves TD-015).</strong> Inter-node TLS no longer accepts invalid certificates: the <code>danger_accept_invalid_certs</code> accommodation is gone. A new <code>[cluster.tls]</code> section distributes an operator-owned cluster CA plus this node's CA-signed cert/key (mint everything with the new <code>arca tls generate-cluster</code>): outbound cluster clients verify peer certificates against the CA and present the node cert as their client identity, while the listener requests client certificates — optional at the TLS layer, because S3 clients share the single port — and <code>/cluster/v1/*</code> refuses any request whose connection did not present one signed by the cluster CA. This is the independent second factor on top of the R3 challenge-response (an attacker now needs the secret AND a CA-signed key), and it closes the passive-sniffing / active-MITM exposure on the cluster network. <strong>Breaking</strong>: a cluster running over HTTPS now refuses to start without <code>[cluster.tls]</code> (fail closed — there is no insecure fallback); plain-HTTP clusters are unaffected (the R3 peer authentication remains their baseline; use TLS on any network you do not fully trust).</li>
 <li><strong>Anti-replay window on cluster requests (Phase 29.1 R4, review §3.1/§3.7(C)).</strong> <code>/cluster/v1/*</code> now rejects signed requests whose <code>x-amz-date</code> lies more than 15 minutes from the node's clock (the SigV4 convention). Previously a captured signed request — e.g. a blob <code>GET</code> sniffed off a plain-HTTP segment — remained replayable forever; the signature covers the timestamp, so it cannot be refreshed without the secret. Cluster nodes already require NTP.</li>

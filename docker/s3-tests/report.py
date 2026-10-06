@@ -186,6 +186,37 @@ EXPECTED_FAIL_CATEGORIES = {
 OUT_OF_SCOPE_CATEGORIES = {"RGW Extensions"}
 
 
+# Tests where Ceph s3-tests expects RGW's answer and Arca deliberately gives
+# AWS's. Such a test counts as passed ONLY when it fails on exactly the listed
+# assertion, i.e. after every earlier check in it has passed; any other failure
+# in it (or an error) stays a real failure. Keep each entry tied to the AWS
+# behaviour it documents.
+AWS_DIVERGENCES = {
+    "test_object_checksum_sha256": {
+        "assertion": "assert 'InvalidRequest' == 'BadDigest'",
+        "reason": "A malformed x-amz-checksum-sha256 value ('bad' is not a base64 "
+                  "SHA-256) is rejected with 400 InvalidRequest on AWS; RGW answers "
+                  "BadDigest, which AWS reserves for a well-formed checksum that does "
+                  "not match the body (TD-034).",
+    },
+    "test_object_checksum_crc64nvme": {
+        "assertion": "assert 'InvalidRequest' == 'BadDigest'",
+        "reason": "A malformed x-amz-checksum-crc64nvme value ('bad' is not a base64 "
+                  "CRC64NVME) is rejected with 400 InvalidRequest on AWS; RGW answers "
+                  "BadDigest, which AWS reserves for a well-formed checksum that does "
+                  "not match the body (TD-034).",
+    },
+}
+
+
+def aws_divergence(name: str, status: str, message: str) -> str | None:
+    """The documented AWS divergence explaining this failure, if any."""
+    divergence = AWS_DIVERGENCES.get(name)
+    if status == "failed" and divergence and divergence["assertion"] in message:
+        return divergence["reason"]
+    return None
+
+
 def parse_junit_xml(path: str):
     """Parse JUnit XML and return list of test results."""
     tree = ET.parse(path)
@@ -217,6 +248,9 @@ def parse_junit_xml(path: str):
 
             category = categorize_test(name)
             expected_fail = category in EXPECTED_FAIL_CATEGORIES
+            divergence = aws_divergence(name, status, message)
+            if divergence:
+                status = "passed"
 
             tests.append({
                 "name": name,
@@ -226,6 +260,7 @@ def parse_junit_xml(path: str):
                 "time": time_val,
                 "category": category,
                 "expected_fail": expected_fail,
+                "aws_divergence": divergence,
             })
 
     return tests
@@ -259,6 +294,9 @@ def terminal_summary(tests: list, out_of_scope_n: int = 0):
     print(f"  {CYAN}Pass rate: {passed/total*100:.1f}%{RESET}" if total > 0 else "")
     if out_of_scope_n:
         print(f"  {YELLOW}({out_of_scope_n} Ceph/RGW-specific tests excluded from scope){RESET}")
+    divergent = [t["name"] for t in tests if t["aws_divergence"]]
+    if divergent:
+        print(f"  {CYAN}({len(divergent)} counted as passed: AWS behaviour where RGW differs){RESET}")
     print()
 
     if unexpected > 0:
@@ -355,6 +393,25 @@ def generate_html(tests: list, output_path: str, old_passlist: set | None = None
           <td class="num skipped">{s}</td>
           <td class="num {rate_class}">{rate:.0f}%</td>
         </tr>"""
+
+    # AWS divergences (counted as passed)
+    divergence_section = ""
+    divergent = sorted((t for t in tests if t["aws_divergence"]), key=lambda x: x["name"])
+    if divergent:
+        items = ""
+        for t in divergent:
+            reason = (t["aws_divergence"]
+                      .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+            items += f"""
+        <details class="fail-item">
+          <summary><span class="cat-tag">{t["category"]}</span> <code>{t["name"]}</code></summary>
+          <pre>{reason}</pre>
+        </details>"""
+        divergence_section = f"""
+        <h2>AWS Divergences ({len(divergent)}, counted as passed)</h2>
+        <p class="meta">These tests fail only on their last assertion, where Ceph expects RGW's answer
+        and Arca gives AWS's. Every earlier check in them passed.</p>
+        {items}"""
 
     # Diff rows
     diff_section = ""
@@ -485,6 +542,8 @@ def generate_html(tests: list, output_path: str, old_passlist: set | None = None
   {cat_rows}
 </table>
 
+{divergence_section}
+
 {diff_section}
 
 <h2>Failures ({failed + errors})</h2>
@@ -581,6 +640,7 @@ def generate_summary_json(tests: list, output_path: str, out_of_scope_n: int = 0
         "unexpected_failures": unexpected,
         "pass_pct": pass_pct,
         "out_of_scope_excluded": out_of_scope_n,
+        "aws_divergences": sorted(t["name"] for t in tests if t["aws_divergence"]),
         "categories": {
             cat: {
                 "total": c["total"],

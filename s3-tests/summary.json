@@ -1,12 +1,16 @@
 {
-  "timestamp": "2026-06-06T16:00:43Z",
+  "timestamp": "2026-10-06T06:41:10Z",
   "total": 825,
-  "passed": 369,
-  "failed": 365,
+  "passed": 371,
+  "failed": 363,
   "skipped": 91,
   "unexpected_failures": 0,
-  "pass_pct": 44.7,
+  "pass_pct": 45.0,
   "out_of_scope_excluded": 5,
+  "aws_divergences": [
+    "test_object_checksum_crc64nvme",
+    "test_object_checksum_sha256"
+  ],
   "categories": {
     "ACL/Policy": {
       "total": 119,
@@ -40,8 +44,8 @@
     },
     "Checksums": {
       "total": 10,
-      "passed": 1,
-      "failed": 9,
+      "passed": 3,
+      "failed": 7,
       "skipped": 0
     },
     "Copy": {
