@@ -8,7 +8,7 @@
 
 ## Pre-built Images
 
-Every release after v0.30.2 is published to the GitHub Container Registry as a
+Every release from v0.31.0 on is published to the GitHub Container Registry as a
 multi-arch image for `linux/amd64` and `linux/arm64`, so the same tag runs on x86 servers
 and on Apple Silicon or ARM hosts:
 

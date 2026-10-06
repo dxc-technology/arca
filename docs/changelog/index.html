@@ -1239,7 +1239,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0310-2026-10-06" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.31.0 — 2026-10-06
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.31.0 — 2026-10-06">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3137,7 +3148,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0310-2026-10-06" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.31.0 — 2026-10-06
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.31.0 — 2026-10-06">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -4989,7 +5011,8 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.30.2...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.31.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="0310-2026-10-06"><a href="https://github.com/dxc-technology/arca/compare/v0.30.2...v0.31.0">0.31.0</a> — 2026-10-06<a class="headerlink" href="#0310-2026-10-06" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Published multi-arch container images.</strong> Every release is now published to the GitHub Container Registry as <code>ghcr.io/dxc-technology/arca</code> and <code>ghcr.io/dxc-technology/arca-console</code>, each a single multi-arch image for <code>linux/amd64</code> and <code>linux/arm64</code>, so the same tag runs on x86 servers and on Apple Silicon / ARM hosts. A release is tagged <code>X.Y.Z</code>, plus <code>X.Y</code>, <code>X</code> and <code>latest</code> only when it is the newest release of its minor line / major line / overall — publishing a fix for an older line never moves them backwards — and a prerelease gets its exact tag only; the major-only <code>X</code> tag is not published while Arca is at <code>0.x</code> (a minor bump may break compatibility, so <code>:0</code> would promise too much) and appears by itself from 1.0.0. Publishing is automatic on every <code>vX.Y.Z</code> tag push (<code>.github/workflows/publish-images.yml</code>): each platform builds natively on its own runner (an emulated Rust release build would take hours), is scanned by Trivy, and is pushed by digest, untagged; only when all four builds pass are the digests merged into one index per image and tagged, so a scan failure on any platform publishes nothing. The Trivy gate fails on <strong>any</strong> finding and, for <code>arca</code>, also scans <code>Cargo.lock</code>: the scratch image holds no package database and a plain Rust binary, so an image scan alone has nothing to check. The workflow also refuses a tag that disagrees with <code>Cargo.toml</code> or the console version. <code>bin/build --push</code> runs the same pipeline from a local machine as a fallback. All of it lives in one library, <code>bin/lib/images.sh</code>, covered by 45 tests (<code>bin/test scripts</code>, <code>docker</code> mocked), so CI and the fallback cannot drift apart.</li>

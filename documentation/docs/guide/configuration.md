@@ -248,7 +248,7 @@ The price depends on how fast the disk completes a synchronous write. Measured w
 
 On a slow disk small writes are capped at roughly one metadata commit per synchronous write latency (about 200 PUT/s at 3 ms, whatever the concurrency, TD-048). Large objects are almost unaffected.
 
-`fsync = false` restores the throughput of releases before 0.30.3, at the cost of durability: writes stay atomic (a sidecar is never half written, the database stays consistent), but objects acknowledged shortly before a power loss or kernel crash can be missing or truncated afterwards. A process crash alone loses nothing, the data is already in the operating system. The server logs a warning at startup when `fsync` is off. Choose it only when lost uploads can be re-sent, for example for a cache or a copy that can be rebuilt from elsewhere.
+`fsync = false` restores the throughput of releases before 0.31.0, at the cost of durability: writes stay atomic (a sidecar is never half written, the database stays consistent), but objects acknowledged shortly before a power loss or kernel crash can be missing or truncated afterwards. A process crash alone loses nothing, the data is already in the operating system. The server logs a warning at startup when `fsync` is off. Choose it only when lost uploads can be re-sent, for example for a cache or a copy that can be rebuilt from elsewhere.
 
 Audit-log entries are committed in batches whatever this setting says (when 1024 entries are queued or 1 second after the first one, and at once on graceful shutdown), so a crash can lose up to the last second of audit entries.
 

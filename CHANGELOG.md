@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.0] — 2026-10-06
+
 ### Added
 
 - **Published multi-arch container images.** Every release is now published to the GitHub Container Registry as `ghcr.io/dxc-technology/arca` and `ghcr.io/dxc-technology/arca-console`, each a single multi-arch image for `linux/amd64` and `linux/arm64`, so the same tag runs on x86 servers and on Apple Silicon / ARM hosts. A release is tagged `X.Y.Z`, plus `X.Y`, `X` and `latest` only when it is the newest release of its minor line / major line / overall — publishing a fix for an older line never moves them backwards — and a prerelease gets its exact tag only; the major-only `X` tag is not published while Arca is at `0.x` (a minor bump may break compatibility, so `:0` would promise too much) and appears by itself from 1.0.0. Publishing is automatic on every `vX.Y.Z` tag push (`.github/workflows/publish-images.yml`): each platform builds natively on its own runner (an emulated Rust release build would take hours), is scanned by Trivy, and is pushed by digest, untagged; only when all four builds pass are the digests merged into one index per image and tagged, so a scan failure on any platform publishes nothing. The Trivy gate fails on **any** finding and, for `arca`, also scans `Cargo.lock`: the scratch image holds no package database and a plain Rust binary, so an image scan alone has nothing to check. The workflow also refuses a tag that disagrees with `Cargo.toml` or the console version. `bin/build --push` runs the same pipeline from a local machine as a fallback. All of it lives in one library, `bin/lib/images.sh`, covered by 45 tests (`bin/test scripts`, `docker` mocked), so CI and the fallback cannot drift apart.
@@ -893,7 +895,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.30.2...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.31.0...HEAD
+[0.31.0]: https://github.com/dxc-technology/arca/compare/v0.30.2...v0.31.0
 [0.30.2]: https://github.com/dxc-technology/arca/compare/v0.30.1...v0.30.2
 [0.30.1]: https://github.com/dxc-technology/arca/compare/v0.30.0...v0.30.1
 [0.30.0]: https://github.com/dxc-technology/arca/compare/v0.29.0...v0.30.0
