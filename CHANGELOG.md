@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The server no longer panics at startup when the system has no CA certificates** (TD-049). The webhook and Elasticsearch connectors built their HTTP client at startup, whether or not any notification was configured, and aborted the server when the platform trust store could not be loaded (`No CA certificates were loaded from the system`): the published image was not affected (it ships a CA bundle), but a bare binary on a host or in an image without one was. The server now starts, logs one warning per connector, and those connectors fail each delivery and connection test with `HTTP client unavailable: <cause>`.
+
 ## [0.31.0] — 2026-10-06
 
 ### Added

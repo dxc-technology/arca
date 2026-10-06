@@ -10,19 +10,21 @@ use arca_core::store::connector::{DeliveryResult, NotificationConnector, TestRes
 
 /// Webhook connector — delivers events as JSON via HTTP POST.
 pub struct WebhookConnector {
-    client: reqwest::Client,
+    /// `Err` when the client could not be built (see `build_http_client`).
+    client: Result<reqwest::Client, String>,
 }
 
 impl WebhookConnector {
     /// Create a new webhook connector with the given HTTP timeout.
     pub fn new(timeout: Duration) -> Self {
         crate::crypto::ensure_default_crypto_provider();
-        // TECHDEBT(TD-049): panics when the system has no CA certificates,
-        // aborting the server even when no notification is configured.
-        let client = reqwest::Client::builder()
-            .timeout(timeout)
-            .build()
-            .expect("build reqwest client for webhook connector");
+        Self::from_client(super::build_http_client(
+            "webhook",
+            reqwest::Client::builder().timeout(timeout),
+        ))
+    }
+
+    pub(crate) fn from_client(client: Result<reqwest::Client, String>) -> Self {
         WebhookConnector { client }
     }
 
@@ -32,9 +34,8 @@ impl WebhookConnector {
         url: &str,
         payload: &str,
         properties: &HashMap<String, String>,
-    ) -> reqwest::RequestBuilder {
-        let mut req = self
-            .client
+    ) -> Result<reqwest::RequestBuilder, String> {
+        let mut req = super::usable_client(&self.client)?
             .post(url)
             .header("Content-Type", "application/json")
             .body(payload.to_string());
@@ -45,7 +46,7 @@ impl WebhookConnector {
             }
         }
 
-        req
+        Ok(req)
     }
 }
 
@@ -61,7 +62,16 @@ impl NotificationConnector for WebhookConnector {
         payload: &str,
         properties: &HashMap<String, String>,
     ) -> DeliveryResult {
-        let req = self.build_request(destination, payload, properties);
+        let req = match self.build_request(destination, payload, properties) {
+            Ok(req) => req,
+            Err(e) => {
+                return DeliveryResult {
+                    success: false,
+                    status_info: "error".to_string(),
+                    error: Some(e),
+                }
+            }
+        };
 
         match req.send().await {
             Ok(resp) if resp.status().is_success() => DeliveryResult {
@@ -110,7 +120,16 @@ impl NotificationConnector for WebhookConnector {
         });
 
         let payload = serde_json::to_string(&test_event).unwrap_or_default();
-        let req = self.build_request(destination, &payload, properties);
+        let req = match self.build_request(destination, &payload, properties) {
+            Ok(req) => req,
+            Err(e) => {
+                return TestResult {
+                    success: false,
+                    status_info: "error".to_string(),
+                    error: Some(e),
+                }
+            }
+        };
 
         match req.send().await {
             Ok(resp) => {
@@ -132,5 +151,35 @@ impl NotificationConnector for WebhookConnector {
                 error: Some(e.to_string()),
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // TD-049: without a CA bundle the client cannot be built; the connector
+    // must report it on use instead of aborting the server at startup.
+    #[tokio::test]
+    async fn unavailable_client_fails_delivery_and_test_with_the_cause() {
+        let connector = WebhookConnector::from_client(Err("no CA certificates".to_string()));
+        let props = HashMap::new();
+        let delivered = connector.deliver("https://hook.example/", "{}", &props).await;
+        assert!(!delivered.success);
+        let error = delivered.error.unwrap();
+        assert!(error.contains("HTTP client unavailable"), "{error}");
+        assert!(error.contains("no CA certificates"), "{error}");
+
+        let tested = connector.test("https://hook.example/", &props).await;
+        assert!(!tested.success);
+        assert!(tested.error.unwrap().contains("no CA certificates"));
+    }
+
+    #[tokio::test]
+    async fn working_client_still_reaches_the_network() {
+        let connector = WebhookConnector::new(Duration::from_secs(1));
+        let result = connector.deliver("http://127.0.0.1:1/", "{}", &HashMap::new()).await;
+        assert!(!result.success);
+        assert!(!result.error.unwrap().contains("HTTP client unavailable"));
     }
 }

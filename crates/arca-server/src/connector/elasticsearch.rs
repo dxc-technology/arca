@@ -13,20 +13,21 @@ use super::db_common;
 
 /// Elasticsearch connector — delivers events as indexed documents.
 pub struct ElasticsearchConnector {
-    client: reqwest::Client,
+    /// `Err` when the client could not be built (see `build_http_client`).
+    client: Result<reqwest::Client, String>,
 }
 
 impl ElasticsearchConnector {
     /// Create a new Elasticsearch connector with the given timeout.
     pub fn new(timeout: Duration) -> Self {
         crate::crypto::ensure_default_crypto_provider();
-        // TECHDEBT(TD-049): panics when the system has no CA certificates,
-        // aborting the server even when no notification is configured.
-        let client = reqwest::Client::builder()
-            .timeout(timeout)
-            .connect_timeout(timeout)
-            .build()
-            .expect("failed to build reqwest client");
+        Self::from_client(super::build_http_client(
+            "elasticsearch",
+            reqwest::Client::builder().timeout(timeout).connect_timeout(timeout),
+        ))
+    }
+
+    pub(crate) fn from_client(client: Result<reqwest::Client, String>) -> Self {
         ElasticsearchConnector { client }
     }
 
@@ -87,7 +88,17 @@ impl NotificationConnector for ElasticsearchConnector {
             index,
         );
 
-        let req = self.client.post(&url).json(&doc);
+        let client = match super::usable_client(&self.client) {
+            Ok(client) => client,
+            Err(e) => {
+                return DeliveryResult {
+                    success: false,
+                    status_info: "error".to_string(),
+                    error: Some(e),
+                }
+            }
+        };
+        let req = client.post(&url).json(&doc);
         let req = Self::apply_auth(req, properties);
 
         match req.send().await {
@@ -126,7 +137,17 @@ impl NotificationConnector for ElasticsearchConnector {
             destination.trim_end_matches('/'),
         );
 
-        let req = self.client.get(&url);
+        let client = match super::usable_client(&self.client) {
+            Ok(client) => client,
+            Err(e) => {
+                return TestResult {
+                    success: false,
+                    status_info: "error".to_string(),
+                    error: Some(e),
+                }
+            }
+        };
+        let req = client.get(&url);
         let req = Self::apply_auth(req, properties);
 
         match req.send().await {
@@ -185,6 +206,25 @@ mod tests {
         let result = connector.test("http://127.0.0.1:1", &props).await;
         assert!(!result.success);
         assert!(result.error.is_some());
+    }
+
+    // TD-049: without a CA bundle the client cannot be built; the connector
+    // must report it on use instead of aborting the server at startup.
+    #[tokio::test]
+    async fn unavailable_client_fails_delivery_and_test_with_the_cause() {
+        let connector = ElasticsearchConnector::from_client(Err("no CA certificates".to_string()));
+        let props = HashMap::new();
+        let delivered = connector
+            .deliver("https://es.example:9200", "{\"Records\":[{\"eventName\":\"s3:ObjectCreated:Put\",\"eventTime\":\"2026-01-01T00:00:00Z\",\"s3\":{\"bucket\":{\"name\":\"b\"},\"object\":{\"key\":\"k\"}}}]}", &props)
+            .await;
+        assert!(!delivered.success);
+        let error = delivered.error.unwrap();
+        assert!(error.contains("HTTP client unavailable"), "{error}");
+        assert!(error.contains("no CA certificates"), "{error}");
+
+        let tested = connector.test("https://es.example:9200", &props).await;
+        assert!(!tested.success);
+        assert!(tested.error.unwrap().contains("no CA certificates"));
     }
 
     #[tokio::test]
