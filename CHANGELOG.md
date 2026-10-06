@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.1] — 2026-10-06
+
 ### Added
 
+- **GitHub releases.** Every release tag now gets a GitHub release, created by `bin/release` (step 12 of `RELEASING.md`): the notes are derived from the tagged CHANGELOG entry (the section headings and the bold title of every bullet, then links to the full entry, the compare view and the container images), previewed as GitHub renders them, and published only after confirmation. v0.31.0 is the first one.
 - **Linux release binaries.** Every GitHub release now carries the server binary for `linux/amd64` and `linux/arm64` (`arca-X.Y.Z-linux-<arch>.tar.gz`) and their `SHA256SUMS`. The binary is the static (musl) one of the release image, archived by the Publish images workflow from the very image it scanned, so it runs on any Linux of that architecture with no dependency; each archive also carries `LICENSE-AGPL-3.0`, `NOTICE` and `THIRD-PARTY-NOTICES.md`. `bin/release` downloads them from the tag's workflow run, verifies the checksums and attaches them; its preview shows the assets as GitHub will.
 
 ### Fixed
@@ -903,7 +906,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.31.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.31.1...HEAD
+[0.31.1]: https://github.com/dxc-technology/arca/compare/v0.31.0...v0.31.1
 [0.31.0]: https://github.com/dxc-technology/arca/compare/v0.30.2...v0.31.0
 [0.30.2]: https://github.com/dxc-technology/arca/compare/v0.30.1...v0.30.2
 [0.30.1]: https://github.com/dxc-technology/arca/compare/v0.30.0...v0.30.1
