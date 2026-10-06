@@ -128,3 +128,34 @@ package admin must, for each of the two packages
    *Inherit access from source repository* enabled;
 2. under **Danger Zone**, **Change visibility** to **Public** — this needs the
    organization to allow public packages.
+
+### 12. Create the GitHub release
+
+Once the Publish images run of step 11 is green, create the GitHub release
+for the tag:
+
+```bash
+bin/release vX.Y.Z --dry-run    # preview only
+bin/release vX.Y.Z              # preview, then asks y/n and publishes
+```
+
+The notes are never written by hand. `bin/release` (logic in
+`bin/lib/release.sh`, unit-tested by `bin/test scripts`) derives them from the
+`[X.Y.Z]` entry of `CHANGELOG.md` **as tagged** (not the working tree): every
+section heading and the bold title of each bullet, then a link to the full
+entry, the compare view against the previous final release and the
+`docker pull` lines of both images. A bullet without a `**bold title**` stops
+the script, so keep that CHANGELOG format. The preview is rendered by GitHub's
+own Markdown renderer and opened in the browser, laid out like the release
+page.
+
+It refuses a tag that is not on `origin`, a tag whose Publish images run did
+not succeed, and a tag that already has a release. It never creates or moves
+a tag.
+
+**Latest**: only the newest final release overall gets the *Latest* badge, a
+fix for an older line is published with `--latest=false` and a prerelease
+(`vX.Y.Z-rc.N`) as a pre-release, the same rule as the image tags in step 11.
+
+To fix a published release, edit it (`gh release edit vX.Y.Z --notes-file ...`);
+never delete it or move its tag.

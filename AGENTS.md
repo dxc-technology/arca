@@ -50,6 +50,7 @@ bin/build --console              # build console image
 bin/build --binary               # extract Linux binary to build/arca-<arch>
 bin/build --binary --arch amd64  # cross-compile for x86_64
 bin/build --push                 # publish the release at HEAD to ghcr.io (fallback; CI does it)
+bin/release vX.Y.Z               # create the GitHub release (notes from CHANGELOG, preview, y/n)
 
 # Run
 bin/arca start -d                # start server in background
@@ -230,6 +231,9 @@ their bare local names and are never pushed.
   package to this repository. `version` and `revision` are added at publish
   time, and all labels are copied to index-level annotations, which is where
   GHCR reads a multi-arch image's description from.
+
+Once the images are published, `bin/release` creates the GitHub release, with
+notes summarised from the CHANGELOG entry (step 12 of `RELEASING.md`).
 
 The release procedure, including the one-time package visibility setup, is in
 `RELEASING.md`.

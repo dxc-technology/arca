@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Create the GitHub release for a pushed release tag (step 12 of RELEASING.md).
+#
+# The notes are derived from the tag's CHANGELOG.md entry (section headings and
+# the bold title of every bullet, see bin/lib/release.sh). The release is
+# previewed as GitHub renders it before anything is published.
+#
+# Usage:
+#   bin/release [vX.Y.Z]            Preview, ask y/n, publish (default tag: the
+#                                   newest release tag reachable from HEAD)
+#   bin/release vX.Y.Z --dry-run    Preview only, publish nothing
+#   bin/release vX.Y.Z --yes        Publish without asking (after a dry run)
+#
+# Refuses unless the tag is on origin, its "Publish images" run succeeded and
+# no GitHub release exists for it yet. It never creates or moves a tag; to fix
+# a published release use `gh release edit`.
+
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/release.sh"
+cd "$(git rev-parse --show-toplevel)"
+
+TAG=""
+DRY_RUN=false
+YES=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run) DRY_RUN=true; shift ;;
+        --yes) YES=true; shift ;;
+        -h|--help)
+            sed -n '4,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+            exit 0
+            ;;
+        v*) TAG="$1"; shift ;;
+        *)
+            echo "Unknown option: $1" >&2
+            echo "Usage: bin/release [vX.Y.Z] [--dry-run] [--yes]" >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -z "$TAG" ]]; then
+    TAG="$(git describe --tags --abbrev=0 --match 'v[0-9]*')"
+fi
+if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    echo "Error: '$TAG' is not a release tag (vX.Y.Z)" >&2
+    exit 1
+fi
+VERSION="${TAG#v}"
+
+echo "==> Checking $TAG..."
+if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+    echo "Error: no local tag $TAG (git fetch --tags?)" >&2
+    exit 1
+fi
+if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+    echo "Error: tag $TAG is not on origin; push it first (step 10 of RELEASING.md)" >&2
+    exit 1
+fi
+if gh release view "$TAG" --repo "$GITHUB_REPO" >/dev/null 2>&1; then
+    echo "Error: a GitHub release for $TAG already exists; change it with gh release edit" >&2
+    exit 1
+fi
+conclusion="$(gh run list --repo "$GITHUB_REPO" --workflow publish-images.yml \
+    --branch "$TAG" --limit 1 --json conclusion -q '.[0].conclusion')"
+if [[ "$conclusion" != "success" ]]; then
+    echo "Error: the Publish images run for $TAG has not succeeded (${conclusion:-no run}); see step 11 of RELEASING.md" >&2
+    exit 1
+fi
+
+WORK="$(mktemp -d)"
+NOTES="$WORK/notes.md"
+PREVIEW="$WORK/preview.html"
+# The notes come from the CHANGELOG as tagged, never from the working tree.
+git show "$TAG:CHANGELOG.md" > "$WORK/CHANGELOG.md"
+release_notes "$VERSION" "$WORK/CHANGELOG.md" > "$NOTES"
+FLAG="$(release_flags "$VERSION")"
+release_preview_html "$VERSION" "$NOTES" "$PREVIEW" "$FLAG"
+
+echo "Notes:   $NOTES"
+echo "Preview: $PREVIEW"
+echo "Flag:    $FLAG"
+if command -v open >/dev/null 2>&1; then
+    open "$PREVIEW"
+elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$PREVIEW" >/dev/null 2>&1 || true
+fi
+
+if $DRY_RUN; then
+    echo "==> Dry run: nothing published"
+    exit 0
+fi
+if ! $YES; then
+    read -r -p "Publish GitHub release $TAG? [y/n] " answer
+    if [[ "$answer" != [yY] ]]; then
+        echo "==> Not published"
+        exit 0
+    fi
+fi
+
+echo "==> Publishing GitHub release $TAG..."
+gh release create "$TAG" --repo "$GITHUB_REPO" --verify-tag --title "$TAG" \
+    --notes-file "$NOTES" "$FLAG"

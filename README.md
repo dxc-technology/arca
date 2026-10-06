@@ -196,6 +196,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Tooling — Ceph report | 7 | `docker/s3-tests/report.py` AWS-divergence reclassification: counted as passed only on the exact listed assertion, other failures / errors / unlisted tests stay failed, `summary.json` and HTML list the divergences |
 | Shell libraries — TLS certificates | 32 | `bin/lib/compose.sh` with `docker` mocked: your certificates in `certs/` detected (every extension, symlinks, generated subdirectories and unrelated files ignored), served with auto-detect and winning over existing local ones, otherwise `certs/local` with known names; `arca tls ensure` run as the host user with Arca's service group, for the build target's image, building it when missing, extra SANs from the environment or `docker/.env`; the choice surviving `.arca-env` save/load; throwaway certificates for the self-contained suites generated into a fresh named volume, never into `certs/`; the integration suite pointed at the running server as started (plain, local CA, or your certificate under its first plain DNS SAN, a concrete name for a wildcard, or `ARCA_TLS_HOSTNAME`) |
 | Shell libraries — test isolation | 41 | `bin/test`, `bin/perf-test` and `bin/lib/compose.sh` with `docker` mocked: every self-contained mode (and each connector) in its own compose project with its own generated config and only ephemeral loopback host ports, the developer's `config/.generated.toml` and `.arca-env` left untouched; `bin/test integration`, `presigned` and `ssec` against the running server with `--no-deps`; the encryption, per-bucket and KMS suites enabled from the features in `.arca-env`; a failing test step still tears the mode's project down (`down -v`) and fails the run |
+| Shell libraries — GitHub releases | 19 | `bin/lib/release.sh` and `bin/release` with `gh` mocked: notes keep only section headings and bullet titles from the tagged CHANGELOG entry, stop at the next version, link changelog / compare / images, fail on a malformed entry; Latest only for the newest final release, pre-releases flagged; refuses a tag not on origin, an unpublished release or an existing one; dry run and "n" publish nothing |
 | Integration — TLS Permissions | 9 | modes and owning GID of `arca tls generate` output seen from inside a container, Arca (65532) serving HTTPS from the 0640 key, console (uid 100) serving HTTPS with the service GID, and the negative cases without it (no TLS, key unreadable) — staged in a named volume so ownership is real on macOS too |
 | Integration — PostgreSQL | 21 | buckets, objects, multipart, versioning, tags, lifecycle, copy, range, admin health, concurrent-write smoke (commit-ordered seq) |
 | Integration — Export/Import | 20 | export all/single/multiple sections, secret masking, import dry_run/skip/overwrite, masked credentials, node-identity guard, bucket create/skip, round-trip |
@@ -209,9 +210,9 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — Migrate DB | 1 | SQLite→PostgreSQL offline metadata migration + row-count verify |
 | Integration — Migrate Topology | 1 | single→cluster config emission + DB ops, then →single round-trip |
 | Connector integrations | 84 | Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Kafka, AMQP, Elasticsearch, Syslog, SMTP, gRPC — each: delivery, custom destination, delete event, multiple events, payload format, connectivity test |
-| **Arca tests** | **2,008** | **All tests written for this project** |
+| **Arca tests** | **2,027** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 825 | 371 pass, 363 fail, 91 skip — 0 unexpected failures (RGW-only extensions excluded; 2 pass on AWS behaviour where RGW differs) |
-| **Total** | **2,833** | |
+| **Total** | **2,852** | |
 
 ## License
 
