@@ -20,6 +20,8 @@ impl ElasticsearchConnector {
     /// Create a new Elasticsearch connector with the given timeout.
     pub fn new(timeout: Duration) -> Self {
         crate::crypto::ensure_default_crypto_provider();
+        // TECHDEBT(TD-049): panics when the system has no CA certificates,
+        // aborting the server even when no notification is configured.
         let client = reqwest::Client::builder()
             .timeout(timeout)
             .connect_timeout(timeout)
