@@ -520,6 +520,93 @@ test_image_verify_removes_the_scan_image() {
     assert_contains "$(cat "$DOCKER_LOG")" $'rmi\narca-console-scan:arm64'
 }
 
+# --- release binaries --------------------------------------------------------
+
+# The licence texts every release archive must carry, in the scratch repo.
+add_licence_files() {
+    echo "agpl" > LICENSE-AGPL-3.0
+    echo "notice" > NOTICE
+    echo "third parties" > THIRD-PARTY-NOTICES.md
+}
+
+# docker answers like a real daemon for the calls binary_archive makes:
+# `create` prints a container id, `cp` writes the "binary" to its target.
+mock_docker_binary() {
+    mock_docker
+    docker_reply() {
+        case "$1" in
+            create) echo "c0ffee" ;;
+            cp) echo "binary" > "$3" ;;
+        esac
+    }
+}
+
+test_binary_archive_packs_the_binary_with_the_licences() {
+    new_repo 1.2.3 1.2.3
+    add_licence_files
+    mock_docker_binary
+    local out
+    out="$(mktemp -d)"
+    binary_archive arca-scan:amd64 1.2.3 amd64 "$out" >/dev/null || return 1
+    assert_eq $'arca-1.2.3-linux-amd64/\narca-1.2.3-linux-amd64/LICENSE-AGPL-3.0\narca-1.2.3-linux-amd64/NOTICE\narca-1.2.3-linux-amd64/THIRD-PARTY-NOTICES.md\narca-1.2.3-linux-amd64/arca' \
+        "$(tar -tzf "$out/arca-1.2.3-linux-amd64.tar.gz" | sort)" &&
+    assert_contains "$(cat "$DOCKER_LOG")" $'cp\nc0ffee:/usr/local/bin/arca' &&
+    assert_contains "$(cat "$DOCKER_LOG")" $'rm\nc0ffee'
+}
+
+test_binary_archive_fails_and_leaves_nothing_when_the_copy_fails() {
+    new_repo 1.2.3 1.2.3
+    add_licence_files
+    mock_docker
+    docker_reply() { case "$1" in create) echo "c0ffee" ;; cp) return 1 ;; esac; }
+    local out
+    out="$(mktemp -d)"
+    assert_fails binary_archive arca-scan:amd64 1.2.3 amd64 "$out" &&
+    assert_eq "" "$(ls "$out")"
+}
+
+test_image_verify_archives_arca_from_the_scanned_image_before_removing_it() {
+    new_repo 1.2.3 1.2.3
+    add_licence_files
+    mock_docker_binary
+    local out log
+    out="$(mktemp -d)"
+    image_verify arca 1.2.3 linux/arm64 "$out" >/dev/null || return 1
+    log="$(cat "$DOCKER_LOG")"
+    assert_contains "$log" $'create\narca-scan:arm64' &&
+    assert_eq "arca-1.2.3-linux-arm64.tar.gz" "$(ls "$out")" &&
+    # The archive is taken before the scan image is removed.
+    [[ "${log%%$'rmi\narca-scan:arm64'*}" == *$'create\narca-scan:arm64'* ]] ||
+        { echo "binary extracted after the scan image was removed"; return 1; }
+}
+
+test_image_verify_archives_nothing_for_the_console_or_without_a_directory() {
+    new_repo 1.2.3 1.2.3
+    add_licence_files
+    mock_docker_binary
+    local out
+    out="$(mktemp -d)"
+    image_verify arca-console 1.2.3 linux/amd64 "$out" >/dev/null || return 1
+    image_verify arca 1.2.3 linux/amd64 >/dev/null || return 1
+    assert_eq "" "$(ls "$out")" &&
+    if grep -qx create "$DOCKER_LOG"; then echo "no container expected"; return 1; fi
+}
+
+test_binary_checksums_cover_every_archive_and_verify() {
+    local dir
+    dir="$(mktemp -d)"
+    echo a > "$dir/arca-1.2.3-linux-amd64.tar.gz"
+    echo b > "$dir/arca-1.2.3-linux-arm64.tar.gz"
+    binary_checksums "$dir" || return 1
+    assert_eq 2 "$(wc -l < "$dir/SHA256SUMS" | tr -d ' ')" &&
+    assert_contains "$(cat "$dir/SHA256SUMS")" "  arca-1.2.3-linux-arm64.tar.gz" &&
+    (cd "$dir" && sha256sum -c SHA256SUMS >/dev/null)
+}
+
+test_binary_checksums_fail_without_archives() {
+    assert_fails binary_checksums "$(mktemp -d)"
+}
+
 # -----------------------------------------------------------------------------
 
 echo "==> bin/lib/images.sh"

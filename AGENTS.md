@@ -232,8 +232,11 @@ their bare local names and are never pushed.
   time, and all labels are copied to index-level annotations, which is where
   GHCR reads a multi-arch image's description from.
 
+The same workflow archives the static `arca` binary of each scanned image
+(`binary_archive` in `bin/lib/images.sh`) as the `release-binaries` artifact.
 Once the images are published, `bin/release` creates the GitHub release, with
-notes summarised from the CHANGELOG entry (step 12 of `RELEASING.md`).
+notes summarised from the CHANGELOG entry and those binaries attached (step 12
+of `RELEASING.md`).
 
 The release procedure, including the one-time package visibility setup, is in
 `RELEASING.md`.

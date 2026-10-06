@@ -4,7 +4,9 @@ set -euo pipefail
 # Create the GitHub release for a pushed release tag (step 12 of RELEASING.md).
 #
 # The notes are derived from the tag's CHANGELOG.md entry (section headings and
-# the bold title of every bullet, see bin/lib/release.sh). The release is
+# the bold title of every bullet, see bin/lib/release.sh). The Linux binaries
+# (amd64, arm64) and their SHA256SUMS come from the tag's "Publish images" run
+# (artifact release-binaries), verified before upload. The release is
 # previewed as GitHub renders it before anything is published.
 #
 # Usage:
@@ -12,6 +14,9 @@ set -euo pipefail
 #                                   newest release tag reachable from HEAD)
 #   bin/release vX.Y.Z --dry-run    Preview only, publish nothing
 #   bin/release vX.Y.Z --yes        Publish without asking (after a dry run)
+#   bin/release vX.Y.Z --without-binaries
+#                                   Source archives only, for tags published
+#                                   before the pipeline built binaries (<= v0.31.0)
 #
 # Refuses unless the tag is on origin, its "Publish images" run succeeded and
 # no GitHub release exists for it yet. It never creates or moves a tag; to fix
@@ -23,19 +28,21 @@ cd "$(git rev-parse --show-toplevel)"
 TAG=""
 DRY_RUN=false
 YES=false
+BINARIES=true
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run) DRY_RUN=true; shift ;;
         --yes) YES=true; shift ;;
+        --without-binaries) BINARIES=false; shift ;;
         -h|--help)
-            sed -n '4,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+            sed -n '4,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         v*) TAG="$1"; shift ;;
         *)
             echo "Unknown option: $1" >&2
-            echo "Usage: bin/release [vX.Y.Z] [--dry-run] [--yes]" >&2
+            echo "Usage: bin/release [vX.Y.Z] [--dry-run] [--yes] [--without-binaries]" >&2
             exit 1
             ;;
     esac
@@ -63,9 +70,10 @@ if gh release view "$TAG" --repo "$GITHUB_REPO" >/dev/null 2>&1; then
     echo "Error: a GitHub release for $TAG already exists; change it with gh release edit" >&2
     exit 1
 fi
-conclusion="$(gh run list --repo "$GITHUB_REPO" --workflow publish-images.yml \
-    --branch "$TAG" --limit 1 --json conclusion -q '.[0].conclusion')"
-if [[ "$conclusion" != "success" ]]; then
+read -r RUN_ID conclusion < <(gh run list --repo "$GITHUB_REPO" --workflow publish-images.yml \
+    --branch "$TAG" --limit 1 --json databaseId,conclusion \
+    -q '.[0] | "\(.databaseId) \(.conclusion)"') || true
+if [[ "${conclusion:-}" != "success" ]]; then
     echo "Error: the Publish images run for $TAG has not succeeded (${conclusion:-no run}); see step 11 of RELEASING.md" >&2
     exit 1
 fi
@@ -77,11 +85,34 @@ PREVIEW="$WORK/preview.html"
 git show "$TAG:CHANGELOG.md" > "$WORK/CHANGELOG.md"
 release_notes "$VERSION" "$WORK/CHANGELOG.md" > "$NOTES"
 FLAG="$(release_flags "$VERSION")"
-release_preview_html "$VERSION" "$NOTES" "$PREVIEW" "$FLAG"
+
+ASSETS=()
+ASSETS_DIR=""
+if $BINARIES; then
+    echo "==> Downloading the release binaries of run $RUN_ID..."
+    ASSETS_DIR="$WORK/assets"
+    if ! gh run download "$RUN_ID" --repo "$GITHUB_REPO" --name release-binaries \
+            --dir "$ASSETS_DIR" >/dev/null; then
+        echo "Error: run $RUN_ID has no release-binaries artifact (it expires after 90 days;" >&2
+        echo "       tags up to v0.31.0 predate it: use --without-binaries)" >&2
+        exit 1
+    fi
+    release_assets_verify "$ASSETS_DIR" "$VERSION"
+    while IFS= read -r name; do
+        ASSETS+=("$ASSETS_DIR/$name")
+    done < <(release_archive_names "$VERSION")
+    ASSETS+=("$ASSETS_DIR/SHA256SUMS")
+fi
+release_preview_html "$VERSION" "$NOTES" "$PREVIEW" "$FLAG" "$ASSETS_DIR"
 
 echo "Notes:   $NOTES"
 echo "Preview: $PREVIEW"
 echo "Flag:    $FLAG"
+if $BINARIES; then
+    echo "Assets:  ${ASSETS[*]##*/}"
+else
+    echo "Assets:  none (source archives only, added by GitHub)"
+fi
 if command -v open >/dev/null 2>&1; then
     open "$PREVIEW"
 elif command -v xdg-open >/dev/null 2>&1; then
@@ -102,4 +133,4 @@ fi
 
 echo "==> Publishing GitHub release $TAG..."
 gh release create "$TAG" --repo "$GITHUB_REPO" --verify-tag --title "$TAG" \
-    --notes-file "$NOTES" "$FLAG"
+    --notes-file "$NOTES" "$FLAG" "${ASSETS[@]+"${ASSETS[@]}"}"

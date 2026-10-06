@@ -16,8 +16,12 @@
 #   release_version                          X.Y.Z from the release tag at HEAD
 #   release_tags <version>                   tags a release is published under
 #   use_publish_builder                      select the buildx builder
-#   image_verify <image> <version> <platform>          build one platform, scan it
-#                                            (and Cargo.lock, for arca)
+#   image_verify <image> <version> <platform> [bindir] build one platform, scan it
+#                                            (and Cargo.lock, for arca); with
+#                                            bindir, archive arca's binary too
+#   binary_archive <image> <version> <arch> <outdir>  release archive of the
+#                                            arca binary in a local image
+#   binary_checksums <dir>                   SHA256SUMS of the archives in dir
 #   image_push_digest <image> <version> <platforms>    push untagged, print digest
 #   publish_index <image> <version> <repo@digest>...   tag the multi-arch index
 #   publish_release                          all of the above, for both images
@@ -178,19 +182,61 @@ lockfile_scan() {
 }
 
 # Build one platform of an image into the local image store and scan it.
-image_verify() {    # image_verify <image> <version> <platform>
-    local image="$1" version="$2" platform="$3"
+# With a binary directory, the arca binary is archived from the very image
+# that was scanned, before it is removed: the released binary is the scanned
+# one, never a separate build.
+image_verify() {    # image_verify <image> <version> <platform> [bindir]
+    local image="$1" version="$2" platform="$3" bindir="${4:-}"
     local scan_ref="$image-scan:${platform##*/}" rc=0
     echo "==> Building $image for $platform..."
     image_build "$image" "$version" --platform "$platform" --load -t "$scan_ref" || return 1
     echo "==> Scanning $image for $platform..."
     image_scan "$scan_ref" || rc=$?
+    if [[ "$rc" -eq 0 && "$image" == "arca" && -n "$bindir" ]]; then
+        echo "==> Archiving the arca binary for $platform..."
+        binary_archive "$scan_ref" "$version" "${platform##*/}" "$bindir" || rc=$?
+    fi
     docker rmi "$scan_ref" >/dev/null 2>&1 || true
     if [[ "$rc" -eq 0 && "$image" == "arca" ]]; then
         echo "==> Scanning the Rust dependencies (Cargo.lock)..."
         lockfile_scan || rc=$?
     fi
     return "$rc"
+}
+
+# The arca binary of a local image as a release archive,
+# arca-<version>-linux-<arch>.tar.gz, with the licence texts a distributed
+# binary must carry. The binary is static (musl), so it runs on any Linux of
+# that architecture.
+binary_archive() {  # binary_archive <local image> <version> <arch> <outdir>
+    local ref="$1" version="$2" arch="$3" outdir="$4"
+    local root name stage container rc=0
+    root="$(git rev-parse --show-toplevel)" || return 1
+    name="arca-$version-linux-$arch"
+    stage="$(mktemp -d)"
+    mkdir -p "$stage/$name" "$outdir"
+    if ! container="$(docker create "$ref")"; then
+        rm -rf "$stage"
+        return 1
+    fi
+    docker cp "$container:/usr/local/bin/arca" "$stage/$name/arca" || rc=1
+    docker rm "$container" >/dev/null 2>&1 || true
+    if [[ "$rc" -eq 0 ]]; then
+        cp "$root/LICENSE-AGPL-3.0" "$root/NOTICE" "$root/THIRD-PARTY-NOTICES.md" "$stage/$name/" &&
+            tar -C "$stage" -czf "$outdir/$name.tar.gz" "$name" || rc=1
+    fi
+    rm -rf "$stage"
+    return "$rc"
+}
+
+# SHA256SUMS of the release archives in a directory, written next to them.
+binary_checksums() {    # binary_checksums <dir>
+    local dir="$1"
+    if ! compgen -G "$dir/*.tar.gz" >/dev/null; then
+        echo "Error: no release archive in $dir" >&2
+        return 1
+    fi
+    (cd "$dir" && sha256sum -- *.tar.gz > SHA256SUMS)
 }
 
 # Push an image, untagged, by digest; prints the digest. Tags are applied only

@@ -93,6 +93,12 @@ Upgrades" in `AGENTS.md`, or a dependency bump), make a new patch release, and
 never delete or move the tag. The workflow also refuses a tag that disagrees
 with `Cargo.toml` or `console/index.html`.
 
+The `arca` builds also archive the static binary of the image they scanned,
+and once every build passed the **Release binaries** job keeps the two
+archives (`arca-X.Y.Z-linux-amd64.tar.gz`, `-linux-arm64.tar.gz`) and their
+`SHA256SUMS` as the `release-binaries` artifact of the run, for 90 days: step
+12 attaches them to the GitHub release.
+
 Watch the run and check the result:
 
 ```bash
@@ -115,7 +121,9 @@ bin/build --push
 
 It runs the same pipeline (`bin/lib/images.sh`), with the same scans, from the
 local machine. The non-native platform builds under emulation, which is slow
-for the Rust image.
+for the Rust image. It publishes the images only: the release binaries exist only
+as the artifact of a workflow run, so a release published this way gets its
+binaries by re-running the workflow on the tag once CI is back.
 
 #### One-time setup (first publication only)
 
@@ -145,7 +153,14 @@ The notes are never written by hand. `bin/release` (logic in
 section heading and the bold title of each bullet, then a link to the full
 entry, the compare view against the previous final release and the
 `docker pull` lines of both images. A bullet without a `**bold title**` stops
-the script, so keep that CHANGELOG format. The preview is rendered by GitHub's
+the script, so keep that CHANGELOG format.
+
+It downloads the `release-binaries` artifact of the tag's Publish images run,
+checks that both archives are there and match `SHA256SUMS`, and attaches the
+archives and `SHA256SUMS` to the release (GitHub adds the two source archives
+by itself). Tags up to v0.31.0 predate the artifact: release them with
+`--without-binaries`. If the artifact has expired (90 days), re-run the
+workflow on the tag first (see "Re-publishing" in step 11). The preview is rendered by GitHub's
 own Markdown renderer and opened in the browser, laid out like the release
 page.
 

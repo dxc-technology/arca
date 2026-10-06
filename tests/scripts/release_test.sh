@@ -107,23 +107,41 @@ new_repo() {    # new_repo [tag...]
 # Puts a fake `gh` first on PATH. It appends its arguments, one per line and
 # followed by `--`, to $GH_LOG, and answers like GitHub would:
 #   GH_RELEASE_EXISTS=1    `release view` succeeds (a release already exists)
-#   GH_RUN_CONCLUSION      what `run list` reports for the publish run
+#   GH_RUN_CONCLUSION      what `run list` reports for the publish run (id 4242)
+#   GH_ARTIFACT            what `run download` finds: good (both archives and
+#                          SHA256SUMS), missing, corrupt (a checksum mismatch)
+#                          or amd64-only
 mock_gh() {
     local bin
     bin="$(mktemp -d)"
     GH_LOG="$(mktemp)"
-    export GH_LOG GH_RELEASE_EXISTS="${GH_RELEASE_EXISTS:-0}" GH_RUN_CONCLUSION="${GH_RUN_CONCLUSION:-success}"
-    cat > "$bin/gh" <<'EOF'
+    export GH_LOG GH_RELEASE_EXISTS="${GH_RELEASE_EXISTS:-0}" \
+        GH_RUN_CONCLUSION="${GH_RUN_CONCLUSION:-success}" GH_ARTIFACT="${GH_ARTIFACT:-good}"
+    cat > "$bin/gh" <<'MOCK'
 #!/usr/bin/env bash
 printf '%s\n' "$@" -- >> "$GH_LOG"
+download() {    # writes the release-binaries artifact of v0.3.0 into --dir
+    local dir="" arch
+    while [[ $# -gt 0 ]]; do [[ "$1" == --dir ]] && dir="$2"; shift; done
+    [[ "$GH_ARTIFACT" == missing ]] && { echo "no artifact matches" >&2; return 1; }
+    mkdir -p "$dir"
+    for arch in amd64 arm64; do
+        [[ "$GH_ARTIFACT" == amd64-only && "$arch" == arm64 ]] && continue
+        echo "$arch" > "$dir/arca-0.3.0-linux-$arch.tar.gz"
+    done
+    (cd "$dir" && sha256sum -- *.tar.gz > SHA256SUMS)
+    [[ "$GH_ARTIFACT" == corrupt ]] && echo tampered > "$dir/arca-0.3.0-linux-amd64.tar.gz"
+    return 0
+}
 case "$1 $2" in
     "release view") [[ "$GH_RELEASE_EXISTS" == 1 ]] ;;
-    "run list") echo "$GH_RUN_CONCLUSION" ;;
+    "run list") echo "4242 $GH_RUN_CONCLUSION" ;;
+    "run download") download "$@" ;;
     "api markdown") echo "<p>rendered by github</p>" ;;
     "release create") echo "https://github.com/dxc-technology/arca/releases/tag/$3" ;;
     *) exit 0 ;;
 esac
-EOF
+MOCK
     chmod +x "$bin/gh"
     PATH="$bin:$PATH"
 }
@@ -233,7 +251,7 @@ test_release_yes_creates_it_on_the_existing_tag() {
     local log
     log="$(cat "$GH_LOG")"
     assert_contains "$log" $'release\ncreate\nv0.3.0\n--repo\ndxc-technology/arca\n--verify-tag\n--title\nv0.3.0\n--notes-file' &&
-    assert_contains "$log" $'\n--latest\n--'
+    assert_contains "$log" $'\n--latest\n'
 }
 
 test_release_asks_and_stops_on_no() {
@@ -280,6 +298,71 @@ test_release_refuses_a_tag_missing_on_origin() {
     local out
     out="$(release_must_fail v0.3.1 --yes)" || { echo "$out"; return 1; }
     assert_contains "$out" "not on origin"
+}
+
+test_release_attaches_the_verified_binaries_of_the_publish_run() {
+    new_repo v0.3.0
+    mock_gh
+    bash "$RELEASE" v0.3.0 --yes >/dev/null || return 1
+    local log
+    log="$(cat "$GH_LOG")"
+    assert_contains "$log" $'run\ndownload\n4242\n--repo\ndxc-technology/arca\n--name\nrelease-binaries' &&
+    assert_contains "$log" "/arca-0.3.0-linux-amd64.tar.gz" &&
+    assert_contains "$log" "/arca-0.3.0-linux-arm64.tar.gz" &&
+    assert_contains "$log" "/SHA256SUMS"
+}
+
+test_release_refuses_when_the_binaries_artifact_is_missing() {
+    new_repo v0.3.0
+    GH_ARTIFACT=missing
+    mock_gh
+    local out
+    out="$(release_must_fail v0.3.0 --yes)" || { echo "$out"; return 1; }
+    assert_contains "$out" "release-binaries" &&
+    assert_not_contains "$(cat "$GH_LOG")" $'release\ncreate'
+}
+
+test_release_refuses_a_checksum_mismatch() {
+    new_repo v0.3.0
+    GH_ARTIFACT=corrupt
+    mock_gh
+    local out
+    out="$(release_must_fail v0.3.0 --yes)" || { echo "$out"; return 1; }
+    assert_contains "$out" "checksum" &&
+    assert_not_contains "$(cat "$GH_LOG")" $'release\ncreate'
+}
+
+test_release_refuses_a_missing_architecture() {
+    new_repo v0.3.0
+    GH_ARTIFACT=amd64-only
+    mock_gh
+    local out
+    out="$(release_must_fail v0.3.0 --yes)" || { echo "$out"; return 1; }
+    assert_contains "$out" "arca-0.3.0-linux-arm64.tar.gz" &&
+    assert_not_contains "$(cat "$GH_LOG")" $'release\ncreate'
+}
+
+test_release_without_binaries_attaches_nothing() {
+    new_repo v0.3.0
+    GH_ARTIFACT=missing
+    mock_gh
+    bash "$RELEASE" v0.3.0 --without-binaries --yes >/dev/null || return 1
+    local log
+    log="$(cat "$GH_LOG")"
+    assert_not_contains "$log" $'run\ndownload' &&
+    assert_not_contains "$log" ".tar.gz" &&
+    assert_contains "$log" $'release\ncreate'
+}
+
+test_release_preview_lists_the_assets() {
+    new_repo v0.3.0
+    mock_gh
+    local out preview
+    out="$(bash "$RELEASE" v0.3.0 --dry-run)" || return 1
+    preview="$(sed -n 's/^Preview: *//p' <<< "$out")"
+    assert_contains "$(cat "$preview")" "arca-0.3.0-linux-arm64.tar.gz" &&
+    assert_contains "$(cat "$preview")" "SHA256SUMS" &&
+    assert_contains "$(cat "$preview")" "Source code (tar.gz)"
 }
 
 test_release_reads_the_changelog_of_the_tag() {

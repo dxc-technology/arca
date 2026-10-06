@@ -9,6 +9,11 @@
 # platform publishes no tag at all. The logic lives in bin/lib/images.sh,
 # shared with the local `bin/build --push` fallback.
 #
+# The arca builds also archive their static binary, taken from the very image
+# that was scanned; once every build passed, the binaries job adds SHA256SUMS
+# and keeps them as the `release-binaries` artifact, which bin/release attaches
+# to the GitHub release (step 12 of RELEASING.md).
+#
 # Publishing with GITHUB_TOKEN links each package to this repository, and the
 # package inherits the repository's access settings.
 name: Publish images
@@ -60,7 +65,7 @@ jobs:
           version="$(release_version)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           use_publish_builder
-          image_verify "$IMAGE" "$version" "$PLATFORM"
+          image_verify "$IMAGE" "$version" "$PLATFORM" "$RUNNER_TEMP/binaries"
 
       - name: Log in to ghcr.io
         env:
@@ -85,6 +90,46 @@ jobs:
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
+
+      - uses: actions/upload-artifact@v7
+        if: matrix.image == 'arca'
+        with:
+          name: binary-${{ matrix.arch }}
+          path: ${{ runner.temp }}/binaries/*
+          if-no-files-found: error
+          retention-days: 1
+
+  binaries:
+    name: Release binaries
+    needs: build
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: binary-*
+          path: ${{ runner.temp }}/release-binaries
+          merge-multiple: true
+
+      - name: Checksums
+        run: |
+          source bin/lib/images.sh
+          binary_checksums "$RUNNER_TEMP/release-binaries"
+          cat "$RUNNER_TEMP/release-binaries/SHA256SUMS"
+
+      # Kept for the longest retention GitHub allows: bin/release downloads it
+      # when the GitHub release is created.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-binaries
+          path: ${{ runner.temp }}/release-binaries/*
+          if-no-files-found: error
+          retention-days: 90
 
   merge:
     name: Publish ${{ matrix.image }}

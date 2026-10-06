@@ -1656,13 +1656,31 @@ a running container was built from.</p>
 </div>
 </div>
 <h2 id="standalone-binary">Standalone Binary<a class="headerlink" href="#standalone-binary" title="Permanent link">&para;</a></h2>
-<p>Extract the statically-linked Linux binary for deployment on servers (without Docker):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Build for host architecture</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>bin/build<span class="w"> </span>--binary
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c1"># Cross-compile for a specific architecture</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>bin/build<span class="w"> </span>--binary<span class="w"> </span>--arch<span class="w"> </span>amd64
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>bin/build<span class="w"> </span>--binary<span class="w"> </span>--arch<span class="w"> </span>arm64
+<p>From v0.31.1 on, every <a href="https://github.com/dxc-technology/arca/releases">GitHub release</a>
+carries the server binary for Linux, <code>arca-X.Y.Z-linux-amd64.tar.gz</code> and
+<code>arca-X.Y.Z-linux-arm64.tar.gz</code>, with their <code>SHA256SUMS</code>. It is the static (musl) binary of
+the release image, built and scanned by the release pipeline, so it runs on any Linux of that
+architecture with no dependency. Each archive also contains the licence (<code>LICENSE-AGPL-3.0</code>),
+<code>NOTICE</code> and <code>THIRD-PARTY-NOTICES.md</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nv">v</span><span class="o">=</span><span class="m">0</span>.31.1<span class="p">;</span><span class="w"> </span><span class="nv">arch</span><span class="o">=</span>amd64<span class="w">        </span><span class="c1"># or arm64</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nv">base</span><span class="o">=</span>https://github.com/dxc-technology/arca/releases/download/v<span class="nv">$v</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>curl<span class="w"> </span>-fLO<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$base</span><span class="s2">/arca-</span><span class="nv">$v</span><span class="s2">-linux-</span><span class="nv">$arch</span><span class="s2">.tar.gz&quot;</span><span class="w"> </span>-fLO<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$base</span><span class="s2">/SHA256SUMS&quot;</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>sha256sum<span class="w"> </span>--check<span class="w"> </span>--ignore-missing<span class="w"> </span>SHA256SUMS
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>tar<span class="w"> </span>-xzf<span class="w"> </span><span class="s2">&quot;arca-</span><span class="nv">$v</span><span class="s2">-linux-</span><span class="nv">$arch</span><span class="s2">.tar.gz&quot;</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>./arca-<span class="nv">$v</span>-linux-<span class="nv">$arch</span>/arca<span class="w"> </span>serve<span class="w"> </span>--config-path<span class="w"> </span>/etc/arca/config.toml
+</code></pre></div>
+<p>Start from <a href="https://github.com/dxc-technology/arca/blob/main/config/default.toml"><code>config/default.toml</code></a>
+and see <a href="../../guide/configuration/">Configuration</a>. The notification connectors that deliver
+over HTTPS (webhook, Elasticsearch) use the system CA bundle: without one the server still
+starts, and those connectors report <code>HTTP client unavailable</code> until a bundle is installed.</p>
+<p>To build the binary yourself instead, extract it from a local build (without Docker on the
+target server):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Build for host architecture</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>bin/build<span class="w"> </span>--binary
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="c1"># Cross-compile for a specific architecture</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>bin/build<span class="w"> </span>--binary<span class="w"> </span>--arch<span class="w"> </span>amd64
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>bin/build<span class="w"> </span>--binary<span class="w"> </span>--arch<span class="w"> </span>arm64
 </code></pre></div>
 <p>The binary is written to <code>build/arca-&lt;arch&gt;</code> (e.g., <code>build/arca-arm64</code>). These are Linux ELF binaries, they cannot run on macOS directly.</p>
 <h2 id="docker-images">Docker Images<a class="headerlink" href="#docker-images" title="Permanent link">&para;</a></h2>
@@ -1699,27 +1717,27 @@ and <code>ghcr.io/dxc-technology/arca-console:production</code> — never with a
 so a build of your working tree can neither pass for a release nor shadow the
 published <code>latest</code>.</p>
 <p>Switch between them using <code>BUILD_TARGET</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Production (default)</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="c1"># Development</span>
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--dev
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># Production (default)</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="c1"># Development</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--dev
 </code></pre></div>
 <h2 id="running-tests">Running Tests<a class="headerlink" href="#running-tests" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># All tests (unit + integration)</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>bin/test
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="c1"># Unit tests only</span>
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>bin/test<span class="w"> </span>unit
-<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>
-<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="c1"># Integration tests only (server must be running)</span>
-<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>bin/test<span class="w"> </span>integration
-<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>
-<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="c1"># Ceph s3-tests compatibility suite (stops your server and wipes its data volume)</span>
-<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>bin/s3-tests
-<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>
-<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="c1"># Tests of the s3-tests report generator (no server needed)</span>
-<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>bin/test<span class="w"> </span>s3-report
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># All tests (unit + integration)</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>bin/test
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="c1"># Unit tests only</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>bin/test<span class="w"> </span>unit
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="c1"># Integration tests only (server must be running)</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>bin/test<span class="w"> </span>integration
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="c1"># Ceph s3-tests compatibility suite (stops your server and wipes its data volume)</span>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>bin/s3-tests
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a>
+<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a><span class="c1"># Tests of the s3-tests report generator (no server needed)</span>
+<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>bin/test<span class="w"> </span>s3-report
 </code></pre></div>
 <p>The <a href="https://github.com/ceph/s3-tests">Ceph s3-tests</a> suite runs the industry-standard S3 compatibility tests against a fresh Arca instance with encryption enabled: <code>bin/s3-tests</code> stops the running server, deletes its data volume for a clean state and leaves the server stopped at the end. Results are saved to <code>s3-tests/results.xml</code>, an HTML report to <code>s3-tests/report.html</code>, and a machine-readable summary to <code>s3-tests/summary.json</code>. Ceph/RGW-only extensions are excluded from the score, and a test where Ceph expects RGW's answer while Arca deliberately gives AWS's counts as passed only when it fails on exactly that documented assertion (listed under "AWS Divergences" in the report).</p>
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>

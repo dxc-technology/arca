@@ -14,7 +14,10 @@
 #   previous_release_tag <version>           final release tag before it
 #   release_flags <version>                  gh flag: --latest, --latest=false
 #                                            or --prerelease
-#   release_preview_html <version> <notes> <out.html> <flag>
+#   release_archive_names <version>          binary archives a release carries
+#   release_assets_verify <dir> <version>    check a downloaded release-binaries
+#                                            artifact (archives, SHA256SUMS)
+#   release_preview_html <version> <notes> <out.html> <flag> [assets dir]
 #                                            the release page as GitHub shows it
 
 # shellcheck source=bin/lib/images.sh
@@ -90,10 +93,75 @@ release_flags() {   # release_flags <version>
     fi
 }
 
+# The binary archives a release carries, one per published platform (built by
+# binary_archive in images.sh).
+release_archive_names() {   # release_archive_names <version>
+    local platform
+    for platform in ${PUBLISH_PLATFORMS//,/ }; do
+        echo "arca-$1-linux-${platform##*/}.tar.gz"
+    done
+}
+
+_sha256_check() {   # _sha256_check <SHA256SUMS>
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum -c "$1"
+    else
+        shasum -a 256 -c "$1"    # macOS
+    fi
+}
+
+# A downloaded release-binaries artifact is complete and intact: every archive
+# the release must carry is there and listed in SHA256SUMS, and every listed
+# file matches its checksum.
+release_assets_verify() {   # release_assets_verify <dir> <version>
+    local dir="$1" version="$2" name
+    if [[ ! -f "$dir/SHA256SUMS" ]]; then
+        echo "Error: SHA256SUMS is missing from the release-binaries artifact" >&2
+        return 1
+    fi
+    while IFS= read -r name; do
+        if [[ ! -f "$dir/$name" ]]; then
+            echo "Error: $name is missing from the release-binaries artifact" >&2
+            return 1
+        fi
+        if ! grep -q "  $name\$" "$dir/SHA256SUMS"; then
+            echo "Error: $name is not listed in SHA256SUMS" >&2
+            return 1
+        fi
+    done < <(release_archive_names "$version")
+    if ! (cd "$dir" && _sha256_check SHA256SUMS) >/dev/null 2>&1; then
+        echo "Error: checksum mismatch in the release-binaries artifact" >&2
+        return 1
+    fi
+}
+
+_human_size() {     # _human_size <file>
+    wc -c < "$1" | awk '{ s = $1; split("B KB MB GB", u, " "); i = 1
+        while (s >= 1024 && i < 4) { s /= 1024; i++ }
+        printf (i == 1 ? "%d %s" : "%.1f %s"), s, u[i] }'
+}
+
+# The "Assets" box of the release page: the attached files, then the two
+# source archives GitHub adds to every release by itself.
+_assets_html() {    # _assets_html <assets dir or empty>
+    local dir="$1" file items="" count=2
+    if [[ -n "$dir" ]]; then
+        for file in "$dir"/*.tar.gz "$dir/SHA256SUMS"; do
+            [[ -f "$file" ]] || continue
+            items+="<li><span>$(basename "$file")</span><span class=\"size\">$(_human_size "$file")</span></li>"
+            count=$((count + 1))
+        done
+    fi
+    items+='<li><span>Source code (zip)</span><span class="size">added by GitHub</span></li>'
+    items+='<li><span>Source code (tar.gz)</span><span class="size">added by GitHub</span></li>'
+    printf '<details class="assets" open><summary>Assets <span class="count">%d</span></summary><ul>%s</ul></details>' \
+        "$count" "$items"
+}
+
 # Renders the notes with GitHub's own Markdown renderer and wraps them in a
 # page laid out like a release: title, tag, Latest / Pre-release badge.
-release_preview_html() {    # release_preview_html <version> <notes.md> <out.html> <flag>
-    local version="$1" notes="$2" out="$3" flag="$4" body badge=""
+release_preview_html() {    # release_preview_html <version> <notes.md> <out.html> <flag> [assets dir]
+    local version="$1" notes="$2" out="$3" flag="$4" assets="${5:-}" body badge=""
     body="$(gh api markdown -f mode=gfm -f context="$GITHUB_REPO" -F text=@"$notes")" || {
         echo "Error: GitHub could not render the release notes" >&2
         return 1
@@ -127,6 +195,16 @@ release_preview_html() {    # release_preview_html <version> <notes.md> <out.htm
   .badge.pre { color: #9a6700; border-color: #9a6700; }
   .tag { color: var(--muted); font-size: 14px; margin: 8px 0 24px; }
   .markdown-body { background: transparent; }
+  .assets { margin-top: 24px; }
+  .assets summary { font-weight: 600; font-size: 20px; cursor: pointer; }
+  .assets .count { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 2em;
+                   font-size: 12px; text-align: center; background: var(--border); }
+  .assets ul { list-style: none; padding: 0; margin: 12px 0 0;
+               border: 1px solid var(--border); border-radius: 6px; }
+  .assets li { display: flex; justify-content: space-between; padding: 8px 16px;
+               border-top: 1px solid var(--border); font-size: 14px; }
+  .assets li:first-child { border-top: 0; }
+  .assets .size { color: var(--muted); }
 </style>
 </head>
 <body>
@@ -138,6 +216,7 @@ release_preview_html() {    # release_preview_html <version> <notes.md> <out.htm
 <article class="markdown-body">
 $body
 </article>
+$(_assets_html "$assets")
 </div>
 </main>
 </body>

@@ -114,7 +114,29 @@ Arca auto-generates a root credential on first startup and prints it to the logs
 
 ## Standalone Binary
 
-Extract the statically-linked Linux binary for deployment on servers (without Docker):
+From v0.31.1 on, every [GitHub release](https://github.com/dxc-technology/arca/releases)
+carries the server binary for Linux, `arca-X.Y.Z-linux-amd64.tar.gz` and
+`arca-X.Y.Z-linux-arm64.tar.gz`, with their `SHA256SUMS`. It is the static (musl) binary of
+the release image, built and scanned by the release pipeline, so it runs on any Linux of that
+architecture with no dependency. Each archive also contains the licence (`LICENSE-AGPL-3.0`),
+`NOTICE` and `THIRD-PARTY-NOTICES.md`.
+
+```bash
+v=0.31.1; arch=amd64        # or arm64
+base=https://github.com/dxc-technology/arca/releases/download/v$v
+curl -fLO "$base/arca-$v-linux-$arch.tar.gz" -fLO "$base/SHA256SUMS"
+sha256sum --check --ignore-missing SHA256SUMS
+tar -xzf "arca-$v-linux-$arch.tar.gz"
+./arca-$v-linux-$arch/arca serve --config-path /etc/arca/config.toml
+```
+
+Start from [`config/default.toml`](https://github.com/dxc-technology/arca/blob/main/config/default.toml)
+and see [Configuration](../guide/configuration.md). The notification connectors that deliver
+over HTTPS (webhook, Elasticsearch) use the system CA bundle: without one the server still
+starts, and those connectors report `HTTP client unavailable` until a bundle is installed.
+
+To build the binary yourself instead, extract it from a local build (without Docker on the
+target server):
 
 ```bash
 # Build for host architecture

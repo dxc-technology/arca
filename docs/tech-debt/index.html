@@ -1641,14 +1641,6 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>crates/arca-storage/src/sqlite/mod.rs</code> (<code>synchronous_pragma</code>), <code>crates/arca-storage/src/sqlite/metadata.rs</code> (write transactions)</td>
 </tr>
 <tr>
-<td>TD-049</td>
-<td>The server panics at startup when the system has no CA certificates</td>
-<td>Every notification connector is built at startup whether or not any notification is configured, and <code>WebhookConnector::new</code> / <code>ElasticsearchConnector::new</code> call <code>reqwest::Client::builder().build().expect(...)</code>. reqwest's rustls backend loads the platform trust store, so on a system with no CA bundle the build fails and <code>arca serve</code> panics right after opening the metadata store: <code>panicked at crates/arca-server/src/connector/webhook.rs:23:14: build reqwest client for webhook connector: reqwest::Error { kind: Builder, source: General("No CA certificates were loaded from the system") }</code> (reproduced 2026-10-06 by hiding <code>/etc/ssl/certs</code> with an empty tmpfs). The published image is not affected (it copies <code>ca-certificates.crt</code> into the scratch image); a bare binary in a user-built <code>FROM scratch</code> or distroless image without a CA bundle is. Found 2026-10-02 during the TD-038 benchmark.</td>
-<td>Build the connector HTTP clients fallibly: a client that cannot be built makes that connector report an error (startup warning, <code>testConnector</code> and delivery failures naming the missing trust store) instead of aborting the server; connectors nobody configured should not stop the server at all. Regression test: start without a CA bundle and expect a running server.</td>
-<td>None</td>
-<td><code>crates/arca-server/src/connector/webhook.rs</code>, <code>crates/arca-server/src/connector/elasticsearch.rs</code>, <code>crates/arca-server/src/main.rs</code> (connector registry)</td>
-</tr>
-<tr>
 <td>TD-050</td>
 <td>Small-PUT throughput plateau on ARM, not yet explained</td>
 <td>On an ARM single-board computer (RK3588, 8 cores) the no-fsync baseline saturated at about 200-270 small (1 KiB) PUTs per second whatever the concurrency, with the CPU mostly idle (2026-10-02). The same build does about 400 PUT/s at concurrency 1 on an x86 VM (4 vCPU) and about 2,400 at concurrency 16 on an AWS c8id.xlarge, so it is not a general limit. Not investigated. Leading hypothesis to verify first: one saturated thread (the single SQLite writer, which until TD-038 also committed one audit batch per request) looks like an idle machine on 8 cores.</td>
@@ -1802,6 +1794,12 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>TD-047</td>
 <td>Plain-HTTP listener did not set <code>TCP_NODELAY</code></td>
 <td>The plain-HTTP path now serves through <code>plain_http_listener</code> (<code>crates/arca-server/src/main.rs</code>), which wraps the <code>TcpListener</code> with <code>axum::serve::ListenerExt::tap_io</code> and calls <code>set_nodelay(true)</code> on every accepted connection, as the TLS listener already did. Keep-alive GETs no longer wait about 40 ms for the client's delayed ACK. Regression test <code>plain_http_connections_disable_nagle</code> checks the option on an accepted socket (deterministic, no timing)</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-049</td>
+<td>The server panicked at startup without CA certificates</td>
+<td>The webhook and Elasticsearch connectors now build their HTTP client with <code>build_http_client</code> (<code>crates/arca-server/src/connector/mod.rs</code>), which returns an error instead of panicking and logs one startup warning per connector; the connector keeps the error and fails every delivery and connection test with <code>HTTP client unavailable: &lt;cause&gt;</code>, so a host without a CA bundle (e.g. the release binary in a <code>FROM scratch</code> image) still starts. Verified by starting the server with <code>/etc/ssl/certs</code> hidden; unit tests inject a failed client into both connectors</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 </tbody>
