@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.2] — 2026-10-07
+
 ### Added
 
 - **`arca --version`** (or `-V`) prints the version of the binary, so a host running a release binary can tell which one it has.
@@ -914,7 +916,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.31.1...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.31.2...HEAD
+[0.31.2]: https://github.com/dxc-technology/arca/compare/v0.31.1...v0.31.2
 [0.31.1]: https://github.com/dxc-technology/arca/compare/v0.31.0...v0.31.1
 [0.31.0]: https://github.com/dxc-technology/arca/compare/v0.30.2...v0.31.0
 [0.30.2]: https://github.com/dxc-technology/arca/compare/v0.30.1...v0.30.2

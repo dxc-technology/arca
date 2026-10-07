@@ -128,11 +128,12 @@ architecture with no dependency. Each archive also contains the licence (`LICENS
 `NOTICE` and `THIRD-PARTY-NOTICES.md`.
 
 ```bash
-v=0.31.1; arch=amd64        # or arm64
+v=0.31.2; arch=amd64        # or arm64
 base=https://github.com/dxc-technology/arca/releases/download/v$v
 curl -fLO "$base/arca-$v-linux-$arch.tar.gz" -fLO "$base/SHA256SUMS"
 sha256sum --check --ignore-missing SHA256SUMS
 tar -xzf "arca-$v-linux-$arch.tar.gz"
+./arca-$v-linux-$arch/arca --version
 ./arca-$v-linux-$arch/arca serve --config-path /etc/arca/config.toml
 ```
 

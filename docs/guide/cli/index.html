@@ -1947,6 +1947,7 @@
 
 <h1 id="cli-reference">CLI Reference<a class="headerlink" href="#cli-reference" title="Permanent link">&para;</a></h1>
 <p>The <code>arca</code> binary provides subcommands for starting the server, managing credentials and users, generating TLS material, maintaining the data in place, inspecting a cluster, and performing disaster recovery. Every subcommand that reads the configuration accepts <code>--config-path</code> (default: <code>/etc/arca/config.toml</code>) to locate the configuration file; <code>arca tls</code> and <code>arca encryption generate-key</code> do not read it.</p>
+<p><code>arca --version</code> (or <code>-V</code>) prints the version of the binary (<code>arca X.Y.Z</code>).</p>
 <h2 id="arca-serve"><code>arca serve</code><a class="headerlink" href="#arca-serve" title="Permanent link">&para;</a></h2>
 <p>Start the S3-compatible server.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>arca<span class="w"> </span>serve<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--log-format<span class="w"> </span>&lt;FORMAT&gt;<span class="o">]</span>
