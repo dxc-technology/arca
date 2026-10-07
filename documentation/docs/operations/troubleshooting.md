@@ -256,7 +256,15 @@ services:
       nofile:
         soft: 65536
         hard: 65536
+
+# Docker — or on the command line
+docker run --ulimit nofile=65536:65536 ...
 ```
+
+Up to v0.31.1, downloading a multipart object also needed one descriptor per
+part, so a large object (thousands of parts) failed with `open part blob: No
+file descriptors available (os error 24)` even on an idle server. Raising the
+limit works around it; later releases open one part at a time.
 
 ### SQLite "database is locked" errors
 

@@ -216,7 +216,6 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "thiserror",
- "tokio-stream",
  "uuid",
 ]
 
@@ -329,7 +328,9 @@ dependencies = [
  "chrono",
  "flate2",
  "futures-core",
+ "futures-util",
  "hex",
+ "libc",
  "lz4_flex",
  "lzma-rs",
  "md-5 0.11.0",

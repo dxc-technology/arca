@@ -393,24 +393,19 @@ pub trait BlobStore: Send + Sync {
         meta: &SidecarMeta,
     ) -> Result<(), crate::error::ArcaError>;
 
-    /// Concatenates multiple blobs into a single output blob, computing MD5.
-    /// The output follows the same durability contract as [`BlobStore::put`].
+    /// Concatenates multiple blobs into a single output blob, computing MD5,
+    /// or returns a composite result that references them without copying
+    /// (`composite_parts`). The output follows the same durability contract
+    /// as [`BlobStore::put`].
     ///
-    /// Default implementation reads each blob via `get()` and writes via `put()`.
-    /// `FsBlobStore` overrides this with direct file-level concatenation
-    /// (no intermediate streams, fewer syscalls).
+    /// There is deliberately no default implementation: a multipart upload
+    /// has up to 10,000 parts, so an implementation must never hold every
+    /// part open at once (see `composite::concat_lazily` in arca-storage).
     async fn concat(
         &self,
         part_blob_ids: &[BlobId],
         output_blob_id: &BlobId,
-    ) -> Result<BlobPutResult, crate::error::ArcaError> {
-        let mut combined: ByteStream = Box::pin(tokio_stream::empty());
-        for blob_id in part_blob_ids {
-            let result = self.get(blob_id, None).await?;
-            combined = Box::pin(tokio_stream::StreamExt::chain(combined, result.stream));
-        }
-        self.put(output_blob_id, combined).await
-    }
+    ) -> Result<BlobPutResult, crate::error::ArcaError>;
 }
 
 /// Trait for SSE-C (Server-Side Encryption with Customer-provided keys) blob operations.

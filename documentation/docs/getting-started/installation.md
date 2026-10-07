@@ -30,9 +30,15 @@ break compatibility. A prerelease (`X.Y.Z-rc.N`) gets its exact tag only.
 
 ```bash
 docker run -d --name arca -p 9000:9000 -v arca-data:/data \
+    --ulimit nofile=65536:65536 \
     ghcr.io/dxc-technology/arca:latest
 docker logs arca | grep "Access Key"
 ```
+
+`--ulimit` raises the open-files limit, which Docker often leaves at 1024:
+every concurrent request holds file descriptors, so a busy server needs more
+(see [Troubleshooting](../operations/troubleshooting.md#too-many-open-files-under-load)).
+In a Compose file, set `ulimits: nofile:` on the service.
 
 The images carry standard OCI labels (`org.opencontainers.image.version`,
 `.revision`, `.source`, …), so `docker inspect` tells which release and commit

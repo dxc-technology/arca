@@ -2265,7 +2265,14 @@
 <a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="w">      </span>nofile:
 <a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="w">        </span>soft:<span class="w"> </span><span class="m">65536</span>
 <a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="w">        </span>hard:<span class="w"> </span><span class="m">65536</span>
+<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a>
+<a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a><span class="c1"># Docker — or on the command line</span>
+<a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a>docker<span class="w"> </span>run<span class="w"> </span>--ulimit<span class="w"> </span><span class="nv">nofile</span><span class="o">=</span><span class="m">65536</span>:65536<span class="w"> </span>...
 </code></pre></div>
+<p>Up to v0.31.1, downloading a multipart object also needed one descriptor per
+part, so a large object (thousands of parts) failed with <code>open part blob: No
+file descriptors available (os error 24)</code> even on an idle server. Raising the
+limit works around it; later releases open one part at a time.</p>
 <h3 id="sqlite-database-is-locked-errors">SQLite "database is locked" errors<a class="headerlink" href="#sqlite-database-is-locked-errors" title="Permanent link">&para;</a></h3>
 <p><strong>Symptom</strong>: Occasional <code>database is locked</code> errors under concurrent writes.</p>
 <p><strong>Cause</strong>: SQLite WAL mode handles concurrency well, but extremely high write throughput can still cause contention.</p>

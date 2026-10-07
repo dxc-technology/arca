@@ -25,6 +25,7 @@ use crate::encryption::keys::{
 use crate::encryption::stream::{
     chunk_disk_offset, decrypt_range, DecryptingStream, EncryptingStream,
 };
+use crate::composite::{concat_lazily, plan_composite_read, PartRead};
 use crate::fs::FsBlobStore;
 
 /// Encrypting blob store wrapper.
@@ -33,6 +34,7 @@ use crate::fs::FsBlobStore;
 /// On `put()`, wraps the input stream with encryption and returns
 /// plaintext MD5/size. On `get()`, reads the sidecar to detect
 /// encrypted blobs and transparently decrypts them.
+#[derive(Clone)]
 pub struct EncryptingBlobStore {
     inner: FsBlobStore,
     master_key: Arc<MasterKey>,
@@ -218,87 +220,37 @@ impl EncryptingBlobStore {
     /// Streams plaintext from a composite blob (the result of an encrypted
     /// `CompleteMultipartUpload`). The `parts` are still encrypted on disk
     /// under their own per-part DEKs; we decrypt only the chunks that
-    /// overlap the requested range.
+    /// overlap the requested range, opening one part file at a time (see
+    /// [`concat_lazily`]).
     async fn get_composite(
         &self,
         parts: &[CompositePart],
         range: Option<ByteRange>,
     ) -> Result<BlobGetResult, ArcaError> {
-        let total: u64 = parts.iter().map(|p| p.plaintext_size).sum();
-
-        // Resolve absolute plaintext range [range_start, range_end] inclusive.
-        let (range_start, range_end) = match range {
-            Some(r) => {
-                let end = r.end.unwrap_or_else(|| total.saturating_sub(1));
-                (r.start, end.min(total.saturating_sub(1)))
-            }
-            None => (0, total.saturating_sub(1)),
-        };
-        let content_length = if total == 0 {
-            0
-        } else if range_end >= range_start {
-            range_end - range_start + 1
-        } else {
-            0
-        };
-
-        // Walk parts in order, eagerly building the per-part read futures.
-        // Each part contributes its [sub_start, sub_end] inclusive sub-range.
-        let mut combined: ByteStream = Box::pin(tokio_stream::empty());
-        let mut cum_start: u64 = 0;
-        for part in parts {
-            let part_size = part.plaintext_size;
-            let part_end_excl = cum_start + part_size;
-            // Skip parts entirely outside the requested range.
-            if part_size == 0 || part_end_excl <= range_start || cum_start > range_end {
-                cum_start = part_end_excl;
-                continue;
-            }
-            let sub_start = range_start.saturating_sub(cum_start);
-            let part_end_incl = part_end_excl - 1;
-            let sub_end = if range_end < part_end_incl {
-                range_end - cum_start
-            } else {
-                part_size - 1
-            };
-
-            let part_result = match part.encryption.as_ref() {
-                Some(enc) if sub_start == 0 && sub_end == part_size - 1 => {
-                    self.get_encrypted_full(&part.blob_id, enc, part_size).await?
-                }
-                Some(enc) => {
-                    self.get_encrypted_range(
-                        &part.blob_id,
-                        enc,
-                        part_size,
-                        ByteRange {
-                            start: sub_start,
-                            end: Some(sub_end),
-                        },
-                    )
-                    .await?
-                }
-                None => {
-                    // Plain part inside an encrypted composite shouldn't happen
+        let (reads, content_length) = plan_composite_read(parts, range);
+        let store = self.clone();
+        let stream = concat_lazily(reads, move |read: PartRead| {
+            let store = store.clone();
+            async move {
+                let PartRead { part, range } = read;
+                let part_size = part.plaintext_size;
+                let result = match (part.encryption.as_ref(), range) {
+                    (Some(enc), None) => store.get_encrypted_full(&part.blob_id, enc, part_size).await?,
+                    (Some(enc), Some(range)) => {
+                        store.get_encrypted_range(&part.blob_id, enc, part_size, range).await?
+                    }
+                    // A plain part inside an encrypted composite shouldn't happen
                     // in normal flow (concat fallback handles mixed parts), but
                     // be defensive and just delegate to the inner store.
-                    let r = if sub_start == 0 && sub_end == part_size - 1 {
-                        None
-                    } else {
-                        Some(ByteRange {
-                            start: sub_start,
-                            end: Some(sub_end),
-                        })
-                    };
-                    self.inner.get(&part.blob_id, r).await?
-                }
-            };
-            combined = Box::pin(tokio_stream::StreamExt::chain(combined, part_result.stream));
-            cum_start = part_end_excl;
-        }
+                    (None, range) => store.inner.get(&part.blob_id, range).await?,
+                };
+                Ok(result.stream)
+            }
+        })
+        .await?;
 
         Ok(BlobGetResult {
-            stream: combined,
+            stream,
             content_length,
         })
     }
@@ -517,12 +469,14 @@ impl BlobStore for EncryptingBlobStore {
                 "EncryptingBlobStore::concat falling back to decrypt+re-encrypt \
                  (one or more parts is unencrypted or compressed)"
             );
-            // Replicate the trait default — get each, chain, put.
-            let mut combined: ByteStream = Box::pin(tokio_stream::empty());
-            for blob_id in part_blob_ids {
-                let result = self.get(blob_id, None).await?;
-                combined = Box::pin(tokio_stream::StreamExt::chain(combined, result.stream));
-            }
+            // Decrypt each part in order, opening one at a time, and
+            // re-encrypt the whole stream into a single new blob.
+            let store = self.clone();
+            let combined = concat_lazily(part_blob_ids.to_vec(), move |blob_id: BlobId| {
+                let store = store.clone();
+                async move { Ok(store.get(&blob_id, None).await?.stream) }
+            })
+            .await?;
             return self.put(output_blob_id, combined).await;
         }
 
@@ -1045,6 +999,143 @@ mod tests {
         }
         // Composite get also fails.
         assert!(store.get(&output_id, None).await.is_err());
+    }
+
+    /// Helper: writes the composite sidecar for `part_ids` (through `concat`)
+    /// and returns the composite blob id.
+    async fn make_encrypted_composite(store: &EncryptingBlobStore, part_ids: &[BlobId]) -> BlobId {
+        let output_id = BlobId::new();
+        let result = store.concat(part_ids, &output_id).await.unwrap();
+        assert!(result.composite_parts.is_some(), "composite path should engage");
+        let sidecar = SidecarMeta {
+            bucket: "test".into(),
+            key: "composite.bin".into(),
+            size: result.size,
+            etag: result.etag.clone(),
+            content_type: None,
+            last_modified: "2026-01-01T00:00:00Z".into(),
+            metadata: HashMap::new(),
+            encryption: result.encryption.clone(),
+            compression: None,
+            version_id: None,
+            composite: result.composite_parts.clone(),
+        };
+        store.write_sidecar(&output_id, &sidecar).await.unwrap();
+        output_id
+    }
+
+    /// Collects a stream until its first error: the bytes read before it, and
+    /// whether it ended with an error.
+    async fn collect_until_error(stream: ByteStream) -> (Vec<u8>, bool) {
+        let mut stream = std::pin::pin!(stream);
+        let mut buf = Vec::new();
+        while let Some(chunk) = stream.as_mut().next().await {
+            match chunk {
+                Ok(c) => buf.extend_from_slice(&c),
+                Err(_) => return (buf, true),
+            }
+        }
+        (buf, false)
+    }
+
+    #[tokio::test]
+    async fn composite_get_opens_parts_lazily() {
+        // Same probe as the FsBlobStore test: unlink the last part once the
+        // stream exists; an eagerly opened part would still be readable.
+        let (store, _dir) = test_store().await;
+        let (part_ids, full) = make_encrypted_parts(&store, 3, 100).await;
+        let output_id = make_encrypted_composite(&store, &part_ids).await;
+
+        let g = store.get(&output_id, None).await.unwrap();
+        assert_eq!(g.content_length, 300);
+        std::fs::remove_file(store.inner.blob_path(&part_ids[2])).unwrap();
+
+        let (body, failed) = collect_until_error(g.stream).await;
+        assert!(failed, "the unlinked last part must not have been opened before the GET reached it");
+        assert_eq!(body, &full[..200]);
+    }
+
+    #[tokio::test]
+    async fn composite_range_get_opens_parts_lazily() {
+        let (store, _dir) = test_store().await;
+        let (part_ids, full) = make_encrypted_parts(&store, 4, 100).await;
+        let output_id = make_encrypted_composite(&store, &part_ids).await;
+
+        // Bytes 150..=349: the tail of part 1, all of part 2, the head of part 3.
+        let g = store
+            .get(&output_id, Some(ByteRange { start: 150, end: Some(349) }))
+            .await
+            .unwrap();
+        assert_eq!(g.content_length, 200);
+        std::fs::remove_file(store.inner.blob_path(&part_ids[3])).unwrap();
+
+        let (body, failed) = collect_until_error(g.stream).await;
+        assert!(failed);
+        assert_eq!(body, &full[150..300]);
+    }
+
+    #[tokio::test]
+    async fn composite_get_with_missing_first_part_fails_before_streaming() {
+        let (store, _dir) = test_store().await;
+        let (part_ids, _full) = make_encrypted_parts(&store, 3, 100).await;
+        let output_id = make_encrypted_composite(&store, &part_ids).await;
+        std::fs::remove_file(store.inner.blob_path(&part_ids[0])).unwrap();
+
+        assert!(store.get(&output_id, None).await.is_err());
+        std::fs::remove_file(store.inner.blob_path(&part_ids[1])).unwrap();
+        assert!(store
+            .get(&output_id, Some(ByteRange { start: 150, end: Some(160) }))
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn concat_fallback_streams_every_part_in_order() {
+        // Mixed parts force the decrypt + re-encrypt fallback, which reads the
+        // parts one after the other into a single new blob.
+        let (store, _dir) = test_store().await;
+        let (mut part_ids, mut full) = make_encrypted_parts(&store, 3, 100).await;
+        let plain_id = BlobId::new();
+        let plain: Vec<u8> = (0..50u8).collect();
+        let r = store.inner.put(&plain_id, bytes_to_stream(&plain)).await.unwrap();
+        let sidecar = SidecarMeta {
+            bucket: "test".into(),
+            key: "plain".into(),
+            size: r.size,
+            etag: r.etag.clone(),
+            content_type: None,
+            last_modified: "2026-01-01T00:00:00Z".into(),
+            metadata: HashMap::new(),
+            encryption: None,
+            compression: None,
+            version_id: None,
+            composite: None,
+        };
+        store.write_sidecar(&plain_id, &sidecar).await.unwrap();
+        part_ids.insert(1, plain_id);
+        full.splice(100..100, plain.iter().copied());
+
+        let output_id = BlobId::new();
+        let result = store.concat(&part_ids, &output_id).await.unwrap();
+        assert!(result.composite_parts.is_none());
+        assert_eq!(result.size, full.len() as u64);
+        assert_eq!(result.etag, hex::encode(Md5::digest(&full)));
+        let sidecar = SidecarMeta {
+            bucket: "test".into(),
+            key: "assembled".into(),
+            size: result.size,
+            etag: result.etag.clone(),
+            content_type: None,
+            last_modified: "2026-01-01T00:00:00Z".into(),
+            metadata: HashMap::new(),
+            encryption: result.encryption.clone(),
+            compression: None,
+            version_id: None,
+            composite: None,
+        };
+        store.write_sidecar(&output_id, &sidecar).await.unwrap();
+        let g = store.get(&output_id, None).await.unwrap();
+        assert_eq!(collect_stream(g.stream).await, full);
     }
 
     #[tokio::test]

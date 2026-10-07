@@ -21,4 +21,3 @@ hex = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 rand = { workspace = true }
-tokio-stream = { workspace = true }

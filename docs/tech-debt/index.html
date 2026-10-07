@@ -1648,6 +1648,14 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>None (throughput only)</td>
 <td>Unknown until investigated</td>
 </tr>
+<tr>
+<td>TD-051</td>
+<td>Interrupted uploads leave temp files that nothing reclaims</td>
+<td>When a client drops the connection during PutObject/UploadPart, hyper drops the request future: <code>FsBlobStore::put</code> removes its partial <code>&lt;blob&gt;.tmp</code> only on an error it returns, so a cancelled future never reaches that cleanup, and the blocking writer finishes and closes the file anyway (<code>write_raw</code> and the <code>concat</code> fallback have the same shape). Nothing reclaims such files afterwards: <code>list_blob_ids</code> skips <code>*.tmp</code>, so <code>arca gc</code> and the <code>blob_gc_enabled</code> worker never see them, and <code>arca fsck</code> only reports them as stale temp files. Seen 2026-10-07 on an ARM board: a 200 GB multipart upload whose connection dropped left 4 partial parts (about 90 MB) as <code>.tmp</code>, while the 3 parts that failed with <code>read stream</code> were cleaned up. (Related, by design: the parts of an abandoned multipart upload are live data until the upload is aborted, so only <code>AbortMultipartUpload</code> or a lifecycle <code>AbortIncompleteMultipartUpload</code> rule reclaims them; the docs should say so.)</td>
+<td>(1) Make the cleanup cancellation-safe: a drop guard owning the temp path, disarmed after the rename, in <code>put</code>, <code>write_raw</code> and <code>concat</code> (the sidecar writer <code>write_file_atomic</code> runs on a blocking thread and already cleans up). (2) Let <code>arca gc</code> and the GC worker reclaim <code>*.tmp</code> files older than the grace period (blob temps and <code>*.&lt;uuid&gt;.tmp</code> sidecar temps; never the in-place rewrite markers <code>*.rewrite.tmp</code> / <code>*.pending.tmp</code>, which their own recovery owns), and report them in the dry run. Unit tests: a dropped <code>put</code> future leaves no temp file; gc reclaims an old temp and keeps a fresh one.</td>
+<td>None</td>
+<td><code>crates/arca-storage/src/fs/blob.rs</code> (<code>put</code>, <code>write_raw</code>, <code>concat</code>, <code>list_blob_ids</code>), <code>crates/arca-server/src/blob_gc.rs</code>, <code>crates/arca-server/src/gc.rs</code></td>
+</tr>
 </tbody>
 </table>
 <hr />

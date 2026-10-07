@@ -1600,9 +1600,14 @@ and on Apple Silicon or ARM hosts:</p>
 <p>There is no major-only tag while Arca is at <code>0.x</code>, where a minor release may
 break compatibility. A prerelease (<code>X.Y.Z-rc.N</code>) gets its exact tag only.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--name<span class="w"> </span>arca<span class="w"> </span>-p<span class="w"> </span><span class="m">9000</span>:9000<span class="w"> </span>-v<span class="w"> </span>arca-data:/data<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span>ghcr.io/dxc-technology/arca:latest
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>docker<span class="w"> </span>logs<span class="w"> </span>arca<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">&quot;Access Key&quot;</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span>--ulimit<span class="w"> </span><span class="nv">nofile</span><span class="o">=</span><span class="m">65536</span>:65536<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span>ghcr.io/dxc-technology/arca:latest
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>docker<span class="w"> </span>logs<span class="w"> </span>arca<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">&quot;Access Key&quot;</span>
 </code></pre></div>
+<p><code>--ulimit</code> raises the open-files limit, which Docker often leaves at 1024:
+every concurrent request holds file descriptors, so a busy server needs more
+(see <a href="../../operations/troubleshooting/#too-many-open-files-under-load">Troubleshooting</a>).
+In a Compose file, set <code>ulimits: nofile:</code> on the service.</p>
 <p>The images carry standard OCI labels (<code>org.opencontainers.image.version</code>,
 <code>.revision</code>, <code>.source</code>, …), so <code>docker inspect</code> tells which release and commit
 a running container was built from.</p>

@@ -13,6 +13,7 @@ bytes = { workspace = true }
 serde = { workspace = true }
 chrono = { workspace = true }
 futures-core = { workspace = true }
+futures-util = { workspace = true }
 hex = { workspace = true }
 md-5 = { workspace = true }
 rusqlite = { workspace = true }
@@ -42,4 +43,5 @@ default = []
 postgres = ["sqlx-core", "sqlx-postgres"]
 
 [dev-dependencies]
+libc = { workspace = true }
 tempfile = { workspace = true }

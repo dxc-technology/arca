@@ -17,6 +17,8 @@ use arca_core::store::{
 };
 use arca_core::types::BlobId;
 
+use crate::composite::{concat_lazily, plan_composite_read, PartRead};
+
 // ----- Durability helpers -----
 //
 // A write is acknowledged only after (1) the file data is fsynced, (2) the
@@ -323,62 +325,28 @@ impl FsBlobStore {
 
     /// Streams plaintext from a composite blob (the result of a plain
     /// `CompleteMultipartUpload`). Each part is a normal on-disk blob;
-    /// we read only the byte ranges that overlap the request.
+    /// we read only the byte ranges that overlap the request, opening one
+    /// part file at a time (see [`concat_lazily`]).
     async fn get_composite(
         &self,
         parts: &[CompositePart],
         range: Option<ByteRange>,
     ) -> Result<BlobGetResult, ArcaError> {
-        let total: u64 = parts.iter().map(|p| p.plaintext_size).sum();
-        let (range_start, range_end) = match range {
-            Some(r) => {
-                let end = r.end.unwrap_or_else(|| total.saturating_sub(1));
-                (r.start, end.min(total.saturating_sub(1)))
+        let (reads, content_length) = plan_composite_read(parts, range);
+        let store = self.clone();
+        let stream = concat_lazily(reads, move |read: PartRead| {
+            let store = store.clone();
+            async move {
+                // The part is a normal blob (no encryption layer at this
+                // level), so reading its file is enough.
+                let part = store.get_part_data(&read.part.blob_id, read.range).await?;
+                Ok(part.stream)
             }
-            None => (0, total.saturating_sub(1)),
-        };
-        let content_length = if total == 0 {
-            0
-        } else if range_end >= range_start {
-            range_end - range_start + 1
-        } else {
-            0
-        };
-
-        let mut combined: ByteStream = Box::pin(tokio_stream::empty());
-        let mut cum_start: u64 = 0;
-        for part in parts {
-            let part_size = part.plaintext_size;
-            let part_end_excl = cum_start + part_size;
-            if part_size == 0 || part_end_excl <= range_start || cum_start > range_end {
-                cum_start = part_end_excl;
-                continue;
-            }
-            let sub_start = range_start.saturating_sub(cum_start);
-            let part_end_incl = part_end_excl - 1;
-            let sub_end = if range_end < part_end_incl {
-                range_end - cum_start
-            } else {
-                part_size - 1
-            };
-
-            let r = if sub_start == 0 && sub_end == part_size - 1 {
-                None
-            } else {
-                Some(ByteRange {
-                    start: sub_start,
-                    end: Some(sub_end),
-                })
-            };
-            // Recurse into self.get for the part — the part is a normal blob
-            // (no encryption layer at this level), so read_part_file is enough.
-            let part_result = self.get_part_data(&part.blob_id, r).await?;
-            combined = Box::pin(tokio_stream::StreamExt::chain(combined, part_result.stream));
-            cum_start = part_end_excl;
-        }
+        })
+        .await?;
 
         Ok(BlobGetResult {
-            stream: combined,
+            stream,
             content_length,
         })
     }
@@ -1380,6 +1348,151 @@ mod tests {
             assert!(!store.blob_path(id).exists(), "part {} should be gone", id.0);
         }
         assert!(store.get(&output_id, None).await.is_err());
+    }
+
+    /// Helper: writes the composite sidecar for `part_ids` (through `concat`)
+    /// and returns the composite blob id.
+    async fn make_plain_composite(store: &FsBlobStore, part_ids: &[BlobId]) -> BlobId {
+        let output_id = BlobId::new();
+        let result = store.concat(part_ids, &output_id).await.unwrap();
+        let sidecar = SidecarMeta {
+            bucket: "test".to_string(),
+            key: "c.bin".to_string(),
+            size: result.size,
+            etag: result.etag.clone(),
+            content_type: None,
+            last_modified: "2026-01-01T00:00:00Z".to_string(),
+            metadata: std::collections::HashMap::new(),
+            encryption: None,
+            compression: None,
+            version_id: None,
+            composite: result.composite_parts.clone(),
+        };
+        store.write_sidecar(&output_id, &sidecar).await.unwrap();
+        output_id
+    }
+
+    /// Collects a stream until its first error: the bytes read before it, and
+    /// whether it ended with an error.
+    async fn collect_until_error(stream: ByteStream) -> (Vec<u8>, bool) {
+        let mut stream = std::pin::pin!(stream);
+        let mut buf = Vec::new();
+        while let Some(chunk) = stream.as_mut().next().await {
+            match chunk {
+                Ok(c) => buf.extend_from_slice(&c),
+                Err(_) => return (buf, true),
+            }
+        }
+        (buf, false)
+    }
+
+    #[tokio::test]
+    async fn composite_get_opens_parts_lazily() {
+        // A GET of a composite must not open every part up front: a 200 GB
+        // object of 5995 parts needed 5995 file descriptors per request and
+        // failed with EMFILE (os error 24). Probe: once the stream exists,
+        // unlink the last part. A part file opened eagerly would still be
+        // readable through its open descriptor; a lazily opened one is gone.
+        let (store, _dir) = test_store(2).await;
+        let (part_ids, full) = make_plain_parts(&store, 3, 100).await;
+        let output_id = make_plain_composite(&store, &part_ids).await;
+
+        let g = store.get(&output_id, None).await.unwrap();
+        assert_eq!(g.content_length, 300);
+        std::fs::remove_file(store.blob_path(&part_ids[2])).unwrap();
+
+        let (body, failed) = collect_until_error(g.stream).await;
+        assert!(failed, "the unlinked last part must not have been opened before the GET reached it");
+        assert_eq!(body, &full[..200], "the parts before it are streamed in full");
+    }
+
+    #[tokio::test]
+    async fn composite_range_get_opens_parts_lazily() {
+        let (store, _dir) = test_store(2).await;
+        let (part_ids, full) = make_plain_parts(&store, 4, 100).await;
+        let output_id = make_plain_composite(&store, &part_ids).await;
+
+        // Bytes 150..=349: the tail of part 1, all of part 2, the head of part 3.
+        let g = store
+            .get(&output_id, Some(ByteRange { start: 150, end: Some(349) }))
+            .await
+            .unwrap();
+        assert_eq!(g.content_length, 200);
+        std::fs::remove_file(store.blob_path(&part_ids[3])).unwrap();
+
+        let (body, failed) = collect_until_error(g.stream).await;
+        assert!(failed);
+        assert_eq!(body, &full[150..300]);
+    }
+
+    #[tokio::test]
+    async fn composite_get_with_missing_first_part_fails_before_streaming() {
+        // The first part is still opened before `get` returns, so the common
+        // failure (a missing part) remains an error response, not a 200 whose
+        // body breaks off.
+        let (store, _dir) = test_store(2).await;
+        let (part_ids, _full) = make_plain_parts(&store, 3, 100).await;
+        let output_id = make_plain_composite(&store, &part_ids).await;
+        std::fs::remove_file(store.blob_path(&part_ids[0])).unwrap();
+
+        assert!(store.get(&output_id, None).await.is_err());
+        // Same for the first part a range touches.
+        std::fs::remove_file(store.blob_path(&part_ids[1])).unwrap();
+        assert!(store
+            .get(&output_id, Some(ByteRange { start: 150, end: Some(160) }))
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn composite_get_with_thousands_of_parts() {
+        // More parts than the common 1024 soft limit on open files. The part
+        // files are written directly (no sidecar, no fsync) to keep this fast;
+        // `get` reads only the composite sidecar.
+        const PARTS: usize = 5000;
+        let (store, _dir) = test_store(2).await;
+        let mut composite = Vec::with_capacity(PARTS);
+        let mut full = Vec::with_capacity(PARTS * 4);
+        for i in 0..PARTS {
+            let blob_id = BlobId::new();
+            let data = (i as u32).to_be_bytes();
+            let path = store.blob_path(&blob_id);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, data).unwrap();
+            full.extend_from_slice(&data);
+            composite.push(CompositePart {
+                blob_id,
+                plaintext_size: 4,
+                plaintext_etag: String::new(),
+                encryption: None,
+            });
+        }
+        let output_id = BlobId::new();
+        let sidecar = SidecarMeta {
+            bucket: "test".to_string(),
+            key: "many.bin".to_string(),
+            size: full.len() as u64,
+            etag: String::new(),
+            content_type: None,
+            last_modified: "2026-01-01T00:00:00Z".to_string(),
+            metadata: std::collections::HashMap::new(),
+            encryption: None,
+            compression: None,
+            version_id: None,
+            composite: Some(composite),
+        };
+        store.write_sidecar(&output_id, &sidecar).await.unwrap();
+
+        let g = store.get(&output_id, None).await.unwrap();
+        assert_eq!(g.content_length, full.len() as u64);
+        assert_eq!(collect_stream(g.stream).await, full);
+
+        let g = store
+            .get(&output_id, Some(ByteRange { start: 2, end: Some(19_997) }))
+            .await
+            .unwrap();
+        assert_eq!(g.content_length, 19_996);
+        assert_eq!(collect_stream(g.stream).await, &full[2..=19_997]);
     }
 
     #[tokio::test]

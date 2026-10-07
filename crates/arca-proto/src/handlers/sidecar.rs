@@ -102,6 +102,10 @@ mod tests {
             Ok(())
         }
 
+        async fn concat(&self, _: &[BlobId], _: &BlobId) -> Result<BlobPutResult, ArcaError> {
+            unimplemented!("not used by these tests")
+        }
+
         async fn write_sidecar(&self, blob_id: &BlobId, _: &SidecarMeta) -> Result<(), ArcaError> {
             if self.fail_sidecar {
                 return Err(ArcaError::Internal("disk full".into()));

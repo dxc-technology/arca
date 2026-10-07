@@ -7,6 +7,7 @@
 
 pub mod caching;
 pub mod compressed_blob;
+mod composite;
 mod control_merge;
 pub mod compression;
 pub mod encrypted_blob;
