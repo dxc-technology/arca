@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "arca", about = "Arca S3-compatible object storage server")]
+#[command(name = "arca", version, about = "Arca S3-compatible object storage server")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
@@ -369,4 +369,23 @@ pub enum CredentialAction {
         /// The access key ID to remove
         access_key_id: String,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn version_flag_prints_the_workspace_version() {
+        for flag in ["--version", "-V"] {
+            let err = Cli::try_parse_from(["arca", flag]).err().expect("prints the version and exits");
+            assert_eq!(err.kind(), clap::error::ErrorKind::DisplayVersion);
+            assert_eq!(err.to_string(), format!("arca {}\n", env!("CARGO_PKG_VERSION")));
+        }
+    }
+
+    #[test]
+    fn a_subcommand_is_still_required() {
+        assert!(Cli::try_parse_from(["arca"]).is_err());
+    }
 }

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`arca --version`** (or `-V`) prints the version of the binary, so a host running a release binary can tell which one it has.
+
 ### Fixed
 
 - **Large multipart objects can be downloaded again on a server with a low open-files limit.** A GET of a multipart object opened the file of every part it covered before sending the first byte, so it needed one file descriptor per part: a 200 GB object of 5995 parts failed every download with `500 Internal Server Error` (`open part blob: No file descriptors available (os error 24)`) on a server whose soft `RLIMIT_NOFILE` was 1024, and fewer, smaller downloads in parallel could exhaust a higher limit just as well. The data on disk was intact. Plain and SSE-S3/KMS composite reads, ranged or not, now open one part at a time, each when the previous one has been streamed, and the decrypt-and-re-encrypt fallback of `CompleteMultipartUpload` (mixed or compressed parts under encryption) reads its parts the same way. The first part is still opened before the response starts, so a missing part remains an error response; a part that disappears later aborts the transfer. The Compose file shipped in `docker/` already raises `nofile` to 65535; deployments using their own should do the same.

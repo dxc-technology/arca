@@ -2,6 +2,8 @@
 
 The `arca` binary provides subcommands for starting the server, managing credentials and users, generating TLS material, maintaining the data in place, inspecting a cluster, and performing disaster recovery. Every subcommand that reads the configuration accepts `--config-path` (default: `/etc/arca/config.toml`) to locate the configuration file; `arca tls` and `arca encryption generate-key` do not read it.
 
+`arca --version` (or `-V`) prints the version of the binary (`arca X.Y.Z`).
+
 ## `arca serve`
 
 Start the S3-compatible server.
