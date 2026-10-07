@@ -10,7 +10,13 @@
 # Rust version; do not restate it in documentation.
 FROM rust:1.98.1-alpine3.24 AS builder
 
-RUN apk add --no-cache musl-dev perl cmake make g++ curl-dev linux-headers zlib-dev zlib-static protobuf-dev protoc
+# zlib is linked statically into the binary (librdkafka, through libz-sys),
+# where an image scan cannot see it: the scratch image has no package
+# database. Point constraint, never a blanket `apk upgrade`:
+#   zlib-dev/zlib-static >= 1.3.2-r1 -- zlib CVE-2026-85091 (the base image
+#   ships 1.3.2-r0).
+RUN apk add --no-cache musl-dev perl cmake make g++ curl-dev linux-headers \
+        'zlib-dev>=1.3.2-r1' 'zlib-static>=1.3.2-r1' protobuf-dev protoc
 
 WORKDIR /build
 

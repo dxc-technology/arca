@@ -35,10 +35,12 @@ LABEL org.opencontainers.image.title="Arca Console" \
 #   libcrypto3/libssl3 >= 3.5.8-r0 -- openssl CVE-2026-14456, -14457, -18798,
 #   -54874, -63072, -63073, -63074, -63075, -63076, -75803 (the base image
 #   still ships 3.5.7-r0).
+#   zlib >= 1.3.2-r1 -- CVE-2026-85091 (the base image ships 1.3.2-r0, and so
+#   does alpine 3.24.2).
 # `>=` rather than `=`: Alpine drops superseded versions from the repo index,
 # so an exact pin turns into a hard build failure the day a newer build lands.
 RUN apk add --no-cache nginx libcap \
-        'libcrypto3>=3.5.8-r0' 'libssl3>=3.5.8-r0' && \
+        'libcrypto3>=3.5.8-r0' 'libssl3>=3.5.8-r0' 'zlib>=1.3.2-r1' && \
     setcap 'cap_net_bind_service=+ep' /usr/sbin/nginx && \
     apk del libcap && \
     sed -i 's|^pid\s\+.*|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf && \

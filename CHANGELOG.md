@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Large multipart objects can be downloaded again on a server with a low open-files limit.** A GET of a multipart object opened the file of every part it covered before sending the first byte, so it needed one file descriptor per part: a 200 GB object of 5995 parts failed every download with `500 Internal Server Error` (`open part blob: No file descriptors available (os error 24)`) on a server whose soft `RLIMIT_NOFILE` was 1024, and fewer, smaller downloads in parallel could exhaust a higher limit just as well. The data on disk was intact. Plain and SSE-S3/KMS composite reads, ranged or not, now open one part at a time, each when the previous one has been streamed, and the decrypt-and-re-encrypt fallback of `CompleteMultipartUpload` (mixed or compressed parts under encryption) reads its parts the same way. The first part is still opened before the response starts, so a missing part remains an error response; a part that disappears later aborts the transfer. The Compose file shipped in `docker/` already raises `nofile` to 65535; deployments using their own should do the same.
 
+### Security
+
+- **zlib CVE-2026-85091** (heap buffer overflow, MEDIUM) in both images. The console's Alpine base ships zlib 1.3.2-r0, and so does the newest Alpine 3.24 point release: the console Dockerfile now requires `zlib>=1.3.2-r1`, next to the existing openssl constraint. The `arca` binary links zlib statically (librdkafka, through `libz-sys`), where the image scan cannot see it because the scratch image has no package database: the builder now requires `zlib-dev` / `zlib-static >= 1.3.2-r1`, which a build from a cached layer did not guarantee. Earlier binaries and images may embed the vulnerable 1.3.2-r0; zlib is reached there only by the Kafka notification connector's message compression.
+
 ## [0.31.1] — 2026-10-06
 
 ### Added
