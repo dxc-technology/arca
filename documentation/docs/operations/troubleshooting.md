@@ -266,6 +266,48 @@ part, so a large object (thousands of parts) failed with `open part blob: No
 file descriptors available (os error 24)` even on an idle server. Raising the
 limit works around it; later releases open one part at a time.
 
+### Disk is full but the buckets are much smaller
+
+**Symptom**: the data volume is full, or nearly, while the buckets total far less (for example a 1 TB volume full with under 500 GB of objects), writes fail with `write blob: No space left on device (os error 28)`, and `arca fsck` reports thousands of `ORPHANED_BLOB`, `MISSING_BLOB` and `ORPHANED_SIDECAR` entries while `arca gc --reclaim` finds nothing to reclaim.
+
+**Cause**: usually unfinished multipart uploads. The parts of an upload are live data until the upload is completed or aborted, so neither `arca gc` nor the GC worker reclaims them. Backup tools that upload in parts (Percona Backup for MongoDB, restic, rclone, and others) leave an upload behind whenever a backup fails and the client does not send `AbortMultipartUpload`. If the failure was a full disk, the leftovers take more of it, and the next run fails the same way: the problem feeds itself, and a backup tool can go for weeks without a restorable backup. The `fsck` entries are mostly expected: until TD-014 is fixed, `fsck` does not understand composite blobs (objects assembled by `CompleteMultipartUpload`), so it reports their sidecars as orphaned and their part files as orphaned or missing.
+
+**Diagnose** (the first command lists unfinished uploads, the second the temp files):
+
+```bash
+mc ls --incomplete --recursive <alias>/<bucket>
+find <data_dir>/blobs -type f -name '*.tmp' ! -name '*.rewrite.tmp' ! -name '*.pending.tmp' -mmin +1440 | wc -l
+```
+
+A finished backup leaves no unfinished uploads, so a list that grows by the same number of entries every night is a failing job. Check the server log for the real error of that run before deleting anything.
+
+**Solution**:
+
+1. Abort the uploads that can no longer complete (here, everything older than a few days):
+
+    ```bash
+    mc rm --incomplete --recursive --force --older-than 7d <alias>/<bucket>
+    ```
+
+    Add `--dry-run` first to see what would be aborted. This deletes the parts, so check that no job is still uploading.
+2. Delete stale temp files (interrupted uploads, TD-051). They are never referenced by the database or a sidecar; keep `*.rewrite.tmp` and `*.pending.tmp`, which are recovery markers:
+
+    ```bash
+    find <data_dir>/blobs -type f -name '*.tmp' ! -name '*.rewrite.tmp' ! -name '*.pending.tmp' -mmin +1440 -delete
+    ```
+3. Add a lifecycle rule so it cannot build up again. `mc ilm rule add` has no option for this action, so import it as JSON (for the whole bucket, or add a `Prefix` filter):
+
+    ```bash
+    mc ilm import <alias>/<bucket> <<'EOF'
+    {"Rules":[{"ID":"abort-incomplete-uploads","Status":"Enabled",
+      "Filter":{"Prefix":""},
+      "AbortIncompleteMultipartUpload":{"DaysAfterInitiation":3}}]}
+    EOF
+    ```
+
+    Pick a number of days longer than your slowest legitimate upload. `mc ilm import` replaces the bucket's whole lifecycle configuration, so merge with `mc ilm export` if the bucket already has rules. The rule also shows in the console, in the bucket's lifecycle settings. The worker evaluates it hourly by default (`[lifecycle] interval_seconds`).
+4. Alert on volume usage well before it is full (for example 85%).
+
 ### SQLite "database is locked" errors
 
 **Symptom**: Occasional `database is locked` errors under concurrent writes.
