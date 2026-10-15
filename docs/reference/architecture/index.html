@@ -2911,7 +2911,7 @@
 </tr>
 <tr>
 <td>HTTP</td>
-<td>Axum + Tower; hyper-util for the TLS listener</td>
+<td>Axum + Tower; one hyper-util accept loop for both the HTTP and the HTTPS listener (<code>serve.rs</code>)</td>
 <td>Tokio-native, composable middleware</td>
 </tr>
 <tr>

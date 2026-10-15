@@ -274,9 +274,9 @@ On SIGTERM or SIGINT, Arca enters **drain mode**:
 2. Load balancers polling health stop routing new traffic to the instance
 3. Requests keep being served during the drain window
 4. After `drain_timeout_seconds` (default: 30), the server stops accepting connections and tells every open one to close: an idle keep-alive connection closes at once, a busy one after its current request (HTTP/2 sends `GOAWAY`)
-5. Over HTTPS, requests still running 10 seconds later have their connection dropped, and the server exits (over plain HTTP the server waits for them)
+5. Requests still running 10 seconds later have their connection dropped, and the server exits
 
-Over HTTPS a stop therefore takes at most `drain_timeout_seconds` + 10 seconds. Give the supervisor more than that before it kills the process: systemd's `TimeoutStopSec`, Kubernetes' `terminationGracePeriodSeconds` (45 in the shipped unit and manifests, for the default 30), Docker's `stop_grace_period` / `docker stop -t` (default 10, which kills the server during the drain).
+A stop therefore takes at most `drain_timeout_seconds` + 10 seconds, over HTTP and HTTPS alike. Give the supervisor more than that before it kills the process: systemd's `TimeoutStopSec`, Kubernetes' `terminationGracePeriodSeconds` (45 in the shipped unit and manifests, for the default 30), Docker's `stop_grace_period` / `docker stop -t` (default 10, which kills the server during the drain).
 
 ```toml
 [server.limits]

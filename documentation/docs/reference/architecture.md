@@ -429,7 +429,7 @@ Exact versions are pinned in `Cargo.toml` and the Dockerfiles.
 | Component | Choice | Rationale |
 |-----------|--------|-----------|
 | Language | Rust | Memory safety, predictable performance |
-| HTTP | Axum + Tower; hyper-util for the TLS listener | Tokio-native, composable middleware |
+| HTTP | Axum + Tower; one hyper-util accept loop for both the HTTP and the HTTPS listener (`serve.rs`) | Tokio-native, composable middleware |
 | TLS | rustls (`ring` provider) + tokio-rustls, certificates hot-reloaded on SIGHUP | Pure-Rust TLS with the `ring` crypto backend |
 | XML | quick-xml + serde | Fast, serde integration |
 | Metadata | SQLite (tokio-rusqlite) or PostgreSQL (sqlx) | Embedded zero-config default, external database when needed |

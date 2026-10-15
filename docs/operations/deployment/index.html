@@ -2287,9 +2287,9 @@
 <li>Load balancers polling health stop routing new traffic to the instance</li>
 <li>Requests keep being served during the drain window</li>
 <li>After <code>drain_timeout_seconds</code> (default: 30), the server stops accepting connections and tells every open one to close: an idle keep-alive connection closes at once, a busy one after its current request (HTTP/2 sends <code>GOAWAY</code>)</li>
-<li>Over HTTPS, requests still running 10 seconds later have their connection dropped, and the server exits (over plain HTTP the server waits for them)</li>
+<li>Requests still running 10 seconds later have their connection dropped, and the server exits</li>
 </ol>
-<p>Over HTTPS a stop therefore takes at most <code>drain_timeout_seconds</code> + 10 seconds. Give the supervisor more than that before it kills the process: systemd's <code>TimeoutStopSec</code>, Kubernetes' <code>terminationGracePeriodSeconds</code> (45 in the shipped unit and manifests, for the default 30), Docker's <code>stop_grace_period</code> / <code>docker stop -t</code> (default 10, which kills the server during the drain).</p>
+<p>A stop therefore takes at most <code>drain_timeout_seconds</code> + 10 seconds, over HTTP and HTTPS alike. Give the supervisor more than that before it kills the process: systemd's <code>TimeoutStopSec</code>, Kubernetes' <code>terminationGracePeriodSeconds</code> (45 in the shipped unit and manifests, for the default 30), Docker's <code>stop_grace_period</code> / <code>docker stop -t</code> (default 10, which kills the server during the drain).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="k">[server.limits]</span>
 <a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="n">drain_timeout_seconds</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">30</span>
 </code></pre></div>

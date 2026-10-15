@@ -1817,7 +1817,7 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <tr>
 <td>TD-047</td>
 <td>Plain-HTTP listener did not set <code>TCP_NODELAY</code></td>
-<td>The plain-HTTP path now serves through <code>plain_http_listener</code> (<code>crates/arca-server/src/main.rs</code>), which wraps the <code>TcpListener</code> with <code>axum::serve::ListenerExt::tap_io</code> and calls <code>set_nodelay(true)</code> on every accepted connection, as the TLS listener already did. Keep-alive GETs no longer wait about 40 ms for the client's delayed ACK. Regression test <code>plain_http_connections_disable_nagle</code> checks the option on an accepted socket (deterministic, no timing)</td>
+<td>Both listeners now share one accept loop (<code>crates/arca-server/src/serve.rs</code>), whose <code>accept</code> calls <code>set_nodelay(true)</code> on every accepted connection (first fixed in a <code>plain_http_listener</code> wrapper around <code>axum::serve</code>, since replaced). Keep-alive GETs no longer wait about 40 ms for the client's delayed ACK. Regression test <code>accepted_connections_disable_nagle</code> checks the option on an accepted socket (deterministic, no timing)</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>

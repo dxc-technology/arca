@@ -1,20 +1,16 @@
-//! TLS support: certificate loading, auto-detection, hot-reload, and HTTPS serving.
+//! TLS support: certificate loading, auto-detection and hot-reload (the HTTPS
+//! accept loop is in `serve.rs`).
 
-use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{bail, Context, Result};
 use arc_swap::ArcSwap;
-use hyper_util::rt::TokioIo;
-use hyper_util::server::graceful::{GracefulShutdown, Watcher};
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::ServerConfig as RustlsServerConfig;
-use tokio::net::TcpListener;
-use tokio::task::JoinSet;
 
-use crate::config::{HttpConfig, ResolvedPaths, TlsConfig};
+use crate::config::{ResolvedPaths, TlsConfig};
 
 // ---------------------------------------------------------------------------
 // PEM auto-detection
@@ -224,174 +220,6 @@ impl TlsReloader {
         self.state.store(Arc::new(new_config));
         Ok(())
     }
-}
-
-// ---------------------------------------------------------------------------
-// TLS accept loop
-// ---------------------------------------------------------------------------
-
-/// Build a hyper auto-builder once (outside the accept loop) with the
-/// HTTP/2 tunables resolved from config. Shared via `Arc` so each
-/// per-connection task can reuse it without reallocating settings.
-fn build_http_builder(
-    http_cfg: &HttpConfig,
-) -> hyper_util::server::conn::auto::Builder<hyper_util::rt::TokioExecutor> {
-    let mut builder =
-        hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
-    // hyper requires a Timer when HTTP/2 keep-alive is configured (otherwise
-    // it panics at first ping with "You must supply a timer."). Installing
-    // TokioTimer on both protocol builders covers H1 read timeouts and H2
-    // keep-alive uniformly.
-    builder
-        .http1()
-        .timer(hyper_util::rt::TokioTimer::new());
-    builder
-        .http2()
-        .timer(hyper_util::rt::TokioTimer::new())
-        .max_concurrent_streams(Some(http_cfg.h2_max_concurrent_streams))
-        .keep_alive_interval(Some(std::time::Duration::from_secs(
-            http_cfg.h2_keep_alive_interval_sec,
-        )))
-        .keep_alive_timeout(std::time::Duration::from_secs(
-            http_cfg.h2_keep_alive_timeout_sec,
-        ))
-        .initial_stream_window_size(http_cfg.h2_initial_stream_window)
-        .initial_connection_window_size(http_cfg.h2_initial_connection_window);
-    builder
-}
-
-/// How long the requests still running when the drain period ends get to
-/// finish; their connections are dropped after that.
-pub const CLOSE_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
-
-/// Serve HTTPS connections using a manual TLS accept loop with hyper_util.
-pub async fn serve_tls(
-    listener: TcpListener,
-    reloader: Arc<TlsReloader>,
-    app: crate::ServerApp,
-    shutdown: impl std::future::Future<Output = ()>,
-    http_cfg: HttpConfig,
-    close_grace: std::time::Duration,
-) -> Result<()> {
-    tokio::pin!(shutdown);
-
-    let mut join_set = JoinSet::new();
-    let builder = Arc::new(build_http_builder(&http_cfg));
-    let graceful = GracefulShutdown::new();
-
-    loop {
-        tokio::select! {
-            biased;
-            _ = &mut shutdown => {
-                tracing::info!("TLS listener shutting down, closing {} connections", join_set.len());
-                break;
-            }
-            result = listener.accept() => {
-                let (tcp_stream, remote_addr) = match result {
-                    Ok(v) => v,
-                    Err(e) => {
-                        tracing::warn!(error = %e, "failed to accept TCP connection");
-                        continue;
-                    }
-                };
-
-                tcp_stream.set_nodelay(true).ok();
-
-                let tls_config = reloader.current();
-                let acceptor = tokio_rustls::TlsAcceptor::from(tls_config);
-                let app = app.clone();
-                let builder = Arc::clone(&builder);
-                // Taken at accept time, so a shutdown signalled while the
-                // TLS handshake is still running reaches this connection too.
-                let watcher = graceful.watcher();
-
-                join_set.spawn(async move {
-                    serve_tls_connection(acceptor, tcp_stream, remote_addr, app, builder, watcher).await;
-                });
-            }
-        }
-    }
-    drop(listener);
-
-    // Tell every connection to close: an idle keep-alive one closes at once,
-    // a busy one after its current request (HTTP/2: GOAWAY). Whatever is
-    // still running after the close grace is dropped, so shutdown is bounded.
-    let closed = tokio::time::timeout(close_grace, async {
-        graceful.shutdown().await;
-        while join_set.join_next().await.is_some() {}
-    })
-    .await;
-    if closed.is_err() {
-        tracing::warn!(
-            "{} connection(s) still busy after {}s, dropping them",
-            join_set.len(),
-            close_grace.as_secs_f32()
-        );
-        join_set.shutdown().await;
-    }
-
-    Ok(())
-}
-
-async fn serve_tls_connection(
-    acceptor: tokio_rustls::TlsAcceptor,
-    tcp_stream: tokio::net::TcpStream,
-    remote_addr: SocketAddr,
-    app: crate::ServerApp,
-    builder: Arc<hyper_util::server::conn::auto::Builder<hyper_util::rt::TokioExecutor>>,
-    watcher: Watcher,
-) {
-    let tls_stream = match acceptor.accept(tcp_stream).await {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::debug!(remote = %remote_addr, error = %e, "TLS handshake failed");
-            return;
-        }
-    };
-
-    // Did the connection present a client certificate? The verifier
-    // already validated any presented certificate against the configured CA
-    // during the handshake (an invalid one fails the accept above), so
-    // presence here means "CA-signed client identity". Stamped on every
-    // request of the connection; `cluster_auth` requires it on
-    // `/cluster/v1/*` when `[cluster.tls]` is configured.
-    let peer_cert_verified = tls_stream
-        .get_ref()
-        .1
-        .peer_certificates()
-        .is_some_and(|certs| !certs.is_empty());
-
-    let io = TokioIo::new(tls_stream);
-
-    // Bridge tower::Service → hyper::Service.
-    // First map Request<Incoming> → Request<axum::body::Body>, then wrap
-    // in TowerToHyperService for hyper_util compatibility.
-    let tower_svc = tower::ServiceBuilder::new()
-        .map_request(move |req: http::Request<hyper::body::Incoming>| {
-            let mut req = req.map(axum::body::Body::new);
-            if peer_cert_verified {
-                req.extensions_mut()
-                    .insert(arca_proto::middleware::cluster_auth::ClusterPeerCertVerified);
-            }
-            req
-        })
-        .service(app);
-    let service = hyper_util::service::TowerToHyperService::new(tower_svc);
-
-    if let Err(e) = watcher.watch(builder.serve_connection(io, service)).await {
-        // Ignore normal connection closures.
-        let err_str = e.to_string();
-        if !is_benign_connection_error(&err_str) {
-            tracing::debug!(remote = %remote_addr, error = %err_str, "connection error");
-        }
-    }
-}
-
-fn is_benign_connection_error(err: &str) -> bool {
-    err.contains("connection reset")
-        || err.contains("broken pipe")
-        || err.contains("connection closed")
-        || err.contains("not connected")
 }
 
 // ---------------------------------------------------------------------------
@@ -615,143 +443,10 @@ mod tests {
         assert_ne!(before, after);
     }
 
-    /// A `serve_tls` on 127.0.0.1 serving `router` behind the production
-    /// layers, with a client that trusts its CA.
-    struct TlsServer {
-        base: String,
-        client: reqwest::Client,
-        stop: Option<tokio::sync::oneshot::Sender<()>>,
-        task: tokio::task::JoinHandle<Result<()>>,
-        _dir: tempfile::TempDir,
-    }
-
-    impl TlsServer {
-        /// Fires the shutdown signal, as the end of the drain period does.
-        fn shut_down(&mut self) {
-            self.stop.take().unwrap().send(()).unwrap();
-        }
-
-        /// Waits for `serve_tls` to return, failing the test after `limit`.
-        async fn stopped_within(&mut self, limit: std::time::Duration) {
-            tokio::time::timeout(limit, &mut self.task)
-                .await
-                .expect("serve_tls did not return in time")
-                .unwrap()
-                .unwrap();
-        }
-    }
-
-    async fn start_tls_server(router: axum::Router, close_grace: std::time::Duration) -> TlsServer {
-        use tower::Layer as _;
-
-        let dir = tempfile::tempdir().unwrap();
-        crate::tls_generate::generate_cluster(dir.path(), &["node-a=127.0.0.1".to_string()], 7).unwrap();
-        let paths = ResolvedPaths {
-            cert_path: dir.path().join("node-a.crt"),
-            key_path: dir.path().join("node-a.key"),
-            ca_path: None,
-        };
-        let tls_config = TlsConfig {
-            cert_dir: None,
-            cert_file: Some(paths.cert_path.to_string_lossy().into_owned()),
-            key_file: Some(paths.key_path.to_string_lossy().into_owned()),
-            ca_file: None,
-        };
-        let reloader = Arc::new(TlsReloader::new(load_rustls_config(&paths, None).unwrap(), tls_config, None));
-        let app = arca_proto::middleware::unread_body::CloseOnUnreadBodyLayer
-            .layer(arca_proto::middleware::normalize::NormalizeLayer.layer(router));
-
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let base = format!("https://127.0.0.1:{}", listener.local_addr().unwrap().port());
-        let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
-        let shutdown = async move {
-            let _ = stopped.await;
-        };
-        let task = tokio::spawn(serve_tls(listener, reloader, app, shutdown, HttpConfig::default(), close_grace));
-
-        let ca_pem = std::fs::read(dir.path().join("arca-cluster-ca.crt")).unwrap();
-        let client = reqwest::Client::builder()
-            .add_root_certificate(reqwest::Certificate::from_pem(&ca_pem).unwrap())
-            .http1_only()
-            .build()
-            .unwrap();
-        TlsServer { base, client, stop: Some(stop), task, _dir: dir }
-    }
-
-    /// A route that signals `entered` when a request reaches it, then runs `then`.
-    fn signalling_route<F, Fut>(entered: Arc<tokio::sync::Notify>, then: F) -> axum::Router
-    where
-        F: Fn() -> Fut + Clone + Send + Sync + 'static,
-        Fut: std::future::Future<Output = &'static str> + Send + 'static,
-    {
-        axum::Router::new().route(
-            "/req",
-            axum::routing::get(move || {
-                let (entered, then) = (entered.clone(), then.clone());
-                async move {
-                    entered.notify_one();
-                    then().await
-                }
-            }),
-        )
-    }
-
-    /// Idle keep-alive connections must not hold up shutdown: they are told to
-    /// close as soon as the drain period ends. Waiting for them, with no close
-    /// signal, made a server with 137 idle client connections hang until
-    /// systemd SIGKILLed it.
-    #[tokio::test]
-    async fn shutdown_closes_idle_keep_alive_connections_at_once() {
-        let router = axum::Router::new().route("/ok", axum::routing::get(|| async { "ok" }));
-        let mut server = start_tls_server(router, std::time::Duration::from_secs(30)).await;
-        let resp = server.client.get(format!("{}/ok", server.base)).send().await.unwrap();
-        assert_eq!(resp.text().await.unwrap(), "ok");
-        // The connection now sits idle in the client's keep-alive pool.
-
-        server.shut_down();
-        server.stopped_within(std::time::Duration::from_secs(5)).await;
-    }
-
-    /// A request already running when the drain ends completes normally.
-    #[tokio::test]
-    async fn shutdown_lets_an_in_flight_request_finish() {
-        let entered = Arc::new(tokio::sync::Notify::new());
-        let router = signalling_route(entered.clone(), || async {
-            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-            "done"
-        });
-        let mut server = start_tls_server(router, std::time::Duration::from_secs(30)).await;
-        let request = tokio::spawn(server.client.get(format!("{}/req", server.base)).send());
-        entered.notified().await;
-
-        server.shut_down();
-        let resp = request.await.unwrap().unwrap();
-        assert_eq!(resp.text().await.unwrap(), "done");
-        server.stopped_within(std::time::Duration::from_secs(5)).await;
-    }
-
-    /// A request still running when the close grace runs out is dropped, so
-    /// shutdown is bounded whatever the clients do.
-    #[tokio::test]
-    async fn shutdown_drops_requests_still_running_after_the_close_grace() {
-        let entered = Arc::new(tokio::sync::Notify::new());
-        let router = signalling_route(entered.clone(), || std::future::pending::<&'static str>());
-        let grace = std::time::Duration::from_millis(300);
-        let mut server = start_tls_server(router, grace).await;
-        let request = tokio::spawn(server.client.get(format!("{}/req", server.base)).send());
-        entered.notified().await;
-
-        let started = std::time::Instant::now();
-        server.shut_down();
-        server.stopped_within(std::time::Duration::from_secs(5)).await;
-        assert!(started.elapsed() >= grace, "the in-flight request gets the whole grace");
-        assert!(request.await.unwrap().is_err(), "the dropped connection fails the request");
-    }
-
     /// Cluster mTLS end-to-end over real sockets: with the cluster CA configured the
     /// listener accepts BOTH bare-TLS and client-cert connections (optional at
     /// the TLS layer, as S3 clients share the port), surfaces the verified
-    /// client identity to the accept loop (the signal `serve_tls_connection`
+    /// client identity to the accept loop (the signal `serve::serve_connection`
     /// turns into the `ClusterPeerCertVerified` extension), refuses a client
     /// certificate minted by a foreign CA, and is itself refused by a client
     /// that does not trust the cluster CA — i.e. certificate verification is

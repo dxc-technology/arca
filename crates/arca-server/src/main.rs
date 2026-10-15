@@ -20,6 +20,7 @@ mod recover;
 mod recrypt_existing;
 mod replicator;
 mod rewrite_marker;
+mod serve;
 mod sigv4_http;
 mod tls;
 mod tls_generate;
@@ -843,13 +844,8 @@ async fn async_main(cli: Cli) -> Result<()> {
 
             match config.server.tls {
                 None => {
-                    // Plain HTTP
-                    let service = {
-                        use axum::ServiceExt as _;
-                        app.into_make_service()
-                    };
-
-                    // Ignore SIGHUP when TLS is not enabled (default would kill the process).
+                    // Plain HTTP. Ignore SIGHUP when TLS is not enabled
+                    // (default would kill the process).
                     #[cfg(unix)]
                     {
                         tokio::spawn(async {
@@ -869,14 +865,16 @@ async fn async_main(cli: Cli) -> Result<()> {
                     );
                     let listener = TcpListener::bind(&addr).await?;
                     tracing::info!("Arca is ready (HTTP on {addr})");
-                    // axum 0.8 doesn't expose the underlying hyper builder;
-                    // for explicit HTTP/2 tuning on the plain path, future
-                    // work should swap `axum::serve` for the manual accept
-                    // loop pattern used by `tls::serve_tls`. Defaults are
-                    // adequate for current workloads.
-                    axum::serve(plain_http_listener(listener), service)
-                        .with_graceful_shutdown(shutdown_signal(drain_tx, drain_timeout))
-                        .await?;
+                    let http_cfg = config.server.http.clone().unwrap_or_default();
+                    serve::serve(
+                        listener,
+                        serve::Transport::Plain,
+                        app,
+                        shutdown_signal(drain_tx, drain_timeout),
+                        http_cfg,
+                        serve::CLOSE_GRACE,
+                    )
+                    .await?;
                 }
                 Some(tls_config) => {
                     let paths = tls_config.resolve_paths()?;
@@ -920,7 +918,15 @@ async fn async_main(cli: Cli) -> Result<()> {
                     let listener = TcpListener::bind(&addr).await?;
                     tracing::info!("Arca is ready (HTTPS on {addr})");
                     let http_cfg = config.server.http.clone().unwrap_or_default();
-                    tls::serve_tls(listener, reloader, app, shutdown_signal(drain_tx, drain_timeout), http_cfg, tls::CLOSE_GRACE).await?;
+                    serve::serve(
+                        listener,
+                        serve::Transport::Tls(reloader),
+                        app,
+                        shutdown_signal(drain_tx, drain_timeout),
+                        http_cfg,
+                        serve::CLOSE_GRACE,
+                    )
+                    .await?;
                 }
             }
 
@@ -1461,19 +1467,6 @@ fn init_tracing(format: &LogFormat, initial_level: &str) -> LogLevelReloader {
     })
 }
 
-/// Wraps the plain-HTTP listener so every accepted connection has
-/// `TCP_NODELAY`, like the TLS listener (`tls::serve_tls`). With Nagle on, a
-/// response written as headers then body (every GetObject) waits for the
-/// client's delayed ACK: about 40 ms per request on a keep-alive connection.
-fn plain_http_listener(listener: TcpListener) -> impl axum::serve::Listener<Io = tokio::net::TcpStream, Addr = std::net::SocketAddr> {
-    use axum::serve::ListenerExt as _;
-    listener.tap_io(|tcp| {
-        if let Err(e) = tcp.set_nodelay(true) {
-            tracing::debug!(error = %e, "Failed to set TCP_NODELAY");
-        }
-    })
-}
-
 /// Waits for a shutdown signal (SIGINT or SIGTERM), then enters drain mode
 /// for `drain_timeout` seconds before completing.
 async fn shutdown_signal(
@@ -1509,23 +1502,4 @@ async fn shutdown_signal(
     );
     tokio::time::sleep(drain_timeout).await;
     tracing::info!("Shutting down...");
-}
-
-#[cfg(test)]
-mod tests {
-    use super::plain_http_listener;
-    use axum::serve::Listener as _;
-    use tokio::net::{TcpListener, TcpStream};
-
-    #[tokio::test]
-    async fn plain_http_connections_disable_nagle() {
-        // Without TCP_NODELAY a response written as headers + body is held
-        // back until the client's delayed ACK: ~40 ms per keep-alive GET.
-        let mut listener = plain_http_listener(TcpListener::bind("127.0.0.1:0").await.unwrap());
-        let addr = listener.local_addr().unwrap();
-        let client = tokio::spawn(async move { TcpStream::connect(addr).await.unwrap() });
-        let (accepted, _) = listener.accept().await;
-        assert!(accepted.nodelay().unwrap(), "accepted connection must have TCP_NODELAY");
-        drop(client.await.unwrap());
-    }
 }
