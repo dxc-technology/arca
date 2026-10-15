@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.0] — 2026-10-15
+
 ### Added
 
 - **`arca fsck --repair`**: fixes what the check finds, asking before each fix (`y`, `n`, `a` for the rest of the category, `q` to stop; `--yes` answers yes to all). Stale temp files are deleted without asking; orphaned blobs and sidecars are moved to `<data_dir>/lost+found/<timestamp>/` (or deleted with `--delete`); the row of a version whose data is gone is deleted; a sidecar that disagrees with its row is rewritten from it, keeping its encryption, compression and part list; with `--abort-uploads-older-than <days>`, old unfinished uploads are aborted. It may run against a live server: files younger than the grace period are never touched (on a cluster node the grace is at least the tombstone grace), every item is checked again right before its fix (a row is deleted only if it still points at the missing blob, checked inside the delete's transaction), and the referenced set is recomputed before orphans are moved. Database fixes run first and are followed by a rescan, so the files they leave behind are reclaimed in the same run. Ctrl+C exits at once, or after the current fix if one is running, and a re-run continues, with no journal. Aborting an upload that a client is completing at that very moment loses the completed object, as `AbortMultipartUpload` does (TD-053): abort only uploads old enough to be abandoned. It refuses to start while an offline rewrite is unfinished, and on an HA cluster node it only repairs files: a missing blob is left to anti-entropy, which has it on a peer, and uploads are aborted through the S3 API.
@@ -937,7 +939,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.31.2...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.32.0...HEAD
+[0.32.0]: https://github.com/dxc-technology/arca/compare/v0.31.2...v0.32.0
 [0.31.2]: https://github.com/dxc-technology/arca/compare/v0.31.1...v0.31.2
 [0.31.1]: https://github.com/dxc-technology/arca/compare/v0.31.0...v0.31.1
 [0.31.0]: https://github.com/dxc-technology/arca/compare/v0.30.2...v0.31.0

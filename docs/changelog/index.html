@@ -1239,7 +1239,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0320-2026-10-15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.32.0 — 2026-10-15
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.32.0 — 2026-10-15">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3265,7 +3276,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Unreleased">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0320-2026-10-15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.32.0 — 2026-10-15
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.32.0 — 2026-10-15">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -5245,7 +5267,8 @@
 <p>All notable changes to this project are documented in this file.</p>
 <p>The format is based on <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>,
 and this project adheres to <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
-<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.31.2...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="unreleased"><a href="https://github.com/dxc-technology/arca/compare/v0.32.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="0320-2026-10-15"><a href="https://github.com/dxc-technology/arca/compare/v0.31.2...v0.32.0">0.32.0</a> — 2026-10-15<a class="headerlink" href="#0320-2026-10-15" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong><code>arca fsck --repair</code></strong>: fixes what the check finds, asking before each fix (<code>y</code>, <code>n</code>, <code>a</code> for the rest of the category, <code>q</code> to stop; <code>--yes</code> answers yes to all). Stale temp files are deleted without asking; orphaned blobs and sidecars are moved to <code>&lt;data_dir&gt;/lost+found/&lt;timestamp&gt;/</code> (or deleted with <code>--delete</code>); the row of a version whose data is gone is deleted; a sidecar that disagrees with its row is rewritten from it, keeping its encryption, compression and part list; with <code>--abort-uploads-older-than &lt;days&gt;</code>, old unfinished uploads are aborted. It may run against a live server: files younger than the grace period are never touched (on a cluster node the grace is at least the tombstone grace), every item is checked again right before its fix (a row is deleted only if it still points at the missing blob, checked inside the delete's transaction), and the referenced set is recomputed before orphans are moved. Database fixes run first and are followed by a rescan, so the files they leave behind are reclaimed in the same run. Ctrl+C exits at once, or after the current fix if one is running, and a re-run continues, with no journal. Aborting an upload that a client is completing at that very moment loses the completed object, as <code>AbortMultipartUpload</code> does (TD-053): abort only uploads old enough to be abandoned. It refuses to start while an offline rewrite is unfinished, and on an HA cluster node it only repairs files: a missing blob is left to anti-entropy, which has it on a peer, and uploads are aborted through the S3 API.</li>
