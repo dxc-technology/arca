@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`arca gc` reports the space it frees**: the dry run says how much `--reclaim` would free, and `--reclaim` how much it freed (`Reclaimed 0 orphan blob(s) and 118 stale temp file(s), freeing 419.0 MiB.`). An orphan counts with its sidecar, which is deleted with it; only the files actually deleted count toward the freed space.
 
+### Fixed
+
+- **An HTTPS server no longer hangs on shutdown until it is killed.** When the drain period ended, the TLS listener waited for every open connection to end by itself without telling any of them to close, so a single idle keep-alive connection kept the server running: in production, 137 idle client connections held a stopping server until systemd SIGKILLed it at `TimeoutStopSec`, skipping the rest of the shutdown. Every connection is now told to close when the drain ends: an idle one closes at once, a busy one after its current request (HTTP/2 sends `GOAWAY`), and those still running 10 seconds later are dropped, so a stop takes at most `drain_timeout_seconds` + 10 seconds. Plain HTTP already closed idle connections. The deployment guide also wrongly advised a `drain_timeout_seconds` at least as long as the Kubernetes termination grace period: the grace period must be the longer of the two.
+
 ## [0.32.0] — 2026-10-15
 
 ### Added

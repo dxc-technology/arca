@@ -920,7 +920,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                     let listener = TcpListener::bind(&addr).await?;
                     tracing::info!("Arca is ready (HTTPS on {addr})");
                     let http_cfg = config.server.http.clone().unwrap_or_default();
-                    tls::serve_tls(listener, reloader, app, shutdown_signal(drain_tx, drain_timeout), http_cfg).await?;
+                    tls::serve_tls(listener, reloader, app, shutdown_signal(drain_tx, drain_timeout), http_cfg, tls::CLOSE_GRACE).await?;
                 }
             }
 

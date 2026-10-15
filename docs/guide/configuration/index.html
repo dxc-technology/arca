@@ -2058,7 +2058,7 @@
 <tr>
 <td><code>server.limits.drain_timeout_seconds</code></td>
 <td><code>30</code></td>
-<td>Seconds to wait during graceful shutdown before closing connections. During this window, <code>/admin/health</code> returns 503 so load balancers stop routing.</td>
+<td>Seconds to wait during graceful shutdown before closing connections (then idle connections close at once and, over HTTPS, running requests get 10 more seconds, see <a href="../../operations/deployment/#graceful-shutdown">Graceful Shutdown</a>). During this window, <code>/admin/health</code> returns 503 so load balancers stop routing.</td>
 </tr>
 </tbody>
 </table>

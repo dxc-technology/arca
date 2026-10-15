@@ -7,6 +7,7 @@ use std::sync::Arc;
 use anyhow::{bail, Context, Result};
 use arc_swap::ArcSwap;
 use hyper_util::rt::TokioIo;
+use hyper_util::server::graceful::{GracefulShutdown, Watcher};
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::ServerConfig as RustlsServerConfig;
@@ -259,6 +260,10 @@ fn build_http_builder(
     builder
 }
 
+/// How long the requests still running when the drain period ends get to
+/// finish; their connections are dropped after that.
+pub const CLOSE_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// Serve HTTPS connections using a manual TLS accept loop with hyper_util.
 pub async fn serve_tls(
     listener: TcpListener,
@@ -266,17 +271,19 @@ pub async fn serve_tls(
     app: crate::ServerApp,
     shutdown: impl std::future::Future<Output = ()>,
     http_cfg: HttpConfig,
+    close_grace: std::time::Duration,
 ) -> Result<()> {
     tokio::pin!(shutdown);
 
     let mut join_set = JoinSet::new();
     let builder = Arc::new(build_http_builder(&http_cfg));
+    let graceful = GracefulShutdown::new();
 
     loop {
         tokio::select! {
             biased;
             _ = &mut shutdown => {
-                tracing::info!("TLS listener shutting down, draining {} connections", join_set.len());
+                tracing::info!("TLS listener shutting down, closing {} connections", join_set.len());
                 break;
             }
             result = listener.accept() => {
@@ -294,16 +301,34 @@ pub async fn serve_tls(
                 let acceptor = tokio_rustls::TlsAcceptor::from(tls_config);
                 let app = app.clone();
                 let builder = Arc::clone(&builder);
+                // Taken at accept time, so a shutdown signalled while the
+                // TLS handshake is still running reaches this connection too.
+                let watcher = graceful.watcher();
 
                 join_set.spawn(async move {
-                    serve_tls_connection(acceptor, tcp_stream, remote_addr, app, builder).await;
+                    serve_tls_connection(acceptor, tcp_stream, remote_addr, app, builder, watcher).await;
                 });
             }
         }
     }
+    drop(listener);
 
-    // Drain in-flight connections.
-    while join_set.join_next().await.is_some() {}
+    // Tell every connection to close: an idle keep-alive one closes at once,
+    // a busy one after its current request (HTTP/2: GOAWAY). Whatever is
+    // still running after the close grace is dropped, so shutdown is bounded.
+    let closed = tokio::time::timeout(close_grace, async {
+        graceful.shutdown().await;
+        while join_set.join_next().await.is_some() {}
+    })
+    .await;
+    if closed.is_err() {
+        tracing::warn!(
+            "{} connection(s) still busy after {}s, dropping them",
+            join_set.len(),
+            close_grace.as_secs_f32()
+        );
+        join_set.shutdown().await;
+    }
 
     Ok(())
 }
@@ -314,6 +339,7 @@ async fn serve_tls_connection(
     remote_addr: SocketAddr,
     app: crate::ServerApp,
     builder: Arc<hyper_util::server::conn::auto::Builder<hyper_util::rt::TokioExecutor>>,
+    watcher: Watcher,
 ) {
     let tls_stream = match acceptor.accept(tcp_stream).await {
         Ok(s) => s,
@@ -352,7 +378,7 @@ async fn serve_tls_connection(
         .service(app);
     let service = hyper_util::service::TowerToHyperService::new(tower_svc);
 
-    if let Err(e) = builder.serve_connection(io, service).await {
+    if let Err(e) = watcher.watch(builder.serve_connection(io, service)).await {
         // Ignore normal connection closures.
         let err_str = e.to_string();
         if !is_benign_connection_error(&err_str) {
@@ -587,6 +613,139 @@ mod tests {
         reloader.reload().unwrap();
         let after = Arc::as_ptr(&reloader.current());
         assert_ne!(before, after);
+    }
+
+    /// A `serve_tls` on 127.0.0.1 serving `router` behind the production
+    /// layers, with a client that trusts its CA.
+    struct TlsServer {
+        base: String,
+        client: reqwest::Client,
+        stop: Option<tokio::sync::oneshot::Sender<()>>,
+        task: tokio::task::JoinHandle<Result<()>>,
+        _dir: tempfile::TempDir,
+    }
+
+    impl TlsServer {
+        /// Fires the shutdown signal, as the end of the drain period does.
+        fn shut_down(&mut self) {
+            self.stop.take().unwrap().send(()).unwrap();
+        }
+
+        /// Waits for `serve_tls` to return, failing the test after `limit`.
+        async fn stopped_within(&mut self, limit: std::time::Duration) {
+            tokio::time::timeout(limit, &mut self.task)
+                .await
+                .expect("serve_tls did not return in time")
+                .unwrap()
+                .unwrap();
+        }
+    }
+
+    async fn start_tls_server(router: axum::Router, close_grace: std::time::Duration) -> TlsServer {
+        use tower::Layer as _;
+
+        let dir = tempfile::tempdir().unwrap();
+        crate::tls_generate::generate_cluster(dir.path(), &["node-a=127.0.0.1".to_string()], 7).unwrap();
+        let paths = ResolvedPaths {
+            cert_path: dir.path().join("node-a.crt"),
+            key_path: dir.path().join("node-a.key"),
+            ca_path: None,
+        };
+        let tls_config = TlsConfig {
+            cert_dir: None,
+            cert_file: Some(paths.cert_path.to_string_lossy().into_owned()),
+            key_file: Some(paths.key_path.to_string_lossy().into_owned()),
+            ca_file: None,
+        };
+        let reloader = Arc::new(TlsReloader::new(load_rustls_config(&paths, None).unwrap(), tls_config, None));
+        let app = arca_proto::middleware::unread_body::CloseOnUnreadBodyLayer
+            .layer(arca_proto::middleware::normalize::NormalizeLayer.layer(router));
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("https://127.0.0.1:{}", listener.local_addr().unwrap().port());
+        let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+        let shutdown = async move {
+            let _ = stopped.await;
+        };
+        let task = tokio::spawn(serve_tls(listener, reloader, app, shutdown, HttpConfig::default(), close_grace));
+
+        let ca_pem = std::fs::read(dir.path().join("arca-cluster-ca.crt")).unwrap();
+        let client = reqwest::Client::builder()
+            .add_root_certificate(reqwest::Certificate::from_pem(&ca_pem).unwrap())
+            .http1_only()
+            .build()
+            .unwrap();
+        TlsServer { base, client, stop: Some(stop), task, _dir: dir }
+    }
+
+    /// A route that signals `entered` when a request reaches it, then runs `then`.
+    fn signalling_route<F, Fut>(entered: Arc<tokio::sync::Notify>, then: F) -> axum::Router
+    where
+        F: Fn() -> Fut + Clone + Send + Sync + 'static,
+        Fut: std::future::Future<Output = &'static str> + Send + 'static,
+    {
+        axum::Router::new().route(
+            "/req",
+            axum::routing::get(move || {
+                let (entered, then) = (entered.clone(), then.clone());
+                async move {
+                    entered.notify_one();
+                    then().await
+                }
+            }),
+        )
+    }
+
+    /// Idle keep-alive connections must not hold up shutdown: they are told to
+    /// close as soon as the drain period ends. Waiting for them, with no close
+    /// signal, made a server with 137 idle client connections hang until
+    /// systemd SIGKILLed it.
+    #[tokio::test]
+    async fn shutdown_closes_idle_keep_alive_connections_at_once() {
+        let router = axum::Router::new().route("/ok", axum::routing::get(|| async { "ok" }));
+        let mut server = start_tls_server(router, std::time::Duration::from_secs(30)).await;
+        let resp = server.client.get(format!("{}/ok", server.base)).send().await.unwrap();
+        assert_eq!(resp.text().await.unwrap(), "ok");
+        // The connection now sits idle in the client's keep-alive pool.
+
+        server.shut_down();
+        server.stopped_within(std::time::Duration::from_secs(5)).await;
+    }
+
+    /// A request already running when the drain ends completes normally.
+    #[tokio::test]
+    async fn shutdown_lets_an_in_flight_request_finish() {
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let router = signalling_route(entered.clone(), || async {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            "done"
+        });
+        let mut server = start_tls_server(router, std::time::Duration::from_secs(30)).await;
+        let request = tokio::spawn(server.client.get(format!("{}/req", server.base)).send());
+        entered.notified().await;
+
+        server.shut_down();
+        let resp = request.await.unwrap().unwrap();
+        assert_eq!(resp.text().await.unwrap(), "done");
+        server.stopped_within(std::time::Duration::from_secs(5)).await;
+    }
+
+    /// A request still running when the close grace runs out is dropped, so
+    /// shutdown is bounded whatever the clients do.
+    #[tokio::test]
+    async fn shutdown_drops_requests_still_running_after_the_close_grace() {
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let router = signalling_route(entered.clone(), || std::future::pending::<&'static str>());
+        let grace = std::time::Duration::from_millis(300);
+        let mut server = start_tls_server(router, grace).await;
+        let request = tokio::spawn(server.client.get(format!("{}/req", server.base)).send());
+        entered.notified().await;
+
+        let started = std::time::Instant::now();
+        server.shut_down();
+        server.stopped_within(std::time::Duration::from_secs(5)).await;
+        assert!(started.elapsed() >= grace, "the in-flight request gets the whole grace");
+        assert!(request.await.unwrap().is_err(), "the dropped connection fails the request");
     }
 
     /// Cluster mTLS end-to-end over real sockets: with the cluster CA configured the

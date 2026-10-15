@@ -78,7 +78,7 @@ Compression is **per-bucket and console-managed** — it has no TOML configurati
 | `server.limits.max_body_size` | `5000000000` (5 GB) | Maximum request body size in bytes. Set to `0` for unlimited. Requests exceeding this return `EntityTooLarge` (400). |
 | `server.limits.max_header_count` | `100` | Maximum number of HTTP headers per request. |
 | `server.limits.max_metadata_size` | `2048` (2 KB) | Maximum total size of user metadata (`x-amz-meta-*` headers) in bytes. Matches S3's 2 KB limit. |
-| `server.limits.drain_timeout_seconds` | `30` | Seconds to wait during graceful shutdown before closing connections. During this window, `/admin/health` returns 503 so load balancers stop routing. |
+| `server.limits.drain_timeout_seconds` | `30` | Seconds to wait during graceful shutdown before closing connections (then idle connections close at once and, over HTTPS, running requests get 10 more seconds, see [Graceful Shutdown](../operations/deployment.md#graceful-shutdown)). During this window, `/admin/health` returns 503 so load balancers stop routing. |
 
 ### Rate Limiting
 

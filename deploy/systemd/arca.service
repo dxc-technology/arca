@@ -30,7 +30,8 @@ ExecStart=/usr/local/bin/arca serve --config-path /etc/arca/config.toml
 Restart=on-failure
 RestartSec=5
 
-# Graceful shutdown — matches drain_timeout_seconds (default 30) + margin
+# Graceful shutdown: drain_timeout_seconds (default 30) + up to 10 s for
+# in-flight requests to finish + margin
 TimeoutStopSec=45
 
 # Security hardening

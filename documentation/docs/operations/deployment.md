@@ -140,7 +140,7 @@ journalctl -u arca -f
 ```
 
 !!! tip
-    The systemd unit includes security hardening (sandboxed filesystem, no new privileges, private /tmp). It also sets `TimeoutStopSec=45` to allow in-flight requests to complete during graceful shutdown.
+    The systemd unit includes security hardening (sandboxed filesystem, no new privileges, private /tmp). It also sets `TimeoutStopSec=45`, above the longest [graceful shutdown](#graceful-shutdown) with the default drain (30 + 10 seconds).
 
 ### 5. TLS with systemd
 
@@ -167,7 +167,7 @@ Arca runs well in Kubernetes as a `Deployment` (stateless, with a PersistentVolu
 - Mount a PVC at the `data_dir` path (default `/data`)
 - Use a `ConfigMap` or mounted `Secret` for `/etc/arca/config.toml`
 - The `/admin/health` endpoint returns `200` when healthy and `503` when draining, use it for both liveness and readiness probes
-- Set `drain_timeout_seconds` to match or exceed your pod termination grace period
+- Keep `terminationGracePeriodSeconds` above `drain_timeout_seconds` + 10 (see [Graceful Shutdown](#graceful-shutdown)), or the pod is killed before it finishes shutting down
 - For PostgreSQL metadata backend, use an external database (RDS, CloudNative-PG, etc.)
 
 ```yaml
@@ -272,8 +272,11 @@ On SIGTERM or SIGINT, Arca enters **drain mode**:
 
 1. The `/admin/health` endpoint immediately starts returning `503 {"status":"draining"}`
 2. Load balancers polling health stop routing new traffic to the instance
-3. In-flight requests are allowed to complete during the drain window
-4. After `drain_timeout_seconds` (default: 30), the server shuts down
+3. Requests keep being served during the drain window
+4. After `drain_timeout_seconds` (default: 30), the server stops accepting connections and tells every open one to close: an idle keep-alive connection closes at once, a busy one after its current request (HTTP/2 sends `GOAWAY`)
+5. Over HTTPS, requests still running 10 seconds later have their connection dropped, and the server exits (over plain HTTP the server waits for them)
+
+Over HTTPS a stop therefore takes at most `drain_timeout_seconds` + 10 seconds. Give the supervisor more than that before it kills the process: systemd's `TimeoutStopSec`, Kubernetes' `terminationGracePeriodSeconds` (45 in the shipped unit and manifests, for the default 30), Docker's `stop_grace_period` / `docker stop -t` (default 10, which kills the server during the drain).
 
 ```toml
 [server.limits]
