@@ -2296,29 +2296,26 @@ part, so a large object (thousands of parts) failed with <code>open part blob: N
 file descriptors available (os error 24)</code> even on an idle server. Raising the
 limit works around it; later releases open one part at a time.</p>
 <h3 id="disk-is-full-but-the-buckets-are-much-smaller">Disk is full but the buckets are much smaller<a class="headerlink" href="#disk-is-full-but-the-buckets-are-much-smaller" title="Permanent link">&para;</a></h3>
-<p><strong>Symptom</strong>: the data volume is full, or nearly, while the buckets total far less (for example a 1 TB volume full with under 500 GB of objects), writes fail with <code>write blob: No space left on device (os error 28)</code>, and <code>arca fsck</code> reports thousands of <code>ORPHANED_BLOB</code>, <code>MISSING_BLOB</code> and <code>ORPHANED_SIDECAR</code> entries while <code>arca gc --reclaim</code> finds nothing to reclaim.</p>
-<p><strong>Cause</strong>: usually unfinished multipart uploads. The parts of an upload are live data until the upload is completed or aborted, so neither <code>arca gc</code> nor the GC worker reclaims them. Backup tools that upload in parts (Percona Backup for MongoDB, restic, rclone, and others) leave an upload behind whenever a backup fails and the client does not send <code>AbortMultipartUpload</code>. If the failure was a full disk, the leftovers take more of it, and the next run fails the same way: the problem feeds itself, and a backup tool can go for weeks without a restorable backup. The <code>fsck</code> entries are mostly expected: until TD-014 is fixed, <code>fsck</code> does not understand composite blobs (objects assembled by <code>CompleteMultipartUpload</code>), so it reports their sidecars as orphaned and their part files as orphaned or missing.</p>
-<p><strong>Diagnose</strong> (the first command lists unfinished uploads, the second the temp files):</p>
+<p><strong>Symptom</strong>: the data volume is full, or nearly, while the buckets total far less (for example a 1 TB volume full with under 500 GB of objects), writes fail with <code>write blob: No space left on device (os error 28)</code>, and <code>arca gc --reclaim</code> finds little or nothing to reclaim. (Releases up to 0.31.2 also had <code>arca fsck</code> report thousands of <code>ORPHANED_BLOB</code>, <code>MISSING_BLOB</code> and <code>ORPHANED_SIDECAR</code> entries here, because their <code>fsck</code> did not understand multipart objects.)</p>
+<p><strong>Cause</strong>: usually unfinished multipart uploads. The parts of an upload are live data until the upload is completed or aborted, so neither <code>arca gc</code> nor the GC worker reclaims them. Backup tools that upload in parts (Percona Backup for MongoDB, restic, rclone, and others) leave an upload behind whenever a backup fails and the client does not send <code>AbortMultipartUpload</code>. If the failure was a full disk, the leftovers take more of it, and the next run fails the same way: the problem feeds itself, and a backup tool can go for weeks without a restorable backup. Up to 0.31.2, uploads interrupted by a dropped connection could also leave partial temp files; a failed or cancelled write now removes its own.</p>
+<p><strong>Diagnose</strong>: <code>arca fsck</code> lists every unfinished upload (<code>UNFINISHED_UPLOAD</code>, with its start date, part count and size) and stale temp files (<code>STALE_TMP</code>), with totals in its summary; <code>arca gc</code> prints the same totals. From a client:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>mc<span class="w"> </span>ls<span class="w"> </span>--incomplete<span class="w"> </span>--recursive<span class="w"> </span>&lt;alias&gt;/&lt;bucket&gt;
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>find<span class="w"> </span>&lt;data_dir&gt;/blobs<span class="w"> </span>-type<span class="w"> </span>f<span class="w"> </span>-name<span class="w"> </span><span class="s1">&#39;*.tmp&#39;</span><span class="w"> </span>!<span class="w"> </span>-name<span class="w"> </span><span class="s1">&#39;*.rewrite.tmp&#39;</span><span class="w"> </span>!<span class="w"> </span>-name<span class="w"> </span><span class="s1">&#39;*.pending.tmp&#39;</span><span class="w"> </span>-mmin<span class="w"> </span>+1440<span class="w"> </span><span class="p">|</span><span class="w"> </span>wc<span class="w"> </span>-l
 </code></pre></div>
 <p>A finished backup leaves no unfinished uploads, so a list that grows by the same number of entries every night is a failing job. Check the server log for the real error of that run before deleting anything.</p>
 <p><strong>Solution</strong>:</p>
 <ol>
 <li>
-<p>Abort the uploads that can no longer complete (here, everything older than a few days):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>mc<span class="w"> </span>rm<span class="w"> </span>--incomplete<span class="w"> </span>--recursive<span class="w"> </span>--force<span class="w"> </span>--older-than<span class="w"> </span>7d<span class="w"> </span>&lt;alias&gt;/&lt;bucket&gt;
+<p>Abort the uploads that can no longer complete (here, everything older than a week), on the server:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>arca<span class="w"> </span>fsck<span class="w"> </span>--repair<span class="w"> </span>--abort-uploads-older-than<span class="w"> </span><span class="m">7</span>
 </code></pre></div>
-<p>Add <code>--dry-run</code> first to see what would be aborted. This deletes the parts, so check that no job is still uploading.
-2. Delete stale temp files (interrupted uploads, TD-051). They are never referenced by the database or a sidecar; keep <code>*.rewrite.tmp</code> and <code>*.pending.tmp</code>, which are recovery markers:</p>
-<p><div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>find<span class="w"> </span>&lt;data_dir&gt;/blobs<span class="w"> </span>-type<span class="w"> </span>f<span class="w"> </span>-name<span class="w"> </span><span class="s1">&#39;*.tmp&#39;</span><span class="w"> </span>!<span class="w"> </span>-name<span class="w"> </span><span class="s1">&#39;*.rewrite.tmp&#39;</span><span class="w"> </span>!<span class="w"> </span>-name<span class="w"> </span><span class="s1">&#39;*.pending.tmp&#39;</span><span class="w"> </span>-mmin<span class="w"> </span>+1440<span class="w"> </span>-delete
-</code></pre></div>
+<p>It asks before each abort (<code>a</code> answers yes for the rest). From a client, <code>mc rm --incomplete --recursive --force --older-than 7d &lt;alias&gt;/&lt;bucket&gt;</code> does the same (add <code>--dry-run</code> first). Either way the parts are deleted, so check that no job is still uploading. On an HA cluster use the client command: it replicates.
+2. Reclaim stale temp files with <code>arca gc --reclaim</code> (or <code>arca fsck --repair</code>, which also offers the orphans it finds). Both keep <code>*.rewrite.tmp</code> and <code>*.pending.tmp</code>, the recovery files of an unfinished in-place rewrite.
 3. Add a lifecycle rule so it cannot build up again. <code>mc ilm rule add</code> has no option for this action, so import it as JSON (for the whole bucket, or add a <code>Prefix</code> filter):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>mc<span class="w"> </span>ilm<span class="w"> </span>import<span class="w"> </span>&lt;alias&gt;/&lt;bucket&gt;<span class="w"> </span><span class="s">&lt;&lt;&#39;EOF&#39;</span>
-<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="s">{&quot;Rules&quot;:[{&quot;ID&quot;:&quot;abort-incomplete-uploads&quot;,&quot;Status&quot;:&quot;Enabled&quot;,</span>
-<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="s">  &quot;Filter&quot;:{&quot;Prefix&quot;:&quot;&quot;},</span>
-<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="s">  &quot;AbortIncompleteMultipartUpload&quot;:{&quot;DaysAfterInitiation&quot;:3}}]}</span>
-<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="s">EOF</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>mc<span class="w"> </span>ilm<span class="w"> </span>import<span class="w"> </span>&lt;alias&gt;/&lt;bucket&gt;<span class="w"> </span><span class="s">&lt;&lt;&#39;EOF&#39;</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="s">{&quot;Rules&quot;:[{&quot;ID&quot;:&quot;abort-incomplete-uploads&quot;,&quot;Status&quot;:&quot;Enabled&quot;,</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="s">  &quot;Filter&quot;:{&quot;Prefix&quot;:&quot;&quot;},</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="s">  &quot;AbortIncompleteMultipartUpload&quot;:{&quot;DaysAfterInitiation&quot;:3}}]}</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="s">EOF</span>
 </code></pre></div>
 <p>Pick a number of days longer than your slowest legitimate upload. <code>mc ilm import</code> replaces the bucket's whole lifecycle configuration, so merge with <code>mc ilm export</code> if the bucket already has rules. The rule also shows in the console, in the bucket's lifecycle settings. The worker evaluates it hourly by default (<code>[lifecycle] interval_seconds</code>).
 4. Alert on volume usage well before it is full (for example 85%).</p>
@@ -2332,11 +2329,11 @@ limit works around it; later releases open one part at a time.</p>
 <li>For moderate loads, these errors are transient and self-resolve (Arca retries internally).</li>
 <li>
 <p>For high-write workloads, switch to the PostgreSQL metadata backend:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="k">[storage]</span>
-<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="n">metadata_backend</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;postgres&quot;</span>
-<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>
-<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="k">[storage.postgres]</span>
-<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="n">connection_string</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;postgresql://arca:secret@db:5432/arca&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="k">[storage]</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="n">metadata_backend</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;postgres&quot;</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="k">[storage.postgres]</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="n">connection_string</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;postgresql://arca:secret@db:5432/arca&quot;</span>
 </code></pre></div>
 </li>
 </ul>
@@ -2349,10 +2346,10 @@ limit works around it; later releases open one part at a time.</p>
 <p><strong>Symptom</strong>: <code>GetObject</code> returns errors for objects that were encrypted with a previous master key.</p>
 <p><strong>Cause</strong>: When you rotate the master key, existing objects are still wrapped with the old key. Without the previous key configured, Arca cannot unwrap the per-object DEKs.</p>
 <p><strong>Solution</strong>: Set both the new and old keys in the config:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="k">[encryption]</span>
-<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
-<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="n">master_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;new-base64-key&quot;</span>
-<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="n">previous_master_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;old-base64-key&quot;</span><span class="w">      </span><span class="c1"># keeps old objects readable</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="k">[encryption]</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="n">master_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;new-base64-key&quot;</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="n">previous_master_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;old-base64-key&quot;</span><span class="w">      </span><span class="c1"># keeps old objects readable</span>
 </code></pre></div>
 <p>Then run <code>arca migrate-encryption</code> to re-wrap all DEKs with the new key. After migration completes, <code>previous_master_key</code> can be removed.</p>
 <h3 id="mixed-encrypted-and-unencrypted-objects">Mixed encrypted and unencrypted objects<a class="headerlink" href="#mixed-encrypted-and-unencrypted-objects" title="Permanent link">&para;</a></h3>
@@ -2369,27 +2366,27 @@ limit works around it; later releases open one part at a time.</p>
 <li>The data directory does not exist.</li>
 </ul>
 <p><strong>Solution</strong>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="c1"># 1. Check config syntax by running manually</span>
-<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>/usr/local/bin/arca<span class="w"> </span>serve<span class="w"> </span>--config-path<span class="w"> </span>/etc/arca/config.toml
-<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>
-<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="c1"># 2. Verify binary architecture</span>
-<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a>file<span class="w"> </span>/usr/local/bin/arca
-<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="c1"># Should show: ELF 64-bit LSB ... x86-64 (or aarch64)</span>
-<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a>
-<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="c1"># 3. Verify data directory exists</span>
-<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a>ls<span class="w"> </span>-la<span class="w"> </span>/var/lib/arca
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="c1"># 1. Check config syntax by running manually</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>/usr/local/bin/arca<span class="w"> </span>serve<span class="w"> </span>--config-path<span class="w"> </span>/etc/arca/config.toml
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="c1"># 2. Verify binary architecture</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>file<span class="w"> </span>/usr/local/bin/arca
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="c1"># Should show: ELF 64-bit LSB ... x86-64 (or aarch64)</span>
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a>
+<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a><span class="c1"># 3. Verify data directory exists</span>
+<a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a>ls<span class="w"> </span>-la<span class="w"> </span>/var/lib/arca
 </code></pre></div>
 <h3 id="credentials-lost-after-restart">Credentials lost after restart<a class="headerlink" href="#credentials-lost-after-restart" title="Permanent link">&para;</a></h3>
 <p><strong>Symptom</strong>: After restarting Arca, the root credentials shown in logs are different.</p>
 <p><strong>Cause</strong>: Root credentials are generated on first startup and stored in the SQLite database. If the data directory was not persisted (e.g., Docker volume was removed, or <code>data_dir</code> pointed to a temporary location), the database was lost.</p>
 <p><strong>Solution</strong>: Ensure <code>data_dir</code> points to persistent storage and verify the SQLite database file exists:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>ls<span class="w"> </span>-la<span class="w"> </span>/var/lib/arca/metadata.db
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>ls<span class="w"> </span>-la<span class="w"> </span>/var/lib/arca/metadata.db
 </code></pre></div>
 <h2 id="kubernetes-specific">Kubernetes-Specific<a class="headerlink" href="#kubernetes-specific" title="Permanent link">&para;</a></h2>
 <h3 id="pod-stuck-in-crashloopbackoff">Pod stuck in CrashLoopBackOff<a class="headerlink" href="#pod-stuck-in-crashloopbackoff" title="Permanent link">&para;</a></h3>
 <p><strong>Symptom</strong>: The Arca pod repeatedly crashes and restarts.</p>
 <p><strong>Cause</strong>: Check the logs for the specific error:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>kubectl<span class="w"> </span>logs<span class="w"> </span>-n<span class="w"> </span>arca<span class="w"> </span>deploy/arca<span class="w"> </span>--previous
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>kubectl<span class="w"> </span>logs<span class="w"> </span>-n<span class="w"> </span>arca<span class="w"> </span>deploy/arca<span class="w"> </span>--previous
 </code></pre></div>
 <p>Common reasons:</p>
 <ul>
@@ -2398,52 +2395,52 @@ limit works around it; later releases open one part at a time.</p>
 <li>Liveness probe too aggressive (Arca still initializing).</li>
 </ul>
 <p><strong>Solution</strong>: Increase <code>initialDelaySeconds</code> on the liveness probe if the database migration takes time on first start:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="nt">livenessProbe</span><span class="p">:</span>
-<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="w">  </span><span class="nt">httpGet</span><span class="p">:</span>
-<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="w">    </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/admin/health</span>
-<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="w">    </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">9000</span>
-<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a><span class="w">  </span><span class="nt">initialDelaySeconds</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">15</span><span class="w">   </span><span class="c1"># increase if first-start migration is slow</span>
-<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a><span class="w">  </span><span class="nt">periodSeconds</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="nt">livenessProbe</span><span class="p">:</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="w">  </span><span class="nt">httpGet</span><span class="p">:</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="w">    </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/admin/health</span>
+<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="w">    </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">9000</span>
+<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a><span class="w">  </span><span class="nt">initialDelaySeconds</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">15</span><span class="w">   </span><span class="c1"># increase if first-start migration is slow</span>
+<a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a><span class="w">  </span><span class="nt">periodSeconds</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30</span>
 </code></pre></div>
 <h3 id="console-pod-healthy-but-page-is-blank">Console Pod healthy but page is blank<a class="headerlink" href="#console-pod-healthy-but-page-is-blank" title="Permanent link">&para;</a></h3>
 <p><strong>Symptom</strong>: The console Pod is running, health checks pass, but the browser shows a blank page.</p>
 <p><strong>Cause</strong>: The <code>ARCA_ENDPOINT</code> environment variable is not set, so the console cannot inject the server URL. The login form renders but the endpoint field is empty and requests fail silently.</p>
 <p><strong>Solution</strong>: Verify the environment variable is set in the deployment:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>kubectl<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-n<span class="w"> </span>arca<span class="w"> </span>deploy/arca-console<span class="w"> </span>--<span class="w"> </span>printenv<span class="w"> </span>ARCA_ENDPOINT
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>kubectl<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-n<span class="w"> </span>arca<span class="w"> </span>deploy/arca-console<span class="w"> </span>--<span class="w"> </span>printenv<span class="w"> </span>ARCA_ENDPOINT
 </code></pre></div>
 <p>If empty, update the deployment to set it to the browser-accessible Arca URL.</p>
 <h2 id="debugging-tips">Debugging Tips<a class="headerlink" href="#debugging-tips" title="Permanent link">&para;</a></h2>
 <h3 id="enable-debug-logging">Enable debug logging<a class="headerlink" href="#enable-debug-logging" title="Permanent link">&para;</a></h3>
 <p>Set the <code>ARCA_LOG</code> environment variable for detailed output:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="c1"># systemd</span>
-<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>systemctl<span class="w"> </span>edit<span class="w"> </span>arca
-<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a><span class="c1"># Add: Environment=ARCA_LOG=debug</span>
-<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a>
-<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a><span class="c1"># Docker</span>
-<a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a><span class="nv">ARCA_LOG</span><span class="o">=</span>debug<span class="w"> </span>bin/arca<span class="w"> </span>start<span class="w"> </span>-d
-<a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a>
-<a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a><span class="c1"># Kubernetes — add to the container env</span>
-<a id="__codelineno-27-9" name="__codelineno-27-9" href="#__codelineno-27-9"></a>env:
-<a id="__codelineno-27-10" name="__codelineno-27-10" href="#__codelineno-27-10"></a><span class="w">  </span>-<span class="w"> </span>name:<span class="w"> </span>ARCA_LOG
-<a id="__codelineno-27-11" name="__codelineno-27-11" href="#__codelineno-27-11"></a><span class="w">    </span>value:<span class="w"> </span><span class="s2">&quot;debug&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="c1"># systemd</span>
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>systemctl<span class="w"> </span>edit<span class="w"> </span>arca
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a><span class="c1"># Add: Environment=ARCA_LOG=debug</span>
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a>
+<a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a><span class="c1"># Docker</span>
+<a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a><span class="nv">ARCA_LOG</span><span class="o">=</span>debug<span class="w"> </span>bin/arca<span class="w"> </span>start<span class="w"> </span>-d
+<a id="__codelineno-26-7" name="__codelineno-26-7" href="#__codelineno-26-7"></a>
+<a id="__codelineno-26-8" name="__codelineno-26-8" href="#__codelineno-26-8"></a><span class="c1"># Kubernetes — add to the container env</span>
+<a id="__codelineno-26-9" name="__codelineno-26-9" href="#__codelineno-26-9"></a>env:
+<a id="__codelineno-26-10" name="__codelineno-26-10" href="#__codelineno-26-10"></a><span class="w">  </span>-<span class="w"> </span>name:<span class="w"> </span>ARCA_LOG
+<a id="__codelineno-26-11" name="__codelineno-26-11" href="#__codelineno-26-11"></a><span class="w">    </span>value:<span class="w"> </span><span class="s2">&quot;debug&quot;</span>
 </code></pre></div>
 <p>For targeted logging (e.g., only auth-related):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="nv">ARCA_LOG</span><span class="o">=</span>info,arca_auth<span class="o">=</span>debug
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="nv">ARCA_LOG</span><span class="o">=</span>info,arca_auth<span class="o">=</span>debug
 </code></pre></div>
 <h3 id="verify-s3-connectivity">Verify S3 connectivity<a class="headerlink" href="#verify-s3-connectivity" title="Permanent link">&para;</a></h3>
 <p>Quick smoke test from the command line:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="c1"># Health check (no auth required)</span>
-<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>curl<span class="w"> </span>-s<span class="w"> </span>http://arca:9000/admin/health<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>.
-<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>
-<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a><span class="c1"># List buckets (requires credentials)</span>
-<a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a>aws<span class="w"> </span>s3<span class="w"> </span>ls<span class="w"> </span>--endpoint-url<span class="w"> </span>http://arca:9000
-<a id="__codelineno-29-6" name="__codelineno-29-6" href="#__codelineno-29-6"></a>
-<a id="__codelineno-29-7" name="__codelineno-29-7" href="#__codelineno-29-7"></a><span class="c1"># With debug output</span>
-<a id="__codelineno-29-8" name="__codelineno-29-8" href="#__codelineno-29-8"></a>aws<span class="w"> </span>s3<span class="w"> </span>ls<span class="w"> </span>--endpoint-url<span class="w"> </span>http://arca:9000<span class="w"> </span>--debug<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-50
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="c1"># Health check (no auth required)</span>
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>curl<span class="w"> </span>-s<span class="w"> </span>http://arca:9000/admin/health<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>.
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a><span class="c1"># List buckets (requires credentials)</span>
+<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a>aws<span class="w"> </span>s3<span class="w"> </span>ls<span class="w"> </span>--endpoint-url<span class="w"> </span>http://arca:9000
+<a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a>
+<a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a><span class="c1"># With debug output</span>
+<a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a>aws<span class="w"> </span>s3<span class="w"> </span>ls<span class="w"> </span>--endpoint-url<span class="w"> </span>http://arca:9000<span class="w"> </span>--debug<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-50
 </code></pre></div>
 <h3 id="inspect-sigv4-signature-issues">Inspect SigV4 signature issues<a class="headerlink" href="#inspect-sigv4-signature-issues" title="Permanent link">&para;</a></h3>
 <p>If clients get <code>SignatureDoesNotMatch</code>, enable debug logging and look for:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>ARCA_LOG=debug,arca_auth=trace
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>ARCA_LOG=debug,arca_auth=trace
 </code></pre></div>
 <p>The auth module logs the canonical request and string-to-sign, which can be compared against the client's computed values. Common causes:</p>
 <ul>

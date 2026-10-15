@@ -61,14 +61,18 @@ pub struct DeletePrecondition {
     pub if_match: Option<String>,
     pub if_match_last_modified: Option<chrono::DateTime<chrono::Utc>>,
     pub if_match_size: Option<u64>,
+    /// Not an S3 header: `arca fsck --repair` deletes a row only if it still
+    /// points at the blob it found missing.
+    pub if_match_blob_id: Option<crate::types::BlobId>,
 }
 
 impl DeletePrecondition {
-    /// True when no conditional header was given — the delete is unconditional.
+    /// True when no condition was given — the delete is unconditional.
     pub fn is_empty(&self) -> bool {
         self.if_match.is_none()
             && self.if_match_last_modified.is_none()
             && self.if_match_size.is_none()
+            && self.if_match_blob_id.is_none()
     }
 
     /// Evaluates the precondition against the object being deleted (as
@@ -92,6 +96,11 @@ impl DeletePrecondition {
         }
         if let Some(expected) = self.if_match_size {
             if obj.size != expected {
+                return Err(S3ErrorCode::PreconditionFailed);
+            }
+        }
+        if let Some(ref expected) = self.if_match_blob_id {
+            if &obj.blob_id != expected {
                 return Err(S3ErrorCode::PreconditionFailed);
             }
         }
@@ -747,6 +756,22 @@ mod precondition_tests {
         }
     }
 
+    #[test]
+    fn delete_precondition_blob_id() {
+        let obj = make_record("abc");
+        let same = DeletePrecondition {
+            if_match_blob_id: Some(BlobId("blob".to_string())),
+            ..Default::default()
+        };
+        let other = DeletePrecondition {
+            if_match_blob_id: Some(BlobId("other".to_string())),
+            ..Default::default()
+        };
+        assert!(!same.is_empty());
+        assert!(same.evaluate(Some(&obj)).is_ok());
+        assert_eq!(other.evaluate(Some(&obj)), Err(S3ErrorCode::PreconditionFailed));
+    }
+
     // -- WritePrecondition --
 
     #[test]
@@ -840,6 +865,7 @@ mod precondition_tests {
             if_match: Some("\"abc\"".to_string()),
             if_match_last_modified: None,
             if_match_size: None,
+            if_match_blob_id: None,
         };
         assert!(pre.evaluate(None).is_ok());
     }
@@ -850,6 +876,7 @@ mod precondition_tests {
             if_match: Some("\"abc\"".to_string()),
             if_match_last_modified: None,
             if_match_size: None,
+            if_match_blob_id: None,
         };
         assert!(pre.evaluate(Some(&make_record("abc"))).is_ok());
         assert_eq!(
@@ -866,6 +893,7 @@ mod precondition_tests {
             if_match: None,
             if_match_last_modified: None,
             if_match_size: Some(42),
+            if_match_blob_id: None,
         };
         assert!(pre.evaluate(Some(&rec)).is_ok());
         rec.size = 7;
@@ -879,12 +907,14 @@ mod precondition_tests {
             if_match: None,
             if_match_last_modified: Some(rec.last_modified),
             if_match_size: None,
+            if_match_blob_id: None,
         };
         assert!(pre.evaluate(Some(&rec)).is_ok());
         let pre_mismatch = DeletePrecondition {
             if_match: None,
             if_match_last_modified: Some(rec.last_modified + chrono::Duration::seconds(1)),
             if_match_size: None,
+            if_match_blob_id: None,
         };
         assert_eq!(
             pre_mismatch.evaluate(Some(&rec)),
@@ -902,6 +932,7 @@ mod precondition_tests {
             if_match: Some("\"abc\"".to_string()),
             if_match_last_modified: None,
             if_match_size: None,
+            if_match_blob_id: None,
         };
         assert_eq!(pre.evaluate(Some(&dm)), Err(S3ErrorCode::PreconditionFailed));
     }

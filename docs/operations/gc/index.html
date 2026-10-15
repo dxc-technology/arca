@@ -1541,12 +1541,22 @@ multipart part, or non-orphan composite sidecar references. Orphans arise from:<
   request (the object is already gone), so the caller correctly sees success.</li>
 </ul>
 <p>Orphans waste disk but are never served and never corrupt data. Reclaiming them is the job
-of blob garbage collection, described below.</p>
+of blob garbage collection, described below. GC also reclaims <strong>stale temp files</strong>
+(<code>&lt;blob&gt;.tmp</code>, <code>&lt;blob&gt;.meta.&lt;id&gt;.tmp</code>): a write that fails or is cancelled removes its own,
+so only a crash leaves one behind. The recovery files of an unfinished in-place rewrite
+(<code>*.rewrite.tmp</code>, <code>*.meta.pending.tmp</code>) are never touched: re-running the rewrite command
+completes them.</p>
+<p>What GC never reclaims are the parts of an <strong>unfinished multipart upload</strong>: they are live
+data until the upload is completed or aborted. <code>arca gc</code> and <code>arca fsck</code> report them (count,
+size, oldest); abort them with <code>arca fsck --repair --abort-uploads-older-than &lt;days&gt;</code>,
+<code>AbortMultipartUpload</code>, or an <code>AbortIncompleteMultipartUpload</code> lifecycle rule (see
+<a href="../troubleshooting/#disk-is-full-but-the-buckets-are-much-smaller">Troubleshooting</a>).</p>
 <h2 id="detecting-orphans-arca-fsck">Detecting orphans — <code>arca fsck</code><a class="headerlink" href="#detecting-orphans-arca-fsck" title="Permanent link">&para;</a></h2>
-<p><code>arca fsck</code> reports orphaned blobs (<code>ORPHANED_BLOB</code>) without deleting anything. Use it to
-measure the backlog before and after a reclamation run. On large stores it walks every blob
-file and loads the full database, so it is slow but safe. See the
-<a href="../../guide/cli/#arca-fsck">CLI reference</a>.</p>
+<p><code>arca fsck</code> reports orphaned blobs (<code>ORPHANED_BLOB</code>) and stale temp files (<code>STALE_TMP</code>),
+with the same notion of "referenced" as GC. Use it to measure the backlog before and after a
+reclamation run. On large stores it walks every blob file and loads the full database, so it
+is slow but safe. <code>arca fsck --repair</code> can also move orphans to <code>lost+found</code> instead of
+deleting them. See the <a href="../../guide/cli/#arca-fsck">CLI reference</a>.</p>
 <h2 id="reclaiming-orphans">Reclaiming orphans<a class="headerlink" href="#reclaiming-orphans" title="Permanent link">&para;</a></h2>
 <p>There are three reclamation paths. All share the same <strong>composite-aware</strong> selection (a
 composite object's part blobs are kept alive while the composite is still referenced) and
@@ -1571,8 +1581,7 @@ delete.</p>
 </code></pre></div>
 <p>This is the recommended mechanism on <strong>large</strong> single-node stores: run it from cron so the
 full-store scan runs in its own process, on your schedule, isolated from the serving process.
-Full option list: <a href="../../guide/cli/#arca-gc"><code>arca gc</code></a>. Currently supports the <code>sqlite</code>
-metadata backend.</p>
+Full option list: <a href="../../guide/cli/#arca-gc"><code>arca gc</code></a>. Works with both metadata backends.</p>
 <h3 id="2-opt-in-background-worker-single-node">2. Opt-in background worker (single-node)<a class="headerlink" href="#2-opt-in-background-worker-single-node" title="Permanent link">&para;</a></h3>
 <p>For hands-off operation without an external scheduler, enable the in-process worker:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">[storage]</span>
@@ -1599,11 +1608,12 @@ clustering is enabled and the anti-entropy worker does GC instead).</p>
 <p>Every pass — the background worker and the cluster anti-entropy worker — emits a concise
 INFO summary, so a scheduled run is visible even when it reclaims nothing:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>INFO arca::blob_gc: blob GC pass started grace_seconds=86400
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>INFO arca::blob_gc: blob GC pass complete scanned=1490233 candidates=12 reclaimed=12 failed=0 elapsed_ms=8421
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>INFO arca::blob_gc: blob GC pass complete scanned=1490233 candidates=12 reclaimed=12 failed=0 temp_reclaimed=3 temp_failed=0 elapsed_ms=8421
 </code></pre></div>
 <p>A pass skipped by the fail-safe (an enumeration error) is logged at WARN
 (<code>blob GC pass skipped …</code>), and an individual file that fails to delete at WARN
-(<code>blob GC: delete failed</code>). <code>arca gc</code> prints the same scanned/orphan counts to stdout.</p>
+(<code>blob GC: delete failed</code>, <code>blob GC: temp file delete failed</code>). <code>arca gc</code> prints the same
+scanned/orphan/temp counts to stdout, plus the unfinished uploads.</p>
 <p>View logs with <code>bin/arca logs -f</code> (or <code>docker logs &lt;container&gt;</code>).</p>
 <h2 id="metrics">Metrics<a class="headerlink" href="#metrics" title="Permanent link">&para;</a></h2>
 <p>Two Prometheus counters (exposed on the <a href="../monitoring/">admin metrics endpoint</a>) make

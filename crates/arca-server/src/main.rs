@@ -1020,16 +1020,36 @@ async fn async_main(cli: Cli) -> Result<()> {
             config_path,
             verify_checksums,
             grace_seconds,
+            repair,
+            yes,
+            delete,
+            abort_uploads_older_than,
         } => {
             let _ = init_tracing(&LogFormat::Text, "info");
 
             let config = config::load_config(&config_path)?;
-            rewrite_marker::warn_if_present(std::path::Path::new(&config.storage.data_dir));
-            let opts = fsck::FsckOptions {
-                verify_checksums,
-                grace: std::time::Duration::from_secs(grace_seconds),
-            };
-            let exit_code = fsck::run_fsck(&config, &opts).await?;
+            if !repair {
+                rewrite_marker::warn_if_present(std::path::Path::new(&config.storage.data_dir));
+            }
+            let grace = fsck::effective_grace(
+                std::time::Duration::from_secs(grace_seconds),
+                config.cluster.as_ref(),
+            );
+            if grace.as_secs() > grace_seconds {
+                eprintln!(
+                    "Cluster node: using the tombstone grace ({}s) instead of --grace-seconds {grace_seconds}.",
+                    grace.as_secs()
+                );
+            }
+            let opts = fsck::FsckOptions { verify_checksums, grace };
+            let repair_opts = repair.then(|| fsck::RepairOptions {
+                yes,
+                delete,
+                abort_uploads_older_than: abort_uploads_older_than
+                    .map(|days| chrono::Duration::days(days.into())),
+                cluster: config.cluster.as_ref().is_some_and(|c| c.enabled),
+            });
+            let exit_code = fsck::run_fsck(&config, &opts, repair_opts.as_ref()).await?;
             std::process::exit(exit_code);
         }
 

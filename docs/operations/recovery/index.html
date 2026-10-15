@@ -1198,28 +1198,6 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#check-types" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Check Types
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#exit-codes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Exit Codes
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#usage_1" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1621,28 +1599,6 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#check-types" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Check Types
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#exit-codes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Exit Codes
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#usage_1" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1913,69 +1869,29 @@
 <li><strong>Checksum mismatches</strong>: skipped with a warning (blob may be corrupted)</li>
 </ul>
 <h2 id="arca-fsck"><code>arca fsck</code><a class="headerlink" href="#arca-fsck" title="Permanent link">&para;</a></h2>
-<p>Check consistency between the database and filesystem without modifying anything.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>arca<span class="w"> </span>fsck<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--verify-checksums<span class="o">]</span>
+<p>Check consistency between the database and the filesystem, and with <code>--repair</code> fix what it finds.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>arca<span class="w"> </span>fsck<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--verify-checksums<span class="o">]</span><span class="w"> </span><span class="o">[</span>--grace-seconds<span class="w"> </span>&lt;SECONDS&gt;<span class="o">]</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">          </span><span class="o">[</span>--repair<span class="w"> </span><span class="o">[</span>--yes<span class="o">]</span><span class="w"> </span><span class="o">[</span>--delete<span class="o">]</span><span class="w"> </span><span class="o">[</span>--abort-uploads-older-than<span class="w"> </span>&lt;DAYS&gt;<span class="o">]]</span>
 </code></pre></div>
-<h3 id="check-types">Check Types<a class="headerlink" href="#check-types" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Check</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>ORPHANED_BLOB</code></td>
-<td>Blob file on disk with no corresponding database record</td>
-</tr>
-<tr>
-<td><code>MISSING_BLOB</code></td>
-<td>Database record references a blob file that doesn't exist</td>
-</tr>
-<tr>
-<td><code>SIDECAR_MISMATCH</code></td>
-<td><code>.meta</code> sidecar data doesn't match database record (bucket, key, size, or etag)</td>
-</tr>
-<tr>
-<td><code>ORPHANED_SIDECAR</code></td>
-<td><code>.meta</code> file exists without a corresponding blob file</td>
-</tr>
-<tr>
-<td><code>STALE_TMP</code></td>
-<td>Leftover <code>.tmp</code> file from an interrupted write</td>
-</tr>
-<tr>
-<td><code>CORRUPT</code></td>
-<td>Blob file MD5 doesn't match stored ETag (only with <code>--verify-checksums</code>)</td>
-</tr>
-</tbody>
-</table>
-<h3 id="exit-codes">Exit Codes<a class="headerlink" href="#exit-codes" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Code</th>
-<th>Meaning</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>0</td>
-<td>No issues found</td>
-</tr>
-<tr>
-<td>1</td>
-<td>One or more issues detected</td>
-</tr>
-</tbody>
-</table>
+<p>The check types, the repair of each one, the options and the exit codes are in the <a href="../../guide/cli/#arca-fsck">CLI reference</a>. In short:</p>
+<ul>
+<li><code>fsck</code> understands multipart objects: the parts of a completed upload and of an upload still in progress are live data, exactly as <a href="../gc/"><code>arca gc</code></a> sees them, so the two tools agree.</li>
+<li>On a running server, files younger than <code>--grace-seconds</code> (default one day) are skipped: they may belong to an upload in flight.</li>
+<li>Unfinished multipart uploads are listed with their age and size. They are the first thing to look at when a disk fills up for no visible reason (<a href="../troubleshooting/">Troubleshooting</a>).</li>
+<li><code>--repair</code> asks before each fix, can be interrupted with Ctrl+C and simply run again, quarantines orphaned files in <code>&lt;data_dir&gt;/lost+found/</code> unless <code>--delete</code>, and deletes the row of an object version only when its data is really gone.</li>
+</ul>
 <h3 id="usage_1">Usage<a class="headerlink" href="#usage_1" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Quick consistency check</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>arca<span class="w"> </span>fsck
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># Full check including blob checksums (slow for large datasets)</span>
 <a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>arca<span class="w"> </span>fsck<span class="w"> </span>--verify-checksums
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="c1"># Repair, asking before each fix</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>arca<span class="w"> </span>fsck<span class="w"> </span>--repair
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="c1"># With the server stopped: repair everything, abort uploads older than 7 days</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>arca<span class="w"> </span>fsck<span class="w"> </span>--repair<span class="w"> </span>--yes<span class="w"> </span>--grace-seconds<span class="w"> </span><span class="m">0</span><span class="w"> </span>--abort-uploads-older-than<span class="w"> </span><span class="m">7</span>
 </code></pre></div>
 <h3 id="data-integrity">Data Integrity<a class="headerlink" href="#data-integrity" title="Permanent link">&para;</a></h3>
 <p><code>arca fsck</code> relies on two checks:</p>
@@ -1995,8 +1911,8 @@
 </tr>
 <tr>
 <td><code>.meta</code> sidecar</td>
-<td>Field-by-field comparison of <code>bucket</code>, <code>key</code>, <code>size</code> and <code>etag</code> with the database record; an unreadable or malformed sidecar is also reported</td>
-<td><code>SIDECAR_MISMATCH</code></td>
+<td>Field-by-field comparison of <code>bucket</code>, <code>key</code>, <code>size</code>, <code>etag</code> and (when the sidecar carries one) the version id with the database record; an unreadable or malformed sidecar is reported apart</td>
+<td><code>SIDECAR_MISMATCH</code>, <code>UNREADABLE_SIDECAR</code></td>
 </tr>
 </tbody>
 </table>

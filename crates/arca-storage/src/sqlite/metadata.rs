@@ -987,6 +987,8 @@ impl MetadataStore for SqliteStore {
         let version_id_marker = version_id_marker.map(|s| s.to_string());
         self.read_conn()
             .call(move |conn| {
+                // TECHDEBT(TD-054): a marker version deleted between two pages
+                // is not found and the rest of its key is skipped.
                 // Resume position inside `key_marker`: the (last_modified,
                 // version) of the marker version, in the listing order below.
                 // An unknown marker resumes after the whole key.
@@ -4282,10 +4284,35 @@ mod tests {
             if_match: Some("\"stale\"".to_string()),
             if_match_last_modified: None,
             if_match_size: None,
+            if_match_blob_id: None,
         };
         let err = store.delete_object_if("b", "key1", &pre).await.unwrap_err();
         expect_precondition_failed(&err);
         assert!(store.get_object("b", "key1").await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn delete_object_version_if_blob_id_mismatch_refuses_row_survives() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut r = make_record("b", "key1");
+        r.blob_id = BlobId("blob-now".to_string());
+        store.put_object(&r).await.unwrap();
+
+        let pre = DeletePrecondition {
+            if_match_blob_id: Some(BlobId("blob-scanned".to_string())),
+            ..Default::default()
+        };
+        let err = store.delete_object_version_if("b", "key1", "null", &pre).await.unwrap_err();
+        expect_precondition_failed(&err);
+        assert!(store.get_object("b", "key1").await.unwrap().is_some());
+
+        let pre = DeletePrecondition {
+            if_match_blob_id: Some(BlobId("blob-now".to_string())),
+            ..Default::default()
+        };
+        store.delete_object_version_if("b", "key1", "null", &pre).await.unwrap();
+        assert!(store.get_object("b", "key1").await.unwrap().is_none());
     }
 
     #[tokio::test]
@@ -4300,6 +4327,7 @@ mod tests {
             if_match: None,
             if_match_last_modified: None,
             if_match_size: Some(999),
+            if_match_blob_id: None,
         };
         let err = store.delete_object_if("b", "key1", &pre).await.unwrap_err();
         expect_precondition_failed(&err);
@@ -4318,6 +4346,7 @@ mod tests {
             if_match: None,
             if_match_last_modified: Some(last_modified + chrono::Duration::seconds(60)),
             if_match_size: None,
+            if_match_blob_id: None,
         };
         let err = store.delete_object_if("b", "key1", &pre).await.unwrap_err();
         expect_precondition_failed(&err);
@@ -4336,6 +4365,7 @@ mod tests {
             if_match: Some("\"etag-1\"".to_string()),
             if_match_last_modified: None,
             if_match_size: None,
+            if_match_blob_id: None,
         };
         let deleted = store.delete_object_if("b", "key1", &pre).await.unwrap();
         assert!(deleted.is_some());
@@ -4363,6 +4393,7 @@ mod tests {
             if_match: Some("\"anything\"".to_string()),
             if_match_last_modified: None,
             if_match_size: None,
+            if_match_blob_id: None,
         };
         let deleted = store
             .delete_object_version_if("b", "key1", &marker_vid, &pre)
@@ -4386,6 +4417,7 @@ mod tests {
             if_match: Some("\"stale\"".to_string()),
             if_match_last_modified: None,
             if_match_size: None,
+            if_match_blob_id: None,
         };
         let err = store
             .delete_object_version_if("b", "key1", &vid, &pre)

@@ -28,6 +28,11 @@ use arca_storage::fs::{temp_file_kind, TempFileKind};
 use crate::blob_gc::add_live_composite_parts;
 use crate::config::Config;
 
+mod repair;
+
+pub use repair::RepairOptions;
+use repair::{Prompter, Repairer};
+
 /// Page size for listing multipart uploads.
 const UPLOAD_PAGE: u32 = 1000;
 
@@ -98,9 +103,20 @@ pub struct UnfinishedUpload {
     pub bytes: u64,
 }
 
+/// What a scan looked at.
+#[derive(Debug, Default)]
+pub struct ScanTotals {
+    pub blobs: usize,
+    pub sidecars: usize,
+    pub temp_files: usize,
+    pub versions: usize,
+    pub delete_markers: usize,
+}
+
 /// Result of a scan.
 #[derive(Debug, Default)]
 pub struct FsckReport {
+    pub totals: ScanTotals,
     pub orphaned_blobs: Vec<(BlobId, DiskFile)>,
     pub orphaned_sidecars: Vec<(BlobId, DiskFile)>,
     pub missing_blobs: Vec<MissingBlob>,
@@ -129,27 +145,107 @@ impl FsckReport {
     }
 }
 
-/// Runs the `arca fsck` command. Returns exit code (0 = clean, 1 = issues found).
-pub async fn run_fsck(config: &Config, opts: &FsckOptions) -> Result<i32> {
+/// The grace period to use: on an HA cluster node at least the tombstone
+/// grace, the window anti-entropy GC also waits, because a blob can arrive
+/// before its row does and must outlive the replication lag.
+pub fn effective_grace(requested: Duration, cluster: Option<&crate::config::ClusterConfig>) -> Duration {
+    match cluster.filter(|c| c.enabled) {
+        Some(c) => requested.max(c.tombstone_grace()),
+        None => requested,
+    }
+}
+
+/// Runs the `arca fsck` command, repairing when `repair` is given. Returns the
+/// exit code: 0 when no issue is (left), 1 otherwise.
+pub async fn run_fsck(config: &Config, opts: &FsckOptions, repair: Option<&RepairOptions>) -> Result<i32> {
+    use std::io::IsTerminal as _;
+    match repair {
+        None => check(config, opts, None).await,
+        Some(r) => {
+            if !r.yes && !std::io::stdin().is_terminal() {
+                anyhow::bail!(
+                    "--repair asks before each fix and needs a terminal: pass --yes to answer yes to every question"
+                );
+            }
+            let interrupt = repair::InterruptState::install();
+            let mut prompter = repair::TtyPrompter;
+            check(config, opts, Some((r, &mut prompter, interrupt.as_ref()))).await
+        }
+    }
+}
+
+type RepairCtx<'a> = (&'a RepairOptions, &'a mut dyn Prompter, &'a repair::InterruptState);
+
+async fn check(config: &Config, opts: &FsckOptions, repair: Option<RepairCtx<'_>>) -> Result<i32> {
     let blobs_dir = config.storage.blobs_dir();
     if !blobs_dir.exists() {
         anyhow::bail!("Blobs directory does not exist: {}", blobs_dir.display());
+    }
+    let data_dir = Path::new(&config.storage.data_dir);
+    if repair.is_some() {
+        crate::rewrite_marker::ensure_none(data_dir, "repair")?;
     }
 
     println!("Opening database...");
     let metadata = crate::offline_store::open_metadata_store(config).await?;
 
     println!("Scanning {}...", blobs_dir.display());
-    let report = scan(metadata.as_ref(), &blobs_dir, opts).await?;
-    println!();
+    let mut report = scan(metadata.as_ref(), &blobs_dir, opts).await?;
     print_report(&report, opts);
 
-    if report.issue_count() == 0 {
-        println!("No issues found.");
+    let Some((ropts, prompter, interrupt)) = repair else {
+        return Ok(exit_code(report.issue_count()));
+    };
+
+    let fs = arca_storage::FsBlobStore::new(&blobs_dir, config.storage.blob_prefix_depth)
+        .await
+        .context("opening blob store")?;
+    let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
+    let mut repairer = Repairer {
+        metadata: metadata.as_ref(),
+        fs: &fs,
+        blobs_dir: &blobs_dir,
+        lost_found: data_dir.join("lost+found").join(stamp),
+        opts: ropts,
+        cutoff: SystemTime::now().checked_sub(opts.grace).unwrap_or(SystemTime::UNIX_EPOCH),
+        prompter,
+        interrupt,
+        summary: Default::default(),
+    };
+
+    repairer.database_phase(&report).await;
+    if repairer.summary.database_changed {
+        // Rows are gone: their leftover files are orphans now, found here so
+        // this same run can reclaim them.
+        println!("\nRescanning after the database repairs...");
+        report = scan(metadata.as_ref(), &blobs_dir, opts).await?;
+        print_report(&report, opts);
+    }
+    repairer.file_phase(&report).await;
+    repair::print_summary(&repairer.summary);
+
+    // What is left, exactly: an item skipped because it changed since the
+    // scan may have stopped being an issue. Checksums are not re-verified (no
+    // repair touches them): the scan's errors still stand.
+    let rescan_opts = FsckOptions { verify_checksums: false, ..opts.clone() };
+    let left = scan(metadata.as_ref(), &blobs_dir, &rescan_opts).await?;
+    let remaining = left.issue_count() + report.checksum_errors.len();
+    if remaining == 0 {
+        println!("\nNo issues left.");
         Ok(0)
     } else {
-        println!("\n{} issue(s) found.", report.issue_count());
+        println!("\n{remaining} issue(s) left: run arca fsck to see them.");
         Ok(1)
+    }
+}
+
+fn exit_code(issues: usize) -> i32 {
+    if issues == 0 {
+        println!("No issues found.");
+        0
+    } else {
+        println!("\n{issues} issue(s) found.");
+        1
     }
 }
 
@@ -161,12 +257,6 @@ pub async fn scan(
 ) -> Result<FsckReport> {
     let inv = Inventory::walk(blobs_dir).await?;
     let (sidecars, unreadable_sidecars) = read_sidecars(&inv.sidecars).await;
-    println!(
-        "Found {} blob(s), {} sidecar(s), {} temp file(s) on disk",
-        inv.blobs.len(),
-        inv.sidecars.len(),
-        inv.reclaimable_tmp.len() + inv.recovery_tmp.len()
-    );
 
     let buckets = metadata.list_buckets().await.context("listing buckets")?;
     let mut rows = Vec::new();
@@ -182,11 +272,6 @@ pub async fn scan(
         .iter()
         .filter(|r| !r.is_delete_marker && !r.is_tombstone && !r.blob_id.0.is_empty())
         .collect();
-    println!(
-        "Found {} object version(s) in database ({} delete markers)",
-        rows.len(),
-        rows.iter().filter(|r| r.is_delete_marker).count()
-    );
 
     let mut referenced: HashSet<BlobId> = metadata
         .list_referenced_blob_ids()
@@ -200,6 +285,13 @@ pub async fn scan(
         .checked_sub(opts.grace)
         .unwrap_or(SystemTime::UNIX_EPOCH);
     let mut report = FsckReport {
+        totals: ScanTotals {
+            blobs: inv.blobs.len(),
+            sidecars: inv.sidecars.len(),
+            temp_files: inv.reclaimable_tmp.len() + inv.recovery_tmp.len(),
+            versions: rows.len(),
+            delete_markers: rows.iter().filter(|r| r.is_delete_marker).count(),
+        },
         unreadable_sidecars,
         ..Default::default()
     };
@@ -275,7 +367,6 @@ pub async fn scan(
     report.rewrite_recovery_files = inv.recovery_tmp.clone();
 
     if opts.verify_checksums {
-        println!("Verifying checksums...");
         report.checksum_errors = check_checksums(&live, &sidecars, &inv.blobs).await;
     }
 
@@ -327,7 +418,7 @@ fn sidecar_diff(meta: &SidecarMeta, row: &ObjectRecord) -> Option<String> {
 }
 
 /// Every in-progress multipart upload of `bucket`, with its part count and size.
-async fn list_unfinished_uploads(
+pub(crate) async fn list_unfinished_uploads(
     metadata: &dyn MetadataStore,
     bucket: &str,
 ) -> Result<Vec<UnfinishedUpload>> {
@@ -539,6 +630,16 @@ fn version_label(version_id: &Option<String>) -> &str {
 }
 
 fn print_report(report: &FsckReport, opts: &FsckOptions) {
+    let t = &report.totals;
+    println!(
+        "Found {} blob(s), {} sidecar(s), {} temp file(s) on disk",
+        t.blobs, t.sidecars, t.temp_files
+    );
+    println!(
+        "Found {} object version(s) in database ({} delete markers)",
+        t.versions, t.delete_markers
+    );
+    println!();
     for (id, f) in &report.orphaned_blobs {
         println!("ORPHANED_BLOB  {id}  {}  referenced by no object, upload or composite", human_bytes(f.size));
     }
@@ -635,6 +736,7 @@ fn print_report(report: &FsckReport, opts: &FsckOptions) {
 mod tests {
     use super::*;
     use arca_core::store::blob::{BlobCompressionInfo, CompositePart, CompressionAlgorithm};
+    use arca_core::store::RawBlobOps;
     use arca_core::types::{MultipartUploadRecord, PartRecord};
 
     const ID: &str = "550e8400-e29b-41d4-a716-446655440000";
@@ -782,7 +884,7 @@ mod tests {
         f.put_object(ID, "key.txt", b"hello").await;
 
         assert_eq!(f.scan(&opts()).await.issue_count(), 0);
-        assert_eq!(run_fsck(&f.config, &opts()).await.unwrap(), 0);
+        assert_eq!(run_fsck(&f.config, &opts(), None).await.unwrap(), 0);
     }
 
     #[tokio::test]
@@ -795,7 +897,7 @@ mod tests {
         assert_eq!(r.orphaned_blobs[0].0 .0, ID);
         assert_eq!(r.orphaned_blobs[0].1.size, 11);
         assert_eq!(r.issue_count(), 1);
-        assert_eq!(run_fsck(&f.config, &opts()).await.unwrap(), 1);
+        assert_eq!(run_fsck(&f.config, &opts(), None).await.unwrap(), 1);
     }
 
     #[tokio::test]
@@ -958,7 +1060,7 @@ mod tests {
         assert_eq!(r.unfinished_uploads.len(), 1);
         let u = &r.unfinished_uploads[0];
         assert_eq!((u.key.as_str(), u.upload_id.as_str(), u.parts, u.bytes), ("backup.tar", "up-1", 2, 20));
-        assert_eq!(run_fsck(&f.config, &opts()).await.unwrap(), 0, "unfinished uploads are informational");
+        assert_eq!(run_fsck(&f.config, &opts(), None).await.unwrap(), 0, "unfinished uploads are informational");
     }
 
     #[tokio::test]
@@ -1009,8 +1111,409 @@ mod tests {
         drop(f.store);
         fs::remove_file(f.config.storage.db_path()).await.unwrap();
 
-        let err = run_fsck(&f.config, &opts()).await.unwrap_err();
+        let err = run_fsck(&f.config, &opts(), None).await.unwrap_err();
         assert!(err.to_string().contains("Database does not exist"), "{err}");
+    }
+
+    // -- Repair --
+
+    use repair::Answer;
+    use std::collections::VecDeque;
+    use repair::InterruptState;
+    use std::sync::atomic::AtomicBool;
+
+    type Hook = Box<dyn FnOnce()>;
+
+    /// Answers from a script; a hook runs while the "operator" is thinking,
+    /// to change the state between the scan and the fix. Panics on a question
+    /// the script did not expect.
+    #[derive(Default)]
+    struct Scripted {
+        answers: VecDeque<(Answer, Option<Hook>)>,
+        asked: Vec<String>,
+    }
+
+    impl Scripted {
+        fn new(answers: &[Answer]) -> Self {
+            Scripted {
+                answers: answers.iter().map(|a| (*a, None)).collect(),
+                asked: Vec::new(),
+            }
+        }
+        fn with_hook(mut self, answer: Answer, hook: impl FnOnce() + 'static) -> Self {
+            self.answers.push_back((answer, Some(Box::new(hook))));
+            self
+        }
+    }
+
+    impl Prompter for Scripted {
+        fn ask(&mut self, question: &str) -> Answer {
+            self.asked.push(question.to_string());
+            let (answer, hook) = self
+                .answers
+                .pop_front()
+                .unwrap_or_else(|| panic!("unexpected question: {question}"));
+            if let Some(hook) = hook {
+                hook();
+            }
+            answer
+        }
+    }
+
+    fn ropts() -> RepairOptions {
+        RepairOptions { yes: false, delete: false, abort_uploads_older_than: None, cluster: false }
+    }
+
+    impl Fixture {
+        async fn repair(&self, ropts: &RepairOptions, prompter: &mut Scripted) -> i32 {
+            let state = InterruptState::default();
+            check(&self.config, &opts(), Some((ropts, prompter, &state))).await.unwrap()
+        }
+
+        fn data_dir(&self) -> PathBuf {
+            PathBuf::from(&self.config.storage.data_dir)
+        }
+
+        /// Every file under `lost+found`, relative to its run directory.
+        fn quarantined(&self) -> Vec<PathBuf> {
+            let root = self.data_dir().join("lost+found");
+            let mut out = Vec::new();
+            let Ok(runs) = std::fs::read_dir(&root) else { return out };
+            for run in runs {
+                let run = run.unwrap().path();
+                let mut stack = vec![run.clone()];
+                while let Some(d) = stack.pop() {
+                    for e in std::fs::read_dir(&d).unwrap() {
+                        let p = e.unwrap().path();
+                        if p.is_dir() {
+                            stack.push(p);
+                        } else {
+                            out.push(p.strip_prefix(&run).unwrap().to_path_buf());
+                        }
+                    }
+                }
+            }
+            out.sort();
+            out
+        }
+
+        fn rel(&self, p: &Path) -> PathBuf {
+            p.strip_prefix(self.config.storage.blobs_dir()).unwrap().to_path_buf()
+        }
+    }
+
+    #[tokio::test]
+    async fn repair_removes_stale_temp_files_without_asking() {
+        let f = Fixture::new().await;
+        f.write_file_next_to(ID, &format!("{ID}.tmp")).await;
+        f.write_file_next_to(ID2, &format!("{ID2}.rewrite.tmp")).await;
+
+        let mut p = Scripted::default();
+        assert_eq!(f.repair(&ropts(), &mut p).await, 1, "the rewrite recovery file is left");
+        assert!(!f.blob_path(ID).with_file_name(format!("{ID}.tmp")).exists());
+        assert!(f.blob_path(ID2).with_file_name(format!("{ID2}.rewrite.tmp")).exists(), "never touched");
+        assert!(p.asked.is_empty());
+    }
+
+    #[tokio::test]
+    async fn repair_quarantines_an_orphaned_blob_with_its_sidecar() {
+        let f = Fixture::new().await;
+        f.write_blob(ID, b"orphan").await;
+        f.write_sidecar(ID, &sidecar("gone.txt", 6, &md5_hex(b"orphan"))).await;
+
+        let mut p = Scripted::new(&[Answer::Yes]);
+        assert_eq!(f.repair(&ropts(), &mut p).await, 0);
+        assert!(!f.blob_path(ID).exists());
+        let sidecar_path = f.fs.sidecar_path(&BlobId(ID.into()));
+        assert!(!sidecar_path.exists());
+        assert_eq!(f.quarantined(), vec![f.rel(&f.blob_path(ID)), f.rel(&sidecar_path)]);
+        assert!(p.asked[0].contains("Move to lost+found"), "{:?}", p.asked);
+    }
+
+    #[tokio::test]
+    async fn repair_with_delete_removes_orphans() {
+        let f = Fixture::new().await;
+        f.write_blob(ID, b"orphan").await;
+
+        let mut p = Scripted::new(&[Answer::Yes]);
+        let ro = RepairOptions { delete: true, ..ropts() };
+        assert_eq!(f.repair(&ro, &mut p).await, 0);
+        assert!(!f.blob_path(ID).exists());
+        assert!(f.quarantined().is_empty());
+    }
+
+    #[tokio::test]
+    async fn repair_declined_leaves_the_file_and_the_issue() {
+        let f = Fixture::new().await;
+        f.write_blob(ID, b"orphan").await;
+
+        let mut p = Scripted::new(&[Answer::No]);
+        assert_eq!(f.repair(&ropts(), &mut p).await, 1);
+        assert!(f.blob_path(ID).exists());
+    }
+
+    #[tokio::test]
+    async fn repair_all_answers_the_rest_of_the_category() {
+        let f = Fixture::new().await;
+        f.write_blob(ID, b"orphan 1").await;
+        f.write_blob(ID2, b"orphan 2").await;
+
+        let mut p = Scripted::new(&[Answer::All]);
+        assert_eq!(f.repair(&ropts(), &mut p).await, 0);
+        assert_eq!(p.asked.len(), 1);
+        assert!(!f.blob_path(ID).exists() && !f.blob_path(ID2).exists());
+    }
+
+    #[tokio::test]
+    async fn repair_quit_stops_everything() {
+        let f = Fixture::new().await;
+        f.write_blob(ID, b"orphan 1").await;
+        f.write_blob(ID2, b"orphan 2").await;
+        let mut bad = sidecar("k", 1, "x");
+        bad.key = "wrong".into();
+        f.put_object(PART1, "k", b"data").await;
+        f.write_sidecar(PART1, &bad).await;
+
+        let mut p = Scripted::new(&[Answer::Quit]);
+        assert_eq!(f.repair(&ropts(), &mut p).await, 1);
+        assert_eq!(p.asked.len(), 1, "no question after q: {:?}", p.asked);
+        assert!(f.blob_path(ID).exists() && f.blob_path(ID2).exists());
+    }
+
+    #[tokio::test]
+    async fn repair_stops_when_interrupted() {
+        let f = Fixture::new().await;
+        f.write_blob(ID, b"orphan").await;
+        f.write_file_next_to(ID2, &format!("{ID2}.tmp")).await;
+
+        let state = InterruptState { interrupted: AtomicBool::new(true), ..Default::default() };
+        let mut p = Scripted::default();
+        let code = check(&f.config, &opts(), Some((&ropts(), &mut p, &state))).await.unwrap();
+        assert_eq!(code, 1);
+        assert!(f.blob_path(ID).exists());
+        assert!(f.blob_path(ID2).with_file_name(format!("{ID2}.tmp")).exists());
+    }
+
+    #[tokio::test]
+    async fn repair_deletes_a_lost_version_and_reclaims_its_leftovers_in_the_same_run() {
+        let f = Fixture::new().await;
+        f.put_object(ID, "lost.txt", b"hello").await;
+        fs::remove_file(f.blob_path(ID)).await.unwrap(); // the sidecar stays
+
+        // 1) delete the row, 2) the rescan finds the sidecar orphaned.
+        let mut p = Scripted::new(&[Answer::Yes, Answer::Yes]);
+        assert_eq!(f.repair(&ropts(), &mut p).await, 0);
+        assert!(f.store.get_object("bucket", "lost.txt").await.unwrap().is_none());
+        assert!(p.asked[0].contains("Delete the row of bucket/lost.txt"), "{:?}", p.asked);
+        assert!(p.asked[1].contains("orphaned sidecar"), "{:?}", p.asked);
+        assert_eq!(f.quarantined(), vec![f.rel(&f.fs.sidecar_path(&BlobId(ID.into())))]);
+        assert_eq!(f.scan(&opts()).await.issue_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn repair_keeps_a_version_whose_blob_came_back() {
+        let f = Fixture::new().await;
+        f.put_object(ID, "back.txt", b"hello").await;
+        let blob = f.blob_path(ID);
+        fs::remove_file(&blob).await.unwrap();
+
+        let restore = blob.clone();
+        let mut p = Scripted::default().with_hook(Answer::Yes, move || std::fs::write(restore, b"hello").unwrap());
+        assert_eq!(f.repair(&ropts(), &mut p).await, 0);
+        assert!(f.store.get_object("bucket", "back.txt").await.unwrap().is_some(), "the row must survive");
+    }
+
+    #[tokio::test]
+    async fn repair_keeps_a_lost_composite_until_asked_and_removes_it_when_told() {
+        let f = Fixture::new().await;
+        f.put_composite(ID, "large.bin").await;
+        fs::remove_file(f.blob_path(PART2)).await.unwrap();
+
+        // Row deleted, then the rescan finds the composite sidecar and the
+        // surviving part orphaned (one question each category, answered all).
+        let mut p = Scripted::new(&[Answer::Yes, Answer::All, Answer::All]);
+        assert_eq!(f.repair(&ropts(), &mut p).await, 0, "{:?}", p.asked);
+        assert!(f.store.get_object("bucket", "large.bin").await.unwrap().is_none());
+        assert!(!f.blob_path(PART1).exists());
+        assert_eq!(f.scan(&opts()).await.issue_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn repair_skips_an_orphan_modified_since_the_scan() {
+        let f = Fixture::new().await;
+        f.write_blob(ID, b"orphan").await;
+        // Let the file age past the cutoff taken when the repair starts.
+        tokio::time::sleep(Duration::from_millis(20)).await;
+
+        let path = f.blob_path(ID);
+        let mut p = Scripted::default().with_hook(Answer::Yes, move || {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            std::fs::write(path, b"being written again").unwrap();
+        });
+        assert_eq!(f.repair(&ropts(), &mut p).await, 1);
+        assert!(f.blob_path(ID).exists());
+    }
+
+    #[tokio::test]
+    async fn repair_rewrites_a_sidecar_from_its_row_keeping_the_part_list() {
+        let f = Fixture::new().await;
+        f.put_composite(ID, "large.bin").await;
+        let id = BlobId(ID.into());
+        let mut meta = RawBlobOps::read_sidecar(&f.fs, &id).await.unwrap().unwrap();
+        meta.key = "stale-key".into();
+        f.write_sidecar(ID, &meta).await;
+
+        let mut p = Scripted::new(&[Answer::Yes]);
+        assert_eq!(f.repair(&ropts(), &mut p).await, 0);
+        let fixed = RawBlobOps::read_sidecar(&f.fs, &id).await.unwrap().unwrap();
+        assert_eq!(fixed.key, "large.bin");
+        assert_eq!(fixed.composite.map(|c| c.len()), Some(2), "part list kept");
+    }
+
+    async fn create_upload(f: &Fixture, upload_id: &str, age_days: i64, part: &str) {
+        f.store
+            .create_multipart_upload(&MultipartUploadRecord {
+                upload_id: upload_id.into(),
+                bucket: "bucket".into(),
+                key: format!("{upload_id}.tar"),
+                content_type: None,
+                initiated_at: chrono::Utc::now() - chrono::Duration::days(age_days),
+                metadata: HashMap::new(),
+                checksum_algorithm: None,
+            })
+            .await
+            .unwrap();
+        f.write_blob(part, b"0123456789").await;
+        f.store
+            .put_part(&PartRecord {
+                upload_id: upload_id.into(),
+                part_number: 1,
+                blob_id: BlobId(part.into()),
+                size: 10,
+                etag: md5_hex(b"0123456789"),
+                checksum_value: None,
+                last_modified: None,
+            })
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn repair_aborts_only_uploads_older_than_the_flag() {
+        let f = Fixture::new().await;
+        create_upload(&f, "old", 10, PART1).await;
+        create_upload(&f, "new", 1, PART2).await;
+
+        let ro = RepairOptions { abort_uploads_older_than: Some(chrono::Duration::days(7)), ..ropts() };
+        let mut p = Scripted::new(&[Answer::Yes]);
+        assert_eq!(f.repair(&ro, &mut p).await, 0);
+        assert_eq!(p.asked.len(), 1, "{:?}", p.asked);
+        assert!(f.store.get_multipart_upload("old").await.unwrap().is_none());
+        assert!(!f.blob_path(PART1).exists(), "parts of the aborted upload are deleted");
+        assert!(f.store.get_multipart_upload("new").await.unwrap().is_some());
+        assert!(f.blob_path(PART2).exists());
+    }
+
+    #[tokio::test]
+    async fn repair_without_the_flag_never_aborts_uploads() {
+        let f = Fixture::new().await;
+        create_upload(&f, "old", 10, PART1).await;
+
+        let mut p = Scripted::default();
+        assert_eq!(f.repair(&ropts(), &mut p).await, 0);
+        assert!(f.store.get_multipart_upload("old").await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn repair_on_a_cluster_node_fixes_files_but_never_rows_or_uploads() {
+        let f = Fixture::new().await;
+        f.store.put_object(&record(ID, "lost.txt", 5, "abc")).await.unwrap();
+        create_upload(&f, "old", 10, PART1).await;
+        f.write_blob(ID2, b"orphan").await;
+
+        let ro = RepairOptions {
+            cluster: true,
+            abort_uploads_older_than: Some(chrono::Duration::days(1)),
+            ..ropts()
+        };
+        let mut p = Scripted::new(&[Answer::Yes]); // only the orphan is asked
+        assert_eq!(f.repair(&ro, &mut p).await, 1, "the missing blob is left");
+        assert!(p.asked[0].contains("orphaned blob"), "{:?}", p.asked);
+        assert!(f.store.get_object("bucket", "lost.txt").await.unwrap().is_some());
+        assert!(f.store.get_multipart_upload("old").await.unwrap().is_some());
+        assert!(!f.blob_path(ID2).exists());
+    }
+
+    #[tokio::test]
+    async fn repair_leaves_orphans_alone_while_a_sidecar_is_unreadable() {
+        let f = Fixture::new().await;
+        f.write_blob(ID, b"maybe a part").await;
+        let path = f.fs.sidecar_path(&BlobId(ID2.into()));
+        fs::create_dir_all(path.parent().unwrap()).await.unwrap();
+        fs::write(&path, b"{ not json").await.unwrap();
+
+        let mut p = Scripted::default();
+        assert_eq!(f.repair(&ropts(), &mut p).await, 1);
+        assert!(f.blob_path(ID).exists());
+    }
+
+    #[tokio::test]
+    async fn repair_refuses_while_a_rewrite_is_unfinished() {
+        let f = Fixture::new().await;
+        crate::rewrite_marker::begin(&f.data_dir(), "encrypt-existing", vec![]).unwrap();
+
+        let state = InterruptState::default();
+        let mut p = Scripted::default();
+        let err = check(&f.config, &opts(), Some((&ropts(), &mut p, &state))).await.unwrap_err();
+        assert!(err.to_string().contains("refusing to repair"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn repair_with_yes_fixes_everything_and_a_second_run_finds_nothing() {
+        let f = Fixture::new().await;
+        f.put_object(ID, "lost.txt", b"hello").await;
+        fs::remove_file(f.blob_path(ID)).await.unwrap();
+        f.write_blob(ID2, b"orphan").await;
+        f.write_file_next_to(PART1, &format!("{PART1}.tmp")).await;
+
+        let ro = RepairOptions { yes: true, ..ropts() };
+        assert_eq!(f.repair(&ro, &mut Scripted::default()).await, 0);
+        assert_eq!(f.repair(&ro, &mut Scripted::default()).await, 0);
+        assert_eq!(f.scan(&opts()).await.issue_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn repair_without_a_terminal_needs_yes() {
+        let f = Fixture::new().await;
+        let err = run_fsck(&f.config, &opts(), Some(&ropts())).await.unwrap_err();
+        assert!(err.to_string().contains("--yes"), "{err}");
+    }
+
+    #[test]
+    fn a_cluster_node_waits_at_least_the_tombstone_grace() {
+        let cluster: crate::config::ClusterConfig = toml::from_str(
+            "enabled = true\ncluster_id = \"c\"\nsecret = \"s\"\ntombstone_grace_seconds = 600\n",
+        )
+        .unwrap();
+        let short = Duration::from_secs(60);
+        assert_eq!(effective_grace(short, Some(&cluster)), Duration::from_secs(600));
+        assert_eq!(effective_grace(Duration::from_secs(900), Some(&cluster)), Duration::from_secs(900));
+        assert_eq!(effective_grace(short, None), short);
+        let off = crate::config::ClusterConfig { enabled: false, ..cluster };
+        assert_eq!(effective_grace(short, Some(&off)), short);
+    }
+
+    #[tokio::test]
+    async fn ctrl_c_at_a_question_is_not_during_a_fix() {
+        let f = Fixture::new().await;
+        f.write_blob(ID, b"orphan").await;
+        let state = std::sync::Arc::new(InterruptState::default());
+        let seen = state.clone();
+        let mut p = Scripted::default().with_hook(Answer::Yes, move || {
+            assert!(!seen.in_fix.load(std::sync::atomic::Ordering::SeqCst), "Ctrl+C must exit at once here");
+        });
+        check(&f.config, &opts(), Some((&ropts(), &mut p, &state))).await.unwrap();
+        assert!(!state.in_fix.load(std::sync::atomic::Ordering::SeqCst), "no fix left open");
     }
 
     #[test]

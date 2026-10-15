@@ -32,6 +32,9 @@ pub struct ReclaimPlan {
     pub scanned: usize,
     /// The subset safe to reclaim (unreferenced and grace-expired).
     pub candidates: Vec<BlobId>,
+    /// Temp files left by interrupted writes, older than the grace period
+    /// (TD-051). Never the recovery files of an in-place rewrite.
+    pub temp_files: Vec<std::path::PathBuf>,
 }
 
 /// Computes the on-disk blob files safe to reclaim: those NOT referenced and
@@ -50,11 +53,37 @@ pub async fn collect_reclaimable_blobs(
     raw: &dyn RawBlobOps,
     grace: Duration,
 ) -> Result<ReclaimPlan, ArcaError> {
-    // 1) Blobs referenced by metadata (live object rows + in-progress parts).
+    let referenced = referenced_blob_ids(metadata, raw).await?;
+
+    // On-disk blob files minus referenced, grace-expired.
+    let on_disk = raw.list_blob_ids().await?;
+    let now = SystemTime::now();
+    let candidates = plan_blob_gc(&on_disk, &referenced, now, grace);
+    // A temp file younger than the grace period may be an upload in flight
+    // (its mtime moves with every write).
+    let temp_files = raw
+        .list_reclaimable_temp_files()
+        .await?
+        .into_iter()
+        .filter(|(_, mtime)| now.duration_since(*mtime).is_ok_and(|age| age >= grace))
+        .map(|(path, _)| path)
+        .collect();
+    Ok(ReclaimPlan {
+        scanned: on_disk.len(),
+        candidates,
+        temp_files,
+    })
+}
+
+/// Every blob id that is live: referenced by metadata (live object rows and
+/// in-progress parts) or a part of a live composite. Fail-safe: any
+/// enumeration or sidecar read error is returned, never a partial set.
+pub async fn referenced_blob_ids(
+    metadata: &dyn MetadataStore,
+    raw: &dyn RawBlobOps,
+) -> Result<HashSet<BlobId>, ArcaError> {
     let mut referenced: HashSet<BlobId> =
         metadata.list_referenced_blob_ids().await?.into_iter().collect();
-
-    // 2) Add the part blobs of every NON-orphan composite sidecar.
     let mut sidecars = Vec::new();
     for sid in raw.list_sidecar_ids().await? {
         if let Some(meta) = raw.read_sidecar(&sid).await? {
@@ -62,14 +91,7 @@ pub async fn collect_reclaimable_blobs(
         }
     }
     add_live_composite_parts(&mut referenced, sidecars.iter().map(|(id, m)| (id, m)));
-
-    // 3) On-disk blob files minus referenced, grace-expired.
-    let on_disk = raw.list_blob_ids().await?;
-    let candidates = plan_blob_gc(&on_disk, &referenced, SystemTime::now(), grace);
-    Ok(ReclaimPlan {
-        scanned: on_disk.len(),
-        candidates,
-    })
+    Ok(referenced)
 }
 
 /// Adds to `referenced` the part blobs of every live composite: a composite
@@ -135,15 +157,35 @@ pub async fn reclaim_blobs(
         }
     }
 
+    let (temp_reclaimed, temp_failed) = delete_temp_files(raw, &plan.temp_files).await;
+
     tracing::info!(
         scanned = plan.scanned,
         candidates = plan.candidates.len(),
         reclaimed,
         failed,
+        temp_reclaimed,
+        temp_failed,
         elapsed_ms = started.elapsed().as_millis() as u64,
         "blob GC pass complete"
     );
     reclaimed
+}
+
+/// Deletes the temp files of a plan; returns (deleted, failed). A failure is
+/// logged and skipped, like a blob delete failure.
+pub async fn delete_temp_files(raw: &dyn RawBlobOps, paths: &[std::path::PathBuf]) -> (u64, u64) {
+    let (mut deleted, mut failed) = (0u64, 0u64);
+    for path in paths {
+        match raw.delete_temp_file(path).await {
+            Ok(()) => deleted += 1,
+            Err(e) => {
+                failed += 1;
+                tracing::warn!(error = %e, path = %path.display(), "blob GC: temp file delete failed");
+            }
+        }
+    }
+    (deleted, failed)
 }
 
 #[cfg(test)]
@@ -183,6 +225,14 @@ mod tests {
         async fn delete_blob_file(&self, _: &BlobId) -> Result<(), ArcaError> {
             panic!("delete_blob_file must never run when an enumeration failed");
         }
+        async fn list_reclaimable_temp_files(
+            &self,
+        ) -> Result<Vec<(std::path::PathBuf, SystemTime)>, ArcaError> {
+            Ok(vec![])
+        }
+        async fn delete_temp_file(&self, _: &std::path::Path) -> Result<(), ArcaError> {
+            panic!("delete_temp_file must never run when an enumeration failed");
+        }
     }
 
     async fn empty_metadata() -> std::sync::Arc<dyn MetadataStore> {
@@ -215,6 +265,31 @@ mod tests {
         Box::pin(futures_util::stream::once(async move {
             Ok::<_, std::io::Error>(b)
         }))
+    }
+
+    #[tokio::test]
+    async fn reclaims_old_temp_files_and_never_rewrite_recovery_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let fs = arca_storage::FsBlobStore::new(dir.path().join("blobs"), 2).await.unwrap();
+        let m = empty_metadata().await;
+        let id = BlobId("aaaa".into());
+        fs.write_raw(&id, one_chunk(b"x")).await.unwrap();
+        let blob = fs.blob_path(&id);
+        let tmp = blob.with_file_name("bbbb.tmp");
+        let rewrite = blob.with_file_name("cccc.rewrite.tmp");
+        std::fs::write(&tmp, b"partial").unwrap();
+        std::fs::write(&rewrite, b"recovery state").unwrap();
+
+        // A young temp file may be an upload in flight.
+        let plan = collect_reclaimable_blobs(m.as_ref(), &fs, Duration::from_secs(3600)).await.unwrap();
+        assert!(plan.temp_files.is_empty());
+
+        let plan = collect_reclaimable_blobs(m.as_ref(), &fs, Duration::ZERO).await.unwrap();
+        assert_eq!(plan.temp_files, vec![tmp.clone()]);
+
+        reclaim_blobs(m.as_ref(), &fs, Duration::ZERO).await;
+        assert!(!tmp.exists());
+        assert!(rewrite.exists(), "a rewrite recovery file is never reclaimed");
     }
 
     #[tokio::test]

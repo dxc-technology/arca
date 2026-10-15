@@ -17,6 +17,7 @@ use arca_core::store::{
 };
 use arca_core::types::BlobId;
 
+use super::temp::{temp_file_kind, TempFileKind};
 use crate::composite::{concat_lazily, plan_composite_read, PartRead};
 
 // ----- Durability helpers -----
@@ -37,6 +38,37 @@ use crate::composite::{concat_lazily, plan_composite_read, PartRead};
 /// fsyncs a directory, persisting the entries (creations, renames) made in it.
 pub fn sync_dir(dir: &std::path::Path) -> io::Result<()> {
     std::fs::File::open(dir)?.sync_all()
+}
+
+/// Removes a temp file when dropped, unless disarmed after the rename that
+/// publishes it. Covers every way out of a write: an error return, and the
+/// request future being dropped when the client disconnects, which no
+/// `?`-path cleanup ever sees (TD-051). Arm it only once the file exists, so
+/// it cannot run before a writer creates the file.
+struct TempFileGuard(Option<PathBuf>);
+
+impl TempFileGuard {
+    fn new(path: PathBuf) -> Self {
+        TempFileGuard(Some(path))
+    }
+
+    fn disarm(mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.take() {
+            // A blocking writer may still hold the file open: the unlink
+            // still removes the name, and the bytes go away when it closes.
+            match std::fs::remove_file(&path) {
+                Ok(()) => {}
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                Err(e) => tracing::warn!(error = %e, path = %path.display(), "failed to remove temp blob"),
+            }
+        }
+    }
 }
 
 /// Atomically publishes `tmp` as `dest` (rename) and fsyncs the parent
@@ -236,10 +268,19 @@ impl FsBlobStore {
                 .await
                 .map_err(|e| ArcaError::Internal(format!("create blob dir: {e}")))?;
         }
-        let tmp_path = self.tmp_path(blob_id);
-        let mut file = fs::File::create(&tmp_path)
+        // A temp name of its own (not `tmp_path`): two deliveries of the same
+        // blob (a replication push and an anti-entropy repair) may overlap,
+        // and must neither truncate nor clean up each other's file.
+        let mut tmp_name = blob_path.file_name().unwrap_or_default().to_os_string();
+        tmp_name.push(format!(".{}.tmp", uuid::Uuid::new_v4().simple()));
+        let tmp_path = blob_path.with_file_name(tmp_name);
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp_path)
             .await
             .map_err(|e| ArcaError::Internal(format!("create raw tmp: {e}")))?;
+        let guard = TempFileGuard::new(tmp_path.clone());
         let mut size: u64 = 0;
         let mut stream = std::pin::pin!(stream);
         while let Some(chunk) = stream.as_mut().next().await {
@@ -263,6 +304,7 @@ impl FsBlobStore {
         fs::rename(&tmp_path, &blob_path)
             .await
             .map_err(|e| ArcaError::Internal(format!("rename raw blob: {e}")))?;
+        guard.disarm();
         Ok(size)
     }
 
@@ -283,9 +325,37 @@ impl FsBlobStore {
         let files = walk_files(self.base_dir.clone()).await?;
         Ok(files
             .into_iter()
-            .filter(|(n, _)| !n.ends_with(".meta") && !n.ends_with(".tmp"))
-            .map(|(n, t)| (BlobId(n), t))
+            .filter(|f| !f.name.ends_with(".meta") && !f.name.ends_with(".tmp"))
+            .map(|f| (BlobId(f.name), f.mtime))
             .collect())
+    }
+
+    /// See [`RawBlobOps::list_reclaimable_temp_files`].
+    pub async fn list_reclaimable_temp_files(
+        &self,
+    ) -> Result<Vec<(PathBuf, std::time::SystemTime)>, ArcaError> {
+        let files = walk_files(self.base_dir.clone()).await?;
+        Ok(files
+            .into_iter()
+            .filter(|f| temp_file_kind(&f.name) == Some(TempFileKind::Reclaimable))
+            .map(|f| (f.path, f.mtime))
+            .collect())
+    }
+
+    /// See [`RawBlobOps::delete_temp_file`].
+    pub async fn delete_temp_file(&self, path: &std::path::Path) -> Result<(), ArcaError> {
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        if !path.starts_with(&self.base_dir) || temp_file_kind(name) != Some(TempFileKind::Reclaimable) {
+            return Err(ArcaError::Internal(format!(
+                "refusing to delete {}: not a reclaimable temp file of this store",
+                path.display()
+            )));
+        }
+        match fs::remove_file(path).await {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(ArcaError::Internal(format!("delete temp file: {e}"))),
+        }
     }
 
     /// Lists the blob ids of every sidecar (`.meta`) on disk.
@@ -293,7 +363,7 @@ impl FsBlobStore {
         let files = walk_files(self.base_dir.clone()).await?;
         Ok(files
             .into_iter()
-            .filter_map(|(n, _)| n.strip_suffix(".meta").map(|s| BlobId(s.to_string())))
+            .filter_map(|f| f.name.strip_suffix(".meta").map(|s| BlobId(s.to_string())))
             .collect())
     }
 
@@ -428,14 +498,19 @@ impl BlobStore for FsBlobStore {
         // gives the producer enough slack to absorb network jitter while
         // still backpressuring it ahead of the disk.
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Bytes>(4);
-        let tmp_for_worker = tmp_path.clone();
+        let file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp_path)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("create tmp file: {e}")))?
+            .into_std()
+            .await;
+        let guard = TempFileGuard::new(tmp_path.clone());
         let fsync = self.fsync;
         let worker = tokio::task::spawn_blocking(move || -> io::Result<(u64, [u8; 16])> {
             use std::io::Write as _;
-            let mut file = std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&tmp_for_worker)?;
+            let mut file = file;
             let mut hasher = Md5::new();
             let mut size: u64 = 0;
             while let Some(chunk) = rx.blocking_recv() {
@@ -477,17 +552,10 @@ impl BlobStore for FsBlobStore {
             .and_then(|r| r.map_err(|e| ArcaError::Internal(format!("write blob: {e}"))));
 
         // A failed write (body error, size limit, disk error) leaves nothing
-        // behind: the partial temp file is removed.
+        // behind: the guard removes the partial temp file.
         let (size, digest) = match (written, stream_err) {
             (Ok(done), None) => done,
-            (Ok(_), Some(e)) | (Err(e), _) => {
-                if let Err(rm_err) = fs::remove_file(&tmp_path).await {
-                    if rm_err.kind() != io::ErrorKind::NotFound {
-                        tracing::warn!(error = %rm_err, "Failed to remove temp blob after failed write");
-                    }
-                }
-                return Err(e);
-            }
+            (Ok(_), Some(e)) | (Err(e), _) => return Err(e),
         };
 
         // Atomic rename: tmp → final. No directory fsync: a blob is durable
@@ -495,6 +563,7 @@ impl BlobStore for FsBlobStore {
         fs::rename(&tmp_path, &blob_path)
             .await
             .map_err(|e| ArcaError::Internal(format!("rename blob: {e}")))?;
+        guard.disarm();
 
         let etag = hex::encode(digest);
 
@@ -677,6 +746,7 @@ impl BlobStore for FsBlobStore {
             .open(&tmp_path)
             .await
             .map_err(|e| ArcaError::Internal(format!("create tmp file: {e}")))?;
+        let guard = TempFileGuard::new(tmp_path.clone());
 
         let mut hasher = Md5::new();
         let mut total_size: u64 = 0;
@@ -718,6 +788,7 @@ impl BlobStore for FsBlobStore {
         fs::rename(&tmp_path, &output_path)
             .await
             .map_err(|e| ArcaError::Internal(format!("rename concat blob: {e}")))?;
+        guard.disarm();
 
         let etag = hex::encode(hasher.finalize());
 
@@ -790,6 +861,16 @@ impl arca_core::store::RawBlobOps for FsBlobStore {
         FsBlobStore::list_sidecar_files(self).await
     }
 
+    async fn list_reclaimable_temp_files(
+        &self,
+    ) -> Result<Vec<(PathBuf, std::time::SystemTime)>, ArcaError> {
+        FsBlobStore::list_reclaimable_temp_files(self).await
+    }
+
+    async fn delete_temp_file(&self, path: &std::path::Path) -> Result<(), ArcaError> {
+        FsBlobStore::delete_temp_file(self, path).await
+    }
+
     async fn delete_blob_file(&self, blob_id: &BlobId) -> Result<(), ArcaError> {
         FsBlobStore::delete_blob_file_raw(self, blob_id).await
     }
@@ -798,11 +879,16 @@ impl arca_core::store::RawBlobOps for FsBlobStore {
 /// Recursively collects every regular file under `dir` as `(file_name, mtime)`.
 /// Errors reading a subdirectory abort the walk (the GC caller treats a failed
 /// enumeration as "skip this cycle", never as "nothing to keep").
+/// A file found by [`walk_files`].
+struct WalkedFile {
+    path: PathBuf,
+    name: String,
+    mtime: std::time::SystemTime,
+}
+
 fn walk_files(
     dir: PathBuf,
-) -> std::pin::Pin<
-    Box<dyn std::future::Future<Output = Result<Vec<(String, std::time::SystemTime)>, ArcaError>> + Send>,
-> {
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<WalkedFile>, ArcaError>> + Send>> {
     Box::pin(async move {
         let mut out = Vec::new();
         let mut rd = match fs::read_dir(&dir).await {
@@ -839,7 +925,7 @@ fn walk_files(
                         std::time::SystemTime::now()
                     }
                 };
-                out.push((name, mtime));
+                out.push(WalkedFile { path: entry.path(), name, mtime });
             }
         }
         Ok(out)
@@ -1653,6 +1739,118 @@ mod tests {
         let raw_id = BlobId::new();
         store.write_raw(&raw_id, bytes_to_stream(b"raw")).await.unwrap();
         assert_eq!(dir_entries(&store, &raw_id), vec![raw_id.0.clone()]);
+    }
+
+    /// One chunk, then a body that never ends: the client stalled.
+    fn stalled_stream() -> ByteStream {
+        let first = futures_util::stream::iter(vec![Ok(Bytes::from_static(b"partial"))]);
+        Box::pin(futures_util::StreamExt::chain(first, futures_util::stream::pending()))
+    }
+
+    /// Drops `fut` once it has been pending for a while, as hyper does when
+    /// the client disconnects, then lets any blocking writer finish.
+    async fn cancel<F: std::future::Future>(fut: F) {
+        let result = tokio::time::timeout(std::time::Duration::from_millis(100), fut).await;
+        assert!(result.is_err(), "the write must still be pending when cancelled");
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    async fn cancelled_put_leaves_no_temp_file() {
+        let (store, _dir) = test_store(2).await;
+        let blob_id = BlobId::new();
+        cancel(store.put(&blob_id, stalled_stream())).await;
+        assert!(dir_entries(&store, &blob_id).is_empty(), "{:?}", dir_entries(&store, &blob_id));
+    }
+
+    #[tokio::test]
+    async fn cancelled_write_raw_leaves_no_temp_file() {
+        let (store, _dir) = test_store(2).await;
+        let blob_id = BlobId::new();
+        cancel(store.write_raw(&blob_id, stalled_stream())).await;
+        assert!(dir_entries(&store, &blob_id).is_empty(), "{:?}", dir_entries(&store, &blob_id));
+    }
+
+    #[tokio::test]
+    async fn overlapping_write_raw_of_one_blob_do_not_share_a_temp_file() {
+        let (store, _dir) = test_store(2).await;
+        let blob_id = BlobId::new();
+        // Delivery A stalls and is cancelled at 50 ms; delivery B of the same
+        // blob starts at 20 ms and finishes at about 120 ms. With one shared
+        // temp path, A's cleanup removed B's file and B's rename failed.
+        let a = tokio::time::timeout(std::time::Duration::from_millis(50), store.write_raw(&blob_id, stalled_stream()));
+        let b = async {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            let slow: ByteStream = Box::pin(futures_util::stream::unfold(0u8, |step| async move {
+                match step {
+                    0 => Some((Ok(Bytes::from_static(b"full ")), 1)),
+                    1 => {
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        Some((Ok(Bytes::from_static(b"blob")), 2))
+                    }
+                    _ => None,
+                }
+            }));
+            store.write_raw(&blob_id, slow).await
+        };
+        let (cancelled, done) = tokio::join!(a, b);
+        assert!(cancelled.is_err(), "A must still be pending when cancelled");
+        assert_eq!(done.unwrap(), 9);
+        assert_eq!(std::fs::read(store.blob_path(&blob_id)).unwrap(), b"full blob");
+        assert_eq!(dir_entries(&store, &blob_id), vec![blob_id.0.clone()]);
+    }
+
+    #[tokio::test]
+    async fn failed_concat_fallback_leaves_no_temp_file() {
+        let (store, _dir) = test_store(2).await;
+        // A part without a sidecar forces the byte copy; the second part
+        // does not exist, so the copy fails half-way.
+        let bare = BlobId::new();
+        store.put(&bare, bytes_to_stream(b"no sidecar")).await.unwrap();
+        let output_id = BlobId::new();
+        assert!(store.concat(&[bare, BlobId::new()], &output_id).await.is_err());
+        let tmp = store.tmp_path(&output_id);
+        assert!(!tmp.exists(), "temp file left: {}", tmp.display());
+    }
+
+    #[tokio::test]
+    async fn lists_only_reclaimable_temp_files() {
+        let (store, _dir) = test_store(2).await;
+        let id = BlobId::new();
+        store.put(&id, bytes_to_stream(b"data")).await.unwrap();
+        let blob = store.blob_path(&id);
+        let named = |suffix: &str| blob.with_file_name(format!("{}{suffix}", id.0));
+        for suffix in [".tmp", ".meta.0123456789abcdef0123456789abcdef.tmp", ".rewrite.tmp", ".meta.pending.tmp"] {
+            std::fs::write(named(suffix), b"partial").unwrap();
+        }
+
+        let mut got: Vec<PathBuf> = store.list_reclaimable_temp_files().await.unwrap().into_iter().map(|(p, _)| p).collect();
+        got.sort();
+        let mut want = vec![named(".tmp"), named(".meta.0123456789abcdef0123456789abcdef.tmp")];
+        want.sort();
+        assert_eq!(got, want);
+    }
+
+    #[tokio::test]
+    async fn delete_temp_file_refuses_anything_but_a_reclaimable_temp_file() {
+        let (store, _dir) = test_store(2).await;
+        let id = BlobId::new();
+        store.put(&id, bytes_to_stream(b"data")).await.unwrap();
+        let blob = store.blob_path(&id);
+        let rewrite = blob.with_file_name(format!("{}.rewrite.tmp", id.0));
+        std::fs::write(&rewrite, b"recovery state").unwrap();
+        let outside = _dir.path().join("elsewhere.tmp");
+        std::fs::write(&outside, b"x").unwrap();
+
+        for path in [&blob, &rewrite, &outside] {
+            assert!(store.delete_temp_file(path).await.is_err(), "{}", path.display());
+            assert!(path.exists(), "{}", path.display());
+        }
+        let tmp = blob.with_file_name(format!("{}.tmp", id.0));
+        std::fs::write(&tmp, b"partial").unwrap();
+        store.delete_temp_file(&tmp).await.unwrap();
+        assert!(!tmp.exists());
+        store.delete_temp_file(&tmp).await.unwrap(); // already gone is fine
     }
 
     #[tokio::test]

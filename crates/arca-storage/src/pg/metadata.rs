@@ -1401,6 +1401,8 @@ impl MetadataStore for PgStore {
     ) -> Result<Vec<ObjectRecord>, ArcaError> {
         let key_marker = key_marker.filter(|km| !km.is_empty());
 
+        // TECHDEBT(TD-054): a marker version deleted between two pages is not
+        // found and the rest of its key is skipped.
         // Resume position inside `key_marker`: the (last_modified, version) of
         // the marker version, in the listing order below. An unknown marker
         // resumes after the whole key.

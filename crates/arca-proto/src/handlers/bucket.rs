@@ -1904,6 +1904,7 @@ fn build_batch_delete_precondition(obj: &xml_types::DeleteObject) -> Result<Dele
         if_match: obj.etag.clone(),
         if_match_last_modified,
         if_match_size,
+        if_match_blob_id: None,
     })
 }
 

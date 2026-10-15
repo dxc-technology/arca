@@ -258,17 +258,20 @@ The order is always **blob file → sidecar → metadata row**. If the process d
 
 | Crash after | State left behind | Detected / handled by |
 |-------------|-------------------|-----------------------|
-| part of the blob | `{id}.tmp` | `arca fsck` (stale temp files) |
-| blob | blob without sidecar or row | `arca fsck` (orphaned blob); reclaimed by [blob GC](../operations/gc.md) |
+| part of the blob | `{id}.tmp` | `arca fsck` (stale temp files); reclaimed by [blob GC](../operations/gc.md) and `arca fsck --repair` |
+| blob | blob without sidecar or row | `arca fsck` (orphaned blob); reclaimed by [blob GC](../operations/gc.md) and `arca fsck --repair` |
 | sidecar | blob and sidecar, no row | `arca fsck`; `arca recover` can rebuild the row from the sidecar |
+
+A write that fails, or whose request is dropped when the client disconnects, removes its own temp file: a guard owns the temp path from its creation until the rename that publishes it (`TempFileGuard` in `fs/blob.rs`), so only a process crash leaves one behind.
 | row | consistent | |
 
 Durability: a write is acknowledged only after its data is on stable storage. The blob temp file is `fsync`ed before it is renamed to its final name (newly created shard directories are `fsync`ed too). Sidecars are written atomically (temp file in the same directory, `fsync`, rename, directory `fsync`), so a sidecar is either the old one or the complete new one, never partial. The blob rename itself is not followed by a directory `fsync`: **a blob is durable once its sidecar has been written.** Blob and sidecar live in the same directory, so the sidecar's directory `fsync` persists both entries, and every writer (PutObject, CopyObject, UploadPart, UploadPartCopy, CompleteMultipartUpload, cluster receive and repair, re-encryption) writes the sidecar before committing the metadata row, failing the request and discarding the fresh blob when the sidecar write fails. That makes 3 `fsync`s per small PUT: blob data, sidecar data, directory. The same applies to the replicated raw blob writes and the `concat` fallback; the offline in-place re-encryption keeps a directory `fsync` on its own rename. SQLite commits with `synchronous=FULL` (an fsync of the WAL per transaction), so the metadata row is durable too; PostgreSQL follows its own `synchronous_commit`. All of this is the `[storage] fsync = true` default; `false` skips every fsync and uses SQLite `NORMAL`, keeping the temp + rename protocol, so writes stay atomic but are no longer durable (live server only: the offline tools are always durable). The cost depends on the disk's synchronous-write latency: on 1 KiB PUTs at concurrency 16, -37% on local NVMe and -78% on gp3 EBS, almost nothing on large objects (see [Configuration](../guide/configuration.md#durability-fsync)). On slow disks the single SQLite writer caps the commit rate at one per fsync (TD-048). The audit writer commits in batches (1024 entries or 1 s, at once on drain) so that audit logging does not add an fsync per request.
 
+`arca fsck` compares the database with the files on disk (missing blobs, orphaned blobs and sidecars, sidecar/row mismatches, temp files, unfinished multipart uploads, and MD5 checksums with `--verify-checksums`), using the same referenced set as blob GC (`blob_gc::referenced_blob_ids`), so it understands composites and in-progress parts. `arca fsck --repair` fixes what it can, re-verifying each item before its fix (see the [CLI reference](../guide/cli.md#repair)).
+
 Known gaps, tracked in [Technical Debt](../tech-debt.md):
 
 - **`recover` is lossy (TD-014, TD-032).** It drops multipart (composite) objects, re-creates parts as bogus objects, keeps the oldest version of each key, restores only buckets, objects and credentials, and always writes a SQLite database. Treat it as a last resort; see [Disaster Recovery](../operations/recovery.md).
-- **`fsck`** compares the database with the files on disk (missing blobs, orphaned blobs and sidecars, sidecar/row mismatches, stale temp files, and MD5 checksums with `--verify-checksums`). It does not understand composite blobs and reports them as orphaned sidecars (TD-014).
 
 ### Multipart uploads and composite blobs
 
@@ -439,4 +442,4 @@ Exact versions are pinned in `Cargo.toml` and the Dockerfiles.
 
 ## Known Limitations
 
-Open workarounds and bugs, each with an ID referenced in the code, are listed in [Technical Debt](../tech-debt.md); planned work is in the [Roadmap](../roadmap.md). The items most relevant to this page are TD-014 and TD-032 (`recover` / `fsck`), TD-025 (cluster CAS), TD-033 (object tags in a cluster), TD-034 (no body integrity check), and TD-037 (virtual-hosted-style addressing).
+Open workarounds and bugs, each with an ID referenced in the code, are listed in [Technical Debt](../tech-debt.md); planned work is in the [Roadmap](../roadmap.md). The items most relevant to this page are TD-014 and TD-032 (`recover`), TD-025 (cluster CAS), TD-033 (object tags in a cluster), TD-034 (no body integrity check), and TD-037 (virtual-hosted-style addressing).

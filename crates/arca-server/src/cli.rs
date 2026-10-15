@@ -63,6 +63,26 @@ pub enum Command {
         /// server is stopped.
         #[arg(long, default_value = "86400")]
         grace_seconds: u64,
+
+        /// Repair what the check finds, asking before each fix (y/n, a = yes
+        /// to the rest of the category, q = stop). Safe to interrupt with
+        /// Ctrl+C and to run again.
+        #[arg(long)]
+        repair: bool,
+
+        /// Answer yes to every repair question
+        #[arg(short = 'y', long, requires = "repair")]
+        yes: bool,
+
+        /// Delete orphaned files instead of moving them to
+        /// <data_dir>/lost+found/<timestamp>/
+        #[arg(long, requires = "repair")]
+        delete: bool,
+
+        /// Also offer to abort the unfinished multipart uploads initiated more
+        /// than this many days ago (their parts are deleted)
+        #[arg(long, value_name = "DAYS", requires = "repair")]
+        abort_uploads_older_than: Option<u32>,
     },
 
     /// Reclaim orphaned blob files (offline; composite-aware, grace-protected)

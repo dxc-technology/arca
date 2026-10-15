@@ -2683,30 +2683,27 @@
 <tr>
 <td>part of the blob</td>
 <td><code>{id}.tmp</code></td>
-<td><code>arca fsck</code> (stale temp files)</td>
+<td><code>arca fsck</code> (stale temp files); reclaimed by <a href="../../operations/gc/">blob GC</a> and <code>arca fsck --repair</code></td>
 </tr>
 <tr>
 <td>blob</td>
 <td>blob without sidecar or row</td>
-<td><code>arca fsck</code> (orphaned blob); reclaimed by <a href="../../operations/gc/">blob GC</a></td>
+<td><code>arca fsck</code> (orphaned blob); reclaimed by <a href="../../operations/gc/">blob GC</a> and <code>arca fsck --repair</code></td>
 </tr>
 <tr>
 <td>sidecar</td>
 <td>blob and sidecar, no row</td>
 <td><code>arca fsck</code>; <code>arca recover</code> can rebuild the row from the sidecar</td>
 </tr>
-<tr>
-<td>row</td>
-<td>consistent</td>
-<td></td>
-</tr>
 </tbody>
 </table>
+<p>A write that fails, or whose request is dropped when the client disconnects, removes its own temp file: a guard owns the temp path from its creation until the rename that publishes it (<code>TempFileGuard</code> in <code>fs/blob.rs</code>), so only a process crash leaves one behind.
+| row | consistent | |</p>
 <p>Durability: a write is acknowledged only after its data is on stable storage. The blob temp file is <code>fsync</code>ed before it is renamed to its final name (newly created shard directories are <code>fsync</code>ed too). Sidecars are written atomically (temp file in the same directory, <code>fsync</code>, rename, directory <code>fsync</code>), so a sidecar is either the old one or the complete new one, never partial. The blob rename itself is not followed by a directory <code>fsync</code>: <strong>a blob is durable once its sidecar has been written.</strong> Blob and sidecar live in the same directory, so the sidecar's directory <code>fsync</code> persists both entries, and every writer (PutObject, CopyObject, UploadPart, UploadPartCopy, CompleteMultipartUpload, cluster receive and repair, re-encryption) writes the sidecar before committing the metadata row, failing the request and discarding the fresh blob when the sidecar write fails. That makes 3 <code>fsync</code>s per small PUT: blob data, sidecar data, directory. The same applies to the replicated raw blob writes and the <code>concat</code> fallback; the offline in-place re-encryption keeps a directory <code>fsync</code> on its own rename. SQLite commits with <code>synchronous=FULL</code> (an fsync of the WAL per transaction), so the metadata row is durable too; PostgreSQL follows its own <code>synchronous_commit</code>. All of this is the <code>[storage] fsync = true</code> default; <code>false</code> skips every fsync and uses SQLite <code>NORMAL</code>, keeping the temp + rename protocol, so writes stay atomic but are no longer durable (live server only: the offline tools are always durable). The cost depends on the disk's synchronous-write latency: on 1 KiB PUTs at concurrency 16, -37% on local NVMe and -78% on gp3 EBS, almost nothing on large objects (see <a href="../../guide/configuration/#durability-fsync">Configuration</a>). On slow disks the single SQLite writer caps the commit rate at one per fsync (TD-048). The audit writer commits in batches (1024 entries or 1 s, at once on drain) so that audit logging does not add an fsync per request.</p>
+<p><code>arca fsck</code> compares the database with the files on disk (missing blobs, orphaned blobs and sidecars, sidecar/row mismatches, temp files, unfinished multipart uploads, and MD5 checksums with <code>--verify-checksums</code>), using the same referenced set as blob GC (<code>blob_gc::referenced_blob_ids</code>), so it understands composites and in-progress parts. <code>arca fsck --repair</code> fixes what it can, re-verifying each item before its fix (see the <a href="../../guide/cli/#repair">CLI reference</a>).</p>
 <p>Known gaps, tracked in <a href="../../tech-debt/">Technical Debt</a>:</p>
 <ul>
 <li><strong><code>recover</code> is lossy (TD-014, TD-032).</strong> It drops multipart (composite) objects, re-creates parts as bogus objects, keeps the oldest version of each key, restores only buckets, objects and credentials, and always writes a SQLite database. Treat it as a last resort; see <a href="../../operations/recovery/">Disaster Recovery</a>.</li>
-<li><strong><code>fsck</code></strong> compares the database with the files on disk (missing blobs, orphaned blobs and sidecars, sidecar/row mismatches, stale temp files, and MD5 checksums with <code>--verify-checksums</code>). It does not understand composite blobs and reports them as orphaned sidecars (TD-014).</li>
 </ul>
 <h3 id="multipart-uploads-and-composite-blobs">Multipart uploads and composite blobs<a class="headerlink" href="#multipart-uploads-and-composite-blobs" title="Permanent link">&para;</a></h3>
 <ul>
@@ -2965,7 +2962,7 @@
 </tbody>
 </table>
 <h2 id="known-limitations">Known Limitations<a class="headerlink" href="#known-limitations" title="Permanent link">&para;</a></h2>
-<p>Open workarounds and bugs, each with an ID referenced in the code, are listed in <a href="../../tech-debt/">Technical Debt</a>; planned work is in the <a href="../../roadmap/">Roadmap</a>. The items most relevant to this page are TD-014 and TD-032 (<code>recover</code> / <code>fsck</code>), TD-025 (cluster CAS), TD-033 (object tags in a cluster), TD-034 (no body integrity check), and TD-037 (virtual-hosted-style addressing).</p>
+<p>Open workarounds and bugs, each with an ID referenced in the code, are listed in <a href="../../tech-debt/">Technical Debt</a>; planned work is in the <a href="../../roadmap/">Roadmap</a>. The items most relevant to this page are TD-014 and TD-032 (<code>recover</code>), TD-025 (cluster CAS), TD-033 (object tags in a cluster), TD-034 (no body integrity check), and TD-037 (virtual-hosted-style addressing).</p>
 
 
 

@@ -715,14 +715,16 @@ async fn expire_noncurrent_version(
     .await;
 }
 
-/// Abort a stale multipart upload and clean up part blobs.
-async fn abort_stale_upload(
+/// Abort a stale multipart upload and clean up part blobs. Also used by
+/// `arca fsck --repair`. Returns whether the upload was aborted (a part blob
+/// that cannot be deleted is logged and left to blob GC).
+pub(crate) async fn abort_stale_upload(
     metadata: &dyn MetadataStore,
     blob: &dyn BlobStore,
     audit_store: Option<&dyn AuditStore>,
     bucket: &str,
     upload: &arca_core::types::MultipartUploadRecord,
-) {
+) -> bool {
     match metadata.delete_multipart_upload(&upload.upload_id).await {
         Ok(parts) => {
             for part in &parts {
@@ -730,7 +732,7 @@ async fn abort_stale_upload(
                     tracing::warn!(
                         error = %e,
                         blob_id = %part.blob_id,
-                        "lifecycle: failed to delete part blob"
+                        "failed to delete a part blob of an aborted upload"
                     );
                 }
             }
@@ -739,9 +741,9 @@ async fn abort_stale_upload(
             tracing::warn!(
                 error = %e,
                 upload_id = %upload.upload_id,
-                "lifecycle: failed to abort multipart upload"
+                "failed to abort multipart upload"
             );
-            return;
+            return false;
         }
     }
 
@@ -753,6 +755,7 @@ async fn abort_stale_upload(
         None,
     )
     .await;
+    true
 }
 
 /// Write an audit entry for a lifecycle action.

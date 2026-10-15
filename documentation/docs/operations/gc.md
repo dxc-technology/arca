@@ -18,14 +18,25 @@ multipart part, or non-orphan composite sidecar references. Orphans arise from:
   request (the object is already gone), so the caller correctly sees success.
 
 Orphans waste disk but are never served and never corrupt data. Reclaiming them is the job
-of blob garbage collection, described below.
+of blob garbage collection, described below. GC also reclaims **stale temp files**
+(`<blob>.tmp`, `<blob>.meta.<id>.tmp`): a write that fails or is cancelled removes its own,
+so only a crash leaves one behind. The recovery files of an unfinished in-place rewrite
+(`*.rewrite.tmp`, `*.meta.pending.tmp`) are never touched: re-running the rewrite command
+completes them.
+
+What GC never reclaims are the parts of an **unfinished multipart upload**: they are live
+data until the upload is completed or aborted. `arca gc` and `arca fsck` report them (count,
+size, oldest); abort them with `arca fsck --repair --abort-uploads-older-than <days>`,
+`AbortMultipartUpload`, or an `AbortIncompleteMultipartUpload` lifecycle rule (see
+[Troubleshooting](troubleshooting.md#disk-is-full-but-the-buckets-are-much-smaller)).
 
 ## Detecting orphans — `arca fsck`
 
-`arca fsck` reports orphaned blobs (`ORPHANED_BLOB`) without deleting anything. Use it to
-measure the backlog before and after a reclamation run. On large stores it walks every blob
-file and loads the full database, so it is slow but safe. See the
-[CLI reference](../guide/cli.md#arca-fsck).
+`arca fsck` reports orphaned blobs (`ORPHANED_BLOB`) and stale temp files (`STALE_TMP`),
+with the same notion of "referenced" as GC. Use it to measure the backlog before and after a
+reclamation run. On large stores it walks every blob file and loads the full database, so it
+is slow but safe. `arca fsck --repair` can also move orphans to `lost+found` instead of
+deleting them. See the [CLI reference](../guide/cli.md#arca-fsck).
 
 ## Reclaiming orphans
 
@@ -59,8 +70,7 @@ arca gc --reclaim --grace-seconds 0
 
 This is the recommended mechanism on **large** single-node stores: run it from cron so the
 full-store scan runs in its own process, on your schedule, isolated from the serving process.
-Full option list: [`arca gc`](../guide/cli.md#arca-gc). Currently supports the `sqlite`
-metadata backend.
+Full option list: [`arca gc`](../guide/cli.md#arca-gc). Works with both metadata backends.
 
 ### 2. Opt-in background worker (single-node)
 
@@ -102,12 +112,13 @@ INFO summary, so a scheduled run is visible even when it reclaims nothing:
 
 ```
 INFO arca::blob_gc: blob GC pass started grace_seconds=86400
-INFO arca::blob_gc: blob GC pass complete scanned=1490233 candidates=12 reclaimed=12 failed=0 elapsed_ms=8421
+INFO arca::blob_gc: blob GC pass complete scanned=1490233 candidates=12 reclaimed=12 failed=0 temp_reclaimed=3 temp_failed=0 elapsed_ms=8421
 ```
 
 A pass skipped by the fail-safe (an enumeration error) is logged at WARN
 (`blob GC pass skipped …`), and an individual file that fails to delete at WARN
-(`blob GC: delete failed`). `arca gc` prints the same scanned/orphan counts to stdout.
+(`blob GC: delete failed`, `blob GC: temp file delete failed`). `arca gc` prints the same
+scanned/orphan/temp counts to stdout, plus the unfinished uploads.
 
 View logs with `bin/arca logs -f` (or `docker logs <container>`).
 

@@ -497,6 +497,10 @@ pub async fn complete_multipart_upload(
         if_match: if_match.clone(),
         if_none_match: if_none_match.clone(),
     };
+    // TECHDEBT(TD-053): the row is committed here and the upload consumed
+    // later (delete_multipart_upload below), not in one transaction that
+    // fails when the upload is gone: an abort in between deletes the parts of
+    // the object just completed.
     let (old, version_id) = match state.metadata.put_object_if(&record, &write_pre).await {
         Ok(r) => r,
         Err(ArcaError::S3(e))

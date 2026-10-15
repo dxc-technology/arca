@@ -147,29 +147,19 @@ When several sidecars claim the same `bucket + key` (the versions of a versioned
 
 ## `arca fsck`
 
-Check consistency between the database and filesystem without modifying anything.
+Check consistency between the database and the filesystem, and with `--repair` fix what it finds.
 
 ```bash
-arca fsck [--config-path <PATH>] [--verify-checksums]
+arca fsck [--config-path <PATH>] [--verify-checksums] [--grace-seconds <SECONDS>]
+          [--repair [--yes] [--delete] [--abort-uploads-older-than <DAYS>]]
 ```
 
-### Check Types
+The check types, the repair of each one, the options and the exit codes are in the [CLI reference](../guide/cli.md#arca-fsck). In short:
 
-| Check | Description |
-|-------|-------------|
-| `ORPHANED_BLOB` | Blob file on disk with no corresponding database record |
-| `MISSING_BLOB` | Database record references a blob file that doesn't exist |
-| `SIDECAR_MISMATCH` | `.meta` sidecar data doesn't match database record (bucket, key, size, or etag) |
-| `ORPHANED_SIDECAR` | `.meta` file exists without a corresponding blob file |
-| `STALE_TMP` | Leftover `.tmp` file from an interrupted write |
-| `CORRUPT` | Blob file MD5 doesn't match stored ETag (only with `--verify-checksums`) |
-
-### Exit Codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | No issues found |
-| 1 | One or more issues detected |
+- `fsck` understands multipart objects: the parts of a completed upload and of an upload still in progress are live data, exactly as [`arca gc`](gc.md) sees them, so the two tools agree.
+- On a running server, files younger than `--grace-seconds` (default one day) are skipped: they may belong to an upload in flight.
+- Unfinished multipart uploads are listed with their age and size. They are the first thing to look at when a disk fills up for no visible reason ([Troubleshooting](troubleshooting.md)).
+- `--repair` asks before each fix, can be interrupted with Ctrl+C and simply run again, quarantines orphaned files in `<data_dir>/lost+found/` unless `--delete`, and deletes the row of an object version only when its data is really gone.
 
 ### Usage
 
@@ -179,6 +169,12 @@ arca fsck
 
 # Full check including blob checksums (slow for large datasets)
 arca fsck --verify-checksums
+
+# Repair, asking before each fix
+arca fsck --repair
+
+# With the server stopped: repair everything, abort uploads older than 7 days
+arca fsck --repair --yes --grace-seconds 0 --abort-uploads-older-than 7
 ```
 
 ### Data Integrity
@@ -188,7 +184,7 @@ arca fsck --verify-checksums
 | What | How | Check |
 |------|-----|-------|
 | Blob content | MD5 of the blob file compared with the ETag stored in the database (the ETag of a single-part object is its MD5 hex digest, as the S3 protocol requires) | `CORRUPT` (only with `--verify-checksums`) |
-| `.meta` sidecar | Field-by-field comparison of `bucket`, `key`, `size` and `etag` with the database record; an unreadable or malformed sidecar is also reported | `SIDECAR_MISMATCH` |
+| `.meta` sidecar | Field-by-field comparison of `bucket`, `key`, `size`, `etag` and (when the sidecar carries one) the version id with the database record; an unreadable or malformed sidecar is reported apart | `SIDECAR_MISMATCH`, `UNREADABLE_SIDECAR` |
 
 !!! note
     These checks require the database to be intact. During `arca recover`, sidecars are trusted by necessity since there is nothing to compare against.

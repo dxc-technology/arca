@@ -306,34 +306,76 @@ arca recover --skip-verify
 
 ## `arca fsck`
 
-Check database and filesystem consistency. See [Disaster Recovery](../operations/recovery.md) for a detailed guide.
+Check database and filesystem consistency, and optionally repair what it finds. See [Disaster Recovery](../operations/recovery.md#arca-fsck) for a detailed guide.
 
 ```bash
-arca fsck [--config-path <PATH>] [--verify-checksums]
+arca fsck [--config-path <PATH>] [--verify-checksums] [--grace-seconds <SECONDS>]
+          [--repair [--yes] [--delete] [--abort-uploads-older-than <DAYS>]]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--config-path` | Path to the configuration file (default: `/etc/arca/config.toml`) |
 | `--verify-checksums` | Read every blob file and verify MD5 against stored ETag (slow) |
+| `--grace-seconds` | Skip files written within this many seconds (default: `86400`): they may belong to an upload still in flight. Use `0` only with the server stopped |
+| `--repair` | Repair what the check finds, asking before each fix (see [Repair](#repair)) |
+| `-y`, `--yes` | With `--repair`: answer yes to every question |
+| `--delete` | With `--repair`: delete orphaned files instead of moving them to `lost+found` |
+| `--abort-uploads-older-than` | With `--repair`: also offer to abort the unfinished multipart uploads initiated more than this many days ago |
+
+It works with both metadata backends (SQLite and PostgreSQL), and refuses to start when the SQLite database file does not exist rather than creating an empty one.
 
 ### Check Types
 
+What counts as referenced is exactly what [`arca gc`](#arca-gc) keeps: object rows, the parts of in-progress multipart uploads, and the parts of every completed multipart object. A completed multipart object is a *composite*: its sidecar lists its part blobs and it has no blob file of its own.
+
 | Check | Description |
 |-------|-------------|
-| `ORPHANED_BLOB` | Blob file on disk with no corresponding database record |
-| `MISSING_BLOB` | Database record references a blob file that doesn't exist |
-| `SIDECAR_MISMATCH` | `.meta` sidecar data doesn't match database record (bucket, key, size, or etag) |
-| `ORPHANED_SIDECAR` | `.meta` file exists without a corresponding blob file |
-| `STALE_TMP` | Leftover `.tmp` file from an interrupted write |
-| `CORRUPT` | Blob file MD5 doesn't match stored ETag (only with `--verify-checksums`) |
+| `ORPHANED_BLOB` | Blob file referenced by no object, upload or composite |
+| `ORPHANED_SIDECAR` | `.meta` file with neither a blob file nor an object (for example the sidecar of a composite whose object is gone) |
+| `MISSING_BLOB` | An object version whose blob file, or one of whose composite parts, does not exist |
+| `SIDECAR_MISMATCH` | `.meta` sidecar data doesn't match the object row (bucket, key, size, etag, or a version id the sidecar carries) |
+| `UNREADABLE_SIDECAR` | `.meta` file that cannot be read or parsed |
+| `STALE_TMP` | Leftover temp file of an interrupted write (`<blob>.tmp`, `<blob>.meta.<id>.tmp`) |
+| `REWRITE_RECOVERY` | Recovery file of an unfinished in-place rewrite (`*.rewrite.tmp`, `*.meta.pending.tmp`): re-run the rewrite command to complete it, never delete it by hand |
+| `CORRUPT` | Blob file MD5 doesn't match stored ETag (only with `--verify-checksums`; multipart, encrypted and compressed objects are skipped) |
+| `UNFINISHED_UPLOAD` | Informational: a multipart upload never completed nor aborted, with its start date, part count and size. Its parts are live data until the upload is aborted |
+
+The report ends with a summary: the count of each category and the bytes involved, and how many files were skipped as younger than the grace period.
+
+### Repair
+
+`--repair` fixes the issues one by one and asks before each fix: `y` (yes), `n` (no), `a` (yes to the rest of the category), `q` (stop). `--yes` answers yes to everything; without a terminal, `--repair` requires it.
+
+| Check | Repair | Asks |
+|-------|--------|------|
+| `STALE_TMP` | Deleted (partial bytes nothing reads) | no |
+| `ORPHANED_BLOB`, `ORPHANED_SIDECAR` | Moved to `<data_dir>/lost+found/<timestamp>/`, keeping their path under `blobs/`; deleted with `--delete`. A blob takes its sidecar along | yes |
+| `MISSING_BLOB` | The row of that version is deleted (its data is already lost: a GET of it fails). Re-upload the object afterwards | yes |
+| `SIDECAR_MISMATCH` | The sidecar is rewritten from the row (bucket, key, size, etag, version id); its encryption, compression and part list are kept | yes |
+| `UNFINISHED_UPLOAD` | Aborted (row and part files deleted), only with `--abort-uploads-older-than` and only for uploads older than that | yes |
+| `UNREADABLE_SIDECAR`, `REWRITE_RECOVERY`, `CORRUPT` | None: they need a decision `fsck` cannot take | |
+
+How it stays safe:
+
+- **Running server.** Repair may run while the server is up. Files younger than the grace period are never fixed (on an HA cluster node the grace is at least `[cluster] tombstone_grace_days`, like anti-entropy GC), and every item is checked again right before its fix: an item that changed since the scan is skipped. A row is deleted only if it still points at the blob found missing (checked inside the delete's transaction), and the referenced set is recomputed before orphans are touched. A running server may still serve a deleted row from its metadata cache for up to `object_cache_ttl_seconds` (a GET of it already failed before the repair).
+- **Leftovers in the same run.** Database fixes run first; if any was applied, `fsck` rescans, so the files a deleted row or an aborted upload left behind are found and offered in the same run.
+- **Orphans while a sidecar is unreadable** are not repaired: that sidecar may list the parts of a live composite.
+- **Aborting uploads.** An abort deletes the parts. If a client is completing that very upload at the same moment, the completed object loses its data, exactly as with `AbortMultipartUpload` or a lifecycle rule: pick a `--abort-uploads-older-than` well beyond your slowest upload, or abort with the server stopped.
+- **Interrupting.** Ctrl+C exits at once, except during a fix: the fix completes, then the run stops. Every fix is atomic and idempotent and there is no journal: run `arca fsck --repair` again and it finds only what is left.
+- **In-place rewrites.** `--repair` refuses to start while the [in-progress marker](#the-in-progress-marker) of an offline rewrite exists.
+- **HA cluster.** On a cluster node only the file repairs run (`STALE_TMP`, orphans, sidecar mismatches). `MISSING_BLOB` is left to anti-entropy, which fetches the blob from a peer; deleting the row there would replicate as a tombstone and delete the object on every node. Unfinished uploads are aborted through the S3 API (`AbortMultipartUpload`), which replicates. Run `fsck` on each node.
+
+`lost+found` must be on the same filesystem as `blobs/` (it is, unless `blobs/` is a separate mount); otherwise use `--delete`. Delete the `lost+found` directory once you are satisfied.
 
 ### Exit Codes
 
 | Code | Meaning |
 |------|---------|
-| 0 | No issues found |
-| 1 | One or more issues detected |
+| 0 | No issues found (with `--repair`: none left) |
+| 1 | One or more issues detected (with `--repair`: left unfixed) |
+
+Unfinished uploads alone do not make the exit code 1: they are valid state.
 
 ```bash
 # Quick consistency check
@@ -341,11 +383,17 @@ arca fsck
 
 # Full check including blob checksums (slow for large datasets)
 arca fsck --verify-checksums
+
+# Repair, asking before each fix
+arca fsck --repair
+
+# Repair everything with the server stopped, aborting uploads older than a week
+arca fsck --repair --yes --grace-seconds 0 --abort-uploads-older-than 7
 ```
 
 ## `arca gc`
 
-Reclaim orphaned blob files — on-disk blobs referenced by no live object row, in-progress multipart part, or non-orphan composite sidecar. Orphans accumulate from interrupted uploads, overwrites, crashes between the metadata and blob delete, and blob-delete failures (which are logged but do not fail the request, because the object's metadata is already gone). Where `arca fsck` only *reports* orphans (`ORPHANED_BLOB`), `arca gc` *removes* them, using the same composite-aware, fail-safe selection as the cluster anti-entropy worker.
+Reclaim orphaned blob files — on-disk blobs referenced by no live object row, in-progress multipart part, or non-orphan composite sidecar — and the stale temp files of interrupted writes. Orphans accumulate from interrupted uploads, overwrites, crashes between the metadata and blob delete, and blob-delete failures (which are logged but do not fail the request, because the object's metadata is already gone). Where `arca fsck` only *reports* orphans (`ORPHANED_BLOB`), `arca gc` *removes* them, using the same composite-aware, fail-safe selection as the cluster anti-entropy worker.
 
 On a **single-node** deployment there is no anti-entropy worker, so `arca gc` (typically from cron) is the reclamation path. Alternatively, enable the opt-in background worker with `[storage] blob_gc_enabled = true` (see [Configuration](configuration.md#storage)) to reclaim on a schedule without an external cron job; on very large stores cron-ing this command is preferable so the scan runs outside the serving process. On a cluster the anti-entropy worker already reclaims orphans automatically.
 
@@ -356,15 +404,19 @@ arca gc [--config-path <PATH>] [--reclaim] [--grace-seconds <SECONDS>] [--verbos
 | Option | Description |
 |--------|-------------|
 | `--config-path` | Path to the configuration file (default: `/etc/arca/config.toml`) |
-| `--reclaim` | Actually delete the orphans. Without it, only report what would be reclaimed (dry run) |
-| `--grace-seconds` | Protect blobs written within this many seconds (default: `86400`) |
-| `--verbose` | List every orphan blob id before the summary |
+| `--reclaim` | Actually delete the orphans and stale temp files. Without it, only report what would be reclaimed (dry run) |
+| `--grace-seconds` | Protect blobs and temp files written within this many seconds (default: `86400`) |
+| `--verbose` | List every orphan blob id and temp file before the summary |
 
-The `--grace-seconds` window protects freshly-written blobs whose object row may not be committed yet (a blob file is written before its metadata row). Keep it comfortably above your longest in-flight upload when running against a **live** server; drop it to `0` for an immediate full reclaim only when the server is **stopped**.
+The `--grace-seconds` window protects freshly-written blobs whose object row may not be committed yet (a blob file is written before its metadata row), and the temp files of uploads in flight. Keep it comfortably above your longest in-flight upload when running against a **live** server; drop it to `0` for an immediate full reclaim only when the server is **stopped**.
 
-Fail-safe: if any enumeration (referenced ids, sidecars, on-disk blobs) fails, the command aborts and deletes nothing.
+Temp files are the `<blob>.tmp` / `<blob>.meta.<id>.tmp` files of writes that never completed. The recovery files of an in-place rewrite (`*.rewrite.tmp`, `*.meta.pending.tmp`) are never touched: re-running the rewrite command completes them.
 
-Currently supports the `sqlite` metadata backend only (like `arca recover` / `arca fsck`).
+The output also reports the unfinished multipart uploads and the bytes they hold. Their parts are not orphans: they stay until the upload is aborted (`arca fsck --repair --abort-uploads-older-than <days>`, `AbortMultipartUpload`, or an `AbortIncompleteMultipartUpload` lifecycle rule).
+
+Fail-safe: if any enumeration (referenced ids, sidecars, on-disk blobs, temp files) fails, the command aborts and deletes nothing.
+
+It works with both metadata backends (SQLite and PostgreSQL).
 
 ```bash
 # Preview what would be reclaimed (safe; nothing is deleted)
@@ -449,7 +501,7 @@ Multipart objects and SSE-C objects are skipped (TD-018).
 3. rename the temp file over the blob and `fsync` the directory;
 4. rename the journal over the sidecar and `fsync` the directory.
 
-The original blob and sidecar are untouched until step 3, and an error before then removes the temp files. If the process or the machine dies part-way, simply **run the same command again**: before looking at each sidecar it discards a rewrite that never replaced the blob, or completes one that did (printing `recovered <path>: ...`), then carries on. After completing an `encrypt-existing`/`decrypt-existing` rewrite it also brings the database row in line. Do not delete a `*.meta.pending.tmp` file by hand; `arca fsck` lists these files as `STALE_TMP`, which is expected after a crash and cleared by the re-run. A `--dry-run` never repairs or removes anything.
+The original blob and sidecar are untouched until step 3, and an error before then removes the temp files. If the process or the machine dies part-way, simply **run the same command again**: before looking at each sidecar it discards a rewrite that never replaced the blob, or completes one that did (printing `recovered <path>: ...`), then carries on. After completing an `encrypt-existing`/`decrypt-existing` rewrite it also brings the database row in line. Do not delete a `*.meta.pending.tmp` file by hand; `arca fsck` lists these files as `REWRITE_RECOVERY`, which is expected after a crash and cleared by the re-run (neither `fsck --repair` nor `gc` ever removes them). A `--dry-run` never repairs or removes anything.
 
 #### The in-progress marker
 
@@ -463,7 +515,7 @@ While the marker exists:
 | The same rewrite command | Allowed, with any filters: it repairs every pending journal (the repair runs on all sidecars before the filters apply) and removes the marker when it finishes cleanly. |
 | Another rewrite command | Refused, with the command to re-run first. |
 | `recover`, `gc`, `migrate-db`, `migrate-topology` | Refused: they would rebuild the database from, delete based on, or copy state derived from mismatched sidecars. |
-| `fsck` | Runs (it is read-only) but prints a warning, since its findings may be misleading until the rewrite is completed. |
+| `fsck` | Runs (it is read-only) but prints a warning, since its findings may be misleading until the rewrite is completed. `fsck --repair` is refused. |
 | `--dry-run` of a rewrite command | Allowed, touches nothing. |
 
 To resolve it, run the command named in the error, with the same `--config-path`, and wait for `Done.` without errors. **Never delete the marker by hand.** Doing so would let the server start on blobs and sidecars that may not match, and a pending `*.meta.pending.tmp` journal of `encrypt-existing` holds the only copy of the new wrapped key, which only the re-run commits.

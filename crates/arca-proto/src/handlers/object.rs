@@ -357,6 +357,7 @@ fn build_delete_precondition(headers: &http::HeaderMap) -> DeletePrecondition {
             .get("x-amz-if-match-size")
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.parse::<u64>().ok()),
+        if_match_blob_id: None,
     }
 }
 

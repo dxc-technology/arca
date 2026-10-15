@@ -990,6 +990,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#repair" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Repair
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#exit-codes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1799,6 +1810,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#repair" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Repair
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#exit-codes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2389,8 +2411,9 @@ trusting every renewed server certificate for the CA's whole lifetime.</p>
 <a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>arca<span class="w"> </span>recover<span class="w"> </span>--skip-verify
 </code></pre></div>
 <h2 id="arca-fsck"><code>arca fsck</code><a class="headerlink" href="#arca-fsck" title="Permanent link">&para;</a></h2>
-<p>Check database and filesystem consistency. See <a href="../../operations/recovery/">Disaster Recovery</a> for a detailed guide.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>arca<span class="w"> </span>fsck<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--verify-checksums<span class="o">]</span>
+<p>Check database and filesystem consistency, and optionally repair what it finds. See <a href="../../operations/recovery/#arca-fsck">Disaster Recovery</a> for a detailed guide.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>arca<span class="w"> </span>fsck<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--verify-checksums<span class="o">]</span><span class="w"> </span><span class="o">[</span>--grace-seconds<span class="w"> </span>&lt;SECONDS&gt;<span class="o">]</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="w">          </span><span class="o">[</span>--repair<span class="w"> </span><span class="o">[</span>--yes<span class="o">]</span><span class="w"> </span><span class="o">[</span>--delete<span class="o">]</span><span class="w"> </span><span class="o">[</span>--abort-uploads-older-than<span class="w"> </span>&lt;DAYS&gt;<span class="o">]]</span>
 </code></pre></div>
 <table>
 <thead>
@@ -2408,9 +2431,31 @@ trusting every renewed server certificate for the CA's whole lifetime.</p>
 <td><code>--verify-checksums</code></td>
 <td>Read every blob file and verify MD5 against stored ETag (slow)</td>
 </tr>
+<tr>
+<td><code>--grace-seconds</code></td>
+<td>Skip files written within this many seconds (default: <code>86400</code>): they may belong to an upload still in flight. Use <code>0</code> only with the server stopped</td>
+</tr>
+<tr>
+<td><code>--repair</code></td>
+<td>Repair what the check finds, asking before each fix (see <a href="#repair">Repair</a>)</td>
+</tr>
+<tr>
+<td><code>-y</code>, <code>--yes</code></td>
+<td>With <code>--repair</code>: answer yes to every question</td>
+</tr>
+<tr>
+<td><code>--delete</code></td>
+<td>With <code>--repair</code>: delete orphaned files instead of moving them to <code>lost+found</code></td>
+</tr>
+<tr>
+<td><code>--abort-uploads-older-than</code></td>
+<td>With <code>--repair</code>: also offer to abort the unfinished multipart uploads initiated more than this many days ago</td>
+</tr>
 </tbody>
 </table>
+<p>It works with both metadata backends (SQLite and PostgreSQL), and refuses to start when the SQLite database file does not exist rather than creating an empty one.</p>
 <h3 id="check-types">Check Types<a class="headerlink" href="#check-types" title="Permanent link">&para;</a></h3>
+<p>What counts as referenced is exactly what <a href="#arca-gc"><code>arca gc</code></a> keeps: object rows, the parts of in-progress multipart uploads, and the parts of every completed multipart object. A completed multipart object is a <em>composite</em>: its sidecar lists its part blobs and it has no blob file of its own.</p>
 <table>
 <thead>
 <tr>
@@ -2421,30 +2466,97 @@ trusting every renewed server certificate for the CA's whole lifetime.</p>
 <tbody>
 <tr>
 <td><code>ORPHANED_BLOB</code></td>
-<td>Blob file on disk with no corresponding database record</td>
-</tr>
-<tr>
-<td><code>MISSING_BLOB</code></td>
-<td>Database record references a blob file that doesn't exist</td>
-</tr>
-<tr>
-<td><code>SIDECAR_MISMATCH</code></td>
-<td><code>.meta</code> sidecar data doesn't match database record (bucket, key, size, or etag)</td>
+<td>Blob file referenced by no object, upload or composite</td>
 </tr>
 <tr>
 <td><code>ORPHANED_SIDECAR</code></td>
-<td><code>.meta</code> file exists without a corresponding blob file</td>
+<td><code>.meta</code> file with neither a blob file nor an object (for example the sidecar of a composite whose object is gone)</td>
+</tr>
+<tr>
+<td><code>MISSING_BLOB</code></td>
+<td>An object version whose blob file, or one of whose composite parts, does not exist</td>
+</tr>
+<tr>
+<td><code>SIDECAR_MISMATCH</code></td>
+<td><code>.meta</code> sidecar data doesn't match the object row (bucket, key, size, etag, or a version id the sidecar carries)</td>
+</tr>
+<tr>
+<td><code>UNREADABLE_SIDECAR</code></td>
+<td><code>.meta</code> file that cannot be read or parsed</td>
 </tr>
 <tr>
 <td><code>STALE_TMP</code></td>
-<td>Leftover <code>.tmp</code> file from an interrupted write</td>
+<td>Leftover temp file of an interrupted write (<code>&lt;blob&gt;.tmp</code>, <code>&lt;blob&gt;.meta.&lt;id&gt;.tmp</code>)</td>
+</tr>
+<tr>
+<td><code>REWRITE_RECOVERY</code></td>
+<td>Recovery file of an unfinished in-place rewrite (<code>*.rewrite.tmp</code>, <code>*.meta.pending.tmp</code>): re-run the rewrite command to complete it, never delete it by hand</td>
 </tr>
 <tr>
 <td><code>CORRUPT</code></td>
-<td>Blob file MD5 doesn't match stored ETag (only with <code>--verify-checksums</code>)</td>
+<td>Blob file MD5 doesn't match stored ETag (only with <code>--verify-checksums</code>; multipart, encrypted and compressed objects are skipped)</td>
+</tr>
+<tr>
+<td><code>UNFINISHED_UPLOAD</code></td>
+<td>Informational: a multipart upload never completed nor aborted, with its start date, part count and size. Its parts are live data until the upload is aborted</td>
 </tr>
 </tbody>
 </table>
+<p>The report ends with a summary: the count of each category and the bytes involved, and how many files were skipped as younger than the grace period.</p>
+<h3 id="repair">Repair<a class="headerlink" href="#repair" title="Permanent link">&para;</a></h3>
+<p><code>--repair</code> fixes the issues one by one and asks before each fix: <code>y</code> (yes), <code>n</code> (no), <code>a</code> (yes to the rest of the category), <code>q</code> (stop). <code>--yes</code> answers yes to everything; without a terminal, <code>--repair</code> requires it.</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Repair</th>
+<th>Asks</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>STALE_TMP</code></td>
+<td>Deleted (partial bytes nothing reads)</td>
+<td>no</td>
+</tr>
+<tr>
+<td><code>ORPHANED_BLOB</code>, <code>ORPHANED_SIDECAR</code></td>
+<td>Moved to <code>&lt;data_dir&gt;/lost+found/&lt;timestamp&gt;/</code>, keeping their path under <code>blobs/</code>; deleted with <code>--delete</code>. A blob takes its sidecar along</td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>MISSING_BLOB</code></td>
+<td>The row of that version is deleted (its data is already lost: a GET of it fails). Re-upload the object afterwards</td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>SIDECAR_MISMATCH</code></td>
+<td>The sidecar is rewritten from the row (bucket, key, size, etag, version id); its encryption, compression and part list are kept</td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>UNFINISHED_UPLOAD</code></td>
+<td>Aborted (row and part files deleted), only with <code>--abort-uploads-older-than</code> and only for uploads older than that</td>
+<td>yes</td>
+</tr>
+<tr>
+<td><code>UNREADABLE_SIDECAR</code>, <code>REWRITE_RECOVERY</code>, <code>CORRUPT</code></td>
+<td>None: they need a decision <code>fsck</code> cannot take</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>How it stays safe:</p>
+<ul>
+<li><strong>Running server.</strong> Repair may run while the server is up. Files younger than the grace period are never fixed (on an HA cluster node the grace is at least <code>[cluster] tombstone_grace_days</code>, like anti-entropy GC), and every item is checked again right before its fix: an item that changed since the scan is skipped. A row is deleted only if it still points at the blob found missing (checked inside the delete's transaction), and the referenced set is recomputed before orphans are touched. A running server may still serve a deleted row from its metadata cache for up to <code>object_cache_ttl_seconds</code> (a GET of it already failed before the repair).</li>
+<li><strong>Leftovers in the same run.</strong> Database fixes run first; if any was applied, <code>fsck</code> rescans, so the files a deleted row or an aborted upload left behind are found and offered in the same run.</li>
+<li><strong>Orphans while a sidecar is unreadable</strong> are not repaired: that sidecar may list the parts of a live composite.</li>
+<li><strong>Aborting uploads.</strong> An abort deletes the parts. If a client is completing that very upload at the same moment, the completed object loses its data, exactly as with <code>AbortMultipartUpload</code> or a lifecycle rule: pick a <code>--abort-uploads-older-than</code> well beyond your slowest upload, or abort with the server stopped.</li>
+<li><strong>Interrupting.</strong> Ctrl+C exits at once, except during a fix: the fix completes, then the run stops. Every fix is atomic and idempotent and there is no journal: run <code>arca fsck --repair</code> again and it finds only what is left.</li>
+<li><strong>In-place rewrites.</strong> <code>--repair</code> refuses to start while the <a href="#the-in-progress-marker">in-progress marker</a> of an offline rewrite exists.</li>
+<li><strong>HA cluster.</strong> On a cluster node only the file repairs run (<code>STALE_TMP</code>, orphans, sidecar mismatches). <code>MISSING_BLOB</code> is left to anti-entropy, which fetches the blob from a peer; deleting the row there would replicate as a tombstone and delete the object on every node. Unfinished uploads are aborted through the S3 API (<code>AbortMultipartUpload</code>), which replicates. Run <code>fsck</code> on each node.</li>
+</ul>
+<p><code>lost+found</code> must be on the same filesystem as <code>blobs/</code> (it is, unless <code>blobs/</code> is a separate mount); otherwise use <code>--delete</code>. Delete the <code>lost+found</code> directory once you are satisfied.</p>
 <h3 id="exit-codes">Exit Codes<a class="headerlink" href="#exit-codes" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -2456,22 +2568,29 @@ trusting every renewed server certificate for the CA's whole lifetime.</p>
 <tbody>
 <tr>
 <td>0</td>
-<td>No issues found</td>
+<td>No issues found (with <code>--repair</code>: none left)</td>
 </tr>
 <tr>
 <td>1</td>
-<td>One or more issues detected</td>
+<td>One or more issues detected (with <code>--repair</code>: left unfixed)</td>
 </tr>
 </tbody>
 </table>
+<p>Unfinished uploads alone do not make the exit code 1: they are valid state.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="c1"># Quick consistency check</span>
 <a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>arca<span class="w"> </span>fsck
 <a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>
 <a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="c1"># Full check including blob checksums (slow for large datasets)</span>
 <a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>arca<span class="w"> </span>fsck<span class="w"> </span>--verify-checksums
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a>
+<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a><span class="c1"># Repair, asking before each fix</span>
+<a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a>arca<span class="w"> </span>fsck<span class="w"> </span>--repair
+<a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a>
+<a id="__codelineno-23-10" name="__codelineno-23-10" href="#__codelineno-23-10"></a><span class="c1"># Repair everything with the server stopped, aborting uploads older than a week</span>
+<a id="__codelineno-23-11" name="__codelineno-23-11" href="#__codelineno-23-11"></a>arca<span class="w"> </span>fsck<span class="w"> </span>--repair<span class="w"> </span>--yes<span class="w"> </span>--grace-seconds<span class="w"> </span><span class="m">0</span><span class="w"> </span>--abort-uploads-older-than<span class="w"> </span><span class="m">7</span>
 </code></pre></div>
 <h2 id="arca-gc"><code>arca gc</code><a class="headerlink" href="#arca-gc" title="Permanent link">&para;</a></h2>
-<p>Reclaim orphaned blob files — on-disk blobs referenced by no live object row, in-progress multipart part, or non-orphan composite sidecar. Orphans accumulate from interrupted uploads, overwrites, crashes between the metadata and blob delete, and blob-delete failures (which are logged but do not fail the request, because the object's metadata is already gone). Where <code>arca fsck</code> only <em>reports</em> orphans (<code>ORPHANED_BLOB</code>), <code>arca gc</code> <em>removes</em> them, using the same composite-aware, fail-safe selection as the cluster anti-entropy worker.</p>
+<p>Reclaim orphaned blob files — on-disk blobs referenced by no live object row, in-progress multipart part, or non-orphan composite sidecar — and the stale temp files of interrupted writes. Orphans accumulate from interrupted uploads, overwrites, crashes between the metadata and blob delete, and blob-delete failures (which are logged but do not fail the request, because the object's metadata is already gone). Where <code>arca fsck</code> only <em>reports</em> orphans (<code>ORPHANED_BLOB</code>), <code>arca gc</code> <em>removes</em> them, using the same composite-aware, fail-safe selection as the cluster anti-entropy worker.</p>
 <p>On a <strong>single-node</strong> deployment there is no anti-entropy worker, so <code>arca gc</code> (typically from cron) is the reclamation path. Alternatively, enable the opt-in background worker with <code>[storage] blob_gc_enabled = true</code> (see <a href="../configuration/#storage">Configuration</a>) to reclaim on a schedule without an external cron job; on very large stores cron-ing this command is preferable so the scan runs outside the serving process. On a cluster the anti-entropy worker already reclaims orphans automatically.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>arca<span class="w"> </span>gc<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--reclaim<span class="o">]</span><span class="w"> </span><span class="o">[</span>--grace-seconds<span class="w"> </span>&lt;SECONDS&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--verbose<span class="o">]</span>
 </code></pre></div>
@@ -2489,21 +2608,23 @@ trusting every renewed server certificate for the CA's whole lifetime.</p>
 </tr>
 <tr>
 <td><code>--reclaim</code></td>
-<td>Actually delete the orphans. Without it, only report what would be reclaimed (dry run)</td>
+<td>Actually delete the orphans and stale temp files. Without it, only report what would be reclaimed (dry run)</td>
 </tr>
 <tr>
 <td><code>--grace-seconds</code></td>
-<td>Protect blobs written within this many seconds (default: <code>86400</code>)</td>
+<td>Protect blobs and temp files written within this many seconds (default: <code>86400</code>)</td>
 </tr>
 <tr>
 <td><code>--verbose</code></td>
-<td>List every orphan blob id before the summary</td>
+<td>List every orphan blob id and temp file before the summary</td>
 </tr>
 </tbody>
 </table>
-<p>The <code>--grace-seconds</code> window protects freshly-written blobs whose object row may not be committed yet (a blob file is written before its metadata row). Keep it comfortably above your longest in-flight upload when running against a <strong>live</strong> server; drop it to <code>0</code> for an immediate full reclaim only when the server is <strong>stopped</strong>.</p>
-<p>Fail-safe: if any enumeration (referenced ids, sidecars, on-disk blobs) fails, the command aborts and deletes nothing.</p>
-<p>Currently supports the <code>sqlite</code> metadata backend only (like <code>arca recover</code> / <code>arca fsck</code>).</p>
+<p>The <code>--grace-seconds</code> window protects freshly-written blobs whose object row may not be committed yet (a blob file is written before its metadata row), and the temp files of uploads in flight. Keep it comfortably above your longest in-flight upload when running against a <strong>live</strong> server; drop it to <code>0</code> for an immediate full reclaim only when the server is <strong>stopped</strong>.</p>
+<p>Temp files are the <code>&lt;blob&gt;.tmp</code> / <code>&lt;blob&gt;.meta.&lt;id&gt;.tmp</code> files of writes that never completed. The recovery files of an in-place rewrite (<code>*.rewrite.tmp</code>, <code>*.meta.pending.tmp</code>) are never touched: re-running the rewrite command completes them.</p>
+<p>The output also reports the unfinished multipart uploads and the bytes they hold. Their parts are not orphans: they stay until the upload is aborted (<code>arca fsck --repair --abort-uploads-older-than &lt;days&gt;</code>, <code>AbortMultipartUpload</code>, or an <code>AbortIncompleteMultipartUpload</code> lifecycle rule).</p>
+<p>Fail-safe: if any enumeration (referenced ids, sidecars, on-disk blobs, temp files) fails, the command aborts and deletes nothing.</p>
+<p>It works with both metadata backends (SQLite and PostgreSQL).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="c1"># Preview what would be reclaimed (safe; nothing is deleted)</span>
 <a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>arca<span class="w"> </span>gc
 <a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>
@@ -2599,7 +2720,7 @@ trusting every renewed server certificate for the CA's whole lifetime.</p>
 <li>rename the temp file over the blob and <code>fsync</code> the directory;</li>
 <li>rename the journal over the sidecar and <code>fsync</code> the directory.</li>
 </ol>
-<p>The original blob and sidecar are untouched until step 3, and an error before then removes the temp files. If the process or the machine dies part-way, simply <strong>run the same command again</strong>: before looking at each sidecar it discards a rewrite that never replaced the blob, or completes one that did (printing <code>recovered &lt;path&gt;: ...</code>), then carries on. After completing an <code>encrypt-existing</code>/<code>decrypt-existing</code> rewrite it also brings the database row in line. Do not delete a <code>*.meta.pending.tmp</code> file by hand; <code>arca fsck</code> lists these files as <code>STALE_TMP</code>, which is expected after a crash and cleared by the re-run. A <code>--dry-run</code> never repairs or removes anything.</p>
+<p>The original blob and sidecar are untouched until step 3, and an error before then removes the temp files. If the process or the machine dies part-way, simply <strong>run the same command again</strong>: before looking at each sidecar it discards a rewrite that never replaced the blob, or completes one that did (printing <code>recovered &lt;path&gt;: ...</code>), then carries on. After completing an <code>encrypt-existing</code>/<code>decrypt-existing</code> rewrite it also brings the database row in line. Do not delete a <code>*.meta.pending.tmp</code> file by hand; <code>arca fsck</code> lists these files as <code>REWRITE_RECOVERY</code>, which is expected after a crash and cleared by the re-run (neither <code>fsck --repair</code> nor <code>gc</code> ever removes them). A <code>--dry-run</code> never repairs or removes anything.</p>
 <h4 id="the-in-progress-marker">The in-progress marker<a class="headerlink" href="#the-in-progress-marker" title="Permanent link">&para;</a></h4>
 <p>Until the re-run, an object caught between steps 3 and 4 has a blob that does not match its sidecar (for example ciphertext described as plaintext), and the server would serve it silently. To make that impossible, every real (non <code>--dry-run</code>) run first writes a marker file, durably, in the data directory: <code>&lt;data_dir&gt;/.offline-rewrite-in-progress</code>. It is a small JSON document with the command name, the arguments needed to re-run it (<code>--bucket</code>, <code>--prefix</code>, <code>--algorithm</code>), the start time and the pid. The marker is removed (and the directory fsynced) only when the run finished cleanly: every sidecar was processed and nothing failed. If the run aborts, reports errors, or the process or machine dies, the marker stays.</p>
 <p>While the marker exists:</p>
@@ -2629,7 +2750,7 @@ trusting every renewed server certificate for the CA's whole lifetime.</p>
 </tr>
 <tr>
 <td><code>fsck</code></td>
-<td>Runs (it is read-only) but prints a warning, since its findings may be misleading until the rewrite is completed.</td>
+<td>Runs (it is read-only) but prints a warning, since its findings may be misleading until the rewrite is completed. <code>fsck --repair</code> is refused.</td>
 </tr>
 <tr>
 <td><code>--dry-run</code> of a rewrite command</td>

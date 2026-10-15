@@ -504,4 +504,16 @@ pub trait RawBlobOps: Send + Sync {
     /// decides reclaim per file from a fully-computed referenced set, so a
     /// cascade here could drop a part still referenced elsewhere.
     async fn delete_blob_file(&self, blob_id: &BlobId) -> Result<(), crate::error::ArcaError>;
+
+    /// Lists the temp files interrupted writes left behind (blob and sidecar
+    /// temps, partial bytes nothing reads), each with its last modification
+    /// time. Never the recovery files of an in-place rewrite, which their
+    /// command owns.
+    async fn list_reclaimable_temp_files(
+        &self,
+    ) -> Result<Vec<(std::path::PathBuf, std::time::SystemTime)>, crate::error::ArcaError>;
+
+    /// Deletes one file listed by [`RawBlobOps::list_reclaimable_temp_files`];
+    /// refuses any other path. A file already gone is not an error.
+    async fn delete_temp_file(&self, path: &std::path::Path) -> Result<(), crate::error::ArcaError>;
 }

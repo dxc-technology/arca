@@ -268,33 +268,28 @@ limit works around it; later releases open one part at a time.
 
 ### Disk is full but the buckets are much smaller
 
-**Symptom**: the data volume is full, or nearly, while the buckets total far less (for example a 1 TB volume full with under 500 GB of objects), writes fail with `write blob: No space left on device (os error 28)`, and `arca fsck` reports thousands of `ORPHANED_BLOB`, `MISSING_BLOB` and `ORPHANED_SIDECAR` entries while `arca gc --reclaim` finds nothing to reclaim.
+**Symptom**: the data volume is full, or nearly, while the buckets total far less (for example a 1 TB volume full with under 500 GB of objects), writes fail with `write blob: No space left on device (os error 28)`, and `arca gc --reclaim` finds little or nothing to reclaim. (Releases up to 0.31.2 also had `arca fsck` report thousands of `ORPHANED_BLOB`, `MISSING_BLOB` and `ORPHANED_SIDECAR` entries here, because their `fsck` did not understand multipart objects.)
 
-**Cause**: usually unfinished multipart uploads. The parts of an upload are live data until the upload is completed or aborted, so neither `arca gc` nor the GC worker reclaims them. Backup tools that upload in parts (Percona Backup for MongoDB, restic, rclone, and others) leave an upload behind whenever a backup fails and the client does not send `AbortMultipartUpload`. If the failure was a full disk, the leftovers take more of it, and the next run fails the same way: the problem feeds itself, and a backup tool can go for weeks without a restorable backup. The `fsck` entries are mostly expected: until TD-014 is fixed, `fsck` does not understand composite blobs (objects assembled by `CompleteMultipartUpload`), so it reports their sidecars as orphaned and their part files as orphaned or missing.
+**Cause**: usually unfinished multipart uploads. The parts of an upload are live data until the upload is completed or aborted, so neither `arca gc` nor the GC worker reclaims them. Backup tools that upload in parts (Percona Backup for MongoDB, restic, rclone, and others) leave an upload behind whenever a backup fails and the client does not send `AbortMultipartUpload`. If the failure was a full disk, the leftovers take more of it, and the next run fails the same way: the problem feeds itself, and a backup tool can go for weeks without a restorable backup. Up to 0.31.2, uploads interrupted by a dropped connection could also leave partial temp files; a failed or cancelled write now removes its own.
 
-**Diagnose** (the first command lists unfinished uploads, the second the temp files):
+**Diagnose**: `arca fsck` lists every unfinished upload (`UNFINISHED_UPLOAD`, with its start date, part count and size) and stale temp files (`STALE_TMP`), with totals in its summary; `arca gc` prints the same totals. From a client:
 
 ```bash
 mc ls --incomplete --recursive <alias>/<bucket>
-find <data_dir>/blobs -type f -name '*.tmp' ! -name '*.rewrite.tmp' ! -name '*.pending.tmp' -mmin +1440 | wc -l
 ```
 
 A finished backup leaves no unfinished uploads, so a list that grows by the same number of entries every night is a failing job. Check the server log for the real error of that run before deleting anything.
 
 **Solution**:
 
-1. Abort the uploads that can no longer complete (here, everything older than a few days):
+1. Abort the uploads that can no longer complete (here, everything older than a week), on the server:
 
     ```bash
-    mc rm --incomplete --recursive --force --older-than 7d <alias>/<bucket>
+    arca fsck --repair --abort-uploads-older-than 7
     ```
 
-    Add `--dry-run` first to see what would be aborted. This deletes the parts, so check that no job is still uploading.
-2. Delete stale temp files (interrupted uploads, TD-051). They are never referenced by the database or a sidecar; keep `*.rewrite.tmp` and `*.pending.tmp`, which are recovery markers:
-
-    ```bash
-    find <data_dir>/blobs -type f -name '*.tmp' ! -name '*.rewrite.tmp' ! -name '*.pending.tmp' -mmin +1440 -delete
-    ```
+    It asks before each abort (`a` answers yes for the rest). From a client, `mc rm --incomplete --recursive --force --older-than 7d <alias>/<bucket>` does the same (add `--dry-run` first). Either way the parts are deleted, so check that no job is still uploading. On an HA cluster use the client command: it replicates.
+2. Reclaim stale temp files with `arca gc --reclaim` (or `arca fsck --repair`, which also offers the orphans it finds). Both keep `*.rewrite.tmp` and `*.pending.tmp`, the recovery files of an unfinished in-place rewrite.
 3. Add a lifecycle rule so it cannot build up again. `mc ilm rule add` has no option for this action, so import it as JSON (for the whole bucket, or add a `Prefix` filter):
 
     ```bash
