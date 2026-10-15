@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.1] — 2026-10-15
+
 ### Added
 
 - **`arca gc` reports the space it frees**: the dry run says how much `--reclaim` would free, and `--reclaim` how much it freed (`Reclaimed 0 orphan blob(s) and 118 stale temp file(s), freeing 419.0 MiB.`). An orphan counts with its sidecar, which is deleted with it; only the files actually deleted count toward the freed space.
@@ -952,7 +954,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation site**: MkDocs with Material theme, architecture docs, user guides
 - Scratch-based production Docker image (8.6 MB)
 
-[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.32.0...HEAD
+[Unreleased]: https://github.com/dxc-technology/arca/compare/v0.32.1...HEAD
+[0.32.1]: https://github.com/dxc-technology/arca/compare/v0.32.0...v0.32.1
 [0.32.0]: https://github.com/dxc-technology/arca/compare/v0.31.2...v0.32.0
 [0.31.2]: https://github.com/dxc-technology/arca/compare/v0.31.1...v0.31.2
 [0.31.1]: https://github.com/dxc-technology/arca/compare/v0.31.0...v0.31.1
