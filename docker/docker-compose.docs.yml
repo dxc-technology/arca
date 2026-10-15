@@ -1,13 +1,16 @@
+# The theme version is pinned because its output (docs/) is committed: a
+# floating tag would rewrite every page whenever a new release came out.
+# Bump it deliberately, in a commit of its own (see AGENTS.md).
 services:
   docs-build:
-    image: squidfunk/mkdocs-material:9
+    image: squidfunk/mkdocs-material:9.7.7
     volumes:
       - ..:/repo
     working_dir: /repo/documentation
     entrypoint: ["mkdocs", "build"]
 
   docs-serve:
-    image: squidfunk/mkdocs-material:9
+    image: squidfunk/mkdocs-material:9.7.7
     ports:
       - "8000:8000"
     volumes:

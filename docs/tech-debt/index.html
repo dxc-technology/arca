@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../assets/logo.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -29,7 +29,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -1656,6 +1656,14 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>None</td>
 <td><code>crates/arca-storage/src/fs/blob.rs</code> (<code>put</code>, <code>write_raw</code>, <code>concat</code>, <code>list_blob_ids</code>), <code>crates/arca-server/src/blob_gc.rs</code>, <code>crates/arca-server/src/gc.rs</code></td>
 </tr>
+<tr>
+<td>TD-052</td>
+<td>Unfinished multipart uploads are invisible and unbounded, so a failing backup job can fill the disk</td>
+<td>The parts of a multipart upload that is never completed or aborted are live data (by design), nothing aborts them unless the operator adds a lifecycle <code>AbortIncompleteMultipartUpload</code> rule, and no Arca tool reports them: <code>arca fsck</code> lists their part files as <code>ORPHANED_BLOB</code> (TD-014: it ignores the <code>parts</code> table), <code>arca gc</code> correctly keeps them, and the console shows no count or size. Seen 2026-10-14 on a production single-node server: nightly backups of a backup tool that uploads in parts failed with <code>write blob: No space left on device</code>, the client never aborted its uploads, and the leftovers (about 450 GB in 179 uploads, 12 more per night) kept the disk full, so no backup was restorable for 14 days while the buckets held under 500 GB of objects. Arca answered every failed part with a 500 as it should; the gap is that nothing bounds or reports what the client leaves behind.</td>
+<td>(1) Make <code>arca fsck</code> composite-aware and parts-aware (TD-014) and report unfinished uploads as their own category with count, age and size, so <code>fsck</code> and <code>gc</code> stop disagreeing. (2) Fix the <code>list_object_versions</code> pagination used by <code>fsck</code> (it pages by key only). (3) Show unfinished uploads (count, bytes, oldest) in <code>arca gc</code> output, in a metric and in the console. (4) Consider a safe default for <code>AbortIncompleteMultipartUpload</code> or a prominent warning when none is set and unfinished uploads are older than N days. (5) Add <code>arca fsck --repair</code> (interactive, resumable) for the fixable categories. Unit tests: fsck reports a pending upload's parts as such and not as orphaned; a composite and its parts raise no finding.</td>
+<td>None</td>
+<td><code>crates/arca-server/src/fsck.rs</code>, <code>crates/arca-server/src/blob_gc.rs</code>, <code>crates/arca-storage/src/sqlite/metadata.rs</code> (<code>list_referenced_blob_ids</code>, <code>list_object_versions</code>), <code>crates/arca-proto/src/handlers/multipart.rs</code></td>
+</tr>
 </tbody>
 </table>
 <hr />
@@ -1874,7 +1882,7 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.copy", "content.code.annotate", "navigation.sections", "navigation.top", "search.highlight", "search.share"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>

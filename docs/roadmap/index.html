@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/logo.svg">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -3302,6 +3302,7 @@ with unique IDs (<code>TD-XXX</code>) referenced in source code comments.</p>
 <li><strong>SQLite commits are not grouped</strong> (TD-048): with <code>[storage] fsync = true</code> every metadata commit is an fsync on the single writer connection, capping small PUTs at about 200 per second on a 3 ms disk (gp3 EBS) whatever the concurrency; group commit would share one fsync among concurrent writes.</li>
 <li><strong>Small-PUT throughput plateau on ARM, not yet explained</strong> (TD-050): about 200-270 small PUTs per second with the CPU mostly idle on an RK3588 board, against about 2,400 on a 4-vCPU x86 cloud VM; first suspect is the single SQLite writer thread.</li>
 <li><strong>Interrupted uploads leave temp files that nothing reclaims</strong> (TD-051): a client that drops the connection mid-upload can leave partial <code>.tmp</code> blob files, because the temp cleanup does not run when the request future is cancelled, and neither <code>arca gc</code> nor the GC worker reclaims <code>.tmp</code> files (<code>arca fsck</code> only reports them).</li>
+<li><strong>Unfinished multipart uploads are invisible and unbounded</strong> (TD-052): the parts of an upload a client never completes or aborts stay on disk as live data, only a lifecycle <code>AbortIncompleteMultipartUpload</code> rule reclaims them, and no tool reports them (<code>arca fsck</code> lists their parts as orphaned, TD-014). A backup job failing on a full disk can keep the disk full for weeks.</li>
 <li>~~<strong>Cluster inter-node TLS</strong> (TD-015)~~: <strong>Resolved</strong> — verified mutual TLS with an operator-distributed cluster CA (<code>[cluster.tls]</code>, required when the cluster runs over HTTPS), <code>danger_accept_invalid_certs</code> removed, client certificates enforced on <code>/cluster/v1/*</code>, material minted by <code>arca tls generate-cluster</code>. HA hardening R4 (Phase 29.1)</li>
 <li>~~<strong>Partial cluster control-plane reconcile</strong> (TD-016)~~: <strong>Resolved</strong> — the anti-entropy snapshot merge now covers every control-plane family (grant attachments, memberships, bucket config keys, bucket tag sets, cluster-wide server settings, plus multipart uploads and parts) with per-row LWW timestamps, deletion tombstones and parent-dead filtering, so a returning node fully self-heals. HA hardening R5 (Phase 29.1)</li>
 </ul>
@@ -3367,7 +3368,7 @@ with unique IDs (<code>TD-XXX</code>) referenced in source code comments.</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.copy", "content.code.annotate", "navigation.sections", "navigation.top", "search.highlight", "search.share"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>

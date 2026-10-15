@@ -129,6 +129,12 @@ the third-party services in the `docker-compose.connector-*.yml` /
 never distributed, and floating tags there mean one less thing to maintain.
 Do not pin them.
 
+The one tooling exception is the documentation image in
+`docker/docker-compose.docs.yml`: its output (`docs/`) is committed, and a
+floating tag would rewrite every page of the site whenever a new theme release
+came out. It is bumped only on request, in a commit of its own that rebuilds
+the whole site and changes no content.
+
 ### Upgrading a pinned base image
 
 Bumping a base image tag is a deliberate, reviewed step, never a drive-by edit,
