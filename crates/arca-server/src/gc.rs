@@ -33,6 +33,10 @@ pub struct GcSummary {
     pub reclaimed: u64,
     pub temp_reclaimed: u64,
     pub failed: u64,
+    /// Bytes held by the orphans (blob + sidecar) and stale temp files found.
+    pub reclaimable_bytes: u64,
+    /// Bytes actually freed by the files deleted.
+    pub reclaimed_bytes: u64,
     pub unfinished_uploads: usize,
     pub unfinished_bytes: u64,
 }
@@ -60,9 +64,18 @@ pub async fn run_gc(config: &Config, dry_run: bool, grace: Duration, verbose: bo
     let plan = blob_gc::collect_reclaimable_blobs(metadata.as_ref(), &raw, grace)
         .await
         .context("scanning for orphan blobs (nothing was deleted)")?;
+    // Sizes are taken before deleting: an orphan delete removes the blob and
+    // its sidecar, so both count.
+    let orphan_bytes: Vec<u64> = plan
+        .candidates
+        .iter()
+        .map(|id| file_size(&raw.blob_path(id)) + file_size(&raw.sidecar_path(id)))
+        .collect();
+    let temp_bytes: Vec<u64> = plan.temp_files.iter().map(|p| file_size(p)).collect();
     let mut summary = GcSummary {
         orphans: plan.candidates.len(),
         temp_files: plan.temp_files.len(),
+        reclaimable_bytes: orphan_bytes.iter().sum::<u64>() + temp_bytes.iter().sum::<u64>(),
         ..Default::default()
     };
 
@@ -93,26 +106,41 @@ pub async fn run_gc(config: &Config, dry_run: bool, grace: Duration, verbose: bo
         println!("Nothing to reclaim.");
     } else if dry_run {
         println!(
-            "DRY RUN: {} orphan blob(s) and {} stale temp file(s) would be reclaimed. Re-run with --reclaim to delete them.",
-            summary.orphans, summary.temp_files
+            "DRY RUN: {} orphan blob(s) and {} stale temp file(s) would be reclaimed, freeing {}. Re-run with --reclaim to delete them.",
+            summary.orphans,
+            summary.temp_files,
+            crate::fsck::human_bytes(summary.reclaimable_bytes)
         );
     } else {
-        for id in &plan.candidates {
+        for (id, bytes) in plan.candidates.iter().zip(&orphan_bytes) {
             match raw.delete_blob_file(id).await {
-                Ok(()) => summary.reclaimed += 1,
+                Ok(()) => {
+                    summary.reclaimed += 1;
+                    summary.reclaimed_bytes += bytes;
+                }
                 Err(e) => {
                     summary.failed += 1;
                     eprintln!("WARNING: failed to delete blob {}: {}", id.0, e);
                 }
             }
         }
-        let (deleted, failed) = blob_gc::delete_temp_files(&raw, &plan.temp_files).await;
-        summary.temp_reclaimed = deleted;
-        summary.failed += failed;
+        for (path, bytes) in plan.temp_files.iter().zip(&temp_bytes) {
+            match raw.delete_temp_file(path).await {
+                Ok(()) => {
+                    summary.temp_reclaimed += 1;
+                    summary.reclaimed_bytes += bytes;
+                }
+                Err(e) => {
+                    summary.failed += 1;
+                    eprintln!("WARNING: failed to delete temp file {}: {}", path.display(), e);
+                }
+            }
+        }
         println!(
-            "Reclaimed {} orphan blob(s) and {} stale temp file(s){}.",
+            "Reclaimed {} orphan blob(s) and {} stale temp file(s), freeing {}{}.",
             summary.reclaimed,
             summary.temp_reclaimed,
+            crate::fsck::human_bytes(summary.reclaimed_bytes),
             if summary.failed > 0 { format!("; {} failed", summary.failed) } else { String::new() }
         );
     }
@@ -127,6 +155,11 @@ pub async fn run_gc(config: &Config, dry_run: bool, grace: Duration, verbose: bo
         );
     }
     Ok(summary)
+}
+
+/// Size of a file, 0 if it is gone (already deleted, or a sidecar-less blob).
+fn file_size(path: &std::path::Path) -> u64 {
+    std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -171,7 +204,23 @@ mod tests {
 
         let s = run_gc(&f.config, true, Duration::ZERO, false).await.unwrap();
         assert_eq!((s.orphans, s.temp_files, s.reclaimed, s.temp_reclaimed), (1, 1, 0, 0));
+        assert_eq!((s.reclaimable_bytes, s.reclaimed_bytes), (10, 0), "5-byte orphan + 5-byte temp file");
         assert!(orphan.exists() && tmp.exists());
+    }
+
+    #[tokio::test]
+    async fn reclaimed_bytes_count_the_orphan_sidecar_too() {
+        let f = fixture().await;
+        let id = BlobId("aaaa".into());
+        write(&f.fs.blob_path(&id));
+        let sidecar = r#"{"bucket":"bucket","key":"k","size":5,"etag":"e","content_type":null,"last_modified":"t"}"#;
+        std::fs::write(f.fs.sidecar_path(&id), sidecar).unwrap();
+        let expected = 5 + sidecar.len() as u64;
+
+        let s = run_gc(&f.config, false, Duration::ZERO, false).await.unwrap();
+        assert_eq!(s.reclaimed, 1);
+        assert_eq!((s.reclaimable_bytes, s.reclaimed_bytes), (expected, expected), "blob + sidecar are both deleted");
+        assert!(!f.fs.sidecar_path(&id).exists());
     }
 
     #[tokio::test]
@@ -186,9 +235,11 @@ mod tests {
 
         let young = run_gc(&f.config, false, Duration::from_secs(3600), false).await.unwrap();
         assert_eq!((young.reclaimed, young.temp_reclaimed), (0, 0), "all younger than the grace");
+        assert_eq!((young.reclaimable_bytes, young.reclaimed_bytes), (0, 0));
 
         let s = run_gc(&f.config, false, Duration::ZERO, false).await.unwrap();
         assert_eq!((s.reclaimed, s.temp_reclaimed, s.failed), (1, 1, 0));
+        assert_eq!((s.reclaimable_bytes, s.reclaimed_bytes), (10, 10), "the rewrite file is not counted");
         assert!(!orphan.exists() && !tmp.exists());
         assert!(rewrite.exists());
     }

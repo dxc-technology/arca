@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`arca gc` reports the space it frees**: the dry run says how much `--reclaim` would free, and `--reclaim` how much it freed (`Reclaimed 0 orphan blob(s) and 118 stale temp file(s), freeing 419.0 MiB.`). An orphan counts with its sidecar, which is deleted with it; only the files actually deleted count toward the freed space.
+
 ## [0.32.0] — 2026-10-15
 
 ### Added

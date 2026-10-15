@@ -412,7 +412,7 @@ The `--grace-seconds` window protects freshly-written blobs whose object row may
 
 Temp files are the `<blob>.tmp` / `<blob>.meta.<id>.tmp` files of writes that never completed. The recovery files of an in-place rewrite (`*.rewrite.tmp`, `*.meta.pending.tmp`) are never touched: re-running the rewrite command completes them.
 
-The output also reports the unfinished multipart uploads and the bytes they hold. Their parts are not orphans: they stay until the upload is aborted (`arca fsck --repair --abort-uploads-older-than <days>`, `AbortMultipartUpload`, or an `AbortIncompleteMultipartUpload` lifecycle rule).
+The summary gives the space involved: what a dry run would free, or what `--reclaim` freed (an orphan counts with its sidecar, which is deleted with it). The output also reports the unfinished multipart uploads and the bytes they hold. Their parts are not orphans: they stay until the upload is aborted (`arca fsck --repair --abort-uploads-older-than <days>`, `AbortMultipartUpload`, or an `AbortIncompleteMultipartUpload` lifecycle rule).
 
 Fail-safe: if any enumeration (referenced ids, sidecars, on-disk blobs, temp files) fails, the command aborts and deletes nothing.
 
