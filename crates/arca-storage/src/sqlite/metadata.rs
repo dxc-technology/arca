@@ -8,7 +8,7 @@ use arca_core::types::{
 };
 use std::collections::HashMap;
 use chrono::DateTime;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use super::{SqliteStore, TrError};
 
@@ -983,46 +983,60 @@ impl MetadataStore for SqliteStore {
     ) -> Result<Vec<ObjectRecord>, ArcaError> {
         let bucket = bucket.to_string();
         let prefix = prefix.map(|s| s.to_string());
-        let key_marker = key_marker.map(|s| s.to_string());
-        let _version_id_marker = version_id_marker.map(|s| s.to_string());
+        let key_marker = key_marker.filter(|km| !km.is_empty()).map(|s| s.to_string());
+        let version_id_marker = version_id_marker.map(|s| s.to_string());
         self.read_conn()
             .call(move |conn| {
+                // Resume position inside `key_marker`: the (last_modified,
+                // version) of the marker version, in the listing order below.
+                // An unknown marker resumes after the whole key.
+                let resume_at: Option<(String, String)> = match (&key_marker, &version_id_marker) {
+                    (Some(km), Some(vm)) => conn
+                        .query_row(
+                            "SELECT last_modified, COALESCE(version_id, '') FROM objects
+                             WHERE bucket = ?1 AND key = ?2 AND is_tombstone = 0
+                               AND (version_id = ?3 OR (?3 = 'null' AND version_id IS NULL))",
+                            params![bucket, km, vm],
+                            |row| Ok((row.get(0)?, row.get(1)?)),
+                        )
+                        .optional()?,
+                    _ => None,
+                };
+
                 let mut sql = format!(
                     "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND is_tombstone = 0"
                 );
-                let mut param_idx = 2u32;
+                let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(bucket)];
 
-                let prefix_pattern = prefix.as_ref().map(|p| {
-                    let idx = param_idx;
-                    param_idx += 1;
-                    sql.push_str(&format!(" AND key LIKE ?{idx} ESCAPE '\\'"));
-                    format!("{}%", escape_like(p))
-                });
+                if let Some(ref p) = prefix {
+                    params_vec.push(Box::new(format!("{}%", escape_like(p))));
+                    sql.push_str(&format!(" AND key LIKE ?{} ESCAPE '\\'", params_vec.len()));
+                }
 
-                if let Some(ref km) = key_marker {
-                    if !km.is_empty() {
-                        let idx = param_idx;
-                        #[allow(unused_assignments)]
-                        { param_idx += 1; }
-                        sql.push_str(&format!(" AND key > ?{idx}"));
+                if let Some(km) = key_marker {
+                    params_vec.push(Box::new(km));
+                    let k = params_vec.len();
+                    match resume_at {
+                        Some((lm, vid)) => {
+                            params_vec.push(Box::new(lm));
+                            params_vec.push(Box::new(vid));
+                            let (l, v) = (k + 1, k + 2);
+                            sql.push_str(&format!(
+                                " AND (key > ?{k} OR (key = ?{k} AND (last_modified < ?{l}
+                                   OR (last_modified = ?{l} AND COALESCE(version_id, '') < ?{v}))))"
+                            ));
+                        }
+                        None => sql.push_str(&format!(" AND key > ?{k}")),
                     }
                 }
 
-                sql.push_str(" ORDER BY key ASC, last_modified DESC");
+                // The version tie-break makes the order total, so a page
+                // boundary between two versions sharing a timestamp neither
+                // skips nor repeats one.
+                sql.push_str(" ORDER BY key ASC, last_modified DESC, COALESCE(version_id, '') DESC");
                 sql.push_str(&format!(" LIMIT {max_keys}"));
 
                 let mut stmt = conn.prepare(&sql)?;
-
-                let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-                params_vec.push(Box::new(bucket));
-                if let Some(ref pattern) = prefix_pattern {
-                    params_vec.push(Box::new(pattern.clone()));
-                }
-                if let Some(ref km) = key_marker {
-                    if !km.is_empty() {
-                        params_vec.push(Box::new(km.clone()));
-                    }
-                }
 
                 let params_refs: Vec<&dyn rusqlite::types::ToSql> =
                     params_vec.iter().map(|p| p.as_ref()).collect();
@@ -3192,6 +3206,140 @@ mod tests {
         assert!(!versions[1].is_latest);
         assert_eq!(versions[2].blob_id.0, "blob-1");
         assert!(!versions[2].is_latest);
+    }
+
+    /// Pages through every version of `bucket` the way ListObjectVersions
+    /// does: resume after the last key and version of each page ("null" for
+    /// the null version). Returns (key, blob_id) in listing order.
+    async fn page_all_versions(store: &SqliteStore, bucket: &str, page: u32) -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        let mut key_marker: Option<String> = None;
+        let mut vid_marker: Option<String> = None;
+        loop {
+            let rows = store
+                .list_object_versions(bucket, None, key_marker.as_deref(), vid_marker.as_deref(), page)
+                .await
+                .unwrap();
+            if rows.is_empty() {
+                break;
+            }
+            let last = rows.last().unwrap();
+            key_marker = Some(last.key.clone());
+            vid_marker = Some(last.version_id.clone().unwrap_or_else(|| "null".to_string()));
+            out.extend(rows.iter().map(|r| (r.key.clone(), r.blob_id.0.clone())));
+            assert!(out.len() <= 100, "pagination loops");
+        }
+        out
+    }
+
+    #[tokio::test]
+    async fn list_object_versions_pages_within_a_key() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+        let t0 = chrono::Utc::now();
+        for (key, n) in [("a", 5), ("b", 2)] {
+            for i in 0..n {
+                let mut r = make_record("b", key);
+                r.blob_id = BlobId(format!("{key}-{i}"));
+                r.last_modified = t0 + chrono::Duration::seconds(i);
+                store.put_object(&r).await.unwrap();
+            }
+        }
+
+        let all = page_all_versions(&store, "b", 2).await;
+        let expected: Vec<(String, String)> = ["a-4", "a-3", "a-2", "a-1", "a-0", "b-1", "b-0"]
+            .iter()
+            .map(|id| (id[..1].to_string(), id.to_string()))
+            .collect();
+        assert_eq!(all, expected);
+    }
+
+    #[tokio::test]
+    async fn list_object_versions_pages_versions_sharing_a_timestamp() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+        let t0 = chrono::Utc::now();
+        for i in 0..4 {
+            let mut r = make_record("b", "k");
+            r.blob_id = BlobId(format!("k-{i}"));
+            r.last_modified = t0;
+            store.put_object(&r).await.unwrap();
+        }
+
+        let mut ids: Vec<String> = page_all_versions(&store, "b", 1).await.into_iter().map(|(_, id)| id).collect();
+        assert_eq!(ids.len(), 4, "no version skipped or repeated: {ids:?}");
+        ids.sort();
+        assert_eq!(ids, ["k-0", "k-1", "k-2", "k-3"]);
+    }
+
+    #[tokio::test]
+    async fn list_object_versions_pages_past_the_null_version() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let t0 = chrono::Utc::now();
+        // The null version (written before versioning), then two real versions.
+        let mut null_version = make_record("b", "k");
+        null_version.blob_id = BlobId("k-null".into());
+        null_version.last_modified = t0;
+        store.put_object(&null_version).await.unwrap();
+        enable_versioning(&store, "b").await;
+        for i in 1..3 {
+            let mut r = make_record("b", "k");
+            r.blob_id = BlobId(format!("k-{i}"));
+            r.last_modified = t0 + chrono::Duration::seconds(i);
+            store.put_object(&r).await.unwrap();
+        }
+        let mut next = make_record("b", "l");
+        next.blob_id = BlobId("l-0".into());
+        store.put_object(&next).await.unwrap();
+
+        let ids: Vec<String> = page_all_versions(&store, "b", 1).await.into_iter().map(|(_, id)| id).collect();
+        assert_eq!(ids, ["k-2", "k-1", "k-null", "l-0"]);
+    }
+
+    #[tokio::test]
+    async fn list_all_object_versions_crosses_a_page_boundary_inside_a_key() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+        let t0 = chrono::Utc::now();
+        // More versions of one key than a page (1000) holds, then another key.
+        for i in 0..1003 {
+            let mut r = make_record("b", "k");
+            r.blob_id = BlobId(format!("k-{i}"));
+            r.last_modified = t0 + chrono::Duration::milliseconds(i);
+            store.put_object(&r).await.unwrap();
+        }
+        let mut last = make_record("b", "z");
+        last.blob_id = BlobId("z".into());
+        store.put_object(&last).await.unwrap();
+
+        let all = store.list_all_object_versions("b", None).await.unwrap();
+        let ids: std::collections::HashSet<&str> = all.iter().map(|r| r.blob_id.0.as_str()).collect();
+        assert_eq!(all.len(), 1004);
+        assert_eq!(ids.len(), 1004, "no version repeated");
+        assert_eq!(all.last().unwrap().key, "z");
+    }
+
+    #[tokio::test]
+    async fn list_object_versions_unknown_version_marker_resumes_after_the_key() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+        for key in ["a", "b"] {
+            let mut r = make_record("b", key);
+            r.blob_id = BlobId(key.into());
+            store.put_object(&r).await.unwrap();
+        }
+
+        let rows = store
+            .list_object_versions("b", None, Some("a"), Some("no-such-version"), 10)
+            .await
+            .unwrap();
+        let keys: Vec<&str> = rows.iter().map(|r| r.key.as_str()).collect();
+        assert_eq!(keys, ["b"]);
     }
 
     #[tokio::test]

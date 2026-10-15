@@ -15,6 +15,7 @@ mod gc;
 mod maintenance;
 mod migrate_db;
 mod migrate_topology;
+mod offline_store;
 mod recover;
 mod recrypt_existing;
 mod replicator;
@@ -1018,12 +1019,17 @@ async fn async_main(cli: Cli) -> Result<()> {
         Command::Fsck {
             config_path,
             verify_checksums,
+            grace_seconds,
         } => {
             let _ = init_tracing(&LogFormat::Text, "info");
 
             let config = config::load_config(&config_path)?;
             rewrite_marker::warn_if_present(std::path::Path::new(&config.storage.data_dir));
-            let exit_code = fsck::run_fsck(&config, verify_checksums).await?;
+            let opts = fsck::FsckOptions {
+                verify_checksums,
+                grace: std::time::Duration::from_secs(grace_seconds),
+            };
+            let exit_code = fsck::run_fsck(&config, &opts).await?;
             std::process::exit(exit_code);
         }
 

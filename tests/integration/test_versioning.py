@@ -184,6 +184,49 @@ class TestListObjectVersions:
         assert len(versions) == 1
         assert versions[0]["Key"] == "a/1"
 
+    @staticmethod
+    def _paginate_versions(s3_client, bucket, page_size):
+        """All (Key, VersionId) pairs, following the version-id marker."""
+        paginator = s3_client.get_paginator("list_object_versions")
+        seen = []
+        for page in paginator.paginate(
+            Bucket=bucket, PaginationConfig={"PageSize": page_size}
+        ):
+            for v in page.get("Versions", []) + page.get("DeleteMarkers", []):
+                seen.append((v["Key"], v["VersionId"]))
+        return seen
+
+    def test_list_versions_paginates_within_a_key(self, s3_client, vbucket):
+        expected = []
+        for key, count in (("k", 5), ("l", 2)):
+            for i in range(count):
+                r = s3_client.put_object(Bucket=vbucket, Key=key, Body=f"{i}".encode())
+                expected.append((key, r["VersionId"]))
+        seen = self._paginate_versions(s3_client, vbucket, 2)
+        assert len(seen) == len(set(seen)), f"a version was repeated: {seen}"
+        assert sorted(seen) == sorted(expected)
+
+    def test_list_versions_paginates_past_the_null_version(self, s3_client):
+        bucket = f"test-ver-null-page-{uuid.uuid4().hex[:8]}"
+        s3_client.create_bucket(Bucket=bucket)
+        try:
+            # The null version is written before versioning is enabled.
+            s3_client.put_object(Bucket=bucket, Key="k", Body=b"null")
+            s3_client.put_bucket_versioning(
+                Bucket=bucket, VersioningConfiguration={"Status": "Enabled"}
+            )
+            for i in range(2):
+                s3_client.put_object(Bucket=bucket, Key="k", Body=f"{i}".encode())
+            s3_client.put_object(Bucket=bucket, Key="l", Body=b"l")
+
+            seen = self._paginate_versions(s3_client, bucket, 1)
+            assert [k for k, _ in seen] == ["k", "k", "k", "l"], seen
+            assert ("k", "null") in seen
+        finally:
+            for k, vid in self._paginate_versions(s3_client, bucket, 1000):
+                s3_client.delete_object(Bucket=bucket, Key=k, VersionId=vid)
+            s3_client.delete_bucket(Bucket=bucket)
+
 
 class TestCopyWithVersion:
     """CopyObject with source versionId."""

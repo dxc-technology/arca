@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`arca fsck` reports unfinished multipart uploads** (TD-052): each upload that was never completed nor aborted is listed with its key, upload id, start date, part count and size, and the summary gives their total and the oldest one. They are valid state, so they do not make the exit code 1; the summary points at `AbortMultipartUpload` and the `AbortIncompleteMultipartUpload` lifecycle rule.
+- **`arca fsck --grace-seconds`** (default 86400, as `arca gc`): files written within the grace period are skipped and counted apart instead of reported, so a check against a running server no longer flags the blobs and temp files of uploads still in flight. Use `0` only with the server stopped.
+- **`arca fsck` summary**: one line per category with its count and, where it matters, the bytes involved (orphaned blobs, stale temp files, unfinished uploads).
+- **`arca fsck` and `arca gc` support PostgreSQL**: both open the configured metadata backend. `fsck` used to open a SQLite file whatever the configuration said, and `gc` refused PostgreSQL.
+
+### Fixed
+
+- **`arca fsck` understands multipart objects** (TD-014, the fsck half). A completed multipart upload is stored as a composite: a sidecar listing its part blobs and no blob file of its own. `fsck` reported every multipart object as `MISSING_BLOB` plus `ORPHANED_SIDECAR`, and every part, completed or still uploading, as `ORPHANED_BLOB`: on a production server, 91,867 false findings that hid the real ones. `fsck` now computes what is referenced exactly as `arca gc` does (object rows, in-progress parts, and the parts of every live composite), so the two tools agree; a composite with a missing part is reported as `MISSING_BLOB` with the missing part ids, and the sidecar and parts of a composite whose object is gone as orphans. Unreadable sidecars get their own `UNREADABLE_SIDECAR` category, and the recovery files of an unfinished in-place rewrite (`*.rewrite.tmp`, `*.pending.tmp`) are reported as `REWRITE_RECOVERY` instead of stale temp files.
+- **ListObjectVersions pagination no longer skips versions.** Both metadata backends ignored `version-id-marker`: a page that ended in the middle of a key's versions resumed at the next key, so the remaining versions of that key were never listed, and versions sharing a timestamp had no stable order across pages. The listing now resumes right after the marker version (`null` for the null version) in a total order. The same bug made the `encrypt` / `decrypt` maintenance jobs and `arca fsck` skip versions; all of them now share one paging helper.
+- **`arca fsck --verify-checksums` no longer reports compressed objects as corrupt** (the ETag hashes the plaintext, the file holds the compressed bytes), and no longer walks the whole blobs directory once per object to find each blob file.
+- **Offline tools refuse a missing SQLite database** instead of creating an empty one: `fsck`, `gc`, `encrypt-existing` and `decrypt-existing` now stop with `Database does not exist`, so a wrong `data_dir` cannot make every blob look unreferenced.
+
 ## [0.31.2] — 2026-10-07
 
 ### Added

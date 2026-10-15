@@ -20,6 +20,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use arca_core::cluster::plan_blob_gc;
 use arca_core::error::ArcaError;
+use arca_core::store::blob::SidecarMeta;
 use arca_core::store::{MetadataStore, RawBlobOps};
 use arca_core::types::BlobId;
 
@@ -53,19 +54,14 @@ pub async fn collect_reclaimable_blobs(
     let mut referenced: HashSet<BlobId> =
         metadata.list_referenced_blob_ids().await?.into_iter().collect();
 
-    // 2) Add the part blobs of every NON-orphan composite sidecar (a composite
-    // is non-orphan iff its own blob is still metadata-referenced).
+    // 2) Add the part blobs of every NON-orphan composite sidecar.
+    let mut sidecars = Vec::new();
     for sid in raw.list_sidecar_ids().await? {
         if let Some(meta) = raw.read_sidecar(&sid).await? {
-            if let Some(parts) = meta.composite {
-                if referenced.contains(&sid) {
-                    for p in parts {
-                        referenced.insert(p.blob_id);
-                    }
-                }
-            }
+            sidecars.push((sid, meta));
         }
     }
+    add_live_composite_parts(&mut referenced, sidecars.iter().map(|(id, m)| (id, m)));
 
     // 3) On-disk blob files minus referenced, grace-expired.
     let on_disk = raw.list_blob_ids().await?;
@@ -74,6 +70,26 @@ pub async fn collect_reclaimable_blobs(
         scanned: on_disk.len(),
         candidates,
     })
+}
+
+/// Adds to `referenced` the part blobs of every live composite: a composite
+/// blob has no file of its own, its sidecar lists the part blobs, and it is
+/// live iff its own id is already in `referenced` (its object row exists).
+/// Parts of an orphaned composite stay out, so they are reclaimable. Shared by
+/// blob GC and `arca fsck`, so the two can never disagree on what is live.
+pub fn add_live_composite_parts<'a>(
+    referenced: &mut HashSet<BlobId>,
+    sidecars: impl IntoIterator<Item = (&'a BlobId, &'a SidecarMeta)>,
+) {
+    let mut parts = Vec::new();
+    for (id, meta) in sidecars {
+        if let Some(composite) = &meta.composite {
+            if referenced.contains(id) {
+                parts.extend(composite.iter().map(|p| p.blob_id.clone()));
+            }
+        }
+    }
+    referenced.extend(parts);
 }
 
 /// Reclaims orphan blob files (collect + delete). Returns the number of files

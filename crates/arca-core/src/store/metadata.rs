@@ -253,6 +253,42 @@ pub trait MetadataStore: Send + Sync {
         max_keys: u32,
     ) -> Result<Vec<ObjectRecord>, crate::error::ArcaError>;
 
+    /// Every version of every key in `bucket` (optionally under `prefix`),
+    /// including delete markers, in [`MetadataStore::list_object_versions`]
+    /// order. Pages with both markers, the null version resuming as `"null"`,
+    /// so no version is skipped or repeated at a page boundary.
+    async fn list_all_object_versions(
+        &self,
+        bucket: &str,
+        prefix: Option<&str>,
+    ) -> Result<Vec<ObjectRecord>, crate::error::ArcaError> {
+        const PAGE: u32 = 1000;
+        let mut out = Vec::new();
+        let mut key_marker: Option<String> = None;
+        let mut version_id_marker: Option<String> = None;
+        loop {
+            let page = self
+                .list_object_versions(
+                    bucket,
+                    prefix,
+                    key_marker.as_deref(),
+                    version_id_marker.as_deref(),
+                    PAGE,
+                )
+                .await?;
+            let full = page.len() as u32 == PAGE;
+            if let Some(last) = page.last() {
+                key_marker = Some(last.key.clone());
+                version_id_marker =
+                    Some(last.version_id.clone().unwrap_or_else(|| "null".to_string()));
+            }
+            out.extend(page);
+            if !full {
+                return Ok(out);
+            }
+        }
+    }
+
     // -- Multipart upload operations --
 
     /// Creates a new multipart upload record.

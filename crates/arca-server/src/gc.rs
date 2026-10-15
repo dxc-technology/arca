@@ -23,24 +23,12 @@ use crate::config::Config;
 
 pub async fn run_gc(config: &Config, dry_run: bool, grace: Duration, verbose: bool) -> Result<()> {
     let blobs_dir = config.storage.blobs_dir();
-    let db_path = config.storage.db_path();
-
-    if !db_path.exists() {
-        anyhow::bail!("Database does not exist: {}", db_path.display());
-    }
     if !blobs_dir.exists() {
         anyhow::bail!("Blobs directory does not exist: {}", blobs_dir.display());
     }
-    // Like `arca fsck`/`recover`, this offline path opens SQLite directly.
-    if config.storage.metadata_backend != "sqlite" {
-        anyhow::bail!(
-            "arca gc currently supports only the sqlite metadata backend (found: {})",
-            config.storage.metadata_backend
-        );
-    }
 
     println!("Opening database...");
-    let metadata = arca_storage::SqliteStore::open(&db_path)
+    let metadata = crate::offline_store::open_metadata_store(config)
         .await
         .context("opening metadata database")?;
     let raw = arca_storage::FsBlobStore::new(&blobs_dir, config.storage.blob_prefix_depth)
@@ -53,7 +41,7 @@ pub async fn run_gc(config: &Config, dry_run: bool, grace: Duration, verbose: bo
         grace.as_secs()
     );
     // Fail-safe: any enumeration error aborts here and nothing is deleted.
-    let plan = blob_gc::collect_reclaimable_blobs(&metadata, &raw, grace)
+    let plan = blob_gc::collect_reclaimable_blobs(metadata.as_ref(), &raw, grace)
         .await
         .context("scanning for orphan blobs (nothing was deleted)")?;
 

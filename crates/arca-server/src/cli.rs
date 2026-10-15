@@ -57,6 +57,12 @@ pub enum Command {
         /// Verify blob checksums against stored ETags (reads every blob file)
         #[arg(long)]
         verify_checksums: bool,
+
+        /// Skip files written within this many seconds (they may belong to an
+        /// upload whose object row is not committed yet). Use 0 only when the
+        /// server is stopped.
+        #[arg(long, default_value = "86400")]
+        grace_seconds: u64,
     },
 
     /// Reclaim orphaned blob files (offline; composite-aware, grace-protected)

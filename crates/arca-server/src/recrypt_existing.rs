@@ -94,7 +94,7 @@ async fn run(
     let metadata: Option<Arc<dyn MetadataStore>> = if dry_run {
         None
     } else {
-        Some(open_metadata_store(config).await?)
+        Some(crate::offline_store::open_metadata_store(config).await?)
     };
 
     // Marker first (real runs only); removed below only if nothing failed.
@@ -364,28 +364,6 @@ async fn resolve_master_key(config: &Config) -> Result<MasterKey> {
     }
 }
 
-/// Opens the metadata store for the configured backend (sqlite or postgres),
-/// reusing the same selection logic as the server's `open_stores`.
-async fn open_metadata_store(config: &Config) -> Result<Arc<dyn MetadataStore>> {
-    match config.storage.metadata_backend.as_str() {
-        "sqlite" => {
-            let store = arca_storage::SqliteStore::open(&config.storage.db_path()).await?;
-            Ok(Arc::new(store) as Arc<dyn MetadataStore>)
-        }
-        "postgres" => {
-            let pg = config.storage.postgres.as_ref().ok_or_else(|| {
-                anyhow::anyhow!(
-                    "[storage.postgres] section required when metadata_backend = \"postgres\""
-                )
-            })?;
-            let store =
-                arca_storage::PgStore::open(&pg.connection_string, pg.max_connections).await?;
-            Ok(Arc::new(store) as Arc<dyn MetadataStore>)
-        }
-        other => anyhow::bail!("Unknown metadata backend: \"{other}\""),
-    }
-}
-
 async fn collect_meta_files(dir: &Path) -> Result<Vec<PathBuf>> {
     let mut out = Vec::new();
     let mut stack = vec![dir.to_path_buf()];
@@ -463,6 +441,11 @@ mod tests {
 
     /// Plain blob + sidecar under `<tmp>/blobs`. Returns (blob, sidecar).
     async fn fixture(tmp: &Path, body: &[u8]) -> (PathBuf, PathBuf) {
+        // A real data directory always has its database: the offline store
+        // opener refuses a missing one instead of creating it empty.
+        arca_storage::SqliteStore::open(&test_config(tmp).storage.db_path())
+            .await
+            .unwrap();
         let store = FsBlobStore::new(&tmp.join("blobs"), 2).await.unwrap();
         let blob = store.blob_path(&BlobId(ID.to_string()));
         fs::create_dir_all(blob.parent().unwrap()).await.unwrap();

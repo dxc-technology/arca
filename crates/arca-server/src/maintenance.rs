@@ -383,36 +383,12 @@ async fn scan_candidates(
                 continue;
             }
         }
-        let mut key_marker: Option<String> = None;
-        let mut vid_marker: Option<String> = None;
-        loop {
-            let page = ctx
-                .metadata
-                .list_object_versions(
-                    &b.name,
-                    prefix,
-                    key_marker.as_deref(),
-                    vid_marker.as_deref(),
-                    1000,
-                )
-                .await
-                .map_err(|e| e.to_string())?;
-            if page.is_empty() {
-                break;
-            }
-            let last = page.last().unwrap();
-            key_marker = Some(last.key.clone());
-            vid_marker = last.version_id.clone();
-            let page_len = page.len();
-            for r in page {
-                if is_recrypt_candidate(&r, direction) {
-                    out.push(r);
-                }
-            }
-            if page_len < 1000 {
-                break;
-            }
-        }
+        let versions = ctx
+            .metadata
+            .list_all_object_versions(&b.name, prefix)
+            .await
+            .map_err(|e| e.to_string())?;
+        out.extend(versions.into_iter().filter(|r| is_recrypt_candidate(r, direction)));
     }
     Ok(out)
 }

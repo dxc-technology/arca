@@ -1396,32 +1396,58 @@ impl MetadataStore for PgStore {
         bucket: &str,
         prefix: Option<&str>,
         key_marker: Option<&str>,
-        _version_id_marker: Option<&str>,
+        version_id_marker: Option<&str>,
         max_keys: u32,
     ) -> Result<Vec<ObjectRecord>, ArcaError> {
+        let key_marker = key_marker.filter(|km| !km.is_empty());
+
+        // Resume position inside `key_marker`: the (last_modified, version) of
+        // the marker version, in the listing order below. An unknown marker
+        // resumes after the whole key.
+        let resume_at: Option<(chrono::DateTime<chrono::Utc>, String)> =
+            match (key_marker, version_id_marker) {
+                (Some(km), Some(vm)) => sqlx_core::query::query(
+                    "SELECT last_modified, COALESCE(version_id, '') AS vid FROM objects
+                     WHERE bucket = $1 AND key = $2 AND is_tombstone = FALSE
+                       AND (version_id = $3 OR ($3 = 'null' AND version_id IS NULL))",
+                )
+                .bind(bucket)
+                .bind(km)
+                .bind(vm)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|e| ArcaError::Internal(format!("list_object_versions: {e}")))?
+                .map(|row| (row.get("last_modified"), row.get("vid"))),
+                _ => None,
+            };
+
         let mut sql = format!(
             "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = $1 AND is_tombstone = FALSE"
         );
         let mut param_idx = 2u32;
 
         let prefix_pattern = prefix.map(|p| {
-            let idx = param_idx;
+            sql.push_str(&format!(" AND key LIKE ${param_idx} ESCAPE '\\'"));
             param_idx += 1;
-            sql.push_str(&format!(" AND key LIKE ${idx} ESCAPE '\\'"));
             format!("{}%", escape_like(p))
         });
 
-        let has_key_marker = key_marker.map_or(false, |km| !km.is_empty());
-        if has_key_marker {
-            let idx = param_idx;
-            #[allow(unused_assignments)]
-            {
-                param_idx += 1;
+        if key_marker.is_some() {
+            let k = param_idx;
+            if resume_at.is_some() {
+                let (l, v) = (k + 1, k + 2);
+                sql.push_str(&format!(
+                    " AND (key > ${k} OR (key = ${k} AND (last_modified < ${l}
+                       OR (last_modified = ${l} AND COALESCE(version_id, '') < ${v}))))"
+                ));
+            } else {
+                sql.push_str(&format!(" AND key > ${k}"));
             }
-            sql.push_str(&format!(" AND key > ${idx}"));
         }
 
-        sql.push_str(" ORDER BY key ASC, last_modified DESC");
+        // The version tie-break makes the order total, so a page boundary
+        // between two versions sharing a timestamp neither skips nor repeats one.
+        sql.push_str(" ORDER BY key ASC, last_modified DESC, COALESCE(version_id, '') DESC");
         sql.push_str(&format!(" LIMIT {max_keys}"));
 
         let mut query = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str())).bind(bucket);
@@ -1429,8 +1455,9 @@ impl MetadataStore for PgStore {
             query = query.bind(pattern.clone());
         }
         if let Some(km) = key_marker {
-            if !km.is_empty() {
-                query = query.bind(km);
+            query = query.bind(km);
+            if let Some((lm, vid)) = resume_at {
+                query = query.bind(lm).bind(vid);
             }
         }
 

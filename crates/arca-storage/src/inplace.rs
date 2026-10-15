@@ -45,14 +45,20 @@ use arca_core::store::blob::SidecarMeta;
 
 use crate::fs::{rename_durable, sync_dir, write_file_atomic};
 
+/// Suffix of the temp file holding a blob's rewritten bytes.
+pub const REWRITE_TMP_SUFFIX: &str = ".rewrite.tmp";
+
+/// Suffix of the journal holding a rewrite's new sidecar.
+pub const PENDING_TMP_SUFFIX: &str = ".pending.tmp";
+
 /// Temp file the new blob bytes must be written (and fsynced) to.
 pub fn rewrite_tmp_path(blob: &Path) -> PathBuf {
-    append_suffix(blob, ".rewrite.tmp")
+    append_suffix(blob, REWRITE_TMP_SUFFIX)
 }
 
 /// Journal holding the new sidecar until the rewrite is fully committed.
 pub fn pending_sidecar_path(meta_path: &Path) -> PathBuf {
-    append_suffix(meta_path, ".pending.tmp")
+    append_suffix(meta_path, PENDING_TMP_SUFFIX)
 }
 
 fn append_suffix(path: &Path, suffix: &str) -> PathBuf {
