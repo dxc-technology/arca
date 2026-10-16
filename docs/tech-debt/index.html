@@ -1569,14 +1569,6 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>crates/arca-server/src/maintenance.rs</code> (<code>spawn_maintenance_worker</code>), <code>crates/arca-proto/src/handlers/maintenance.rs</code>, <code>crates/arca-server/src/main.rs</code> (store wiring)</td>
 </tr>
 <tr>
-<td>TD-041</td>
-<td>Blob ids received from cluster peers are not validated</td>
-<td><code>parse_blob_id</code> (UUID check) guards only the <code>/cluster/v1/blob/{blob_id}</code> path parameter. Blob ids inside a received <code>ObjectRecord</code> (<code>receive_object</code> passes <code>record.blob_id</code> to <code>read_sidecar</code>), inside the composite parts of a received sidecar, and inside manifest rows pulled by anti-entropy reach <code>FsBlobStore::blob_path</code> unchecked, which pushes the id onto the blobs path (path traversal with <code>..</code> or <code>/</code>) and slices it by byte index (panic on short or multi-byte ids). Exposure is limited to authenticated peers (decision H12), so this is defence in depth, not an open hole.</td>
-<td>Validate every blob id at the cluster deserialization boundary (or make <code>BlobId</code> construction itself validating), and make <code>blob_path</code> reject non-UUID ids instead of trusting callers.</td>
-<td>None</td>
-<td><code>crates/arca-proto/src/handlers/cluster.rs</code>, <code>crates/arca-server/src/cluster/anti_entropy.rs</code>, <code>crates/arca-storage/src/fs/blob.rs</code> (<code>blob_path</code>)</td>
-</tr>
-<tr>
 <td>TD-042</td>
 <td>Object owner is always <code>root</code></td>
 <td>PutObject, CopyObject and CompleteMultipartUpload build the <code>ObjectRecord</code> with <code>owner: "root"</code> regardless of the authenticated user, so object ownership (ListObjects <code>fetch-owner</code>, <code>Owner</code> in listings, any owner-based policy check) is wrong for every non-root writer. TD-001 (resolved) states that objects store the creator's username; that is true for buckets only.</td>
@@ -1816,6 +1808,12 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>TD-037</td>
 <td>Virtual-hosted-style requests were routed wrong</td>
 <td>Confirmed by a test, not just by reading the code: with <code>server.domain</code> set, <code>bucket.domain/key</code> was dispatched as bucket <code>key</code> (<code>NoSuchBucket</code>), and the bucket root as ListBuckets, because <code>virtual_host_middleware</code> was attached with <code>Router::layer</code>, which runs after routing. The rewrite now lives in <code>NormalizeLayer</code> (outside the router, <code>NormalizeLayer::new(domain)</code>), after saving the <code>OriginalUri</code> auth verifies and before the trailing-slash rule, so a virtual-hosted <code>/dir/</code> stays a directory-marker key; the host comes from <code>Host</code> or the HTTP/2 URI authority. The pure rules are <code>bucket_for_host</code> and <code>path_style_path</code> in <code>middleware/virtual_host.rs</code>; the dead middleware and <code>AppState.domain</code> are gone. Tests: unit tests for the rules and for the layer, and <code>test_virtual_host.py</code> (put/get/head/delete, bucket root, query string, missing bucket) run by the new self-contained <code>bin/test virtual-host</code>; five of its six tests failed on the old code</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-041</td>
+<td>Blob ids from cluster peers were not validated</td>
+<td><code>parse_blob_id</code> guarded only the <code>/cluster/v1/blob/{blob_id}</code> path parameter: ids inside a received <code>ObjectRecord</code>, inside the composite parts of a received sidecar and inside anti-entropy manifest rows reached <code>FsBlobStore::blob_path</code> unchecked, which pushed the id onto the blobs path (traversal with <code>..</code> or <code>/</code>) and sliced it by byte index (panic on short or multi-byte ids). Authenticated peers only (decision H12), so defence in depth. Fixed: <code>BlobId::is_valid</code> (exactly the lowercase hyphenated UUID form <code>BlobId::new</code> mints); <code>blob_path</code> is total and maps any other id to a fixed name inside the base directory; the raw operations (<code>read_raw</code>, <code>write_raw</code>, <code>exists</code>, <code>read_sidecar</code>, <code>write_sidecar</code>, <code>delete_blob_file</code>) reject it; <code>receive_object</code> and <code>receive_blob</code> answer 400 for an invalid record id or composite part id; anti-entropy skips a manifest row with an invalid id (so it cannot wedge the cursor) and refuses a peer sidecar naming an invalid part. Files under <code>blobs/</code> that are not blob ids are no longer enumerated as blobs (they were GC candidates); <code>arca fsck</code> reports them (<code>FOREIGN_FILE</code>) and <code>arca gc --delete-foreign-files</code> removes them.</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>

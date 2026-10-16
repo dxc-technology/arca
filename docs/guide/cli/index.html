@@ -2497,6 +2497,10 @@ trusting every renewed server certificate for the CA's whole lifetime.</p>
 <td>Blob file MD5 doesn't match stored ETag (only with <code>--verify-checksums</code>; multipart, encrypted and compressed objects are skipped)</td>
 </tr>
 <tr>
+<td><code>FOREIGN_FILE</code></td>
+<td>Informational: a file under <code>blobs/</code> that Arca did not write (its name is not a blob id), with its size, so space that no Arca figure explains is visible. Never repaired; <code>arca gc --reclaim --delete-foreign-files</code> removes it</td>
+</tr>
+<tr>
 <td><code>UNFINISHED_UPLOAD</code></td>
 <td>Informational: a multipart upload never completed nor aborted, with its start date, part count and size. Its parts are live data until the upload is aborted</td>
 </tr>
@@ -2592,7 +2596,7 @@ trusting every renewed server certificate for the CA's whole lifetime.</p>
 <h2 id="arca-gc"><code>arca gc</code><a class="headerlink" href="#arca-gc" title="Permanent link">&para;</a></h2>
 <p>Reclaim orphaned blob files — on-disk blobs referenced by no live object row, in-progress multipart part, or non-orphan composite sidecar — and the stale temp files of interrupted writes. Orphans accumulate from interrupted uploads, overwrites, crashes between the metadata and blob delete, and blob-delete failures (which are logged but do not fail the request, because the object's metadata is already gone). Where <code>arca fsck</code> only <em>reports</em> orphans (<code>ORPHANED_BLOB</code>), <code>arca gc</code> <em>removes</em> them, using the same composite-aware, fail-safe selection as the cluster anti-entropy worker.</p>
 <p>On a <strong>single-node</strong> deployment there is no anti-entropy worker, so <code>arca gc</code> (typically from cron) is the reclamation path. Alternatively, enable the opt-in background worker with <code>[storage] blob_gc_enabled = true</code> (see <a href="../configuration/#storage">Configuration</a>) to reclaim on a schedule without an external cron job; on very large stores cron-ing this command is preferable so the scan runs outside the serving process. On a cluster the anti-entropy worker already reclaims orphans automatically.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>arca<span class="w"> </span>gc<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--reclaim<span class="o">]</span><span class="w"> </span><span class="o">[</span>--grace-seconds<span class="w"> </span>&lt;SECONDS&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--verbose<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>arca<span class="w"> </span>gc<span class="w"> </span><span class="o">[</span>--config-path<span class="w"> </span>&lt;PATH&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--reclaim<span class="o">]</span><span class="w"> </span><span class="o">[</span>--grace-seconds<span class="w"> </span>&lt;SECONDS&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--verbose<span class="o">]</span><span class="w"> </span><span class="o">[</span>--delete-foreign-files<span class="o">]</span>
 </code></pre></div>
 <table>
 <thead>
@@ -2617,6 +2621,10 @@ trusting every renewed server certificate for the CA's whole lifetime.</p>
 <tr>
 <td><code>--verbose</code></td>
 <td>List every orphan blob id and temp file before the summary</td>
+</tr>
+<tr>
+<td><code>--delete-foreign-files</code></td>
+<td>Also delete the files under <code>blobs/</code> that Arca did not write (a stray file, a copied backup). They are only reported otherwise; with <code>--reclaim</code>, only those older than the grace period are deleted</td>
 </tr>
 </tbody>
 </table>
