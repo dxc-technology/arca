@@ -1425,20 +1425,20 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>bucket.rs</code></td>
 </tr>
 <tr>
-<td>TD-009</td>
-<td>~~Audit write contention~~</td>
-<td><strong>RESOLVED</strong>: Audit writes now batched via bounded mpsc channel (capacity 10,000) with dedicated writer task doing bulk inserts in a single transaction</td>
-<td>—</td>
-<td>—</td>
-<td><code>middleware/audit.rs</code>, <code>state.rs</code></td>
-</tr>
-<tr>
 <td>TD-010</td>
 <td>SSE-C multipart</td>
 <td>SSE-C headers on CreateMultipartUpload and UploadPart are rejected with <code>InvalidArgument</code>. SSE-C + multipart requires encrypting each part independently and tracking per-part nonce prefixes</td>
 <td>Implement SSE-C for multipart: per-part encryption, nonce tracking, assembly of encrypted parts at complete time</td>
 <td><code>test_ssec.py::TestSsecMultipartRejection</code></td>
 <td><code>multipart.rs</code>, <code>object.rs</code></td>
+</tr>
+<tr>
+<td>TD-014</td>
+<td><code>recover</code> composite blobs</td>
+<td>Composite blobs (the result of the optimised <code>CompleteMultipartUpload</code>) live as a sidecar that lists the part blob ids — no on-disk file exists at the composite's blob path. <code>recover::process_sidecar</code> rejects them as "orphaned sidecar (blob file missing)"; the caller prints a <code>WARNING</code> and <strong>skips</strong> the sidecar, so every multipart object is silently dropped from the rebuilt database. Worse, the retained part blobs carry ordinary sidecars whose key is <code>{key}#{upload_id}#{part_number}</code> (<code>handlers/multipart.rs</code>), so <code>recover</code> re-creates each part as a bogus object under that key. (Closed parts: parts produced by <code>UploadPartCopy</code> used to get a sidecar only when encrypted; <code>UploadPartCopy</code> now writes the same part sidecar as <code>UploadPart</code> for every part, so copied parts take the composite fast path and share the <code>{key}#{upload_id}#{part_number}</code> problem above. The <code>fsck</code> half is resolved: <code>arca fsck</code> computes the referenced set exactly as blob GC does, <code>blob_gc::referenced_blob_ids</code> / <code>add_live_composite_parts</code>, and reports a composite with an absent part as <code>MISSING_BLOB</code> with the missing part ids.) <code>recover</code> therefore misbehaves on any data directory that has experienced multipart uploads after the composite-concat optimisation. Runtime S3 reads/writes are unaffected — the request path fully handles composites.</td>
+<td><code>recover</code>: when a sidecar has <code>composite: Some(parts)</code>, skip the blob-existence check, walk the part list, and verify each referenced part blob exists. Insert one <code>ObjectRecord</code> per composite that points at the composite blob_id (the part records are not surfaced to the metadata DB — they are a storage-layer detail), and do not re-create part sidecars (<code>{key}#{upload_id}#{n}</code>) as objects. Unit tests with fixtures that mix composite and ordinary blobs (the <code>fsck</code> fixtures in <code>fsck.rs</code> are a model).</td>
+<td>None at the runtime level; <code>recover</code> on data with composites drops every multipart object</td>
+<td><code>crates/arca-server/src/recover.rs:206</code></td>
 </tr>
 <tr>
 <td>TD-017</td>
@@ -1505,6 +1505,14 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>Cargo.toml</code>, <code>Cargo.lock</code>, <code>.trivyignore</code></td>
 </tr>
 <tr>
+<td>TD-025</td>
+<td>Cluster conditional writes (CAS)</td>
+<td>Cluster-wide conditional-write atomicity is not provided: <code>If-Match</code> / <code>If-None-Match</code> / <code>x-amz-if-match-*</code> preconditions are evaluated authoritatively only against the <em>serving</em> node's own state (<code>put_object_if</code>/<code>delete_object_if</code>/<code>delete_object_version_if</code> commit locally, then fan out — there is no per-key authoritative node to arbitrate across peers). Concurrent conditional writes for the same key landing on two different nodes at once can both pass their own local CAS and both be accepted (<code>200 OK</code>); the row then converges by last-writer-wins, the same as any other conflicting write. Single-node CAS (the common case, and the whole point of the conditional-write-atomicity fix) is unaffected — see <code>crates/arca-storage/src/{sqlite,pg}/metadata.rs</code>. Mitigated operationally by pinning a given key's conditional-write traffic to one node (a sticky/session-aware load balancer — see <code>documentation/docs/guide/ha.md</code>).</td>
+<td>Owner-node forwarding for conditional writes: the node that receives a conditional PUT/DELETE for a key it doesn't own forwards it to that key's designated owner node instead of committing locally, giving cluster mode the same per-key authoritative arbitration single-node CAS already has.</td>
+<td>None (cluster CAS boundary is pinned by <code>tests/integration/test_cluster.py::test_conditional_put_is_per_node_not_cluster_wide</code>; single-node CAS is fully covered by <code>tests/integration/test_conditional_writes.py</code>)</td>
+<td><code>crates/arca-server/src/cluster/cluster_meta.rs</code> (<code>put_object_if</code>, <code>delete_object_if</code>, <code>delete_object_version_if</code>)</td>
+</tr>
+<tr>
 <td>TD-027</td>
 <td><code>trivy fs</code> misconfig: k8s console manifest</td>
 <td><code>deploy/kubernetes/arca-console.yaml</code> fails 4 checks: pinned to the <code>:latest</code> tag (KSV-0013, MEDIUM), no <code>readOnlyRootFilesystem: true</code> (KSV-0014, HIGH), no policy preventing binding to privileged ports (KSV-0117, MEDIUM), and UID/GID &lt;= 10000 (KSV-0020/KSV-0021, LOW — nginx's own default user). Found by <code>trivy fs .</code> (<code>--scanners misconfig</code>), 2026-09-23; not suppressed, left visible pending a fix.</td>
@@ -1519,22 +1527,6 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>Add a non-root user to <code>docker/screenshots/Dockerfile</code>, mirroring the pattern already used in <code>docker/webhook-receiver/Dockerfile</code> / <code>docker/grpc-receiver/Dockerfile</code>. Add a minimal <code>HEALTHCHECK</code> to the three test Dockerfiles (<code>bin/test</code> already polls these services directly, so this is a hygiene fix, not a functional gap).</td>
 <td>None</td>
 <td><code>docker/screenshots/Dockerfile</code>, <code>docker/Dockerfile.perf</code>, <code>docker/Dockerfile.test</code>, <code>docker/s3-tests/Dockerfile</code></td>
-</tr>
-<tr>
-<td>TD-025</td>
-<td>Cluster conditional writes (CAS)</td>
-<td>Cluster-wide conditional-write atomicity is not provided: <code>If-Match</code> / <code>If-None-Match</code> / <code>x-amz-if-match-*</code> preconditions are evaluated authoritatively only against the <em>serving</em> node's own state (<code>put_object_if</code>/<code>delete_object_if</code>/<code>delete_object_version_if</code> commit locally, then fan out — there is no per-key authoritative node to arbitrate across peers). Concurrent conditional writes for the same key landing on two different nodes at once can both pass their own local CAS and both be accepted (<code>200 OK</code>); the row then converges by last-writer-wins, the same as any other conflicting write. Single-node CAS (the common case, and the whole point of the conditional-write-atomicity fix) is unaffected — see <code>crates/arca-storage/src/{sqlite,pg}/metadata.rs</code>. Mitigated operationally by pinning a given key's conditional-write traffic to one node (a sticky/session-aware load balancer — see <code>documentation/docs/guide/ha.md</code>).</td>
-<td>Owner-node forwarding for conditional writes: the node that receives a conditional PUT/DELETE for a key it doesn't own forwards it to that key's designated owner node instead of committing locally, giving cluster mode the same per-key authoritative arbitration single-node CAS already has.</td>
-<td>None (cluster CAS boundary is pinned by <code>tests/integration/test_cluster.py::test_conditional_put_is_per_node_not_cluster_wide</code>; single-node CAS is fully covered by <code>tests/integration/test_conditional_writes.py</code>)</td>
-<td><code>crates/arca-server/src/cluster/cluster_meta.rs</code> (<code>put_object_if</code>, <code>delete_object_if</code>, <code>delete_object_version_if</code>)</td>
-</tr>
-<tr>
-<td>TD-014</td>
-<td><code>recover</code> composite blobs</td>
-<td>Composite blobs (the result of the optimised <code>CompleteMultipartUpload</code>) live as a sidecar that lists the part blob ids — no on-disk file exists at the composite's blob path. <code>recover::process_sidecar</code> rejects them as "orphaned sidecar (blob file missing)"; the caller prints a <code>WARNING</code> and <strong>skips</strong> the sidecar, so every multipart object is silently dropped from the rebuilt database. Worse, the retained part blobs carry ordinary sidecars whose key is <code>{key}#{upload_id}#{part_number}</code> (<code>handlers/multipart.rs</code>), so <code>recover</code> re-creates each part as a bogus object under that key. (Closed parts: parts produced by <code>UploadPartCopy</code> used to get a sidecar only when encrypted; <code>UploadPartCopy</code> now writes the same part sidecar as <code>UploadPart</code> for every part, so copied parts take the composite fast path and share the <code>{key}#{upload_id}#{part_number}</code> problem above. The <code>fsck</code> half is resolved: <code>arca fsck</code> computes the referenced set exactly as blob GC does, <code>blob_gc::referenced_blob_ids</code> / <code>add_live_composite_parts</code>, and reports a composite with an absent part as <code>MISSING_BLOB</code> with the missing part ids.) <code>recover</code> therefore misbehaves on any data directory that has experienced multipart uploads after the composite-concat optimisation. Runtime S3 reads/writes are unaffected — the request path fully handles composites.</td>
-<td><code>recover</code>: when a sidecar has <code>composite: Some(parts)</code>, skip the blob-existence check, walk the part list, and verify each referenced part blob exists. Insert one <code>ObjectRecord</code> per composite that points at the composite blob_id (the part records are not surfaced to the metadata DB — they are a storage-layer detail), and do not re-create part sidecars (<code>{key}#{upload_id}#{n}</code>) as objects. Unit tests with fixtures that mix composite and ordinary blobs (the <code>fsck</code> fixtures in <code>fsck.rs</code> are a model).</td>
-<td>None at the runtime level; <code>recover</code> on data with composites drops every multipart object</td>
-<td><code>crates/arca-server/src/recover.rs:206</code></td>
 </tr>
 <tr>
 <td>TD-032</td>
@@ -1577,20 +1569,20 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>crates/arca-proto/src/handlers/{object,multipart}.rs</code></td>
 </tr>
 <tr>
-<td>TD-044</td>
-<td><code>compress-existing</code> compresses ciphertext of encrypted blobs (guard shipped, repair open)</td>
-<td><strong>Guard shipped (Unreleased):</strong> <code>compress-existing</code> now skips encrypted (SSE-S3/KMS and SSE-C) and composite blobs, and <code>decompress-existing</code> skips composite and encrypted blobs, each with a <code>SKIP</code> message, never aborting the run. <strong>Remaining:</strong> repairing stores damaged by the old behaviour. Original problem: <code>arca compress-existing</code> (<code>run_compress_existing</code>) never checks <code>meta.encryption</code> (nor composite blobs): on an SSE-S3 encrypted blob it compresses the <strong>ciphertext file</strong> in place and records <code>compression</code> in the sidecar, producing <code>ACMP(AENC…)</code>, the reverse of the live compress-then-encrypt order, with <code>original_size</code> set to the plaintext size although the frame holds ciphertext. Such objects are unreadable (<code>parse header: invalid magic bytes</code>); the bytes and DEK are intact, so they are recoverable. <code>decompress-existing</code> cannot undo it (its decompressed-size check against <code>original_size</code> fails, and the error aborts the whole run), and either tool aborts on composite blobs, which have no file. Found 2026-10-01 while fixing TD-029.</td>
-<td>Repair only (the going-forward guard is done; routing encrypted blobs through the real store stack is optional future work): for sidecars with both <code>encryption</code> and <code>compression</code> whose raw file starts with <code>ACMP</code>, decompress the raw file back to the <code>AENC</code> ciphertext (verify against the ciphertext length, not <code>original_size</code>), then clear <code>compression</code> or re-layer properly. Tests with encrypted and composite fixtures.</td>
-<td>None</td>
-<td><code>crates/arca-server/src/compress_existing.rs</code></td>
-</tr>
-<tr>
 <td>TD-043</td>
 <td>Remaining test tooling that disturbs the developer's stack</td>
 <td>After TD-030 the self-contained <code>bin/test</code> modes run in their own compose projects, but: <code>bin/screenshots</code> still runs in the developer's project (overwrites <code>config/.generated.toml</code>, <code>up -d arca</code>, <code>down</code>, and its cleanup deletes <code>.arca-env</code>); the cluster suite (<code>-p arca-cluster</code>) publishes host ports 9000-9003, which collide with a running dev server; <code>arca-tls-test-certs</code> is one fixed-name volume shared by <code>bin/test tls</code> and <code>bin/perf-test --tls</code>, so the two cannot run concurrently. (<code>bin/s3-tests</code> wiping <code>docker_arca-data</code> is deliberate: the Ceph suite needs a clean state; <code>--no-clean</code> skips it.)</td>
 <td>Apply <code>use_test_project</code> to <code>bin/screenshots</code>; publish the cluster nodes on ephemeral loopback ports (the suite reaches them over the compose network) or refuse to start while the dev server is up; name the TLS test volume per project.</td>
 <td>None</td>
 <td><code>bin/screenshots</code>, <code>bin/test</code> (cluster suite), <code>docker/docker-compose.cluster*.yml</code>, <code>bin/lib/compose.sh</code> (<code>make_test_certs</code>)</td>
+</tr>
+<tr>
+<td>TD-044</td>
+<td><code>compress-existing</code> compresses ciphertext of encrypted blobs (guard shipped, repair open)</td>
+<td><strong>Guard shipped (Unreleased):</strong> <code>compress-existing</code> now skips encrypted (SSE-S3/KMS and SSE-C) and composite blobs, and <code>decompress-existing</code> skips composite and encrypted blobs, each with a <code>SKIP</code> message, never aborting the run. <strong>Remaining:</strong> repairing stores damaged by the old behaviour. Original problem: <code>arca compress-existing</code> (<code>run_compress_existing</code>) never checks <code>meta.encryption</code> (nor composite blobs): on an SSE-S3 encrypted blob it compresses the <strong>ciphertext file</strong> in place and records <code>compression</code> in the sidecar, producing <code>ACMP(AENC…)</code>, the reverse of the live compress-then-encrypt order, with <code>original_size</code> set to the plaintext size although the frame holds ciphertext. Such objects are unreadable (<code>parse header: invalid magic bytes</code>); the bytes and DEK are intact, so they are recoverable. <code>decompress-existing</code> cannot undo it (its decompressed-size check against <code>original_size</code> fails, and the error aborts the whole run), and either tool aborts on composite blobs, which have no file. Found 2026-10-01 while fixing TD-029.</td>
+<td>Repair only (the going-forward guard is done; routing encrypted blobs through the real store stack is optional future work): for sidecars with both <code>encryption</code> and <code>compression</code> whose raw file starts with <code>ACMP</code>, decompress the raw file back to the <code>AENC</code> ciphertext (verify against the ciphertext length, not <code>original_size</code>), then clear <code>compression</code> or re-layer properly. Tests with encrypted and composite fixtures.</td>
+<td>None</td>
+<td><code>crates/arca-server/src/compress_existing.rs</code></td>
 </tr>
 <tr>
 <td>TD-045</td>
@@ -1667,6 +1659,12 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
+<td>TD-002</td>
+<td>Storage class</td>
+<td><code>storage_class</code> field added to ObjectRecord, DB migration v13, <code>x-amz-storage-class</code> header accepted on PutObject, returned in list and head responses. Phase 22</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
 <td>TD-003</td>
 <td>Versioning</td>
 <td>Full object versioning: PutBucketVersioning/GetBucketVersioning, version IDs, delete markers, version-specific GET/HEAD/DELETE/COPY, ListObjectVersions with real data. Migration v9 adds versioning columns. Phase 17</td>
@@ -1691,27 +1689,15 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
-<td>TD-002</td>
-<td>Storage class</td>
-<td><code>storage_class</code> field added to ObjectRecord, DB migration v13, <code>x-amz-storage-class</code> header accepted on PutObject, returned in list and head responses. Phase 22</td>
-<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
-</tr>
-<tr>
 <td>TD-008</td>
 <td>Content-Type source</td>
 <td>Verified: Content-Type captured from CreateMultipartUpload matches AWS behavior. Clients set it at init time. Phase 22</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
-<td>TD-015</td>
-<td>Cluster inter-node TLS cert verification</td>
-<td>Verified mutual TLS with an operator-distributed cluster CA (<code>[cluster.tls]</code> — REQUIRED when the cluster runs over HTTPS, no insecure fallback): inter-node <code>reqwest</code> clients trust the CA and present the node's CA-signed client identity; <code>danger_accept_invalid_certs</code> removed from <code>membership.rs</code> and <code>client.rs</code>. The listener requests client certificates (optional at the TLS layer — S3 clients share the port) and <code>/cluster/v1/*</code> refuses requests without a CA-verified one. Material minted by <code>arca tls generate-cluster</code>. HA hardening R4 (decision H12)</td>
-<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
-</tr>
-<tr>
-<td>TD-016</td>
-<td>Cluster control-plane reconcile was partial</td>
-<td>The anti-entropy snapshot reconcile now covers EVERY control-plane family: grant attachments (<code>user_grants</code>, <code>team_grants</code>) and team memberships (per-row <code>updated_at</code>, migrations sqlite v22 / pg 0010, composite-key tombstones on detach/remove), <code>bucket_config</code> per-key LWW, <code>bucket_tags</code> as one set-level entity per bucket, <code>server_config</code> per-key LWW (node-local keys excluded at build AND on apply), plus in-progress multipart uploads and parts (D4). Child upserts are parent-filtered in <code>plan_control_merge</code> (a row whose parent resolved deleted is never adopted — replaces cascade tombstones and respects the PG join-table FKs). A returning node now fully self-heals on all families. HA hardening R5 (review D9/D4)</td>
+<td>TD-009</td>
+<td>Audit write contention</td>
+<td>Audit writes are batched through a bounded mpsc channel (capacity 10,000) with a dedicated writer task doing bulk inserts in a single transaction (<code>middleware/audit.rs</code>, <code>state.rs</code>); since TD-038 the writer also commits in 1 s batches.</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
@@ -1733,9 +1719,27 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
+<td>TD-015</td>
+<td>Cluster inter-node TLS cert verification</td>
+<td>Verified mutual TLS with an operator-distributed cluster CA (<code>[cluster.tls]</code> — REQUIRED when the cluster runs over HTTPS, no insecure fallback): inter-node <code>reqwest</code> clients trust the CA and present the node's CA-signed client identity; <code>danger_accept_invalid_certs</code> removed from <code>membership.rs</code> and <code>client.rs</code>. The listener requests client certificates (optional at the TLS layer — S3 clients share the port) and <code>/cluster/v1/*</code> refuses requests without a CA-verified one. Material minted by <code>arca tls generate-cluster</code>. HA hardening R4 (decision H12)</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-016</td>
+<td>Cluster control-plane reconcile was partial</td>
+<td>The anti-entropy snapshot reconcile now covers EVERY control-plane family: grant attachments (<code>user_grants</code>, <code>team_grants</code>) and team memberships (per-row <code>updated_at</code>, migrations sqlite v22 / pg 0010, composite-key tombstones on detach/remove), <code>bucket_config</code> per-key LWW, <code>bucket_tags</code> as one set-level entity per bucket, <code>server_config</code> per-key LWW (node-local keys excluded at build AND on apply), plus in-progress multipart uploads and parts (D4). Child upserts are parent-filtered in <code>plan_control_merge</code> (a row whose parent resolved deleted is never adopted — replaces cascade tombstones and respects the PG join-table FKs). A returning node now fully self-heals on all families. HA hardening R5 (review D9/D4)</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
 <td>TD-026</td>
 <td><code>bin/test tls</code> could not create <code>certs/</code> on Linux</td>
 <td>The self-contained TLS suites (<code>bin/test tls</code>, <code>bin/perf-test --tls</code>) no longer write into a host bind mount: <code>make_test_certs</code> in <code>bin/lib/compose.sh</code> generates a throwaway CA + server certificate into the named volume <code>arca-tls-test-certs</code> (ownership is real there on every host, as in <code>run_tls_permissions</code>), mounted through <code>ARCA_CERTS_DIR</code>, and removed afterwards; clients verify against its CA. The <code>tls-init</code> compose service, the only writer into <code>certs/</code>, is gone; <code>bin/arca start --tls</code> keeps its own local certificates in <code>certs/local</code> with <code>arca tls ensure</code>, run as the host user with group 65532.</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-029</td>
+<td>Compression + encryption read failed</td>
+<td>Root cause on the read side: with a <code>CompressingBlobStore</code> above an <code>EncryptingBlobStore</code>, the encrypting layer encrypts the compressed frame of the object, but <code>EncryptingBlobStore::get</code> took the length of what it had encrypted from the sidecar's <code>size</code>, which is the object's uncompressed size. Ranged reads (the compressing layer reads its footer and chunks through ranged reads) were therefore clamped and their last chunk located in the wrong space: <code>read chunks: early eof</code> when the frame is shorter than the object, <code>compressed footer count truncated</code> (an overflow in debug builds) when it is longer. It now uses <code>compression.compressed_size</code> when the sidecar records compression (<code>payload_size</code> in <code>encrypted_blob.rs</code>). The write side was always correct, so objects already stored compressed and encrypted are read correctly by the fixed server; no repair is needed. Covered by five stacked-store unit tests in <code>compressed_blob.rs</code> and by a second, encrypted pass of <code>bin/test compression</code> (<code>run_compression</code>), which also gained incompressible-body, suffix-range, multipart and copy tests.</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
@@ -1751,51 +1755,9 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
-<td>TD-039</td>
-<td>PostgreSQL CAS regression test</td>
-<td><code>bin/test postgres</code> now also runs <code>test_conditional_writes.py</code> against the PostgreSQL-backed server (36 tests with <code>test_postgres.py</code>), so a reordering of the CAS read relative to the transaction's first locking statement in <code>pg/metadata.rs</code> is caught.</td>
-<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
-</tr>
-<tr>
-<td>TD-029</td>
-<td>Compression + encryption read failed</td>
-<td>Root cause on the read side: with a <code>CompressingBlobStore</code> above an <code>EncryptingBlobStore</code>, the encrypting layer encrypts the compressed frame of the object, but <code>EncryptingBlobStore::get</code> took the length of what it had encrypted from the sidecar's <code>size</code>, which is the object's uncompressed size. Ranged reads (the compressing layer reads its footer and chunks through ranged reads) were therefore clamped and their last chunk located in the wrong space: <code>read chunks: early eof</code> when the frame is shorter than the object, <code>compressed footer count truncated</code> (an overflow in debug builds) when it is longer. It now uses <code>compression.compressed_size</code> when the sidecar records compression (<code>payload_size</code> in <code>encrypted_blob.rs</code>). The write side was always correct, so objects already stored compressed and encrypted are read correctly by the fixed server; no repair is needed. Covered by five stacked-store unit tests in <code>compressed_blob.rs</code> and by a second, encrypted pass of <code>bin/test compression</code> (<code>run_compression</code>), which also gained incompressible-body, suffix-range, multipart and copy tests.</td>
-<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
-</tr>
-<tr>
 <td>TD-034</td>
 <td>Request body integrity was never verified</td>
 <td>PutObject and UploadPart now verify (through every blob stack: plain, SSE-S3/KMS, compressed, and SSE-C for PutObject) the body as AWS does, in <code>handlers/integrity.rs</code> with the body stream from <code>body::verified_body_stream</code>: <code>Content-MD5</code> against the plaintext MD5 the blob store already returns as the ETag (mismatch <code>BadDigest</code>, malformed <code>InvalidDigest</code>); <code>x-amz-checksum-{crc32,crc32c,crc64nvme,sha1,sha256}</code> from a header or from an aws-chunked trailer named by <code>x-amz-trailer</code> (the decoder now parses trailers instead of stopping at the last chunk), computed while the body streams (mismatch <code>BadDigest</code> "The <ALGO> you specified did not match the calculated checksum.", malformed or several at once <code>InvalidRequest</code>); a hex <code>x-amz-content-sha256</code> (mismatch <code>XAmzContentSHA256Mismatch</code>). Malformed declarations are refused before the body is read; a mismatch deletes the written blob before any sidecar or row exists. Trailer checksums (boto3 over HTTPS) are now recorded too, SHA1 is supported, UploadPart returns and stores its checksum, CreateMultipartUpload records <code>x-amz-checksum-algorithm</code>. <code>FsBlobStore::put</code> now removes its temp file when the body stream fails (it leaked one, e.g. on <code>EntityTooLarge</code>). Left out: chunk-signature verification (TD-045) and multipart object checksums (TD-046). Unit tests in <code>integrity.rs</code> / <code>body.rs</code>, integration suite <code>test_integrity.py</code> (41)</td>
-<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
-</tr>
-<tr>
-<td>TD-038</td>
-<td>No fsync on the write path</td>
-<td>Every blob and sidecar writer in <code>arca-storage</code> is now durable: the blob temp file is <code>sync_all</code>ed before the rename (in the <code>spawn_blocking</code> worker of <code>FsBlobStore::put</code>; <code>write_raw</code>, the <code>concat</code> fallback and re-encryption likewise), newly created shard directories are fsynced up to the first existing ancestor (<code>create_dir_all_durable</code>), and <code>write_sidecar</code> writes a temp file in the same directory, fsyncs it, renames it and fsyncs the directory (<code>write_file_atomic</code>), so a sidecar is never partial. Invariant: <strong>a blob is durable once its sidecar has been written</strong> — the blob rename in <code>put</code> / <code>write_raw</code> / the <code>concat</code> fallback does not fsync the directory, because the sidecar lives in the same directory and its directory fsync covers both entries; every handler writes the sidecar before the metadata commit and fails the request (discarding the fresh blob, <code>handlers/sidecar.rs</code>) when that write fails, and <code>UploadPartCopy</code> now writes a part sidecar for every part. 3 fsyncs per small PUT; the in-place re-encryption rename, whose follow-up sidecar write is not durable, keeps <code>rename_durable</code>. SQLite commits with <code>synchronous=FULL</code>, so the metadata row survives a power loss too. The cost is significant on slow disks, so it is switchable: <code>[storage] fsync</code> (default <code>true</code>; <code>false</code> = no fsync and SQLite <code>NORMAL</code>, the old behaviour, still atomic) applies to the live server only, the offline tools are always durable. Audit entries are committed in batches (1024 entries or 1 s, at once on drain) so that audit logging does not add an fsync per request. Measured 2026-10-02..05 with warp, 1 KiB PUTs at concurrency 16, against no fsync: local NVMe -37%, gp3 EBS -78%, Hyper-V virtual disk -77%, LUKS HDD about -90%; 1 MiB -6..-20% on NVMe and concurrent gp3; 512 MiB 0-2%. The single-writer FULL ceiling on slow disks is tracked as TD-048. Unit tests cover the atomic temp + rename protocol in both modes and the <code>synchronous</code> level (fsync itself cannot be observed without a power cut)</td>
-<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
-</tr>
-<tr>
-<td>TD-047</td>
-<td>Plain-HTTP listener did not set <code>TCP_NODELAY</code></td>
-<td>Both listeners now share one accept loop (<code>crates/arca-server/src/serve.rs</code>), whose <code>accept</code> calls <code>set_nodelay(true)</code> on every accepted connection (first fixed in a <code>plain_http_listener</code> wrapper around <code>axum::serve</code>, since replaced). Keep-alive GETs no longer wait about 40 ms for the client's delayed ACK. Regression test <code>accepted_connections_disable_nagle</code> checks the option on an accepted socket (deterministic, no timing)</td>
-<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
-</tr>
-<tr>
-<td>TD-049</td>
-<td>The server panicked at startup without CA certificates</td>
-<td>The webhook and Elasticsearch connectors now build their HTTP client with <code>build_http_client</code> (<code>crates/arca-server/src/connector/mod.rs</code>), which returns an error instead of panicking and logs one startup warning per connector; the connector keeps the error and fails every delivery and connection test with <code>HTTP client unavailable: &lt;cause&gt;</code>, so a host without a CA bundle (e.g. the release binary in a <code>FROM scratch</code> image) still starts. Verified by starting the server with <code>/etc/ssl/certs</code> hidden; unit tests inject a failed client into both connectors</td>
-<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
-</tr>
-<tr>
-<td>TD-053</td>
-<td>An abort racing CompleteMultipartUpload deleted the completed object's data</td>
-<td><code>MetadataStore::complete_multipart_object</code> installs the object row (the same CAS, versioning and <code>is_latest</code> rules as <code>put_object_if</code>, shared through <code>install_object</code>) and consumes the upload and its parts in ONE transaction that fails with <code>NoSuchUpload</code>, writing nothing, when the upload is gone; the handler discards only the assembled blob and its sidecar then, never the parts, which are the abort's to delete. Whichever transaction commits first wins: an abort that wins leaves the Complete with no object row (so an object can never point at deleted parts), a Complete that wins leaves the abort with no parts to delete (<code>delete_multipart_upload</code> returns none). SQLite serializes on its writer connection; PostgreSQL takes the upload row with <code>SELECT ... FOR UPDATE</code> as the first statement of Complete and deletes the upload row before its parts in <code>take_upload</code> (parts are only read through the <code>DELETE ... RETURNING</code>), so under READ COMMITTED the second transaction finds nothing. A refused precondition leaves the upload and parts untouched, so the client can retry. The cluster decorator replicates it as the two messages peers already know (the object row, then the upload tombstone and <code>MultipartDelete</code>). <strong>Limit:</strong> only the local commit is atomic; an abort landing on ANOTHER node at the same moment is arbitrated by anti-entropy, as for TD-025. Tests: seven store tests (<code>complete_multipart_object_*</code>, <code>abort_after_complete_finds_no_parts_to_delete</code>), two cluster decorator tests, and the stress test <code>test_multipart_abort_race.py</code> (also run by <code>bin/test postgres</code>), which sweeps the abort across the life of a Complete and fails on the old code (<code>InternalError</code> reading the "completed" object)</td>
-<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
-</tr>
-<tr>
-<td>TD-054</td>
-<td>A version-id-marker deleted between two pages skipped the rest of its key</td>
-<td><code>MetadataStore::list_object_versions_from</code> takes a <code>VersionPosition</code> (<code>last_modified</code>, version id) as a value instead of looking the marker version up, so a page boundary stays valid when its version is deleted. The internal full listing (<code>list_all_object_versions</code>: re-encryption scan, <code>arca fsck</code>) pages with the position of the previous page's last row and can no longer skip a version. The S3 <code>list_object_versions</code> is a default trait method that resolves the marker through <code>get_object_version</code> and refuses a marker that does not exist (never did, or deleted since the previous page) with <code>InvalidArgument</code> (<code>Invalid version id specified</code>) instead of silently resuming after the whole key: version ids are random UUIDs with no timestamp, so the position of a deleted marker cannot be reconstructed, and a loud error lets the client restart. <strong>Behaviour change:</strong> a ListObjectVersions with an unknown <code>version-id-marker</code> used to answer 200 with the rest of the listing and now answers 400. Tests: five store tests (deleted marker position resumes, no position starts after the key, null version, unknown and deleted marker refused), two S3 integration tests in <code>test_versioning.py</code> (also run by <code>bin/test postgres</code>)</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
@@ -1811,15 +1773,51 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
+<td>TD-038</td>
+<td>No fsync on the write path</td>
+<td>Every blob and sidecar writer in <code>arca-storage</code> is now durable: the blob temp file is <code>sync_all</code>ed before the rename (in the <code>spawn_blocking</code> worker of <code>FsBlobStore::put</code>; <code>write_raw</code>, the <code>concat</code> fallback and re-encryption likewise), newly created shard directories are fsynced up to the first existing ancestor (<code>create_dir_all_durable</code>), and <code>write_sidecar</code> writes a temp file in the same directory, fsyncs it, renames it and fsyncs the directory (<code>write_file_atomic</code>), so a sidecar is never partial. Invariant: <strong>a blob is durable once its sidecar has been written</strong> — the blob rename in <code>put</code> / <code>write_raw</code> / the <code>concat</code> fallback does not fsync the directory, because the sidecar lives in the same directory and its directory fsync covers both entries; every handler writes the sidecar before the metadata commit and fails the request (discarding the fresh blob, <code>handlers/sidecar.rs</code>) when that write fails, and <code>UploadPartCopy</code> now writes a part sidecar for every part. 3 fsyncs per small PUT; the in-place re-encryption rename, whose follow-up sidecar write is not durable, keeps <code>rename_durable</code>. SQLite commits with <code>synchronous=FULL</code>, so the metadata row survives a power loss too. The cost is significant on slow disks, so it is switchable: <code>[storage] fsync</code> (default <code>true</code>; <code>false</code> = no fsync and SQLite <code>NORMAL</code>, the old behaviour, still atomic) applies to the live server only, the offline tools are always durable. Audit entries are committed in batches (1024 entries or 1 s, at once on drain) so that audit logging does not add an fsync per request. Measured 2026-10-02..05 with warp, 1 KiB PUTs at concurrency 16, against no fsync: local NVMe -37%, gp3 EBS -78%, Hyper-V virtual disk -77%, LUKS HDD about -90%; 1 MiB -6..-20% on NVMe and concurrent gp3; 512 MiB 0-2%. The single-writer FULL ceiling on slow disks is tracked as TD-048. Unit tests cover the atomic temp + rename protocol in both modes and the <code>synchronous</code> level (fsync itself cannot be observed without a power cut)</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-039</td>
+<td>PostgreSQL CAS regression test</td>
+<td><code>bin/test postgres</code> now also runs <code>test_conditional_writes.py</code> against the PostgreSQL-backed server (36 tests with <code>test_postgres.py</code>), so a reordering of the CAS read relative to the transaction's first locking statement in <code>pg/metadata.rs</code> is caught.</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
 <td>TD-041</td>
 <td>Blob ids from cluster peers were not validated</td>
 <td><code>parse_blob_id</code> guarded only the <code>/cluster/v1/blob/{blob_id}</code> path parameter: ids inside a received <code>ObjectRecord</code>, inside the composite parts of a received sidecar and inside anti-entropy manifest rows reached <code>FsBlobStore::blob_path</code> unchecked, which pushed the id onto the blobs path (traversal with <code>..</code> or <code>/</code>) and sliced it by byte index (panic on short or multi-byte ids). Authenticated peers only (decision H12), so defence in depth. Fixed: <code>BlobId::is_valid</code> (exactly the lowercase hyphenated UUID form <code>BlobId::new</code> mints); <code>blob_path</code> is total and maps any other id to a fixed name inside the base directory; the raw operations (<code>read_raw</code>, <code>write_raw</code>, <code>exists</code>, <code>read_sidecar</code>, <code>write_sidecar</code>, <code>delete_blob_file</code>) reject it; <code>receive_object</code> and <code>receive_blob</code> answer 400 for an invalid record id or composite part id; anti-entropy skips a manifest row with an invalid id (so it cannot wedge the cursor) and refuses a peer sidecar naming an invalid part. Files under <code>blobs/</code> that are not blob ids are no longer enumerated as blobs (they were GC candidates); <code>arca fsck</code> reports them (<code>FOREIGN_FILE</code>) and <code>arca gc --delete-foreign-files</code> removes them.</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
+<td>TD-047</td>
+<td>Plain-HTTP listener did not set <code>TCP_NODELAY</code></td>
+<td>Both listeners now share one accept loop (<code>crates/arca-server/src/serve.rs</code>), whose <code>accept</code> calls <code>set_nodelay(true)</code> on every accepted connection (first fixed in a <code>plain_http_listener</code> wrapper around <code>axum::serve</code>, since replaced). Keep-alive GETs no longer wait about 40 ms for the client's delayed ACK. Regression test <code>accepted_connections_disable_nagle</code> checks the option on an accepted socket (deterministic, no timing)</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-049</td>
+<td>The server panicked at startup without CA certificates</td>
+<td>The webhook and Elasticsearch connectors now build their HTTP client with <code>build_http_client</code> (<code>crates/arca-server/src/connector/mod.rs</code>), which returns an error instead of panicking and logs one startup warning per connector; the connector keeps the error and fails every delivery and connection test with <code>HTTP client unavailable: &lt;cause&gt;</code>, so a host without a CA bundle (e.g. the release binary in a <code>FROM scratch</code> image) still starts. Verified by starting the server with <code>/etc/ssl/certs</code> hidden; unit tests inject a failed client into both connectors</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
 <td>TD-051</td>
 <td>Interrupted uploads left temp files that nothing reclaimed</td>
 <td>A <code>TempFileGuard</code> (<code>crates/arca-storage/src/fs/blob.rs</code>) owns the temp path of <code>put</code>, <code>write_raw</code> and the <code>concat</code> fallback from the file's creation until the rename that publishes it, so an error return, a failed rename and a request future dropped on client disconnect all remove the temp file (<code>put</code> now creates the file on the async side, so the guard can never run before a writer creates it). The <code>concat</code> fallback also used to leak its temp file on any error, a missing part included. <code>arca gc</code>, the single-node GC worker and cluster anti-entropy GC reclaim temp files older than the grace period (<code>RawBlobOps::list_reclaimable_temp_files</code> / <code>delete_temp_file</code>, classified by <code>fs::temp_file_kind</code>), never the in-place rewrite recovery files <code>*.rewrite.tmp</code> / <code>*.pending.tmp</code>; <code>arca fsck --repair</code> removes them too. Tests: cancelled <code>put</code> and <code>write_raw</code>, failed <code>concat</code>, old vs young temps, recovery files kept</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-053</td>
+<td>An abort racing CompleteMultipartUpload deleted the completed object's data</td>
+<td><code>MetadataStore::complete_multipart_object</code> installs the object row (the same CAS, versioning and <code>is_latest</code> rules as <code>put_object_if</code>, shared through <code>install_object</code>) and consumes the upload and its parts in ONE transaction that fails with <code>NoSuchUpload</code>, writing nothing, when the upload is gone; the handler discards only the assembled blob and its sidecar then, never the parts, which are the abort's to delete. Whichever transaction commits first wins: an abort that wins leaves the Complete with no object row (so an object can never point at deleted parts), a Complete that wins leaves the abort with no parts to delete (<code>delete_multipart_upload</code> returns none). SQLite serializes on its writer connection; PostgreSQL takes the upload row with <code>SELECT ... FOR UPDATE</code> as the first statement of Complete and deletes the upload row before its parts in <code>take_upload</code> (parts are only read through the <code>DELETE ... RETURNING</code>), so under READ COMMITTED the second transaction finds nothing. A refused precondition leaves the upload and parts untouched, so the client can retry. The cluster decorator replicates it as the two messages peers already know (the object row, then the upload tombstone and <code>MultipartDelete</code>). <strong>Limit:</strong> only the local commit is atomic; an abort landing on ANOTHER node at the same moment is arbitrated by anti-entropy, as for TD-025. Tests: seven store tests (<code>complete_multipart_object_*</code>, <code>abort_after_complete_finds_no_parts_to_delete</code>), two cluster decorator tests, and the stress test <code>test_multipart_abort_race.py</code> (also run by <code>bin/test postgres</code>), which sweeps the abort across the life of a Complete and fails on the old code (<code>InternalError</code> reading the "completed" object)</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-054</td>
+<td>A version-id-marker deleted between two pages skipped the rest of its key</td>
+<td><code>MetadataStore::list_object_versions_from</code> takes a <code>VersionPosition</code> (<code>last_modified</code>, version id) as a value instead of looking the marker version up, so a page boundary stays valid when its version is deleted. The internal full listing (<code>list_all_object_versions</code>: re-encryption scan, <code>arca fsck</code>) pages with the position of the previous page's last row and can no longer skip a version. The S3 <code>list_object_versions</code> is a default trait method that resolves the marker through <code>get_object_version</code> and refuses a marker that does not exist (never did, or deleted since the previous page) with <code>InvalidArgument</code> (<code>Invalid version id specified</code>) instead of silently resuming after the whole key: version ids are random UUIDs with no timestamp, so the position of a deleted marker cannot be reconstructed, and a loud error lets the client restart. <strong>Behaviour change:</strong> a ListObjectVersions with an unknown <code>version-id-marker</code> used to answer 200 with the rest of the listing and now answers 400. Tests: five store tests (deleted marker position resumes, no position starts after the key, null version, unknown and deleted marker refused), two S3 integration tests in <code>test_versioning.py</code> (also run by <code>bin/test postgres</code>)</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 </tbody>
