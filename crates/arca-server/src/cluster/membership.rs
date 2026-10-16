@@ -176,6 +176,7 @@ pub fn spawn(
             // 3) Integrate the outcomes into the per-endpoint probe state.
             let now = Utc::now();
             let my_fingerprint = state.config_fingerprint();
+            let my_fingerprint_v2 = state.config_fingerprint_v2();
             for (endpoint, outcome) in outcomes {
                 let Some(ps) = known.get_mut(&endpoint) else {
                     continue;
@@ -191,7 +192,7 @@ pub fn spawn(
                         ps.last_live = None;
                     }
                     ProbeOutcome::Contact(info) => {
-                        let config_ok = contact_config_ok(&info, &my_fingerprint);
+                        let config_ok = contact_config_ok(&info, &my_fingerprint, &my_fingerprint_v2);
                         log_contact_transitions(
                             &endpoint, &info, config_ok,
                             &mut mismatched, &mut legacy, &mut unproven,
@@ -316,6 +317,9 @@ struct ContactInfo {
     node_id: String,
     auth: AuthState,
     fingerprint: Option<String>,
+    /// The peer's v2 fingerprint (`None` from a node of the previous version
+    /// and from the legacy health fallback).
+    fingerprint_v2: Option<String>,
     disk_total: Option<u64>,
     disk_available: Option<u64>,
     /// The peer's object write cursor, reported by the authenticated ping
@@ -365,6 +369,7 @@ async fn probe_peer(
                     AuthState::BadMac
                 },
                 fingerprint: resp.config_fingerprint,
+                fingerprint_v2: resp.config_fingerprint_v2,
                 disk_total: resp.disk_total,
                 disk_available: resp.disk_available,
                 max_seq: Some(resp.max_seq),
@@ -382,6 +387,7 @@ async fn probe_peer(
                     auth: AuthState::Legacy,
                     node_id: h.node_id,
                     fingerprint: h.fingerprint,
+                    fingerprint_v2: None,
                     disk_total: h.disk_total,
                     disk_available: h.disk_available,
                     max_seq: None,
@@ -398,6 +404,7 @@ async fn probe_peer(
                     auth: AuthState::AuthRejected,
                     node_id: h.node_id,
                     fingerprint: h.fingerprint,
+                    fingerprint_v2: None,
                     disk_total: h.disk_total,
                     disk_available: h.disk_available,
                     max_seq: None,
@@ -412,9 +419,19 @@ async fn probe_peer(
 /// Drift verdict for a contacted peer. A 403 on the ping IS the drift (the
 /// secret feeds both the SigV4 key and the fingerprint); otherwise compare
 /// fingerprints, with "unknown on either side" NOT flagged (don't cry wolf).
-fn contact_config_ok(info: &ContactInfo, my_fingerprint: &Option<String>) -> bool {
+fn contact_config_ok(
+    info: &ContactInfo,
+    my_fingerprint: &Option<String>,
+    my_fingerprint_v2: &Option<String>,
+) -> bool {
     if info.auth == AuthState::AuthRejected {
         return false;
+    }
+    // Both sides send v2: it covers everything v1 does plus `cluster_size`.
+    // Against a node of the previous version (no v2) fall back to v1, so a
+    // rolling upgrade never shows drift (TD-036).
+    if let (Some(mine), Some(theirs)) = (my_fingerprint_v2, &info.fingerprint_v2) {
+        return mine == theirs;
     }
     match (my_fingerprint, &info.fingerprint) {
         (Some(mine), Some(theirs)) => mine == theirs,
@@ -702,6 +719,7 @@ mod tests {
             node_id: "n2".to_string(),
             auth,
             fingerprint: Some("ab12cd34".to_string()),
+            fingerprint_v2: None,
             disk_total: Some(100),
             disk_available: Some(40),
             max_seq: Some(3),
@@ -711,7 +729,7 @@ mod tests {
     /// Applies a Contact outcome the way the probe loop does (kept in sync by
     /// the emit tests below — this is the integration step distilled).
     fn integrate_contact(ps: &mut ProbeState, info: ContactInfo, now: DateTime<Utc>) {
-        let config_ok = contact_config_ok(&info, &Some("ab12cd34".to_string()));
+        let config_ok = contact_config_ok(&info, &Some("ab12cd34".to_string()), &None);
         ps.consecutive_failures = 0;
         ps.last_contact = Some(now);
         ps.node_id = Some(info.node_id.clone());
@@ -796,13 +814,38 @@ mod tests {
     #[test]
     fn fingerprint_mismatch_flags_drift() {
         let info = contacted(AuthState::Proven);
-        assert!(contact_config_ok(&info, &Some("ab12cd34".to_string())));
-        assert!(!contact_config_ok(&info, &Some("ffffffff".to_string())));
+        let v1 = Some("ab12cd34".to_string());
+        assert!(contact_config_ok(&info, &v1, &None));
+        assert!(!contact_config_ok(&info, &Some("ffffffff".to_string()), &None));
         // Unknown on either side: not flagged (don't cry wolf).
-        assert!(contact_config_ok(&info, &None));
+        assert!(contact_config_ok(&info, &None, &None));
         let mut anon = contacted(AuthState::Proven);
         anon.fingerprint = None;
-        assert!(contact_config_ok(&anon, &Some("ab12cd34".to_string())));
+        assert!(contact_config_ok(&anon, &v1, &None));
+    }
+
+    #[test]
+    fn cluster_size_drift_is_flagged_between_nodes_that_send_v2() {
+        // Same v1 (same quorum), different v2 (different cluster_size).
+        let v1 = Some("ab12cd34".to_string());
+        let mut peer = contacted(AuthState::Proven);
+        peer.fingerprint_v2 = Some("0000000000000003".to_string());
+        assert!(contact_config_ok(&peer, &v1, &Some("0000000000000003".to_string())));
+        assert!(!contact_config_ok(&peer, &v1, &Some("0000000000000002".to_string())));
+    }
+
+    #[test]
+    fn a_node_of_the_previous_version_is_compared_on_v1_only() {
+        // Rolling upgrade: the peer sends no v2, so a v2 we hold is not used
+        // against it and a matching v1 means aligned; a differing v1 still drifts.
+        let peer = contacted(AuthState::Proven);
+        let mine_v2 = Some("0000000000000003".to_string());
+        assert!(contact_config_ok(&peer, &Some("ab12cd34".to_string()), &mine_v2));
+        assert!(!contact_config_ok(&peer, &Some("ffffffff".to_string()), &mine_v2));
+        // And the other way round: we hold no v2, the peer does.
+        let mut newer = contacted(AuthState::Proven);
+        newer.fingerprint_v2 = Some("0000000000000003".to_string());
+        assert!(contact_config_ok(&newer, &Some("ab12cd34".to_string()), &None));
     }
 
     // --- end-to-end probe against a fake peer (pins the wire contract) -------

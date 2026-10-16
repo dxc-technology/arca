@@ -250,6 +250,14 @@ async fn async_main(cli: Cli) -> Result<()> {
                     &c.secret,
                     master_key_id.as_deref(),
                 ));
+                cstate.set_config_fingerprint_v2(arca_core::cluster::config_fingerprint_v2(
+                    &c.cluster_id,
+                    mode,
+                    c.write_quorum(),
+                    c.cluster_size,
+                    &c.secret,
+                    master_key_id.as_deref(),
+                ));
             }
 
             // Captured before the key is moved into the EncryptingBlobStore, so

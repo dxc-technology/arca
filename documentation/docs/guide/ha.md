@@ -224,7 +224,7 @@ With full replication every node holds a complete copy, so the cluster can only 
 
 A symmetric cluster only works if the alignment-critical config is identical on every node, and the dangerous mismatches are *silent*: a wrong `secret` lets a node look alive while every replication request 403s; a different encryption master key makes replicated blobs unreadable on the peer. So nodes actively check it.
 
-Each node computes a **fingerprint** (a one-way hash) of the fields that must match: `cluster_id`, `mode`, the write quorum derived from `cluster_size` (quorum mode only), `secret`, and the encryption master-key id. It exchanges it on the **authenticated ping** (not the public health: a public fingerprint would hand an attacker an offline brute-force oracle for the secret). A *wrong-secret* node cannot even answer the ping — its `403` is itself the drift signal, and its identity is recovered from the public health so the operator sees *who* is misaligned. On a mismatch:
+Each node computes a **fingerprint** (a one-way hash) of the fields that must match: `cluster_id`, `mode`, `cluster_size` and the write quorum derived from it (quorum mode only: in `available` mode `cluster_size` has no effect, so it is not compared), `secret`, and the encryption master-key id. It exchanges it on the **authenticated ping** (not the public health: a public fingerprint would hand an attacker an offline brute-force oracle for the secret). A *wrong-secret* node cannot even answer the ping — its `403` is itself the drift signal, and its identity is recovered from the public health so the operator sees *who* is misaligned. On a mismatch:
 
 - it **logs a `WARN`** naming the offending peer (once, on transition — not every tick);
 - the console **Cluster Topology** card shows an amber warning banner and an alert icon on the mismatched node;
@@ -233,8 +233,8 @@ Each node computes a **fingerprint** (a one-way hash) of the fields that must ma
 
 The cluster does **not** refuse to start or auto-isolate the peer's process — a node can't know its peers' config at startup, and one misconfigured node shouldn't take down the healthy ones. It surfaces the problem loudly and keeps running; you fix the config and the warning clears on its own. (Fields that legitimately differ per node — port, `advertise_addr`, `node_id`, seeds, intervals, storage backend — are deliberately excluded from the fingerprint.)
 
-!!! warning "`cluster_size` itself is not in the fingerprint"
-    The fingerprint hashes the derived write quorum (`floor(cluster_size/2) + 1`), not `cluster_size`. A `cluster_size` mismatch is therefore detected only when it changes the quorum (3 against 5, say). Between an even size and the next odd one (2 and 3, 4 and 5, 6 and 7) the quorum is the same and the mismatch goes **unflagged**; in `available` mode `cluster_size` is never compared (it has no effect there). Tracked as TD-036 in [Technical Debt](../tech-debt.md); see the [resize runbook](#resizing-the-cluster) for what this means in practice.
+!!! note "Rolling upgrade from a version before the `cluster_size` check"
+    Nodes that predate this check hash the write quorum but not `cluster_size`. To keep a rolling upgrade free of false drift (a drifted peer is excluded from the write quorum), every node sends both its previous fingerprint and a new one that adds `cluster_size`, and compares the new one only with a peer that sends it. While old and new nodes are mixed, a `cluster_size` mismatch is therefore caught only between the upgraded ones; once every node is upgraded it is caught everywhere.
 
 ## Production deployment
 
@@ -318,7 +318,7 @@ Restoring rewinds the node's write cursor (`seq`), and the peers' incremental sy
 1. Stop all nodes (or accept a write outage for the duration).
 2. Set the new `cluster_size` in the config of **every** node, existing and new — byte-identical as always.
 3. Start all nodes (new ones with empty disks join exactly like a [replacement](#replacing-a-dead-node)).
-4. Check `cluster_size` on every node by hand before reopening traffic. Drift detection flags a node missed in step 2 **only if** its old size gives a different write quorum (3 to 5, for example). For a resize between an even size and the next odd one (2 and 3, 4 and 5) the quorum does not change and a missed node is **not** flagged (TD-036, see [Config-drift detection](#config-drift-detection)). After a grow the missed node still betrays itself, because it sees more eligible nodes than its stale `cluster_size` and reports `size_exceeded` (refusing writes); after a shrink nothing signals it.
+4. Check `cluster_size` on every node by hand before reopening traffic. Drift detection flags a node missed in step 2 (its `cluster_size` differs), see [Config-drift detection](#config-drift-detection). After a grow the missed node also betrays itself, because it sees more eligible nodes than its stale `cluster_size` and reports `size_exceeded` (refusing writes).
 
 Shrinking follows the same shape: stop, lower `cluster_size` everywhere, remove the retired nodes' configs from the seed list (static discovery), start. Wipe retired machines — see the replacement runbook's note 4.
 

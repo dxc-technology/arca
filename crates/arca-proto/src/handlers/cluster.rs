@@ -105,6 +105,7 @@ pub async fn ping(
         status: "ok".to_string(),
         node_id: cluster.node_id().to_string(),
         config_fingerprint: cluster.config_fingerprint(),
+        config_fingerprint_v2: cluster.config_fingerprint_v2(),
         disk_total,
         disk_available,
         max_seq,

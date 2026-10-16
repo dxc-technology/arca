@@ -128,7 +128,7 @@ Only eligible nodes count, so an unauthenticated stranger cannot close the gate 
 
 **Alternatives rejected.** Refusing to start, or isolating the drifted peer's process: a node cannot know its peers' configuration at startup, and one misconfigured node must not take down the healthy ones. The cluster surfaces the problem loudly and keeps running.
 
-**Where in the code.** `PeerNode::eligible` and `config_fingerprint` in `crates/arca-core/src/cluster.rs`; `contact_config_ok` and the probe verdicts in `crates/arca-server/src/cluster/membership.rs`. The fingerprint covers `cluster_id`, `mode`, the write quorum, the secret and the master-key id; it does not include `cluster_size` itself (TD-036 in [Technical Debt](../tech-debt.md)).
+**Where in the code.** `PeerNode::eligible` and `config_fingerprint` in `crates/arca-core/src/cluster.rs`; `contact_config_ok` and the probe verdicts in `crates/arca-server/src/cluster/membership.rs`. The fingerprint covers `cluster_id`, `mode`, the write quorum, `cluster_size` (quorum mode only), the secret and the master-key id. The ping carries two values: the original fingerprint, which a node of an older version still compares, and `config_fingerprint_v2`, which adds `cluster_size` and is compared only with a peer that sends it, so a rolling upgrade shows no drift.
 
 **Since.** v0.26.0.
 

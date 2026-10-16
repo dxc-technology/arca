@@ -127,6 +127,12 @@ pub struct ClusterPingResponse {
     /// Fingerprint of the cluster-alignment-critical config (drift detection).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub config_fingerprint: Option<String>,
+    /// [`config_fingerprint_v2`]: the same fields plus `cluster_size` (quorum
+    /// mode). Sent next to the v1 value, which stays in `config_fingerprint`
+    /// so a node of the previous version keeps matching its peers while a
+    /// rolling upgrade is under way (TD-036). Absent from a v1-only node.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_fingerprint_v2: Option<String>,
     /// This node's total disk capacity (bytes); peers track the cluster minimum.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub disk_total: Option<u64>,
@@ -158,15 +164,51 @@ pub fn config_fingerprint(
     secret: &str,
     master_key_id: Option<&str>,
 ) -> String {
+    fingerprint_hash(
+        b"arca-cluster-cfg-v1",
+        [
+            cluster_id,
+            mode,
+            &write_quorum.map(|q| q.to_string()).unwrap_or_default(),
+            secret,
+            master_key_id.unwrap_or("none"),
+        ],
+    )
+}
+
+/// [`config_fingerprint`] plus `cluster_size` (TD-036), under its own domain
+/// tag. `cluster_size` counts only when `write_quorum` is `Some`, i.e. in
+/// quorum mode: in `available` mode the setting has no effect, so two nodes
+/// that differ on it are aligned. The v1 value stays in the ping next to this
+/// one; a node compares v2 only with a peer that sends v2 (see
+/// `contact_config_ok` in the membership manager), so a rolling upgrade shows
+/// no drift.
+pub fn config_fingerprint_v2(
+    cluster_id: &str,
+    mode: &str,
+    write_quorum: Option<u32>,
+    cluster_size: Option<u32>,
+    secret: &str,
+    master_key_id: Option<&str>,
+) -> String {
+    let size = write_quorum.and(cluster_size);
+    fingerprint_hash(
+        b"arca-cluster-cfg-v2",
+        [
+            cluster_id,
+            mode,
+            &write_quorum.map(|q| q.to_string()).unwrap_or_default(),
+            &size.map(|n| n.to_string()).unwrap_or_default(),
+            secret,
+            master_key_id.unwrap_or("none"),
+        ],
+    )
+}
+
+fn fingerprint_hash<'a>(domain: &[u8], parts: impl IntoIterator<Item = &'a str>) -> String {
     let mut h = Sha256::new();
-    h.update(b"arca-cluster-cfg-v1");
-    for part in [
-        cluster_id,
-        mode,
-        &write_quorum.map(|q| q.to_string()).unwrap_or_default(),
-        secret,
-        master_key_id.unwrap_or("none"),
-    ] {
+    h.update(domain);
+    for part in parts {
         h.update(b"\x1f");
         h.update(part.as_bytes());
     }
@@ -1473,6 +1515,8 @@ pub struct ClusterState {
     /// set (e.g. before the master key is resolved). Peers' fingerprints are
     /// compared against this to flag config drift.
     config_fingerprint: RwLock<Option<String>>,
+    /// This node's own [`config_fingerprint_v2`], set next to the v1 value.
+    config_fingerprint_v2: RwLock<Option<String>>,
     /// Tombstone-GC liveness guard: set by the anti-entropy worker while it is
     /// skipping tombstone GC because a known peer is unseen beyond the grace
     /// window.
@@ -1501,6 +1545,7 @@ impl ClusterState {
             peers: RwLock::new(Vec::new()),
             local_endpoint: RwLock::new(None),
             config_fingerprint: RwLock::new(None),
+            config_fingerprint_v2: RwLock::new(None),
             tombstone_gc_blocked: AtomicBool::new(false),
             sync: RwLock::new(std::collections::HashMap::new()),
         }
@@ -1519,6 +1564,22 @@ impl ClusterState {
         self.config_fingerprint
             .read()
             .expect("cluster config_fingerprint lock poisoned")
+            .clone()
+    }
+
+    /// Records this node's own [`config_fingerprint_v2`] (set once at startup).
+    pub fn set_config_fingerprint_v2(&self, fingerprint: impl Into<String>) {
+        *self
+            .config_fingerprint_v2
+            .write()
+            .expect("cluster config_fingerprint_v2 lock poisoned") = Some(fingerprint.into());
+    }
+
+    /// This node's own [`config_fingerprint_v2`], if set.
+    pub fn config_fingerprint_v2(&self) -> Option<String> {
+        self.config_fingerprint_v2
+            .read()
+            .expect("cluster config_fingerprint_v2 lock poisoned")
             .clone()
     }
 
@@ -2272,6 +2333,46 @@ mod tests {
     }
 
     #[test]
+    fn config_fingerprint_v1_is_unchanged() {
+        // A node of the previous version must keep matching, so the value is
+        // pinned. Computed outside the Rust code: SHA-256 over the domain tag
+        // and each field prefixed with 0x1f, first 8 bytes in hex.
+        assert_eq!(
+            config_fingerprint("c1", "quorum", Some(2), "secret", Some("ab12cd34")),
+            "6adb85362bac4916"
+        );
+    }
+
+    #[test]
+    fn config_fingerprint_v2_sees_cluster_size_in_quorum_mode() {
+        let f = |size| config_fingerprint_v2("c1", "quorum", Some(2), size, "secret", Some("ab12cd34"));
+        // Sizes 2 and 3 share a write quorum (2), which is all v1 hashes.
+        assert_ne!(f(Some(2)), f(Some(3)));
+        assert_eq!(f(Some(3)), f(Some(3)));
+        // A different domain tag: never equal to the v1 value.
+        assert_ne!(
+            f(Some(3)),
+            config_fingerprint("c1", "quorum", Some(2), "secret", Some("ab12cd34"))
+        );
+    }
+
+    #[test]
+    fn config_fingerprint_v2_ignores_cluster_size_in_available_mode() {
+        // `cluster_size` has no effect in available mode: not drift.
+        let f = |size| config_fingerprint_v2("c1", "available", None, size, "s", None);
+        assert_eq!(f(None), f(Some(3)));
+        assert_eq!(f(Some(3)), f(Some(5)));
+    }
+
+    #[test]
+    fn config_fingerprint_v2_is_still_field_sensitive() {
+        let base = config_fingerprint_v2("c1", "quorum", Some(2), Some(3), "secret", Some("ab12cd34"));
+        assert_ne!(base, config_fingerprint_v2("c2", "quorum", Some(2), Some(3), "secret", Some("ab12cd34")));
+        assert_ne!(base, config_fingerprint_v2("c1", "quorum", Some(2), Some(3), "other", Some("ab12cd34")));
+        assert_ne!(base, config_fingerprint_v2("c1", "quorum", Some(2), Some(3), "secret", None));
+    }
+
+    #[test]
     fn config_fingerprint_available_ignores_cluster_size() {
         // In available mode write_quorum is None regardless of cluster_size, so two
         // available nodes with different cluster_size still align.
@@ -2683,6 +2784,7 @@ mod tests {
             status: "ok".to_string(),
             node_id: "n1".to_string(),
             config_fingerprint: Some("ab12cd34".to_string()),
+            config_fingerprint_v2: Some("0123456789abcdef".to_string()),
             disk_total: Some(100),
             disk_available: Some(40),
             max_seq: 7,
@@ -2693,6 +2795,13 @@ mod tests {
         assert_eq!(back.node_id, "n1");
         assert_eq!(back.max_seq, 7);
         assert_eq!(back.nonce_mac.as_deref(), Some("deadbeef"));
+        assert_eq!(back.config_fingerprint_v2.as_deref(), Some("0123456789abcdef"));
+        // A node of the previous version sends no v2 (TD-036).
+        let v1_only: ClusterPingResponse = serde_json::from_str(
+            r#"{"status":"ok","node_id":"n3","config_fingerprint":"ab12cd34","max_seq":1}"#,
+        )
+        .unwrap();
+        assert!(v1_only.config_fingerprint_v2.is_none());
         // Additive wire change (decision H10): a minimal body still parses.
         let minimal: ClusterPingResponse =
             serde_json::from_str(r#"{"status":"ok","node_id":"n2"}"#).unwrap();
