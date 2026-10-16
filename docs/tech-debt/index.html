@@ -1657,14 +1657,6 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>crates/arca-server/src/worker.rs</code> (metrics), <code>console/</code></td>
 </tr>
 <tr>
-<td>TD-053</td>
-<td>An abort racing CompleteMultipartUpload deletes the completed object's data</td>
-<td><code>CompleteMultipartUpload</code> commits the object row (<code>put_object_if</code>) and only afterwards consumes the upload (<code>delete_multipart_upload</code>), with no check in the same transaction that the upload still exists; for the byte-copy fallback the window is as long as the copy. An <code>AbortMultipartUpload</code>, a lifecycle <code>AbortIncompleteMultipartUpload</code> or <code>arca fsck --repair --abort-uploads-older-than</code> landing in that window deletes the parts, so the freshly completed object (a composite pointing at those parts) loses its data. Pre-existing; found in the review of <code>fsck --repair</code> (2026-10-15), whose abort targets exactly the old uploads a resuming client may be completing. Documented in <code>guide/cli.md</code> (abort only uploads well past the slowest upload, or with the server stopped).</td>
-<td>Commit the object row and delete the upload rows in ONE transaction that fails (and rolls back) when the upload is gone, in <code>SqliteStore</code> and <code>PgStore</code>, and make abort take the same lock, so either Complete or abort wins and the loser leaves the parts alone; replicate it as one operation in the cluster decorator. Integration test: abort racing a slow Complete never leaves an object without its parts.</td>
-<td>Documented operator caution</td>
-<td><code>crates/arca-proto/src/handlers/multipart.rs</code> (<code>put_object_if</code> ... <code>delete_multipart_upload</code>), <code>crates/arca-storage/src/sqlite/metadata.rs</code>, <code>crates/arca-storage/src/pg/metadata.rs</code>, <code>crates/arca-server/src/cluster/cluster_meta.rs</code></td>
-</tr>
-<tr>
 <td>TD-054</td>
 <td>A version-id-marker deleted between two pages skips the rest of its key</td>
 <td><code>list_object_versions</code> looks the marker version up to find where to resume inside <code>key_marker</code>; if that version was deleted (or tombstoned) since the previous page, the lookup fails and the listing resumes after the whole key, so the key's remaining versions are skipped. Affects S3 ListObjectVersions and the internal <code>list_all_object_versions</code> (re-encryption scan, <code>arca fsck</code>) under concurrent deletes only, e.g. lifecycle noncurrent expiry.</td>
@@ -1824,6 +1816,12 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>TD-049</td>
 <td>The server panicked at startup without CA certificates</td>
 <td>The webhook and Elasticsearch connectors now build their HTTP client with <code>build_http_client</code> (<code>crates/arca-server/src/connector/mod.rs</code>), which returns an error instead of panicking and logs one startup warning per connector; the connector keeps the error and fails every delivery and connection test with <code>HTTP client unavailable: &lt;cause&gt;</code>, so a host without a CA bundle (e.g. the release binary in a <code>FROM scratch</code> image) still starts. Verified by starting the server with <code>/etc/ssl/certs</code> hidden; unit tests inject a failed client into both connectors</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-053</td>
+<td>An abort racing CompleteMultipartUpload deleted the completed object's data</td>
+<td><code>MetadataStore::complete_multipart_object</code> installs the object row (the same CAS, versioning and <code>is_latest</code> rules as <code>put_object_if</code>, shared through <code>install_object</code>) and consumes the upload and its parts in ONE transaction that fails with <code>NoSuchUpload</code>, writing nothing, when the upload is gone; the handler discards only the assembled blob and its sidecar then, never the parts, which are the abort's to delete. Whichever transaction commits first wins: an abort that wins leaves the Complete with no object row (so an object can never point at deleted parts), a Complete that wins leaves the abort with no parts to delete (<code>delete_multipart_upload</code> returns none). SQLite serializes on its writer connection; PostgreSQL takes the upload row with <code>SELECT ... FOR UPDATE</code> as the first statement of Complete and deletes the upload row before its parts in <code>take_upload</code> (parts are only read through the <code>DELETE ... RETURNING</code>), so under READ COMMITTED the second transaction finds nothing. A refused precondition leaves the upload and parts untouched, so the client can retry. The cluster decorator replicates it as the two messages peers already know (the object row, then the upload tombstone and <code>MultipartDelete</code>). <strong>Limit:</strong> only the local commit is atomic; an abort landing on ANOTHER node at the same moment is arbitrated by anti-entropy, as for TD-025. Tests: seven store tests (<code>complete_multipart_object_*</code>, <code>abort_after_complete_finds_no_parts_to_delete</code>), two cluster decorator tests, and the stress test <code>test_multipart_abort_race.py</code> (also run by <code>bin/test postgres</code>), which sweeps the abort across the life of a Complete and fails on the old code (<code>InternalError</code> reading the "completed" object)</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
