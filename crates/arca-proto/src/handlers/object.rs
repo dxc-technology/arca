@@ -1343,6 +1343,17 @@ async fn upload_part_copy(
         }
     };
 
+    // Copy-source conditional headers, evaluated against the source exactly as
+    // CopyObject does, before any source byte is read.
+    if let Some(resp) = check_copy_source_conditionals(
+        request.headers(),
+        &src_record.etag,
+        &src_record.last_modified,
+        &resource,
+    ) {
+        return resp;
+    }
+
     // Parse the copy-source-range if provided.
     let byte_range = match copy_range {
         Some(ref range_str) => {
