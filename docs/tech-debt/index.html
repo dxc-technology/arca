@@ -1553,14 +1553,6 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>crates/arca-server/src/cluster/cluster_meta.rs</code>, <code>crates/arca-core/src/cluster.rs</code> (<code>ControlSnapshot</code>), <code>crates/arca-storage/src/{sqlite,pg}/metadata.rs</code></td>
 </tr>
 <tr>
-<td>TD-035</td>
-<td><code>UploadPartCopy</code> ignores copy-source conditionals</td>
-<td><code>check_copy_source_conditionals</code> (<code>x-amz-copy-source-if-match</code>, <code>-if-none-match</code>, <code>-if-modified-since</code>, <code>-if-unmodified-since</code>) is called only from <code>copy_object</code>; <code>upload_part_copy</code> never evaluates them, so a part is copied even when the precondition fails.</td>
-<td>Call the same check in <code>upload_part_copy</code> before reading the source. Integration test for each header.</td>
-<td>None</td>
-<td><code>crates/arca-proto/src/handlers/object.rs</code> (<code>upload_part_copy</code>)</td>
-</tr>
-<tr>
 <td>TD-036</td>
 <td>Cluster drift fingerprint ignores <code>cluster_size</code></td>
 <td><code>config_fingerprint</code> hashes <code>cluster_id</code>, <code>mode</code>, <code>write_quorum</code>, <code>secret</code> and the master-key id, not <code>cluster_size</code>. <code>write_quorum</code> (<code>n/2+1</code>, quorum mode only) catches some resizes but not 2↔3 or 4↔5, and in <code>available</code> mode a differing <code>cluster_size</code> is never caught. <code>guide/ha.md</code> (drift detection, resize runbook step 3) says the fingerprint includes <code>cluster_size</code>.</td>
@@ -1820,6 +1812,12 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>TD-054</td>
 <td>A version-id-marker deleted between two pages skipped the rest of its key</td>
 <td><code>MetadataStore::list_object_versions_from</code> takes a <code>VersionPosition</code> (<code>last_modified</code>, version id) as a value instead of looking the marker version up, so a page boundary stays valid when its version is deleted. The internal full listing (<code>list_all_object_versions</code>: re-encryption scan, <code>arca fsck</code>) pages with the position of the previous page's last row and can no longer skip a version. The S3 <code>list_object_versions</code> is a default trait method that resolves the marker through <code>get_object_version</code> and refuses a marker that does not exist (never did, or deleted since the previous page) with <code>InvalidArgument</code> (<code>Invalid version id specified</code>) instead of silently resuming after the whole key: version ids are random UUIDs with no timestamp, so the position of a deleted marker cannot be reconstructed, and a loud error lets the client restart. <strong>Behaviour change:</strong> a ListObjectVersions with an unknown <code>version-id-marker</code> used to answer 200 with the rest of the listing and now answers 400. Tests: five store tests (deleted marker position resumes, no position starts after the key, null version, unknown and deleted marker refused), two S3 integration tests in <code>test_versioning.py</code> (also run by <code>bin/test postgres</code>)</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-035</td>
+<td><code>UploadPartCopy</code> ignored copy-source conditionals</td>
+<td><code>upload_part_copy</code> now calls <code>check_copy_source_conditionals</code> (<code>x-amz-copy-source-if-match</code>, <code>-if-none-match</code>, <code>-if-modified-since</code>, <code>-if-unmodified-since</code>) right after resolving the source and before any source byte is read, as <code>copy_object</code> does; a failed condition answers <code>412 PreconditionFailed</code> and stores no part. Tests: <code>test_copy_source_conditions.py</code>, a passing and a failing case for each header on both CopyObject and UploadPartCopy (the four failing UploadPartCopy cases failed before the fix)</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
