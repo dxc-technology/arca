@@ -36,7 +36,8 @@ size, oldest); abort them with `arca fsck --repair --abort-uploads-older-than <d
 with the same notion of "referenced" as GC. Use it to measure the backlog before and after a
 reclamation run. On large stores it walks every blob file and loads the full database, so it
 is slow but safe. `arca fsck --repair` can also move orphans to `lost+found` instead of
-deleting them. See the [CLI reference](../guide/cli.md#arca-fsck).
+deleting them. It also lists the files under `blobs/` that Arca did not write
+(`FOREIGN_FILE`, with sizes), which GC never touches unless you pass `--delete-foreign-files`. See the [CLI reference](../guide/cli.md#arca-fsck).
 
 ## Reclaiming orphans
 

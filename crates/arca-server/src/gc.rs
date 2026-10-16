@@ -39,9 +39,20 @@ pub struct GcSummary {
     pub reclaimed_bytes: u64,
     pub unfinished_uploads: usize,
     pub unfinished_bytes: u64,
+    /// Files under `blobs/` that Arca did not write, and their size.
+    pub foreign_files: usize,
+    pub foreign_bytes: u64,
+    /// Foreign files actually deleted (`--delete-foreign-files`).
+    pub foreign_deleted: usize,
 }
 
-pub async fn run_gc(config: &Config, dry_run: bool, grace: Duration, verbose: bool) -> Result<GcSummary> {
+pub async fn run_gc(
+    config: &Config,
+    dry_run: bool,
+    grace: Duration,
+    verbose: bool,
+    delete_foreign: bool,
+) -> Result<GcSummary> {
     let blobs_dir = config.storage.blobs_dir();
     if !blobs_dir.exists() {
         anyhow::bail!("Blobs directory does not exist: {}", blobs_dir.display());
@@ -145,6 +156,58 @@ pub async fn run_gc(config: &Config, dry_run: bool, grace: Duration, verbose: bo
         );
     }
 
+    // Not garbage Arca can vouch for: a stray file under blobs/ may be someone's
+    // data, so it is only removed on explicit request, and only when older than
+    // the grace period (the same rule as every other file).
+    let foreign = crate::fsck::find_foreign_files(&blobs_dir).await.context("scanning for foreign files")?;
+    summary.foreign_files = foreign.len();
+    summary.foreign_bytes = foreign.iter().map(|f| f.size).sum();
+    if !foreign.is_empty() {
+        let now = std::time::SystemTime::now();
+        let expired: Vec<_> = foreign
+            .iter()
+            .filter(|f| now.duration_since(f.modified).is_ok_and(|age| age >= grace))
+            .collect();
+        if verbose || delete_foreign {
+            for f in &foreign {
+                println!("  foreign {} ({})", f.path.display(), crate::fsck::human_bytes(f.size));
+            }
+        }
+        if !delete_foreign {
+            println!(
+                "{} file(s) under {} are not Arca blobs and use {}: left alone. \
+                 See them with arca fsck; --reclaim --delete-foreign-files removes them.",
+                summary.foreign_files,
+                blobs_dir.display(),
+                crate::fsck::human_bytes(summary.foreign_bytes)
+            );
+        } else if dry_run {
+            println!(
+                "DRY RUN: {} foreign file(s) would be deleted, freeing {}.",
+                expired.len(),
+                crate::fsck::human_bytes(expired.iter().map(|f| f.size).sum())
+            );
+        } else {
+            for f in expired {
+                match std::fs::remove_file(&f.path) {
+                    Ok(()) => {
+                        summary.foreign_deleted += 1;
+                        summary.reclaimed_bytes += f.size;
+                    }
+                    Err(e) => {
+                        summary.failed += 1;
+                        eprintln!("WARNING: failed to delete foreign file {}: {}", f.path.display(), e);
+                    }
+                }
+            }
+            println!(
+                "Deleted {} foreign file(s) ({} kept: younger than the grace period).",
+                summary.foreign_deleted,
+                summary.foreign_files - summary.foreign_deleted
+            );
+        }
+    }
+
     if summary.unfinished_uploads > 0 {
         println!(
             "{} unfinished multipart upload(s) hold {}: not reclaimed, they are live until aborted. \
@@ -197,12 +260,12 @@ mod tests {
     #[tokio::test]
     async fn dry_run_counts_orphans_and_temp_files_and_deletes_nothing() {
         let f = fixture().await;
-        let orphan = f.fs.blob_path(&BlobId("aaaa".into()));
+        let orphan = f.fs.blob_path(&BlobId("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into()));
         let tmp = orphan.with_file_name("bbbb.tmp");
         write(&orphan);
         write(&tmp);
 
-        let s = run_gc(&f.config, true, Duration::ZERO, false).await.unwrap();
+        let s = run_gc(&f.config, true, Duration::ZERO, false, false).await.unwrap();
         assert_eq!((s.orphans, s.temp_files, s.reclaimed, s.temp_reclaimed), (1, 1, 0, 0));
         assert_eq!((s.reclaimable_bytes, s.reclaimed_bytes), (10, 0), "5-byte orphan + 5-byte temp file");
         assert!(orphan.exists() && tmp.exists());
@@ -211,13 +274,13 @@ mod tests {
     #[tokio::test]
     async fn reclaimed_bytes_count_the_orphan_sidecar_too() {
         let f = fixture().await;
-        let id = BlobId("aaaa".into());
+        let id = BlobId("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into());
         write(&f.fs.blob_path(&id));
         let sidecar = r#"{"bucket":"bucket","key":"k","size":5,"etag":"e","content_type":null,"last_modified":"t"}"#;
         std::fs::write(f.fs.sidecar_path(&id), sidecar).unwrap();
         let expected = 5 + sidecar.len() as u64;
 
-        let s = run_gc(&f.config, false, Duration::ZERO, false).await.unwrap();
+        let s = run_gc(&f.config, false, Duration::ZERO, false, false).await.unwrap();
         assert_eq!(s.reclaimed, 1);
         assert_eq!((s.reclaimable_bytes, s.reclaimed_bytes), (expected, expected), "blob + sidecar are both deleted");
         assert!(!f.fs.sidecar_path(&id).exists());
@@ -226,18 +289,18 @@ mod tests {
     #[tokio::test]
     async fn reclaim_deletes_orphans_and_old_temp_files_only() {
         let f = fixture().await;
-        let orphan = f.fs.blob_path(&BlobId("aaaa".into()));
+        let orphan = f.fs.blob_path(&BlobId("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into()));
         let tmp = orphan.with_file_name("bbbb.tmp");
         let rewrite = orphan.with_file_name("cccc.rewrite.tmp");
         write(&orphan);
         write(&tmp);
         write(&rewrite);
 
-        let young = run_gc(&f.config, false, Duration::from_secs(3600), false).await.unwrap();
+        let young = run_gc(&f.config, false, Duration::from_secs(3600), false, false).await.unwrap();
         assert_eq!((young.reclaimed, young.temp_reclaimed), (0, 0), "all younger than the grace");
         assert_eq!((young.reclaimable_bytes, young.reclaimed_bytes), (0, 0));
 
-        let s = run_gc(&f.config, false, Duration::ZERO, false).await.unwrap();
+        let s = run_gc(&f.config, false, Duration::ZERO, false, false).await.unwrap();
         assert_eq!((s.reclaimed, s.temp_reclaimed, s.failed), (1, 1, 0));
         assert_eq!((s.reclaimable_bytes, s.reclaimed_bytes), (10, 10), "the rewrite file is not counted");
         assert!(!orphan.exists() && !tmp.exists());
@@ -259,7 +322,7 @@ mod tests {
             })
             .await
             .unwrap();
-        let part = BlobId("dddd".into());
+        let part = BlobId("dddddddd-dddd-4ddd-8ddd-dddddddddddd".into());
         write(&f.fs.blob_path(&part));
         f.store
             .put_part(&PartRecord {
@@ -274,8 +337,41 @@ mod tests {
             .await
             .unwrap();
 
-        let s = run_gc(&f.config, false, Duration::ZERO, false).await.unwrap();
+        let s = run_gc(&f.config, false, Duration::ZERO, false, false).await.unwrap();
         assert_eq!((s.unfinished_uploads, s.unfinished_bytes, s.reclaimed), (1, 5, 0));
         assert!(f.fs.blob_path(&part).exists());
+    }
+
+    #[tokio::test]
+    async fn foreign_files_are_reported_and_kept_unless_asked() {
+        let f = fixture().await;
+        let blobs = f.config.storage.blobs_dir();
+        std::fs::write(blobs.join("huge.bin"), vec![0u8; 4096]).unwrap();
+        std::fs::write(blobs.join("backup.meta"), b"{}").unwrap();
+
+        // Neither the dry run nor a plain --reclaim touches them, and a stray
+        // ".meta" does not abort the scan.
+        let s = run_gc(&f.config, true, Duration::ZERO, false, true).await.unwrap();
+        assert_eq!((s.foreign_files, s.foreign_bytes), (2, 4098));
+        assert!(blobs.join("huge.bin").exists());
+        let s = run_gc(&f.config, false, Duration::ZERO, false, false).await.unwrap();
+        assert_eq!((s.foreign_files, s.foreign_deleted), (2, 0));
+        assert!(blobs.join("huge.bin").exists() && blobs.join("backup.meta").exists());
+
+        // Only --reclaim together with the explicit option deletes them.
+        let s = run_gc(&f.config, false, Duration::ZERO, false, true).await.unwrap();
+        assert_eq!((s.foreign_deleted, s.failed), (2, 0));
+        assert_eq!(s.reclaimed_bytes, 4098);
+        assert!(!blobs.join("huge.bin").exists() && !blobs.join("backup.meta").exists());
+    }
+
+    #[tokio::test]
+    async fn foreign_files_younger_than_the_grace_are_kept() {
+        let f = fixture().await;
+        let blobs = f.config.storage.blobs_dir();
+        std::fs::write(blobs.join("new.bin"), b"x").unwrap();
+        let s = run_gc(&f.config, false, Duration::from_secs(3600), false, true).await.unwrap();
+        assert_eq!(s.foreign_deleted, 0);
+        assert!(blobs.join("new.bin").exists());
     }
 }

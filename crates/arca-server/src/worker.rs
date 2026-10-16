@@ -1068,8 +1068,8 @@ mod tests {
             Arc::new(arca_storage::SqliteStore::open_in_memory().await.unwrap());
 
         // An orphan blob (no object row) with grace 0 → immediately eligible.
-        fs.write_raw(&BlobId("orphan".into()), one_chunk(b"x")).await.unwrap();
-        assert!(RawBlobOps::exists(fs.as_ref(), &BlobId("orphan".into())).await.unwrap());
+        fs.write_raw(&BlobId("0a0a0a0a-0a0a-40a0-80a0-0a0a0a0a0a0a".into()), one_chunk(b"x")).await.unwrap();
+        assert!(RawBlobOps::exists(fs.as_ref(), &BlobId("0a0a0a0a-0a0a-40a0-80a0-0a0a0a0a0a0a".into())).await.unwrap());
 
         let metrics = Arc::new(MetricsRegistry::new());
         let worker = spawn_blob_gc_worker(
@@ -1088,7 +1088,7 @@ mod tests {
         let mut reclaimed = false;
         for _ in 0..40 {
             tokio::time::sleep(Duration::from_millis(25)).await;
-            if !RawBlobOps::exists(fs.as_ref(), &BlobId("orphan".into())).await.unwrap()
+            if !RawBlobOps::exists(fs.as_ref(), &BlobId("0a0a0a0a-0a0a-40a0-80a0-0a0a0a0a0a0a".into())).await.unwrap()
                 && reclaim_count() > 0
             {
                 reclaimed = true;
@@ -1097,7 +1097,7 @@ mod tests {
         }
         drop(worker);
         assert!(
-            !RawBlobOps::exists(fs.as_ref(), &BlobId("orphan".into())).await.unwrap(),
+            !RawBlobOps::exists(fs.as_ref(), &BlobId("0a0a0a0a-0a0a-40a0-80a0-0a0a0a0a0a0a".into())).await.unwrap(),
             "the scheduled worker must reclaim the orphan blob"
         );
         assert!(reclaimed, "the reclaim metric must be recorded");

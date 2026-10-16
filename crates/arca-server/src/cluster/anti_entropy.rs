@@ -425,6 +425,10 @@ async fn fetch_and_store(
     for endpoint in peers {
         match client.fetch_blob(endpoint, blob_id).await {
             Ok((sidecar, stream)) => {
+                if !sidecar.has_valid_blob_refs() {
+                    tracing::warn!(blob_id = %blob_id.0, "blob repair: peer sidecar names an invalid part blob id");
+                    continue;
+                }
                 if sidecar.composite.is_none() {
                     if let Err(e) = raw.write_raw(blob_id, stream).await {
                         tracing::warn!(error = %e, blob_id = %blob_id.0, "blob repair: write_raw failed");
@@ -587,6 +591,16 @@ async fn apply_entries(
 ) -> (u64, Option<u64>) {
     let mut cursor = floor;
     for entry in entries {
+        if !entry.record.has_valid_blob_ref() {
+            // Corrupt or hostile row: it can never be applied, and retrying it
+            // would wedge the cursor behind it, so skip it.
+            tracing::warn!(
+                seq = entry.seq,
+                "anti-entropy: skipping a manifest row with an invalid blob id"
+            );
+            cursor = entry.seq;
+            continue;
+        }
         match metadata.apply_remote_object(&entry.record).await {
             Ok(()) => cursor = entry.seq,
             Err(e) => {
@@ -612,11 +626,17 @@ mod tests {
         Arc::new(arca_storage::SqliteStore::open_in_memory().await.unwrap())
     }
 
+    /// A valid, per-key blob id (the cluster boundary refuses anything else).
+    fn blob_id_for(key: &str) -> BlobId {
+        let n = key.bytes().fold(0u64, |a, b| a * 31 + u64::from(b));
+        BlobId(format!("00000000-0000-4000-8000-{n:012x}"))
+    }
+
     fn rec(key: &str, last_modified_secs: i64) -> ObjectRecord {
         ObjectRecord {
             bucket: "b".to_string(),
             key: key.to_string(),
-            blob_id: BlobId(format!("blob-{key}")),
+            blob_id: blob_id_for(key),
             size: 4,
             etag: "e".to_string(),
             content_type: None,
@@ -654,6 +674,24 @@ mod tests {
         assert_eq!(failed, None);
         assert!(m.get_object("b", "k1").await.unwrap().is_some());
         assert!(m.get_object("b", "k2").await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn apply_entries_skips_rows_with_an_invalid_blob_id() {
+        // TD-041: a peer row whose blob id is not a UUID must never be stored
+        // (it would later become a file name), and must not wedge the cursor.
+        let m = store().await;
+        m.create_bucket("b").await.unwrap();
+        let mut hostile = rec("evil", 1000);
+        hostile.blob_id = BlobId("../../etc/passwd".to_string());
+        let entries = vec![
+            ManifestEntry { seq: 1, record: hostile },
+            ManifestEntry { seq: 2, record: rec("good", 1000) },
+        ];
+        let (cursor, failed) = apply_entries(m.as_ref(), &entries, 0).await;
+        assert_eq!((cursor, failed), (2, None), "the cursor moves past the bad row");
+        assert!(m.get_object("b", "evil").await.unwrap().is_none());
+        assert!(m.get_object("b", "good").await.unwrap().is_some());
     }
 
     #[tokio::test]
@@ -772,49 +810,49 @@ mod tests {
         m.create_bucket("b").await.unwrap();
 
         // Referenced normal blob.
-        fs.write_raw(&BlobId("ref1".into()), one_chunk(b"x")).await.unwrap();
-        RawBlobOps::write_sidecar(&fs, &BlobId("ref1".into()), &plain_sidecar()).await.unwrap();
-        m.put_object(&obj_with_blob("k1", "ref1")).await.unwrap();
+        fs.write_raw(&BlobId("00000001-0000-4000-8000-000000000000".into()), one_chunk(b"x")).await.unwrap();
+        RawBlobOps::write_sidecar(&fs, &BlobId("00000001-0000-4000-8000-000000000000".into()), &plain_sidecar()).await.unwrap();
+        m.put_object(&obj_with_blob("k1", "00000001-0000-4000-8000-000000000000")).await.unwrap();
 
         // Orphan normal blob (no object row).
-        fs.write_raw(&BlobId("orphan1".into()), one_chunk(b"y")).await.unwrap();
-        RawBlobOps::write_sidecar(&fs, &BlobId("orphan1".into()), &plain_sidecar()).await.unwrap();
+        fs.write_raw(&BlobId("00000002-0000-4000-8000-000000000000".into()), one_chunk(b"y")).await.unwrap();
+        RawBlobOps::write_sidecar(&fs, &BlobId("00000002-0000-4000-8000-000000000000".into()), &plain_sidecar()).await.unwrap();
 
         // Live composite: part p1 kept alive by comp1 (which has an object row).
-        fs.write_raw(&BlobId("p1".into()), one_chunk(b"z")).await.unwrap();
+        fs.write_raw(&BlobId("00000003-0000-4000-8000-000000000000".into()), one_chunk(b"z")).await.unwrap();
         let comp1 = SidecarMeta {
             composite: Some(vec![CompositePart {
-                blob_id: BlobId("p1".into()),
+                blob_id: BlobId("00000003-0000-4000-8000-000000000000".into()),
                 plaintext_size: 1,
                 plaintext_etag: "e".into(),
                 encryption: None,
             }]),
             ..plain_sidecar()
         };
-        RawBlobOps::write_sidecar(&fs, &BlobId("comp1".into()), &comp1).await.unwrap();
-        m.put_object(&obj_with_blob("k2", "comp1")).await.unwrap();
+        RawBlobOps::write_sidecar(&fs, &BlobId("00000004-0000-4000-8000-000000000000".into()), &comp1).await.unwrap();
+        m.put_object(&obj_with_blob("k2", "00000004-0000-4000-8000-000000000000")).await.unwrap();
 
         // Orphan composite: part p2 kept alive ONLY by comp2, which has no row.
-        fs.write_raw(&BlobId("p2".into()), one_chunk(b"w")).await.unwrap();
+        fs.write_raw(&BlobId("00000005-0000-4000-8000-000000000000".into()), one_chunk(b"w")).await.unwrap();
         let comp2 = SidecarMeta {
             composite: Some(vec![CompositePart {
-                blob_id: BlobId("p2".into()),
+                blob_id: BlobId("00000005-0000-4000-8000-000000000000".into()),
                 plaintext_size: 1,
                 plaintext_etag: "e".into(),
                 encryption: None,
             }]),
             ..plain_sidecar()
         };
-        RawBlobOps::write_sidecar(&fs, &BlobId("comp2".into()), &comp2).await.unwrap();
+        RawBlobOps::write_sidecar(&fs, &BlobId("00000006-0000-4000-8000-000000000000".into()), &comp2).await.unwrap();
 
         // grace = 0 so freshly-written blobs are immediately eligible.
         crate::blob_gc::reclaim_blobs(m.as_ref(), &fs, Duration::ZERO).await;
 
-        assert!(fs.exists(&BlobId("ref1".into())).await.unwrap(), "referenced blob kept");
-        assert!(!fs.exists(&BlobId("orphan1".into())).await.unwrap(), "orphan blob reclaimed");
-        assert!(fs.exists(&BlobId("p1".into())).await.unwrap(), "live composite part kept");
+        assert!(fs.exists(&BlobId("00000001-0000-4000-8000-000000000000".into())).await.unwrap(), "referenced blob kept");
+        assert!(!fs.exists(&BlobId("00000002-0000-4000-8000-000000000000".into())).await.unwrap(), "orphan blob reclaimed");
+        assert!(fs.exists(&BlobId("00000003-0000-4000-8000-000000000000".into())).await.unwrap(), "live composite part kept");
         assert!(
-            !fs.exists(&BlobId("p2".into())).await.unwrap(),
+            !fs.exists(&BlobId("00000005-0000-4000-8000-000000000000".into())).await.unwrap(),
             "orphan composite's part reclaimed"
         );
     }
@@ -904,7 +942,7 @@ mod tests {
         assert!(cursor.is_some(), "budget exhausted mid-sweep → resumable cursor");
         let mut present = 0;
         for k in ["k1", "k2", "k3", "k4"] {
-            if fs.exists(&BlobId(format!("blob-{k}"))).await.unwrap() {
+            if fs.exists(&blob_id_for(k)).await.unwrap() {
                 present += 1;
             }
         }
@@ -915,7 +953,7 @@ mod tests {
         let cursor = repair_blobs(&client, m.as_ref(), &fs, &cluster, cursor, 2).await;
         assert_eq!(cursor.map(|c| c.0), None, "sweep completed");
         for k in ["k1", "k2", "k3", "k4"] {
-            assert!(fs.exists(&BlobId(format!("blob-{k}"))).await.unwrap(), "{k} repaired");
+            assert!(fs.exists(&blob_id_for(k)).await.unwrap(), "{k} repaired");
         }
     }
 
@@ -928,11 +966,11 @@ mod tests {
             .unwrap();
         let m = store().await;
 
-        fs.write_raw(&BlobId("young".into()), one_chunk(b"x")).await.unwrap();
-        RawBlobOps::write_sidecar(&fs, &BlobId("young".into()), &plain_sidecar()).await.unwrap();
+        fs.write_raw(&BlobId("00000007-0000-4000-8000-000000000000".into()), one_chunk(b"x")).await.unwrap();
+        RawBlobOps::write_sidecar(&fs, &BlobId("00000007-0000-4000-8000-000000000000".into()), &plain_sidecar()).await.unwrap();
 
         // Large grace: the just-written orphan is too young to reclaim.
         crate::blob_gc::reclaim_blobs(m.as_ref(), &fs, Duration::from_secs(3600)).await;
-        assert!(fs.exists(&BlobId("young".into())).await.unwrap());
+        assert!(fs.exists(&BlobId("00000007-0000-4000-8000-000000000000".into())).await.unwrap());
     }
 }

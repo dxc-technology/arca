@@ -125,6 +125,10 @@ pub struct FsckReport {
     pub stale_tmp_files: Vec<DiskFile>,
     pub rewrite_recovery_files: Vec<DiskFile>,
     pub checksum_errors: Vec<ChecksumError>,
+    /// Informational: files under `blobs/` that Arca did not write (the name
+    /// is not a blob id), so they are neither blobs nor repaired. Listed
+    /// because they take space `du` shows but no Arca figure explains.
+    pub foreign_files: Vec<DiskFile>,
     /// Informational: valid state, not an inconsistency.
     pub unfinished_uploads: Vec<UnfinishedUpload>,
     /// Files skipped because they are younger than the grace period.
@@ -365,6 +369,7 @@ pub async fn scan(
         }
     }
     report.rewrite_recovery_files = inv.recovery_tmp.clone();
+    report.foreign_files = inv.foreign.clone();
 
     if opts.verify_checksums {
         report.checksum_errors = check_checksums(&live, &sidecars, &inv.blobs).await;
@@ -472,7 +477,13 @@ fn sort_report(r: &mut FsckReport) {
     r.stale_tmp_files.sort_by(|a, b| a.path.cmp(&b.path));
     r.rewrite_recovery_files.sort_by(|a, b| a.path.cmp(&b.path));
     r.checksum_errors.sort_by(|a, b| a.blob_id.0.cmp(&b.blob_id.0));
+    r.foreign_files.sort_by(|a, b| a.path.cmp(&b.path));
     r.unfinished_uploads.sort_by_key(|u| u.initiated_at);
+}
+
+/// The files under `blobs/` that Arca did not write, as `arca fsck` sees them.
+pub(crate) async fn find_foreign_files(blobs_dir: &Path) -> Result<Vec<DiskFile>> {
+    Ok(Inventory::walk(blobs_dir).await?.foreign)
 }
 
 /// The files of the blobs directory, by kind.
@@ -482,6 +493,8 @@ struct Inventory {
     sidecars: HashMap<BlobId, DiskFile>,
     reclaimable_tmp: Vec<DiskFile>,
     recovery_tmp: Vec<DiskFile>,
+    /// Files whose name is not a blob id (nor a temp file name).
+    foreign: Vec<DiskFile>,
 }
 
 impl Inventory {
@@ -517,15 +530,21 @@ impl Inventory {
                 match temp_file_kind(&name) {
                     Some(TempFileKind::Reclaimable) => inv.reclaimable_tmp.push(file),
                     Some(TempFileKind::RewriteRecovery) => inv.recovery_tmp.push(file),
-                    None => match name.strip_suffix(".meta") {
-                        Some(id) => {
-                            inv.sidecars.insert(BlobId(id.to_string()), file);
+                    None => {
+                        let (id, is_sidecar) = match name.strip_suffix(".meta") {
+                            Some(id) => (BlobId(id.to_string()), true),
+                            // Anything else is a blob: its file name is its id.
+                            None => (BlobId(name), false),
+                        };
+                        if !id.is_valid() {
+                            // Not written by Arca (TD-041: never treat it as a blob).
+                            inv.foreign.push(file);
+                        } else if is_sidecar {
+                            inv.sidecars.insert(id, file);
+                        } else {
+                            inv.blobs.insert(id, file);
                         }
-                        // Anything else is a blob: its file name is its id.
-                        None => {
-                            inv.blobs.insert(BlobId(name), file);
-                        }
-                    },
+                    }
                 }
             }
         }
@@ -686,6 +705,13 @@ fn print_report(report: &FsckReport, opts: &FsckOptions) {
     for e in &report.checksum_errors {
         println!("CORRUPT  {}  expected={}, actual={}", e.blob_id, e.expected, e.actual);
     }
+    for f in &report.foreign_files {
+        println!(
+            "FOREIGN_FILE  {}  {}  not a file Arca writes (informational: never repaired; `arca gc --reclaim --delete-foreign-files` removes it)",
+            f.path.display(),
+            human_bytes(f.size)
+        );
+    }
     for u in &report.unfinished_uploads {
         println!(
             "UNFINISHED_UPLOAD  {}/{}  upload {} initiated {}, {} part(s), {}",
@@ -715,6 +741,7 @@ fn print_report(report: &FsckReport, opts: &FsckOptions) {
     if opts.verify_checksums {
         line("checksum errors", report.checksum_errors.len(), None);
     }
+    line("foreign files", report.foreign_files.len(), Some(sum(&mut report.foreign_files.iter())));
     let upload_bytes = report.unfinished_uploads.iter().map(|u| u.bytes).sum();
     line("unfinished uploads", report.unfinished_uploads.len(), Some(upload_bytes));
     if let Some(oldest) = report.unfinished_uploads.first() {
@@ -1466,6 +1493,30 @@ mod tests {
         let mut p = Scripted::default();
         let err = check(&f.config, &opts(), Some((&ropts(), &mut p, &state))).await.unwrap_err();
         assert!(err.to_string().contains("refusing to repair"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn files_that_are_not_arca_blobs_are_reported_with_their_size_and_never_repaired() {
+        let f = Fixture::new().await;
+        let blobs = f.config.storage.blobs_dir();
+        fs::write(blobs.join("huge.bin"), vec![0u8; 4096]).await.unwrap();
+        fs::write(blobs.join("backup.meta"), b"{}").await.unwrap();
+
+        let r = f.scan(&opts()).await;
+        assert!(r.orphaned_blobs.is_empty() && r.orphaned_sidecars.is_empty());
+        assert!(r.unreadable_sidecars.is_empty());
+        let mut names: Vec<_> = r
+            .foreign_files
+            .iter()
+            .map(|d| (d.path.file_name().unwrap().to_str().unwrap().to_string(), d.size))
+            .collect();
+        names.sort();
+        assert_eq!(names, vec![("backup.meta".to_string(), 2), ("huge.bin".to_string(), 4096)]);
+        // Informational: not an inconsistency, and --repair must leave them.
+        assert_eq!(r.issue_count(), 0);
+        let ro = RepairOptions { yes: true, ..ropts() };
+        assert_eq!(f.repair(&ro, &mut Scripted::default()).await, 0);
+        assert!(blobs.join("huge.bin").exists() && blobs.join("backup.meta").exists());
     }
 
     #[tokio::test]

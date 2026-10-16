@@ -105,6 +105,12 @@ pub enum Command {
         /// List every orphan blob id before the summary
         #[arg(long)]
         verbose: bool,
+
+        /// Also delete the files under blobs/ that Arca did not write (a
+        /// stray file, a copied backup). They are never touched otherwise;
+        /// with --reclaim, only those older than the grace period go.
+        #[arg(long)]
+        delete_foreign_files: bool,
     },
 
     /// Manage TLS certificates

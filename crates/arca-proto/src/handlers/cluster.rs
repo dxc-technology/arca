@@ -139,6 +139,9 @@ pub async fn receive_blob(
         Ok(s) => s,
         Err(resp) => return resp,
     };
+    if !sidecar.has_valid_blob_refs() {
+        return err(StatusCode::BAD_REQUEST, "invalid composite part blob id (not a UUID)");
+    }
 
     // Composite blobs have no file of their own; only the sidecar is stored.
     if sidecar.composite.is_none() {
@@ -231,6 +234,9 @@ pub async fn receive_object(State(state): State<AppState>, body: Bytes) -> Respo
         Ok(r) => r,
         Err(e) => return err(StatusCode::BAD_REQUEST, &format!("invalid object json: {e}")),
     };
+    if !record.has_valid_blob_ref() {
+        return err(StatusCode::BAD_REQUEST, "invalid blob id (not a UUID)");
+    }
     match state.metadata.apply_remote_object(&record).await {
         Ok(()) => {
             let has_blob = if record.blob_id.0.is_empty() {

@@ -14,6 +14,13 @@ impl BlobId {
     pub fn new() -> Self {
         Self(uuid::Uuid::new_v4().to_string())
     }
+
+    /// Whether this is exactly the form [`BlobId::new`] mints (a lowercase
+    /// hyphenated UUID). Ids from outside the process (cluster peers, sidecars
+    /// read off disk) must pass this before they become a file name.
+    pub fn is_valid(&self) -> bool {
+        uuid::Uuid::parse_str(&self.0).is_ok_and(|u| u.hyphenated().to_string() == self.0)
+    }
 }
 
 impl Default for BlobId {
@@ -25,6 +32,14 @@ impl Default for BlobId {
 impl std::fmt::Display for BlobId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
+    }
+}
+
+impl ObjectRecord {
+    /// Whether the blob this row references is acceptable: none (delete
+    /// markers and tombstones carry an empty id) or a valid [`BlobId`].
+    pub fn has_valid_blob_ref(&self) -> bool {
+        self.blob_id.0.is_empty() || self.blob_id.is_valid()
     }
 }
 
@@ -379,6 +394,28 @@ pub struct Grant {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn blob_id_is_valid_accepts_only_minted_form() {
+        assert!(BlobId::new().is_valid());
+        assert!(BlobId("123e4567-e89b-42d3-a456-426614174000".into()).is_valid());
+        for bad in [
+            "",
+            "..",
+            "../../etc/passwd",
+            "a/b",
+            "ab",
+            "\u{e9}\u{e9}\u{e9}",
+            "blob-1",
+            // Valid UUIDs in a form this codebase never mints.
+            "123E4567-E89B-42D3-A456-426614174000",
+            "123e4567e89b42d3a456426614174000",
+            "{123e4567-e89b-42d3-a456-426614174000}",
+            "urn:uuid:123e4567-e89b-42d3-a456-426614174000",
+        ] {
+            assert!(!BlobId(bad.into()).is_valid(), "{bad:?} must be invalid");
+        }
+    }
 
     fn credential() -> Credential {
         Credential {

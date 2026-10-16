@@ -330,6 +330,17 @@ pub struct SidecarMeta {
     pub composite: Option<Vec<CompositePart>>,
 }
 
+impl SidecarMeta {
+    /// Whether every blob id this sidecar names (its composite parts) is a
+    /// valid [`BlobId`]. A sidecar from a cluster peer must pass before it is
+    /// stored: its part ids later become file names.
+    pub fn has_valid_blob_refs(&self) -> bool {
+        self.composite
+            .as_ref()
+            .is_none_or(|parts| parts.iter().all(|p| p.blob_id.is_valid()))
+    }
+}
+
 /// Trait for blob (binary data) storage operations.
 #[async_trait::async_trait]
 pub trait BlobStore: Send + Sync {
@@ -516,4 +527,41 @@ pub trait RawBlobOps: Send + Sync {
     /// Deletes one file listed by [`RawBlobOps::list_reclaimable_temp_files`];
     /// refuses any other path. A file already gone is not an error.
     async fn delete_temp_file(&self, path: &std::path::Path) -> Result<(), crate::error::ArcaError>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sidecar(composite: Option<Vec<CompositePart>>) -> SidecarMeta {
+        SidecarMeta {
+            bucket: "b".into(),
+            key: "k".into(),
+            size: 0,
+            etag: String::new(),
+            content_type: None,
+            last_modified: String::new(),
+            metadata: Default::default(),
+            encryption: None,
+            compression: None,
+            version_id: None,
+            composite,
+        }
+    }
+
+    fn part(id: &str) -> CompositePart {
+        CompositePart {
+            blob_id: BlobId(id.into()),
+            plaintext_size: 0,
+            plaintext_etag: String::new(),
+            encryption: None,
+        }
+    }
+
+    #[test]
+    fn sidecar_blob_refs_must_all_be_valid_uuids() {
+        assert!(sidecar(None).has_valid_blob_refs());
+        assert!(sidecar(Some(vec![part(&BlobId::new().0)])).has_valid_blob_refs());
+        assert!(!sidecar(Some(vec![part(&BlobId::new().0), part("../../x")])).has_valid_blob_refs());
+    }
 }

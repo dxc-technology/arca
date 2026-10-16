@@ -1067,6 +1067,7 @@ async fn async_main(cli: Cli) -> Result<()> {
             reclaim,
             grace_seconds,
             verbose,
+            delete_foreign_files,
         } => {
             let _ = init_tracing(&LogFormat::Text, "info");
 
@@ -1077,6 +1078,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                 !reclaim,
                 std::time::Duration::from_secs(grace_seconds),
                 verbose,
+                delete_foreign_files,
             )
             .await?;
         }

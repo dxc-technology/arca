@@ -151,6 +151,9 @@ pub(crate) async fn create_dir_all_durable(dir: &std::path::Path, fsync: bool) -
 
 /// Filesystem-backed blob store.
 ///
+/// File name `blob_path` yields for an id that is not a UUID. Never a blob.
+const INVALID_BLOB_ID_NAME: &str = "_invalid-blob-id";
+
 /// Blobs are stored in a sharded directory hierarchy under `base_dir`.
 /// The sharding depth is configurable (1–4 levels, default 2).
 ///
@@ -198,7 +201,17 @@ impl FsBlobStore {
     }
 
     /// Computes the full path for a blob ID using the configured prefix depth.
+    ///
+    /// Total and safe for any input: an id that is not a UUID (TD-041: ids
+    /// reach this layer from cluster peers and from sidecars) maps to a fixed
+    /// name inside the base directory that no blob ever uses, so it can
+    /// neither traverse out of the tree nor panic on a byte-index slice. The
+    /// operations that take peer-supplied ids reject them first
+    /// ([`Self::checked_blob_path`]); the rest then simply find no file.
     pub fn blob_path(&self, blob_id: &BlobId) -> PathBuf {
+        if !blob_id.is_valid() {
+            return self.base_dir.join(INVALID_BLOB_ID_NAME);
+        }
         let id = &blob_id.0;
         // Strip hyphens for prefix extraction (UUID has hyphens at fixed positions).
         let hex_chars: String = id.chars().filter(|c| *c != '-').collect();
@@ -210,6 +223,23 @@ impl FsBlobStore {
         }
         path.push(id);
         path
+    }
+
+    /// [`Self::blob_path`], refusing an id that is not a UUID.
+    fn checked_blob_path(&self, blob_id: &BlobId) -> Result<PathBuf, ArcaError> {
+        self.check_blob_id(blob_id)?;
+        Ok(self.blob_path(blob_id))
+    }
+
+    fn check_blob_id(&self, blob_id: &BlobId) -> Result<(), ArcaError> {
+        if blob_id.is_valid() {
+            Ok(())
+        } else {
+            Err(ArcaError::Internal(format!(
+                "invalid blob id {:?} (not a UUID)",
+                blob_id.0
+            )))
+        }
     }
 
     /// Returns the sidecar metadata path for a blob.
@@ -242,7 +272,7 @@ impl FsBlobStore {
     /// no decrypt/decompress). Errors if the physical file is absent (e.g. a
     /// composite blob, which has no file of its own — replicate its parts).
     pub async fn read_raw(&self, blob_id: &BlobId) -> Result<BlobGetResult, ArcaError> {
-        let blob_path = self.blob_path(blob_id);
+        let blob_path = self.checked_blob_path(blob_id)?;
         let file = fs::File::open(&blob_path)
             .await
             .map_err(|e| ArcaError::Internal(format!("open raw blob: {e}")))?;
@@ -262,7 +292,7 @@ impl FsBlobStore {
     /// no MD5 or sidecar (the caller ships the sidecar separately). Idempotent:
     /// re-delivering the same `blob_id` overwrites with identical bytes.
     pub async fn write_raw(&self, blob_id: &BlobId, stream: ByteStream) -> Result<u64, ArcaError> {
-        let blob_path = self.blob_path(blob_id);
+        let blob_path = self.checked_blob_path(blob_id)?;
         if let Some(parent) = blob_path.parent() {
             create_dir_all_durable(parent, self.fsync)
                 .await
@@ -310,7 +340,7 @@ impl FsBlobStore {
 
     /// Whether the blob's physical file exists (anti-entropy probe).
     pub async fn exists(&self, blob_id: &BlobId) -> Result<bool, ArcaError> {
-        match fs::metadata(self.blob_path(blob_id)).await {
+        match fs::metadata(self.checked_blob_path(blob_id)?).await {
             Ok(_) => Ok(true),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
             Err(e) => Err(ArcaError::Internal(format!("stat raw blob: {e}"))),
@@ -327,6 +357,8 @@ impl FsBlobStore {
             .into_iter()
             .filter(|f| !f.name.ends_with(".meta") && !f.name.ends_with(".tmp"))
             .map(|f| (BlobId(f.name), f.mtime))
+            // Not a blob of this store (a stray file): `arca fsck` reports it.
+            .filter(|(id, _)| id.is_valid())
             .collect())
     }
 
@@ -364,11 +396,13 @@ impl FsBlobStore {
         Ok(files
             .into_iter()
             .filter_map(|f| f.name.strip_suffix(".meta").map(|s| BlobId(s.to_string())))
+            .filter(BlobId::is_valid)
             .collect())
     }
 
     /// Deletes one physical blob file and its sidecar (no composite cascade).
     pub async fn delete_blob_file_raw(&self, blob_id: &BlobId) -> Result<(), ArcaError> {
+        self.check_blob_id(blob_id)?;
         for path in [self.blob_path(blob_id), self.sidecar_path(blob_id)] {
             match fs::remove_file(&path).await {
                 Ok(()) => {}
@@ -381,6 +415,7 @@ impl FsBlobStore {
 
     /// Reads and parses the sidecar for a blob. Returns `Ok(None)` if absent.
     async fn read_sidecar(&self, blob_id: &BlobId) -> Result<Option<SidecarMeta>, ArcaError> {
+        self.check_blob_id(blob_id)?;
         let path = self.sidecar_path(blob_id);
         match fs::read_to_string(&path).await {
             Ok(json) => {
@@ -800,6 +835,7 @@ impl BlobStore for FsBlobStore {
         blob_id: &BlobId,
         meta: &SidecarMeta,
     ) -> Result<(), ArcaError> {
+        self.check_blob_id(blob_id)?;
         let sidecar_path = self.sidecar_path(blob_id);
         // `write_file_atomic` fsyncs the directory after the rename: that one
         // fsync also persists the entry of the blob published next to it by
@@ -1890,5 +1926,81 @@ mod tests {
         let result = store.concat(&[bare], &output_id).await.unwrap();
         assert!(result.composite_parts.is_none());
         assert_eq!(std::fs::read(store.blob_path(&output_id)).unwrap(), b"no sidecar");
+    }
+
+    /// Ids a cluster peer could send: none may reach the file system.
+    fn hostile_ids() -> Vec<BlobId> {
+        ["", "..", "../../etc/passwd", "a/b", "ab", "\u{e9}\u{e9}\u{e9}", "blob-1"]
+            .into_iter()
+            .map(|s| BlobId(s.to_string()))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn blob_path_never_leaves_the_base_dir_nor_panics() {
+        let (store, _dir) = test_store(2).await;
+        for id in hostile_ids() {
+            let path = store.blob_path(&id);
+            assert!(path.starts_with(&store.base_dir), "{id:?} escaped: {path:?}");
+            assert!(
+                !path.components().any(|c| matches!(c, std::path::Component::ParentDir)),
+                "{id:?} kept a parent component: {path:?}"
+            );
+            // sidecar_path must not panic either.
+            let _ = store.sidecar_path(&id);
+        }
+    }
+
+    #[tokio::test]
+    async fn raw_ops_reject_non_uuid_blob_ids() {
+        use arca_core::store::RawBlobOps;
+        let (store, _dir) = test_store(2).await;
+        let sidecar = SidecarMeta {
+            bucket: "b".into(),
+            key: "k".into(),
+            size: 0,
+            etag: String::new(),
+            content_type: None,
+            last_modified: String::new(),
+            metadata: Default::default(),
+            encryption: None,
+            compression: None,
+            version_id: None,
+            composite: None,
+        };
+        for id in hostile_ids() {
+            assert!(RawBlobOps::read_raw(&store, &id).await.is_err(), "read_raw {id:?}");
+            assert!(
+                RawBlobOps::write_raw(&store, &id, bytes_to_stream(b"x")).await.is_err(),
+                "write_raw {id:?}"
+            );
+            assert!(RawBlobOps::exists(&store, &id).await.is_err(), "exists {id:?}");
+            assert!(RawBlobOps::read_sidecar(&store, &id).await.is_err(), "read_sidecar {id:?}");
+            assert!(
+                RawBlobOps::write_sidecar(&store, &id, &sidecar).await.is_err(),
+                "write_sidecar {id:?}"
+            );
+            assert!(RawBlobOps::delete_blob_file(&store, &id).await.is_err(), "delete {id:?}");
+        }
+        // Nothing was created outside or inside the blobs tree.
+        assert!(store.list_blob_files().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn listings_skip_files_that_are_not_arca_blobs() {
+        let (store, dir) = test_store(2).await;
+        let blobs = dir.path().join("blobs");
+        let id = BlobId::new();
+        store.write_raw(&id, bytes_to_stream(b"x")).await.unwrap();
+        // A stray file, a stray ".meta" (it would be read as a sidecar) and one
+        // nested in a shard directory: none is a blob of this store.
+        std::fs::write(blobs.join("notes.txt"), b"n").unwrap();
+        std::fs::write(blobs.join("backup.meta"), b"{}").unwrap();
+        let shard = store.blob_path(&id).parent().unwrap().to_path_buf();
+        std::fs::write(shard.join(".DS_Store"), b"n").unwrap();
+
+        let blobs_listed: Vec<_> = store.list_blob_files().await.unwrap().into_iter().map(|(b, _)| b).collect();
+        assert_eq!(blobs_listed, vec![id]);
+        assert!(store.list_sidecar_files().await.unwrap().is_empty());
     }
 }

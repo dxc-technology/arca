@@ -339,6 +339,7 @@ What counts as referenced is exactly what [`arca gc`](#arca-gc) keeps: object ro
 | `STALE_TMP` | Leftover temp file of an interrupted write (`<blob>.tmp`, `<blob>.meta.<id>.tmp`) |
 | `REWRITE_RECOVERY` | Recovery file of an unfinished in-place rewrite (`*.rewrite.tmp`, `*.meta.pending.tmp`): re-run the rewrite command to complete it, never delete it by hand |
 | `CORRUPT` | Blob file MD5 doesn't match stored ETag (only with `--verify-checksums`; multipart, encrypted and compressed objects are skipped) |
+| `FOREIGN_FILE` | Informational: a file under `blobs/` that Arca did not write (its name is not a blob id), with its size, so space that no Arca figure explains is visible. Never repaired; `arca gc --reclaim --delete-foreign-files` removes it |
 | `UNFINISHED_UPLOAD` | Informational: a multipart upload never completed nor aborted, with its start date, part count and size. Its parts are live data until the upload is aborted |
 
 The report ends with a summary: the count of each category and the bytes involved, and how many files were skipped as younger than the grace period.
@@ -398,7 +399,7 @@ Reclaim orphaned blob files — on-disk blobs referenced by no live object row, 
 On a **single-node** deployment there is no anti-entropy worker, so `arca gc` (typically from cron) is the reclamation path. Alternatively, enable the opt-in background worker with `[storage] blob_gc_enabled = true` (see [Configuration](configuration.md#storage)) to reclaim on a schedule without an external cron job; on very large stores cron-ing this command is preferable so the scan runs outside the serving process. On a cluster the anti-entropy worker already reclaims orphans automatically.
 
 ```bash
-arca gc [--config-path <PATH>] [--reclaim] [--grace-seconds <SECONDS>] [--verbose]
+arca gc [--config-path <PATH>] [--reclaim] [--grace-seconds <SECONDS>] [--verbose] [--delete-foreign-files]
 ```
 
 | Option | Description |
@@ -407,6 +408,7 @@ arca gc [--config-path <PATH>] [--reclaim] [--grace-seconds <SECONDS>] [--verbos
 | `--reclaim` | Actually delete the orphans and stale temp files. Without it, only report what would be reclaimed (dry run) |
 | `--grace-seconds` | Protect blobs and temp files written within this many seconds (default: `86400`) |
 | `--verbose` | List every orphan blob id and temp file before the summary |
+| `--delete-foreign-files` | Also delete the files under `blobs/` that Arca did not write (a stray file, a copied backup). They are only reported otherwise; with `--reclaim`, only those older than the grace period are deleted |
 
 The `--grace-seconds` window protects freshly-written blobs whose object row may not be committed yet (a blob file is written before its metadata row), and the temp files of uploads in flight. Keep it comfortably above your longest in-flight upload when running against a **live** server; drop it to `0` for an immediate full reclaim only when the server is **stopped**.
 

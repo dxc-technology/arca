@@ -272,7 +272,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let fs = arca_storage::FsBlobStore::new(dir.path().join("blobs"), 2).await.unwrap();
         let m = empty_metadata().await;
-        let id = BlobId("aaaa".into());
+        let id = BlobId("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into());
         fs.write_raw(&id, one_chunk(b"x")).await.unwrap();
         let blob = fs.blob_path(&id);
         let tmp = blob.with_file_name("bbbb.tmp");
@@ -302,8 +302,8 @@ mod tests {
         // 0 → both scanned, both candidates. (Referenced-blob exclusion and the
         // grace window are covered by the anti-entropy reclaim tests.)
         let m = empty_metadata().await;
-        fs.write_raw(&BlobId("aaaa".into()), one_chunk(b"x")).await.unwrap();
-        fs.write_raw(&BlobId("bbbb".into()), one_chunk(b"y")).await.unwrap();
+        fs.write_raw(&BlobId("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".into()), one_chunk(b"x")).await.unwrap();
+        fs.write_raw(&BlobId("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb".into()), one_chunk(b"y")).await.unwrap();
 
         let plan = collect_reclaimable_blobs(m.as_ref(), &fs, Duration::ZERO)
             .await
@@ -311,6 +311,6 @@ mod tests {
         assert_eq!(plan.scanned, 2, "both on-disk blobs are scanned");
         let mut got: Vec<String> = plan.candidates.iter().map(|b| b.0.clone()).collect();
         got.sort();
-        assert_eq!(got, vec!["aaaa".to_string(), "bbbb".to_string()]);
+        assert_eq!(got, vec!["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".to_string(), "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb".to_string()]);
     }
 }
