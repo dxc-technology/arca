@@ -1563,10 +1563,10 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <tr>
 <td>TD-043</td>
 <td>Remaining test tooling that disturbs the developer's stack</td>
-<td>After TD-030 the self-contained <code>bin/test</code> modes run in their own compose projects, but: <code>bin/screenshots</code> still runs in the developer's project (overwrites <code>config/.generated.toml</code>, <code>up -d arca</code>, <code>down</code>, and its cleanup deletes <code>.arca-env</code>); the cluster suite (<code>-p arca-cluster</code>) publishes host ports 9000-9003, which collide with a running dev server; <code>arca-tls-test-certs</code> is one fixed-name volume shared by <code>bin/test tls</code> and <code>bin/perf-test --tls</code>, so the two cannot run concurrently. (<code>bin/s3-tests</code> wiping <code>docker_arca-data</code> is deliberate: the Ceph suite needs a clean state; <code>--no-clean</code> skips it.)</td>
-<td>Apply <code>use_test_project</code> to <code>bin/screenshots</code>; publish the cluster nodes on ephemeral loopback ports (the suite reaches them over the compose network) or refuse to start while the dev server is up; name the TLS test volume per project.</td>
+<td>After TD-030 the self-contained <code>bin/test</code> modes run in their own compose projects, but: <code>bin/screenshots</code> still runs in the developer's project (overwrites <code>config/.generated.toml</code>, <code>up -d arca</code>, <code>down</code>, and its cleanup deletes <code>.arca-env</code>); <code>arca-tls-test-certs</code> is one fixed-name volume shared by <code>bin/test tls</code> and <code>bin/perf-test --tls</code>, so the two cannot run concurrently. (The cluster suite already runs in its own project on ephemeral loopback ports. <code>bin/s3-tests</code> wiping <code>docker_arca-data</code> is deliberate: the Ceph suite needs a clean state; <code>--no-clean</code> skips it.)</td>
+<td>Apply <code>use_test_project</code> to <code>bin/screenshots</code>; name the TLS test volume per project.</td>
 <td>None</td>
-<td><code>bin/screenshots</code>, <code>bin/test</code> (cluster suite), <code>docker/docker-compose.cluster*.yml</code>, <code>bin/lib/compose.sh</code> (<code>make_test_certs</code>)</td>
+<td><code>bin/screenshots</code>, <code>bin/lib/compose.sh</code> (<code>make_test_certs</code>)</td>
 </tr>
 <tr>
 <td>TD-044</td>
