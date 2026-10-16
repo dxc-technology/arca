@@ -12,7 +12,8 @@
 #
 # Customization:
 #   - Adjust ARCA_ENDPOINT to point to your Arca server (internal service or external URL)
-#   - Pin the image to the release tag (X.Y.Z) of the Arca server it fronts
+#   - The image is pinned to the release tag (X.Y.Z) of the Arca server it fronts;
+#     bump it together with the server at every release
 #   - For TLS on the console itself, mount certs and use nginx-tls.conf (see console docs)
 
 ---
@@ -50,13 +51,46 @@ spec:
         fsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
-      containers:
-        - name: console
-          image: ghcr.io/dxc-technology/arca-console:latest   # tag strategy: "Choosing a tag" in the Installation guide
+      # The root filesystem is read-only, but the entrypoint rewrites index.html
+      # (endpoint injection) and http.d/default.conf (TLS mode) at startup, so
+      # those two directories are copied from the image into emptyDir volumes.
+      initContainers:
+        - name: seed-writable-paths
+          image: ghcr.io/dxc-technology/arca-console:0.32.1
+          command:
+            - sh
+            - -c
+            - cp -R /usr/share/nginx/html/. /seed/html/ && cp -R /etc/nginx/http.d/. /seed/http.d/
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 32Mi
+          volumeMounts:
+            - name: html
+              mountPath: /seed/html
+            - name: http-d
+              mountPath: /seed/http.d
+      containers:
+        - name: console
+          image: ghcr.io/dxc-technology/arca-console:0.32.1   # keep in sync with the release: see RELEASING.md; tag strategy: "Choosing a tag" in the Installation guide
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+              # The nginx binary carries cap_net_bind_service as a file
+              # capability (console/Dockerfile) to listen on port 80; with the
+              # capability dropped from the bounding set, exec fails with
+              # "Operation not permitted".
+              add: ["NET_BIND_SERVICE"]
           ports:
             - name: http
               containerPort: 80
@@ -64,6 +98,24 @@ spec:
           env:
             - name: ARCA_ENDPOINT
               value: "http://arca:9000"  # <-- adjust to your Arca service URL
+          # Every path nginx or the entrypoint writes to (console/Dockerfile,
+          # the Alpine nginx package defaults): pid file in /tmp, temp dirs under
+          # /var/lib/nginx/tmp, /var/cache/nginx, /run/nginx, logs in /var/log/nginx.
+          volumeMounts:
+            - name: html
+              mountPath: /usr/share/nginx/html
+            - name: http-d
+              mountPath: /etc/nginx/http.d
+            - name: tmp
+              mountPath: /tmp
+            - name: nginx-temp
+              mountPath: /var/lib/nginx/tmp
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /run/nginx
+            - name: nginx-log
+              mountPath: /var/log/nginx
           livenessProbe:
             httpGet:
               path: /
@@ -83,6 +135,21 @@ spec:
             limits:
               cpu: 200m
               memory: 64Mi
+      volumes:
+        - name: html
+          emptyDir: {}
+        - name: http-d
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: nginx-temp
+          emptyDir: {}
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+        - name: nginx-log
+          emptyDir: {}
 
 ---
 apiVersion: v1

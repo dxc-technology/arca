@@ -22,6 +22,7 @@ Present the proposed version number with a brief summary of what changed and why
 
 - `Cargo.toml` → `[workspace.package] version = "X.Y.Z"`
 - `console/index.html` → `window.ARCA_CONSOLE_VERSION = "X.Y.Z"`
+- `deploy/kubernetes/arca-console.yaml` → `ghcr.io/dxc-technology/arca-console:X.Y.Z` (init container and console container, two occurrences)
 - `documentation/docs/roadmap.md` → Phase Summary table version column (if completing a phase)
 - `README.md` → Status section, "latest release **vX.Y.Z**"
 - `publiccode.yml` → `softwareVersion: "X.Y.Z"` **and** `releaseDate: "YYYY-MM-DD"` (the release date, not today's date if they differ)

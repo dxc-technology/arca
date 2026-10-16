@@ -12,5 +12,8 @@ RUN useradd --no-create-home --shell /usr/sbin/nologin tester && \
 
 USER tester
 
+# A short-lived command runner, not a service: there is nothing to probe.
+HEALTHCHECK NONE
+
 ENTRYPOINT ["pytest"]
 CMD ["integration/", "-v"]

@@ -26,5 +26,8 @@ ENV S3TEST_CONF=/s3-tests/s3tests.conf
 RUN useradd --uid 1000 --no-create-home --shell /usr/sbin/nologin tester
 USER tester
 
+# A short-lived command runner, not a service: there is nothing to probe.
+HEALTHCHECK NONE
+
 ENTRYPOINT ["pytest"]
 CMD ["s3tests/functional/test_s3.py", "-v", "--tb=short"]
