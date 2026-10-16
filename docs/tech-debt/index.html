@@ -1561,14 +1561,6 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>crates/arca-core/src/cluster.rs</code> (<code>config_fingerprint</code>), <code>crates/arca-server/src/main.rs</code></td>
 </tr>
 <tr>
-<td>TD-037</td>
-<td>Virtual-hosted-style requests probably routed wrong</td>
-<td><code>virtual_host_middleware</code> rewrites the URI, but it is attached with <code>Router::layer</code> (<code>router.rs</code>), which runs <em>after</em> routing (see AGENTS.md › Known Gotchas). The path parameters are already bound to the original path, so <code>bucket.domain/key</code> would be dispatched as bucket=<code>key</code>. Found by code reading; no test exercises virtual-host addressing.</td>
-<td>Write an integration test with <code>server.domain</code> set and virtual-host addressing; if it fails, move the rewrite outside the router as a tower layer (like <code>NormalizeLayer</code>).</td>
-<td>None (untested)</td>
-<td><code>crates/arca-proto/src/router.rs</code>, <code>crates/arca-proto/src/middleware/virtual_host.rs</code></td>
-</tr>
-<tr>
 <td>TD-040</td>
 <td>Cluster maintenance jobs can stall on a non-leader node</td>
 <td>Maintenance jobs are stored in each node's local <code>MaintenanceStore</code> (not cluster-wrapped, not part of <code>ControlSnapshot</code>), while only the worker-leader (lowest eligible <code>node_id</code>, decision H5) runs the maintenance worker. A job created through the load balancer on any other node is never picked up until that node happens to become leader; the API accepts it and it stays <code>pending</code>. <code>guide/maintenance.md</code> and <code>guide/console.md</code> do not mention this.</td>
@@ -1818,6 +1810,12 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>TD-035</td>
 <td><code>UploadPartCopy</code> ignored copy-source conditionals</td>
 <td><code>upload_part_copy</code> now calls <code>check_copy_source_conditionals</code> (<code>x-amz-copy-source-if-match</code>, <code>-if-none-match</code>, <code>-if-modified-since</code>, <code>-if-unmodified-since</code>) right after resolving the source and before any source byte is read, as <code>copy_object</code> does; a failed condition answers <code>412 PreconditionFailed</code> and stores no part. Tests: <code>test_copy_source_conditions.py</code>, a passing and a failing case for each header on both CopyObject and UploadPartCopy (the four failing UploadPartCopy cases failed before the fix)</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-037</td>
+<td>Virtual-hosted-style requests were routed wrong</td>
+<td>Confirmed by a test, not just by reading the code: with <code>server.domain</code> set, <code>bucket.domain/key</code> was dispatched as bucket <code>key</code> (<code>NoSuchBucket</code>), and the bucket root as ListBuckets, because <code>virtual_host_middleware</code> was attached with <code>Router::layer</code>, which runs after routing. The rewrite now lives in <code>NormalizeLayer</code> (outside the router, <code>NormalizeLayer::new(domain)</code>), after saving the <code>OriginalUri</code> auth verifies and before the trailing-slash rule, so a virtual-hosted <code>/dir/</code> stays a directory-marker key; the host comes from <code>Host</code> or the HTTP/2 URI authority. The pure rules are <code>bucket_for_host</code> and <code>path_style_path</code> in <code>middleware/virtual_host.rs</code>; the dead middleware and <code>AppState.domain</code> are gone. Tests: unit tests for the rules and for the layer, and <code>test_virtual_host.py</code> (put/get/head/delete, bucket root, query string, missing bucket) run by the new self-contained <code>bin/test virtual-host</code>; five of its six tests failed on the old code</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
