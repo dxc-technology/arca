@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **An abort racing CompleteMultipartUpload no longer destroys the completed object's data** (TD-053). Complete committed the object row and only afterwards consumed the upload, so an `AbortMultipartUpload`, a lifecycle `AbortIncompleteMultipartUpload` rule or `arca fsck --repair --abort-uploads-older-than` landing in between deleted the parts the new object was made of: Complete answered 200 and the object could not be read (`InternalError`). The object row and the consumption of the upload are now one transaction in SQLite and PostgreSQL, so whichever commits first wins: an abort that wins makes the Complete answer `NoSuchUpload` and write nothing, and a Complete that wins leaves the abort with no parts to delete. A refused `If-Match` / `If-None-Match` still leaves the upload intact for a retry. On an HA cluster the guarantee holds per node.
+- **A `version-id-marker` deleted between two pages no longer skips the rest of its key** (TD-054). ListObjectVersions looked the marker version up to find where to resume, and when it was gone resumed after the whole key. The internal full listing (re-encryption scan, `arca fsck`) now pages by the position of the last row it read, so it cannot skip a version even under concurrent deletes (for example lifecycle noncurrent expiry). On S3, a `version-id-marker` that does not exist now answers `400 InvalidArgument` instead of `200` with a truncated listing; the client restarts the listing.
 
 ### Changed
 

@@ -37,7 +37,9 @@ pub use maintenance::{
     MaintenanceJob, MaintenanceJobLog, MaintenanceJobMode, MaintenanceJobStatus, MaintenanceStore,
     DEFAULT_MAX_JOB_LOGS,
 };
-pub use metadata::{CompletedUpload, DeletePrecondition, MetadataStore, WritePrecondition};
+pub use metadata::{
+    CompletedUpload, DeletePrecondition, MetadataStore, VersionPosition, WritePrecondition,
+};
 pub use metrics::{MetricsSnapshot, MetricsStore};
 pub use notification::{NotificationEventFilter, NotificationEventRecord, NotificationStore};
 pub use presigned_url::{PresignedUrlRecord, PresignedUrlStore};

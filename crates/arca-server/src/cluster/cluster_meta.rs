@@ -58,8 +58,8 @@ use std::sync::Arc;
 use arca_core::cluster::{pair_key, quorum_satisfied, ClusterState, ControlOp, WriteGate};
 use arca_core::error::ArcaError;
 use arca_core::store::{
-    CompletedUpload, ControlTombstoneStore, DeletePrecondition, MetadataStore, WritePrecondition,
-    TOMBSTONE_BUCKET, TOMBSTONE_BUCKET_CONFIG, TOMBSTONE_BUCKET_TAGS, TOMBSTONE_MULTIPART,
+    CompletedUpload, ControlTombstoneStore, DeletePrecondition, MetadataStore, VersionPosition,
+    WritePrecondition, TOMBSTONE_BUCKET, TOMBSTONE_BUCKET_CONFIG, TOMBSTONE_BUCKET_TAGS, TOMBSTONE_MULTIPART,
 };
 use arca_core::types::{
     BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
@@ -468,16 +468,16 @@ impl MetadataStore for ClusterMetadataStore {
         Ok(deleted)
     }
 
-    async fn list_object_versions(
+    async fn list_object_versions_from(
         &self,
         bucket: &str,
         prefix: Option<&str>,
         key_marker: Option<&str>,
-        version_id_marker: Option<&str>,
+        after: Option<&VersionPosition>,
         max_keys: u32,
     ) -> Result<Vec<ObjectRecord>, ArcaError> {
         self.inner
-            .list_object_versions(bucket, prefix, key_marker, version_id_marker, max_keys)
+            .list_object_versions_from(bucket, prefix, key_marker, after, max_keys)
             .await
     }
 

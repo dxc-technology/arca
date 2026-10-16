@@ -1,7 +1,9 @@
 //! PostgreSQL implementation of the `MetadataStore` trait.
 
 use arca_core::error::{ArcaError, S3Error, S3ErrorCode};
-use arca_core::store::{CompletedUpload, DeletePrecondition, MetadataStore, WritePrecondition};
+use arca_core::store::{
+    CompletedUpload, DeletePrecondition, MetadataStore, VersionPosition, WritePrecondition,
+};
 use arca_core::types::{
     BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
     VersioningState,
@@ -1429,37 +1431,17 @@ impl MetadataStore for PgStore {
             .collect())
     }
 
-    async fn list_object_versions(
+    async fn list_object_versions_from(
         &self,
         bucket: &str,
         prefix: Option<&str>,
         key_marker: Option<&str>,
-        version_id_marker: Option<&str>,
+        after: Option<&VersionPosition>,
         max_keys: u32,
     ) -> Result<Vec<ObjectRecord>, ArcaError> {
         let key_marker = key_marker.filter(|km| !km.is_empty());
-
-        // TECHDEBT(TD-054): a marker version deleted between two pages is not
-        // found and the rest of its key is skipped.
-        // Resume position inside `key_marker`: the (last_modified, version) of
-        // the marker version, in the listing order below. An unknown marker
-        // resumes after the whole key.
         let resume_at: Option<(chrono::DateTime<chrono::Utc>, String)> =
-            match (key_marker, version_id_marker) {
-                (Some(km), Some(vm)) => sqlx_core::query::query(
-                    "SELECT last_modified, COALESCE(version_id, '') AS vid FROM objects
-                     WHERE bucket = $1 AND key = $2 AND is_tombstone = FALSE
-                       AND (version_id = $3 OR ($3 = 'null' AND version_id IS NULL))",
-                )
-                .bind(bucket)
-                .bind(km)
-                .bind(vm)
-                .fetch_optional(&self.pool)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("list_object_versions: {e}")))?
-                .map(|row| (row.get("last_modified"), row.get("vid"))),
-                _ => None,
-            };
+            after.map(|p| (p.last_modified, p.version_id.clone()));
 
         let mut sql = format!(
             "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = $1 AND is_tombstone = FALSE"
@@ -1504,7 +1486,7 @@ impl MetadataStore for PgStore {
         let rows = query
             .fetch_all(&self.pool)
             .await
-            .map_err(|e| ArcaError::Internal(format!("list_object_versions: {e}")))?;
+            .map_err(|e| ArcaError::Internal(format!("list_object_versions_from: {e}")))?;
 
         Ok(rows.iter().map(row_to_object_record).collect())
     }

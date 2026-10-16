@@ -1,14 +1,16 @@
 //! `MetadataStore` implementation for `SqliteStore`.
 
 use arca_core::error::{ArcaError, S3Error, S3ErrorCode};
-use arca_core::store::{CompletedUpload, DeletePrecondition, MetadataStore, WritePrecondition};
+use arca_core::store::{
+    CompletedUpload, DeletePrecondition, MetadataStore, VersionPosition, WritePrecondition,
+};
 use arca_core::types::{
     BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
     VersioningState,
 };
 use std::collections::HashMap;
 use chrono::DateTime;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection};
 
 use super::{SqliteStore, TrError};
 
@@ -1010,38 +1012,21 @@ impl MetadataStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("list_referenced_blob_ids: {e}")))
     }
 
-    async fn list_object_versions(
+    async fn list_object_versions_from(
         &self,
         bucket: &str,
         prefix: Option<&str>,
         key_marker: Option<&str>,
-        version_id_marker: Option<&str>,
+        after: Option<&VersionPosition>,
         max_keys: u32,
     ) -> Result<Vec<ObjectRecord>, ArcaError> {
         let bucket = bucket.to_string();
         let prefix = prefix.map(|s| s.to_string());
         let key_marker = key_marker.filter(|km| !km.is_empty()).map(|s| s.to_string());
-        let version_id_marker = version_id_marker.map(|s| s.to_string());
+        let resume_at: Option<(String, String)> =
+            after.map(|p| (p.last_modified.to_rfc3339(), p.version_id.clone()));
         self.read_conn()
             .call(move |conn| {
-                // TECHDEBT(TD-054): a marker version deleted between two pages
-                // is not found and the rest of its key is skipped.
-                // Resume position inside `key_marker`: the (last_modified,
-                // version) of the marker version, in the listing order below.
-                // An unknown marker resumes after the whole key.
-                let resume_at: Option<(String, String)> = match (&key_marker, &version_id_marker) {
-                    (Some(km), Some(vm)) => conn
-                        .query_row(
-                            "SELECT last_modified, COALESCE(version_id, '') FROM objects
-                             WHERE bucket = ?1 AND key = ?2 AND is_tombstone = 0
-                               AND (version_id = ?3 OR (?3 = 'null' AND version_id IS NULL))",
-                            params![bucket, km, vm],
-                            |row| Ok((row.get(0)?, row.get(1)?)),
-                        )
-                        .optional()?,
-                    _ => None,
-                };
-
                 let mut sql = format!(
                     "SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND is_tombstone = 0"
                 );
@@ -1091,7 +1076,7 @@ impl MetadataStore for SqliteStore {
                 Ok(records)
             })
             .await
-            .map_err(|e: TrError| ArcaError::Internal(format!("list_object_versions: {e}")))
+            .map_err(|e: TrError| ArcaError::Internal(format!("list_object_versions_from: {e}")))
     }
 
     // -- Bucket config operations --
@@ -3516,23 +3501,115 @@ mod tests {
         assert_eq!(all.last().unwrap().key, "z");
     }
 
-    #[tokio::test]
-    async fn list_object_versions_unknown_version_marker_resumes_after_the_key() {
-        let store = test_store().await;
+    /// Five versions of "k" (k-4 newest) and one of "l".
+    async fn five_versions_of_k(store: &SqliteStore) {
         store.create_bucket("b").await.unwrap();
-        enable_versioning(&store, "b").await;
-        for key in ["a", "b"] {
-            let mut r = make_record("b", key);
-            r.blob_id = BlobId(key.into());
+        enable_versioning(store, "b").await;
+        let t0 = chrono::Utc::now();
+        for i in 0..5 {
+            let mut r = make_record("b", "k");
+            r.blob_id = BlobId(format!("k-{i}"));
+            r.last_modified = t0 + chrono::Duration::seconds(i);
             store.put_object(&r).await.unwrap();
         }
+        let mut next = make_record("b", "l");
+        next.blob_id = BlobId("l-0".into());
+        store.put_object(&next).await.unwrap();
+    }
 
-        let rows = store
-            .list_object_versions("b", None, Some("a"), Some("no-such-version"), 10)
+    fn blob_ids(rows: &[ObjectRecord]) -> Vec<&str> {
+        rows.iter().map(|r| r.blob_id.0.as_str()).collect()
+    }
+
+    #[tokio::test]
+    async fn list_object_versions_refuses_an_unknown_version_marker() {
+        let store = test_store().await;
+        five_versions_of_k(&store).await;
+
+        let err = store
+            .list_object_versions("b", None, Some("k"), Some("no-such-version"), 10)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&err, ArcaError::S3(e) if e.code == S3ErrorCode::InvalidArgument),
+            "{err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_deleted_version_marker_is_refused_not_skipped() {
+        let store = test_store().await;
+        five_versions_of_k(&store).await;
+        let page = store.list_object_versions("b", None, None, None, 2).await.unwrap();
+        assert_eq!(blob_ids(&page), ["k-4", "k-3"]);
+        let marker = page.last().unwrap();
+
+        store
+            .delete_object_version("b", "k", marker.version_id.as_deref().unwrap())
             .await
             .unwrap();
-        let keys: Vec<&str> = rows.iter().map(|r| r.key.as_str()).collect();
-        assert_eq!(keys, ["b"]);
+
+        let err = store
+            .list_object_versions("b", None, Some("k"), marker.version_id.as_deref(), 10)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&err, ArcaError::S3(e) if e.code == S3ErrorCode::InvalidArgument),
+            "{err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_object_versions_from_survives_a_deleted_marker_version() {
+        let store = test_store().await;
+        five_versions_of_k(&store).await;
+        let page = store.list_object_versions_from("b", None, None, None, 2).await.unwrap();
+        assert_eq!(blob_ids(&page), ["k-4", "k-3"]);
+        let last = page.last().unwrap();
+        let position = VersionPosition::of(last);
+
+        // The page boundary version is deleted before the next page is read.
+        store
+            .delete_object_version("b", "k", last.version_id.as_deref().unwrap())
+            .await
+            .unwrap();
+
+        let rest = store
+            .list_object_versions_from("b", None, Some("k"), Some(&position), 10)
+            .await
+            .unwrap();
+        assert_eq!(blob_ids(&rest), ["k-2", "k-1", "k-0", "l-0"]);
+    }
+
+    #[tokio::test]
+    async fn list_object_versions_from_without_a_position_starts_after_the_key() {
+        let store = test_store().await;
+        five_versions_of_k(&store).await;
+        let rows = store.list_object_versions_from("b", None, Some("k"), None, 10).await.unwrap();
+        assert_eq!(blob_ids(&rows), ["l-0"]);
+    }
+
+    #[tokio::test]
+    async fn list_object_versions_from_resumes_after_the_null_version() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let t0 = chrono::Utc::now();
+        let mut null_version = make_record("b", "k");
+        null_version.blob_id = BlobId("k-null".into());
+        null_version.last_modified = t0;
+        store.put_object(&null_version).await.unwrap();
+        enable_versioning(&store, "b").await;
+        let mut newer = make_record("b", "k");
+        newer.blob_id = BlobId("k-new".into());
+        newer.last_modified = t0 + chrono::Duration::seconds(1);
+        store.put_object(&newer).await.unwrap();
+
+        let position = VersionPosition { last_modified: t0, version_id: String::new() };
+        let rows = store.list_object_versions_from("b", None, Some("k"), Some(&position), 10).await.unwrap();
+        assert!(rows.is_empty(), "nothing is older than the null version: {:?}", blob_ids(&rows));
+        let position = VersionPosition::of(&newer);
+        let rows = store.list_object_versions_from("b", None, Some("k"), Some(&position), 10).await.unwrap();
+        assert_eq!(blob_ids(&rows), ["k-null"]);
     }
 
     #[tokio::test]

@@ -176,12 +176,12 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 
 | Suite | Tests | Details |
 |-------|------:|---------|
-| Unit tests (Rust) | 1185 | arca-auth: 39, arca-core: 270, arca-proto: 124, arca-server: 388, arca-storage: 364 |
+| Unit tests (Rust) | 1189 | arca-auth: 39, arca-core: 270, arca-proto: 124, arca-server: 388, arca-storage: 368 |
 | Integration — boto3 | 146 | buckets, objects, list, multipart, copy, folders, auth, admin, credentials, conditional ops |
 | Integration — Conditional Writes (CAS) | 15 | sequential If-Match/If-None-Match/CompleteMultipartUpload/DeleteObject preconditions, N=8 racing writers under barrier release (exactly one winner, every run), conditional DELETE racing an unconditional overwrite (never destroys the newer object), DeleteObjects batch precondition checked against the targeted version, not the bucket's latest |
 | Integration — Multipart abort race | 3 | abort after complete leaves the object readable, complete after abort fails and writes nothing, and an abort swept across the whole life of a Complete (whoever wins, a completed object always reads back intact); also run against PostgreSQL |
 | Integration — RBAC | 42 | user/team/grant CRUD, attachments, effective grants, /admin/me (with and without grants), E2E access control |
-| Integration — Versioning | 23 | versioning config, PUT/GET/HEAD/DELETE with versionId, delete markers, batch delete with VersionId, ListVersions (paginated inside a key and past the null version), copy; also run against PostgreSQL |
+| Integration — Versioning | 25 | versioning config, PUT/GET/HEAD/DELETE with versionId, delete markers, batch delete with VersionId, ListVersions (paginated inside a key and past the null version, a vanished marker refused), copy; also run against PostgreSQL |
 | Integration — Tagging | 23 | Put/Get/Delete object tags, tag limits and validation, tagging on versioned objects, tag-directive on copy |
 | Integration — Monitoring | 29 | Prometheus metrics, audit log, metrics history, instance settings, preview limits, region (TD-004) |
 | Integration — Lifecycle | 17 | Put/Get/Delete lifecycle config, expiration rules, noncurrent version, abort upload, tag/and filters |
@@ -215,9 +215,9 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — Migrate DB | 1 | SQLite→PostgreSQL offline metadata migration + row-count verify |
 | Integration — Migrate Topology | 1 | single→cluster config emission + DB ops, then →single round-trip |
 | Connector integrations | 84 | Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Kafka, AMQP, Elasticsearch, Syslog, SMTP, gRPC — each: delivery, custom destination, delete event, multiple events, payload format, connectivity test |
-| **Arca tests** | **2,194** | **All tests written for this project** |
+| **Arca tests** | **2,200** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 825 | 371 pass, 363 fail, 91 skip — 0 unexpected failures (RGW-only extensions excluded; 2 pass on AWS behaviour where RGW differs) |
-| **Total** | **3,019** | |
+| **Total** | **3,025** | |
 
 ## License
 

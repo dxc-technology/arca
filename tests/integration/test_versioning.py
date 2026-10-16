@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from botocore.exceptions import ClientError
 
 
 @pytest.fixture
@@ -205,6 +206,34 @@ class TestListObjectVersions:
         seen = self._paginate_versions(s3_client, vbucket, 2)
         assert len(seen) == len(set(seen)), f"a version was repeated: {seen}"
         assert sorted(seen) == sorted(expected)
+
+    def test_list_versions_refuses_a_marker_version_deleted_between_pages(
+        self, s3_client, vbucket
+    ):
+        for i in range(5):
+            s3_client.put_object(Bucket=vbucket, Key="k", Body=f"{i}".encode())
+        page = s3_client.list_object_versions(Bucket=vbucket, MaxKeys=2)
+        assert page["IsTruncated"]
+        marker = page["NextVersionIdMarker"]
+        s3_client.delete_object(Bucket=vbucket, Key="k", VersionId=marker)
+
+        # Resuming from a version that no longer exists must fail loudly, not
+        # silently skip the rest of the key.
+        with pytest.raises(ClientError) as exc:
+            s3_client.list_object_versions(
+                Bucket=vbucket,
+                KeyMarker=page["NextKeyMarker"],
+                VersionIdMarker=marker,
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidArgument"
+
+    def test_list_versions_refuses_an_unknown_version_marker(self, s3_client, vbucket):
+        s3_client.put_object(Bucket=vbucket, Key="k", Body=b"x")
+        with pytest.raises(ClientError) as exc:
+            s3_client.list_object_versions(
+                Bucket=vbucket, KeyMarker="k", VersionIdMarker="no-such-version"
+            )
+        assert exc.value.response["Error"]["Code"] == "InvalidArgument"
 
     def test_list_versions_paginates_past_the_null_version(self, s3_client):
         bucket = f"test-ver-null-page-{uuid.uuid4().hex[:8]}"

@@ -10,7 +10,9 @@ use std::time::Duration;
 use moka::future::Cache;
 
 use arca_core::error::ArcaError;
-use arca_core::store::{CompletedUpload, DeletePrecondition, MetadataStore, WritePrecondition};
+use arca_core::store::{
+    CompletedUpload, DeletePrecondition, MetadataStore, VersionPosition, WritePrecondition,
+};
 use arca_core::types::{
     BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
 };
@@ -196,16 +198,16 @@ impl MetadataStore for CachingMetadataStore {
         result
     }
 
-    async fn list_object_versions(
+    async fn list_object_versions_from(
         &self,
         bucket: &str,
         prefix: Option<&str>,
         key_marker: Option<&str>,
-        version_id_marker: Option<&str>,
+        after: Option<&VersionPosition>,
         max_keys: u32,
     ) -> Result<Vec<ObjectRecord>, ArcaError> {
         self.inner
-            .list_object_versions(bucket, prefix, key_marker, version_id_marker, max_keys)
+            .list_object_versions_from(bucket, prefix, key_marker, after, max_keys)
             .await
     }
 

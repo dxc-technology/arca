@@ -1,6 +1,8 @@
 //! Metadata storage trait.
 
-use crate::error::S3ErrorCode;
+use chrono::{DateTime, Utc};
+
+use crate::error::{S3Error, S3ErrorCode};
 use crate::s3::etag::etag_matches;
 use crate::types::{BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats};
 
@@ -17,6 +19,26 @@ pub struct WritePrecondition {
     /// `If-None-Match`: proceed only if no current object matches. `*` means
     /// "only if the object does not exist".
     pub if_none_match: Option<String>,
+}
+
+/// A position in the version listing order, inside one key: the
+/// `(last_modified, version id)` of a row.
+/// [`MetadataStore::list_object_versions_from`] resumes strictly after it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VersionPosition {
+    pub last_modified: DateTime<Utc>,
+    /// The version id, empty for the null version (how the listing orders it).
+    pub version_id: String,
+}
+
+impl VersionPosition {
+    /// The position of `record` in the listing.
+    pub fn of(record: &ObjectRecord) -> Self {
+        Self {
+            last_modified: record.last_modified,
+            version_id: record.version_id.clone().unwrap_or_default(),
+        }
+    }
 }
 
 /// What [`MetadataStore::complete_multipart_object`] committed.
@@ -263,8 +285,28 @@ pub trait MetadataStore: Send + Sync {
             .await
     }
 
-    /// Lists all versions of objects in a bucket, including delete markers,
-    /// ordered by `(key ASC, last_modified DESC)`.
+    /// Lists versions of objects in a bucket, including delete markers, in the
+    /// listing order `(key ASC, last_modified DESC, version id DESC)` (the
+    /// null version sorts as the empty id), starting after `key_marker` or,
+    /// when `after` is given, after that position inside `key_marker`.
+    /// `after` is ignored without a `key_marker`.
+    ///
+    /// The position is a value, not a lookup, so it stays valid when the
+    /// version it came from is deleted between two pages.
+    async fn list_object_versions_from(
+        &self,
+        bucket: &str,
+        prefix: Option<&str>,
+        key_marker: Option<&str>,
+        after: Option<&VersionPosition>,
+        max_keys: u32,
+    ) -> Result<Vec<ObjectRecord>, crate::error::ArcaError>;
+
+    /// S3 ListObjectVersions paging: lists versions after `key_marker` and
+    /// `version_id_marker` (`"null"` for the null version). The marker version
+    /// is looked up to find its position, so a marker that does not exist
+    /// (never did, or was deleted since the previous page) is refused with
+    /// `InvalidArgument` rather than silently skipping the rest of its key.
     async fn list_object_versions(
         &self,
         bucket: &str,
@@ -272,12 +314,31 @@ pub trait MetadataStore: Send + Sync {
         key_marker: Option<&str>,
         version_id_marker: Option<&str>,
         max_keys: u32,
-    ) -> Result<Vec<ObjectRecord>, crate::error::ArcaError>;
+    ) -> Result<Vec<ObjectRecord>, crate::error::ArcaError> {
+        let key_marker = key_marker.filter(|km| !km.is_empty());
+        let after = match (key_marker, version_id_marker) {
+            (Some(km), Some(vm)) => match self.get_object_version(bucket, km, vm).await? {
+                Some(marker) => Some(VersionPosition::of(&marker)),
+                None => {
+                    return Err(S3Error::with_message(
+                        S3ErrorCode::InvalidArgument,
+                        "Invalid version id specified",
+                        format!("/{bucket}/{km}?versionId={vm}"),
+                    )
+                    .into());
+                }
+            },
+            _ => None,
+        };
+        self.list_object_versions_from(bucket, prefix, key_marker, after.as_ref(), max_keys)
+            .await
+    }
 
     /// Every version of every key in `bucket` (optionally under `prefix`),
-    /// including delete markers, in [`MetadataStore::list_object_versions`]
-    /// order. Pages with both markers, the null version resuming as `"null"`,
-    /// so no version is skipped or repeated at a page boundary.
+    /// including delete markers, in [`MetadataStore::list_object_versions_from`]
+    /// order. Each page resumes from the position of the previous page's last
+    /// row, so no version is skipped or repeated at a page boundary, even
+    /// when versions are deleted while the listing runs.
     async fn list_all_object_versions(
         &self,
         bucket: &str,
@@ -285,23 +346,20 @@ pub trait MetadataStore: Send + Sync {
     ) -> Result<Vec<ObjectRecord>, crate::error::ArcaError> {
         const PAGE: u32 = 1000;
         let mut out = Vec::new();
-        let mut key_marker: Option<String> = None;
-        let mut version_id_marker: Option<String> = None;
+        let mut resume: Option<(String, VersionPosition)> = None;
         loop {
             let page = self
-                .list_object_versions(
+                .list_object_versions_from(
                     bucket,
                     prefix,
-                    key_marker.as_deref(),
-                    version_id_marker.as_deref(),
+                    resume.as_ref().map(|(key, _)| key.as_str()),
+                    resume.as_ref().map(|(_, position)| position),
                     PAGE,
                 )
                 .await?;
             let full = page.len() as u32 == PAGE;
             if let Some(last) = page.last() {
-                key_marker = Some(last.key.clone());
-                version_id_marker =
-                    Some(last.version_id.clone().unwrap_or_else(|| "null".to_string()));
+                resume = Some((last.key.clone(), VersionPosition::of(last)));
             }
             out.extend(page);
             if !full {
