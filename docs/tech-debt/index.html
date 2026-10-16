@@ -1545,14 +1545,6 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>crates/arca-server/src/cluster/cluster_meta.rs</code>, <code>crates/arca-core/src/cluster.rs</code> (<code>ControlSnapshot</code>), <code>crates/arca-storage/src/{sqlite,pg}/metadata.rs</code></td>
 </tr>
 <tr>
-<td>TD-036</td>
-<td>Cluster drift fingerprint ignores <code>cluster_size</code></td>
-<td><code>config_fingerprint</code> hashes <code>cluster_id</code>, <code>mode</code>, <code>write_quorum</code>, <code>secret</code> and the master-key id, not <code>cluster_size</code>. <code>write_quorum</code> (<code>n/2+1</code>, quorum mode only) catches some resizes but not 2↔3 or 4↔5, and in <code>available</code> mode a differing <code>cluster_size</code> is never caught. <code>guide/ha.md</code> (drift detection, resize runbook step 3) says the fingerprint includes <code>cluster_size</code>.</td>
-<td>Add <code>cluster_size</code> to the fingerprint (bump the <code>arca-cluster-cfg-v1</code> domain tag, and say in the CHANGELOG that mixed-version nodes report drift during a rolling upgrade).</td>
-<td>None</td>
-<td><code>crates/arca-core/src/cluster.rs</code> (<code>config_fingerprint</code>), <code>crates/arca-server/src/main.rs</code></td>
-</tr>
-<tr>
 <td>TD-040</td>
 <td>Cluster maintenance jobs can stall on a non-leader node</td>
 <td>Maintenance jobs are stored in each node's local <code>MaintenanceStore</code> (not cluster-wrapped, not part of <code>ControlSnapshot</code>), while only the worker-leader (lowest eligible <code>node_id</code>, decision H5) runs the maintenance worker. A job created through the load balancer on any other node is never picked up until that node happens to become leader; the API accepts it and it stays <code>pending</code>. <code>guide/maintenance.md</code> and <code>guide/console.md</code> do not mention this.</td>
@@ -1764,6 +1756,12 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>TD-035</td>
 <td><code>UploadPartCopy</code> ignored copy-source conditionals</td>
 <td><code>upload_part_copy</code> now calls <code>check_copy_source_conditionals</code> (<code>x-amz-copy-source-if-match</code>, <code>-if-none-match</code>, <code>-if-modified-since</code>, <code>-if-unmodified-since</code>) right after resolving the source and before any source byte is read, as <code>copy_object</code> does; a failed condition answers <code>412 PreconditionFailed</code> and stores no part. Tests: <code>test_copy_source_conditions.py</code>, a passing and a failing case for each header on both CopyObject and UploadPartCopy (the four failing UploadPartCopy cases failed before the fix)</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-036</td>
+<td>Cluster drift fingerprint ignored <code>cluster_size</code></td>
+<td><code>config_fingerprint</code> hashed the write quorum (<code>n/2+1</code>) but not <code>cluster_size</code>, so a resize between 2 and 3 or 4 and 5 went unflagged. Fixed with a second fingerprint, <code>config_fingerprint_v2</code> (domain tag <code>arca-cluster-cfg-v2</code>), that adds <code>cluster_size</code> in quorum mode only (in <code>available</code> mode the setting has no effect, so a difference there is not drift). The ping carries both: v1 stays in <code>config_fingerprint</code>, so a node of the previous version keeps matching and a rolling upgrade shows no drift (a drifted peer is excluded from the write quorum, H7); a node compares v2 only with a peer that sends it, so <code>cluster_size</code> drift is caught between upgraded nodes.</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
