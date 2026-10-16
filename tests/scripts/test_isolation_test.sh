@@ -124,7 +124,7 @@ overlay_files() {
     local f
     for f in "$REPO"/docker/docker-compose.yml "$REPO"/docker/docker-compose.*.yml; do
         case "$(basename "$f")" in
-            docker-compose.cluster*.yml|docker-compose.docs.yml) ;;   # never in a test project
+            docker-compose.docs.yml) ;;   # never in a test project
             *) echo "$f" ;;
         esac
     done
@@ -140,7 +140,7 @@ test_no_service_a_test_starts_publishes_a_fixed_host_port() {
             /^  [a-z][a-z0-9-]*:/ { service = $1; sub(":", "", service); ports = 0; next }
             /^    ports:/ { ports = 1; next }
             /^    [a-z]/ { ports = 0 }
-            ports && /^      - / && service != "console" && $0 !~ /\$\{[A-Z_]*_HOST_PORT:-/ {
+            ports && /^      - / && service != "console" && $0 !~ /\$\{[A-Z0-9_]*_HOST_PORT:-/ {
                 print file ": " service ": " $0
             }' "$f")"
     done < <(overlay_files)
@@ -154,7 +154,7 @@ test_a_test_project_moves_every_host_port_to_an_ephemeral_loopback_one() {
     while IFS= read -r var; do
         [[ "$var" == CONSOLE_HOST_PORT ]] && continue
         [[ "${!var:-}" == "127.0.0.1:0" ]] || missing+="$var=${!var:-<unset>} "
-    done < <(overlay_files | xargs grep -ho '\${[A-Z_]*_HOST_PORT:-' | tr -d '${:-' | sort -u)
+    done < <(overlay_files | xargs grep -ho '\${[A-Z0-9_]*_HOST_PORT:-' | tr -d '${:-' | sort -u)
     assert_eq "" "$missing" "host port variables not remapped by use_test_project"
 }
 
@@ -223,9 +223,12 @@ script_setup() {
     : > "$DOCKER_LOG"
     cat > mockbin/docker <<'EOF'
 #!/usr/bin/env bash
-echo "$* | config=${ARCA_GENERATED_CONFIG:-} port=${ARCA_HOST_PORT:-}" >> "$DOCKER_LOG"
+echo "$* | config=${ARCA_GENERATED_CONFIG:-} node1=${ARCA_NODE1_HOST_PORT:-} port=${ARCA_HOST_PORT:-}" >> "$DOCKER_LOG"
 case "$*" in
     *" run "*)              [[ -n "${MOCK_FAIL_RUN:-}" ]] && exit 1 ;;&
+    *" build "*)            [[ -n "${MOCK_FAIL_BUILD:-}" ]] && exit 1 ;;&
+    *" port "*)             echo 127.0.0.1:49152 ;;
+    network*)               exit 0 ;;
     *" ps -q "*)            echo 0123456789ab ;;
     *" ps arca")            echo "arca  running" ;;
     inspect*)               echo healthy ;;
@@ -290,6 +293,44 @@ test_migrate_db_mode_is_isolated()           { isolated_mode_test migrate-db mig
 test_migrate_topology_mode_is_isolated()     { isolated_mode_test migrate-topology migrate-topology; }
 test_replication_mode_is_isolated()          { isolated_mode_test replication replication; }
 test_notifications_mode_is_isolated()        { isolated_mode_test notifications notifications; }
+
+# The cluster mode stops at its first failing step: the isolation of every call
+# up to there is what matters, a full run needs real nodes.
+test_cluster_mode_is_isolated() {
+    script_setup
+    MOCK_FAIL_BUILD=1 bin/test cluster > run.log 2>&1 || true
+    assert_isolated arca-test-cluster &&
+    assert_contains "$(compose_calls)" "compose -p arca-test-cluster " &&
+    assert_eq "127.0.0.1:0" "$(compose_calls | sed -n '1s/.* node1=\([^ ]*\) .*/\1/p')" \
+        "the node ports of the cluster project are not remapped"
+}
+
+test_cluster_partition_and_heal_follow_the_project_of_the_test_run() {
+    script_setup
+    ARCA_CLUSTER_PROJECT=arca-test-cluster bin/cluster partition 3 > run.log 2>&1 &&
+    ARCA_CLUSTER_PROJECT=arca-test-cluster bin/cluster heal 3 >> run.log 2>&1 || { cat run.log; return 1; }
+    assert_contains "$(grep '^network ' "$DOCKER_LOG")" "network disconnect arca-test-cluster_cluster" &&
+    assert_contains "$(grep '^network ' "$DOCKER_LOG")" "arca-test-cluster_cluster 0123456789ab" &&
+    assert_eq "" "$(grep -c 'arca-cluster_cluster' "$DOCKER_LOG" | grep -v '^0$' || true)"
+}
+
+test_cluster_commands_default_to_the_developers_cluster_project() {
+    script_setup
+    bin/cluster partition 3 > run.log 2>&1 || { cat run.log; return 1; }
+    assert_contains "$(grep '^network ' "$DOCKER_LOG")" "network disconnect arca-cluster_cluster"
+}
+
+# `full` chains every stage that needs no setup beyond a running server, each
+# as a process of its own, and does not stop at the first failure.
+test_full_mode_runs_every_stage_and_names_the_failed_ones() {
+    script_setup
+    local rc=0
+    MOCK_FAIL_RUN=1 bin/test full > run.log 2>&1 || rc=$?
+    assert_eq 1 "$rc" "a failing stage must fail the run" &&
+    assert_contains "$(grep '^==> bin/test ' run.log | paste -sd' ' -)" \
+        "==> bin/test unit ==> bin/test integration ==> bin/test notifications ==> bin/test replication ==> bin/test cluster" &&
+    assert_contains "$(cat run.log)" "FAILED stages: unit integration notifications replication cluster"
+}
 
 test_every_connector_mode_is_isolated() {
     local connector

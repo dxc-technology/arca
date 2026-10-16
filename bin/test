@@ -5,6 +5,8 @@ set -euo pipefail
 #
 # Usage:
 #   bin/test              Run unit tests + integration tests
+#   bin/test full         Run unit, integration, notifications, replication and
+#                         cluster in turn (needs a running server; takes a while)
 #   bin/test unit         Run unit tests only
 #   bin/test integration  Run integration tests only (server must be running)
 #   bin/test unit -p arca-core   Pass extra args to cargo test
@@ -779,18 +781,33 @@ run_replication() {
 
 # --- 3-node HA cluster tests ---
 
-# Live node count as seen by the node on host port $1 (via public health).
+# The cluster runs in a project of its own (use_test_project) whose node ports
+# are ephemeral loopback ones; the suites reach each other over the compose
+# network. Only the readiness polls below go through the host, and an ephemeral
+# port changes whenever a container restarts, so it is looked up on every use.
+_CLUSTER_PROJECT=""
+
+# Host address (127.0.0.1:<port>) of a cluster service's port 9000.
+_cluster_addr() {
+    docker compose -p "$_CLUSTER_PROJECT" -f docker/docker-compose.cluster.yml \
+        port "$1" 9000 2>/dev/null
+}
+
+# Live node count as seen by node $1 (via public health).
 _node_live() {
-    curl -fsS "http://localhost:${1}/admin/health?verbose=1" 2>/dev/null \
+    local addr
+    addr="$(_cluster_addr "arca-$1")" || return 0
+    curl -fsS "http://${addr}/admin/health?verbose=1" 2>/dev/null \
         | jq -r '.cluster.live_node_count // empty' 2>/dev/null
 }
 
 # Node number (1-3) of the current worker leader (decision H5), found by
 # asking each node whether it claims the role via verbose health.
 _leader_node() {
-    local n
+    local n addr
     for n in 1 2 3; do
-        if [[ "$(curl -fsS "http://localhost:$((9000 + n))/admin/health?verbose=1" 2>/dev/null \
+        addr="$(_cluster_addr "arca-$n")" || continue
+        if [[ "$(curl -fsS "http://${addr}/admin/health?verbose=1" 2>/dev/null \
             | jq -r '.cluster.worker_leader // empty' 2>/dev/null)" == "true" ]]; then
             echo "$n"
             return 0
@@ -799,19 +816,19 @@ _leader_node() {
     return 1
 }
 
-# Wait until the node on host port $1 reports exactly $2 live nodes.
+# Wait until node $1 (1-3) reports exactly $2 live nodes.
 wait_live() {
-    local port="$1" want="$2" max="${3:-90}"
-    echo "Waiting for the cluster to report $want live node(s) on :$port..."
+    local node="$1" want="$2" max="${3:-90}"
+    echo "Waiting for the cluster to report $want live node(s) on arca-$node..."
     for _ in $(seq 1 "$max"); do
-        if [[ "$(_node_live "$port")" == "$want" ]]; then
+        if [[ "$(_node_live "$node")" == "$want" ]]; then
             # Membership convergence on one node does not mean the LB has any
             # ready backend yet: since v0.26.0 a node answers 503
             # "syncing" on /admin/health until its first anti-entropy pass, so
             # on a cold cluster start ALL nodes can be briefly out of rotation.
             # Wait until the LB actually routes a health check...
             for _ in $(seq 1 60); do
-                curl -fsS -o /dev/null "http://localhost:9000/admin/health" 2>/dev/null && break
+                curl -fsS -o /dev/null "http://$(_cluster_addr arca-lb)/admin/health" 2>/dev/null && break
                 sleep 1
             done
             # ...then the eviction margin: with `fall 2 inter 2s` HAProxy takes
@@ -821,20 +838,25 @@ wait_live() {
         fi
         sleep 1
     done
-    echo "Timed out waiting for live==$want on :$port" >&2
+    echo "Timed out waiting for live==$want on arca-$node" >&2
     return 1
 }
 
 run_cluster() {
     echo "==> Running 3-node HA cluster integration tests..."
-
-    local PROJECT="arca-cluster"
+    use_test_project cluster
+    # Global, like the other modes' compose state: the EXIT trap runs after
+    # this function is gone.
+    _CLUSTER_PROJECT="$_COMPOSE_PROJECT"
+    local PROJECT="$_CLUSTER_PROJECT"
+    # bin/cluster partition/heal act on this project, not the developer's.
+    export ARCA_CLUSTER_PROJECT="$PROJECT"
     local BASE="docker/docker-compose.cluster.yml"
     local C="docker compose -p $PROJECT -f $BASE"
 
     cleanup_cluster() {
         echo "Cleaning up cluster test..."
-        docker compose -p arca-cluster -f docker/docker-compose.cluster.yml down -v 2>/dev/null || true
+        docker compose -p "$_CLUSTER_PROJECT" -f docker/docker-compose.cluster.yml down -v 2>/dev/null || true
     }
     trap cleanup_cluster EXIT
 
@@ -866,28 +888,28 @@ run_cluster() {
     if [[ $rc -eq 0 ]]; then
         echo "── Phase A: all 3 nodes up ──"
         $C up -d
-        wait_live 9001 3 90 || rc=1
+        wait_live 1 3 90 || rc=1
         [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_full -v "$@" || rc=$?; }
     fi
 
     if [[ $rc -eq 0 ]]; then
         echo "── Phase B: node 3 down (2 of 3 — quorum still met) ──"
         $C stop arca-3
-        wait_live 9001 2 60 || rc=1
+        wait_live 1 2 60 || rc=1
         [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_two_thirds -v "$@" || rc=$?; }
     fi
 
     if [[ $rc -eq 0 ]]; then
         echo "── Phase C: nodes 2 & 3 down (1 of 3 — no quorum) ──"
         $C stop arca-2
-        wait_live 9001 1 60 || rc=1
+        wait_live 1 1 60 || rc=1
         [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_one_third -v "$@" || rc=$?; }
     fi
 
     if [[ $rc -eq 0 ]]; then
         echo "── Phase D: all nodes back up (anti-entropy convergence) ──"
         $C start arca-2 arca-3
-        wait_live 9001 3 90 || rc=1
+        wait_live 1 3 90 || rc=1
         [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_catchup_verify -v "$@" || rc=$?; }
     fi
 
@@ -899,7 +921,7 @@ run_cluster() {
         echo "── Phase E: 507 InsufficientStorage (tiny-disk node) ──"
         local C507="$C -f docker/docker-compose.cluster.507.yml"
         $C507 up -d
-        wait_live 9001 3 90 || rc=1
+        wait_live 1 3 90 || rc=1
         [[ $rc -eq 0 ]] && { $C507 run --rm --no-deps test "$T" -m cluster_insufficient_storage -v "$@" || rc=$?; }
         dump_logs_on_failure $rc $C507
         $C507 down -v 2>/dev/null || true
@@ -912,7 +934,7 @@ run_cluster() {
         # flagged AND excluded from the quorum (decisions H7/H12).
         local CDRIFT="$C -f docker/docker-compose.cluster.drift.yml"
         $CDRIFT up -d
-        wait_live 9001 3 90 || rc=1
+        wait_live 1 3 90 || rc=1
         [[ $rc -eq 0 ]] && { $CDRIFT run --rm --no-deps test "$T" -m cluster_config_drift -v "$@" || rc=$?; }
 
         # Second half: de-align arca-2 too (its own distinct wrong secret).
@@ -923,7 +945,7 @@ run_cluster() {
             echo "── Phase F2: drifted majority (2 of 3 nodes mismatched) ──"
             local CDRIFT2="$CDRIFT -f docker/docker-compose.cluster.drift2.yml"
             $CDRIFT2 up -d
-            wait_live 9001 3 90 || rc=1
+            wait_live 1 3 90 || rc=1
             [[ $rc -eq 0 ]] && { $CDRIFT2 run --rm --no-deps test "$T" -m cluster_config_drift_majority -v "$@" || rc=$?; }
             dump_logs_on_failure $rc $CDRIFT2
             $CDRIFT2 down -v 2>/dev/null || true
@@ -943,7 +965,7 @@ run_cluster() {
     if [[ $rc -eq 0 ]]; then
         echo "── Phase G: quorum mode under a network partition ──"
         $C up -d
-        wait_live 9001 3 90 || rc=1
+        wait_live 1 3 90 || rc=1
         [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_partition_before -v "$@" || rc=$?; }
         if [[ $rc -eq 0 ]]; then
             bin/cluster partition 3 || rc=$?
@@ -954,7 +976,7 @@ run_cluster() {
             bin/cluster heal 3 || rc=$?
         fi
         if [[ $rc -eq 0 ]]; then
-            wait_live 9001 3 90 || rc=1
+            wait_live 1 3 90 || rc=1
             [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_partition_healed -v "$@" || rc=$?; }
         fi
         dump_logs_on_failure $rc $C
@@ -965,7 +987,7 @@ run_cluster() {
         echo "── Phase H: available mode (split-brain LWW + minority writes) ──"
         local CAVAIL="$C -f docker/docker-compose.cluster.available.yml"
         $CAVAIL up -d
-        wait_live 9001 3 90 || rc=1
+        wait_live 1 3 90 || rc=1
         [[ $rc -eq 0 ]] && { $CAVAIL run --rm --no-deps test "$T" -m cluster_available_full -v "$@" || rc=$?; }
         if [[ $rc -eq 0 ]]; then
             bin/cluster partition 3 || rc=$?
@@ -973,12 +995,12 @@ run_cluster() {
             bin/cluster heal 3 || rc=$?
         fi
         if [[ $rc -eq 0 ]]; then
-            wait_live 9001 3 90 || rc=1
+            wait_live 1 3 90 || rc=1
             [[ $rc -eq 0 ]] && { $CAVAIL run --rm --no-deps test "$T" -m cluster_available_converged -v "$@" || rc=$?; }
         fi
         if [[ $rc -eq 0 ]]; then
             $CAVAIL stop arca-2 arca-3
-            wait_live 9001 1 60 || rc=1
+            wait_live 1 1 60 || rc=1
             [[ $rc -eq 0 ]] && { $CAVAIL run --rm --no-deps test "$T" -m cluster_available_minority -v "$@" || rc=$?; }
         fi
         dump_logs_on_failure $rc $CAVAIL
@@ -991,7 +1013,7 @@ run_cluster() {
         # WHICH container holds the role differs per run: it is discovered via
         # verbose health, then stopped to verify the failover.
         $C up -d
-        wait_live 9001 3 90 || rc=1
+        wait_live 1 3 90 || rc=1
         [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_leader_full -v "$@" || rc=$?; }
         if [[ $rc -eq 0 ]]; then
             local leader survivor
@@ -999,7 +1021,7 @@ run_cluster() {
             if [[ $rc -eq 0 ]]; then
                 echo "Stopping the worker leader (arca-$leader)..."
                 $C stop "arca-$leader"
-                survivor=$(( leader == 1 ? 9002 : 9001 ))
+                survivor=$(( leader == 1 ? 2 : 1 ))
                 wait_live "$survivor" 2 60 || rc=1
                 [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_leader_failover -v "$@" || rc=$?; }
             fi
@@ -1015,11 +1037,11 @@ run_cluster() {
         # completes — and the moment it answers 200, the data written during
         # its downtime must already be readable on it.
         $C up -d
-        wait_live 9001 3 90 || rc=1
+        wait_live 1 3 90 || rc=1
         [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_syncing_seed -v "$@" || rc=$?; }
         if [[ $rc -eq 0 ]]; then
             $C stop arca-3
-            wait_live 9001 2 60 || rc=1
+            wait_live 1 2 60 || rc=1
             [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_syncing_while_down -v "$@" || rc=$?; }
         fi
         if [[ $rc -eq 0 ]]; then
@@ -1041,11 +1063,11 @@ run_cluster() {
         # verify the degraded behaviors (503 on a dead target, merged view
         # shrinking to the eligible nodes).
         $C up -d
-        wait_live 9001 3 90 || rc=1
+        wait_live 1 3 90 || rc=1
         [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_node_views_full -v "$@" || rc=$?; }
         if [[ $rc -eq 0 ]]; then
             $C stop arca-3
-            wait_live 9001 2 60 || rc=1
+            wait_live 1 2 60 || rc=1
             [[ $rc -eq 0 ]] && { $C run --rm --no-deps test "$T" -m cluster_node_views_degraded -v "$@" || rc=$?; }
         fi
         dump_logs_on_failure $rc $C
@@ -1063,9 +1085,9 @@ run_cluster() {
         # deleted while node 3 is down beyond the grace must block tombstone
         # GC on the survivors and stay deleted everywhere at node 3's return.
         local CGC="$C -f docker/docker-compose.cluster.gc.yml"
-        local VOL="arca-cluster_arca-3-data"
+        local VOL="${PROJECT}_arca-3-data"
         $CGC up -d
-        wait_live 9001 3 90 || rc=1
+        wait_live 1 3 90 || rc=1
         [[ $rc -eq 0 ]] && { $CGC run --rm --no-deps test "$T" -m cluster_blob_repair_seed -v "$@" || rc=$?; }
         if [[ $rc -eq 0 ]]; then
             local blob
@@ -1099,12 +1121,12 @@ run_cluster() {
         [[ $rc -eq 0 ]] && { $CGC run --rm --no-deps test "$T" -m cluster_gc_seed -v "$@" || rc=$?; }
         if [[ $rc -eq 0 ]]; then
             $CGC stop arca-3
-            wait_live 9001 2 60 || rc=1
+            wait_live 1 2 60 || rc=1
             [[ $rc -eq 0 ]] && { $CGC run --rm --no-deps test "$T" -m cluster_gc_blocked -v "$@" || rc=$?; }
         fi
         if [[ $rc -eq 0 ]]; then
             $CGC start arca-3
-            wait_live 9001 3 90 || rc=1
+            wait_live 1 3 90 || rc=1
             [[ $rc -eq 0 ]] && { $CGC run --rm --no-deps test "$T" -m cluster_gc_recovered -v "$@" || rc=$?; }
         fi
         dump_logs_on_failure $rc $CGC
@@ -1155,6 +1177,28 @@ run_notifications() {
     trap - EXIT
     cleanup_notif
     return $rc
+}
+
+# Every stage that needs nothing beyond a running server (`bin/arca start`):
+# the unit tests, the integration suite against that server and the suites
+# that start their own compose project (notifications, replication, cluster).
+# Each stage runs as a process of its own, so its errexit, trap and feature
+# state are exactly those of `bin/test <stage>`, and a failing stage does not
+# hide the ones after it. The other self-contained modes (tls, kms, postgres,
+# connectors, ...) stay explicit.
+run_full() {
+    local stage failed=()
+    for stage in unit integration notifications replication cluster; do
+        echo ""
+        echo "==> bin/test $stage"
+        "$REPO_ROOT/bin/test" "$stage" || failed+=("$stage")
+    done
+    echo ""
+    if (( ${#failed[@]} > 0 )); then
+        echo "FAILED stages: ${failed[*]}" >&2
+        return 1
+    fi
+    echo "All stages passed."
 }
 
 # --- Connector tests (dedicated stream, not part of bin/test all) ---
@@ -1712,11 +1756,15 @@ case "${1:-all}" in
         echo ""
         run_integration
         ;;
+    full)
+        run_full
+        ;;
     -h|--help)
         echo "Usage: bin/test <mode> [extra args...]"
         echo ""
         echo "Modes:"
         echo "  all                  Run unit + integration tests (default)"
+        echo "  full                 Run unit, integration, notifications, replication and cluster, each as its own stage"
         echo "  unit                 Run unit tests only"
         echo "  integration          Run integration tests only (server must be running)"
         echo "  tls                  Run TLS integration tests (self-contained)"

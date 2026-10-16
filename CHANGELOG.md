@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`bin/console start` and `bin/cluster up` follow the same rule** (run the existing image, else pull `latest`, `--dev` builds), and the console warns when it runs a different version from the server. `bin/cluster` does not remember `--release`.
 - **`bin/arca start` no longer builds a production image implicitly.** It used to let Compose build when the image was missing; it now pulls the published `latest` instead, as `docker run` does with a missing image (`--dev` has no published image, so a missing one is built).
+- **`bin/test integration` has no known failures left.** The cluster, replication and notification-delivery tests need names (`arca-1`, `arca-replica`, `webhook-receiver`) that exist only in the compose project of their own mode, so against the developer's server 61 of them failed (and 7 cluster tests passed against a single node standing in for the load balancer). They now skip unless their mode set the variable that points at those services, and run in `bin/test cluster`, `bin/test replication` and `bin/test notifications`. `bin/test cluster` joined the other self-contained modes: its own compose project, ephemeral loopback ports (it no longer collides with a running server on port 9000), and `bin/cluster partition/heal` follow it through `ARCA_CLUSTER_PROJECT`. New `bin/test full` runs unit, integration, notifications, replication and cluster as separate stages and names the ones that failed.
 
 ## [0.32.1] — 2026-10-15
 

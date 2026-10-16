@@ -24,6 +24,12 @@ from botocore.awsrequest import AWSRequest
 from botocore.credentials import Credentials
 
 
+# Skip the module outside `bin/test replication`, the only place with a replica.
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("ARCA_REPLICA_ENDPOINT"),
+    reason="replication tests need the replica of `bin/test replication`",
+)
+
 SOURCE_ENDPOINT = os.environ.get("ARCA_ENDPOINT", "http://arca:9000")
 REPLICA_ENDPOINT = os.environ.get("ARCA_REPLICA_ENDPOINT", "http://arca-replica:9000")
 ACCESS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "AKIA5B6BSHJA8CIHZSVG")

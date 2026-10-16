@@ -74,6 +74,14 @@ from botocore.credentials import Credentials
 from botocore.exceptions import ClientError
 
 
+# Skip the module outside `bin/test cluster`: the node names exist only in its
+# compose project, and against the developer's server the load-balancer tests
+# would silently talk to a single node.
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("ARCA_NODE1_ENDPOINT"),
+    reason="cluster tests need the 3-node cluster of `bin/test cluster`",
+)
+
 LB = os.environ.get("ARCA_ENDPOINT", "http://arca-lb:9000")
 NODES = {
     1: os.environ.get("ARCA_NODE1_ENDPOINT", "http://arca-1:9000"),

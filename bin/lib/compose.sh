@@ -441,7 +441,8 @@ use_test_project() {    # use_test_project <name>
     export ARCA_GENERATED_CONFIG="$GENERATED_CONFIG"
     local port
     for port in ARCA_HOST_PORT ARCA_REPLICA_HOST_PORT OPENBAO_HOST_PORT \
-            POSTGRES_HOST_PORT WEBHOOK_RECEIVER_HOST_PORT; do
+            POSTGRES_HOST_PORT WEBHOOK_RECEIVER_HOST_PORT \
+            ARCA_NODE1_HOST_PORT ARCA_NODE2_HOST_PORT ARCA_NODE3_HOST_PORT; do
         export "$port=127.0.0.1:0"
     done
 }

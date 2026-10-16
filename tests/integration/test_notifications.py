@@ -241,6 +241,10 @@ class TestNotificationConfiguration:
 
 # ── Webhook delivery tests ──
 
+@pytest.mark.skipif(
+    not os.environ.get("WEBHOOK_RECEIVER_URL"),
+    reason="delivery tests need the webhook receiver of `bin/test notifications`",
+)
 class TestNotificationDelivery:
     def _configure_webhook(self, s3_client, bucket, events=None, prefix=None, suffix=None):
         """Helper to configure a webhook on a bucket."""
@@ -448,6 +452,10 @@ class TestNotificationAdminApi:
 
 # ── Connector architecture tests ──
 
+@pytest.mark.skipif(
+    not os.environ.get("WEBHOOK_RECEIVER_URL"),
+    reason="delivery tests need the webhook receiver of `bin/test notifications`",
+)
 class TestConnectorArchitecture:
     def test_webhook_auth_token_delivered(self, s3_client, unique_bucket):
         """Webhook with auth_token sends Authorization: Bearer header."""
