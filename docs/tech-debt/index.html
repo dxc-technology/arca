@@ -1656,14 +1656,6 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>None</td>
 <td><code>crates/arca-server/src/worker.rs</code> (metrics), <code>console/</code></td>
 </tr>
-<tr>
-<td>TD-054</td>
-<td>A version-id-marker deleted between two pages skips the rest of its key</td>
-<td><code>list_object_versions</code> looks the marker version up to find where to resume inside <code>key_marker</code>; if that version was deleted (or tombstoned) since the previous page, the lookup fails and the listing resumes after the whole key, so the key's remaining versions are skipped. Affects S3 ListObjectVersions and the internal <code>list_all_object_versions</code> (re-encryption scan, <code>arca fsck</code>) under concurrent deletes only, e.g. lifecycle noncurrent expiry.</td>
-<td>Let the internal paging resume from the last row's own (last_modified, version) instead of a lookup (a store method taking the position), and for S3 return <code>InvalidArgument</code> for an unknown marker or resume from the marker's timestamp encoded in a continuation the server controls. Unit test: delete the marker version between pages, no version skipped.</td>
-<td>None</td>
-<td><code>crates/arca-storage/src/sqlite/metadata.rs</code>, <code>crates/arca-storage/src/pg/metadata.rs</code> (<code>list_object_versions</code>), <code>crates/arca-core/src/store/metadata.rs</code> (<code>list_all_object_versions</code>)</td>
-</tr>
 </tbody>
 </table>
 <hr />
@@ -1822,6 +1814,12 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>TD-053</td>
 <td>An abort racing CompleteMultipartUpload deleted the completed object's data</td>
 <td><code>MetadataStore::complete_multipart_object</code> installs the object row (the same CAS, versioning and <code>is_latest</code> rules as <code>put_object_if</code>, shared through <code>install_object</code>) and consumes the upload and its parts in ONE transaction that fails with <code>NoSuchUpload</code>, writing nothing, when the upload is gone; the handler discards only the assembled blob and its sidecar then, never the parts, which are the abort's to delete. Whichever transaction commits first wins: an abort that wins leaves the Complete with no object row (so an object can never point at deleted parts), a Complete that wins leaves the abort with no parts to delete (<code>delete_multipart_upload</code> returns none). SQLite serializes on its writer connection; PostgreSQL takes the upload row with <code>SELECT ... FOR UPDATE</code> as the first statement of Complete and deletes the upload row before its parts in <code>take_upload</code> (parts are only read through the <code>DELETE ... RETURNING</code>), so under READ COMMITTED the second transaction finds nothing. A refused precondition leaves the upload and parts untouched, so the client can retry. The cluster decorator replicates it as the two messages peers already know (the object row, then the upload tombstone and <code>MultipartDelete</code>). <strong>Limit:</strong> only the local commit is atomic; an abort landing on ANOTHER node at the same moment is arbitrated by anti-entropy, as for TD-025. Tests: seven store tests (<code>complete_multipart_object_*</code>, <code>abort_after_complete_finds_no_parts_to_delete</code>), two cluster decorator tests, and the stress test <code>test_multipart_abort_race.py</code> (also run by <code>bin/test postgres</code>), which sweeps the abort across the life of a Complete and fails on the old code (<code>InternalError</code> reading the "completed" object)</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-054</td>
+<td>A version-id-marker deleted between two pages skipped the rest of its key</td>
+<td><code>MetadataStore::list_object_versions_from</code> takes a <code>VersionPosition</code> (<code>last_modified</code>, version id) as a value instead of looking the marker version up, so a page boundary stays valid when its version is deleted. The internal full listing (<code>list_all_object_versions</code>: re-encryption scan, <code>arca fsck</code>) pages with the position of the previous page's last row and can no longer skip a version. The S3 <code>list_object_versions</code> is a default trait method that resolves the marker through <code>get_object_version</code> and refuses a marker that does not exist (never did, or deleted since the previous page) with <code>InvalidArgument</code> (<code>Invalid version id specified</code>) instead of silently resuming after the whole key: version ids are random UUIDs with no timestamp, so the position of a deleted marker cannot be reconstructed, and a loud error lets the client restart. <strong>Behaviour change:</strong> a ListObjectVersions with an unknown <code>version-id-marker</code> used to answer 200 with the rest of the listing and now answers 400. Tests: five store tests (deleted marker position resumes, no position starts after the key, null version, unknown and deleted marker refused), two S3 integration tests in <code>test_versioning.py</code> (also run by <code>bin/test postgres</code>)</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
