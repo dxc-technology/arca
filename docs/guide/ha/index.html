@@ -2213,6 +2213,7 @@ them, and any node that takes a write replicates it to the others.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>bin/cluster<span class="w"> </span>up<span class="w"> </span>-d<span class="w">            </span><span class="c1"># arca-1/2/3 + HAProxy + console</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>bin/cluster<span class="w"> </span>status<span class="w">           </span><span class="c1"># container + per-node /admin/health view</span>
 </code></pre></div>
+<p><code>bin/cluster up</code> never builds an image that can be pulled: when no local images exist it runs the published <code>latest</code>. To test the code in your working tree, build it first with <code>bin/cluster up -d --build</code>; <code>--release &lt;tag&gt;</code> runs a specific published release instead.</p>
 <p>Endpoints:</p>
 <table>
 <thead>

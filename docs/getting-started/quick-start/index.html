@@ -1553,8 +1553,9 @@ for <code>localhost</code> on the first start, and keeps them valid. See the
 <p>Open <a href="http://localhost:9080">http://localhost:9080</a>, enter the Arca endpoint (<code>http://localhost:9000</code>) and your credentials.</p>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--tls
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
 </code></pre></div>
+<p>The console has no <code>--tls</code> flag: it inherits TLS from the Arca server started with <code>bin/arca start -d --tls</code>.</p>
 <p>Open <code>https://your-domain:9443</code>, then enter the Arca HTTPS endpoint (e.g. <code>https://your-domain:9000</code>) and your credentials.</p>
 </div>
 </div>
@@ -1585,7 +1586,7 @@ for <code>localhost</code> on the first start, and keeps them valid. See the
 </tr>
 <tr>
 <td><code>bin/console</code></td>
-<td>Manage the web console (<code>start</code>, <code>stop</code>, <code>status</code>, <code>logs</code>). Use <code>--tls</code> with HTTPS.</td>
+<td>Manage the web console (<code>start</code>, <code>stop</code>, <code>status</code>, <code>logs</code>). Inherits TLS and the other features from the running Arca.</td>
 </tr>
 <tr>
 <td><code>bin/test</code></td>
