@@ -8,6 +8,7 @@ set -euo pipefail
 #   bin/arca start -d                 Start in background
 #   bin/arca start -d --build         Start in background, rebuild image first
 #   bin/arca start -d --dev           Start development image (has shell)
+#   bin/arca start -d --release latest  Start the published image, no build
 #   bin/arca start -d --tls           Start with TLS (your certs in ./certs/, or local ones)
 #   bin/arca start -d --encryption    Start with global encryption (local key)
 #   bin/arca start -d --encryption --per-bucket  Encryption available per-bucket only
@@ -37,11 +38,16 @@ usage() {
 }
 
 usage_start() {
-    echo "Usage: bin/arca start [-d] [--build] [--dev] [--tls] [--encryption|--kms] [--per-bucket] [--postgres] [--replication|--cluster] [--config <path>]"
+    echo "Usage: bin/arca start [-d] [--build|--release <tag>] [--dev] [--tls] [--encryption|--kms] [--per-bucket] [--postgres] [--replication|--cluster] [--config <path>]"
     echo ""
     echo "Options:"
     echo "  -d              Run in background (detached)"
     echo "  --build         Rebuild the Docker image before starting"
+    echo "                  (with neither flag and no image built before, the published"
+    echo "                  latest is pulled, or with --dev the image is built)"
+    echo "  --release <tag> Run the published image (latest, X, X.Y or X.Y.Z) from"
+    echo "                  ghcr.io instead of building it; no login needed, and the"
+    echo "                  console started afterwards follows it"
     echo "  --dev           Use development image (debian-slim, has shell)"
     echo "  --tls           Enable HTTPS with your certificates in ./certs/, or, if there"
     echo "                  are none, a local CA + certificate kept in ./certs/local"
@@ -67,6 +73,7 @@ usage_logs() {
 cmd_start() {
     local detach=false
     local build=false
+    local release=""
     local custom_config=""
     local want_tls=false
     local want_encryption=false
@@ -81,6 +88,14 @@ cmd_start() {
         case "$1" in
             -d)           detach=true; shift ;;
             --build)      build=true; shift ;;
+            --release)
+                if [[ -z "${2:-}" ]]; then
+                    echo "Error: --release requires an image tag (latest, X, X.Y or X.Y.Z)" >&2
+                    exit 1
+                fi
+                release="$2"
+                shift 2
+                ;;
             --dev)        export BUILD_TARGET=development; shift ;;
             --tls)        want_tls=true; shift ;;
             --encryption) want_encryption=true; shift ;;
@@ -107,6 +122,27 @@ cmd_start() {
     done
 
     # Validate and resolve features
+    if [[ -n "$release" ]]; then
+        if $build; then
+            echo "Error: --build and --release are mutually exclusive" >&2
+            exit 1
+        fi
+        use_release "$release" || exit 1
+    else
+        adopt_dotenv_build_target
+        if ! $build && ! docker image inspect "$(image_ref arca)" >/dev/null 2>&1; then
+            # A missing image is pulled, like `docker run` does, but only the
+            # production image is published; the development one can only be built.
+            if [[ "${BUILD_TARGET:-}" == "development" ]]; then
+                echo "==> No local $(image_ref arca) image and none is published: building it"
+                build=true
+            else
+                echo "==> No local image $(image_ref arca): using the published latest (use --build for your own)"
+                release=latest
+                use_release "$release" || exit 1
+            fi
+        fi
+    fi
     if $want_encryption && $want_kms; then
         echo "Error: --encryption and --kms are mutually exclusive" >&2
         exit 1
@@ -154,6 +190,11 @@ cmd_start() {
         bin/build "${build_args[@]}"
     fi
 
+    if [[ -n "$release" ]]; then
+        echo "==> Pulling the arca:$release image..."
+        $COMPOSE pull arca
+    fi
+
     # Needs the image, hence after the build; a no-op for your own certificates.
     prepare_local_certs
 
@@ -180,7 +221,7 @@ cmd_start() {
         trap "$COMPOSE --profile console down; clean_env" EXIT
     fi
 
-    $COMPOSE up "${args[@]+"${args[@]}"}" arca
+    $COMPOSE up --no-build "${args[@]+"${args[@]}"}" arca
 }
 
 cmd_stop() {

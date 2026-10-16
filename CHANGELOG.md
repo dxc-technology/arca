@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Run the published images without building.** The images on ghcr.io are public, so `bin/arca start --release <tag>`, `bin/console start --release <tag>` and `bin/cluster up --release <tag>` pull `latest`, `X`, `X.Y` or `X.Y.Z` (no login, no Rust toolchain, no build) instead of building the working tree. The compose files read the tag from `ARCA_RELEASE`; `bin/arca` saves it in `.arca-env` so the console and `bin/arca stop` follow it. `--release` cannot be combined with `--build` or `--dev`, and `bin/build` never tags a local build with a release tag.
+- **The publish workflow verifies the images are public.** After tagging, every tag of both images is fetched from the registry API with an anonymous token (no docker login, plugins or builders involved) and must list `linux/amd64` and `linux/arm64`; a package that went private fails the release. `bin/build --push` runs the same check, after both images are pushed.
+- **A "Choosing a tag" guide** in the installation documentation: `latest` for the newest release, `X.Y` for fixes only, `X` from 1.0, `X.Y.Z` for business-critical production. The Kubernetes manifests and the deployment guide now use `latest` and point at it.
+
+### Changed
+
+- **`bin/console start` and `bin/cluster up` follow the same rule** (run the existing image, else pull `latest`, `--dev` builds), and the console warns when it runs a different version from the server. `bin/cluster` does not remember `--release`.
+- **`bin/arca start` no longer builds a production image implicitly.** It used to let Compose build when the image was missing; it now pulls the published `latest` instead, as `docker run` does with a missing image (`--dev` has no published image, so a missing one is built).
+
 ## [0.32.1] — 2026-10-15
 
 ### Added

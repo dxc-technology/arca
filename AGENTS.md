@@ -55,6 +55,9 @@ bin/release vX.Y.Z               # create the GitHub release (notes from CHANGEL
 # Run
 bin/arca start -d                # start server in background
 bin/arca start -d --build --dev  # rebuild dev image and start
+bin/arca start -d --release latest  # run the published (public) image: pull, never build
+                                 # (also bin/console start --release, bin/cluster up --release);
+                                 # plain `start` runs the existing image, else pulls latest (--dev: builds)
 bin/arca start -d --tls          # start with TLS (your certs in ./certs/, else a local CA in certs/local)
 bin/arca start -d --encryption   # start with encryption (SSE-S3)
 bin/arca start -d --kms          # start with OpenBAO KMS

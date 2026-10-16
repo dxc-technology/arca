@@ -17,13 +17,49 @@ and on Apple Silicon or ARM hosts:
 | `ghcr.io/dxc-technology/arca` | Arca server — the scratch-based production image |
 | `ghcr.io/dxc-technology/arca-console` | Web console |
 
-Each release is published under three tags:
+Both images are **public**: they can be pulled without an account or a login, so
+there is no registry credential or image pull secret to configure anywhere.
+
+Each release is published under these tags:
 
 | Tag | Points to |
 |-----|-----------|
-| `X.Y.Z` | Exactly that release — use this in production |
+| `X.Y.Z` | Exactly that release, never moves |
 | `X.Y` | The newest patch release of the `X.Y` line |
 | `latest` | The newest release |
+
+### Choosing a tag
+
+Pick how much change you accept without being asked:
+
+| You want | Use | Trade-off |
+|----------|-----|-----------|
+| The newest release, bleeding edge | `latest` | Every pull may bring a new minor release, which at `0.x` can change behaviour or configuration. Fine for evaluation, development and the examples in this documentation |
+| Patch and fix updates automatically | `X.Y` (e.g. `0.31`) | Security and bug fixes only, no new features; read the changelog before moving to the next `X.Y` |
+| Every update, even minor ones, from 1.0 on | `X` (e.g. `1`) | New features without breaking changes (not published while Arca is at `0.x`) |
+| Maximum stability, nothing changes unless you change it | `X.Y.Z` | Business-critical production: you upgrade deliberately, after reading the changelog and testing |
+
+A moving tag only changes when the image is pulled again: restart the container
+after `docker pull` (Compose: `docker compose pull && docker compose up -d`; Kubernetes
+with `latest` pulls on every pod start). Run the console at the same version as the server.
+
+The examples in this documentation and the manifests in `deploy/` use `latest`.
+
+With the repository checked out, the same images run without building anything:
+
+```bash
+bin/arca start -d --release latest      # or 0.31, 0.31.2, ...
+bin/console start -d                    # follows the server's release
+bin/cluster up -d --release latest      # the 3-node HA cluster
+```
+
+`bin/arca start`, `bin/console start` and `bin/cluster up` do not rebuild: they run the
+image you built before with `--build`, or, if there is none, pull and run the published
+`latest` (the development image, `--dev`, is never published, so it is built). `--release` pulls the published image (no
+login) and cannot be combined with `--build` or `--dev`; `bin/arca` remembers the
+release until its next start (and the console follows it), `bin/cluster` does not.
+The compose files and the configuration still come from your checkout, so prefer a
+release close to it: a setting newer than the release is silently ignored by it.
 
 There is no major-only tag while Arca is at `0.x`, where a minor release may
 break compatibility. A prerelease (`X.Y.Z-rc.N`) gets its exact tag only.

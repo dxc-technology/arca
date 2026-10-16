@@ -169,6 +169,8 @@ bin/cluster up -d            # arca-1/2/3 + HAProxy + console
 bin/cluster status           # container + per-node /admin/health view
 ```
 
+`bin/cluster up` never builds an image that can be pulled: when no local images exist it runs the published `latest`. To test the code in your working tree, build it first with `bin/cluster up -d --build`; `--release <tag>` runs a specific published release instead.
+
 Endpoints:
 
 | Service       | URL |

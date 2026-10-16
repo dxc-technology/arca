@@ -122,8 +122,10 @@ Arca includes a browser-based web console for managing buckets, objects, and cre
 === "HTTPS"
 
     ```bash
-    bin/console start -d --build --tls
+    bin/console start -d --build
     ```
+
+    The console has no `--tls` flag: it inherits TLS from the Arca server started with `bin/arca start -d --tls`.
 
     Open `https://your-domain:9443`, then enter the Arca HTTPS endpoint (e.g. `https://your-domain:9000`) and your credentials.
 
@@ -142,7 +144,7 @@ Convenience scripts in `bin/` wrap docker compose commands:
 |--------|-------------|
 | `bin/build` | Build the Docker image |
 | `bin/arca` | Manage the Arca server (`start`, `stop`, `status`, `logs`). Use `--tls` for HTTPS, `-c <path>` for a custom config. |
-| `bin/console` | Manage the web console (`start`, `stop`, `status`, `logs`). Use `--tls` with HTTPS. |
+| `bin/console` | Manage the web console (`start`, `stop`, `status`, `logs`). Inherits TLS and the other features from the running Arca. |
 | `bin/test` | Run unit + integration tests (`unit`, `integration`, or both) |
 | `bin/screenshots` | Take automated console screenshots for documentation |
 | `bin/s3-tests` | Run Ceph s3-tests compatibility suite |

@@ -172,3 +172,11 @@ jobs:
           done
           publish_index "$IMAGE" "$version" "${sources[@]}"
           docker buildx imagetools inspect "$repo:$version"
+
+      # The packages are public: fail the release if any tag cannot be pulled
+      # anonymously (e.g. a package that went private) or lacks a platform.
+      - name: Verify the image is public
+        run: |
+          source bin/lib/images.sh
+          version="$(release_version)"
+          image_verify_public "$IMAGE" "$version"

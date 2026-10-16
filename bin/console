@@ -10,6 +10,7 @@ set -euo pipefail
 #   bin/console start                Start in foreground
 #   bin/console start -d             Start in background
 #   bin/console start -d --build     Start in background, rebuild image first
+#   bin/console start -d --release latest  Start the published image, no build
 #   bin/console stop                 Stop the console
 #   bin/console status               Show container status
 #   bin/console logs                 Show logs
@@ -35,11 +36,18 @@ usage() {
 }
 
 usage_start() {
-    echo "Usage: bin/console start [-d] [--build]"
+    echo "Usage: bin/console start [-d] [--build|--release <tag>]"
     echo ""
     echo "Options:"
     echo "  -d       Run in background (detached)"
     echo "  --build  Rebuild the Docker image before starting"
+    echo "  --release <tag>"
+    echo "           Run the published image (latest, X, X.Y or X.Y.Z) from ghcr.io"
+    echo "           instead of building it. Without --build or --release the"
+    echo "           console follows the Arca server: a release if it was started"
+    echo "           with --release (or pulled latest because nothing was built),"
+    echo "           else the local build. With no local image the published latest"
+    echo "           is pulled. Run the console at the version of the server."
     exit "${1:-0}"
 }
 
@@ -54,30 +62,75 @@ usage_logs() {
 cmd_start() {
     local detach=false
     local build=false
+    local release=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -d)       detach=true; shift ;;
             --build)  build=true; shift ;;
+            --release)
+                if [[ -z "${2:-}" ]]; then
+                    echo "Error: --release requires an image tag (latest, X, X.Y or X.Y.Z)" >&2
+                    exit 1
+                fi
+                release="$2"
+                shift 2
+                ;;
             -h|--help) usage_start 0 ;;
             *)        echo "Error: unknown option '$1' for 'start'" >&2; usage_start 1 ;;
         esac
     done
 
+    if [[ -n "$release" ]] && $build; then
+        echo "Error: --build and --release are mutually exclusive" >&2
+        exit 1
+    fi
+
     load_env
+    # The console is built or pulled on its own: --build ignores the release
+    # the server runs, and --release overrides it. Either way the server is
+    # left alone (--no-deps): its image reference would otherwise change and
+    # compose would recreate it.
+    local args=() server_release="${ARCA_RELEASE:-}"
+    if $build; then
+        if [[ -n "${ARCA_RELEASE:-}" ]]; then
+            args+=(--no-deps)
+            echo "Warning: the console is your local build while the server runs $server_release: keep them at the same version." >&2
+        fi
+        export ARCA_RELEASE=
+    elif [[ -z "$release" && -z "${ARCA_RELEASE:-}" ]] &&
+            ! docker image inspect "$(image_ref arca-console)" >/dev/null 2>&1; then
+        # Starting never builds: a missing console image is pulled, as
+        # `docker run` does, and only the published ones exist.
+        echo "==> No local $(image_ref arca-console) image: using the published latest (use --build for your own)"
+        release=latest
+    fi
+    if [[ -n "$release" ]]; then
+        if ! valid_image_tag "$release"; then
+            echo "Error: '$release' is not a published image tag (latest, X, X.Y or X.Y.Z)" >&2
+            exit 1
+        fi
+        export ARCA_RELEASE="$release"
+        args+=(--no-deps)
+        if [[ "$server_release" != "$release" ]]; then
+            echo "Warning: the console runs $release while the server runs ${server_release:-your local build}: keep them at the same version." >&2
+        fi
+    fi
     local COMPOSE
     COMPOSE="$(compose_cmd) --profile console"
 
     if $build; then
         bin/build --console
+    elif [[ -n "${ARCA_RELEASE:-}" ]]; then
+        echo "==> Pulling the arca-console:$ARCA_RELEASE image..."
+        $COMPOSE pull console
     fi
 
-    local args=()
     if $detach; then
         args+=("-d")
     fi
 
-    $COMPOSE up "${args[@]+"${args[@]}"}" console
+    $COMPOSE up --no-build "${args[@]+"${args[@]}"}" console
 }
 
 cmd_stop() {

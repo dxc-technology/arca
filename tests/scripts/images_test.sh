@@ -43,6 +43,14 @@ assert_contains() {     # assert_contains <haystack> <needle>
     fi
 }
 
+assert_not_contains() {     # assert_not_contains <haystack> <needle>
+    if [[ "$1" == *"$2"* ]]; then
+        echo "expected NOT to find: $2"
+        echo "in: $1"
+        return 1
+    fi
+}
+
 assert_fails() {    # assert_fails <command...>
     if "$@" >/dev/null 2>&1; then
         echo "expected failure: $*"
@@ -605,6 +613,165 @@ test_binary_checksums_cover_every_archive_and_verify() {
 
 test_binary_checksums_fail_without_archives() {
     assert_fails binary_checksums "$(mktemp -d)"
+}
+
+# --- image_ref / valid_image_tag ---------------------------------------------
+
+test_image_ref_defaults_to_the_local_build_tags() {
+    unset ARCA_RELEASE BUILD_TARGET
+    assert_eq "ghcr.io/dxc-technology/arca:production" "$(image_ref arca)" &&
+    assert_eq "ghcr.io/dxc-technology/arca-console:production" "$(image_ref arca-console)" || return 1
+    BUILD_TARGET=development
+    assert_eq "ghcr.io/dxc-technology/arca:development" "$(image_ref arca)" &&
+    # The console has no development image.
+    assert_eq "ghcr.io/dxc-technology/arca-console:production" "$(image_ref arca-console)"
+}
+
+test_image_ref_uses_the_release_tag_for_both_images() {
+    BUILD_TARGET=development
+    ARCA_RELEASE=1.2
+    assert_eq "ghcr.io/dxc-technology/arca:1.2" "$(image_ref arca)" &&
+    assert_eq "ghcr.io/dxc-technology/arca-console:1.2" "$(image_ref arca-console)"
+}
+
+test_image_ref_rejects_unpublished_images() {
+    assert_fails image_ref arca-test
+}
+
+test_valid_image_tag_accepts_every_published_tag_form() {
+    local tag
+    for tag in latest 1 1.2 1.2.3 0.31 0.31.2 1.2.3-rc.1; do
+        valid_image_tag "$tag" || { echo "'$tag' rejected"; return 1; }
+    done
+}
+
+test_valid_image_tag_rejects_local_and_malformed_tags() {
+    local tag
+    for tag in "" production development v1.2.3 1.2.3.4 1. .1 "1.2 x" "../x" "a:b" 0 1-rc 0.31-x; do
+        if valid_image_tag "$tag"; then echo "'$tag' accepted"; return 1; fi
+    done
+}
+
+# --- image_verify_public -----------------------------------------------------
+
+# A registry reached with curl: the token endpoint answers, and a manifest
+# lists the given platforms (a deny of the manifest when none is given).
+# Every call is recorded, headers included, in $CURL_LOG.
+mock_registry() {   # mock_registry <platform>...
+    REGISTRY_PLATFORMS="$*"
+    CURL_LOG="$(mktemp)"
+    curl() {
+        printf '%s\n' "$*" >> "$CURL_LOG"
+        case "$*" in
+            */token\?*) echo '{"token":"anon-token"}' ;;
+            *)
+                [[ -n "$REGISTRY_PLATFORMS" ]] || return 22
+                local p first=true
+                printf '{"manifests":['
+                for p in $REGISTRY_PLATFORMS; do
+                    $first || printf ','
+                    first=false
+                    printf '{"platform":{"os":"linux","architecture":"%s"}}' "${p#linux/}"
+                done
+                # An attestation manifest, as buildx adds them.
+                printf ',{"platform":{"os":"unknown","architecture":"unknown"}}]}\n'
+                ;;
+        esac
+    }
+    # The check must not need the docker CLI (its plugins, builders, login).
+    docker() { echo "docker must not be used" >&2; return 1; }
+}
+
+test_image_verify_public_checks_every_release_tag() {
+    new_repo 1.2.3 1.2.3
+    git tag v1.2.3
+    mock_registry linux/amd64 linux/arm64
+    image_verify_public arca 1.2.3 >/dev/null || return 1
+    local log
+    log="$(cat "$CURL_LOG")"
+    assert_contains "$log" "https://ghcr.io/token?scope=repository:dxc-technology/arca:pull" &&
+    assert_contains "$log" "https://ghcr.io/v2/dxc-technology/arca/manifests/1.2.3"$'\n' &&
+    assert_contains "$log" "/manifests/1.2"$'\n' &&
+    assert_contains "$log" "/manifests/1"$'\n' &&
+    assert_contains "$log" "/manifests/latest"
+}
+
+test_image_verify_public_sends_only_the_anonymous_token() {
+    new_repo 1.2.3 1.2.3
+    git tag v1.2.3
+    mock_registry linux/amd64 linux/arm64
+    export DOCKER_CONFIG=/home/me/.docker
+    image_verify_public arca-console 1.2.3 >/dev/null || return 1
+    local log
+    log="$(cat "$CURL_LOG")"
+    assert_contains "$log" "Authorization: Bearer anon-token" &&
+    assert_contains "$log" "application/vnd.oci.image.index.v1+json" &&
+    assert_contains "$log" "application/vnd.docker.distribution.manifest.list.v2+json" &&
+    assert_contains "$log" "repository:dxc-technology/arca-console:pull" &&
+    assert_not_contains "$log" "/home/me/.docker"
+}
+
+test_image_verify_public_ignores_the_callers_buildx_builder() {
+    # publish_release exports BUILDX_BUILDER (use_publish_builder).
+    new_repo 1.2.3 1.2.3
+    git tag v1.2.3
+    mock_registry linux/amd64 linux/arm64
+    export BUILDX_BUILDER=arca-publish
+    image_verify_public arca 1.2.3 >/dev/null
+}
+
+test_image_verify_public_fails_when_the_registry_refuses() {
+    new_repo 1.2.3 1.2.3
+    git tag v1.2.3
+    mock_registry
+    local out
+    out="$(image_verify_public arca 1.2.3 2>&1)" && { echo "expected failure"; return 1; }
+    assert_contains "$out" "not publicly pullable"
+}
+
+test_image_verify_public_fails_without_a_token() {
+    new_repo 1.2.3 1.2.3
+    git tag v1.2.3
+    curl() { return 7; }
+    local out
+    out="$(image_verify_public arca 1.2.3 2>&1)" && { echo "expected failure"; return 1; }
+    assert_contains "$out" "not publicly pullable"
+}
+
+test_image_verify_public_fails_when_a_platform_is_missing() {
+    new_repo 1.2.3 1.2.3
+    git tag v1.2.3
+    mock_registry linux/amd64
+    local out
+    out="$(image_verify_public arca 1.2.3 2>&1)" && { echo "expected failure"; return 1; }
+    assert_contains "$out" "linux/arm64"
+}
+
+test_image_verify_public_error_does_not_quote_the_previous_tags_manifest() {
+    new_repo 1.2.3 1.2.3
+    git tag v1.2.3
+    # The token of the second tag is refused: the message must not carry the
+    # manifest fetched for the first one. The count lives in a file because
+    # curl runs in command substitutions.
+    local counter out
+    counter="$(mktemp)"
+    echo 0 > "$counter"
+    curl() {
+        local n
+        case "$*" in
+            */token\?*)
+                n=$(( $(cat "$counter") + 1 )); echo "$n" > "$counter"
+                (( n < 2 )) || return 22
+                echo '{"token":"anon-token"}'
+                ;;
+            *)
+                echo '{"manifests":[{"platform":{"os":"linux","architecture":"amd64"}},{"platform":{"os":"linux","architecture":"arm64"}}]}'
+                ;;
+        esac
+    }
+    out="$(image_verify_public arca 1.2.3 2>&1)" && { echo "expected failure"; return 1; }
+    assert_contains "$out" "not publicly pullable" &&
+    assert_not_contains "$out" "manifests"
 }
 
 # -----------------------------------------------------------------------------

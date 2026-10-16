@@ -20,6 +20,20 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
+# shellcheck source=bin/lib/compose.sh
+source bin/lib/compose.sh
+
+# Start Arca with encryption for the suite. It must test this tree: a missing
+# image is built, never pulled as the published latest (what a plain
+# `bin/arca start` would do). Extra arguments (--build) are passed through.
+start_arca() {
+    local args=("$@")
+    if [[ ${#args[@]} -eq 0 ]]; then
+        args=($(build_flag_if_missing))
+    fi
+    bin/arca start -d ${args[@]+"${args[@]}"} --encryption
+}
+
 # The s3-tests container runs as this UID/GID (docker/docker-compose.yml)
 # so its writes into the bind-mounted ../s3-tests output dir land with the
 # host user's ownership instead of a container-only fixed UID.
@@ -77,9 +91,9 @@ if ! $NO_CLEAN; then
     docker volume rm docker_arca-data 2>/dev/null || true
     echo "==> Starting Arca with --encryption for s3-tests..."
     if $BUILD; then
-        bin/arca start -d --build --encryption
+        start_arca --build
     else
-        bin/arca start -d --encryption
+        start_arca
     fi
     # Wait for Arca to be ready
     echo "==> Waiting for Arca to be ready..."
@@ -146,7 +160,7 @@ if ! $PASSLIST_MODE && [[ ${#EXTRA_ARGS[@]} -eq 0 ]] && ! $NO_CLEAN; then
     echo "==> Wiping storage between test phases..."
     bin/arca stop 2>/dev/null || true
     docker volume rm docker_arca-data 2>/dev/null || true
-    bin/arca start -d --encryption
+    start_arca
     echo "==> Waiting for Arca to be ready..."
     for i in $(seq 1 30); do
         if curl -sf http://localhost:9000/ >/dev/null 2>&1; then break; fi

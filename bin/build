@@ -94,6 +94,10 @@ if $CONSOLE && [[ "${BUILD_TARGET:-}" == "development" ]]; then
     unset BUILD_TARGET
 fi
 
+# A build is always local: never tag it as a published release, whatever
+# ARCA_RELEASE the environment carries (see bin/lib/compose.sh).
+export ARCA_RELEASE=
+
 # Grab git commit hash for embedding in the image.
 GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 

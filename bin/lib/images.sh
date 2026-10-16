@@ -13,6 +13,9 @@
 #
 # Usage:
 #   image_repo <image>                       registry repository of an image
+#   image_ref <image>                        the image compose runs: the release
+#                                            in ARCA_RELEASE, else the local build
+#   valid_image_tag <tag>                    a tag the images are published under
 #   release_version                          X.Y.Z from the release tag at HEAD
 #   release_tags <version>                   tags a release is published under
 #   use_publish_builder                      select the buildx builder
@@ -24,6 +27,8 @@
 #   binary_checksums <dir>                   SHA256SUMS of the archives in dir
 #   image_push_digest <image> <version> <platforms>    push untagged, print digest
 #   publish_index <image> <version> <repo@digest>...   tag the multi-arch index
+#   image_verify_public <image> <version>    every release tag pullable without
+#                                            credentials, for every platform
 #   publish_release                          all of the above, for both images
 
 ARCA_REGISTRY="ghcr.io/dxc-technology"
@@ -36,6 +41,30 @@ image_repo() {  # image_repo <image>
         arca|arca-console) echo "$ARCA_REGISTRY/$1" ;;
         *) echo "Error: '$1' is not a published image" >&2; return 1 ;;
     esac
+}
+
+# The image compose runs. With ARCA_RELEASE set (`--release`) it is a
+# published tag, pulled instead of built; otherwise it is the local build,
+# tagged after its target (see the header). Keep in step with the `image:`
+# lines of docker/docker-compose*.yml.
+image_ref() {   # image_ref <image>
+    local repo
+    repo="$(image_repo "$1")" || return 1
+    if [[ -n "${ARCA_RELEASE:-}" ]]; then
+        echo "$repo:$ARCA_RELEASE"
+    elif [[ "$1" == "arca" ]]; then
+        echo "$repo:${BUILD_TARGET:-production}"
+    else
+        echo "$repo:production"
+    fi
+}
+
+# A tag the images are published under: `latest`, `X.Y`, `X.Y.Z`, a major
+# `X` from 1 on (there is none at 0.x) or a prerelease `X.Y.Z-pre`, whose
+# exact tag only is published. The local build tags are not.
+valid_image_tag() {     # valid_image_tag <tag>
+    [[ "$1" == latest || "$1" =~ ^[1-9][0-9]*$ || "$1" =~ ^[0-9]+\.[0-9]+$ \
+        || "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
 }
 
 # The version being released, from the vX.Y.Z (or vX.Y.Z-pre) tag at HEAD.
@@ -303,6 +332,37 @@ publish_index() {   # publish_index <image> <version> <repo@digest>...
     docker buildx imagetools create "${args[@]}" "$@"
 }
 
+# The published images are public: every tag of the release must be pullable
+# by someone who never logged in, for each platform. It talks to the registry
+# API with curl and an anonymous token, not through docker: the runner's or
+# the developer's login, plugins and buildx builders cannot make a package that
+# went private look fine, nor break the check.
+image_verify_public() {     # image_verify_public <image> <version>
+    local image="$1" version="$2" repo host path tag token raw platform
+    repo="$(image_repo "$image")" || return 1
+    host="${repo%%/*}"
+    path="${repo#*/}"
+    while IFS= read -r tag; do
+        raw=""      # an error below must not quote the previous tag's manifest
+        if ! token="$(curl -fsS "https://$host/token?scope=repository:$path:pull" | jq -er .token 2>&1)" ||
+           ! raw="$(curl -fsS -H "Authorization: Bearer $token" \
+                -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" \
+                "https://$host/v2/$path/manifests/$tag" 2>&1)"; then
+            echo "Error: $repo:$tag is not publicly pullable${raw:+: $raw}" >&2
+            return 1
+        fi
+        for platform in ${PUBLISH_PLATFORMS//,/ }; do
+            if ! jq -e --arg os "${platform%/*}" --arg arch "${platform#*/}" \
+                '.manifests // [] | any(.platform.os == $os and .platform.architecture == $arch)' \
+                <<< "$raw" >/dev/null 2>&1; then
+                echo "Error: $repo:$tag has no $platform image" >&2
+                return 1
+            fi
+        done
+        echo "==> $repo:$tag is public ($PUBLISH_PLATFORMS)"
+    done < <(release_tags "$version")
+}
+
 # The whole release from this machine: every platform of every image is
 # built and scanned before anything is pushed. Needs `docker login ghcr.io`
 # with a token that has the write:packages scope. Platforms other than the
@@ -320,5 +380,9 @@ publish_release() {
         repo="$(image_repo "$image")"
         digest="$(image_push_digest "$image" "$version" "$PUBLISH_PLATFORMS")" || return 1
         publish_index "$image" "$version" "$repo@$digest" || return 1
+    done
+    # After both are pushed: a failed check must not leave half a release.
+    for image in "${PUBLISHED_IMAGES[@]}"; do
+        image_verify_public "$image" "$version" || return 1
     done
 }

@@ -6,6 +6,7 @@
 #
 # Usage:
 #   enable_tls_auto         # register TLS, serving the user's certs/ or local ones
+#   use_release <tag>       # run the published images (latest, X, X.Y, X.Y.Z), no build
 #   prepare_local_certs     # keep the local certificates valid (after the build)
 #   enable_encryption       # register local-key encryption (global)
 #   enable_encryption_per_bucket  # register local-key encryption (per-bucket)
@@ -75,6 +76,33 @@ enable_tls_explicit() {
     _FEATURES+=(tls-explicit)
 }
 
+# ARCA_RELEASE is only ever set by use_release / load_env: a value left in
+# the caller's shell must not turn a local build into a "release" tag (the
+# self-contained test suites and bin/screenshots build and run locally).
+# Exported empty rather than unset: compose reads docker/.env too, and only
+# an exported value (even an empty one) takes precedence over it.
+export ARCA_RELEASE=
+
+# --- Published images ---
+#
+# By default compose runs the images built from this working tree. With
+# `--release <tag>` it runs the published ones instead (ARCA_RELEASE, which
+# the `image:` lines of docker/docker-compose*.yml read): they are public on
+# ghcr.io, so there is nothing to build and no login. The choice is saved in
+# .arca-env like the features, so bin/console and `bin/arca stop` follow it.
+
+use_release() {     # use_release <tag>
+    if ! valid_image_tag "$1"; then
+        echo "Error: '$1' is not a published image tag (latest, X, X.Y or X.Y.Z)" >&2
+        return 1
+    fi
+    if [[ "${BUILD_TARGET:-}" == "development" ]]; then
+        echo "Error: --release and --dev are mutually exclusive: only the production images are published" >&2
+        return 1
+    fi
+    export ARCA_RELEASE="$1"
+}
+
 # --- TLS certificates ---
 #
 # `--tls` serves the user's own certificates when certs/ holds any, and
@@ -117,6 +145,24 @@ dotenv_value() {
     echo "$value"
 }
 
+# The development image is selected by BUILD_TARGET, which compose also reads
+# from docker/.env: take it from there when the shell has none, so the image
+# the scripts look for is the one compose runs.
+adopt_dotenv_build_target() {
+    local target
+    [[ -z "${BUILD_TARGET:-}" ]] || return 0
+    target="$(dotenv_value BUILD_TARGET)"
+    [[ -z "$target" ]] || export BUILD_TARGET="$target"
+}
+
+# Prints --build when this tree's own image is missing. Suites that must test
+# the working tree (bin/s3-tests) use it: a plain `bin/arca start` would pull
+# the published latest instead, which is not the code under test.
+build_flag_if_missing() {
+    adopt_dotenv_build_target
+    docker image inspect "$(image_ref arca)" >/dev/null 2>&1 || echo --build
+}
+
 # Keep certs/local valid with `arca tls ensure`; a no-op when serving the
 # user's certificates. Needs the arca image, so call it after the build. Runs
 # as the host user with Arca's service group: the host user owns the files,
@@ -124,9 +170,13 @@ dotenv_value() {
 prepare_local_certs() {
     [[ "${ARCA_CERTS_DIR:-}" == "../certs/local" ]] || return 0
     local image sans extra
-    image="$(image_repo arca):${BUILD_TARGET:-production}"
+    image="$(image_ref arca)"
     if ! docker image inspect "$image" >/dev/null 2>&1; then
-        $(compose_cmd) build arca || return 1
+        if [[ -n "${ARCA_RELEASE:-}" ]]; then
+            $(compose_cmd) pull arca || return 1
+        else
+            $(compose_cmd) build arca || return 1
+        fi
     fi
     sans="$LOCAL_TLS_SANS"
     extra="$(dotenv_value ARCA_TLS_SANS)"
@@ -643,6 +693,7 @@ save_env() {
         echo "FEATURES=\"${_FEATURES[*]}\""
         echo "BUILD_TARGET=\"${BUILD_TARGET:-production}\""
         echo "ARCA_CERTS_DIR=\"${ARCA_CERTS_DIR:-}\""
+        echo "ARCA_RELEASE=\"${ARCA_RELEASE:-}\""
     } > "$ENV_FILE"
 }
 
@@ -656,6 +707,7 @@ load_env() {
     local saved_features=""
     local saved_build_target=""
     local saved_certs_dir=""
+    local saved_release=""
     while IFS='=' read -r key value; do
         # Skip comments and empty lines
         [[ "$key" =~ ^#.*$ || -z "$key" ]] && continue
@@ -666,12 +718,18 @@ load_env() {
             FEATURES)      saved_features="$value" ;;
             BUILD_TARGET)  saved_build_target="$value" ;;
             ARCA_CERTS_DIR) saved_certs_dir="$value" ;;
+            ARCA_RELEASE)  saved_release="$value" ;;
         esac
     done < "$ENV_FILE"
 
     # Restore BUILD_TARGET
     if [[ -n "$saved_build_target" ]]; then
         export BUILD_TARGET="$saved_build_target"
+    fi
+
+    # Restore the published release the stack runs, if it is not built locally
+    if [[ -n "$saved_release" ]]; then
+        export ARCA_RELEASE="$saved_release"
     fi
 
     # Restore the certificate directory chosen at start (see enable_tls_auto)

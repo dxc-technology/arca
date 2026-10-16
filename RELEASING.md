@@ -106,7 +106,10 @@ gh run watch --repo dxc-technology/arca
 docker buildx imagetools inspect ghcr.io/dxc-technology/arca:X.Y.Z
 ```
 
-The index must list `linux/amd64` and `linux/arm64`.
+The index must list `linux/amd64` and `linux/arm64`. The workflow also checks,
+without credentials (anonymous token against the registry API, no docker
+login), that every tag of both images can be pulled for both platforms
+(`image_verify_public`): a package that went private fails the run.
 
 **Re-publishing** an existing release (e.g. after a registry-side mishap):
 run the workflow by hand with *Run workflow* and select the release **tag**,
@@ -127,8 +130,11 @@ binaries by re-running the workflow on the tag once CI is back.
 
 #### One-time setup (first publication only)
 
-A new GHCR package starts **private**. After the first run, an organization or
-package admin must, for each of the two packages
+Done: `arca` and `arca-console` are both public. This only matters if a
+package is ever recreated. A new GHCR package starts **private**, and until
+it is made public the workflow fails at its **Verify the image is public**
+step (the images are pushed, but the run is red).
+After the first run, an organization or package admin must, for each of the two packages
 (`https://github.com/orgs/dxc-technology/packages`):
 
 1. open **Package settings** and check that the package is linked to the

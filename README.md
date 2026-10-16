@@ -75,7 +75,9 @@ Production-grade and actively developed. **30 of 31** planned phases are complet
 # Start the server
 bin/arca start -d --build
 
-# Or, with no build at all, run a published release (linux/amd64 + linux/arm64):
+# Or, with no build at all, run a published image (public, linux/amd64 + linux/arm64):
+bin/arca start -d --release latest
+# ...or plain Docker, without even cloning:
 docker run -d --name arca -p 9000:9000 -v arca-data:/data ghcr.io/dxc-technology/arca:latest
 
 # Or with HTTPS: your cert + key PEM files in ./certs/, or a local CA made for you
@@ -192,7 +194,9 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — Per-bucket Encryption | 8 | per-bucket enable/disable, plain vs encrypted, ETag, head, revert |
 | Integration — KMS | 10 | Vault/OpenBAO key fetch, encrypted put/get, headers, ETag, multipart, copy, range, admin info |
 | Integration — TLS | 7 | HTTPS health/info/put/get/multipart, minio client, wrong CA rejection |
-| Shell libraries — image publishing | 51 | `bin/lib/images.sh` with `docker` mocked: release version guard (tag at HEAD, clean tree, Cargo.toml and console in agreement), release tags (`X.Y`/`latest` never move backwards, numeric sort, prereleases), buildx arguments per image, push by digest, index labels → annotations, Trivy gate on the image and on `Cargo.lock`, release binary archive taken from the scanned image (binary + licence files) and its `SHA256SUMS` |
+| Shell libraries — image publishing | 63 | `bin/lib/images.sh` with `docker` mocked: release version guard (tag at HEAD, clean tree, Cargo.toml and console in agreement), release tags (`X.Y`/`latest` never move backwards, numeric sort, prereleases), buildx arguments per image, push by digest, index labels → annotations, Trivy gate on the image and on `Cargo.lock`, release binary archive taken from the scanned image (binary + licence files) and its `SHA256SUMS`, the run-time image reference (`ARCA_RELEASE` vs local build tags, accepted/rejected tags), and the anonymous (curl, no docker) public-pull check of every release tag and platform |
+| Shell libraries — published images | 13 | `bin/lib/compose.sh` with `docker` mocked: `--release` validation (tags, no `--dev`), the release saved in and restored from `.arca-env` (and cleared by a local build), local certificates generated with the release image, pulled instead of built when missing |
+| Shell libraries — image selection | 26 | `bin/arca start`, `bin/console start`, `bin/cluster up` with `docker` stubbed: the existing image is run without building or pulling, a missing one pulls the published `latest` (`--dev` builds it), `--release` pulls and is remembered by `bin/arca`, `--build`/`--dev` conflicts refused, the console follows the server release and leaves a server alone (`--no-deps`) |
 | Tooling — Ceph report | 7 | `docker/s3-tests/report.py` AWS-divergence reclassification: counted as passed only on the exact listed assertion, other failures / errors / unlisted tests stay failed, `summary.json` and HTML list the divergences |
 | Shell libraries — TLS certificates | 32 | `bin/lib/compose.sh` with `docker` mocked: your certificates in `certs/` detected (every extension, symlinks, generated subdirectories and unrelated files ignored), served with auto-detect and winning over existing local ones, otherwise `certs/local` with known names; `arca tls ensure` run as the host user with Arca's service group, for the build target's image, building it when missing, extra SANs from the environment or `docker/.env`; the choice surviving `.arca-env` save/load; throwaway certificates for the self-contained suites generated into a fresh named volume, never into `certs/`; the integration suite pointed at the running server as started (plain, local CA, or your certificate under its first plain DNS SAN, a concrete name for a wildcard, or `ARCA_TLS_HOSTNAME`) |
 | Shell libraries — test isolation | 41 | `bin/test`, `bin/perf-test` and `bin/lib/compose.sh` with `docker` mocked: every self-contained mode (and each connector) in its own compose project with its own generated config and only ephemeral loopback host ports, the developer's `config/.generated.toml` and `.arca-env` left untouched; `bin/test integration`, `presigned` and `ssec` against the running server with `--no-deps`; the encryption, per-bucket and KMS suites enabled from the features in `.arca-env`; a failing test step still tears the mode's project down (`down -v`) and fails the run |
@@ -210,9 +214,9 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — Migrate DB | 1 | SQLite→PostgreSQL offline metadata migration + row-count verify |
 | Integration — Migrate Topology | 1 | single→cluster config emission + DB ops, then →single round-trip |
 | Connector integrations | 84 | Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Kafka, AMQP, Elasticsearch, Syslog, SMTP, gRPC — each: delivery, custom destination, delete event, multiple events, payload format, connectivity test |
-| **Arca tests** | **2,123** | **All tests written for this project** |
+| **Arca tests** | **2,183** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 825 | 371 pass, 363 fail, 91 skip — 0 unexpected failures (RGW-only extensions excluded; 2 pass on AWS behaviour where RGW differs) |
-| **Total** | **2,957** | |
+| **Total** | **3,008** | |
 
 ## License
 

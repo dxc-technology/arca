@@ -8,6 +8,7 @@ set -euo pipefail
 #
 # Usage:
 #   bin/cluster up [-d] [--build] [--dev]   Start the 3-node cluster + LB + console
+#   bin/cluster up [-d] --release <tag>      Same with the published images, no build
 #   bin/cluster down [-v]                    Stop it (-v also removes data volumes)
 #   bin/cluster status                       Container + per-node cluster status
 #   bin/cluster logs [-f] [service]          Show logs (optionally one service)
@@ -39,6 +40,10 @@ usage() {
     echo ""
     echo "Commands:"
     echo "  up [-d] [--build] [--dev]   Start the 3-node cluster + LB + console"
+    echo "  up [-d] --release <tag>     Same, pulling the published images (latest, X,"
+    echo "                              X.Y or X.Y.Z) from ghcr.io instead of building."
+    echo "                              Not remembered by the next up. With neither --build nor"
+    echo "                              --release and no local images, the published latest runs"
     echo "  down [-v]                   Stop it (-v also removes data volumes)"
     echo "  status                      Container + per-node cluster status"
     echo "  logs [-f] [service]         Show logs"
@@ -53,16 +58,46 @@ usage() {
 }
 
 cmd_up() {
-    local detach=false build=false
+    local detach=false build=false release=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -d)       detach=true; shift ;;
             --build)  build=true; shift ;;
             --dev)    export BUILD_TARGET=development; shift ;;
+            --release)
+                [[ -n "${2:-}" ]] || { echo "Error: --release requires an image tag (latest, X, X.Y or X.Y.Z)" >&2; exit 1; }
+                release="$2"
+                shift 2
+                ;;
             -h|--help) usage 0 ;;
             *)        echo "Error: unknown option '$1' for 'up'" >&2; usage 1 ;;
         esac
     done
+
+    if [[ -n "$release" ]]; then
+        $build && { echo "Error: --build and --release are mutually exclusive" >&2; exit 1; }
+        use_release "$release" || exit 1
+    else
+        adopt_dotenv_build_target
+        if ! $build && ! { docker image inspect "$(image_ref arca)" >/dev/null 2>&1 \
+                           && docker image inspect "$(image_ref arca-console)" >/dev/null 2>&1; }; then
+            # Up never builds an image that can be pulled: without a local build
+            # the published latest runs; the development image can only be built.
+            if [[ "${BUILD_TARGET:-}" == "development" ]]; then
+                echo "==> No local development images and none is published: building them"
+                build=true
+            else
+                echo "==> No local images: using the published latest (use --build for your own)"
+                release=latest
+                use_release "$release" || exit 1
+            fi
+        fi
+    fi
+
+    if [[ -n "$release" ]]; then
+        echo "==> Pulling the published $release images..."
+        $COMPOSE pull arca-1 arca-2 arca-3 console
+    fi
 
     if $build; then
         $COMPOSE build
@@ -70,7 +105,8 @@ cmd_up() {
 
     local args=()
     $detach && args+=("-d")
-    $COMPOSE up "${args[@]+"${args[@]}"}"
+    # Not remembered: a later `up` or `up --build` starts from the local images again.
+    $COMPOSE up --no-build "${args[@]+"${args[@]}"}"
 }
 
 cmd_down() {
