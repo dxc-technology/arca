@@ -312,7 +312,7 @@ mod tests {
             }
         };
         let app = arca_proto::middleware::unread_body::CloseOnUnreadBodyLayer
-            .layer(arca_proto::middleware::normalize::NormalizeLayer.layer(router));
+            .layer(arca_proto::middleware::normalize::NormalizeLayer::new(None).layer(router));
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("{scheme}://127.0.0.1:{}", listener.local_addr().unwrap().port());

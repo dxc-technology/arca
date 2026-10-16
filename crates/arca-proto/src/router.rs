@@ -28,11 +28,10 @@ use crate::state::AppState;
 /// (JSON errors instead of S3 XML). `/admin/health` is unauthenticated.
 ///
 /// **NormalizeLayer must be applied outside the Router** (in main.rs)
-/// because it needs to modify the URI *before* Axum routing.
+/// because it needs to modify the URI *before* Axum routing (trailing slashes
+/// and virtual-hosted-style addressing).
 /// Auth reads the original URI from request extensions (set by NormalizeLayer).
 pub fn build_router(state: AppState) -> Router {
-    let has_domain = state.domain.is_some();
-
     // --- S3 router ---
     let mut s3_app = Router::new()
         // Service-level: ListBuckets
@@ -55,14 +54,6 @@ pub fn build_router(state: AppState) -> Router {
                 .delete(object::delete_object)
                 .post(object::post_object),
         );
-
-    // Virtual-host rewrite runs innermost (closest to handlers).
-    if has_domain {
-        s3_app = s3_app.layer(axum::middleware::from_fn_with_state(
-            state.clone(),
-            middleware::virtual_host::virtual_host_middleware,
-        ));
-    }
 
     // Per-credential rate limiting (after auth, so identity is available).
     s3_app = s3_app.layer(axum::middleware::from_fn_with_state(

@@ -84,6 +84,7 @@ bin/test scripts         # bin/lib shell library tests (tests/scripts/*_test.sh,
 bin/test s3-report       # Ceph report generator tests (docker/s3-tests/report_test.py, no server)
 bin/test encryption      # encryption integration tests
 bin/test per-bucket-encryption   # per-bucket encryption tests
+bin/test virtual-host    # virtual-hosted-style addressing tests (server.domain set, self-contained)
 bin/test kms             # KMS integration tests (with OpenBAO)
 
 # Manual S3 CLI verification against running Arca

@@ -276,6 +276,7 @@ test_tls_mode_is_isolated()                  { isolated_mode_test tls tls; }
 test_encryption_mode_is_isolated()           { isolated_mode_test encryption encryption; }
 test_compression_mode_is_isolated()          { isolated_mode_test compression compression; }
 test_per_bucket_encryption_mode_is_isolated() { isolated_mode_test per-bucket-encryption per-bucket-encryption; }
+test_virtual_host_mode_is_isolated()         { isolated_mode_test virtual-host virtual-host; }
 test_recrypt_mode_is_isolated()              { isolated_mode_test recrypt recrypt; }
 test_kms_mode_is_isolated()                  { isolated_mode_test kms kms; }
 test_postgres_mode_is_isolated()             { isolated_mode_test postgres postgres; }

@@ -572,7 +572,6 @@ async fn async_main(cli: Cli) -> Result<()> {
                 teams,
                 grants,
                 server_config,
-                domain: config.server.domain.clone(),
                 config_region: config.server.region.clone(),
                 started_at: std::time::Instant::now(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
@@ -834,9 +833,13 @@ async fn async_main(cli: Cli) -> Result<()> {
             let router = arca_proto::build_router(state);
 
             // NormalizeLayer must wrap the Router from outside so it runs
-            // *before* Axum routing — strips trailing slashes and saves the
-            // original URI in extensions for auth to verify.
-            let app = arca_proto::middleware::normalize::NormalizeLayer.layer(router);
+            // *before* Axum routing — saves the original URI in extensions for
+            // auth to verify, rewrites virtual-hosted-style requests to path
+            // style (`server.domain`) and strips trailing slashes.
+            let app = arca_proto::middleware::normalize::NormalizeLayer::new(
+                config.server.domain.clone(),
+            )
+            .layer(router);
             // Outermost, so it also sees responses produced by middleware (an
             // auth reject answers before any handler runs): closes the
             // connection when a response leaves the request body unread.

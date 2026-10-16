@@ -61,21 +61,21 @@ The order below is the one built by `build_router` (`arca-proto/src/router.rs`) 
 ```mermaid
 flowchart TD
     REQ(["HTTP request"]) --> L1["CloseOnUnreadBodyLayer<br/>Connection: close if the body was left unread"]
-    L1 --> L2["NormalizeLayer<br/>save OriginalUri, strip trailing slash"]
+    L1 --> L2["NormalizeLayer<br/>save OriginalUri, virtual-host rewrite<br/>(only when server.domain is set), strip trailing slash"]
     L2 --> L3["Request ID"] --> L4["Validate<br/>header count, null bytes, metadata size"]
     L4 --> L5["Per-IP rate limit"] --> L6["Audit"] --> L7["Trace"] --> L8["CORS"]
     L8 --> R{"Route"}
     R -->|"/admin/*"| ADM["Admin auth (JSON errors)<br/>health and metrics are public"]
     R -->|"/cluster/v1/*"| CL["Cluster auth<br/>(v1/health is public)"]
     R -->|"S3 routes"| S1["Maintenance drain"]
-    S1 --> S2["SigV4 auth + authorization"] --> S3["Per-credential rate limit"] --> S4["Virtual-host rewrite<br/>(only when server.domain is set)"]
-    S4 --> H["S3 handler"]
+    S1 --> S2["SigV4 auth + authorization"] --> S3["Per-credential rate limit"]
+    S3 --> H["S3 handler"]
 ```
 
-- **Outside the router.** `NormalizeLayer` and `CloseOnUnreadBodyLayer` wrap the `Router` as plain Tower layers, because middleware attached with Axum's `Router::layer` runs only *after* a route has been matched. `NormalizeLayer` must rewrite the path before routing (clients such as `mc` send `/bucket/`); auth then verifies the signature against the saved `OriginalUri`. `CloseOnUnreadBodyLayer` is outermost so it also sees responses produced by middleware (an auth reject answers before any handler runs); on HTTP/1.x it adds `Connection: close` whenever the request body was not read to the end, so unread bytes cannot desync the next request on a keep-alive connection.
+- **Outside the router.** `NormalizeLayer` and `CloseOnUnreadBodyLayer` wrap the `Router` as plain Tower layers, because middleware attached with Axum's `Router::layer` runs only *after* a route has been matched. `NormalizeLayer` must rewrite the path before routing (clients such as `mc` send `/bucket/`, and a virtual-hosted-style request carries the bucket in the `Host` header); auth then verifies the signature against the saved `OriginalUri`. `CloseOnUnreadBodyLayer` is outermost so it also sees responses produced by middleware (an auth reject answers before any handler runs); on HTTP/1.x it adds `Connection: close` whenever the request body was not read to the end, so unread bytes cannot desync the next request on a keep-alive connection.
 - **Common layers.** Request ID, validation, per-IP rate limiting, audit, tracing and CORS apply to every route. Rate limiters and the audit writer are no-ops when disabled in configuration; audit entries are handed to a background writer over a bounded channel.
 - **S3 layers.** The maintenance drain answers `503` to every S3 request while a maintenance-mode job runs on the node (the Admin API stays live). SigV4 auth resolves the identity and its effective policies, then the per-credential rate limiter runs.
-- **Virtual-host rewrite.** `virtual_host_middleware` is attached with `Router::layer`, so it rewrites the URI after the route and its path parameters have already been bound to the original path. Virtual-hosted-style addressing is therefore suspected not to work; this is tracked as TD-037 in [Technical Debt](../tech-debt.md) and has no test coverage.
+- **Virtual-host rewrite.** With `[server] domain` set, `NormalizeLayer` turns `Host: {bucket}.{domain}` plus the path `/key` into the path-style `/{bucket}/key` (the bucket root `/` becomes `/{bucket}`) before routing, taking the host from the `Host` header or, on HTTP/2, the URI authority. The rewrite comes before the trailing-slash rule because once the bucket is in the host, `/dir/` is a key (a directory marker), not a bucket path. It cannot be a `Router::layer` middleware: that runs after routing, when the path parameters are already bound to the unrewritten path. The rules themselves are in `arca-proto/src/middleware/virtual_host.rs`. `bin/test virtual-host` runs the end-to-end tests against a server started with a domain.
 
 ### S3 query-parameter routing
 

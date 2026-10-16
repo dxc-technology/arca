@@ -13,6 +13,7 @@ set -euo pipefail
 #   bin/test scripts      Run the bin/lib shell library tests (tests/scripts)
 #   bin/test encryption   Run encryption integration tests
 #   bin/test per-bucket-encryption  Run per-bucket encryption tests
+#   bin/test virtual-host Run the virtual-hosted-style addressing tests (server.domain)
 #   bin/test recrypt      Run HOT re-encryption (maintenance jobs) tests
 #   bin/test kms          Run KMS integration tests
 #   bin/test postgres     Run PostgreSQL backend integration tests
@@ -386,6 +387,41 @@ run_per_bucket_encryption() {
 
     trap - EXIT
     cleanup_pbe
+    return $rc
+}
+
+run_virtual_host() {
+    echo "==> Running virtual-hosted-style addressing integration tests..."
+    use_test_project virtual-host
+
+    local domain="s3.test"
+    # A config fragment cannot add a key to the [server] table that base.toml
+    # opens (TOML forbids reopening a table), so `server.domain` is inserted
+    # into the generated config. The `custom` feature mounts that file.
+    build_config
+    awk -v d="$domain" '{print} /^\[server\]$/ {print "domain = \"" d "\""}' \
+        "$GENERATED_CONFIG" > "$GENERATED_CONFIG.tmp"
+    mv "$GENERATED_CONFIG.tmp" "$GENERATED_CONFIG"
+    _FEATURES+=(custom)
+
+    COMPOSE="$(compose_cmd)"
+
+    cleanup_vhost() {
+        echo "Cleaning up virtual-host test..."
+        $COMPOSE down -v 2>/dev/null || true
+    }
+    trap cleanup_vhost EXIT
+
+    $COMPOSE build arca
+    $COMPOSE up -d arca
+    wait_for_arca "$COMPOSE"
+    $COMPOSE run --rm \
+        -e ARCA_VIRTUAL_HOST_DOMAIN="$domain" \
+        test integration/test_virtual_host.py "$@"
+    local rc=$?
+
+    trap - EXIT
+    cleanup_vhost
     return $rc
 }
 
@@ -1612,6 +1648,10 @@ case "${1:-all}" in
         shift
         run_per_bucket_encryption "$@"
         ;;
+    virtual-host)
+        shift
+        run_virtual_host "$@"
+        ;;
     recrypt)
         shift
         run_recrypt "$@"
@@ -1685,6 +1725,7 @@ case "${1:-all}" in
         echo "  encryption           Run encryption integration tests"
         echo "  compression          Run compression integration tests"
         echo "  per-bucket-encryption  Run per-bucket encryption tests"
+        echo "  virtual-host         Run the virtual-hosted-style addressing tests (server.domain)"
         echo "  recrypt              Run HOT re-encryption (maintenance jobs) tests"
         echo "  kms                  Run KMS integration tests (with OpenBAO)"
         echo "  postgres             Run PostgreSQL backend integration tests"

@@ -58,7 +58,6 @@ pub struct AppState {
     pub teams: Arc<dyn TeamStore>,
     pub grants: Arc<dyn GrantStore>,
     pub server_config: Arc<dyn ServerConfigStore>,
-    pub domain: Option<String>,
     /// S3 region from config file (when set, locked and read-only from console).
     pub config_region: Option<String>,
     pub started_at: std::time::Instant,
