@@ -485,12 +485,13 @@ run_postgres() {
     # Step 4: Wait for server to be ready
     wait_for_arca "$COMPOSE"
     # Step 5: Run PostgreSQL-specific tests, plus the conditional-write suite
-    # (guards the CAS ordering in pg/metadata.rs) and the versioning suite
-    # (guards the version-id-marker pagination in pg/metadata.rs)
+    # (guards the CAS ordering in pg/metadata.rs), the versioning suite
+    # (guards the version-id-marker pagination in pg/metadata.rs) and the
+    # abort-vs-complete race (guards the upload row lock in pg/metadata.rs)
     $COMPOSE run --rm \
         -e ARCA_POSTGRES_BACKEND=1 \
         test integration/test_postgres.py integration/test_conditional_writes.py \
-        integration/test_versioning.py "$@"
+        integration/test_versioning.py integration/test_multipart_abort_race.py "$@"
     local rc=$?
 
     trap - EXIT

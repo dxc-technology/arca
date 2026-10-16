@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The publish workflow verifies the images are public.** After tagging, every tag of both images is fetched from the registry API with an anonymous token (no docker login, plugins or builders involved) and must list `linux/amd64` and `linux/arm64`; a package that went private fails the release. `bin/build --push` runs the same check, after both images are pushed.
 - **A "Choosing a tag" guide** in the installation documentation: `latest` for the newest release, `X.Y` for fixes only, `X` from 1.0, `X.Y.Z` for business-critical production. The Kubernetes manifests and the deployment guide now use `latest` and point at it.
 
+### Fixed
+
+- **An abort racing CompleteMultipartUpload no longer destroys the completed object's data** (TD-053). Complete committed the object row and only afterwards consumed the upload, so an `AbortMultipartUpload`, a lifecycle `AbortIncompleteMultipartUpload` rule or `arca fsck --repair --abort-uploads-older-than` landing in between deleted the parts the new object was made of: Complete answered 200 and the object could not be read (`InternalError`). The object row and the consumption of the upload are now one transaction in SQLite and PostgreSQL, so whichever commits first wins: an abort that wins makes the Complete answer `NoSuchUpload` and write nothing, and a Complete that wins leaves the abort with no parts to delete. A refused `If-Match` / `If-None-Match` still leaves the upload intact for a retry. On an HA cluster the guarantee holds per node.
+
 ### Changed
 
 - **`bin/console start` and `bin/cluster up` follow the same rule** (run the existing image, else pull `latest`, `--dev` builds), and the console warns when it runs a different version from the server. `bin/cluster` does not remember `--release`.

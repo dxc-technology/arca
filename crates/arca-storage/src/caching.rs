@@ -10,7 +10,7 @@ use std::time::Duration;
 use moka::future::Cache;
 
 use arca_core::error::ArcaError;
-use arca_core::store::{DeletePrecondition, MetadataStore, WritePrecondition};
+use arca_core::store::{CompletedUpload, DeletePrecondition, MetadataStore, WritePrecondition};
 use arca_core::types::{
     BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
 };
@@ -326,6 +326,23 @@ impl MetadataStore for CachingMetadataStore {
         upload_id: &str,
     ) -> Result<Vec<PartRecord>, ArcaError> {
         self.inner.list_parts(upload_id).await
+    }
+
+    async fn complete_multipart_object(
+        &self,
+        upload_id: &str,
+        record: &ObjectRecord,
+        pre: &WritePrecondition,
+    ) -> Result<CompletedUpload, ArcaError> {
+        let result = self
+            .inner
+            .complete_multipart_object(upload_id, record, pre)
+            .await;
+        if result.is_ok() {
+            let key = Self::object_key(&record.bucket, &record.key);
+            self.object_cache.invalidate(&key).await;
+        }
+        result
     }
 
     async fn delete_multipart_upload(

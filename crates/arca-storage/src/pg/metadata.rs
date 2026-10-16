@@ -1,7 +1,7 @@
 //! PostgreSQL implementation of the `MetadataStore` trait.
 
-use arca_core::error::{ArcaError, S3Error};
-use arca_core::store::{DeletePrecondition, MetadataStore, WritePrecondition};
+use arca_core::error::{ArcaError, S3Error, S3ErrorCode};
+use arca_core::store::{CompletedUpload, DeletePrecondition, MetadataStore, WritePrecondition};
 use arca_core::types::{
     BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
     VersioningState,
@@ -339,6 +339,179 @@ pub(super) fn row_to_part_record(row: &sqlx_postgres::PgRow) -> PartRecord {
     }
 }
 
+/// Installs `record` as the new current version inside `tx`: the
+/// commit-ordered seq, the authoritative CAS check, the versioning rules, the
+/// row and the `is_latest` finalisation. Does not commit, so a caller can add
+/// statements that must stand or fall with the object row
+/// (`complete_multipart_object`). Returns the overwritten object, whose blob
+/// the caller must delete after the commit.
+async fn install_object(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    record: &mut ObjectRecord,
+    pre: &WritePrecondition,
+) -> Result<Option<ObjectRecord>, ArcaError> {
+    let resource = format!("/{}/{}", record.bucket, record.key);
+    // Commit-ordered seq, taken as the FIRST statement of the
+    // transaction. `next_object_seq` is the only statement here that
+    // actually contends under PostgreSQL's default READ COMMITTED
+    // isolation (a plain SELECT does not block concurrent transactions):
+    // taking it before the authoritative CAS-check SELECT below turns it
+    // into a serialization gate — by the time this transaction is
+    // granted the lock, every previously-serialized writer has already
+    // committed, so the CAS-check SELECT is guaranteed to see genuinely
+    // current state instead of a stale pre-write snapshot.
+    let seq = next_object_seq(tx)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
+
+    // Authoritative CAS check, evaluated inside the same transaction that
+    // performs the write, against what `get_object` would see (delete
+    // markers filtered).
+    if !pre.is_empty() {
+        let current = fetch_current_object(tx, &record.bucket, &record.key)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
+        if let Err(code) = pre.evaluate(current.as_ref()) {
+            return Err(ArcaError::S3(S3Error::new(code, &resource)));
+        }
+    }
+
+    let versioning = get_versioning_state(tx, &record.bucket).await;
+
+    let metadata_json = serde_json::to_value(&record.metadata)
+        .unwrap_or_else(|_| serde_json::json!({}));
+
+    let old = match versioning {
+        VersioningState::Unversioned => {
+            // Find old, DELETE + INSERT.
+            let old = fetch_latest_object(tx, &record.bucket, &record.key).await
+                .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
+
+            sqlx_core::query::query("DELETE FROM objects WHERE bucket = $1 AND key = $2")
+                .bind(&record.bucket)
+                .bind(&record.key)
+                .execute(&mut **tx)
+                .await
+                .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
+
+            // Clean up tags from overwritten object.
+            sqlx_core::query::query("DELETE FROM object_tags WHERE bucket = $1 AND key = $2")
+                .bind(&record.bucket)
+                .bind(&record.key)
+                .execute(&mut **tx)
+                .await
+                .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
+
+            record.version_id = None;
+            record.is_latest = true;
+            record.is_delete_marker = false;
+            insert_object_row(tx, &record, &metadata_json, seq).await
+                .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
+
+            old // old blob to clean up
+        }
+        VersioningState::Enabled => {
+            // Mark current latest as not-latest.
+            sqlx_core::query::query(
+                "UPDATE objects SET is_latest = FALSE \
+                 WHERE bucket = $1 AND key = $2 AND is_latest = TRUE",
+            )
+            .bind(&record.bucket)
+            .bind(&record.key)
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
+
+            // Generate version ID and insert new row.
+            record.version_id = Some(uuid::Uuid::new_v4().to_string());
+            record.is_latest = true;
+            record.is_delete_marker = false;
+            insert_object_row(tx, &record, &metadata_json, seq).await
+                .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
+
+            None // keep old versions, no cleanup
+        }
+        VersioningState::Suspended => {
+            // Delete existing null-version (if any) for cleanup.
+            let old_null = fetch_null_version(tx, &record.bucket, &record.key).await
+                .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
+
+            sqlx_core::query::query(
+                "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id IS NULL",
+            )
+            .bind(&record.bucket)
+            .bind(&record.key)
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
+
+            // Clean up tags from old null-version.
+            sqlx_core::query::query(
+                "DELETE FROM object_tags WHERE bucket = $1 AND key = $2 AND version_id = ''",
+            )
+            .bind(&record.bucket)
+            .bind(&record.key)
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
+
+            // Mark any remaining latest as not-latest.
+            sqlx_core::query::query(
+                "UPDATE objects SET is_latest = FALSE \
+                 WHERE bucket = $1 AND key = $2 AND is_latest = TRUE",
+            )
+            .bind(&record.bucket)
+            .bind(&record.key)
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
+
+            // Insert with NULL version_id.
+            record.version_id = None;
+            record.is_latest = true;
+            record.is_delete_marker = false;
+            insert_object_row(tx, &record, &metadata_json, seq).await
+                .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
+
+            old_null // clean up old null-version blob
+        }
+    };
+
+    // Finalize is_latest deterministically so the origin and cluster replicas
+    // (which run recompute in apply_remote_object) always agree on the current
+    // version (Phase 29, Risk #1). Matches the SQLite backend.
+    recompute_is_latest(tx, &record.bucket, &record.key)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
+
+    Ok(old)
+}
+
+/// Deletes an upload and its parts inside `tx` and returns the parts that were
+/// deleted. The upload row is deleted FIRST: that statement is the lock a
+/// concurrent `complete_multipart_object` also takes (`FOR UPDATE`), so under
+/// READ COMMITTED only one of the two proceeds, and the one that comes second
+/// finds nothing to take. Parts are only read through the DELETE that removes
+/// them, never through a plain SELECT that could see rows the other side has
+/// already consumed.
+async fn take_upload(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    upload_id: &str,
+) -> Result<Vec<PartRecord>, sqlx_core::error::Error> {
+    sqlx_core::query::query("DELETE FROM multipart_uploads WHERE upload_id = $1")
+        .bind(upload_id)
+        .execute(&mut **tx)
+        .await?;
+    let rows = sqlx_core::query::query(
+        "DELETE FROM parts WHERE upload_id = $1 \
+         RETURNING upload_id, part_number, blob_id, size, etag, checksum_value, last_modified",
+    )
+    .bind(upload_id)
+    .fetch_all(&mut **tx)
+    .await?;
+    Ok(rows.iter().map(row_to_part_record).collect())
+}
+
 #[async_trait::async_trait]
 impl MetadataStore for PgStore {
     async fn get_stats(&self) -> Result<StorageStats, ArcaError> {
@@ -454,150 +627,15 @@ impl MetadataStore for PgStore {
         pre: &WritePrecondition,
     ) -> Result<(Option<ObjectRecord>, Option<String>), ArcaError> {
         let mut record = record.clone();
-        let resource = format!("/{}/{}", record.bucket, record.key);
         let mut tx = self
             .pool
             .begin()
             .await
             .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
-
-        // Commit-ordered seq, taken as the FIRST statement of the
-        // transaction. `next_object_seq` is the only statement here that
-        // actually contends under PostgreSQL's default READ COMMITTED
-        // isolation (a plain SELECT does not block concurrent transactions):
-        // taking it before the authoritative CAS-check SELECT below turns it
-        // into a serialization gate — by the time this transaction is
-        // granted the lock, every previously-serialized writer has already
-        // committed, so the CAS-check SELECT is guaranteed to see genuinely
-        // current state instead of a stale pre-write snapshot.
-        let seq = next_object_seq(&mut tx)
-            .await
-            .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
-
-        // Authoritative CAS check, evaluated inside the same transaction that
-        // performs the write, against what `get_object` would see (delete
-        // markers filtered).
-        if !pre.is_empty() {
-            let current = fetch_current_object(&mut tx, &record.bucket, &record.key)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
-            if let Err(code) = pre.evaluate(current.as_ref()) {
-                return Err(ArcaError::S3(S3Error::new(code, &resource)));
-            }
-        }
-
-        let versioning = get_versioning_state(&mut tx, &record.bucket).await;
-
-        let metadata_json = serde_json::to_value(&record.metadata)
-            .unwrap_or_else(|_| serde_json::json!({}));
-
-        let old = match versioning {
-            VersioningState::Unversioned => {
-                // Find old, DELETE + INSERT.
-                let old = fetch_latest_object(&mut tx, &record.bucket, &record.key).await
-                    .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
-
-                sqlx_core::query::query("DELETE FROM objects WHERE bucket = $1 AND key = $2")
-                    .bind(&record.bucket)
-                    .bind(&record.key)
-                    .execute(&mut *tx)
-                    .await
-                    .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
-
-                // Clean up tags from overwritten object.
-                sqlx_core::query::query("DELETE FROM object_tags WHERE bucket = $1 AND key = $2")
-                    .bind(&record.bucket)
-                    .bind(&record.key)
-                    .execute(&mut *tx)
-                    .await
-                    .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
-
-                record.version_id = None;
-                record.is_latest = true;
-                record.is_delete_marker = false;
-                insert_object_row(&mut tx, &record, &metadata_json, seq).await
-                    .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
-
-                old // old blob to clean up
-            }
-            VersioningState::Enabled => {
-                // Mark current latest as not-latest.
-                sqlx_core::query::query(
-                    "UPDATE objects SET is_latest = FALSE \
-                     WHERE bucket = $1 AND key = $2 AND is_latest = TRUE",
-                )
-                .bind(&record.bucket)
-                .bind(&record.key)
-                .execute(&mut *tx)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
-
-                // Generate version ID and insert new row.
-                record.version_id = Some(uuid::Uuid::new_v4().to_string());
-                record.is_latest = true;
-                record.is_delete_marker = false;
-                insert_object_row(&mut tx, &record, &metadata_json, seq).await
-                    .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
-
-                None // keep old versions, no cleanup
-            }
-            VersioningState::Suspended => {
-                // Delete existing null-version (if any) for cleanup.
-                let old_null = fetch_null_version(&mut tx, &record.bucket, &record.key).await
-                    .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
-
-                sqlx_core::query::query(
-                    "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id IS NULL",
-                )
-                .bind(&record.bucket)
-                .bind(&record.key)
-                .execute(&mut *tx)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
-
-                // Clean up tags from old null-version.
-                sqlx_core::query::query(
-                    "DELETE FROM object_tags WHERE bucket = $1 AND key = $2 AND version_id = ''",
-                )
-                .bind(&record.bucket)
-                .bind(&record.key)
-                .execute(&mut *tx)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
-
-                // Mark any remaining latest as not-latest.
-                sqlx_core::query::query(
-                    "UPDATE objects SET is_latest = FALSE \
-                     WHERE bucket = $1 AND key = $2 AND is_latest = TRUE",
-                )
-                .bind(&record.bucket)
-                .bind(&record.key)
-                .execute(&mut *tx)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
-
-                // Insert with NULL version_id.
-                record.version_id = None;
-                record.is_latest = true;
-                record.is_delete_marker = false;
-                insert_object_row(&mut tx, &record, &metadata_json, seq).await
-                    .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
-
-                old_null // clean up old null-version blob
-            }
-        };
-
-        // Finalize is_latest deterministically so the origin and cluster replicas
-        // (which run recompute in apply_remote_object) always agree on the current
-        // version (Phase 29, Risk #1). Matches the SQLite backend.
-        recompute_is_latest(&mut tx, &record.bucket, &record.key)
-            .await
-            .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
-
+        let old = install_object(&mut tx, &mut record, pre).await?;
         tx.commit()
             .await
             .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
-
         Ok((old, record.version_id.clone()))
     }
 
@@ -1848,6 +1886,54 @@ impl MetadataStore for PgStore {
         Ok(rows.iter().map(row_to_part_record).collect())
     }
 
+    async fn complete_multipart_object(
+        &self,
+        upload_id: &str,
+        record: &ObjectRecord,
+        pre: &WritePrecondition,
+    ) -> Result<CompletedUpload, ArcaError> {
+        let mut record = record.clone();
+        let resource = format!("/{}/{}", record.bucket, record.key);
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("complete_multipart_object: {e}")))?;
+
+        // The upload must still exist, and stay ours until the commit: this
+        // is the transaction's first, locking statement. A concurrent abort
+        // either committed before (no row: NoSuchUpload) or waits here for
+        // this transaction and then finds nothing to delete. A plain SELECT
+        // would not block under READ COMMITTED.
+        let locked = sqlx_core::query::query(
+            "SELECT upload_id FROM multipart_uploads WHERE upload_id = $1 FOR UPDATE",
+        )
+        .bind(upload_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("complete_multipart_object: {e}")))?;
+        if locked.is_none() {
+            return Err(ArcaError::S3(S3Error::new(
+                S3ErrorCode::NoSuchUpload,
+                &resource,
+            )));
+        }
+
+        let old = install_object(&mut tx, &mut record, pre).await?;
+        let parts = take_upload(&mut tx, upload_id)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("complete_multipart_object: {e}")))?;
+        tx.commit()
+            .await
+            .map_err(|e| ArcaError::Internal(format!("complete_multipart_object: {e}")))?;
+
+        Ok(CompletedUpload {
+            old,
+            version_id: record.version_id.clone(),
+            parts,
+        })
+    }
+
     async fn delete_multipart_upload(
         &self,
         upload_id: &str,
@@ -1857,36 +1943,12 @@ impl MetadataStore for PgStore {
             .begin()
             .await
             .map_err(|e| ArcaError::Internal(format!("delete_multipart_upload: {e}")))?;
-
-        // Collect parts for blob cleanup.
-        let rows = sqlx_core::query::query(
-            "SELECT upload_id, part_number, blob_id, size, etag, checksum_value, last_modified \
-             FROM parts WHERE upload_id = $1",
-        )
-        .bind(upload_id)
-        .fetch_all(&mut *tx)
-        .await
-        .map_err(|e| ArcaError::Internal(format!("delete_multipart_upload: {e}")))?;
-
-        let parts: Vec<PartRecord> = rows.iter().map(row_to_part_record).collect();
-
-        // Delete parts and upload record.
-        sqlx_core::query::query("DELETE FROM parts WHERE upload_id = $1")
-            .bind(upload_id)
-            .execute(&mut *tx)
+        let parts = take_upload(&mut tx, upload_id)
             .await
             .map_err(|e| ArcaError::Internal(format!("delete_multipart_upload: {e}")))?;
-
-        sqlx_core::query::query("DELETE FROM multipart_uploads WHERE upload_id = $1")
-            .bind(upload_id)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| ArcaError::Internal(format!("delete_multipart_upload: {e}")))?;
-
         tx.commit()
             .await
             .map_err(|e| ArcaError::Internal(format!("delete_multipart_upload: {e}")))?;
-
         Ok(parts)
     }
 

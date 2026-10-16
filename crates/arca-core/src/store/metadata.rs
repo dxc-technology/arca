@@ -19,6 +19,18 @@ pub struct WritePrecondition {
     pub if_none_match: Option<String>,
 }
 
+/// What [`MetadataStore::complete_multipart_object`] committed.
+#[derive(Debug, Clone)]
+pub struct CompletedUpload {
+    /// The overwritten object, so the caller can delete its orphaned blob.
+    pub old: Option<ObjectRecord>,
+    /// The version id assigned to the new object (None when unversioned).
+    pub version_id: Option<String>,
+    /// The parts of the consumed upload. For a composite object their blobs
+    /// are still referenced by the object's sidecar and must be kept.
+    pub parts: Vec<PartRecord>,
+}
+
 impl WritePrecondition {
     /// True when neither header was given — the write is unconditional.
     pub fn is_empty(&self) -> bool {
@@ -325,8 +337,28 @@ pub trait MetadataStore: Send + Sync {
         upload_id: &str,
     ) -> Result<Vec<PartRecord>, crate::error::ArcaError>;
 
+    /// Completes a multipart upload: installs `record` as the new current
+    /// version (as [`MetadataStore::put_object_if`] does, `pre` included) and
+    /// consumes the upload and its parts, in ONE transaction that fails with
+    /// `S3ErrorCode::NoSuchUpload`, writing nothing, when the upload is gone.
+    ///
+    /// This is what keeps an `AbortMultipartUpload` (or a lifecycle or fsck
+    /// abort) racing the completion from destroying the data: whichever
+    /// transaction commits first wins. An abort that wins leaves the Complete
+    /// with no object row, so the object never points at deleted parts; a
+    /// Complete that wins leaves the abort with no parts to delete. A refused
+    /// precondition leaves the upload and its parts untouched, so the client
+    /// can retry.
+    async fn complete_multipart_object(
+        &self,
+        upload_id: &str,
+        record: &ObjectRecord,
+        pre: &WritePrecondition,
+    ) -> Result<CompletedUpload, crate::error::ArcaError>;
+
     /// Deletes a multipart upload and all its parts. Returns the deleted parts
-    /// (so the caller can delete the orphaned blobs).
+    /// (so the caller can delete the orphaned blobs). Returns no parts when
+    /// the upload no longer exists, e.g. because it was just completed.
     async fn delete_multipart_upload(
         &self,
         upload_id: &str,

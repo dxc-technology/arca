@@ -1,7 +1,7 @@
 //! `MetadataStore` implementation for `SqliteStore`.
 
 use arca_core::error::{ArcaError, S3Error, S3ErrorCode};
-use arca_core::store::{DeletePrecondition, MetadataStore, WritePrecondition};
+use arca_core::store::{CompletedUpload, DeletePrecondition, MetadataStore, WritePrecondition};
 use arca_core::types::{
     BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
     VersioningState,
@@ -63,6 +63,127 @@ fn get_versioning_state(conn: &Connection, bucket: &str) -> VersioningState {
 
 /// Column list for all object SELECT queries (20 columns).
 const OBJECT_COLUMNS: &str = "bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status, is_tombstone, lock_updated_at, content_updated_at";
+
+/// Deletes an upload and its parts inside `tx` and returns the parts that
+/// were deleted (none when the upload is already gone).
+fn take_upload(
+    tx: &rusqlite::Transaction,
+    upload_id: &str,
+) -> Result<Vec<PartRecord>, rusqlite::Error> {
+    let parts = {
+        let mut stmt = tx.prepare(
+            "SELECT upload_id, part_number, blob_id, size, etag, checksum_value, last_modified
+             FROM parts WHERE upload_id = ?1",
+        )?;
+        let rows = stmt.query_map(params![upload_id], |row| Ok(row_to_part_record(row)))?;
+        let mut parts = Vec::new();
+        for row in rows {
+            parts.push(row??);
+        }
+        parts
+    };
+    tx.execute("DELETE FROM parts WHERE upload_id = ?1", params![upload_id])?;
+    tx.execute(
+        "DELETE FROM multipart_uploads WHERE upload_id = ?1",
+        params![upload_id],
+    )?;
+    Ok(parts)
+}
+
+/// Installs `record` as the new current version inside `tx`: the
+/// authoritative CAS check, the versioning rules, the row and the `is_latest`
+/// finalisation. Does not commit, so a caller can add statements that must
+/// stand or fall with the object row (`complete_multipart_object`). Returns
+/// the overwritten object, whose blob the caller must delete after the commit.
+fn install_object(
+    tx: &rusqlite::Transaction,
+    record: &mut ObjectRecord,
+    pre: &WritePrecondition,
+) -> Result<Option<ObjectRecord>, CasError> {
+    // Authoritative CAS check, evaluated inside this transaction
+    // so no concurrent writer can commit between the check and
+    // the read. The handler's early check stays as a cheap early
+    // reject; this check is authoritative.
+    if !pre.is_empty() {
+        let current = fetch_current_object(tx, &record.bucket, &record.key)?;
+        if let Err(code) = pre.evaluate(current.as_ref()) {
+            return Err(CasError::Precondition(code));
+        }
+    }
+
+    let versioning = get_versioning_state(tx, &record.bucket);
+
+    let metadata_json = serde_json::to_string(&record.metadata)
+        .unwrap_or_else(|_| "{}".to_string());
+
+    let old = match versioning {
+        VersioningState::Unversioned => {
+            // Same as before: find old, DELETE + INSERT.
+            let old = fetch_latest_object(tx, &record.bucket, &record.key)?;
+            tx.execute(
+                "DELETE FROM objects WHERE bucket = ?1 AND key = ?2",
+                params![record.bucket, record.key],
+            )?;
+            // Clean up tags from overwritten object
+            tx.execute(
+                "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2",
+                params![record.bucket, record.key],
+            )?;
+            record.version_id = None;
+            record.is_latest = true;
+            record.is_delete_marker = false;
+            insert_object_row(tx, &record, &metadata_json)?;
+            // Finalize is_latest deterministically so the origin and
+            // cluster replicas (which run recompute in apply_remote_object)
+            // always agree on the current version (Phase 29, Risk #1).
+            recompute_is_latest(tx, &record.bucket, &record.key)?;
+            old // old blob to clean up
+        }
+        VersioningState::Enabled => {
+            // Mark current latest as not-latest.
+            tx.execute(
+                "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2 AND is_latest = 1",
+                params![record.bucket, record.key],
+            )?;
+            // Generate version ID and insert new row.
+            record.version_id = Some(uuid::Uuid::new_v4().to_string());
+            record.is_latest = true;
+            record.is_delete_marker = false;
+            insert_object_row(tx, &record, &metadata_json)?;
+            // Finalize is_latest deterministically (see Risk #1 above).
+            recompute_is_latest(tx, &record.bucket, &record.key)?;
+            None // keep old versions, no cleanup
+        }
+        VersioningState::Suspended => {
+            // Delete existing null-version (if any) for cleanup.
+            let old_null = fetch_null_version(tx, &record.bucket, &record.key)?;
+            tx.execute(
+                "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
+                params![record.bucket, record.key],
+            )?;
+            // Clean up tags from old null-version
+            tx.execute(
+                "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ''",
+                params![record.bucket, record.key],
+            )?;
+            // Mark any remaining latest as not-latest.
+            tx.execute(
+                "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2 AND is_latest = 1",
+                params![record.bucket, record.key],
+            )?;
+            // Insert with NULL version_id.
+            record.version_id = None;
+            record.is_latest = true;
+            record.is_delete_marker = false;
+            insert_object_row(tx, &record, &metadata_json)?;
+            // Finalize is_latest deterministically (see Risk #1 above).
+            recompute_is_latest(tx, &record.bucket, &record.key)?;
+            old_null // clean up old null-version blob
+        }
+    };
+
+    Ok(old)
+}
 
 #[async_trait::async_trait]
 impl MetadataStore for SqliteStore {
@@ -195,92 +316,8 @@ impl MetadataStore for SqliteStore {
             .conn
             .call(move |conn| -> Result<_, CasError> {
                 let tx = conn.transaction()?;
-
-                // Authoritative CAS check, evaluated inside this transaction
-                // so no concurrent writer can commit between the check and
-                // the read. The handler's early check stays as a cheap early
-                // reject; this check is authoritative.
-                if !pre.is_empty() {
-                    let current = fetch_current_object(&tx, &record.bucket, &record.key)?;
-                    if let Err(code) = pre.evaluate(current.as_ref()) {
-                        return Err(CasError::Precondition(code));
-                    }
-                }
-
-                let versioning = get_versioning_state(&tx, &record.bucket);
-
-                let metadata_json = serde_json::to_string(&record.metadata)
-                    .unwrap_or_else(|_| "{}".to_string());
-
-                let old = match versioning {
-                    VersioningState::Unversioned => {
-                        // Same as before: find old, DELETE + INSERT.
-                        let old = fetch_latest_object(&tx, &record.bucket, &record.key)?;
-                        tx.execute(
-                            "DELETE FROM objects WHERE bucket = ?1 AND key = ?2",
-                            params![record.bucket, record.key],
-                        )?;
-                        // Clean up tags from overwritten object
-                        tx.execute(
-                            "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2",
-                            params![record.bucket, record.key],
-                        )?;
-                        record.version_id = None;
-                        record.is_latest = true;
-                        record.is_delete_marker = false;
-                        insert_object_row(&tx, &record, &metadata_json)?;
-                        // Finalize is_latest deterministically so the origin and
-                        // cluster replicas (which run recompute in apply_remote_object)
-                        // always agree on the current version (Phase 29, Risk #1).
-                        recompute_is_latest(&tx, &record.bucket, &record.key)?;
-                        tx.commit()?;
-                        old // old blob to clean up
-                    }
-                    VersioningState::Enabled => {
-                        // Mark current latest as not-latest.
-                        tx.execute(
-                            "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2 AND is_latest = 1",
-                            params![record.bucket, record.key],
-                        )?;
-                        // Generate version ID and insert new row.
-                        record.version_id = Some(uuid::Uuid::new_v4().to_string());
-                        record.is_latest = true;
-                        record.is_delete_marker = false;
-                        insert_object_row(&tx, &record, &metadata_json)?;
-                        // Finalize is_latest deterministically (see Risk #1 above).
-                        recompute_is_latest(&tx, &record.bucket, &record.key)?;
-                        tx.commit()?;
-                        None // keep old versions, no cleanup
-                    }
-                    VersioningState::Suspended => {
-                        // Delete existing null-version (if any) for cleanup.
-                        let old_null = fetch_null_version(&tx, &record.bucket, &record.key)?;
-                        tx.execute(
-                            "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
-                            params![record.bucket, record.key],
-                        )?;
-                        // Clean up tags from old null-version
-                        tx.execute(
-                            "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ''",
-                            params![record.bucket, record.key],
-                        )?;
-                        // Mark any remaining latest as not-latest.
-                        tx.execute(
-                            "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2 AND is_latest = 1",
-                            params![record.bucket, record.key],
-                        )?;
-                        // Insert with NULL version_id.
-                        record.version_id = None;
-                        record.is_latest = true;
-                        record.is_delete_marker = false;
-                        insert_object_row(&tx, &record, &metadata_json)?;
-                        // Finalize is_latest deterministically (see Risk #1 above).
-                        recompute_is_latest(&tx, &record.bucket, &record.key)?;
-                        tx.commit()?;
-                        old_null // clean up old null-version blob
-                    }
-                };
-
+                let old = install_object(&tx, &mut record, &pre)?;
+                tx.commit()?;
                 Ok((old, record.version_id.clone()))
             })
             .await;
@@ -1451,6 +1488,47 @@ impl MetadataStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("list_parts: {e}")))
     }
 
+    async fn complete_multipart_object(
+        &self,
+        upload_id: &str,
+        record: &ObjectRecord,
+        pre: &WritePrecondition,
+    ) -> Result<CompletedUpload, ArcaError> {
+        let upload_id = upload_id.to_string();
+        let mut record = record.clone();
+        let pre = pre.clone();
+        let resource = format!("/{}/{}", record.bucket, record.key);
+        let result = self
+            .conn
+            .call(move |conn| -> Result<_, CasError> {
+                let tx = conn.transaction()?;
+
+                // The upload must still exist: an abort that committed first
+                // deleted its parts, and an object installed now would point
+                // at them. All writes go through this one connection, so the
+                // check and the commit below cannot interleave with an abort.
+                let exists: bool = tx.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM multipart_uploads WHERE upload_id = ?1)",
+                    params![upload_id],
+                    |row| row.get(0),
+                )?;
+                if !exists {
+                    return Err(CasError::Precondition(S3ErrorCode::NoSuchUpload));
+                }
+
+                let old = install_object(&tx, &mut record, &pre)?;
+                let parts = take_upload(&tx, &upload_id)?;
+                tx.commit()?;
+                Ok(CompletedUpload {
+                    old,
+                    version_id: record.version_id.clone(),
+                    parts,
+                })
+            })
+            .await;
+        map_cas_result(result, "complete_multipart_object", &resource)
+    }
+
     async fn delete_multipart_upload(
         &self,
         upload_id: &str,
@@ -1459,33 +1537,7 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;
-
-                // Collect parts for blob cleanup.
-                let parts = {
-                    let mut stmt = tx.prepare(
-                        "SELECT upload_id, part_number, blob_id, size, etag, checksum_value, last_modified
-                         FROM parts WHERE upload_id = ?1",
-                    )?;
-                    let rows = stmt.query_map(params![upload_id], |row| {
-                        Ok(row_to_part_record(row))
-                    })?;
-                    let mut parts = Vec::new();
-                    for row in rows {
-                        parts.push(row??);
-                    }
-                    parts
-                };
-
-                // Delete parts and upload record.
-                tx.execute(
-                    "DELETE FROM parts WHERE upload_id = ?1",
-                    params![upload_id],
-                )?;
-                tx.execute(
-                    "DELETE FROM multipart_uploads WHERE upload_id = ?1",
-                    params![upload_id],
-                )?;
-
+                let parts = take_upload(&tx, &upload_id)?;
                 tx.commit()?;
                 Ok(parts)
             })
@@ -2923,6 +2975,145 @@ mod tests {
         let store = test_store().await;
         let parts = store.delete_multipart_upload("no-such").await.unwrap();
         assert!(parts.is_empty());
+    }
+
+    // -- complete_multipart_object (TD-053) --
+
+    /// An upload with two parts, ready to be completed into `b/key1`.
+    async fn upload_with_parts(store: &SqliteStore) {
+        store.create_bucket("b").await.unwrap();
+        store
+            .create_multipart_upload(&make_upload("up-1", "b", "key1"))
+            .await
+            .unwrap();
+        store.put_part(&make_part("up-1", 1)).await.unwrap();
+        store.put_part(&make_part("up-1", 2)).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn complete_multipart_object_installs_the_object_and_consumes_the_upload() {
+        let store = test_store().await;
+        upload_with_parts(&store).await;
+
+        let done = store
+            .complete_multipart_object("up-1", &make_record("b", "key1"), &WritePrecondition::default())
+            .await
+            .unwrap();
+
+        assert_eq!(done.parts.len(), 2);
+        assert!(done.old.is_none());
+        assert!(store.get_object("b", "key1").await.unwrap().is_some());
+        assert!(store.get_multipart_upload("up-1").await.unwrap().is_none());
+        assert!(store.list_parts("up-1").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn complete_multipart_object_returns_the_overwritten_object() {
+        let store = test_store().await;
+        upload_with_parts(&store).await;
+        let mut previous = make_record("b", "key1");
+        previous.blob_id = BlobId("previous-blob".to_string());
+        store.put_object(&previous).await.unwrap();
+
+        let done = store
+            .complete_multipart_object("up-1", &make_record("b", "key1"), &WritePrecondition::default())
+            .await
+            .unwrap();
+
+        assert_eq!(done.old.unwrap().blob_id.0, "previous-blob");
+    }
+
+    #[tokio::test]
+    async fn complete_multipart_object_reports_the_version_id_when_versioned() {
+        let store = test_store().await;
+        upload_with_parts(&store).await;
+        enable_versioning(&store, "b").await;
+
+        let done = store
+            .complete_multipart_object("up-1", &make_record("b", "key1"), &WritePrecondition::default())
+            .await
+            .unwrap();
+
+        let got = store.get_object("b", "key1").await.unwrap().unwrap();
+        assert_eq!(done.version_id, got.version_id);
+        assert!(done.version_id.is_some());
+    }
+
+    #[tokio::test]
+    async fn complete_multipart_object_fails_when_the_upload_was_aborted() {
+        let store = test_store().await;
+        upload_with_parts(&store).await;
+        store.delete_multipart_upload("up-1").await.unwrap();
+
+        let err = store
+            .complete_multipart_object("up-1", &make_record("b", "key1"), &WritePrecondition::default())
+            .await
+            .unwrap_err();
+
+        match err {
+            ArcaError::S3(e) => assert_eq!(e.code, S3ErrorCode::NoSuchUpload),
+            other => panic!("expected NoSuchUpload, got {other:?}"),
+        }
+        // Nothing may be installed: an object here would point at deleted parts.
+        assert!(store.get_object("b", "key1").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn complete_multipart_object_twice_installs_only_once() {
+        let store = test_store().await;
+        upload_with_parts(&store).await;
+        let record = make_record("b", "key1");
+        store
+            .complete_multipart_object("up-1", &record, &WritePrecondition::default())
+            .await
+            .unwrap();
+
+        let mut second = make_record("b", "key1");
+        second.blob_id = BlobId("second-blob".to_string());
+        let err = store
+            .complete_multipart_object("up-1", &second, &WritePrecondition::default())
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, ArcaError::S3(ref e) if e.code == S3ErrorCode::NoSuchUpload));
+        let got = store.get_object("b", "key1").await.unwrap().unwrap();
+        assert_eq!(got.blob_id, record.blob_id);
+    }
+
+    #[tokio::test]
+    async fn abort_after_complete_finds_no_parts_to_delete() {
+        let store = test_store().await;
+        upload_with_parts(&store).await;
+        store
+            .complete_multipart_object("up-1", &make_record("b", "key1"), &WritePrecondition::default())
+            .await
+            .unwrap();
+
+        // An abort landing after the Complete must not get the parts back:
+        // it would delete the blobs the completed object is made of.
+        let parts = store.delete_multipart_upload("up-1").await.unwrap();
+        assert!(parts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn complete_multipart_object_refused_precondition_keeps_the_upload() {
+        let store = test_store().await;
+        upload_with_parts(&store).await;
+        store.put_object(&make_record("b", "key1")).await.unwrap();
+        let pre = WritePrecondition {
+            if_match: None,
+            if_none_match: Some("*".to_string()),
+        };
+
+        let err = store
+            .complete_multipart_object("up-1", &make_record("b", "key1"), &pre)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, ArcaError::S3(ref e) if e.code == S3ErrorCode::PreconditionFailed));
+        // The client may retry: upload and parts must survive.
+        assert!(store.get_multipart_upload("up-1").await.unwrap().is_some());
+        assert_eq!(store.list_parts("up-1").await.unwrap().len(), 2);
     }
 
     // -- Versioning tests --

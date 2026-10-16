@@ -497,26 +497,34 @@ pub async fn complete_multipart_upload(
         if_match: if_match.clone(),
         if_none_match: if_none_match.clone(),
     };
-    // TECHDEBT(TD-053): the row is committed here and the upload consumed
-    // later (delete_multipart_upload below), not in one transaction that
-    // fails when the upload is gone: an abort in between deletes the parts of
-    // the object just completed.
-    let (old, version_id) = match state.metadata.put_object_if(&record, &write_pre).await {
-        Ok(r) => r,
+    // The object row and the consumption of the upload are ONE transaction
+    // (TD-053): it fails with NoSuchUpload, writing nothing, when an abort
+    // (client, lifecycle rule or `arca fsck --repair`) got there first, so the
+    // object can never point at parts that abort deleted, and an abort that
+    // comes second finds no parts left to delete.
+    let (old, version_id, old_parts) = match state
+        .metadata
+        .complete_multipart_object(&upload_id, &record, &write_pre)
+        .await
+    {
+        Ok(done) => (done.old, done.version_id, done.parts),
         Err(ArcaError::S3(e))
             if matches!(
                 e.code,
-                S3ErrorCode::PreconditionFailed | S3ErrorCode::NoSuchKey
+                S3ErrorCode::PreconditionFailed
+                    | S3ErrorCode::NoSuchKey
+                    | S3ErrorCode::NoSuchUpload
             ) =>
         {
-            // Discard only the just-assembled blob — NOT a cascading delete,
-            // since the still-uploaded parts must survive for the client to
-            // retry. Return before delete_multipart_upload so the upload
-            // record and parts are untouched.
+            // Discard only the just-assembled blob (and its sidecar), NOT a
+            // cascading delete: after a refused precondition the still-
+            // uploaded parts must survive for the client to retry, and after
+            // an abort they are the abort's to delete. The upload record and
+            // parts are untouched by this error.
             if let Err(del_err) = write_blob.delete_assembled(&record.blob_id).await {
                 tracing::warn!(
                     error = %del_err,
-                    "Failed to delete assembled blob after refused conditional CompleteMultipartUpload"
+                    "Failed to delete assembled blob after a refused CompleteMultipartUpload"
                 );
             }
             // Arca evaluates the CAS once, at commit time, and maps every
@@ -553,16 +561,10 @@ pub async fn complete_multipart_upload(
         }
     }
 
-    // Delete upload + parts from DB, then clean up part blobs in background.
-    // For composite blobs the part files are still referenced by the final
-    // sidecar — only the DB rows go away here; the blobs stay on disk.
-    let old_parts = match state.metadata.delete_multipart_upload(&upload_id).await {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::warn!(error = %e, "Failed to delete multipart upload record");
-            Vec::new()
-        }
-    };
+    // The upload and its parts left the DB with the object row. Clean up the
+    // part blobs in background; for composite blobs the part files are still
+    // referenced by the final sidecar, so only the DB rows went away and the
+    // blobs stay on disk.
     if !old_parts.is_empty() && !is_composite {
         let blob = state.blob.clone();
         tokio::spawn(async move {

@@ -58,7 +58,7 @@ use std::sync::Arc;
 use arca_core::cluster::{pair_key, quorum_satisfied, ClusterState, ControlOp, WriteGate};
 use arca_core::error::ArcaError;
 use arca_core::store::{
-    ControlTombstoneStore, DeletePrecondition, MetadataStore, WritePrecondition,
+    CompletedUpload, ControlTombstoneStore, DeletePrecondition, MetadataStore, WritePrecondition,
     TOMBSTONE_BUCKET, TOMBSTONE_BUCKET_CONFIG, TOMBSTONE_BUCKET_TAGS, TOMBSTONE_MULTIPART,
 };
 use arca_core::types::{
@@ -518,6 +518,41 @@ impl MetadataStore for ClusterMetadataStore {
 
     async fn list_parts(&self, upload_id: &str) -> Result<Vec<PartRecord>, ArcaError> {
         self.inner.list_parts(upload_id).await
+    }
+
+    async fn complete_multipart_object(
+        &self,
+        upload_id: &str,
+        record: &ObjectRecord,
+        pre: &WritePrecondition,
+    ) -> Result<CompletedUpload, ArcaError> {
+        self.check_write_quorum()?;
+        let done = self
+            .inner
+            .complete_multipart_object(upload_id, record, pre)
+            .await?;
+
+        // Replicate what the one local transaction did, as the two messages
+        // peers already understand: the object row exactly as stored (see
+        // put_object_if), then the closing of the upload (see
+        // delete_multipart_upload). Only the local commit is atomic: an abort
+        // landing on ANOTHER node at the same moment is arbitrated by
+        // anti-entropy, not here (TD-025 is the same limit for conditional
+        // writes).
+        let mut replicated = record.clone();
+        replicated.version_id = done.version_id.clone();
+        replicated.is_latest = true;
+        replicated.is_delete_marker = false;
+        let acks = self.fan_out_object(&replicated).await;
+        record_tombstone(&self.tombstones, TOMBSTONE_MULTIPART, upload_id).await;
+        self.fan_out_op(&ControlOp::MultipartDelete {
+            upload_id: upload_id.to_string(),
+        })
+        .await;
+
+        // True quorum (decision H1), as for any object write.
+        self.enforce_ack_quorum(1 + acks)?;
+        Ok(done)
     }
 
     async fn delete_multipart_upload(
@@ -1230,6 +1265,64 @@ mod tests {
         assert_eq!(store.get_object_tags("b", "k", "").await.unwrap().len(), 1);
         assert!(store.delete_object_tags("b", "k", "").await.unwrap());
         assert!(store.get_object_tags("b", "k", "").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn complete_multipart_object_consumes_the_upload_and_tombstones_it() {
+        let (inner, _dir) = temp_store().await;
+        inner.create_bucket("b").await.unwrap();
+        let cluster = Arc::new(ClusterState::new("self-node", None, None));
+        let tombstones = tombstones().await;
+        let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones.clone());
+        store.create_multipart_upload(&sample_upload()).await.unwrap();
+        let part = PartRecord {
+            upload_id: "u1".to_string(),
+            part_number: 1,
+            blob_id: BlobId("part-blob".to_string()),
+            size: 4,
+            etag: "e".to_string(),
+            checksum_value: None,
+            last_modified: None,
+        };
+        store.put_part(&part).await.unwrap();
+
+        let done = store
+            .complete_multipart_object("u1", &sample_record(), &WritePrecondition::default())
+            .await
+            .unwrap();
+
+        assert_eq!(done.parts.len(), 1);
+        assert!(store.get_object("b", "k").await.unwrap().is_some());
+        assert!(store.get_multipart_upload("u1").await.unwrap().is_none());
+        // Closed like Abort and the old Complete closed it: a peer that was
+        // down must not resurrect the upload from a snapshot.
+        assert!(tombstones
+            .list_control_tombstones()
+            .await
+            .unwrap()
+            .iter()
+            .any(|t| t.entity_type == TOMBSTONE_MULTIPART && t.entity_key == "u1"));
+    }
+
+    #[tokio::test]
+    async fn complete_multipart_object_after_an_abort_writes_nothing() {
+        let (inner, _dir) = temp_store().await;
+        inner.create_bucket("b").await.unwrap();
+        let cluster = Arc::new(ClusterState::new("self-node", None, None));
+        let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
+        store.create_multipart_upload(&sample_upload()).await.unwrap();
+        store.delete_multipart_upload("u1").await.unwrap();
+
+        let err = store
+            .complete_multipart_object("u1", &sample_record(), &WritePrecondition::default())
+            .await
+            .unwrap_err();
+
+        match err {
+            ArcaError::S3(e) => assert_eq!(e.code, S3ErrorCode::NoSuchUpload),
+            other => panic!("expected NoSuchUpload, got {other:?}"),
+        }
+        assert!(store.get_object("b", "k").await.unwrap().is_none());
     }
 
     #[tokio::test]
