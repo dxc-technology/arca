@@ -6,7 +6,7 @@ use http::StatusCode;
 
 use arca_auth::{
     parse_authorization, parse_query_string_auth, verify_presigned_request, verify_request,
-    PresignedVerifyInput, VerifyInput,
+    ChunkVerifier, PresignedVerifyInput, VerifyInput,
 };
 use arca_core::policy::{self, Evaluation};
 use arca_core::store::{GrantStore, UserStore};
@@ -144,6 +144,18 @@ pub async fn auth_middleware(
             return s3_error_response(S3Error::new(
                 S3ErrorCode::SignatureDoesNotMatch,
                 &uri_path,
+            ));
+        }
+
+        // A signed aws-chunked body (`STREAMING-AWS4-HMAC-SHA256-PAYLOAD`, with
+        // or without `-TRAILER`) continues the signature chain from this
+        // request's own signature: hand the body decoder what it needs to
+        // verify every chunk and the trailer (TD-045).
+        if payload_hash.starts_with("STREAMING-AWS4-HMAC-SHA256-PAYLOAD") {
+            request.extensions_mut().insert(ChunkVerifier::new(
+                &cred.secret_access_key,
+                &parsed_auth,
+                &request_datetime,
             ));
         }
 

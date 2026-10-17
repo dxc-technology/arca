@@ -409,7 +409,7 @@ fn string_to_sign(datetime: &str, scope: &str, canonical_request_hash: &str) -> 
 }
 
 /// Derive the SigV4 signing key via 4-step HMAC-SHA256 chain.
-fn signing_key(secret: &str, date: &str, region: &str, service: &str) -> Vec<u8> {
+pub(crate) fn signing_key(secret: &str, date: &str, region: &str, service: &str) -> Vec<u8> {
     let k_secret = format!("AWS4{secret}");
     let k_date = hmac_sha256(k_secret.as_bytes(), date.as_bytes());
     let k_region = hmac_sha256(&k_date, region.as_bytes());
@@ -418,7 +418,7 @@ fn signing_key(secret: &str, date: &str, region: &str, service: &str) -> Vec<u8>
 }
 
 /// Compute the final signature as a hex string.
-fn compute_signature(signing_key: &[u8], string_to_sign: &str) -> String {
+pub(crate) fn compute_signature(signing_key: &[u8], string_to_sign: &str) -> String {
     let sig = hmac_sha256(signing_key, string_to_sign.as_bytes());
     hex::encode(sig)
 }
@@ -432,7 +432,7 @@ fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
 }
 
 /// Compute SHA256 and return hex string.
-fn hex_sha256(data: &[u8]) -> String {
+pub(crate) fn hex_sha256(data: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(data);
     hex::encode(hasher.finalize())

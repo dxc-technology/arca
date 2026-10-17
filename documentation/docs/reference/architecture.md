@@ -316,9 +316,10 @@ Signatures cover the method, URI, query and signed headers; the body is checked 
 - **While the body streams**: only the digests the request asked for are computed (CRCs with the `crc` crate, SHA1/SHA256 with RustCrypto), on the decoded plaintext. The MD5 is not recomputed: every blob stack (plain, compressed, SSE-S3/KMS, SSE-C) already returns the plaintext MD5 as the ETag.
 - **After the body, before the commit**: the handler compares the digests once the blob store has written the blob, and on a mismatch deletes that blob before any sidecar or metadata row references it. The verified checksum is what is recorded on the object (or the part) and returned with `x-amz-checksum-mode: ENABLED`.
 - **aws-chunked trailers**: the decoder reads the trailing headers after the last chunk (`STREAMING-UNSIGNED-PAYLOAD-TRAILER`, which boto3 uses over HTTPS, and the signed `-TRAILER` variant).
+- **aws-chunked signatures**: a signed body (`STREAMING-AWS4-HMAC-SHA256-PAYLOAD`, with or without `-TRAILER`, what MinIO clients send over plain HTTP) is authenticated as a chain. The request signature seeds the signature of the first chunk, each chunk signs its data and the signature before it, and a trailer signs its headers and the last chunk signature. The decoder verifies each link as the body streams (`arca_auth::ChunkVerifier`); a chunk or trailer that does not verify, a chunk with no signature, and a body that ends before its signed final chunk all fail with `403 SignatureDoesNotMatch`, before anything is committed. Presigned URLs carry no seed signature, so a signed-chunk body is refused there. `STREAMING-UNSIGNED-PAYLOAD-TRAILER` has no chunk signatures to check.
 
 !!! warning "Not verified yet"
-    `chunk-signature=` and `x-amz-trailer-signature` in `STREAMING-AWS4-HMAC-SHA256-PAYLOAD*` bodies are stripped without verification (TD-045), so a body that declares no digest of its own is not checked. CompleteMultipartUpload computes no object checksum and validates neither the part checksums in its XML nor a whole-object `x-amz-checksum-*` header (TD-046). See [Technical Debt](../tech-debt.md).
+    CompleteMultipartUpload computes no object checksum and validates neither the part checksums in its XML nor a whole-object `x-amz-checksum-*` header (TD-046). See [Technical Debt](../tech-debt.md).
 
 ## Clustering
 

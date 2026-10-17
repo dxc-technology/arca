@@ -296,7 +296,9 @@ At most one checksum algorithm per request: two `x-amz-checksum-*` values (or a 
 
 This is what makes the default behaviour of current SDKs work end to end: boto3 / botocore 1.36+ send a CRC32 on every upload (a header over HTTP, an aws-chunked trailer over HTTPS) and the AWS CLI a CRC64NVME; MinIO clients send `Content-MD5`, a hex `x-amz-content-sha256` or a CRC32C. The checksum is stored and returned with `x-amz-checksum-mode: ENABLED`.
 
-Not verified: the `chunk-signature` of each chunk and the trailer signature of `STREAMING-AWS4-HMAC-SHA256-PAYLOAD*` bodies (TD-045); multipart object checksums at CompleteMultipartUpload (TD-046).
+The chunks and the trailer of a signed aws-chunked body (`STREAMING-AWS4-HMAC-SHA256-PAYLOAD` and `-PAYLOAD-TRAILER`, sent by MinIO clients over plain HTTP) are verified against the request's signature while the body streams: a modified byte, a bad or missing chunk signature, a bad trailer signature and a body cut before its final chunk all answer `403 SignatureDoesNotMatch` and store nothing. Signed chunks are not accepted with a presigned URL.
+
+Not verified: multipart object checksums at CompleteMultipartUpload (TD-046).
 
 ## Intentional divergences from AWS S3
 

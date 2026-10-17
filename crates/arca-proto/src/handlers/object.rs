@@ -170,14 +170,14 @@ use crate::middleware::identity::requester_username;
 use crate::state::AppState;
 use crate::xml::error_response::{internal_error_response, s3_error_response};
 
-/// Handles errors from blob put operations, translating `EntityTooLarge`
-/// stream errors into the proper S3 error response.
+/// Handles errors from blob put operations, translating the errors of the body
+/// stream (`EntityTooLarge`, a bad chunk signature) into the proper S3 error
+/// response.
 fn handle_put_error(err: ArcaError, resource: &str) -> Response {
-    let msg = err.to_string();
-    if msg.contains("EntityTooLarge") {
-        return s3_error_response(S3Error::new(S3ErrorCode::EntityTooLarge, resource));
+    match super::body::stream_error_code(&err.to_string()) {
+        Some(code) => s3_error_response(S3Error::new(code, resource)),
+        None => internal_error_response(err, resource),
     }
-    internal_error_response(err, resource)
 }
 
 /// Decodes a base64-encoded 4-byte nonce prefix stored in `encryption_key_id` for SSE-C objects.
@@ -555,10 +555,11 @@ pub async fn put_object(
     }
 
     let owner = requester_username(request.extensions());
+    let chunk_verifier = request.extensions().get::<arca_auth::ChunkVerifier>().cloned();
     let headers = request.headers().clone();
     let body = request.into_body();
     let (stream, integrity) =
-        match super::body::verified_body_stream(body, &headers, max_body, &resource) {
+        match super::body::verified_body_stream(body, &headers, max_body, &resource, chunk_verifier) {
             Ok(r) => r,
             Err(e) => return s3_error_response(e),
         };

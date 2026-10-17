@@ -180,10 +180,11 @@ pub async fn upload_part(
         }
     }
 
+    let chunk_verifier = request.extensions().get::<arca_auth::ChunkVerifier>().cloned();
     let headers = request.headers().clone();
     let body = request.into_body();
     let (stream, integrity) =
-        match super::body::verified_body_stream(body, &headers, max_body, &resource) {
+        match super::body::verified_body_stream(body, &headers, max_body, &resource, chunk_verifier) {
             Ok(r) => r,
             Err(e) => return s3_error_response(e),
         };
@@ -194,11 +195,10 @@ pub async fn upload_part(
     let put_result = match write_blob.put(&blob_id, stream).await {
         Ok(r) => r,
         Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("EntityTooLarge") {
-                return s3_error_response(S3Error::new(S3ErrorCode::EntityTooLarge, &resource));
-            }
-            return internal_error_response(e, &resource);
+            return match super::body::stream_error_code(&e.to_string()) {
+                Some(code) => s3_error_response(S3Error::new(code, &resource)),
+                None => internal_error_response(e, &resource),
+            };
         }
     };
 
