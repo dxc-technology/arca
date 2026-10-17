@@ -23,7 +23,7 @@ services:
   console:
     environment:
       - ARCA_ENDPOINT=
-    # The console runs as uid 100, Arca as 65532, and both read the same key
+    # The console runs as uid 10001, Arca as 65532, and both read the same key
     # from ${ARCA_CERTS_DIR} (see the header). The key is group-readable by Arca's service GID (0640,
     # group 65532), so the console needs that GID as a supplementary group —
     # the compose equivalent of the fsGroup in deploy/kubernetes.
@@ -31,7 +31,7 @@ services:
     volumes:
       - ${ARCA_CERTS_DIR:-../certs}:/etc/nginx/certs:ro
     ports:
-      - "9443:443"
+      - "9443:8443"
     profiles:
       - console
 

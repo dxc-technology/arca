@@ -235,10 +235,10 @@ run_tls_permissions() {
     echo "--- console with the service GID"
     docker run -d --name "$console_ctr" --network "$net" \
         --group-add "$gid" -v "$vol:/etc/nginx/certs:ro" "$console_image" >/dev/null
-    if wait_for probe_https "https://$console_ctr:443/"; then
-        pass "console (uid 100) with group_add $gid serves HTTPS"
+    if wait_for probe_https "https://$console_ctr:8443/"; then
+        pass "console (uid 10001) with group_add $gid serves HTTPS"
     else
-        fail "console (uid 100) with group_add $gid could not serve HTTPS"
+        fail "console (uid 10001) with group_add $gid could not serve HTTPS"
         docker logs "$console_ctr" 2>&1 | tail -20 | sed 's/^/      /'
     fi
     docker rm -f "$console_ctr" >/dev/null
@@ -249,8 +249,8 @@ run_tls_permissions() {
     echo "--- console without the service GID (negative case)"
     docker run -d --name "$console_ctr" --network "$net" \
         -v "$vol:/etc/nginx/certs:ro" "$console_image" >/dev/null
-    if wait_for probe_http "http://$console_ctr:80/"; then
-        if probe_https "https://$console_ctr:443/"; then
+    if wait_for probe_http "http://$console_ctr:8080/"; then
+        if probe_https "https://$console_ctr:8443/"; then
             fail "console without group $gid served HTTPS — the key was readable to it"
         else
             pass "console without group $gid cannot enable TLS (falls back to HTTP)"
@@ -275,6 +275,24 @@ run_tls_permissions() {
     else
         fail "the console user could not read the key with the service GID"
     fi
+
+    # --- 6. The console needs no privilege at all ---------------------------
+    # The ports are unprivileged (8080/8443) and nginx carries no file
+    # capability, so the Kubernetes manifest can drop every capability. With a
+    # capability-carrying nginx binary, exec fails here ("Operation not
+    # permitted") exactly as it does under `drop: ["ALL"]` in a pod.
+    echo "--- console without any capability"
+    expect_eq "the console runs as 10001:10001" "10001:10001" \
+        "$(docker run --rm --network none --entrypoint sh "$console_image" -c 'echo $(id -u):$(id -g)')"
+    docker run -d --name "$console_ctr" --network "$net" \
+        --cap-drop ALL --security-opt no-new-privileges "$console_image" >/dev/null
+    if wait_for probe_http "http://$console_ctr:8080/"; then
+        pass "console serves HTTP on 8080 with every capability dropped"
+    else
+        fail "console did not serve HTTP on 8080 with every capability dropped"
+        docker logs "$console_ctr" 2>&1 | tail -20 | sed 's/^/      /'
+    fi
+    docker rm -f "$console_ctr" >/dev/null
 
     trap - EXIT
     cleanup_tls_permissions

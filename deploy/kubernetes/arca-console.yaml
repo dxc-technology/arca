@@ -38,16 +38,16 @@ spec:
         app.kubernetes.io/component: console
         app.kubernetes.io/part-of: arca
     spec:
-      # The nginx package's own user: uid 100, gid 101 (console/Dockerfile).
-      # Both matter — the image pre-owns nginx's writable paths as 100:101, and
-      # the entrypoint rewrites index.html and http.d/default.conf at startup.
+      # The image's own user: uid 10001, gid 10001 (console/Dockerfile).
+      # Both matter — the image pre-owns nginx's writable paths as 10001:10001,
+      # and the entrypoint rewrites index.html and http.d/default.conf at startup.
       # fsGroup is Arca's service GID: when the console terminates TLS itself,
       # it reaches the mounted key through that supplementary group, not
       # through its own UID (see the TLS guide).
       securityContext:
         runAsNonRoot: true
-        runAsUser: 100
-        runAsGroup: 101
+        runAsUser: 10001
+        runAsGroup: 10001
         fsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
@@ -86,14 +86,11 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
-              # The nginx binary carries cap_net_bind_service as a file
-              # capability (console/Dockerfile) to listen on port 80; with the
-              # capability dropped from the bounding set, exec fails with
-              # "Operation not permitted".
-              add: ["NET_BIND_SERVICE"]
+          # The console listens on 8080 (8443 when it terminates TLS itself):
+          # unprivileged ports, so no capability is needed.
           ports:
             - name: http
-              containerPort: 80
+              containerPort: 8080
               protocol: TCP
           env:
             - name: ARCA_ENDPOINT

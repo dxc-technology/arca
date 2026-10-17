@@ -214,7 +214,7 @@ chmod 640   /etc/ssl/private/arca.key
 
 `65532` is **Arca's service GID**: the `arca` container runs as `65532:65532`, and the key must be readable by it in any case. It is the distroless `nobody` GID, not a privilege boundary — treat it as "the identity Arca runs under", not as a general-purpose secrets group.
 
-The web console runs as the nginx package's own user, `100:101`, and in the Compose dev setup it reads the *same* key file. No owner and mode can grant read to both users without also granting it to *everyone*, so the console reaches the key through the key's **group** instead:
+The web console runs as the unprivileged user `10001:10001`, and in the Compose dev setup it reads the *same* key file. No owner and mode can grant read to both users without also granting it to *everyone*, so the console reaches the key through the key's **group** instead:
 
 === "Docker Compose"
 
@@ -229,8 +229,8 @@ The web console runs as the nginx package's own user, `100:101`, and in the Comp
     ```yaml
     spec:
       securityContext:
-        runAsUser: 100
-        runAsGroup: 101
+        runAsUser: 10001
+        runAsGroup: 10001
         fsGroup: 65532          # or: supplementalGroups: [65532]
     ```
 
@@ -331,7 +331,7 @@ arca tls generate \
 
 When using `--tls`, the web console also serves over HTTPS. The console entrypoint auto-detects certificate and key PEM files in its mounted certificate directory (skipping CA files) and switches nginx to TLS mode. That directory is the same one Arca serves from, `${ARCA_CERTS_DIR}` in `docker/docker-compose.tls.yml`: `certs/` when it holds your own certificates, otherwise `certs/local/` (see [Your certificates or the local ones](#your-certificates-or-the-local-ones)).
 
-The console runs as uid `100`, not as Arca's `65532`, so it reads the private key through the supplementary group described in [File Permissions](#file-permissions). If the key is there but unreadable, the entrypoint logs a `WARNING` and keeps serving plain HTTP on port 80 — check `bin/console logs` when port 9443 refuses connections.
+The console runs as uid `10001`, not as Arca's `65532`, so it reads the private key through the supplementary group described in [File Permissions](#file-permissions). If the key is there but unreadable, the entrypoint logs a `WARNING` and keeps serving plain HTTP on port 8080 — check `bin/console logs` when port 9443 refuses connections.
 
 ```bash
 bin/console start -d --build --tls

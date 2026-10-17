@@ -13,3 +13,16 @@ GHSA-82j2-j2ch-gfr8
 GHSA-pwjx-qhcg-rvj4
 GHSA-xgp8-3hg3-c2mh
 GHSA-965h-392x-2mh5
+
+# TD-027 (see TECH_DEBT.md): Kubernetes manifest findings accepted on purpose.
+#
+# KSV-0125 "images only from trusted registries": the check's allow-list does
+# not contain ghcr.io, which is where Arca publishes its images (the only
+# official registry). Pinning to a different registry would mean not using the
+# published images.
+KSV-0125
+# KSV-0013 "image tag :latest" in deploy/kubernetes/arca-cluster.yaml: `latest`
+# is the evaluation default there, with a comment next to the image saying so
+# and pointing at "Choosing a tag" in the Installation guide for production.
+# (The console manifest pins the release tag and has no finding.)
+KSV-0013

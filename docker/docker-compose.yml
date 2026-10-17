@@ -57,7 +57,7 @@ services:
       context: ../console
       dockerfile: Dockerfile
     ports:
-      - "${CONSOLE_HOST_PORT:-9080}:80"
+      - "${CONSOLE_HOST_PORT:-9080}:8080"
     environment:
       # Host-facing endpoint the browser talks to. Override to match ARCA_HOST_PORT
       # (or a reverse-proxy URL) when the default 9000 is remapped.
@@ -119,7 +119,7 @@ services:
     network_mode: "service:screenshots-console"
     environment:
       - ARCA_ENDPOINT=http://arca:9000
-      - CONSOLE_URL=http://localhost
+      - CONSOLE_URL=http://localhost:8080
       - AWS_ACCESS_KEY_ID=AKIA5B6BSHJA8CIHZSVG
       - AWS_SECRET_ACCESS_KEY=hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv
     volumes:

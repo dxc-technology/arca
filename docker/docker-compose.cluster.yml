@@ -128,7 +128,7 @@ services:
       context: ../console
       dockerfile: Dockerfile
     ports:
-      - "${CONSOLE_HOST_PORT:-9080}:80"
+      - "${CONSOLE_HOST_PORT:-9080}:8080"
     environment:
       - ARCA_ENDPOINT=${ARCA_CONSOLE_ENDPOINT:-http://localhost:9000}
     networks:

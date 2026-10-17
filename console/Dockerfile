@@ -21,9 +21,13 @@ LABEL org.opencontainers.image.title="Arca Console" \
       org.opencontainers.image.url="https://dxc-technology.github.io/arca/guide/console/" \
       org.opencontainers.image.licenses="AGPL-3.0-or-later"
 
-# Run as the nginx package's unprivileged `nginx` user instead of root.
-# Binding ports 80/443 as non-root needs CAP_NET_BIND_SERVICE on the binary
-# itself (Docker grants that capability to containers by default).
+# Run as the nginx package's `nginx` account instead of root, renumbered to
+# 10001:10001 (the package creates it as 100:101): an id below 10000 can
+# collide with a host account, which container scanners flag, and Kubernetes
+# needs a numeric id to verify `runAsNonRoot`.
+# The ports are unprivileged (8080 for HTTP, 8443 for HTTPS), so the nginx
+# binary needs no file capability and the container runs with every capability
+# dropped. A `setcap`ped binary would not even start under `drop: ["ALL"]`.
 # The entrypoint rewrites http.d/default.conf (TLS mode) and index.html
 # (endpoint injection) at startup, so those paths — plus nginx's own temp/
 # cache/pid dirs, which default to root-owned /run — must be owned by that
@@ -39,10 +43,11 @@ LABEL org.opencontainers.image.title="Arca Console" \
 #   does alpine 3.24.2).
 # `>=` rather than `=`: Alpine drops superseded versions from the repo index,
 # so an exact pin turns into a hard build failure the day a newer build lands.
-RUN apk add --no-cache nginx libcap \
+RUN apk add --no-cache nginx \
         'libcrypto3>=3.5.8-r0' 'libssl3>=3.5.8-r0' 'zlib>=1.3.2-r1' && \
-    setcap 'cap_net_bind_service=+ep' /usr/sbin/nginx && \
-    apk del libcap && \
+    deluser nginx && \
+    addgroup -g 10001 nginx && \
+    adduser -D -H -h /var/lib/nginx -u 10001 -G nginx -s /sbin/nologin nginx && \
     sed -i 's|^pid\s\+.*|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf && \
     sed -i '/^user\s\+nginx;/d' /etc/nginx/nginx.conf
 
@@ -61,20 +66,20 @@ COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh && \
     mkdir -p /var/cache/nginx && \
     chown -R nginx:nginx /etc/nginx/http.d /usr/share/nginx/html \
-                         /var/cache/nginx /var/lib/nginx
+                         /var/cache/nginx /var/lib/nginx /var/log/nginx /run/nginx
 
-EXPOSE 80 443
+EXPOSE 8080 8443
 
 # In TLS mode the entrypoint replaces the server config with an HTTPS-only
-# one, so port 80 stops answering: probe both schemes. 127.0.0.1, not
+# one, so port 8080 stops answering: probe both schemes. 127.0.0.1, not
 # localhost — busybox wget resolves that to ::1 first and nginx listens on
 # IPv4 only, so the probe would always be refused. --no-check-certificate
 # skips validation of self-signed dev certs (this is a liveness probe, not an
 # integrity check).
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
-    CMD wget -q -O- http://127.0.0.1:80/ >/dev/null 2>&1 || \
-        wget -q -O- --no-check-certificate https://127.0.0.1:443/ >/dev/null 2>&1 || exit 1
+    CMD wget -q -O- http://127.0.0.1:8080/ >/dev/null 2>&1 || \
+        wget -q -O- --no-check-certificate https://127.0.0.1:8443/ >/dev/null 2>&1 || exit 1
 
-USER nginx
+USER 10001:10001
 
 ENTRYPOINT ["/docker-entrypoint.sh"]

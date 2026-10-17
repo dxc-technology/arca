@@ -6,7 +6,7 @@ Arca includes a browser-based web console for managing buckets, objects, and acc
 
 - **Technology**: Alpine.js + Tailwind CSS, split into ES modules; served as static files by nginx on a minimal Alpine image
 - **Docker image**: `arca-console`, ~18 MB
-- **Port**: 80 (mapped to 9080 on the host by default), 443 for TLS
+- **Port**: 8080 (mapped to 9080 on the host by default), 8443 for TLS. The container runs as the unprivileged user `10001:10001` and needs no capability
 - **Theme**: "The Vault" — dark glassmorphism design
 
 The console is intentionally not embedded in the Arca binary. This keeps the server binary small (~8.6 MB), allows independent release cycles, and supports split deployment (Arca on a hardened VM, console on a separate host).
@@ -644,7 +644,7 @@ services:
   console:
     image: ghcr.io/dxc-technology/arca-console:latest
     ports:
-      - "9080:80"
+      - "9080:8080"
     environment:
       - ARCA_ENDPOINT=https://s3.example.com
 ```
@@ -659,7 +659,7 @@ server {
     server_name console.example.com;
 
     location / {
-        proxy_pass http://console:80;
+        proxy_pass http://console:8080;
         proxy_set_header Host $host;
     }
 }
