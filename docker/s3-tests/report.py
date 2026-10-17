@@ -325,6 +325,160 @@ def terminal_summary(tests: list, out_of_scope_n: int = 0):
     print(f"{'='*60}\n")
 
 
+def _esc(text: str) -> str:
+    """Escape text for HTML element and attribute content."""
+    return (text.replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+REPORT_CSS = """
+  :root {
+    color-scheme: dark;
+    --bg: #070a12; --panel: #0d121c; --panel-2: #121a28;
+    --line: #1c2638; --line-2: #2a3850;
+    --text: #e8ecf2; --text-2: #93a1b6; --text-3: #6a7a92;
+    --cyan: #00d4ff; --violet: #a78bfa;
+    --pass: #34d399; --fail: #f472b6; --skip: #ffb347;
+    --pass-bg: rgba(52,211,153,.14); --fail-bg: rgba(244,114,182,.14);
+    --skip-bg: rgba(255,179,71,.14); --cyan-bg: rgba(0,212,255,.12);
+    --glow: rgba(0,212,255,.07);
+    --serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+    --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --bg: #f4f6fb; --panel: #ffffff; --panel-2: #f0f3f9;
+      --line: #e1e6f0; --line-2: #c8d1e1;
+      --text: #0f172a; --text-2: #475569; --text-3: #64748b;
+      --cyan: #0369a1; --violet: #6d4fd6;
+      --pass: #047857; --fail: #be185d; --skip: #b45309;
+      --pass-bg: rgba(4,120,87,.10); --fail-bg: rgba(190,24,93,.09);
+      --skip-bg: rgba(180,83,9,.10); --cyan-bg: rgba(3,105,161,.09);
+      --glow: rgba(3,105,161,.06);
+    }
+  }
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: var(--sans); background: var(--bg); color: var(--text);
+    line-height: 1.6; -webkit-font-smoothing: antialiased;
+    background-image: radial-gradient(ellipse 80% 50% at 85% -10%, var(--glow), transparent 70%);
+    background-repeat: no-repeat;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px 4rem; }
+  a { color: var(--cyan); }
+  code, .mono { font-family: var(--mono); }
+  :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+  header { padding: 4.5rem 0 2.5rem; }
+  .brand { font-family: var(--mono); font-size: .8rem; color: var(--text-3); margin-bottom: 1.25rem; }
+  .brand b { color: var(--cyan); font-weight: 600; }
+  h1 { font-family: var(--serif); font-weight: 400; font-size: clamp(2rem, 5vw, 3.2rem);
+       line-height: 1.12; max-width: 24ch; }
+  .lede { color: var(--text-2); max-width: 62ch; margin-top: 1rem; font-size: 1.02rem; }
+  .stamp { font-family: var(--mono); font-size: .75rem; color: var(--text-3); margin-top: 1.25rem; }
+
+  .score { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin: 2.5rem 0 1rem; }
+  .score .big { font-family: var(--serif); font-size: clamp(3.6rem, 12vw, 6.5rem); line-height: 1;
+                letter-spacing: -.02em; }
+  .score .big small { font-size: .45em; color: var(--text-3); margin-left: .05em; }
+  .score .of { color: var(--text-2); font-size: 1.05rem; }
+  .score .of b { color: var(--text); font-weight: 600; }
+
+  .stack { display: flex; height: 18px; border-radius: 9px; overflow: hidden; gap: 2px;
+           background: var(--line); }
+  .stack > span { display: block; min-width: 3px; }
+  .stack .p { background: var(--pass); } .stack .f { background: var(--fail); }
+  .stack .s { background: var(--skip); }
+  .legend { display: flex; flex-wrap: wrap; gap: .4rem 1.4rem; margin-top: .8rem;
+            font-size: .82rem; color: var(--text-2); }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 3px;
+              margin-right: .45rem; }
+
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; margin: 2.5rem 0 0;
+           background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .stat:last-child { grid-column: span 2; }
+  @media (min-width: 720px) { .stats { grid-template-columns: repeat(5, 1fr); }
+                              .stat:last-child { grid-column: auto; } }
+  .stat { background: var(--panel); padding: 1.1rem 1.2rem; }
+  .stat .v { font-family: var(--mono); font-size: 1.6rem; font-weight: 600; line-height: 1.2; }
+  .stat .l { font-size: .78rem; color: var(--text-3); margin-top: .15rem; }
+  .stat.pass .v { color: var(--pass); } .stat.fail .v { color: var(--fail); }
+  .stat.skip .v { color: var(--skip); }
+
+  section { margin-top: 3.5rem; }
+  h2 { font-family: var(--serif); font-weight: 400; font-size: 1.7rem; line-height: 1.2; }
+  h2 .count { font-family: var(--mono); font-size: .8rem; color: var(--text-3); margin-left: .6rem;
+              vertical-align: middle; }
+  .sub { color: var(--text-2); font-size: .92rem; max-width: 68ch; margin: .5rem 0 1.4rem; }
+
+  .cats { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .cat { display: grid; grid-template-columns: minmax(0, 1fr) 3.2rem; gap: .4rem 1rem;
+         align-items: center; padding: .7rem 1.1rem; border-top: 1px solid var(--line); }
+  .cat:first-child { border-top: 0; }
+  .cat .name { font-weight: 500; font-size: .92rem; }
+  .cat .rate { grid-row: 1; grid-column: 2; }
+  .cat .stack { grid-column: 1 / -1; }
+  .cat .counts { grid-column: 1 / -1; font-family: var(--mono); font-size: .72rem; color: var(--text-3); }
+  .cat .counts .p { color: var(--pass); } .cat .counts .f { color: var(--fail); }
+  .cat .counts .s { color: var(--skip); }
+  .cat .stack { height: 8px; border-radius: 4px; gap: 1px; }
+  .cat .rate { font-family: var(--mono); font-size: .85rem; text-align: right; font-weight: 600; }
+  .rate.good { color: var(--pass); } .rate.warn { color: var(--skip); } .rate.bad { color: var(--fail); }
+  @media (min-width: 720px) {
+    .cat { grid-template-columns: 9rem 1fr 19rem 3.2rem; }
+    .cat .counts { white-space: nowrap; }
+    .cat .name, .cat .rate, .cat .stack, .cat .counts { grid-row: auto; grid-column: auto; }
+    .cat .counts { text-align: right; }
+  }
+
+  .item { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-bottom: .45rem;
+          overflow: hidden; }
+  .item[open] { border-color: var(--line-2); }
+  .item summary { cursor: pointer; padding: .55rem .9rem; display: flex; align-items: center;
+                  flex-wrap: wrap; gap: .3rem .7rem; font-size: .86rem; list-style: none; }
+  .item summary::-webkit-details-marker { display: none; }
+  .item summary::before { content: ''; width: 6px; height: 6px; flex: none; border-right: 1.5px solid var(--text-3);
+                          border-bottom: 1.5px solid var(--text-3); transform: rotate(-45deg);
+                          transition: transform .15s; }
+  .item[open] > summary::before { transform: rotate(45deg); }
+  .item summary:hover { background: var(--panel-2); }
+  .item code { font-size: .8rem; overflow-wrap: anywhere; }
+  .item pre { padding: .8rem 1rem; background: var(--bg); font-family: var(--mono); font-size: .76rem;
+              color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere;
+              border-top: 1px solid var(--line); }
+  .tag { font-size: .72rem; padding: .08rem .5rem; border-radius: 999px; background: var(--cyan-bg);
+         color: var(--cyan); white-space: nowrap; }
+  .tag.unexpected { background: var(--fail-bg); color: var(--fail); font-weight: 600; }
+  .tag.expected { background: var(--panel-2); color: var(--text-3); }
+  .group { margin-top: .9rem; }
+  .group > summary { cursor: pointer; font-size: .9rem; color: var(--cyan); padding: .4rem 0; }
+  .ok { background: var(--pass-bg); color: var(--pass); border-radius: 8px; padding: .8rem 1rem; }
+
+  .diff { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: .8rem 1rem;
+          font-family: var(--mono); font-size: .8rem; overflow-wrap: anywhere; }
+  .diff .new { color: var(--pass); } .diff .lost { color: var(--fail); }
+
+  footer { margin-top: 4rem; padding-top: 1.2rem; border-top: 1px solid var(--line);
+           font-size: .8rem; color: var(--text-3); }
+"""
+
+
+def _stack(c: dict, total: int) -> str:
+    """Stacked passed/failed/skipped bar; widths are shares of `total`."""
+    if total <= 0:
+        return '<div class="stack"></div>'
+    parts = ""
+    for cls, label, n in (("p", "passed", c["passed"]),
+                          ("f", "failed", c["failed"] + c["error"]),
+                          ("s", "skipped", c["skipped"])):
+        if n:
+            parts += (f'<span class="{cls}" style="width:{n / total * 100:.2f}%" '
+                      f'title="{n} {label}"></span>')
+    return f'<div class="stack" role="img" aria-label="outcome distribution">{parts}</div>'
+
+
 def generate_html(tests: list, output_path: str, old_passlist: set | None = None,
                   out_of_scope_n: int = 0):
     """Generate a self-contained HTML dashboard (over in-scope tests only)."""
@@ -340,7 +494,7 @@ def generate_html(tests: list, output_path: str, old_passlist: set | None = None
 
     pass_rate = (passed / total * 100) if total > 0 else 0
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    meta_extra = (f" · {out_of_scope_n} Ceph/RGW-specific test(s) excluded from scope"
+    scope_note = (f" {out_of_scope_n} Ceph/RGW-specific test(s) are excluded from scope."
                   if out_of_scope_n else "")
 
     # Category breakdown
@@ -354,27 +508,29 @@ def generate_html(tests: list, output_path: str, old_passlist: set | None = None
     newly_passing = current_passing - old_passlist if old_passlist else set()
     newly_failing = old_passlist - current_passing if old_passlist else set()
 
-    # Build failure rows
-    fail_rows = ""
-    for t in sorted(tests, key=lambda x: (x["expected_fail"], x["name"])):
-        if t["status"] not in ("failed", "error"):
-            continue
-        exp_badge = ('<span class="badge expected">Expected</span>'
-                     if t["expected_fail"]
-                     else '<span class="badge unexpected">Unexpected</span>')
-        msg_escaped = (t["message"]
-                       .replace("&", "&amp;")
-                       .replace("<", "&lt;")
-                       .replace(">", "&gt;")
-                       .replace('"', "&quot;"))
-        fail_rows += f"""
-        <details class="fail-item">
-          <summary>
-            {exp_badge}
-            <span class="cat-tag">{t["category"]}</span>
-            <code>{t["name"]}</code>
-          </summary>
-          <pre>{msg_escaped}</pre>
+    # Failure rows: unexpected first, expected ones grouped and collapsed
+    def fail_item(t):
+        badge = ('<span class="tag expected">Expected</span>' if t["expected_fail"]
+                 else '<span class="tag unexpected">Unexpected</span>')
+        return f"""
+        <details class="item">
+          <summary>{badge}<span class="tag">{_esc(t["category"])}</span><code>{_esc(t["name"])}</code></summary>
+          <pre>{_esc(t["message"])}</pre>
+        </details>"""
+
+    failing = sorted((t for t in tests if t["status"] in ("failed", "error")),
+                     key=lambda x: (x["expected_fail"], x["name"]))
+    unexpected_rows = "".join(fail_item(t) for t in failing if not t["expected_fail"])
+    expected_rows = "".join(fail_item(t) for t in failing if t["expected_fail"])
+    if not failing:
+        fail_body = '<p class="ok">No failures.</p>'
+    else:
+        fail_body = unexpected_rows or '<p class="ok">No unexpected failures.</p>'
+        if expected_rows:
+            fail_body += f"""
+        <details class="group">
+          <summary>Show the {expected_fail} expected failures (features Arca does not implement yet)</summary>
+          <div style="margin-top:.6rem">{expected_rows}</div>
         </details>"""
 
     # Category rows
@@ -385,45 +541,44 @@ def generate_html(tests: list, output_path: str, old_passlist: set | None = None
         rate = (p / tt * 100) if tt > 0 else 0
         rate_class = "good" if rate >= 80 else ("warn" if rate >= 40 else "bad")
         cat_rows += f"""
-        <tr>
-          <td>{cat}</td>
-          <td class="num">{tt}</td>
-          <td class="num passed">{p}</td>
-          <td class="num failed">{f + e}</td>
-          <td class="num skipped">{s}</td>
-          <td class="num {rate_class}">{rate:.0f}%</td>
-        </tr>"""
+        <div class="cat">
+          <div class="name">{_esc(cat)}</div>
+          {_stack(c, tt)}
+          <div class="counts"><span class="p">{p} passed</span> &nbsp;<span class="f">{f + e} failed</span> &nbsp;<span class="s">{s} skipped</span> &nbsp;of {tt}</div>
+          <div class="rate {rate_class}">{rate:.0f}%</div>
+        </div>"""
 
     # AWS divergences (counted as passed)
     divergence_section = ""
     divergent = sorted((t for t in tests if t["aws_divergence"]), key=lambda x: x["name"])
     if divergent:
-        items = ""
-        for t in divergent:
-            reason = (t["aws_divergence"]
-                      .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
-            items += f"""
-        <details class="fail-item">
-          <summary><span class="cat-tag">{t["category"]}</span> <code>{t["name"]}</code></summary>
-          <pre>{reason}</pre>
-        </details>"""
+        items = "".join(f"""
+        <details class="item">
+          <summary><span class="tag">{_esc(t["category"])}</span><code>{_esc(t["name"])}</code></summary>
+          <pre>{_esc(t["aws_divergence"])}</pre>
+        </details>""" for t in divergent)
         divergence_section = f"""
-        <h2>AWS Divergences ({len(divergent)}, counted as passed)</h2>
-        <p class="meta">These tests fail only on their last assertion, where Ceph expects RGW's answer
+      <section>
+        <h2>AWS divergences<span class="count">{len(divergent)} counted as passed</span></h2>
+        <p class="sub">These tests fail only on their last assertion, where Ceph expects RGW's answer
         and Arca gives AWS's. Every earlier check in them passed.</p>
-        {items}"""
+        {items}
+      </section>"""
 
     # Diff rows
     diff_section = ""
     if newly_passing or newly_failing:
-        diff_items = ""
-        for name in sorted(newly_passing):
-            diff_items += f'<div class="diff-new">+ {name}</div>\n'
-        for name in sorted(newly_failing):
-            diff_items += f'<div class="diff-lost">- {name}</div>\n'
+        diff_items = "".join(f'<div class="new">+ {_esc(n)}</div>\n' for n in sorted(newly_passing))
+        diff_items += "".join(f'<div class="lost">- {_esc(n)}</div>\n' for n in sorted(newly_failing))
         diff_section = f"""
-        <h2>Passlist Diff</h2>
-        <div class="diff-box">{diff_items}</div>"""
+      <section>
+        <h2>Passlist diff<span class="count">+{len(newly_passing)} / -{len(newly_failing)}</span></h2>
+        <p class="sub">Changes against the previous passlist.</p>
+        <div class="diff">{diff_items}</div>
+      </section>"""
+
+    summary_stack = _stack({"passed": passed, "failed": failed, "error": errors,
+                            "skipped": skipped}, total)
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -431,127 +586,58 @@ def generate_html(tests: list, output_path: str, old_passlist: set | None = None
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Arca S3 Compatibility Report</title>
-<style>
-  :root {{
-    --bg: #1a1b26; --surface: #24283b; --border: #414868;
-    --text: #c0caf5; --text-dim: #565f89; --accent: #7aa2f7;
-    --green: #9ece6a; --red: #f7768e; --yellow: #e0af68; --cyan: #7dcfff;
-  }}
-  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-  body {{
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
-    background: var(--bg); color: var(--text); padding: 2rem;
-    max-width: 1200px; margin: 0 auto;
-  }}
-  h1 {{ color: var(--accent); margin-bottom: 0.25rem; }}
-  h2 {{ color: var(--text); margin: 2rem 0 1rem; font-size: 1.2rem; }}
-  .meta {{ color: var(--text-dim); margin-bottom: 2rem; font-size: 0.85rem; }}
-  .cards {{
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 1rem; margin-bottom: 2rem;
-  }}
-  .card {{
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 8px; padding: 1rem; text-align: center;
-  }}
-  .card .value {{ font-size: 2rem; font-weight: 700; }}
-  .card .label {{ color: var(--text-dim); font-size: 0.8rem; text-transform: uppercase; }}
-  .card.passed .value {{ color: var(--green); }}
-  .card.failed .value {{ color: var(--red); }}
-  .card.skipped .value {{ color: var(--yellow); }}
-  .card.expected .value {{ color: var(--text-dim); }}
-  .card.rate .value {{ color: var(--cyan); }}
-
-  .progress-bar {{
-    background: var(--surface); border-radius: 8px; overflow: hidden;
-    height: 24px; margin-bottom: 2rem; border: 1px solid var(--border);
-  }}
-  .progress-fill {{
-    height: 100%; transition: width 0.3s;
-    background: linear-gradient(90deg, var(--green), var(--cyan));
-  }}
-
-  table {{
-    width: 100%; border-collapse: collapse;
-    background: var(--surface); border-radius: 8px; overflow: hidden;
-  }}
-  th, td {{ padding: 0.6rem 1rem; text-align: left; border-bottom: 1px solid var(--border); }}
-  th {{ color: var(--accent); font-weight: 600; font-size: 0.85rem; text-transform: uppercase; }}
-  .num {{ text-align: right; font-variant-numeric: tabular-nums; }}
-  .passed {{ color: var(--green); }}
-  .failed {{ color: var(--red); }}
-  .skipped {{ color: var(--yellow); }}
-  .good {{ color: var(--green); }}
-  .warn {{ color: var(--yellow); }}
-  .bad {{ color: var(--red); }}
-
-  .fail-item {{
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 6px; margin-bottom: 0.5rem; overflow: hidden;
-  }}
-  .fail-item summary {{
-    padding: 0.5rem 1rem; cursor: pointer; display: flex;
-    align-items: center; gap: 0.5rem; font-size: 0.9rem;
-  }}
-  .fail-item summary:hover {{ background: rgba(255,255,255,0.03); }}
-  .fail-item pre {{
-    padding: 0.75rem 1rem; background: var(--bg);
-    font-size: 0.8rem; color: var(--text-dim); white-space: pre-wrap;
-    word-break: break-all; border-top: 1px solid var(--border);
-  }}
-  .badge {{
-    display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px;
-    font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
-  }}
-  .badge.expected {{ background: rgba(86,95,137,0.3); color: var(--text-dim); }}
-  .badge.unexpected {{ background: rgba(247,118,142,0.2); color: var(--red); }}
-  .cat-tag {{
-    display: inline-block; padding: 0.1rem 0.4rem; border-radius: 3px;
-    font-size: 0.7rem; background: rgba(122,162,247,0.15); color: var(--accent);
-  }}
-  code {{ font-size: 0.85rem; }}
-
-  .diff-box {{ background: var(--surface); border-radius: 8px; padding: 1rem;
-               border: 1px solid var(--border); font-family: monospace; font-size: 0.85rem; }}
-  .diff-new {{ color: var(--green); }}
-  .diff-lost {{ color: var(--red); }}
-</style>
+<style>{REPORT_CSS}</style>
 </head>
 <body>
+<div class="wrap">
 
-<h1>Arca S3 Compatibility Report</h1>
-<p class="meta">{timestamp}{meta_extra}</p>
+<header>
+  <div class="brand"><b>arca</b> / ceph s3-tests</div>
+  <h1>S3 compatibility report</h1>
+  <p class="lede">How Arca fares against the Ceph s3-tests suite, the reference conformance
+  suite for S3-compatible servers.{scope_note}</p>
+  <p class="stamp">{timestamp}</p>
 
-<div class="cards">
-  <div class="card"><div class="value">{total}</div><div class="label">Total</div></div>
-  <div class="card passed"><div class="value">{passed}</div><div class="label">Passed</div></div>
-  <div class="card failed"><div class="value">{failed + errors}</div><div class="label">Failed</div></div>
-  <div class="card skipped"><div class="value">{skipped}</div><div class="label">Skipped</div></div>
-  <div class="card expected"><div class="value">{expected_fail}</div><div class="label">Expected Fail</div></div>
-  <div class="card rate"><div class="value">{pass_rate:.1f}%</div><div class="label">Pass Rate</div></div>
-</div>
+  <div class="score">
+    <div class="big">{pass_rate:.1f}<small>%</small></div>
+    <div class="of"><b>{passed}</b> of {total} in-scope tests pass</div>
+  </div>
+  {summary_stack}
+  <div class="legend">
+    <span><i style="background:var(--pass)"></i>Passed</span>
+    <span><i style="background:var(--fail)"></i>Failed</span>
+    <span><i style="background:var(--skip)"></i>Skipped</span>
+  </div>
 
-<div class="progress-bar">
-  <div class="progress-fill" style="width: {pass_rate}%"></div>
-</div>
+  <div class="stats">
+    <div class="stat"><div class="v">{total}</div><div class="l">Total</div></div>
+    <div class="stat pass"><div class="v">{passed}</div><div class="l">Passed</div></div>
+    <div class="stat fail"><div class="v">{failed + errors}</div><div class="l">Failed</div></div>
+    <div class="stat skip"><div class="v">{skipped}</div><div class="l">Skipped</div></div>
+    <div class="stat"><div class="v">{expected_fail}</div><div class="l">Expected failures</div></div>
+  </div>
+</header>
 
-<h2>Category Breakdown</h2>
-<table>
-  <tr><th>Category</th><th class="num">Total</th><th class="num">Passed</th>
-      <th class="num">Failed</th><th class="num">Skipped</th><th class="num">Rate</th></tr>
-  {cat_rows}
-</table>
-
+<main>
+  <section>
+    <h2>Category breakdown</h2>
+    <p class="sub">Each bar splits a category into passed, failed and skipped tests.</p>
+    <div class="cats">{cat_rows}
+    </div>
+  </section>
 {divergence_section}
-
 {diff_section}
+  <section>
+    <h2>Failures<span class="count">{failed + errors} total, {unexpected} unexpected</span></h2>
+    <p class="sub">Click a test to see its assertion message.</p>
+    {fail_body}
+  </section>
+</main>
 
-<h2>Failures ({failed + errors})</h2>
-{fail_rows if fail_rows else '<p style="color: var(--green)">No failures!</p>'}
-
-<p style="color: var(--text-dim); font-size: 0.85em; margin-top: 2.5rem; border-top: 1px solid var(--border); padding-top: 1rem">
+<footer>
   Contains AI-generated code, see the <a href="https://github.com/dxc-technology/arca/blob/main/NOTICE">NOTICE</a> file.
-</p>
+</footer>
+</div>
 </body>
 </html>"""
 

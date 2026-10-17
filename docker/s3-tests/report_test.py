@@ -85,3 +85,13 @@ def test_html_shows_divergences_with_their_reason(tmp_path):
     html = out.read_text()
     assert "test_object_checksum_sha256" in html
     assert report.AWS_DIVERGENCES["test_object_checksum_sha256"]["reason"] in html
+
+
+def test_html_escapes_untrusted_text_and_is_self_contained(tmp_path):
+    tests = parse(tmp_path, junit(failed("test_bucket_list_x", "boom &lt;b&gt;")))
+    out = tmp_path / "report.html"
+    report.generate_html(tests, str(out))
+    html = out.read_text()
+    assert "<b>" not in html.split("<pre>", 1)[1].split("</pre>")[0]
+    assert "googleapis" not in html
+    assert "src=" not in html
