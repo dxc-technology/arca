@@ -1730,10 +1730,10 @@
 <p>Verify:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>curl<span class="w"> </span>https://your-domain:9000/admin/health
 </code></pre></div>
-<p>To start the web console alongside TLS:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--tls
+<p>To start the web console alongside TLS (it has no <code>--tls</code> flag, it inherits TLS from the running server):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
 </code></pre></div>
-<p>With <code>--tls</code>, the console does not preset an endpoint URL — enter the HTTPS URL (e.g. <code>https://your-domain:9000</code>) at the login screen.</p>
+<p>With TLS, the console does not preset an endpoint URL: enter the HTTPS URL (e.g. <code>https://your-domain:9000</code>) at the login screen.</p>
 </div>
 <div class="tabbed-block">
 <p>With no certificate of your own in <code>certs/</code>, just start Arca with TLS:</p>
@@ -2034,14 +2034,14 @@ Authorities → Import</em>.</p>
 <p>Self-signed certificates are suitable for development and internal testing. For production, use certificates issued by a trusted Certificate Authority.</p>
 </div>
 <h2 id="console-https">Console HTTPS<a class="headerlink" href="#console-https" title="Permanent link">&para;</a></h2>
-<p>When using <code>--tls</code>, the web console also serves over HTTPS. The console entrypoint auto-detects certificate and key PEM files in its mounted certificate directory (skipping CA files) and switches nginx to TLS mode. That directory is the same one Arca serves from, <code>${ARCA_CERTS_DIR}</code> in <code>docker/docker-compose.tls.yml</code>: <code>certs/</code> when it holds your own certificates, otherwise <code>certs/local/</code> (see <a href="#your-certificates-or-the-local-ones">Your certificates or the local ones</a>).</p>
+<p>When Arca runs with <code>--tls</code>, the web console (which inherits it, it has no flag of its own) also serves over HTTPS. The console entrypoint auto-detects certificate and key PEM files in its mounted certificate directory (skipping CA files) and switches nginx to TLS mode. That directory is the same one Arca serves from, <code>${ARCA_CERTS_DIR}</code> in <code>docker/docker-compose.tls.yml</code>: <code>certs/</code> when it holds your own certificates, otherwise <code>certs/local/</code> (see <a href="#your-certificates-or-the-local-ones">Your certificates or the local ones</a>).</p>
 <p>The console runs as uid <code>10001</code>, not as Arca's <code>65532</code>, so it reads the private key through the supplementary group described in <a href="#file-permissions">File Permissions</a>. If the key is there but unreadable, the entrypoint logs a <code>WARNING</code> and keeps serving plain HTTP on port 8080 — check <code>bin/console logs</code> when port 9443 refuses connections.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--tls
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
 </code></pre></div>
 <p>The console is available on <strong>port 9443</strong> (HTTPS). At the login screen, enter the Arca HTTPS endpoint (e.g. <code>https://your-domain:9000</code>) and your credentials.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>With <code>--tls</code> the console does not preset an endpoint URL, since the HTTPS domain depends on your certificate setup.</p>
+<p>With TLS the console does not preset an endpoint URL, since the HTTPS domain depends on your certificate setup.</p>
 </div>
 <h3 id="console-tls-indicator">Console TLS Indicator<a class="headerlink" href="#console-tls-indicator" title="Permanent link">&para;</a></h3>
 <p>When TLS is enabled, the console dashboard shows a green lock icon with "TLS" in the Transport section. This information comes from the <code>/admin/info</code> endpoint's <code>tls_enabled</code> field.</p>

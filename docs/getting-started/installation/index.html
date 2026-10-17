@@ -1684,6 +1684,7 @@ The compose files and the configuration still come from your checkout, so prefer
 release close to it: a setting newer than the release is silently ignored by it.</p>
 <p>There is no major-only tag while Arca is at <code>0.x</code>, where a minor release may
 break compatibility. A prerelease (<code>X.Y.Z-rc.N</code>) gets its exact tag only.</p>
+<p>Without the repository, plain Docker runs the server:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--name<span class="w"> </span>arca<span class="w"> </span>-p<span class="w"> </span><span class="m">9000</span>:9000<span class="w"> </span>-v<span class="w"> </span>arca-data:/data<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span>--ulimit<span class="w"> </span><span class="nv">nofile</span><span class="o">=</span><span class="m">65536</span>:65536<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span>ghcr.io/dxc-technology/arca:latest
@@ -1693,54 +1694,72 @@ break compatibility. A prerelease (<code>X.Y.Z-rc.N</code>) gets its exact tag o
 every concurrent request holds file descriptors, so a busy server needs more
 (see <a href="../../operations/troubleshooting/#too-many-open-files-under-load">Troubleshooting</a>).
 In a Compose file, set <code>ulimits: nofile:</code> on the service.</p>
+<p>The console runs the same way and needs no volume:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--name<span class="w"> </span>arca-console<span class="w"> </span>-p<span class="w"> </span><span class="m">9080</span>:8080<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span>-e<span class="w"> </span><span class="nv">ARCA_ENDPOINT</span><span class="o">=</span>http://localhost:9000<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span>ghcr.io/dxc-technology/arca-console:latest
+</code></pre></div>
+<p>The console listens on 8080 (HTTP) and 8443 (HTTPS) inside the container, not on
+80/443, and runs as the unprivileged user <code>10001:10001</code>; <code>-p 9080:8080</code> publishes
+it on host port 9080, as <code>bin/console</code> does. <code>ARCA_ENDPOINT</code> is the Arca URL the
+<strong>browser</strong> connects to (it must be reachable from the browser, not from the
+container); leave it out to type the endpoint at the login screen. To serve HTTPS,
+mount a directory with the certificate and key PEM files at <code>/etc/nginx/certs</code> and
+publish port 8443; the private key is group-readable by Arca's service group, so
+add <code>--group-add 65532</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--name<span class="w"> </span>arca-console<span class="w"> </span>-p<span class="w"> </span><span class="m">9443</span>:8443<span class="w"> </span>--group-add<span class="w"> </span><span class="m">65532</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span>-v<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PWD</span><span class="s2">/certs:/etc/nginx/certs:ro&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span>ghcr.io/dxc-technology/arca-console:latest
+</code></pre></div>
+<p>Stop either with <code>docker stop arca</code> or <code>docker stop arca-console</code>.</p>
 <p>The images carry standard OCI labels (<code>org.opencontainers.image.version</code>,
 <code>.revision</code>, <code>.source</code>, …), so <code>docker inspect</code> tells which release and commit
 a running container was built from.</p>
 <h2 id="clone-and-build">Clone and Build<a class="headerlink" href="#clone-and-build" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/dxc-technology/arca.git
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">cd</span><span class="w"> </span>arca
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>bin/build
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/dxc-technology/arca.git
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nb">cd</span><span class="w"> </span>arca
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>bin/build
 </code></pre></div>
 <p>This builds the production Docker image — a minimal scratch-based container containing only the statically-linked <code>arca</code> binary and the default configuration file.</p>
 <h3 id="development-image">Development Image<a class="headerlink" href="#development-image" title="Permanent link">&para;</a></h3>
 <p>For debugging, build the development image which includes a shell (debian-slim based):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>bin/build<span class="w"> </span>--dev
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>bin/build<span class="w"> </span>--dev
 </code></pre></div>
 <p>Or start the development image directly:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--dev
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--dev
 </code></pre></div>
 <h3 id="console-image">Console Image<a class="headerlink" href="#console-image" title="Permanent link">&para;</a></h3>
 <p>Build the web console image separately:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>bin/build<span class="w"> </span>--console
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>bin/build<span class="w"> </span>--console
 </code></pre></div>
 <p>Or build and start it directly:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
 </code></pre></div>
 <h2 id="verify">Verify<a class="headerlink" href="#verify" title="Permanent link">&para;</a></h2>
 <p>Start the server:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
 </code></pre></div>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
 <p>Drop the <code>-d</code> flag to run in the foreground and see logs in real time. Press <span class="keys"><kbd class="key-control">Ctrl</kbd><span>+</span><kbd class="key-c">C</kbd></span> to stop the server.</p>
 </div>
 <p>Check that it's running:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>bin/arca<span class="w"> </span>logs<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">&quot;Access Key&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>bin/arca<span class="w"> </span>logs<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">&quot;Access Key&quot;</span>
 </code></pre></div>
 <p>Arca auto-generates a root credential on first startup and prints it to the logs. Set the credentials and verify with your S3 client of choice:</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">aws-cli</label><label for="__tabbed_1_2">MinIO Client (mc)</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AWS_ACCESS_KEY_ID</span><span class="o">=</span>&lt;your-access-key&gt;
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AWS_SECRET_ACCESS_KEY</span><span class="o">=</span>&lt;your-secret-key&gt;
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>aws<span class="w"> </span>s3<span class="w"> </span>ls<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AWS_ACCESS_KEY_ID</span><span class="o">=</span>&lt;your-access-key&gt;
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AWS_SECRET_ACCESS_KEY</span><span class="o">=</span>&lt;your-secret-key&gt;
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>aws<span class="w"> </span>s3<span class="w"> </span>ls<span class="w"> </span>--endpoint-url<span class="w"> </span>http://localhost:9000
 </code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>mc<span class="w"> </span><span class="nb">alias</span><span class="w"> </span><span class="nb">set</span><span class="w"> </span>arca<span class="w"> </span>http://localhost:9000<span class="w"> </span>&lt;your-access-key&gt;<span class="w"> </span>&lt;your-secret-key&gt;
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>mc<span class="w"> </span>ls<span class="w"> </span>arca
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>mc<span class="w"> </span><span class="nb">alias</span><span class="w"> </span><span class="nb">set</span><span class="w"> </span>arca<span class="w"> </span>http://localhost:9000<span class="w"> </span>&lt;your-access-key&gt;<span class="w"> </span>&lt;your-secret-key&gt;
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>mc<span class="w"> </span>ls<span class="w"> </span>arca
 </code></pre></div>
 </div>
 </div>
@@ -1752,13 +1771,13 @@ carries the server binary for Linux, <code>arca-X.Y.Z-linux-amd64.tar.gz</code> 
 the release image, built and scanned by the release pipeline, so it runs on any Linux of that
 architecture with no dependency. Each archive also contains the licence (<code>LICENSE-AGPL-3.0</code>),
 <code>NOTICE</code> and <code>THIRD-PARTY-NOTICES.md</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nv">v</span><span class="o">=</span><span class="m">0</span>.32.1<span class="p">;</span><span class="w"> </span><span class="nv">arch</span><span class="o">=</span>amd64<span class="w">        </span><span class="c1"># or arm64</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="nv">base</span><span class="o">=</span>https://github.com/dxc-technology/arca/releases/download/v<span class="nv">$v</span>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>curl<span class="w"> </span>-fLO<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$base</span><span class="s2">/arca-</span><span class="nv">$v</span><span class="s2">-linux-</span><span class="nv">$arch</span><span class="s2">.tar.gz&quot;</span><span class="w"> </span>-fLO<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$base</span><span class="s2">/SHA256SUMS&quot;</span>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>sha256sum<span class="w"> </span>--check<span class="w"> </span>--ignore-missing<span class="w"> </span>SHA256SUMS
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>tar<span class="w"> </span>-xzf<span class="w"> </span><span class="s2">&quot;arca-</span><span class="nv">$v</span><span class="s2">-linux-</span><span class="nv">$arch</span><span class="s2">.tar.gz&quot;</span>
-<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>./arca-<span class="nv">$v</span>-linux-<span class="nv">$arch</span>/arca<span class="w"> </span>--version
-<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>./arca-<span class="nv">$v</span>-linux-<span class="nv">$arch</span>/arca<span class="w"> </span>serve<span class="w"> </span>--config-path<span class="w"> </span>/etc/arca/config.toml
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nv">v</span><span class="o">=</span><span class="m">0</span>.32.1<span class="p">;</span><span class="w"> </span><span class="nv">arch</span><span class="o">=</span>amd64<span class="w">        </span><span class="c1"># or arm64</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="nv">base</span><span class="o">=</span>https://github.com/dxc-technology/arca/releases/download/v<span class="nv">$v</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>curl<span class="w"> </span>-fLO<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$base</span><span class="s2">/arca-</span><span class="nv">$v</span><span class="s2">-linux-</span><span class="nv">$arch</span><span class="s2">.tar.gz&quot;</span><span class="w"> </span>-fLO<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$base</span><span class="s2">/SHA256SUMS&quot;</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>sha256sum<span class="w"> </span>--check<span class="w"> </span>--ignore-missing<span class="w"> </span>SHA256SUMS
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>tar<span class="w"> </span>-xzf<span class="w"> </span><span class="s2">&quot;arca-</span><span class="nv">$v</span><span class="s2">-linux-</span><span class="nv">$arch</span><span class="s2">.tar.gz&quot;</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>./arca-<span class="nv">$v</span>-linux-<span class="nv">$arch</span>/arca<span class="w"> </span>--version
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>./arca-<span class="nv">$v</span>-linux-<span class="nv">$arch</span>/arca<span class="w"> </span>serve<span class="w"> </span>--config-path<span class="w"> </span>/etc/arca/config.toml
 </code></pre></div>
 <p>Start from <a href="https://github.com/dxc-technology/arca/blob/main/config/default.toml"><code>config/default.toml</code></a>
 and see <a href="../../guide/configuration/">Configuration</a>. The notification connectors that deliver
@@ -1766,12 +1785,12 @@ over HTTPS (webhook, Elasticsearch) use the system CA bundle: without one the se
 starts, and those connectors report <code>HTTP client unavailable</code> until a bundle is installed.</p>
 <p>To build the binary yourself instead, extract it from a local build (without Docker on the
 target server):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># Build for host architecture</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>bin/build<span class="w"> </span>--binary
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="c1"># Cross-compile for a specific architecture</span>
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>bin/build<span class="w"> </span>--binary<span class="w"> </span>--arch<span class="w"> </span>amd64
-<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>bin/build<span class="w"> </span>--binary<span class="w"> </span>--arch<span class="w"> </span>arm64
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># Build for host architecture</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>bin/build<span class="w"> </span>--binary
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="c1"># Cross-compile for a specific architecture</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>bin/build<span class="w"> </span>--binary<span class="w"> </span>--arch<span class="w"> </span>amd64
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>bin/build<span class="w"> </span>--binary<span class="w"> </span>--arch<span class="w"> </span>arm64
 </code></pre></div>
 <p>The binary is written to <code>build/arca-&lt;arch&gt;</code> (e.g., <code>build/arca-arm64</code>). These are Linux ELF binaries, they cannot run on macOS directly.</p>
 <h2 id="docker-images">Docker Images<a class="headerlink" href="#docker-images" title="Permanent link">&para;</a></h2>
@@ -1808,27 +1827,27 @@ and <code>ghcr.io/dxc-technology/arca-console:production</code> — never with a
 so a build of your working tree can neither pass for a release nor shadow the
 published <code>latest</code>.</p>
 <p>Switch between them using <code>BUILD_TARGET</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># Production (default)</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="c1"># Development</span>
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--dev
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="c1"># Production (default)</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="c1"># Development</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>bin/arca<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--dev
 </code></pre></div>
 <h2 id="running-tests">Running Tests<a class="headerlink" href="#running-tests" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># All tests (unit + integration)</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>bin/test
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="c1"># Unit tests only</span>
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>bin/test<span class="w"> </span>unit
-<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>
-<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="c1"># Integration tests only (server must be running)</span>
-<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>bin/test<span class="w"> </span>integration
-<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>
-<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="c1"># Ceph s3-tests compatibility suite (stops your server and wipes its data volume)</span>
-<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>bin/s3-tests
-<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>
-<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="c1"># Tests of the s3-tests report generator (no server needed)</span>
-<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>bin/test<span class="w"> </span>s3-report
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="c1"># All tests (unit + integration)</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>bin/test
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="c1"># Unit tests only</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>bin/test<span class="w"> </span>unit
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="c1"># Integration tests only (server must be running)</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>bin/test<span class="w"> </span>integration
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a><span class="c1"># Ceph s3-tests compatibility suite (stops your server and wipes its data volume)</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>bin/s3-tests
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a><span class="c1"># Tests of the s3-tests report generator (no server needed)</span>
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a>bin/test<span class="w"> </span>s3-report
 </code></pre></div>
 <p>The <a href="https://github.com/ceph/s3-tests">Ceph s3-tests</a> suite runs the industry-standard S3 compatibility tests against a fresh Arca instance with encryption enabled: <code>bin/s3-tests</code> stops the running server, deletes its data volume for a clean state and leaves the server stopped at the end. Results are saved to <code>s3-tests/results.xml</code>, an HTML report to <code>s3-tests/report.html</code>, and a machine-readable summary to <code>s3-tests/summary.json</code>. Ceph/RGW-only extensions are excluded from the score, and a test where Ceph expects RGW's answer while Arca deliberately gives AWS's counts as passed only when it fails on exactly that documented assertion (listed under "AWS Divergences" in the report).</p>
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
