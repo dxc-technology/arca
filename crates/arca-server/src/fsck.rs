@@ -1063,6 +1063,7 @@ mod tests {
                 initiated_at: initiated,
                 metadata: HashMap::new(),
                 checksum_algorithm: None,
+                initiator: "root".to_string(),
             })
             .await
             .unwrap();
@@ -1407,6 +1408,7 @@ mod tests {
                 initiated_at: chrono::Utc::now() - chrono::Duration::days(age_days),
                 metadata: HashMap::new(),
                 checksum_algorithm: None,
+                initiator: "root".to_string(),
             })
             .await
             .unwrap();

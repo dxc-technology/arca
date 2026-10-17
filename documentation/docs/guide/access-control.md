@@ -238,4 +238,11 @@ The result:
 
 ## Ownership
 
-When a user creates a bucket or uploads an object, their `user_id` is recorded in the `owner` field. Ownership is informational at this stage, it does not affect access control (grants govern all permission checks).
+The **username** of the user that makes a request is recorded as owner on what the request creates: buckets, objects (PutObject, CopyObject, CompleteMultipartUpload), delete markers and multipart uploads (the initiator). It is reported as `Owner` (and `Initiator`) in ListObjects, ListObjectsV2 with `fetch-owner=true`, ListObjectVersions, ListParts and ListMultipartUploads, and as `principalId` in notification events. A CopyObject is owned by the user who copies, a multipart object by the user who completes the upload.
+
+Ownership is informational, it does not affect access control (grants govern all permission checks). Some limits to know:
+
+- Buckets, objects and uploads created before this behaviour existed keep `root`: the writer was never recorded.
+- Lifecycle expiration (which creates delete markers on its own) and `arca recover` (sidecars carry no owner) write `root`.
+- An object replicated by a peer or by anti-entropy keeps the owner of the node that took the write; an object replicated to another Arca through bucket replication is owned by the replication credential's user on the destination.
+- The owner is a name, not a reference: renaming a user does not rewrite it, and a deleted user's name can be reused.

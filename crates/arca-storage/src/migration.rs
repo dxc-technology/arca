@@ -198,6 +198,7 @@ pub const TABLES: &[TableDesc] = &[
             col("initiated_at", Timestamp),
             col("metadata", Json),
             col("checksum_algorithm", Text),
+            col("initiator", Text),
         ],
     },
     TableDesc {

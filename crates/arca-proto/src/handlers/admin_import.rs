@@ -444,8 +444,11 @@ pub async fn import_config(
                     continue;
                 }
 
+                // The exported owner is kept; a document without one (older
+                // export) falls back to the system owner.
+                let owner = item.get("owner").and_then(|v| v.as_str()).filter(|o| !o.is_empty()).unwrap_or("root");
                 if !dry_run {
-                    match state.metadata.create_bucket(name).await {
+                    match state.metadata.create_bucket_owned(name, owner).await {
                         Ok(()) => sr.created += 1,
                         Err(e) => {
                             sr.errors += 1;

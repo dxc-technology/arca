@@ -230,7 +230,7 @@ impl ControlSnapshotStore for SqliteStore {
                     .collect::<Vec<_>>();
 
                 let mut stmt = conn.prepare(
-                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm FROM multipart_uploads",
+                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator FROM multipart_uploads",
                 )?;
                 let multipart_uploads = stmt
                     .query_map([], |row| row_to_multipart_upload_record(row))?
@@ -623,6 +623,7 @@ mod tests {
             initiated_at: Utc::now(),
             metadata: HashMap::new(),
             checksum_algorithm: None,
+            initiator: "root".to_string(),
         })
         .await
         .unwrap();

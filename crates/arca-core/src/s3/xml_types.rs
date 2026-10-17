@@ -821,7 +821,6 @@ pub fn list_multipart_uploads_result(
     uploads: &[MultipartUploadRecord],
     next_key_marker: Option<&str>,
     next_upload_id_marker: Option<&str>,
-    owner: &str,
 ) -> String {
     let mut writer = Writer::new(Vec::new());
 
@@ -874,8 +873,8 @@ pub fn list_multipart_uploads_result(
         writer
             .write_event(Event::Start(BytesStart::new("Initiator")))
             .expect("write Initiator start");
-        write_xml_element(&mut writer, "ID", owner);
-        write_xml_element(&mut writer, "DisplayName", owner);
+        write_xml_element(&mut writer, "ID", &upload.initiator);
+        write_xml_element(&mut writer, "DisplayName", &upload.initiator);
         writer
             .write_event(Event::End(BytesEnd::new("Initiator")))
             .expect("write Initiator end");
@@ -883,8 +882,8 @@ pub fn list_multipart_uploads_result(
         writer
             .write_event(Event::Start(BytesStart::new("Owner")))
             .expect("write Owner start");
-        write_xml_element(&mut writer, "ID", owner);
-        write_xml_element(&mut writer, "DisplayName", owner);
+        write_xml_element(&mut writer, "ID", &upload.initiator);
+        write_xml_element(&mut writer, "DisplayName", &upload.initiator);
         writer
             .write_event(Event::End(BytesEnd::new("Owner")))
             .expect("write Owner end");

@@ -166,6 +166,7 @@ pub(super) fn extract_metadata(headers: &http::HeaderMap) -> HashMap<String, Str
 
 use arca_core::error::ArcaError;
 
+use crate::middleware::identity::requester_username;
 use crate::state::AppState;
 use crate::xml::error_response::{internal_error_response, s3_error_response};
 
@@ -553,6 +554,7 @@ pub async fn put_object(
         }
     }
 
+    let owner = requester_username(request.extensions());
     let headers = request.headers().clone();
     let body = request.into_body();
     let (stream, integrity) =
@@ -685,7 +687,7 @@ pub async fn put_object(
                 e.key_id.clone()
             }
         }),
-        owner: "root".to_string(),
+        owner: owner.clone(),
         version_id: None,
         is_latest: true,
         is_delete_marker: false,
@@ -773,7 +775,7 @@ pub async fn put_object(
         etag: put_result.etag.clone(),
         version_id: version_id.clone(),
         sequencer: uuid::Uuid::new_v4().simple().to_string(),
-        user_identity: None,
+        user_identity: Some(owner.clone()),
         source_ip: None,
         request_id: None,
         timestamp: chrono::Utc::now(),
@@ -841,6 +843,7 @@ async fn copy_object(
     request: axum::extract::Request,
 ) -> Response {
     let resource = format!("/{dest_bucket}/{dest_key}");
+    let owner = requester_username(request.extensions());
 
     // Parse x-amz-copy-source header.
     let copy_source = request
@@ -1118,7 +1121,7 @@ async fn copy_object(
                 e.key_id.clone()
             }
         }),
-        owner: "root".to_string(),
+        owner: owner.clone(),
         version_id: None,
         is_latest: true,
         is_delete_marker: false,
@@ -1188,7 +1191,7 @@ async fn copy_object(
         etag: put_result.etag.clone(),
         version_id: version_id.clone(),
         sequencer: uuid::Uuid::new_v4().simple().to_string(),
-        user_identity: None,
+        user_identity: Some(owner.clone()),
         source_ip: None,
         request_id: None,
         timestamp: chrono::Utc::now(),
@@ -2117,7 +2120,12 @@ pub async fn delete_object(
     // Authoritative CAS check happens inside delete_object_if, evaluated in
     // the same transaction that performs the delete — the check above is an
     // optimisation only.
-    let old = match state.metadata.delete_object_if(&bucket, &key, &delete_pre).await {
+    let marker_owner = requester_username(request.extensions());
+    let old = match state
+        .metadata
+        .delete_object_if(&bucket, &key, &delete_pre, &marker_owner)
+        .await
+    {
         Ok(old) => old,
         Err(e) => return internal_error_response(e, &resource),
     };
@@ -2161,7 +2169,7 @@ pub async fn delete_object(
             etag: String::new(),
             version_id: old.as_ref().and_then(|r| r.version_id.clone()),
             sequencer: uuid::Uuid::new_v4().simple().to_string(),
-            user_identity: None,
+            user_identity: Some(marker_owner.clone()),
             source_ip: None,
             request_id: None,
             timestamp: chrono::Utc::now(),
@@ -2830,7 +2838,7 @@ async fn list_parts_handler(
         bucket,
         key,
         &upload_id,
-        "root", // owner
+        &upload.initiator,
         "STANDARD",
         part_number_marker,
         next_marker,

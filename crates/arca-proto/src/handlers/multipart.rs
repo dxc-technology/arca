@@ -15,6 +15,7 @@ use arca_core::{S3Error, S3ErrorCode};
 use super::object::extract_metadata;
 use super::sidecar::{part_sidecar, write_sidecar_or_discard};
 
+use crate::middleware::identity::requester_username;
 use crate::state::AppState;
 use crate::xml::error_response::{internal_error_response, s3_error_response};
 
@@ -89,6 +90,7 @@ pub async fn create_multipart_upload(
 
     let upload_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now();
+    let initiator = requester_username(request.extensions());
 
     let record = MultipartUploadRecord {
         upload_id: upload_id.clone(),
@@ -98,6 +100,7 @@ pub async fn create_multipart_upload(
         initiated_at: now,
         metadata,
         checksum_algorithm: checksum_algorithm.clone(),
+        initiator,
     };
 
     if let Err(e) = state.metadata.create_multipart_upload(&record).await {
@@ -319,6 +322,8 @@ pub async fn complete_multipart_upload(
         return resp;
     }
 
+    let owner = requester_username(request.extensions());
+
     // Capture headers before consuming the body (needed later for the
     // replication emit on loop-prevention header detection).
     let request_headers = request.headers().clone();
@@ -471,7 +476,7 @@ pub async fn complete_multipart_upload(
         metadata: obj_metadata,
         encryption_algorithm: put_result.encryption.as_ref().map(|e| e.algorithm.clone()),
         encryption_key_id: put_result.encryption.as_ref().map(|e| e.key_id.clone()),
-        owner: "root".to_string(),
+        owner: owner.clone(),
         version_id: None,
         is_latest: true,
         is_delete_marker: false,
@@ -585,7 +590,7 @@ pub async fn complete_multipart_upload(
         etag: composite_etag.clone(),
         version_id: version_id.clone(),
         sequencer: uuid::Uuid::new_v4().simple().to_string(),
-        user_identity: None,
+        user_identity: Some(owner.clone()),
         source_ip: None,
         request_id: None,
         timestamp: chrono::Utc::now(),

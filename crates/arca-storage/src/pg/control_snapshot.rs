@@ -178,7 +178,7 @@ impl ControlSnapshotStore for PgStore {
             .collect();
 
         let multipart_uploads = fetch(
-            "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm FROM multipart_uploads",
+            "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator FROM multipart_uploads",
         )
         .await
         .map_err(|e| ArcaError::Internal(format!("build_control_snapshot: {e}")))?

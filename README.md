@@ -176,11 +176,12 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 
 | Suite | Tests | Details |
 |-------|------:|---------|
-| Unit tests (Rust) | 1217 | arca-auth: 39, arca-core: 276, arca-proto: 137, arca-server: 394, arca-storage: 371 |
+| Unit tests (Rust) | 1228 | arca-auth: 39, arca-core: 277, arca-proto: 139, arca-server: 394, arca-storage: 379 |
 | Integration — boto3 | 146 | buckets, objects, list, multipart, copy, folders, auth, admin, credentials, conditional ops |
 | Integration — Conditional Writes (CAS) | 15 | sequential If-Match/If-None-Match/CompleteMultipartUpload/DeleteObject preconditions, N=8 racing writers under barrier release (exactly one winner, every run), conditional DELETE racing an unconditional overwrite (never destroys the newer object), DeleteObjects batch precondition checked against the targeted version, not the bucket's latest |
 | Integration — Multipart abort race | 3 | abort after complete leaves the object readable, complete after abort fails and writes nothing, and an abort swept across the whole life of a Complete (whoever wins, a completed object always reads back intact); also run against PostgreSQL |
 | Integration — RBAC | 42 | user/team/grant CRUD, attachments, effective grants, /admin/me (with and without grants), E2E access control |
+| Integration — Object ownership | 18 | the requesting user recorded as owner of objects (PutObject, presigned PUT, CopyObject incl. onto itself, CompleteMultipartUpload by the creator or by another user, versioned and suspended buckets), delete markers (single, batch, suspended), buckets and multipart uploads (`Owner`/`Initiator` of ListParts and ListMultipartUploads), `<Owner>` in ListObjects V1 and V2 `fetch-owner`, root writes still owned by `root`; also run against PostgreSQL |
 | Integration — Copy-source conditions | 16 | `x-amz-copy-source-if-match`/`-if-none-match`/`-if-modified-since`/`-if-unmodified-since`: a passing and a failing case per header on CopyObject and UploadPartCopy (412, nothing copied or stored) |
 | Integration — Virtual-hosted style | 6 | `bucket.<domain>/key` PUT/GET/HEAD/DELETE, bucket root listing, query string, missing bucket (`bin/test virtual-host`, a server started with `server.domain`) |
 | Integration — Versioning | 25 | versioning config, PUT/GET/HEAD/DELETE with versionId, delete markers, batch delete with VersionId, ListVersions (paginated inside a key and past the null version, a vanished marker refused), copy; also run against PostgreSQL |
@@ -207,7 +208,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — TLS Permissions | 9 | modes and owning GID of `arca tls generate` output seen from inside a container, Arca (65532) serving HTTPS from the 0640 key, console (uid 100) serving HTTPS with the service GID, and the negative cases without it (no TLS, key unreadable) — staged in a named volume so ownership is real on macOS too |
 | Integration — PostgreSQL | 21 | buckets, objects, multipart, versioning, tags, lifecycle, copy, range, admin health, concurrent-write smoke (commit-ordered seq) |
 | Integration — Export/Import | 20 | export all/single/multiple sections, secret masking, import dry_run/skip/overwrite, masked credentials, node-identity guard, bucket create/skip, round-trip |
-| Integration — Notifications | 20 | Put/Get config (Topic/Queue/Lambda), filters, webhook delivery, event format, batch delete, admin API, auth token, connector type roundtrip |
+| Integration — Notifications | 21 | Put/Get config (Topic/Queue/Lambda), filters, webhook delivery, event format, requesting user as `principalId`, batch delete, admin API, auth token, connector type roundtrip |
 | Integration — Compression | 15 | run twice, on a plain and on an SSE-S3 encrypted server (compression above encryption): put/get roundtrip, ETag vs plaintext MD5, MIME skip, small object skip, range reads (intra- and cross-frame, open-ended, suffix), incompressible bodies (frame larger than the object), multipart upload and copy in a compressed bucket, objects really encrypted on the encrypted pass, per-bucket ?compression subresource (PUT/GET/DELETE), every algorithm (zstd/lz4/snappy/gzip/brotli/xz), unknown-algorithm rejection |
 | Integration — MinIO | 99 | mirrors boto3 suite + streaming, file-based, data integrity APIs |
 | Integration — Replication | 4 | basic PutObject replication, delete-marker propagation, tag sync, two-way mirror no-loop invariant |
@@ -217,9 +218,9 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — Migrate DB | 1 | SQLite→PostgreSQL offline metadata migration + row-count verify |
 | Integration — Migrate Topology | 1 | single→cluster config emission + DB ops, then →single round-trip |
 | Connector integrations | 84 | Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Kafka, AMQP, Elasticsearch, Syslog, SMTP, gRPC — each: delivery, custom destination, delete event, multiple events, payload format, connectivity test |
-| **Arca tests** | **2,255** | **All tests written for this project** |
+| **Arca tests** | **2,285** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 825 | 371 pass, 363 fail, 91 skip — 0 unexpected failures (RGW-only extensions excluded; 2 pass on AWS behaviour where RGW differs) |
-| **Total** | **3,080** | |
+| **Total** | **3,110** | |
 
 ## License
 

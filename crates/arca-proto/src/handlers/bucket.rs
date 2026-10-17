@@ -38,11 +38,7 @@ pub async fn list_buckets(
     request: axum::extract::Request,
 ) -> Response {
     let resource = "/";
-    let owner = request
-        .extensions()
-        .get::<crate::middleware::identity::AuthenticatedIdentity>()
-        .map(|id| id.username().to_string())
-        .unwrap_or_else(|| "root".to_string());
+    let owner = crate::middleware::identity::requester_username(request.extensions());
 
     match state.metadata.list_buckets().await {
         Ok(buckets) => {
@@ -825,7 +821,7 @@ async fn list_objects_v1(
                         all_prefixes.push(cp);
                     }
                 } else {
-                    all_contents.push(record_to_list_entry(record, false));
+                    all_contents.push(record_to_list_entry(record, true));
                 }
             }
 
@@ -866,7 +862,7 @@ async fn list_objects_v1(
         } else {
             &records[..]
         };
-        let contents: Vec<ListEntry> = records.iter().map(|r| record_to_list_entry(r, false)).collect();
+        let contents: Vec<ListEntry> = records.iter().map(|r| record_to_list_entry(r, true)).collect();
         let nm = if is_truncated {
             records.last().map(|r| r.key.clone())
         } else {
@@ -1084,7 +1080,6 @@ async fn list_multipart_uploads(
         uploads,
         next_key_marker,
         next_upload_id_marker,
-        "root", // TODO(phase16): pass real owner from identity
     );
     Response::builder()
         .status(StatusCode::OK)
@@ -1413,6 +1408,7 @@ pub async fn create_bucket(
     request: axum::extract::Request,
 ) -> Response {
     let resource = format!("/{bucket}");
+    let owner = crate::middleware::identity::requester_username(request.extensions());
     let query = request.uri().query().unwrap_or("");
 
     // PutBucketEncryption
@@ -1674,7 +1670,7 @@ pub async fn create_bucket(
         return s3_error_response(e);
     }
 
-    match state.metadata.create_bucket(&bucket).await {
+    match state.metadata.create_bucket_owned(&bucket, &owner).await {
         Ok(()) => {
             // If x-amz-bucket-object-lock-enabled: true, enable Object Lock + versioning
             let lock_enabled = request
@@ -1915,6 +1911,7 @@ async fn delete_objects(
     request: axum::extract::Request,
 ) -> Response {
     let resource = format!("/{bucket}");
+    let marker_owner = crate::middleware::identity::requester_username(request.extensions());
 
     // Check bucket exists.
     match state.metadata.head_bucket(&bucket).await {
@@ -2057,7 +2054,7 @@ async fn delete_objects(
             // Non-versioned delete: may create a delete marker in versioned buckets.
             match state
                 .metadata
-                .delete_object_if(&bucket, &obj.key, &delete_pre)
+                .delete_object_if(&bucket, &obj.key, &delete_pre, &marker_owner)
                 .await
             {
                 Ok(old) => {
@@ -2127,7 +2124,7 @@ async fn delete_objects(
             etag: String::new(),
             version_id: entry.version_id.clone(),
             sequencer: uuid::Uuid::new_v4().simple().to_string(),
-            user_identity: None,
+            user_identity: Some(marker_owner.clone()),
             source_ip: None,
             request_id: None,
             timestamp: chrono::Utc::now(),

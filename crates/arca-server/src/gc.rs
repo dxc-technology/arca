@@ -319,6 +319,7 @@ mod tests {
                 initiated_at: chrono::Utc::now(),
                 metadata: HashMap::new(),
                 checksum_algorithm: None,
+                initiator: "root".to_string(),
             })
             .await
             .unwrap();

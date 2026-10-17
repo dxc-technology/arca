@@ -70,8 +70,8 @@ impl MetadataStore for CachingMetadataStore {
         self.inner.list_buckets().await
     }
 
-    async fn create_bucket(&self, name: &str) -> Result<(), ArcaError> {
-        let result = self.inner.create_bucket(name).await;
+    async fn create_bucket_owned(&self, name: &str, owner: &str) -> Result<(), ArcaError> {
+        let result = self.inner.create_bucket_owned(name, owner).await;
         if result.is_ok() {
             self.invalidate_bucket(name).await;
         }
@@ -148,8 +148,9 @@ impl MetadataStore for CachingMetadataStore {
         bucket: &str,
         key: &str,
         pre: &DeletePrecondition,
+        marker_owner: &str,
     ) -> Result<Option<ObjectRecord>, ArcaError> {
-        let result = self.inner.delete_object_if(bucket, key, pre).await;
+        let result = self.inner.delete_object_if(bucket, key, pre, marker_owner).await;
         if result.is_ok() {
             let cache_key = Self::object_key(bucket, key);
             self.object_cache.invalidate(&cache_key).await;

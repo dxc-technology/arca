@@ -111,6 +111,11 @@ const MIGRATIONS: &[Migration] = &[
         description: "Drop credentials.admin (privileges belong to the user, not the credential)",
         sql: include_str!("migrations/0014_drop_credential_admin.sql"),
     },
+    Migration {
+        version: 15,
+        description: "Add initiator to multipart_uploads (TD-042: ListParts / ListMultipartUploads owner)",
+        sql: include_str!("migrations/0015_multipart_initiator.sql"),
+    },
 ];
 
 impl PgStore {

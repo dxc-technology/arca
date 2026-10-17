@@ -315,6 +315,15 @@ pub struct MultipartUploadRecord {
     /// Checksum algorithm selected at CreateMultipartUpload time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checksum_algorithm: Option<String>,
+    /// Username of the user that initiated the upload (reported as `Owner` and
+    /// `Initiator` by ListParts and ListMultipartUploads). Defaults to `root`
+    /// for records written before the field existed.
+    #[serde(default = "default_initiator")]
+    pub initiator: String,
+}
+
+fn default_initiator() -> String {
+    "root".to_string()
 }
 
 /// Metadata about a single uploaded part.
@@ -453,5 +462,19 @@ mod tests {
         let cred: Credential = serde_json::from_value(json).unwrap();
         assert_eq!(cred.access_key_id, "AKIAOLD");
         assert_eq!(cred.user_id, "root");
+    }
+}
+
+#[cfg(test)]
+mod initiator_tests {
+    use super::*;
+
+    #[test]
+    fn multipart_record_without_initiator_defaults_to_root() {
+        // A record replicated by a node older than the initiator field.
+        let json = r#"{"upload_id":"u","bucket":"b","key":"k","content_type":null,
+            "initiated_at":"2026-01-01T00:00:00Z"}"#;
+        let record: MultipartUploadRecord = serde_json::from_str(json).unwrap();
+        assert_eq!(record.initiator, "root");
     }
 }

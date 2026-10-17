@@ -150,8 +150,20 @@ pub trait MetadataStore: Send + Sync {
     /// Lists all buckets, ordered by name.
     async fn list_buckets(&self) -> Result<Vec<BucketInfo>, crate::error::ArcaError>;
 
-    /// Creates a new bucket. Returns error if the bucket already exists.
-    async fn create_bucket(&self, name: &str) -> Result<(), crate::error::ArcaError>;
+    /// Creates a new bucket owned by `owner` (the requesting user's name).
+    /// Returns error if the bucket already exists.
+    async fn create_bucket_owned(
+        &self,
+        name: &str,
+        owner: &str,
+    ) -> Result<(), crate::error::ArcaError>;
+
+    /// Creates a new bucket owned by `root`. This is the system path (tests,
+    /// tools); a request made by a user goes through
+    /// [`MetadataStore::create_bucket_owned`].
+    async fn create_bucket(&self, name: &str) -> Result<(), crate::error::ArcaError> {
+        self.create_bucket_owned(name, "root").await
+    }
 
     /// Returns bucket info if it exists, None otherwise.
     async fn head_bucket(
@@ -218,11 +230,15 @@ pub trait MetadataStore: Send + Sync {
     /// that installs the delete/tombstone/delete-marker. On a mismatch
     /// nothing is deleted and the error is `ArcaError::S3` with
     /// `S3ErrorCode::PreconditionFailed`.
+    ///
+    /// `marker_owner` is the owner recorded on the delete marker this call
+    /// creates (a versioned or suspended bucket); it is ignored otherwise.
     async fn delete_object_if(
         &self,
         bucket: &str,
         key: &str,
         pre: &DeletePrecondition,
+        marker_owner: &str,
     ) -> Result<Option<ObjectRecord>, crate::error::ArcaError>;
 
     /// Deletes an object record unconditionally. Returns the deleted record
@@ -232,7 +248,8 @@ pub trait MetadataStore: Send + Sync {
         bucket: &str,
         key: &str,
     ) -> Result<Option<ObjectRecord>, crate::error::ArcaError> {
-        self.delete_object_if(bucket, key, &DeletePrecondition::default())
+        // System path (lifecycle expiration): there is no requester to record.
+        self.delete_object_if(bucket, key, &DeletePrecondition::default(), "root")
             .await
     }
 

@@ -231,14 +231,15 @@ impl MetadataStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("list_buckets: {e}")))
     }
 
-    async fn create_bucket(&self, name: &str) -> Result<(), ArcaError> {
+    async fn create_bucket_owned(&self, name: &str, owner: &str) -> Result<(), ArcaError> {
         let name = name.to_string();
+        let owner = owner.to_string();
         let name_for_err = name.clone();
         self.conn
             .call(move |conn| {
                 conn.execute(
-                    "INSERT INTO buckets (name, created_at) VALUES (?1, ?2)",
-                    params![name, chrono::Utc::now().to_rfc3339()],
+                    "INSERT INTO buckets (name, created_at, owner) VALUES (?1, ?2, ?3)",
+                    params![name, chrono::Utc::now().to_rfc3339(), owner],
                 )?;
                 Ok(())
             })
@@ -449,10 +450,12 @@ impl MetadataStore for SqliteStore {
         bucket: &str,
         key: &str,
         pre: &DeletePrecondition,
+        marker_owner: &str,
     ) -> Result<Option<ObjectRecord>, ArcaError> {
         let bucket = bucket.to_string();
         let key = key.to_string();
         let pre = pre.clone();
+        let marker_owner = marker_owner.to_string();
         let cluster_mode = self.cluster_mode();
         let resource = format!("/{bucket}/{key}");
         let result = self
@@ -520,8 +523,8 @@ impl MetadataStore for SqliteStore {
                         let seq = next_object_seq(&tx)?;
                         tx.execute(
                             "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq, is_tombstone)
-                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, 'root', ?4, 1, 1, NULL, NULL, NULL, 'STANDARD', NULL, NULL, ?5, 0)",
-                            params![bucket, key, now.to_rfc3339(), version_id, seq],
+                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, ?6, ?4, 1, 1, NULL, NULL, NULL, 'STANDARD', NULL, NULL, ?5, 0)",
+                            params![bucket, key, now.to_rfc3339(), version_id, seq, marker_owner],
                         )?;
                         tx.commit()?;
                         // Return the delete marker so the handler can set response headers.
@@ -536,7 +539,7 @@ impl MetadataStore for SqliteStore {
                             metadata: HashMap::new(),
                             encryption_algorithm: None,
                             encryption_key_id: None,
-                            owner: "root".to_string(),
+                            owner: marker_owner,
                             version_id: Some(version_id),
                             is_latest: true,
                             is_delete_marker: true,
@@ -574,8 +577,8 @@ impl MetadataStore for SqliteStore {
                         let seq = next_object_seq(&tx)?;
                         tx.execute(
                             "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq, is_tombstone)
-                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, 'root', NULL, 1, 1, NULL, NULL, NULL, 'STANDARD', NULL, NULL, ?4, 0)",
-                            params![bucket, key, now.to_rfc3339(), seq],
+                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, ?5, NULL, 1, 1, NULL, NULL, NULL, 'STANDARD', NULL, NULL, ?4, 0)",
+                            params![bucket, key, now.to_rfc3339(), seq, marker_owner],
                         )?;
                         tx.commit()?;
                         old_null // clean up old null-version blob (if any)
@@ -889,8 +892,8 @@ impl MetadataStore for SqliteStore {
                 // A multipart upload is immutable once created (upload_id is the
                 // key), so a re-delivered op is a no-op rather than an error.
                 conn.execute(
-                    "INSERT INTO multipart_uploads (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                    "INSERT INTO multipart_uploads (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
                      ON CONFLICT(upload_id) DO NOTHING",
                     params![
                         record.upload_id,
@@ -900,6 +903,7 @@ impl MetadataStore for SqliteStore {
                         record.initiated_at.to_rfc3339(),
                         metadata_json,
                         record.checksum_algorithm,
+                        record.initiator,
                     ],
                 )?;
                 Ok(())
@@ -1360,8 +1364,8 @@ impl MetadataStore for SqliteStore {
                 let metadata_json = serde_json::to_string(&record.metadata)
                     .unwrap_or_else(|_| "{}".to_string());
                 conn.execute(
-                    "INSERT INTO multipart_uploads (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    "INSERT INTO multipart_uploads (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                     params![
                         record.upload_id,
                         record.bucket,
@@ -1370,6 +1374,7 @@ impl MetadataStore for SqliteStore {
                         record.initiated_at.to_rfc3339(),
                         metadata_json,
                         record.checksum_algorithm,
+                        record.initiator,
                     ],
                 )?;
                 Ok(())
@@ -1386,7 +1391,7 @@ impl MetadataStore for SqliteStore {
         self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm
+                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator
                      FROM multipart_uploads WHERE upload_id = ?1",
                 )?;
                 let result = stmt.query_row(params![upload_id], |row| {
@@ -1545,7 +1550,7 @@ impl MetadataStore for SqliteStore {
         self.read_conn()
             .call(move |conn| {
                 let mut sql = String::from(
-                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm
+                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator
                      FROM multipart_uploads WHERE bucket = ?1",
                 );
                 let mut param_idx = 2u32;
@@ -1978,7 +1983,7 @@ impl MetadataStore for SqliteStore {
         self.read_conn()
             .call(move |conn| {
                 let sql = format!(
-                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm \
+                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator \
                      FROM multipart_uploads \
                      WHERE bucket = ?1 AND initiated_at < ?2 \
                      ORDER BY key, upload_id \
@@ -2253,6 +2258,7 @@ pub(super) fn row_to_multipart_upload_record(
         serde_json::from_str(&metadata_json).unwrap_or_default();
 
     let checksum_algorithm: Option<String> = row.get(6).unwrap_or(None);
+    let initiator: String = row.get(7)?;
 
     Ok(MultipartUploadRecord {
         upload_id: row.get(0)?,
@@ -2262,6 +2268,7 @@ pub(super) fn row_to_multipart_upload_record(
         initiated_at,
         metadata,
         checksum_algorithm,
+        initiator,
     })
 }
 
@@ -2429,6 +2436,7 @@ mod tests {
             initiated_at: chrono::Utc::now(),
             metadata: HashMap::new(),
             checksum_algorithm: None,
+            initiator: "root".to_string(),
         };
         store.create_multipart_upload(&mpu).await.unwrap();
         let part = PartRecord {
@@ -2574,6 +2582,7 @@ mod tests {
             initiated_at: chrono::Utc::now(),
             metadata: Default::default(),
             checksum_algorithm: None,
+            initiator: "root".to_string(),
         };
         // Verbatim insert (no local create_multipart_upload first).
         store.apply_remote_multipart_upload(&record).await.unwrap();
@@ -2831,6 +2840,7 @@ mod tests {
             initiated_at: chrono::Utc::now(),
             metadata: HashMap::new(),
             checksum_algorithm: None,
+            initiator: "root".to_string(),
         }
     }
 
@@ -4554,7 +4564,7 @@ mod tests {
             if_match_size: None,
             if_match_blob_id: None,
         };
-        let err = store.delete_object_if("b", "key1", &pre).await.unwrap_err();
+        let err = store.delete_object_if("b", "key1", &pre, "root").await.unwrap_err();
         expect_precondition_failed(&err);
         assert!(store.get_object("b", "key1").await.unwrap().is_some());
     }
@@ -4597,7 +4607,7 @@ mod tests {
             if_match_size: Some(999),
             if_match_blob_id: None,
         };
-        let err = store.delete_object_if("b", "key1", &pre).await.unwrap_err();
+        let err = store.delete_object_if("b", "key1", &pre, "root").await.unwrap_err();
         expect_precondition_failed(&err);
         assert!(store.get_object("b", "key1").await.unwrap().is_some());
     }
@@ -4616,7 +4626,7 @@ mod tests {
             if_match_size: None,
             if_match_blob_id: None,
         };
-        let err = store.delete_object_if("b", "key1", &pre).await.unwrap_err();
+        let err = store.delete_object_if("b", "key1", &pre, "root").await.unwrap_err();
         expect_precondition_failed(&err);
         assert!(store.get_object("b", "key1").await.unwrap().is_some());
     }
@@ -4635,9 +4645,129 @@ mod tests {
             if_match_size: None,
             if_match_blob_id: None,
         };
-        let deleted = store.delete_object_if("b", "key1", &pre).await.unwrap();
+        let deleted = store.delete_object_if("b", "key1", &pre, "root").await.unwrap();
         assert!(deleted.is_some());
         assert!(store.get_object("b", "key1").await.unwrap().is_none());
+    }
+
+    // -- owner recorded on the rows (TD-042) --
+
+    #[tokio::test]
+    async fn put_object_stores_the_record_owner() {
+        let store = test_store().await;
+        for (bucket, state) in [("plain", None), ("enabled", Some(true)), ("suspended", Some(false))] {
+            store.create_bucket(bucket).await.unwrap();
+            match state {
+                Some(true) => enable_versioning(&store, bucket).await,
+                Some(false) => suspend_versioning(&store, bucket).await,
+                None => {}
+            }
+            let mut r = make_record(bucket, "key1");
+            r.owner = "alice".to_string();
+            store.put_object_if(&r, &WritePrecondition::default()).await.unwrap();
+            let stored = store.get_object(bucket, "key1").await.unwrap().unwrap();
+            assert_eq!(stored.owner, "alice", "bucket {bucket}");
+        }
+    }
+
+    #[tokio::test]
+    async fn multipart_upload_stores_the_initiator() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut upload = make_upload("up-1", "b", "key1");
+        upload.initiator = "alice".to_string();
+        store.create_multipart_upload(&upload).await.unwrap();
+
+        let got = store.get_multipart_upload("up-1").await.unwrap().unwrap();
+        assert_eq!(got.initiator, "alice");
+        let listed = store
+            .list_multipart_uploads("b", None, None, None, 10)
+            .await
+            .unwrap();
+        assert_eq!(listed[0].initiator, "alice");
+    }
+
+    #[tokio::test]
+    async fn create_bucket_owned_records_the_owner() {
+        let store = test_store().await;
+        store.create_bucket_owned("b", "alice").await.unwrap();
+        let info = store.head_bucket("b").await.unwrap().unwrap();
+        assert_eq!(info.owner, "alice");
+        let listed = store.list_buckets().await.unwrap();
+        assert_eq!(listed[0].owner, "alice");
+    }
+
+    #[tokio::test]
+    async fn create_bucket_defaults_to_the_root_owner() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        assert_eq!(store.head_bucket("b").await.unwrap().unwrap().owner, "root");
+    }
+
+    #[tokio::test]
+    async fn create_bucket_owned_rejects_a_duplicate() {
+        let store = test_store().await;
+        store.create_bucket_owned("b", "alice").await.unwrap();
+        assert!(store.create_bucket_owned("b", "bob").await.is_err());
+        assert_eq!(store.head_bucket("b").await.unwrap().unwrap().owner, "alice");
+    }
+
+    #[tokio::test]
+    async fn delete_marker_takes_the_given_owner_when_versioned() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+        store
+            .put_object_if(&make_record("b", "key1"), &WritePrecondition::default())
+            .await
+            .unwrap();
+
+        let marker = store
+            .delete_object_if("b", "key1", &DeletePrecondition::default(), "alice")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(marker.is_delete_marker);
+        assert_eq!(marker.owner, "alice");
+        let stored = store.get_latest_object("b", "key1").await.unwrap().unwrap();
+        assert!(stored.is_delete_marker);
+        assert_eq!(stored.owner, "alice");
+    }
+
+    #[tokio::test]
+    async fn delete_marker_takes_the_given_owner_when_suspended() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        suspend_versioning(&store, "b").await;
+        store
+            .put_object_if(&make_record("b", "key1"), &WritePrecondition::default())
+            .await
+            .unwrap();
+
+        store
+            .delete_object_if("b", "key1", &DeletePrecondition::default(), "alice")
+            .await
+            .unwrap();
+        let stored = store.get_latest_object("b", "key1").await.unwrap().unwrap();
+        assert!(stored.is_delete_marker);
+        assert_eq!(stored.owner, "alice");
+    }
+
+    #[tokio::test]
+    async fn delete_object_default_marks_with_root() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+        store
+            .put_object_if(&make_record("b", "key1"), &WritePrecondition::default())
+            .await
+            .unwrap();
+
+        // The default method is the system path (lifecycle): no requester.
+        store.delete_object("b", "key1").await.unwrap();
+        let stored = store.get_latest_object("b", "key1").await.unwrap().unwrap();
+        assert!(stored.is_delete_marker);
+        assert_eq!(stored.owner, "root");
     }
 
     #[tokio::test]

@@ -843,7 +843,7 @@ with unique IDs (`TD-XXX`) referenced in source code comments.
 
 Remaining items:
 
-- ~~**Ownership model** (TD-001)~~: **Resolved** — Owner ID derived from credential's user; buckets track creator's username (objects do not yet, TD-042)
+- ~~**Ownership model** (TD-001)~~: **Resolved** — Owner ID derived from credential's user; buckets and objects record the requesting user (TD-042)
 - **Storage classes** (TD-002): Always `STANDARD` — no storage tiering
 - ~~**Versioning** (TD-003)~~: **Resolved** — Full object versioning implemented in Phase 17
 - ~~**Region support** (TD-004)~~: **Resolved** — Configurable region in `[server]` TOML or Admin API, per-bucket via `bucket_config`. Phase 18
@@ -881,7 +881,7 @@ Remaining items:
 - ~~**PostgreSQL conditional writes have no regression test** (TD-039)~~: **Resolved** — `bin/test postgres` also runs the conditional-write suite against the PostgreSQL-backed server.
 - **Cluster maintenance jobs can stall on a non-leader node** (TD-040): jobs are node-local but only the worker-leader runs them, so a job created on another node stays pending.
 - ~~**Blob ids received from cluster peers are not validated** (TD-041)~~: **Resolved** — every blob id from a peer (replicated record, composite part, manifest row) is checked as a UUID, and the filesystem layer refuses anything else.
-- **Object owner is always `root`** (TD-042): object writes ignore the authenticated user; TD-001 is resolved for buckets only.
+- ~~**Object owner is always `root`** (TD-042)~~: **Resolved** — objects, delete markers, buckets and multipart uploads record the requesting user; ListObjects V1 returns `<Owner>` and notification events carry the user as `principalId`.
 - **Remaining test tooling that disturbs the developer's stack** (TD-043): `bin/screenshots` still runs in the developer's compose project and the TLS test-certificate volume is shared by two tools.
 - **`compress-existing` compresses ciphertext of encrypted blobs** (TD-044): the guard shipped (both offline tools now skip encrypted, SSE-C and composite blobs instead of damaging them or aborting). Still open: repairing stores where the old tool already ran on an encrypted store, whose objects are unreadable but recoverable (bytes and key are intact).
 - **aws-chunked chunk and trailer signatures are not verified** (TD-045): `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` bodies are authenticated by their headers only; a body that declares no digest (e.g. `mc` over plain HTTP) is not checked at all.

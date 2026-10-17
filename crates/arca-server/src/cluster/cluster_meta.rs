@@ -289,9 +289,9 @@ impl MetadataStore for ClusterMetadataStore {
         self.inner.list_buckets().await
     }
 
-    async fn create_bucket(&self, name: &str) -> Result<(), ArcaError> {
+    async fn create_bucket_owned(&self, name: &str, owner: &str) -> Result<(), ArcaError> {
         self.check_write_quorum()?;
-        self.inner.create_bucket(name).await?;
+        self.inner.create_bucket_owned(name, owner).await?;
         // Clear any stale deletion tombstone so the reconcile does not later
         // re-delete this freshly (re-)created bucket.
         if let Err(e) = self
@@ -402,9 +402,10 @@ impl MetadataStore for ClusterMetadataStore {
         bucket: &str,
         key: &str,
         pre: &DeletePrecondition,
+        marker_owner: &str,
     ) -> Result<Option<ObjectRecord>, ArcaError> {
         self.check_write_quorum()?;
-        let old = self.inner.delete_object_if(bucket, key, pre).await?;
+        let old = self.inner.delete_object_if(bucket, key, pre, marker_owner).await?;
         if old.is_some() {
             // A versioned bucket creates a delete marker (a new latest row);
             // an unversioned bucket hard-deletes. Replicate whichever happened
@@ -1229,6 +1230,7 @@ mod tests {
             initiated_at: Utc::now(),
             metadata: Default::default(),
             checksum_algorithm: None,
+            initiator: "root".to_string(),
         }
     }
 

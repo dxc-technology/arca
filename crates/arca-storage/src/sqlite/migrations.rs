@@ -569,6 +569,15 @@ const MIGRATIONS: &[Migration] = &[
             ALTER TABLE credentials DROP COLUMN admin;
         ",
     },
+    Migration {
+        version: 27,
+        description: "Add initiator to multipart_uploads (TD-042: ListParts / ListMultipartUploads owner)",
+        // Uploads in flight at upgrade time keep the `root` default: who
+        // started them was never recorded.
+        sql: "
+            ALTER TABLE multipart_uploads ADD COLUMN initiator TEXT NOT NULL DEFAULT 'root';
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -642,7 +651,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 26);
+        assert_eq!(version, 27);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -692,12 +701,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 26);
+        assert_eq!(version, 27);
 
         // Twenty-six migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 26);
+        assert_eq!(count, 27);
     }
 }

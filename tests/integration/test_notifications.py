@@ -281,6 +281,16 @@ class TestNotificationDelivery:
         assert records[0]["s3"]["bucket"]["name"] == unique_bucket
         assert records[0]["s3"]["object"]["key"] == "test.txt"
 
+    def test_event_carries_the_requesting_user(self, s3_client, unique_bucket):
+        """The event's userIdentity.principalId is the requester's username (TD-042)."""
+        self._configure_webhook(s3_client, unique_bucket)
+
+        s3_client.put_object(Bucket=unique_bucket, Key="who.txt", Body=b"hello")
+
+        events = get_webhook_events(timeout=10, min_count=1)
+        record = events[0]["payload"]["Records"][0]
+        assert record["userIdentity"]["principalId"] == "root"
+
     def test_delete_object_triggers_webhook(self, s3_client, unique_bucket):
         """DELETE object should trigger a webhook with s3:ObjectRemoved:Delete event."""
         self._configure_webhook(s3_client, unique_bucket)

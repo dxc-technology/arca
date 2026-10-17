@@ -101,7 +101,7 @@ arca recover [--config-path <PATH>] [--dry-run] [--skip-verify]
 | Objects: bucket, key, size, ETag, content type, last-modified, metadata, encryption parameters | Bucket configuration: versioning, encryption, lifecycle, Object Lock, policy, notifications, replication |
 | Credentials, when the old SQLite database is still readable | Bucket and object tags |
 | | Retention and legal hold |
-| | Object ownership (every object is owned by `root`) |
+| | Object ownership (sidecars do not carry the owner: every recovered object is owned by `root`) |
 | | Older versions of versioned objects, and version IDs |
 | | Multipart (composite) objects |
 

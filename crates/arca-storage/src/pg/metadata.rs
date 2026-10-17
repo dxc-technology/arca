@@ -324,6 +324,7 @@ pub(super) fn row_to_multipart_upload_record(row: &sqlx_postgres::PgRow) -> Mult
         initiated_at: row.get("initiated_at"),
         metadata,
         checksum_algorithm: row.get("checksum_algorithm"),
+        initiator: row.get("initiator"),
     }
 }
 
@@ -545,11 +546,12 @@ impl MetadataStore for PgStore {
         Ok(rows.iter().map(row_to_bucket_info).collect())
     }
 
-    async fn create_bucket(&self, name: &str) -> Result<(), ArcaError> {
+    async fn create_bucket_owned(&self, name: &str, owner: &str) -> Result<(), ArcaError> {
         let name_for_err = name.to_string();
-        sqlx_core::query::query("INSERT INTO buckets (name, created_at) VALUES ($1, $2)")
+        sqlx_core::query::query("INSERT INTO buckets (name, created_at, owner) VALUES ($1, $2, $3)")
             .bind(name)
             .bind(Utc::now())
+            .bind(owner)
             .execute(&self.pool)
             .await
             .map_err(|e| {
@@ -733,6 +735,7 @@ impl MetadataStore for PgStore {
         bucket: &str,
         key: &str,
         pre: &DeletePrecondition,
+        marker_owner: &str,
     ) -> Result<Option<ObjectRecord>, ArcaError> {
         let cluster_mode = self.cluster_mode();
         let resource = format!("/{bucket}/{key}");
@@ -840,7 +843,7 @@ impl MetadataStore for PgStore {
                      last_modified, metadata, encryption_algorithm, encryption_key_id, owner, \
                      version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, \
                      legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq) \
-                     VALUES ($1, $2, '', 0, '', NULL, $3, $4, NULL, NULL, 'root', $5, TRUE, TRUE, \
+                     VALUES ($1, $2, '', 0, '', NULL, $3, $4, NULL, NULL, $7, $5, TRUE, TRUE, \
                      NULL, NULL, NULL, 'STANDARD', NULL, NULL, $6)",
                 )
                 .bind(bucket)
@@ -849,6 +852,7 @@ impl MetadataStore for PgStore {
                 .bind(&empty_metadata)
                 .bind(&version_id)
                 .bind(seq)
+                .bind(marker_owner)
                 .execute(&mut *tx)
                 .await
                 .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
@@ -865,7 +869,7 @@ impl MetadataStore for PgStore {
                     metadata: HashMap::new(),
                     encryption_algorithm: None,
                     encryption_key_id: None,
-                    owner: "root".to_string(),
+                    owner: marker_owner.to_string(),
                     version_id: Some(version_id),
                     is_latest: true,
                     is_delete_marker: true,
@@ -925,7 +929,7 @@ impl MetadataStore for PgStore {
                      last_modified, metadata, encryption_algorithm, encryption_key_id, owner, \
                      version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, \
                      legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq) \
-                     VALUES ($1, $2, '', 0, '', NULL, $3, $4, NULL, NULL, 'root', NULL, TRUE, TRUE, \
+                     VALUES ($1, $2, '', 0, '', NULL, $3, $4, NULL, NULL, $6, NULL, TRUE, TRUE, \
                      NULL, NULL, NULL, 'STANDARD', NULL, NULL, $5)",
                 )
                 .bind(bucket)
@@ -933,6 +937,7 @@ impl MetadataStore for PgStore {
                 .bind(now)
                 .bind(&empty_metadata)
                 .bind(seq)
+                .bind(marker_owner)
                 .execute(&mut *tx)
                 .await
                 .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
@@ -1339,8 +1344,8 @@ impl MetadataStore for PgStore {
         // Immutable once created (upload_id is the key): re-delivery is a no-op.
         sqlx_core::query::query(
             "INSERT INTO multipart_uploads \
-             (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7) \
+             (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
              ON CONFLICT (upload_id) DO NOTHING",
         )
         .bind(&record.upload_id)
@@ -1350,6 +1355,7 @@ impl MetadataStore for PgStore {
         .bind(record.initiated_at)
         .bind(&metadata_json)
         .bind(&record.checksum_algorithm)
+        .bind(&record.initiator)
         .execute(&self.pool)
         .await
         .map_err(|e| ArcaError::Internal(format!("apply_remote_multipart_upload: {e}")))?;
@@ -1772,8 +1778,8 @@ impl MetadataStore for PgStore {
 
         sqlx_core::query::query(
             "INSERT INTO multipart_uploads \
-             (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7)",
+             (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         )
         .bind(&record.upload_id)
         .bind(&record.bucket)
@@ -1782,6 +1788,7 @@ impl MetadataStore for PgStore {
         .bind(record.initiated_at)
         .bind(&metadata_json)
         .bind(&record.checksum_algorithm)
+        .bind(&record.initiator)
         .execute(&self.pool)
         .await
         .map_err(|e| ArcaError::Internal(format!("create_multipart_upload: {e}")))?;
@@ -1794,7 +1801,7 @@ impl MetadataStore for PgStore {
         upload_id: &str,
     ) -> Result<Option<MultipartUploadRecord>, ArcaError> {
         let row = sqlx_core::query::query(
-            "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm \
+            "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator \
              FROM multipart_uploads WHERE upload_id = $1",
         )
         .bind(upload_id)
@@ -1943,7 +1950,7 @@ impl MetadataStore for PgStore {
         max_uploads: u32,
     ) -> Result<Vec<MultipartUploadRecord>, ArcaError> {
         let mut sql = String::from(
-            "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm \
+            "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator \
              FROM multipart_uploads WHERE bucket = $1",
         );
         let mut param_idx = 2u32;
@@ -2402,7 +2409,7 @@ impl MetadataStore for PgStore {
         max_uploads: u32,
     ) -> Result<Vec<MultipartUploadRecord>, ArcaError> {
         let sql = format!(
-            "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm \
+            "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator \
              FROM multipart_uploads \
              WHERE bucket = $1 AND initiated_at < $2 \
              ORDER BY key, upload_id \

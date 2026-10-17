@@ -2126,6 +2126,7 @@ mod tests {
                     initiated_at: Utc::now(),
                     metadata: Default::default(),
                     checksum_algorithm: None,
+                    initiator: "root".to_string(),
                 },
             },
             ControlOp::PartUpsert {
@@ -2482,6 +2483,7 @@ mod tests {
             initiated_at: ts(initiated),
             metadata: std::collections::HashMap::new(),
             checksum_algorithm: None,
+            initiator: "root".to_string(),
         }
     }
 
