@@ -1545,14 +1545,6 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>crates/arca-server/src/maintenance.rs</code> (<code>spawn_maintenance_worker</code>), <code>crates/arca-proto/src/handlers/maintenance.rs</code>, <code>crates/arca-server/src/main.rs</code> (store wiring)</td>
 </tr>
 <tr>
-<td>TD-042</td>
-<td>Object owner is always <code>root</code></td>
-<td>PutObject, CopyObject and CompleteMultipartUpload build the <code>ObjectRecord</code> with <code>owner: "root"</code> regardless of the authenticated user, so object ownership (ListObjects <code>fetch-owner</code>, <code>Owner</code> in listings, any owner-based policy check) is wrong for every non-root writer. TD-001 (resolved) states that objects store the creator's username; that is true for buckets only.</td>
-<td>Take the owner from the request's authenticated identity, as bucket creation does; add an integration test with a non-root user.</td>
-<td>None</td>
-<td><code>crates/arca-proto/src/handlers/{object,multipart}.rs</code></td>
-</tr>
-<tr>
 <td>TD-043</td>
 <td>Remaining test tooling that disturbs the developer's stack</td>
 <td>After TD-030 the self-contained <code>bin/test</code> modes run in their own compose projects, but: <code>bin/screenshots</code> still runs in the developer's project (overwrites <code>config/.generated.toml</code>, <code>up -d arca</code>, <code>down</code>, and its cleanup deletes <code>.arca-env</code>); <code>arca-tls-test-certs</code> is one fixed-name volume shared by <code>bin/test tls</code> and <code>bin/perf-test --tls</code>, so the two cannot run concurrently. (The cluster suite already runs in its own project on ephemeral loopback ports. <code>bin/s3-tests</code> wiping <code>docker_arca-data</code> is deliberate: the Ceph suite needs a clean state; <code>--no-clean</code> skips it.)</td>
@@ -1639,7 +1631,7 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <tr>
 <td>TD-001</td>
 <td>Owner identity</td>
-<td>Owner ID derived from credential's user. Buckets and objects store creator's username (correction 2026-10-01: true for buckets only, objects are always written as <code>root</code>, see TD-042). Migration v8 adds <code>owner</code> columns and <code>user_id</code> on credentials. Phase 16</td>
+<td>Owner ID derived from credential's user. Buckets and objects store creator's username (correction 2026-10-01: this was untrue until TD-042, which made both buckets and objects record the requester). Migration v8 adds <code>owner</code> columns and <code>user_id</code> on credentials. Phase 16</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
@@ -1784,6 +1776,12 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>TD-041</td>
 <td>Blob ids from cluster peers were not validated</td>
 <td><code>parse_blob_id</code> guarded only the <code>/cluster/v1/blob/{blob_id}</code> path parameter: ids inside a received <code>ObjectRecord</code>, inside the composite parts of a received sidecar and inside anti-entropy manifest rows reached <code>FsBlobStore::blob_path</code> unchecked, which pushed the id onto the blobs path (traversal with <code>..</code> or <code>/</code>) and sliced it by byte index (panic on short or multi-byte ids). Authenticated peers only (decision H12), so defence in depth. Fixed: <code>BlobId::is_valid</code> (exactly the lowercase hyphenated UUID form <code>BlobId::new</code> mints); <code>blob_path</code> is total and maps any other id to a fixed name inside the base directory; the raw operations (<code>read_raw</code>, <code>write_raw</code>, <code>exists</code>, <code>read_sidecar</code>, <code>write_sidecar</code>, <code>delete_blob_file</code>) reject it; <code>receive_object</code> and <code>receive_blob</code> answer 400 for an invalid record id or composite part id; anti-entropy skips a manifest row with an invalid id (so it cannot wedge the cursor) and refuses a peer sidecar naming an invalid part. Files under <code>blobs/</code> that are not blob ids are no longer enumerated as blobs (they were GC candidates); <code>arca fsck</code> reports them (<code>FOREIGN_FILE</code>) and <code>arca gc --delete-foreign-files</code> removes them.</td>
+<td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
+</tr>
+<tr>
+<td>TD-042</td>
+<td>Object owner was always <code>root</code></td>
+<td>PutObject, CopyObject and CompleteMultipartUpload built the <code>ObjectRecord</code> with <code>owner: "root"</code> whatever the credential, and the same hard-coded value reached delete markers, buckets (<code>create_bucket(name)</code> had no owner parameter, so the column default applied), multipart uploads (ListParts and ListMultipartUploads printed <code>root</code> as Owner and Initiator), ListObjects V1 (no <code>&lt;Owner&gt;</code> at all) and the notification <code>userIdentity.principalId</code> (always empty). Fixed: <code>requester_username</code> (<code>middleware/identity.rs</code>) gives the authenticated user's name, recorded by the three object handlers, by <code>delete_object_if</code> (new <code>marker_owner</code> argument; lifecycle expiration keeps passing <code>root</code>), by <code>create_bucket_owned</code> (<code>create_bucket</code> stays as the <code>root</code> shortcut; admin import keeps the exported owner) and by CreateMultipartUpload (new <code>initiator</code> column, SQLite migration 27 / PostgreSQL 0015). ListObjects V1 now returns <code>&lt;Owner&gt;</code>; the event <code>principalId</code> is the requester's username. CopyObject gives the copier as owner, not the source's; CompleteMultipartUpload gives the user that completes it. Replicated rows keep the origin's owner. Objects, buckets and uploads written before the fix keep <code>root</code>: the writer was never recorded. Renaming a user does not rewrite owners. <code>arca recover</code> still writes <code>root</code> (sidecars carry no owner, see TD-032).</td>
 <td style="text-align: center;"><span style="color:#4caf50">&#x2714;</span></td>
 </tr>
 <tr>
