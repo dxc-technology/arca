@@ -2,7 +2,7 @@
 
 use chrono::{DateTime, Utc};
 
-use crate::error::{S3Error, S3ErrorCode};
+use crate::error::S3ErrorCode;
 use crate::s3::etag::etag_matches;
 use crate::types::{BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats};
 
@@ -32,6 +32,16 @@ pub struct VersionPosition {
 }
 
 impl VersionPosition {
+    /// A position before every version of a key: resuming after it lists the
+    /// whole key. Year 9999 rather than `DateTime::MAX_UTC`, which would not
+    /// compare as later than a real timestamp once stored as RFC 3339 text.
+    pub fn key_start() -> Self {
+        Self {
+            last_modified: DateTime::from_timestamp(253_402_300_799, 0).expect("valid timestamp"),
+            version_id: String::new(),
+        }
+    }
+
     /// The position of `record` in the listing.
     pub fn of(record: &ObjectRecord) -> Self {
         Self {
@@ -338,9 +348,10 @@ pub trait MetadataStore: Send + Sync {
 
     /// S3 ListObjectVersions paging: lists versions after `key_marker` and
     /// `version_id_marker` (`"null"` for the null version). The marker version
-    /// is looked up to find its position, so a marker that does not exist
-    /// (never did, or was deleted since the previous page) is refused with
-    /// `InvalidArgument` rather than silently skipping the rest of its key.
+    /// is looked up to find its position. A marker that does not exist (never
+    /// did, or was deleted since the previous page, as a client purging a
+    /// bucket does) restarts from the beginning of `key_marker`'s key: a
+    /// version of that key can be listed twice, none is ever skipped.
     async fn list_object_versions(
         &self,
         bucket: &str,
@@ -353,14 +364,7 @@ pub trait MetadataStore: Send + Sync {
         let after = match (key_marker, version_id_marker) {
             (Some(km), Some(vm)) => match self.get_object_version(bucket, km, vm).await? {
                 Some(marker) => Some(VersionPosition::of(&marker)),
-                None => {
-                    return Err(S3Error::with_message(
-                        S3ErrorCode::InvalidArgument,
-                        "Invalid version id specified",
-                        format!("/{bucket}/{km}?versionId={vm}"),
-                    )
-                    .into());
-                }
+                None => Some(VersionPosition::key_start()),
             },
             _ => None,
         };

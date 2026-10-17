@@ -3598,22 +3598,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_object_versions_refuses_an_unknown_version_marker() {
+    async fn list_object_versions_restarts_the_key_on_an_unknown_version_marker() {
         let store = test_store().await;
         five_versions_of_k(&store).await;
 
-        let err = store
+        let rows = store
             .list_object_versions("b", None, Some("k"), Some("no-such-version"), 10)
             .await
-            .unwrap_err();
-        assert!(
-            matches!(&err, ArcaError::S3(e) if e.code == S3ErrorCode::InvalidArgument),
-            "{err:?}"
-        );
+            .unwrap();
+        assert_eq!(blob_ids(&rows), ["k-4", "k-3", "k-2", "k-1", "k-0", "l-0"]);
     }
 
     #[tokio::test]
-    async fn a_deleted_version_marker_is_refused_not_skipped() {
+    async fn a_deleted_version_marker_restarts_its_key_without_skipping() {
         let store = test_store().await;
         five_versions_of_k(&store).await;
         let page = store.list_object_versions("b", None, None, None, 2).await.unwrap();
@@ -3625,14 +3622,13 @@ mod tests {
             .await
             .unwrap();
 
-        let err = store
+        // The key restarts from its first version (k-4 is listed again, never
+        // skipped), then the keys after it follow.
+        let rows = store
             .list_object_versions("b", None, Some("k"), marker.version_id.as_deref(), 10)
             .await
-            .unwrap_err();
-        assert!(
-            matches!(&err, ArcaError::S3(e) if e.code == S3ErrorCode::InvalidArgument),
-            "{err:?}"
-        );
+            .unwrap();
+        assert_eq!(blob_ids(&rows), ["k-4", "k-2", "k-1", "k-0", "l-0"]);
     }
 
     #[tokio::test]

@@ -207,33 +207,39 @@ class TestListObjectVersions:
         assert len(seen) == len(set(seen)), f"a version was repeated: {seen}"
         assert sorted(seen) == sorted(expected)
 
-    def test_list_versions_refuses_a_marker_version_deleted_between_pages(
+    def test_list_versions_restarts_the_key_when_the_marker_version_is_deleted(
         self, s3_client, vbucket
     ):
         for i in range(5):
             s3_client.put_object(Bucket=vbucket, Key="k", Body=f"{i}".encode())
+        s3_client.put_object(Bucket=vbucket, Key="l", Body=b"x")
         page = s3_client.list_object_versions(Bucket=vbucket, MaxKeys=2)
         assert page["IsTruncated"]
+        first = [v["VersionId"] for v in page["Versions"]]
         marker = page["NextVersionIdMarker"]
         s3_client.delete_object(Bucket=vbucket, Key="k", VersionId=marker)
 
-        # Resuming from a version that no longer exists must fail loudly, not
-        # silently skip the rest of the key.
-        with pytest.raises(ClientError) as exc:
-            s3_client.list_object_versions(
-                Bucket=vbucket,
-                KeyMarker=page["NextKeyMarker"],
-                VersionIdMarker=marker,
-            )
-        assert exc.value.response["Error"]["Code"] == "InvalidArgument"
+        # The marker is gone: the listing restarts from the beginning of the
+        # key (no 400, no version skipped) and goes on to the next keys.
+        resp = s3_client.list_object_versions(
+            Bucket=vbucket,
+            KeyMarker=page["NextKeyMarker"],
+            VersionIdMarker=marker,
+        )
+        listed = [(v["Key"], v["VersionId"]) for v in resp["Versions"]]
+        remaining_k = [v for k, v in listed if k == "k"]
+        assert len(remaining_k) == 4
+        assert first[0] in remaining_k
+        assert listed[-1][0] == "l"
 
-    def test_list_versions_refuses_an_unknown_version_marker(self, s3_client, vbucket):
+    def test_list_versions_restarts_the_key_on_an_unknown_version_marker(
+        self, s3_client, vbucket
+    ):
         s3_client.put_object(Bucket=vbucket, Key="k", Body=b"x")
-        with pytest.raises(ClientError) as exc:
-            s3_client.list_object_versions(
-                Bucket=vbucket, KeyMarker="k", VersionIdMarker="no-such-version"
-            )
-        assert exc.value.response["Error"]["Code"] == "InvalidArgument"
+        resp = s3_client.list_object_versions(
+            Bucket=vbucket, KeyMarker="k", VersionIdMarker="no-such-version"
+        )
+        assert [v["Key"] for v in resp["Versions"]] == ["k"]
 
     def test_list_versions_paginates_past_the_null_version(self, s3_client):
         bucket = f"test-ver-null-page-{uuid.uuid4().hex[:8]}"
