@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-10-06T06:41:10Z",
+  "timestamp": "2026-10-17T15:06:31Z",
   "total": 825,
-  "passed": 371,
-  "failed": 363,
+  "passed": 385,
+  "failed": 349,
   "skipped": 91,
   "unexpected_failures": 0,
-  "pass_pct": 45.0,
+  "pass_pct": 46.7,
   "out_of_scope_excluded": 5,
   "aws_divergences": [
     "test_object_checksum_crc64nvme",
@@ -44,8 +44,8 @@
     },
     "Checksums": {
       "total": 10,
-      "passed": 3,
-      "failed": 7,
+      "passed": 10,
+      "failed": 0,
       "skipped": 0
     },
     "Copy": {
@@ -56,8 +56,8 @@
     },
     "Encryption": {
       "total": 136,
-      "passed": 48,
-      "failed": 87,
+      "passed": 49,
+      "failed": 86,
       "skipped": 1
     },
     "Headers": {
@@ -86,8 +86,8 @@
     },
     "Not Implemented": {
       "total": 9,
-      "passed": 1,
-      "failed": 8,
+      "passed": 7,
+      "failed": 2,
       "skipped": 0
     },
     "Object": {
