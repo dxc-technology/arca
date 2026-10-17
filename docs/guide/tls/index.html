@@ -1927,7 +1927,7 @@ Authorities → Import</em>.</p>
 <a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>chmod<span class="w"> </span><span class="m">640</span><span class="w">   </span>/etc/ssl/private/arca.key
 </code></pre></div>
 <p><code>65532</code> is <strong>Arca's service GID</strong>: the <code>arca</code> container runs as <code>65532:65532</code>, and the key must be readable by it in any case. It is the distroless <code>nobody</code> GID, not a privilege boundary — treat it as "the identity Arca runs under", not as a general-purpose secrets group.</p>
-<p>The web console runs as the nginx package's own user, <code>100:101</code>, and in the Compose dev setup it reads the <em>same</em> key file. No owner and mode can grant read to both users without also granting it to <em>everyone</em>, so the console reaches the key through the key's <strong>group</strong> instead:</p>
+<p>The web console runs as the unprivileged user <code>10001:10001</code>, and in the Compose dev setup it reads the <em>same</em> key file. No owner and mode can grant read to both users without also granting it to <em>everyone</em>, so the console reaches the key through the key's <strong>group</strong> instead:</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="3:2"><input checked="checked" id="__tabbed_3_1" name="__tabbed_3" type="radio" /><input id="__tabbed_3_2" name="__tabbed_3" type="radio" /><div class="tabbed-labels"><label for="__tabbed_3_1">Docker Compose</label><label for="__tabbed_3_2">Kubernetes</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
@@ -1939,8 +1939,8 @@ Authorities → Import</em>.</p>
 <div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="nt">spec</span><span class="p">:</span>
 <a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">  </span><span class="nt">securityContext</span><span class="p">:</span>
-<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">    </span><span class="nt">runAsUser</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">100</span>
-<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">    </span><span class="nt">runAsGroup</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">101</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">    </span><span class="nt">runAsUser</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10001</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">    </span><span class="nt">runAsGroup</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10001</span>
 <a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="w">    </span><span class="nt">fsGroup</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">65532</span><span class="w">          </span><span class="c1"># or: supplementalGroups: [65532]</span>
 </code></pre></div>
 </div>
@@ -2035,7 +2035,7 @@ Authorities → Import</em>.</p>
 </div>
 <h2 id="console-https">Console HTTPS<a class="headerlink" href="#console-https" title="Permanent link">&para;</a></h2>
 <p>When using <code>--tls</code>, the web console also serves over HTTPS. The console entrypoint auto-detects certificate and key PEM files in its mounted certificate directory (skipping CA files) and switches nginx to TLS mode. That directory is the same one Arca serves from, <code>${ARCA_CERTS_DIR}</code> in <code>docker/docker-compose.tls.yml</code>: <code>certs/</code> when it holds your own certificates, otherwise <code>certs/local/</code> (see <a href="#your-certificates-or-the-local-ones">Your certificates or the local ones</a>).</p>
-<p>The console runs as uid <code>100</code>, not as Arca's <code>65532</code>, so it reads the private key through the supplementary group described in <a href="#file-permissions">File Permissions</a>. If the key is there but unreadable, the entrypoint logs a <code>WARNING</code> and keeps serving plain HTTP on port 80 — check <code>bin/console logs</code> when port 9443 refuses connections.</p>
+<p>The console runs as uid <code>10001</code>, not as Arca's <code>65532</code>, so it reads the private key through the supplementary group described in <a href="#file-permissions">File Permissions</a>. If the key is there but unreadable, the entrypoint logs a <code>WARNING</code> and keeps serving plain HTTP on port 8080 — check <code>bin/console logs</code> when port 9443 refuses connections.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>bin/console<span class="w"> </span>start<span class="w"> </span>-d<span class="w"> </span>--build<span class="w"> </span>--tls
 </code></pre></div>
 <p>The console is available on <strong>port 9443</strong> (HTTPS). At the login screen, enter the Arca HTTPS endpoint (e.g. <code>https://your-domain:9000</code>) and your credentials.</p>
