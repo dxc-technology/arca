@@ -56,7 +56,7 @@ spec:
       # those two directories are copied from the image into emptyDir volumes.
       initContainers:
         - name: seed-writable-paths
-          image: ghcr.io/dxc-technology/arca-console:0.32.1
+          image: ghcr.io/dxc-technology/arca-console:0.33.0
           command:
             - sh
             - -c
@@ -80,7 +80,7 @@ spec:
               mountPath: /seed/http.d
       containers:
         - name: console
-          image: ghcr.io/dxc-technology/arca-console:0.32.1   # keep in sync with the release: see RELEASING.md; tag strategy: "Choosing a tag" in the Installation guide
+          image: ghcr.io/dxc-technology/arca-console:0.33.0   # keep in sync with the release: see RELEASING.md; tag strategy: "Choosing a tag" in the Installation guide
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
