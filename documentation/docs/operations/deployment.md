@@ -11,6 +11,12 @@ bin/arca start -d --build
 !!! tip
     Drop the `-d` flag to run in the foreground and see logs in real time. Press ++ctrl+c++ to stop the server.
 
+The web console is started the same way, after the server (it inherits TLS from it):
+
+```bash
+bin/console start -d --build
+```
+
 This starts Arca with:
 
 - Auto-generated or environment-provided credentials
@@ -62,6 +68,18 @@ docker compose logs arca | grep "Access Key"
 
 Store the generated credentials securely. They are shown only once.
 
+To run the web console next to it, add a service for the published image (it listens on 8080, not 80; see [Custom Deployment](../guide/console.md#custom-deployment) for the details):
+
+```yaml
+  console:
+    image: ghcr.io/dxc-technology/arca-console:latest   # same tag as the server
+    ports:
+      - "9080:8080"
+    environment:
+      - ARCA_ENDPOINT=http://localhost:9000   # the URL the browser uses to reach Arca
+    restart: unless-stopped
+```
+
 ### 4. Add Application Credentials
 
 Create non-admin credentials for application access:
@@ -86,6 +104,8 @@ bin/arca start -d --build --tls
 ```
 
 The `--tls` flag adds the TLS compose overlay which bind-mounts `certs/` into the container and enables auto-detection of PEM files. This works with any certificate provider (Let's Encrypt, internal CA, etc.) — just drop the PEM files in the directory.
+
+The web console follows: `bin/console start -d --build` serves HTTPS on port 9443 with the same certificates (it has no `--tls` flag of its own).
 
 Certificate rotation is supported via `docker compose kill --signal=HUP arca` without downtime.
 

@@ -166,6 +166,8 @@ pub(super) fn extract_metadata(headers: &http::HeaderMap) -> HashMap<String, Str
 
 use arca_core::error::ArcaError;
 
+use super::multipart_checksum::ChecksumType;
+use super::object_parts::{self, PartSelection};
 use crate::middleware::identity::requester_username;
 use crate::state::AppState;
 use crate::xml::error_response::{internal_error_response, s3_error_response};
@@ -177,6 +179,109 @@ fn handle_put_error(err: ArcaError, resource: &str) -> Response {
     match super::body::stream_error_code(&err.to_string()) {
         Some(code) => s3_error_response(S3Error::new(code, resource)),
         None => internal_error_response(err, resource),
+    }
+}
+
+/// Whether the query string carries `partNumber` (GET / HEAD of one part).
+fn wants_part_number(query: &str) -> bool {
+    form_urlencoded::parse(query.as_bytes()).any(|(k, _)| k == "partNumber")
+}
+
+/// Reads the part layout of `record` into it. The reads that serve S3 requests
+/// leave `parts` out (a multipart object can have 10,000 of them), so a request
+/// that needs the layout asks for it here.
+async fn load_parts(
+    state: &crate::AppState,
+    bucket: &str,
+    key: &str,
+    record: &mut ObjectRecord,
+    resource: &str,
+) -> Result<(), Response> {
+    match state
+        .metadata
+        .get_object_parts(bucket, key, record.version_id.as_deref())
+        .await
+    {
+        Ok(parts) => {
+            record.parts = parts;
+            Ok(())
+        }
+        Err(e) => Err(internal_error_response(e, resource)),
+    }
+}
+
+/// `?partNumber=N` of GET and HEAD (TD-046): `None` without the parameter.
+///
+/// N must be an integer from 1 to 10000 (`400 InvalidArgument`), cannot be
+/// combined with a `Range` header (`400 InvalidRequest`), and must name a part
+/// of the object (`400 InvalidPart`), see [`object_parts::select_part`].
+fn part_selection(
+    query: &str,
+    headers: &http::HeaderMap,
+    record: &ObjectRecord,
+    resource: &str,
+) -> Result<Option<PartSelection>, S3Error> {
+    let Some(value) = form_urlencoded::parse(query.as_bytes())
+        .find(|(k, _)| k == "partNumber")
+        .map(|(_, v)| v.into_owned())
+    else {
+        return Ok(None);
+    };
+    let number = value
+        .parse::<u32>()
+        .ok()
+        .filter(|n| (1..=object_parts::MAX_PART_NUMBER).contains(n))
+        .ok_or_else(|| {
+            S3Error::with_message(
+                S3ErrorCode::InvalidArgument,
+                "Part number must be an integer between 1 and 10000, inclusive",
+                resource,
+            )
+        })?;
+    if headers.contains_key(header::RANGE) {
+        return Err(S3Error::with_message(
+            S3ErrorCode::InvalidRequest,
+            "Cannot specify both a range header and a partNumber query parameter",
+            resource,
+        ));
+    }
+    object_parts::select_part(record, number)
+        .map(Some)
+        .map_err(|message| S3Error::with_message(S3ErrorCode::InvalidPart, message, resource))
+}
+
+/// Adds `x-amz-checksum-<algorithm>` and `x-amz-checksum-type` for the object,
+/// or, for `?partNumber` of a multipart object, for that part (the type is the
+/// object's). Nothing when there is no checksum to report.
+fn with_checksum_headers(
+    mut builder: http::response::Builder,
+    record: &ObjectRecord,
+    part: Option<&PartSelection>,
+) -> http::response::Builder {
+    let (Some(algorithm), Some(object_value)) = (&record.checksum_algorithm, &record.checksum_value)
+    else {
+        return builder;
+    };
+    let value = match part {
+        Some(selected) => match &selected.checksum {
+            Some(part_checksum) => part_checksum,
+            None => return builder,
+        },
+        None => object_value,
+    };
+    builder = builder.header(format!("x-amz-checksum-{}", algorithm.to_lowercase()), value.as_str());
+    builder.header("x-amz-checksum-type", ChecksumType::of_value(object_value).as_str())
+}
+
+/// The checksum a CopyObject keeps from its source: a FULL_OBJECT or
+/// single-part checksum describes the same bytes, a COMPOSITE one (`<b64>-N`)
+/// describes the parts the copy no longer has.
+fn copied_checksum(source: &ObjectRecord) -> (Option<String>, Option<String>) {
+    match (&source.checksum_algorithm, &source.checksum_value) {
+        (Some(algorithm), Some(value)) if ChecksumType::of_value(value) == ChecksumType::FullObject => {
+            (Some(algorithm.clone()), Some(value.clone()))
+        }
+        _ => (None, None),
     }
 }
 
@@ -699,6 +804,7 @@ pub async fn put_object(
         storage_class,
         checksum_algorithm,
         checksum_value,
+        parts: None,
         replication_status: None,
         lock_updated_at: None,
         content_updated_at: None,
@@ -1131,8 +1237,9 @@ async fn copy_object(
         retain_until_date: None,
         legal_hold_status: None,
         storage_class: src_record.storage_class.clone(),
-        checksum_algorithm: src_record.checksum_algorithm.clone(),
-        checksum_value: src_record.checksum_value.clone(),
+        checksum_algorithm: copied_checksum(&src_record).0,
+        checksum_value: copied_checksum(&src_record).1,
+        parts: None,
         replication_status: None,
         lock_updated_at: None,
         content_updated_at: None,
@@ -1544,7 +1651,7 @@ pub async fn get_object(
             .and_then(|v| v.to_str().ok())
             .unwrap_or("")
             .to_string();
-        return get_object_attributes(&state, &bucket, &key, &resource, &query_str, &attrs_header).await;
+        return get_object_attributes(&state, &bucket, &key, &resource, &query_str, request.headers(), &attrs_header).await;
     }
 
     // Parse ?versionId= from query params.
@@ -1641,12 +1748,26 @@ pub async fn get_object(
         .and_then(|v| v.to_str().ok())
         .is_some_and(|v| v.eq_ignore_ascii_case("ENABLED"));
 
+    // ?partNumber=N selects the bytes of one part (TD-046); it cannot be
+    // combined with a Range header, which part_selection refuses.
+    let mut record = record;
+    if wants_part_number(&query_str) {
+        if let Err(resp) = load_parts(&state, &bucket, &key, &mut record, &resource).await {
+            return resp;
+        }
+    }
+    let part = match part_selection(&query_str, request.headers(), &record, &resource) {
+        Ok(part) => part,
+        Err(e) => return s3_error_response(e),
+    };
+
     let range = parse_range_header(request.headers(), record.size);
 
-    let byte_range = match range {
-        RangeParseResult::Range(r) => Some(r),
-        RangeParseResult::None => None,
-        RangeParseResult::Invalid => {
+    let byte_range = match (&part, range) {
+        (Some(selected), _) => selected.range,
+        (None, RangeParseResult::Range(r)) => Some(r),
+        (None, RangeParseResult::None) => None,
+        (None, RangeParseResult::Invalid) => {
             return s3_error_response(S3Error::new(S3ErrorCode::InvalidRange, &resource));
         }
     };
@@ -1657,6 +1778,10 @@ pub async fn get_object(
             let len = end - r.start + 1;
             let range_str = format!("bytes {}-{}/{}", r.start, end, record.size);
             (StatusCode::PARTIAL_CONTENT, len, Some(range_str))
+        }
+        // An empty part of a multipart object: no bytes, still a part.
+        None if part.as_ref().is_some_and(|p| p.parts_count.is_some()) => {
+            (StatusCode::PARTIAL_CONTENT, 0, None)
         }
         None => (StatusCode::OK, record.size, None),
     };
@@ -1700,6 +1825,7 @@ pub async fn get_object(
     let last_modified = record.last_modified.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
     let mut content_type = record
         .content_type
+        .clone()
         .unwrap_or_else(|| "application/octet-stream".to_string());
 
     // Parse response override query parameters (response-content-type, etc.).
@@ -1794,12 +1920,16 @@ pub async fn get_object(
     }
 
     // Checksum header: only return when client sends x-amz-checksum-mode: ENABLED
-    // (skip on range/partial responses: stored checksum is for full object)
-    let checksum_mode_enabled = checksum_requested;
-    if checksum_mode_enabled && status != StatusCode::PARTIAL_CONTENT {
-        if let (Some(ref algo), Some(ref val)) = (&record.checksum_algorithm, &record.checksum_value) {
-            let header_name = format!("x-amz-checksum-{}", algo.to_lowercase());
-            builder = builder.header(header_name, val.as_str());
+    // (skip on range/partial responses: stored checksum is for full object;
+    // a `?partNumber` response carries the checksum of that part instead)
+    if let Some(parts_count) = part.as_ref().and_then(|p| p.parts_count) {
+        builder = builder.header("x-amz-mp-parts-count", parts_count.to_string());
+    }
+    if checksum_requested {
+        let selected_part = part.as_ref().filter(|p| p.parts_count.is_some());
+        let whole = status != StatusCode::PARTIAL_CONTENT || selected_part.is_some();
+        if whole {
+            builder = with_checksum_headers(builder, &record, selected_part);
         }
     }
 
@@ -1916,19 +2046,57 @@ pub async fn head_object(
         ));
     }
 
+    // ?partNumber=N: the size and the position of one part (TD-046).
+    let mut record = record;
+    if wants_part_number(request.uri().query().unwrap_or("")) {
+        if let Err(resp) = load_parts(&state, &bucket, &key, &mut record, &resource).await {
+            return resp;
+        }
+    }
+    let part = match part_selection(
+        request.uri().query().unwrap_or(""),
+        request.headers(),
+        &record,
+        &resource,
+    ) {
+        Ok(part) => part,
+        Err(e) => return s3_error_response(e),
+    };
+    let (status, content_length, content_range) = match part.as_ref().and_then(|p| p.range) {
+        Some(r) => {
+            let end = r.end.unwrap_or(record.size.saturating_sub(1));
+            (
+                StatusCode::PARTIAL_CONTENT,
+                end - r.start + 1,
+                Some(format!("bytes {}-{}/{}", r.start, end, record.size)),
+            )
+        }
+        None if part.as_ref().is_some_and(|p| p.parts_count.is_some()) => {
+            (StatusCode::PARTIAL_CONTENT, 0, None)
+        }
+        None => (StatusCode::OK, record.size, None),
+    };
+
     let etag = format!("\"{}\"", record.etag);
     let last_modified = record.last_modified.format("%a, %d %b %Y %H:%M:%S GMT").to_string();
     let content_type = record
         .content_type
+        .clone()
         .unwrap_or_else(|| "application/octet-stream".to_string());
 
     let mut builder = Response::builder()
-        .status(StatusCode::OK)
+        .status(status)
         .header("ETag", &etag)
         .header("Last-Modified", &last_modified)
-        .header("Content-Length", record.size)
+        .header("Content-Length", content_length)
         .header("Content-Type", &content_type)
         .header("Accept-Ranges", "bytes");
+    if let Some(range_str) = content_range {
+        builder = builder.header("Content-Range", range_str);
+    }
+    if let Some(parts_count) = part.as_ref().and_then(|p| p.parts_count) {
+        builder = builder.header("x-amz-mp-parts-count", parts_count.to_string());
+    }
 
     if let Some(ref vid) = record.version_id {
         builder = builder.header("x-amz-version-id", vid.as_str());
@@ -1975,10 +2143,8 @@ pub async fn head_object(
         .and_then(|v| v.to_str().ok())
         .is_some_and(|v| v.eq_ignore_ascii_case("ENABLED"));
     if head_checksum_mode {
-        if let (Some(ref algo), Some(ref val)) = (&record.checksum_algorithm, &record.checksum_value) {
-            let header_name = format!("x-amz-checksum-{}", algo.to_lowercase());
-            builder = builder.header(header_name, val.as_str());
-        }
+        let selected_part = part.as_ref().filter(|p| p.parts_count.is_some());
+        builder = with_checksum_headers(builder, &record, selected_part);
     }
 
     // Storage class (only if not STANDARD, per S3 convention)
@@ -2864,6 +3030,7 @@ async fn get_object_attributes(
     key: &str,
     resource: &str,
     query: &str,
+    headers: &http::HeaderMap,
     attrs_header: &str,
 ) -> Response {
     // Check bucket exists
@@ -2893,6 +3060,14 @@ async fn get_object_attributes(
         Err(e) => return internal_error_response(e, resource),
     };
 
+    // The part layout is read only when ObjectParts was asked for.
+    let mut record = record;
+    if requested.contains(&"ObjectParts") {
+        if let Err(resp) = load_parts(state, bucket, key, &mut record, resource).await {
+            return resp;
+        }
+    }
+
     // Build response with only requested attributes
     let etag = if requested.contains(&"ETag") {
         Some(record.etag.as_str())
@@ -2900,21 +3075,73 @@ async fn get_object_attributes(
         None
     };
 
-    let (cksum_algo, cksum_val) = if requested.contains(&"Checksum") {
-        (
-            record.checksum_algorithm.as_deref(),
-            record.checksum_value.as_deref(),
-        )
+    let checksum = if requested.contains(&"Checksum") {
+        match (&record.checksum_algorithm, &record.checksum_value) {
+            (Some(algorithm), Some(value)) => Some(xml_types::ResultChecksum {
+                algorithm,
+                value,
+                kind: ChecksumType::of_value(value).as_str(),
+            }),
+            _ => None,
+        }
     } else {
-        (None, None)
+        None
     };
 
-    // Parse part count from composite ETag (format: hex-N)
-    let parts_count = if requested.contains(&"ObjectParts") {
-        record
-            .etag
-            .rsplit_once('-')
-            .and_then(|(_, n)| n.parse::<u32>().ok())
+    // ObjectParts: a page of the recorded layout (TD-046). `x-amz-max-parts`
+    // and `x-amz-part-number-marker` page it the way ListParts pages.
+    let header_u32 = |name: &str, default: u32| -> Result<u32, S3Error> {
+        match headers.get(name) {
+            None => Ok(default),
+            Some(v) => v.to_str().ok().and_then(|s| s.trim().parse::<u32>().ok()).ok_or_else(|| {
+                S3Error::with_message(
+                    S3ErrorCode::InvalidArgument,
+                    format!("Invalid value for {name}"),
+                    resource,
+                )
+            }),
+        }
+    };
+    let max_parts = match header_u32("x-amz-max-parts", object_parts::DEFAULT_MAX_PARTS) {
+        Ok(n) => n.clamp(1, object_parts::DEFAULT_MAX_PARTS),
+        Err(e) => return s3_error_response(e),
+    };
+    let part_number_marker = match header_u32("x-amz-part-number-marker", 0) {
+        Ok(n) => n,
+        Err(e) => return s3_error_response(e),
+    };
+    let page_parts: Vec<arca_core::types::ObjectPart>;
+    let object_parts_page = if requested.contains(&"ObjectParts") {
+        match &record.parts {
+            Some(parts) => {
+                let page = object_parts::parts_page(parts, part_number_marker, max_parts);
+                page_parts = page.parts.iter().map(|p| (*p).clone()).collect();
+                Some(xml_types::ObjectPartsPage {
+                    total_parts: page.total,
+                    part_number_marker,
+                    next_part_number_marker: page.next_marker,
+                    max_parts,
+                    is_truncated: page.next_marker.is_some(),
+                    checksum_algorithm: record.checksum_algorithm.as_deref(),
+                    parts: &page_parts,
+                })
+            }
+            // A multipart object completed before the layout was recorded:
+            // only the number of parts is known, from the ETag (`<md5>-<count>`).
+            None => record
+                .etag
+                .rsplit_once('-')
+                .and_then(|(_, n)| n.parse::<u32>().ok())
+                .map(|total_parts| xml_types::ObjectPartsPage {
+                    total_parts,
+                    part_number_marker: 0,
+                    next_part_number_marker: None,
+                    max_parts,
+                    is_truncated: false,
+                    checksum_algorithm: None,
+                    parts: &[],
+                }),
+        }
     } else {
         None
     };
@@ -2931,14 +3158,13 @@ async fn get_object_attributes(
         None
     };
 
-    let xml = xml_types::get_object_attributes_result(
+    let xml = xml_types::get_object_attributes_result(&xml_types::ObjectAttributesResponse {
         etag,
-        cksum_algo,
-        cksum_val,
-        parts_count,
+        checksum,
+        object_parts: object_parts_page,
         storage_class,
         object_size,
-    );
+    });
 
     let mut builder = Response::builder()
         .status(StatusCode::OK)

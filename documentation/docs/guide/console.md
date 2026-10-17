@@ -41,18 +41,44 @@ Because signing happens in the browser, the console must be served from a secure
 
     This starts the console on [http://localhost:9080](http://localhost:9080).
 
+=== "Published image"
+
+    No build needed. With the repository checked out:
+
+    ```bash
+    bin/console start -d --release latest
+    ```
+
+    Or with plain Docker, without even cloning the repository:
+
+    ```bash
+    docker run -d --name arca-console -p 9080:8080 \
+        -e ARCA_ENDPOINT=http://localhost:9000 \
+        ghcr.io/dxc-technology/arca-console:latest
+    ```
+
+    The image is public and multi-arch (see [Installation](../getting-started/installation.md#pre-built-images) for the tags). Without `--release`, `bin/console start` follows the server: the release it was started with, else your local build, else the published `latest` is pulled.
+
 === "HTTPS"
 
     ```bash
-    bin/console start -d --build --tls
+    bin/console start -d --build
     ```
 
-    This starts the console on port **9443** with TLS, using certificates from the `certs/` directory. Enter the Arca HTTPS endpoint at the login screen.
+    The console has no `--tls` flag: it inherits TLS from the Arca server started with `bin/arca start -d --tls`. It listens on port **9443** with TLS, using the certificates Arca uses. Enter the Arca HTTPS endpoint at the login screen.
+
+    With plain Docker, mount the certificates and publish port 8443; the key is readable through the supplementary group 65532:
+
+    ```bash
+    docker run -d --name arca-console -p 9443:8443 --group-add 65532 \
+        -v "$PWD/certs:/etc/nginx/certs:ro" \
+        ghcr.io/dxc-technology/arca-console:latest
+    ```
 
 !!! tip
-    Drop the `-d` flag to run in the foreground and see container logs in real time. Press ++ctrl+c++ to stop.
+    Drop the `-d` flag to run in the foreground and see container logs in real time. Press ++ctrl+c++ to stop, or run `bin/console stop` (`docker stop arca-console` for the plain Docker run).
 
-The `ARCA_ENDPOINT` environment variable controls which Arca server the console connects to. In the default Docker Compose setup, it's set to `http://localhost:9000` so the browser (running on the host) can reach Arca directly. With `--tls`, the endpoint is not preset — enter it at the login screen.
+The `ARCA_ENDPOINT` environment variable controls which Arca server the console connects to. In the default Docker Compose setup, it's set to `http://localhost:9000` so the browser (running on the host) can reach Arca directly. With `docker run`, pass it with `-e ARCA_ENDPOINT=...`. The container listens on 8080 (HTTP) and 8443 (HTTPS), mapped to host ports 9080 and 9443 by Compose. With TLS, the endpoint is not preset: enter it at the login screen.
 
 ## Login
 

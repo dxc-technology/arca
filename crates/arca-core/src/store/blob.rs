@@ -260,7 +260,7 @@ pub struct PutHints {
 }
 
 /// A byte range for partial reads.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ByteRange {
     /// Start byte offset (inclusive).
     pub start: u64,

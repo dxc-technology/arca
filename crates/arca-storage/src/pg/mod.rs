@@ -116,6 +116,11 @@ const MIGRATIONS: &[Migration] = &[
         description: "Add initiator to multipart_uploads (TD-042: ListParts / ListMultipartUploads owner)",
         sql: include_str!("migrations/0015_multipart_initiator.sql"),
     },
+    Migration {
+        version: 16,
+        description: "Add objects.parts and multipart_uploads.checksum_type (TD-046: multipart checksum and part layout)",
+        sql: include_str!("migrations/0016_multipart_checksum.sql"),
+    },
 ];
 
 impl PgStore {

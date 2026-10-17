@@ -120,6 +120,8 @@ GET /{bucket}/{key+} HTTP/1.1
 
 Returns the object body with `Content-Type`, `Content-Length`, `ETag`, and `Last-Modified` headers.
 
+`?partNumber={n}` returns the bytes of part `n` of an object assembled by CompleteMultipartUpload (`206`, with `Content-Range` and `x-amz-mp-parts-count`; the `ETag` is the object's). With `x-amz-checksum-mode: ENABLED` the response carries the checksum of that part and the object's `x-amz-checksum-type`. A part number outside the object's parts, or `n > 1` on an object that was not uploaded in parts, answers `400 InvalidPart`; `n = 1` on such an object returns it whole. `partNumber` cannot be combined with `Range` (`400 InvalidRequest`). A multipart object completed by an older version has no recorded part layout, so `?partNumber` answers `400 InvalidPart` for it.
+
 ### HeadObject
 
 Retrieve object metadata without downloading the body.
@@ -128,7 +130,7 @@ Retrieve object metadata without downloading the body.
 HEAD /{bucket}/{key+} HTTP/1.1
 ```
 
-Returns the same headers as GetObject, but with no response body.
+Returns the same headers as GetObject, but with no response body. `?partNumber={n}` gives the size (`Content-Length`) and position (`Content-Range`) of one part, as above.
 
 ### DeleteObject
 
@@ -216,7 +218,9 @@ Initiate a multipart upload and obtain an upload ID.
 POST /{bucket}/{key+}?uploads HTTP/1.1
 ```
 
-Returns `InitiateMultipartUploadResult` XML containing the `UploadId`. An `x-amz-checksum-algorithm` header is recorded on the upload and echoed back; ListParts then reports each part's checksum of that algorithm.
+Returns `InitiateMultipartUploadResult` XML containing the `UploadId`.
+
+`x-amz-checksum-algorithm` (`CRC32`, `CRC32C`, `CRC64NVME`, `SHA1`, `SHA256`) and `x-amz-checksum-type` (`COMPOSITE` or `FULL_OBJECT`) choose the checksum the completed object gets, see [Multipart checksums](#multipart-checksums). Both are echoed back as response headers. A type alone, an unknown algorithm or type, and a combination that does not exist (SHA with `FULL_OBJECT`, `CRC64NVME` with `COMPOSITE`) are `400 InvalidRequest`; without a type the algorithm's default is used.
 
 ### UploadPart
 
@@ -229,6 +233,8 @@ PUT /{bucket}/{key+}?partNumber={n}&uploadId={id} HTTP/1.1
 Part numbers range from 1 to 10000. Each part (except the last) must be at least 5 MB.
 
 The part body is verified exactly like a PutObject body (see [Request body integrity](#request-body-integrity)); a refused part is not stored and does not replace an earlier upload of the same part number. A verified `x-amz-checksum-<algo>` is returned on the response.
+
+When the upload was created with a checksum algorithm, the part is checksummed with it: Arca computes the checksum when the request declares none, and a checksum declared for another algorithm is `400 InvalidRequest` (`Checksum Type mismatch occurred, expected checksum Type: ..., actual checksum Type: ...`).
 
 ### CompleteMultipartUpload
 
@@ -251,7 +257,7 @@ POST /{bucket}/{key+}?uploadId={id} HTTP/1.1
 
 The resulting ETag is a composite: `hex(MD5(binary_MD5(part1) || binary_MD5(part2) || ...))-{count}`.
 
-The completed object has no checksum: the COMPOSITE / FULL_OBJECT checksum is not computed, and the `Checksum<ALGO>` part fields and a whole-object `x-amz-checksum-*` header are accepted but not validated (TD-046).
+The response carries the object's `Checksum<ALGO>` and `ChecksumType` when the upload has a checksum algorithm. See [Multipart checksums](#multipart-checksums) for what is checked and what the object gets.
 
 ### AbortMultipartUpload
 
@@ -298,7 +304,29 @@ This is what makes the default behaviour of current SDKs work end to end: boto3 
 
 The chunks and the trailer of a signed aws-chunked body (`STREAMING-AWS4-HMAC-SHA256-PAYLOAD` and `-PAYLOAD-TRAILER`, sent by MinIO clients over plain HTTP) are verified against the request's signature while the body streams: a modified byte, a bad or missing chunk signature, a bad trailer signature and a body cut before its final chunk all answer `403 SignatureDoesNotMatch` and store nothing. Signed chunks are not accepted with a presigned URL.
 
-Not verified: multipart object checksums at CompleteMultipartUpload (TD-046).
+## Multipart checksums
+
+An upload created with `x-amz-checksum-algorithm` gives its completed object a checksum, built from the part checksums (no object byte is read at Complete time):
+
+| Type | Value | Algorithms |
+|---|---|---|
+| `COMPOSITE` | `base64(H(raw part checksums, concatenated))-N`, `N` the number of parts | `CRC32`, `CRC32C`, `SHA1`, `SHA256` |
+| `FULL_OBJECT` | the CRC of the whole object, rebuilt from the part CRCs and sizes | `CRC32`, `CRC32C`, `CRC64NVME` |
+
+`CRC64NVME` (the AWS CLI default) only has the full-object form, `SHA1` and `SHA256` only the composite one; `CRC32` and `CRC32C` default to composite.
+
+CompleteMultipartUpload checks, before anything is assembled (a refused request leaves the upload as it was, so the client can fix it and complete again):
+
+- `x-amz-mp-object-size`, when sent, equals the size of the object (`400 InvalidRequest`);
+- `x-amz-checksum-type`, when sent, is the upload's type (`400 InvalidRequest`);
+- a whole-object `x-amz-checksum-<algo>` header equals the checksum computed from the parts (`400 BadDigest`; one for another algorithm is `400 InvalidRequest`);
+- a `Checksum<ALGO>` given for a part in the XML equals the one stored for that part (`400 BadDigest`); a part left without one in the XML is accepted.
+
+The object gets a checksum only when every part has a stored checksum; a part uploaded by an older version may not. The checksum is returned by Complete, by HeadObject and GetObject with `x-amz-checksum-mode: ENABLED`, and by GetObjectAttributes (`Checksum`, with `ChecksumType`).
+
+The layout of the parts (number, size and checksum of each) is recorded with the object for every multipart object, with or without a checksum. It is what `?partNumber` and the `ObjectParts` of GetObjectAttributes read (`x-amz-max-parts` and `x-amz-part-number-marker` page it). It is read on demand, so GET, HEAD and listings of a multipart object cost the same whatever its number of parts.
+
+CopyObject keeps a `FULL_OBJECT` checksum (same bytes) and drops a `COMPOSITE` one: the copy has no parts, and never has a layout.
 
 ## Intentional divergences from AWS S3
 
@@ -307,6 +335,10 @@ Arca targets drop-in AWS S3 compatibility: what AWS accepts, Arca accepts; what 
 ### Conditional `CompleteMultipartUpload` never returns 409
 
 AWS can answer a conditional `CompleteMultipartUpload` with `409 ConditionalRequestConflict` when a conflicting operation is in flight. Arca evaluates the precondition once, at commit time, and has no "conflict in flight" state, so every refused precondition is `412 PreconditionFailed`. Clients that retry on 409 should treat 412 the same way: re-read the object and decide again.
+
+### Multipart uploads without a checksum algorithm
+
+AWS now gives an object uploaded without any checksum a `CRC64NVME` `FULL_OBJECT` checksum, computed by the service. Arca does not: an upload created without `x-amz-checksum-algorithm` completes without an object checksum, as before. Clients that ask for a checksum (the AWS CLI and current SDKs do by default) get it.
 
 ### `If-None-Match` with a specific ETag
 

@@ -5,7 +5,7 @@ use arca_core::store::{
     CompletedUpload, DeletePrecondition, MetadataStore, VersionPosition, WritePrecondition,
 };
 use arca_core::types::{
-    BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
+    BlobId, BucketInfo, MultipartUploadRecord, ObjectPart, ObjectRecord, PartRecord, StorageStats,
     VersioningState,
 };
 use std::collections::HashMap;
@@ -63,8 +63,20 @@ fn get_versioning_state(conn: &Connection, bucket: &str) -> VersioningState {
     }
 }
 
-/// Column list for all object SELECT queries (20 columns).
-const OBJECT_COLUMNS: &str = "bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status, is_tombstone, lock_updated_at, content_updated_at";
+/// Column list of the object SELECT queries that serve S3 requests: every
+/// column except `parts`, the part layout of a multipart object, which can be
+/// 10,000 entries and is read on demand (`get_object_parts`).
+macro_rules! object_columns {
+    () => {
+        "bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status, is_tombstone, lock_updated_at, content_updated_at"
+    };
+}
+const OBJECT_COLUMNS: &str = object_columns!();
+
+/// [`OBJECT_COLUMNS`] plus the part layout, for the queries that read a row to
+/// write it back or to hand it to a peer (`apply_remote_object`, the
+/// replication manifest): leaving the layout out there would lose it.
+const OBJECT_COLUMNS_FULL: &str = concat!(object_columns!(), ", parts");
 
 /// Deletes an upload and its parts inside `tx` and returns the parts that
 /// were deleted (none when the upload is already gone).
@@ -550,6 +562,7 @@ impl MetadataStore for SqliteStore {
                             storage_class: "STANDARD".to_string(),
                             checksum_algorithm: None,
                             checksum_value: None,
+                            parts: None,
                             replication_status: None,
                             lock_updated_at: None,
                             content_updated_at: None,
@@ -592,6 +605,34 @@ impl MetadataStore for SqliteStore {
     }
 
     // -- Versioned object operations --
+
+    async fn get_object_parts(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+    ) -> Result<Option<Vec<ObjectPart>>, ArcaError> {
+        let bucket = bucket.to_string();
+        let key = key.to_string();
+        let version_id = version_id.map(str::to_string);
+        self.read_conn()
+            .call(move |conn| {
+                // `IS` matches the null version (no version id) as well as a named one.
+                let stored = conn.query_row(
+                    "SELECT parts FROM objects \
+                     WHERE bucket = ?1 AND key = ?2 AND version_id IS ?3 AND is_tombstone = 0",
+                    params![bucket, key, version_id],
+                    |row| row.get::<_, Option<String>>(0),
+                );
+                match stored {
+                    Ok(json) => Ok(json.and_then(|j| serde_json::from_str(&j).ok())),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(e.into()),
+                }
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("get_object_parts: {e}")))
+    }
 
     async fn get_object_version(
         &self,
@@ -755,11 +796,11 @@ impl MetadataStore for SqliteStore {
                 // caught-up nodes don't redeliver forever.
                 let (select_sql, delete_sql) = match &record.version_id {
                     Some(_) => (
-                        format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3"),
+                        format!("SELECT {OBJECT_COLUMNS_FULL} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3"),
                         "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
                     ),
                     None => (
-                        format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL"),
+                        format!("SELECT {OBJECT_COLUMNS_FULL} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL"),
                         "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
                     ),
                 };
@@ -892,8 +933,8 @@ impl MetadataStore for SqliteStore {
                 // A multipart upload is immutable once created (upload_id is the
                 // key), so a re-delivered op is a no-op rather than an error.
                 conn.execute(
-                    "INSERT INTO multipart_uploads (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                    "INSERT INTO multipart_uploads (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator, checksum_type)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
                      ON CONFLICT(upload_id) DO NOTHING",
                     params![
                         record.upload_id,
@@ -904,6 +945,7 @@ impl MetadataStore for SqliteStore {
                         metadata_json,
                         record.checksum_algorithm,
                         record.initiator,
+                        record.checksum_type,
                     ],
                 )?;
                 Ok(())
@@ -921,14 +963,14 @@ impl MetadataStore for SqliteStore {
     ) -> Result<Vec<(u64, ObjectRecord)>, ArcaError> {
         self.read_conn()
             .call(move |conn| {
-                // `seq` is appended after the OBJECT_COLUMNS set, so it reads at
+                // `seq` is appended after the OBJECT_COLUMNS_FULL set, so it reads at
                 // the index just past the record columns; row_to_object_record
                 // stays untouched.
                 let sql = format!(
-                    "SELECT {OBJECT_COLUMNS}, seq FROM objects \
+                    "SELECT {OBJECT_COLUMNS_FULL}, seq FROM objects \
                      WHERE seq > ?1 ORDER BY seq ASC LIMIT ?2"
                 );
-                let seq_idx = OBJECT_COLUMNS.split(',').count();
+                let seq_idx = OBJECT_COLUMNS_FULL.split(',').count();
                 let mut stmt = conn.prepare(&sql)?;
                 let rows = stmt.query_map(params![since as i64, limit], |row| {
                     let record = row_to_object_record(row)?;
@@ -1364,8 +1406,8 @@ impl MetadataStore for SqliteStore {
                 let metadata_json = serde_json::to_string(&record.metadata)
                     .unwrap_or_else(|_| "{}".to_string());
                 conn.execute(
-                    "INSERT INTO multipart_uploads (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    "INSERT INTO multipart_uploads (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator, checksum_type)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                     params![
                         record.upload_id,
                         record.bucket,
@@ -1375,6 +1417,7 @@ impl MetadataStore for SqliteStore {
                         metadata_json,
                         record.checksum_algorithm,
                         record.initiator,
+                        record.checksum_type,
                     ],
                 )?;
                 Ok(())
@@ -1391,7 +1434,7 @@ impl MetadataStore for SqliteStore {
         self.read_conn()
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator
+                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator, checksum_type
                      FROM multipart_uploads WHERE upload_id = ?1",
                 )?;
                 let result = stmt.query_row(params![upload_id], |row| {
@@ -1550,7 +1593,7 @@ impl MetadataStore for SqliteStore {
         self.read_conn()
             .call(move |conn| {
                 let mut sql = String::from(
-                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator
+                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator, checksum_type
                      FROM multipart_uploads WHERE bucket = ?1",
                 );
                 let mut param_idx = 2u32;
@@ -1983,7 +2026,7 @@ impl MetadataStore for SqliteStore {
         self.read_conn()
             .call(move |conn| {
                 let sql = format!(
-                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator \
+                    "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator, checksum_type \
                      FROM multipart_uploads \
                      WHERE bucket = ?1 AND initiated_at < ?2 \
                      ORDER BY key, upload_id \
@@ -2089,10 +2132,11 @@ fn insert_object_row(
     let retain_until_str = record.retain_until_date.map(|dt| dt.to_rfc3339());
     let lock_updated_str = record.lock_updated_at.map(|dt| dt.to_rfc3339());
     let content_updated_str = record.content_updated_at.map(|dt| dt.to_rfc3339());
+    let parts_json = parts_to_json(record);
     let seq = next_object_seq(conn)?;
     conn.execute(
-        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq, is_tombstone, lock_updated_at, content_updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
+        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq, is_tombstone, lock_updated_at, content_updated_at, parts)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
         params![
             record.bucket,
             record.key,
@@ -2118,9 +2162,18 @@ fn insert_object_row(
             record.is_tombstone as i32,
             lock_updated_str,
             content_updated_str,
+            parts_json,
         ],
     )?;
     Ok(())
+}
+
+/// The part layout of `record` as the JSON text stored in `objects.parts`.
+fn parts_to_json(record: &ObjectRecord) -> Option<String> {
+    record
+        .parts
+        .as_ref()
+        .and_then(|parts| serde_json::to_string(parts).ok())
 }
 
 /// Recomputes `is_latest` for a key deterministically: exactly the row with the
@@ -2162,10 +2215,11 @@ fn insert_replicated_row(
     let retain_until_str = record.retain_until_date.map(|dt| dt.to_rfc3339());
     let lock_updated_str = record.lock_updated_at.map(|dt| dt.to_rfc3339());
     let content_updated_str = record.content_updated_at.map(|dt| dt.to_rfc3339());
+    let parts_json = parts_to_json(record);
     let seq = next_object_seq(conn)?;
     conn.execute(
-        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status, seq, is_tombstone, lock_updated_at, content_updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
+        "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, replication_status, seq, is_tombstone, lock_updated_at, content_updated_at, parts)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
         params![
             record.bucket,
             record.key,
@@ -2191,6 +2245,7 @@ fn insert_replicated_row(
             record.is_tombstone as i32,
             lock_updated_str,
             content_updated_str,
+            parts_json,
         ],
     )?;
     Ok(())
@@ -2259,6 +2314,7 @@ pub(super) fn row_to_multipart_upload_record(
 
     let checksum_algorithm: Option<String> = row.get(6).unwrap_or(None);
     let initiator: String = row.get(7)?;
+    let checksum_type: Option<String> = row.get(8).unwrap_or(None);
 
     Ok(MultipartUploadRecord {
         upload_id: row.get(0)?,
@@ -2268,6 +2324,7 @@ pub(super) fn row_to_multipart_upload_record(
         initiated_at,
         metadata,
         checksum_algorithm,
+        checksum_type,
         initiator,
     })
 }
@@ -2349,6 +2406,10 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
             .map(|dt| dt.with_timezone(&chrono::Utc))
             .ok()
     });
+    let parts: Option<Vec<ObjectPart>> = row
+        .get::<_, Option<String>>(24)
+        .unwrap_or(None)
+        .and_then(|s| serde_json::from_str(&s).ok());
 
     Ok(ObjectRecord {
         bucket: row.get(0)?,
@@ -2372,6 +2433,7 @@ fn row_to_object_record(row: &rusqlite::Row) -> Result<ObjectRecord, rusqlite::E
         storage_class,
         checksum_algorithm,
         checksum_value,
+        parts,
         replication_status,
         lock_updated_at,
         content_updated_at,
@@ -2409,6 +2471,7 @@ mod tests {
             storage_class: "STANDARD".to_string(),
             checksum_algorithm: None,
             checksum_value: None,
+            parts: None,
             replication_status: None,
             lock_updated_at: None,
             content_updated_at: None,
@@ -2436,6 +2499,7 @@ mod tests {
             initiated_at: chrono::Utc::now(),
             metadata: HashMap::new(),
             checksum_algorithm: None,
+            checksum_type: None,
             initiator: "root".to_string(),
         };
         store.create_multipart_upload(&mpu).await.unwrap();
@@ -2582,6 +2646,7 @@ mod tests {
             initiated_at: chrono::Utc::now(),
             metadata: Default::default(),
             checksum_algorithm: None,
+            checksum_type: None,
             initiator: "root".to_string(),
         };
         // Verbatim insert (no local create_multipart_upload first).
@@ -2840,6 +2905,7 @@ mod tests {
             initiated_at: chrono::Utc::now(),
             metadata: HashMap::new(),
             checksum_algorithm: None,
+            checksum_type: None,
             initiator: "root".to_string(),
         }
     }
@@ -4668,6 +4734,163 @@ mod tests {
             let stored = store.get_object(bucket, "key1").await.unwrap().unwrap();
             assert_eq!(stored.owner, "alice", "bucket {bucket}");
         }
+    }
+
+    // -- multipart checksum: part layout and checksum type (TD-046) --
+
+    fn layout() -> Vec<ObjectPart> {
+        vec![
+            ObjectPart { part_number: 1, size: 5 * 1024 * 1024, checksum: Some("JRTCyQ==".to_string()) },
+            ObjectPart { part_number: 2, size: 1024, checksum: None },
+        ]
+    }
+
+    #[tokio::test]
+    async fn put_object_stores_the_part_layout() {
+        let store = test_store().await;
+        for (bucket, versioned) in [("plain", false), ("enabled", true)] {
+            store.create_bucket(bucket).await.unwrap();
+            if versioned {
+                enable_versioning(&store, bucket).await;
+            }
+            let mut r = make_record(bucket, "key1");
+            r.parts = Some(layout());
+            let (_, version_id) = store.put_object_if(&r, &WritePrecondition::default()).await.unwrap();
+            let got = store
+                .get_object_parts(bucket, "key1", version_id.as_deref())
+                .await
+                .unwrap();
+            assert_eq!(got, Some(layout()), "bucket {bucket}");
+        }
+    }
+
+    #[tokio::test]
+    async fn the_hot_reads_do_not_load_the_part_layout() {
+        // A GET, a HEAD or a listing never needs the layout of a multipart
+        // object, which can run to 10,000 parts: it is read on demand.
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut r = make_record("b", "key1");
+        r.parts = Some(layout());
+        store.put_object_if(&r, &WritePrecondition::default()).await.unwrap();
+
+        assert_eq!(store.get_object("b", "key1").await.unwrap().unwrap().parts, None);
+        assert_eq!(store.get_latest_object("b", "key1").await.unwrap().unwrap().parts, None);
+        assert_eq!(store.list_objects("b", None, None, 10).await.unwrap()[0].parts, None);
+        // ...while it is stored: the on-demand read still finds it.
+        assert_eq!(store.get_object_parts("b", "key1", None).await.unwrap(), Some(layout()));
+    }
+
+    #[tokio::test]
+    async fn get_object_parts_is_none_without_a_layout_or_an_object() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        store
+            .put_object_if(&make_record("b", "plain"), &WritePrecondition::default())
+            .await
+            .unwrap();
+        assert_eq!(store.get_object_parts("b", "plain", None).await.unwrap(), None);
+        assert_eq!(store.get_object_parts("b", "missing", None).await.unwrap(), None);
+        assert_eq!(store.get_object_parts("b", "plain", Some("no-such-version")).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn get_object_parts_follows_the_version() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+        let mut first = make_record("b", "key1");
+        first.parts = Some(layout());
+        let (_, v1) = store.put_object_if(&first, &WritePrecondition::default()).await.unwrap();
+        let (_, v2) = store
+            .put_object_if(&make_record("b", "key1"), &WritePrecondition::default())
+            .await
+            .unwrap();
+        assert_eq!(store.get_object_parts("b", "key1", v1.as_deref()).await.unwrap(), Some(layout()));
+        assert_eq!(store.get_object_parts("b", "key1", v2.as_deref()).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn complete_multipart_object_stores_the_part_layout() {
+        let store = test_store().await;
+        upload_with_parts(&store).await;
+        let mut r = make_record("b", "key1");
+        r.parts = Some(layout());
+        r.checksum_algorithm = Some("CRC32".to_string());
+        r.checksum_value = Some("WgDhBQ==".to_string());
+        store
+            .complete_multipart_object("up-1", &r, &WritePrecondition::default())
+            .await
+            .unwrap();
+        assert_eq!(store.get_object_parts("b", "key1", None).await.unwrap(), Some(layout()));
+        let stored = store.get_object("b", "key1").await.unwrap().unwrap();
+        assert_eq!(stored.checksum_value.as_deref(), Some("WgDhBQ=="));
+    }
+
+    #[tokio::test]
+    async fn a_replicated_object_keeps_the_part_layout() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut r = make_record("b", "key1");
+        r.parts = Some(layout());
+        store.apply_remote_object(&r).await.unwrap();
+        assert_eq!(store.get_object_parts("b", "key1", None).await.unwrap(), Some(layout()));
+    }
+
+    #[tokio::test]
+    async fn the_replication_manifest_carries_the_part_layout() {
+        // Peers pull the rows of this node from the manifest: without the
+        // layout in it, a replica would never learn it.
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut r = make_record("b", "key1");
+        r.parts = Some(layout());
+        store.put_object_if(&r, &WritePrecondition::default()).await.unwrap();
+        let rows = store.list_rows_changed_since(0, 10).await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].1.parts, Some(layout()));
+    }
+
+    #[tokio::test]
+    async fn a_lock_register_merge_keeps_the_stored_part_layout() {
+        // An incoming copy of the same content with a newer lock state is merged
+        // into the local row, which is read back and rewritten: the layout the
+        // incoming copy does not carry must survive.
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut local = make_record("b", "key1");
+        local.parts = Some(layout());
+        store.apply_remote_object(&local).await.unwrap();
+
+        let mut incoming = local.clone();
+        incoming.parts = None;
+        incoming.retention_mode = Some("GOVERNANCE".to_string());
+        incoming.retain_until_date = Some(chrono::Utc::now() + chrono::Duration::days(1));
+        incoming.lock_updated_at = Some(chrono::Utc::now());
+        store.apply_remote_object(&incoming).await.unwrap();
+
+        let stored = store.get_object("b", "key1").await.unwrap().unwrap();
+        assert_eq!(stored.retention_mode.as_deref(), Some("GOVERNANCE"), "the merge happened");
+        assert_eq!(store.get_object_parts("b", "key1", None).await.unwrap(), Some(layout()));
+    }
+
+    #[tokio::test]
+    async fn multipart_upload_stores_the_checksum_type() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let mut upload = make_upload("up-1", "b", "key1");
+        upload.checksum_algorithm = Some("CRC32".to_string());
+        upload.checksum_type = Some("FULL_OBJECT".to_string());
+        store.create_multipart_upload(&upload).await.unwrap();
+
+        let got = store.get_multipart_upload("up-1").await.unwrap().unwrap();
+        assert_eq!(got.checksum_type.as_deref(), Some("FULL_OBJECT"));
+        let listed = store.list_multipart_uploads("b", None, None, None, 10).await.unwrap();
+        assert_eq!(listed[0].checksum_type.as_deref(), Some("FULL_OBJECT"));
+
+        // An upload that named no type keeps none (the default is derived).
+        store.create_multipart_upload(&make_upload("up-2", "b", "key2")).await.unwrap();
+        assert_eq!(store.get_multipart_upload("up-2").await.unwrap().unwrap().checksum_type, None);
     }
 
     #[tokio::test]

@@ -899,6 +899,7 @@ mod tests {
             storage_class: "STANDARD".to_string(),
             checksum_algorithm: None,
             checksum_value: None,
+            parts: None,
             replication_status: None,
             lock_updated_at: None,
             content_updated_at: None,
@@ -1063,6 +1064,7 @@ mod tests {
                 initiated_at: initiated,
                 metadata: HashMap::new(),
                 checksum_algorithm: None,
+                checksum_type: None,
                 initiator: "root".to_string(),
             })
             .await
@@ -1408,6 +1410,7 @@ mod tests {
                 initiated_at: chrono::Utc::now() - chrono::Duration::days(age_days),
                 metadata: HashMap::new(),
                 checksum_algorithm: None,
+                checksum_type: None,
                 initiator: "root".to_string(),
             })
             .await

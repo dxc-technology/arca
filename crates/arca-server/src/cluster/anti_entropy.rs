@@ -655,6 +655,7 @@ mod tests {
             storage_class: "STANDARD".to_string(),
             checksum_algorithm: None,
             checksum_value: None,
+            parts: None,
             replication_status: None,
             lock_updated_at: None,
             content_updated_at: None,

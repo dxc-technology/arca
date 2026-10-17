@@ -14,12 +14,10 @@ use boto3's default upload path (its automatic CRC32, sent as a header over
 HTTP and as an aws-chunked trailer over HTTPS).
 """
 
-import base64
 import hashlib
 import io
 import os
 import re
-import zlib
 from urllib.parse import quote
 
 import pytest
@@ -37,40 +35,7 @@ OTHER = b"a different payload!!!! " * 64
 
 # -- Digest helpers (CRC32C and CRC64NVME need awscrt in botocore) --
 
-def _crc_reflected(data, poly, init, xorout):
-    crc = init
-    for byte in data:
-        crc ^= byte
-        for _ in range(8):
-            crc = (crc >> 1) ^ (poly if crc & 1 else 0)
-    return crc ^ xorout
-
-
-def crc32c(data):
-    return _crc_reflected(data, 0x82F63B78, 0xFFFFFFFF, 0xFFFFFFFF)
-
-
-def crc64nvme(data):
-    return _crc_reflected(
-        data, 0x9A6C9329AC4BC9B5, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
-    )
-
-
-def b64(raw):
-    return base64.b64encode(raw).decode()
-
-
-CHECKSUMS = {
-    "CRC32": lambda d: b64(zlib.crc32(d).to_bytes(4, "big")),
-    "CRC32C": lambda d: b64(crc32c(d).to_bytes(4, "big")),
-    "CRC64NVME": lambda d: b64(crc64nvme(d).to_bytes(8, "big")),
-    "SHA1": lambda d: b64(hashlib.sha1(d).digest()),
-    "SHA256": lambda d: b64(hashlib.sha256(d).digest()),
-}
-
-
-def md5_b64(data):
-    return b64(hashlib.md5(data).digest())
+from checksums import CHECKSUMS, b64, crc32c, crc64nvme, md5_b64  # noqa: E402
 
 
 def test_reference_digests():

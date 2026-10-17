@@ -83,6 +83,13 @@ impl ChecksumAlgorithm {
         }
     }
 
+    /// Parses an algorithm name as S3 spells it (`CRC32`, ..., `SHA256`), any case.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|a| a.name().eq_ignore_ascii_case(name.trim()))
+    }
+
     fn from_header_name(name: &str) -> Option<Self> {
         Self::ALL
             .into_iter()
@@ -90,7 +97,7 @@ impl ChecksumAlgorithm {
     }
 
     /// Length in bytes of the raw (base64-decoded) digest.
-    fn digest_len(self) -> usize {
+    pub(crate) fn digest_len(self) -> usize {
         match self {
             ChecksumAlgorithm::Crc32 | ChecksumAlgorithm::Crc32c => 4,
             ChecksumAlgorithm::Crc64Nvme => 8,
@@ -150,6 +157,9 @@ enum ChecksumSource {
     /// In an aws-chunked trailer named by `x-amz-trailer`, known only once
     /// the body has been read.
     Trailer,
+    /// Declared by nobody: the server computes it (a part of an upload that
+    /// was created with a checksum algorithm), nothing to compare.
+    Computed,
 }
 
 /// The integrity declarations of one request, parsed before its body is read.
@@ -252,6 +262,37 @@ impl BodyIntegrity {
         }
 
         Ok(integrity)
+    }
+
+    /// The request is an UploadPart of an upload created with `algorithm`
+    /// (TD-046): its part must carry that checksum, as the object checksum is
+    /// built from the part checksums at Complete.
+    ///
+    /// A checksum declared for another algorithm is refused, as AWS does. A
+    /// request that declares none (header or trailer) has the checksum
+    /// computed while the body streams and recorded with the part, so clients
+    /// that never send part checksums keep working.
+    pub fn require_checksum(
+        &mut self,
+        algorithm: ChecksumAlgorithm,
+        resource: &str,
+    ) -> Result<(), S3Error> {
+        match &self.checksum {
+            Some((declared, _)) if *declared != algorithm => Err(invalid_request(
+                format!(
+                    "Checksum Type mismatch occurred, expected checksum Type: {}, actual checksum Type: {}",
+                    algorithm.name().to_ascii_lowercase(),
+                    declared.name().to_ascii_lowercase()
+                ),
+                resource,
+            )),
+            Some(_) => Ok(()),
+            None => {
+                self.checksum = Some((algorithm, ChecksumSource::Computed));
+                self.declared_algorithm = None;
+                Ok(())
+            }
+        }
     }
 
     /// Wraps the decoded body so that the digests to verify are computed as
@@ -368,6 +409,16 @@ impl IntegrityCheck {
             return Ok((self.spec.declared_algorithm, None));
         };
         let expected = match source {
+            ChecksumSource::Computed => {
+                // Nothing was declared: record what the body hashes to.
+                let computed = checksum.ok_or_else(|| {
+                    S3Error::new(S3ErrorCode::InternalError, resource)
+                })?;
+                return Ok((
+                    Some(algorithm.name().to_string()),
+                    Some(base64::engine::general_purpose::STANDARD.encode(computed)),
+                ));
+            }
             ChecksumSource::Header(raw) => raw,
             ChecksumSource::Trailer => {
                 let value = self
@@ -728,5 +779,81 @@ mod tests {
         let t = trailers(&[("x-amz-checksum-crc32", "DUoRhQ==")]);
         let err = run(&h, b"hello world", Some(t)).await.unwrap_err();
         assert_eq!(err.code, S3ErrorCode::BadDigest);
+    }
+
+    // -- A part of an upload created with a checksum algorithm (TD-046) --
+
+    /// Like [`run`], for a request made to carry `required` (an UploadPart of
+    /// an upload created with that algorithm).
+    async fn run_required(
+        h: &HeaderMap,
+        required: ChecksumAlgorithm,
+        data: &[u8],
+        trailers: Option<Trailers>,
+    ) -> Result<VerifiedChecksum, S3Error> {
+        let mut integrity = BodyIntegrity::from_headers(h, "/b/k")?;
+        integrity.require_checksum(required, "/b/k")?;
+        let chunks = vec![Ok(Bytes::copy_from_slice(data))];
+        let (stream, check) = integrity.wrap(Box::pin(tokio_stream::iter(chunks)), trailers);
+        let mut stream = stream;
+        while let Some(c) = stream.next().await {
+            c.unwrap();
+        }
+        check.verify(&md5_hex(data), "/b/k")
+    }
+
+    #[tokio::test]
+    async fn a_required_checksum_is_computed_when_the_request_declares_none() {
+        for algorithm in ChecksumAlgorithm::ALL {
+            let (name, value) = run_required(&headers(&[]), algorithm, b"hello", None).await.unwrap();
+            assert_eq!(name.as_deref(), Some(algorithm.name()));
+            assert_eq!(value, Some(checksum_b64(algorithm, b"hello")), "{algorithm:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_declared_checksum_of_the_required_algorithm_is_still_verified() {
+        let good = checksum_b64(ChecksumAlgorithm::Sha256, b"hello");
+        let h = headers(&[("x-amz-checksum-sha256", &good)]);
+        let (_, value) = run_required(&h, ChecksumAlgorithm::Sha256, b"hello", None).await.unwrap();
+        assert_eq!(value, Some(good));
+
+        let wrong = checksum_b64(ChecksumAlgorithm::Sha256, b"other");
+        let h = headers(&[("x-amz-checksum-sha256", &wrong)]);
+        let err = run_required(&h, ChecksumAlgorithm::Sha256, b"hello", None).await.unwrap_err();
+        assert_eq!(err.code, S3ErrorCode::BadDigest);
+    }
+
+    #[tokio::test]
+    async fn a_declared_checksum_of_another_algorithm_is_refused() {
+        let crc = checksum_b64(ChecksumAlgorithm::Crc32, b"hello");
+        let h = headers(&[("x-amz-checksum-crc32", &crc)]);
+        let err = run_required(&h, ChecksumAlgorithm::Sha256, b"hello", None).await.unwrap_err();
+        assert_eq!(err.code, S3ErrorCode::InvalidRequest);
+        assert!(
+            err.message.contains("expected checksum Type: sha256, actual checksum Type: crc32"),
+            "got: {}",
+            err.message
+        );
+    }
+
+    #[tokio::test]
+    async fn a_trailer_of_the_required_algorithm_is_verified_and_another_is_refused() {
+        let value = checksum_b64(ChecksumAlgorithm::Crc32, b"hello");
+        let trailers: Trailers = Arc::new(Mutex::new(vec![("x-amz-checksum-crc32".to_string(), value.clone())]));
+        let h = headers(&[("x-amz-trailer", "x-amz-checksum-crc32")]);
+        let (_, got) = run_required(&h, ChecksumAlgorithm::Crc32, b"hello", Some(trailers)).await.unwrap();
+        assert_eq!(got, Some(value.clone()));
+
+        let trailers: Trailers = Arc::new(Mutex::new(vec![("x-amz-checksum-crc32".to_string(), value)]));
+        let err = run_required(&h, ChecksumAlgorithm::Sha1, b"hello", Some(trailers)).await.unwrap_err();
+        assert_eq!(err.code, S3ErrorCode::InvalidRequest);
+    }
+
+    #[test]
+    fn algorithm_names_parse_in_any_case() {
+        assert_eq!(ChecksumAlgorithm::from_name("crc64nvme"), Some(ChecksumAlgorithm::Crc64Nvme));
+        assert_eq!(ChecksumAlgorithm::from_name(" SHA256 "), Some(ChecksumAlgorithm::Sha256));
+        assert_eq!(ChecksumAlgorithm::from_name("MD5"), None);
     }
 }

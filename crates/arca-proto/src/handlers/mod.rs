@@ -19,6 +19,8 @@ pub mod cluster;
 pub mod integrity;
 pub mod maintenance;
 pub mod multipart;
+pub mod multipart_checksum;
 pub mod object;
+pub mod object_parts;
 mod sidecar;
 pub mod ssec;

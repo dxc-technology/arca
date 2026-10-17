@@ -186,6 +186,7 @@ pub const TABLES: &[TableDesc] = &[
             col("is_tombstone", Bool),
             col("lock_updated_at", Timestamp),
             col("content_updated_at", Timestamp),
+            col("parts", Json),
         ],
     },
     TableDesc {
@@ -199,6 +200,7 @@ pub const TABLES: &[TableDesc] = &[
             col("metadata", Json),
             col("checksum_algorithm", Text),
             col("initiator", Text),
+            col("checksum_type", Text),
         ],
     },
     TableDesc {

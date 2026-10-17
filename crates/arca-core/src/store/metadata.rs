@@ -268,6 +268,23 @@ pub trait MetadataStore: Send + Sync {
 
     // -- Versioned object operations --
 
+    /// The part layout of one version of an object assembled by
+    /// CompleteMultipartUpload (TD-046), or `None` when it has none (any other
+    /// object, a multipart object completed before the layout was recorded, or
+    /// a version that does not exist). `version_id` is the version of the
+    /// `ObjectRecord` the caller holds (`None` for the null version).
+    ///
+    /// The layout is read on demand: [`ObjectRecord::parts`] is only filled by
+    /// the replication paths, never by `get_object`, `get_latest_object`,
+    /// `get_object_version` or a listing, because a multipart object can have
+    /// 10,000 parts and a GET, a HEAD or a listing never needs them.
+    async fn get_object_parts(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+    ) -> Result<Option<Vec<crate::types::ObjectPart>>, crate::error::ArcaError>;
+
     /// Returns a specific version of an object, or None if not found.
     async fn get_object_version(
         &self,
@@ -857,6 +874,7 @@ mod precondition_tests {
             storage_class: "STANDARD".to_string(),
             checksum_algorithm: None,
             checksum_value: None,
+            parts: None,
             replication_status: None,
             lock_updated_at: None,
             content_updated_at: None,

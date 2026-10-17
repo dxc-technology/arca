@@ -93,14 +93,14 @@
 <body>
 
 <h1>Arca S3 Compatibility Report</h1>
-<p class="meta">2026-10-06 06:41:10 UTC · 5 Ceph/RGW-specific test(s) excluded from scope</p>
+<p class="meta">2026-10-17 14:17:16 UTC · 5 Ceph/RGW-specific test(s) excluded from scope</p>
 
 <div class="cards">
   <div class="card"><div class="value">825</div><div class="label">Total</div></div>
   <div class="card passed"><div class="value">371</div><div class="label">Passed</div></div>
   <div class="card failed"><div class="value">363</div><div class="label">Failed</div></div>
   <div class="card skipped"><div class="value">91</div><div class="label">Skipped</div></div>
-  <div class="card expected"><div class="value">363</div><div class="label">Expected Fail</div></div>
+  <div class="card expected"><div class="value">349</div><div class="label">Expected Fail</div></div>
   <div class="card rate"><div class="value">45.0%</div><div class="label">Pass Rate</div></div>
 </div>
 
@@ -140,10 +140,10 @@
         <tr>
           <td>Bucket</td>
           <td class="num">103</td>
-          <td class="num passed">103</td>
-          <td class="num failed">0</td>
+          <td class="num passed">96</td>
+          <td class="num failed">7</td>
           <td class="num skipped">0</td>
-          <td class="num good">100%</td>
+          <td class="num good">93%</td>
         </tr>
         <tr>
           <td>CORS</td>
@@ -156,10 +156,10 @@
         <tr>
           <td>Checksums</td>
           <td class="num">10</td>
-          <td class="num passed">3</td>
-          <td class="num failed">7</td>
+          <td class="num passed">10</td>
+          <td class="num failed">0</td>
           <td class="num skipped">0</td>
-          <td class="num bad">30%</td>
+          <td class="num good">100%</td>
         </tr>
         <tr>
           <td>Copy</td>
@@ -172,10 +172,10 @@
         <tr>
           <td>Encryption</td>
           <td class="num">136</td>
-          <td class="num passed">48</td>
-          <td class="num failed">87</td>
+          <td class="num passed">49</td>
+          <td class="num failed">86</td>
           <td class="num skipped">1</td>
-          <td class="num bad">35%</td>
+          <td class="num bad">36%</td>
         </tr>
         <tr>
           <td>Headers</td>
@@ -212,18 +212,18 @@
         <tr>
           <td>Not Implemented</td>
           <td class="num">9</td>
-          <td class="num passed">1</td>
-          <td class="num failed">8</td>
+          <td class="num passed">7</td>
+          <td class="num failed">2</td>
           <td class="num skipped">0</td>
-          <td class="num bad">11%</td>
+          <td class="num warn">78%</td>
         </tr>
         <tr>
           <td>Object</td>
           <td class="num">42</td>
-          <td class="num passed">42</td>
-          <td class="num failed">0</td>
+          <td class="num passed">38</td>
+          <td class="num failed">4</td>
           <td class="num skipped">0</td>
-          <td class="num good">100%</td>
+          <td class="num good">90%</td>
         </tr>
         <tr>
           <td>Object Lock</td>
@@ -236,10 +236,10 @@
         <tr>
           <td>Other</td>
           <td class="num">30</td>
-          <td class="num passed">25</td>
-          <td class="num failed">0</td>
+          <td class="num passed">22</td>
+          <td class="num failed">3</td>
           <td class="num skipped">5</td>
-          <td class="num good">83%</td>
+          <td class="num warn">73%</td>
         </tr>
         <tr>
           <td>Presigned/POST</td>
@@ -283,12 +283,150 @@
 
 
         <h2>Passlist Diff</h2>
-        <div class="diff-box"><div class="diff-new">+ test_object_checksum_crc64nvme</div>
-<div class="diff-new">+ test_object_checksum_sha256</div>
+        <div class="diff-box"><div class="diff-new">+ test_get_multipart_checksum_object_attributes</div>
+<div class="diff-new">+ test_get_multipart_object_attributes</div>
+<div class="diff-new">+ test_get_paginated_multipart_object_attributes</div>
+<div class="diff-new">+ test_get_single_multipart_object_attributes</div>
+<div class="diff-new">+ test_multipart_checksum_sha256</div>
+<div class="diff-new">+ test_multipart_get_part</div>
+<div class="diff-new">+ test_multipart_single_get_part</div>
+<div class="diff-new">+ test_multipart_use_cksum_helper_crc32</div>
+<div class="diff-new">+ test_multipart_use_cksum_helper_crc32c</div>
+<div class="diff-new">+ test_multipart_use_cksum_helper_crc64nvme</div>
+<div class="diff-new">+ test_multipart_use_cksum_helper_sha1</div>
+<div class="diff-new">+ test_multipart_use_cksum_helper_sha256</div>
+<div class="diff-new">+ test_non_multipart_get_part</div>
+<div class="diff-new">+ test_non_multipart_sse_c_get_part</div>
+<div class="diff-lost">- test_bucket_list_delimiter_not_skip_special</div>
+<div class="diff-lost">- test_bucket_list_prefix_alt</div>
+<div class="diff-lost">- test_bucket_list_prefix_basic</div>
+<div class="diff-lost">- test_bucket_list_prefix_empty</div>
+<div class="diff-lost">- test_bucket_listv2_prefix_alt</div>
+<div class="diff-lost">- test_bucket_listv2_prefix_basic</div>
+<div class="diff-lost">- test_bucket_listv2_prefix_empty</div>
+<div class="diff-lost">- test_multi_object_delete_key_limit</div>
+<div class="diff-lost">- test_multi_objectv2_delete_key_limit</div>
+<div class="diff-lost">- test_object_head_zero_bytes</div>
+<div class="diff-lost">- test_object_write_cache_control</div>
+<div class="diff-lost">- test_object_write_check_etag</div>
+<div class="diff-lost">- test_object_write_expires</div>
+<div class="diff-lost">- test_object_write_read_update_read_delete</div>
 </div>
 
 <h2>Failures (363)</h2>
 
+        <details class="fail-item">
+          <summary>
+            <span class="badge unexpected">Unexpected</span>
+            <span class="cat-tag">Bucket</span>
+            <code>test_bucket_list_delimiter_not_skip_special</code>
+          </summary>
+          <pre>failed on teardown with &quot;botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the ListObjectVersions operation: Invalid version id specified&quot;</pre>
+        </details>
+        <details class="fail-item">
+          <summary>
+            <span class="badge unexpected">Unexpected</span>
+            <span class="cat-tag">Bucket</span>
+            <code>test_bucket_list_prefix_alt</code>
+          </summary>
+          <pre>failed on setup with &quot;botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the ListObjectVersions operation: Invalid version id specified&quot;</pre>
+        </details>
+        <details class="fail-item">
+          <summary>
+            <span class="badge unexpected">Unexpected</span>
+            <span class="cat-tag">Bucket</span>
+            <code>test_bucket_list_prefix_basic</code>
+          </summary>
+          <pre>failed on setup with &quot;botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the ListObjectVersions operation: Invalid version id specified&quot;</pre>
+        </details>
+        <details class="fail-item">
+          <summary>
+            <span class="badge unexpected">Unexpected</span>
+            <span class="cat-tag">Bucket</span>
+            <code>test_bucket_list_prefix_empty</code>
+          </summary>
+          <pre>failed on setup with &quot;botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the ListObjectVersions operation: Invalid version id specified&quot;</pre>
+        </details>
+        <details class="fail-item">
+          <summary>
+            <span class="badge unexpected">Unexpected</span>
+            <span class="cat-tag">Bucket</span>
+            <code>test_bucket_listv2_prefix_alt</code>
+          </summary>
+          <pre>failed on setup with &quot;botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the ListObjectVersions operation: Invalid version id specified&quot;</pre>
+        </details>
+        <details class="fail-item">
+          <summary>
+            <span class="badge unexpected">Unexpected</span>
+            <span class="cat-tag">Bucket</span>
+            <code>test_bucket_listv2_prefix_basic</code>
+          </summary>
+          <pre>failed on setup with &quot;botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the ListObjectVersions operation: Invalid version id specified&quot;</pre>
+        </details>
+        <details class="fail-item">
+          <summary>
+            <span class="badge unexpected">Unexpected</span>
+            <span class="cat-tag">Bucket</span>
+            <code>test_bucket_listv2_prefix_empty</code>
+          </summary>
+          <pre>failed on setup with &quot;botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the ListObjectVersions operation: Invalid version id specified&quot;</pre>
+        </details>
+        <details class="fail-item">
+          <summary>
+            <span class="badge unexpected">Unexpected</span>
+            <span class="cat-tag">Other</span>
+            <code>test_multi_object_delete_key_limit</code>
+          </summary>
+          <pre>failed on teardown with &quot;botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the ListObjectVersions operation: Invalid version id specified&quot;</pre>
+        </details>
+        <details class="fail-item">
+          <summary>
+            <span class="badge unexpected">Unexpected</span>
+            <span class="cat-tag">Other</span>
+            <code>test_multi_objectv2_delete_key_limit</code>
+          </summary>
+          <pre>failed on setup with &quot;botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the ListObjectVersions operation: Invalid version id specified&quot;</pre>
+        </details>
+        <details class="fail-item">
+          <summary>
+            <span class="badge unexpected">Unexpected</span>
+            <span class="cat-tag">Other</span>
+            <code>test_object_head_zero_bytes</code>
+          </summary>
+          <pre>failed on setup with &quot;botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the ListObjectVersions operation: Invalid version id specified&quot;</pre>
+        </details>
+        <details class="fail-item">
+          <summary>
+            <span class="badge unexpected">Unexpected</span>
+            <span class="cat-tag">Object</span>
+            <code>test_object_write_cache_control</code>
+          </summary>
+          <pre>failed on setup with &quot;botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the ListObjectVersions operation: Invalid version id specified&quot;</pre>
+        </details>
+        <details class="fail-item">
+          <summary>
+            <span class="badge unexpected">Unexpected</span>
+            <span class="cat-tag">Object</span>
+            <code>test_object_write_check_etag</code>
+          </summary>
+          <pre>failed on setup with &quot;botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the ListObjectVersions operation: Invalid version id specified&quot;</pre>
+        </details>
+        <details class="fail-item">
+          <summary>
+            <span class="badge unexpected">Unexpected</span>
+            <span class="cat-tag">Object</span>
+            <code>test_object_write_expires</code>
+          </summary>
+          <pre>failed on setup with &quot;botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the ListObjectVersions operation: Invalid version id specified&quot;</pre>
+        </details>
+        <details class="fail-item">
+          <summary>
+            <span class="badge unexpected">Unexpected</span>
+            <span class="cat-tag">Object</span>
+            <code>test_object_write_read_update_read_delete</code>
+          </summary>
+          <pre>failed on setup with &quot;botocore.exceptions.ClientError: An error occurred (InvalidArgument) when calling the ListObjectVersions operation: Invalid version id specified&quot;</pre>
+        </details>
         <details class="fail-item">
           <summary>
             <span class="badge expected">Expected</span>
@@ -1798,22 +1936,6 @@
         <details class="fail-item">
           <summary>
             <span class="badge expected">Expected</span>
-            <span class="cat-tag">Checksums</span>
-            <code>test_get_multipart_checksum_object_attributes</code>
-          </summary>
-          <pre>KeyError: 'ChecksumSHA256'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Not Implemented</span>
-            <code>test_get_multipart_object_attributes</code>
-          </summary>
-          <pre>KeyError: 'PartsCount'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
             <span class="cat-tag">ACL/Policy</span>
             <code>test_get_nonpublicpolicy_acl_bucket_policy_status</code>
           </summary>
@@ -1838,14 +1960,6 @@
         <details class="fail-item">
           <summary>
             <span class="badge expected">Expected</span>
-            <span class="cat-tag">Not Implemented</span>
-            <code>test_get_paginated_multipart_object_attributes</code>
-          </summary>
-          <pre>KeyError: 'PartsCount'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
             <span class="cat-tag">ACL/Policy</span>
             <code>test_get_public_acl_bucket_policy_status</code>
           </summary>
@@ -1866,14 +1980,6 @@
             <code>test_get_publicpolicy_acl_bucket_policy_status</code>
           </summary>
           <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the GetBucketPolicyStatus operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Not Implemented</span>
-            <code>test_get_single_multipart_object_attributes</code>
-          </summary>
-          <pre>KeyError: 'PartsCount'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1958,7 +2064,7 @@
             <code>test_lifecycle_expiration_header_head</code>
           </summary>
           <pre>assert False
- +  where False = check_lifecycle_expiration_header({'ResponseMetadata': {'RequestId': 'db2d53d1-54af-4830-bd32-e54dc0e4b03b', 'HostId': 'ZGIyZDUzZDEtNTRhZi00ODMwLWJkMzItZTU0ZGMwZTRiMDNi'</pre>
+ +  where False = check_lifecycle_expiration_header({'ResponseMetadata': {'RequestId': '3b3b613c-4305-45cb-8393-cc84d7597efd', 'HostId': 'M2IzYjYxM2MtNDMwNS00NWNiLTgzOTMtY2M4NGQ3NTk3ZWZk'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1967,7 +2073,7 @@
             <code>test_lifecycle_expiration_header_put</code>
           </summary>
           <pre>assert False
- +  where False = check_lifecycle_expiration_header({'ResponseMetadata': {'RequestId': '7d4b83fd-192e-4375-9638-bf7f4b6116de', 'HostId': 'N2Q0YjgzZmQtMTkyZS00Mzc1LTk2MzgtYmY3ZjRiNjExNmRl'</pre>
+ +  where False = check_lifecycle_expiration_header({'ResponseMetadata': {'RequestId': 'a720c9a8-e110-43c5-a264-011f3794f4e0', 'HostId': 'YTcyMGM5YTgtZTExMC00M2M1LWEyNjQtMDExZjM3OTRmNGUw'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -1976,7 +2082,7 @@
             <code>test_lifecycle_expiration_header_tags_head</code>
           </summary>
           <pre>assert False
- +  where False = check_lifecycle_expiration_header({'ResponseMetadata': {'RequestId': 'bb67f7a3-0ae4-4a87-b4b8-2f04cd60a742', 'HostId': 'YmI2N2Y3YTMtMGFlNC00YTg3LWI0YjgtMmYwNGNkNjBhNzQy'</pre>
+ +  where False = check_lifecycle_expiration_header({'ResponseMetadata': {'RequestId': '0877bf91-5e7f-4e11-97ed-19bd9b6d1472', 'HostId': 'MDg3N2JmOTEtNWU3Zi00ZTExLTk3ZWQtMTliZDliNmQxNDcy'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2009,7 +2115,7 @@
             <code>test_lifecycle_expiration_size_lt</code>
           </summary>
           <pre>assert 2 == 1
- +  where 2 = len([{'Key': 'myobject_big', 'LastModified': datetime.datetime(2026, 10, 6, 6, 35, 55, 212000, tzinfo=tzlocal()), 'ETag': '&quot;62495ddaf6daa2d10ac0fac67fbb43bf&quot;', 'Size': 3000</pre>
+ +  where 2 = len([{'Key': 'myobject_big', 'LastModified': datetime.datetime(2026, 10, 17, 14, 11, 47, 332000, tzinfo=tzlocal()), 'ETag': '&quot;62495ddaf6daa2d10ac0fac67fbb43bf&quot;', 'Size': 30</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2116,7 +2222,7 @@
             <code>test_list_buckets_paginated</code>
           </summary>
           <pre>AssertionError: assert 2 == 1
- +  where 2 = len([{'Name': 'arca-test-d8jkkyni0idnbje1phg-259', 'CreationDate': datetime.datetime(2026, 10, 6, 6, 30, 40, 45000, tzinfo=tzlocal())}, {'Name': 'arca-test-</pre>
+ +  where 2 = len([{'Name': 'arca-test-5fvurlg49mcjxqg9bwd-247', 'CreationDate': datetime.datetime(2026, 10, 17, 14, 6, 44, 940000, tzinfo=tzlocal())}, {'Name': 'arca-tes</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2125,30 +2231,6 @@
             <code>test_list_multipart_upload_owner</code>
           </summary>
           <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketAcl operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Checksums</span>
-            <code>test_multipart_checksum_sha256</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Not Implemented</span>
-            <code>test_multipart_get_part</code>
-          </summary>
-          <pre>KeyError: 'PartsCount'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Not Implemented</span>
-            <code>test_multipart_single_get_part</code>
-          </summary>
-          <pre>KeyError: 'PartsCount'</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2165,62 +2247,6 @@
             <code>test_multipart_upload_on_a_bucket_with_policy</code>
           </summary>
           <pre>botocore.exceptions.ClientError: An error occurred (NotImplemented) when calling the PutBucketPolicy operation: A header you provided implies functionality that is not implemented.</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Checksums</span>
-            <code>test_multipart_use_cksum_helper_crc32</code>
-          </summary>
-          <pre>KeyError: 'ChecksumType'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Checksums</span>
-            <code>test_multipart_use_cksum_helper_crc32c</code>
-          </summary>
-          <pre>KeyError: 'ChecksumType'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Checksums</span>
-            <code>test_multipart_use_cksum_helper_crc64nvme</code>
-          </summary>
-          <pre>KeyError: 'ChecksumType'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Checksums</span>
-            <code>test_multipart_use_cksum_helper_sha1</code>
-          </summary>
-          <pre>KeyError: 'ChecksumType'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Checksums</span>
-            <code>test_multipart_use_cksum_helper_sha256</code>
-          </summary>
-          <pre>KeyError: 'ChecksumType'</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Not Implemented</span>
-            <code>test_non_multipart_get_part</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
-        </details>
-        <details class="fail-item">
-          <summary>
-            <span class="badge expected">Expected</span>
-            <span class="cat-tag">Encryption</span>
-            <code>test_non_multipart_sse_c_get_part</code>
-          </summary>
-          <pre>AssertionError: ClientError not raised</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2372,7 +2398,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_changing_mode_from_compliance</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.35585 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.368846 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2380,7 +2406,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_changing_mode_from_governance_with_bypass</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.402157 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.41501 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2388,7 +2414,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_changing_mode_from_governance_without_bypass</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.378905 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.392019 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2396,7 +2422,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_delete_multipart_object_with_legal_hold_on</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.493826 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.50645 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2404,7 +2430,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_delete_multipart_object_with_retention</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.714225 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.727518 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2412,7 +2438,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_delete_object_with_legal_hold_off</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.471283 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.483582 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2420,7 +2446,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_delete_object_with_legal_hold_on</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.516712 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.529129 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2428,7 +2454,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_delete_object_with_retention</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.736633 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.750106 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2436,7 +2462,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_delete_object_with_retention_and_marker</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.69172 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.70522 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2444,7 +2470,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_get_legal_hold</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.562327 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.57584 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2452,7 +2478,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_get_legal_hold_invalid_bucket</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.539303 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.552259 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2460,7 +2486,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_get_obj_metadata</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.448331 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.460743 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2476,7 +2502,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_multi_delete_object_with_retention</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.66905 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.665831 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2484,7 +2510,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_legal_hold</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.646379 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.643466 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2492,7 +2518,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_legal_hold_invalid_bucket</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.623738 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.621252 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2500,7 +2526,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_legal_hold_invalid_status</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.600786 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.598772 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2535,7 +2561,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_obj_retention_increase_period</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.804006 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.817369 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2551,7 +2577,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_obj_retention_override_default_retention</code>
           </summary>
-          <pre>failed on teardown with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.826406 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on teardown with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.839513 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2559,7 +2585,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_obj_retention_shorten_period</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.781597 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.795091 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2567,7 +2593,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_put_obj_retention_shorten_period_bypass</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.758795 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.772832 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2575,7 +2601,7 @@
             <span class="cat-tag">Object Lock</span>
             <code>test_object_lock_uploading_obj</code>
           </summary>
-          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-sul915kknyxpt6i0ukc-19 still has objects locked for 86399.425285 more seconds, not waiting for bucket cleanup&quot;</pre>
+          <pre>failed on setup with &quot;RuntimeError: bucket arca-test-kr7aaiyxqdihfophz4i-19 still has objects locked for 86399.437952 more seconds, not waiting for bucket cleanup&quot;</pre>
         </details>
         <details class="fail-item">
           <summary>
@@ -2583,7 +2609,7 @@
             <span class="cat-tag">ACL/Policy</span>
             <code>test_object_put_acl_mtime</code>
           </summary>
-          <pre>assert datetime.datetime(2026, 10, 6, 6, 29, 7, tzinfo=tzutc()) == datetime.datetime(2026, 10, 6, 6, 29, 9, tzinfo=tzutc())</pre>
+          <pre>assert datetime.datetime(2026, 10, 17, 14, 5, 11, tzinfo=tzutc()) == datetime.datetime(2026, 10, 17, 14, 5, 13, tzinfo=tzutc())</pre>
         </details>
         <details class="fail-item">
           <summary>

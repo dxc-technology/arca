@@ -27,6 +27,34 @@ pub struct CompletePart {
     pub part_number: u32,
     #[serde(rename = "ETag")]
     pub etag: String,
+    /// The part's checksum in the algorithm of the upload, one element per
+    /// algorithm (`<ChecksumCRC32>`, ...).
+    #[serde(rename = "ChecksumCRC32", default)]
+    pub checksum_crc32: Option<String>,
+    #[serde(rename = "ChecksumCRC32C", default)]
+    pub checksum_crc32c: Option<String>,
+    #[serde(rename = "ChecksumCRC64NVME", default)]
+    pub checksum_crc64nvme: Option<String>,
+    #[serde(rename = "ChecksumSHA1", default)]
+    pub checksum_sha1: Option<String>,
+    #[serde(rename = "ChecksumSHA256", default)]
+    pub checksum_sha256: Option<String>,
+}
+
+impl CompletePart {
+    /// The checksum the request gives for this part in `algorithm`
+    /// (`CRC32`, `CRC32C`, `CRC64NVME`, `SHA1` or `SHA256`, any case).
+    pub fn checksum_for(&self, algorithm: &str) -> Option<&str> {
+        match algorithm.to_ascii_uppercase().as_str() {
+            "CRC32" => self.checksum_crc32.as_deref(),
+            "CRC32C" => self.checksum_crc32c.as_deref(),
+            "CRC64NVME" => self.checksum_crc64nvme.as_deref(),
+            "SHA1" => self.checksum_sha1.as_deref(),
+            "SHA256" => self.checksum_sha256.as_deref(),
+            _ => None,
+        }
+        .map(str::trim)
+    }
 }
 
 /// Parses a `CompleteMultipartUpload` XML request body.
@@ -477,7 +505,22 @@ pub fn initiate_multipart_upload_result(bucket: &str, key: &str, upload_id: &str
 ///   <ETag>"etag"</ETag>
 /// </CompleteMultipartUploadResult>
 /// ```
-pub fn complete_multipart_upload_result(bucket: &str, key: &str, etag: &str) -> String {
+/// The checksum of an object as an XML response reports it.
+#[derive(Debug, Clone, Copy)]
+pub struct ResultChecksum<'a> {
+    /// `CRC32`, `CRC32C`, `CRC64NVME`, `SHA1` or `SHA256`.
+    pub algorithm: &'a str,
+    pub value: &'a str,
+    /// `COMPOSITE` or `FULL_OBJECT`.
+    pub kind: &'a str,
+}
+
+pub fn complete_multipart_upload_result(
+    bucket: &str,
+    key: &str,
+    etag: &str,
+    checksum: Option<&ResultChecksum<'_>>,
+) -> String {
     let mut writer = Writer::new(Vec::new());
 
     writer
@@ -497,6 +540,12 @@ pub fn complete_multipart_upload_result(bucket: &str, key: &str, etag: &str) -> 
 
     let quoted_etag = format!("\"{}\"", etag);
     write_xml_element(&mut writer, "ETag", &quoted_etag);
+
+    if let Some(checksum) = checksum {
+        let tag = format!("Checksum{}", checksum.algorithm.to_ascii_uppercase());
+        write_xml_element(&mut writer, &tag, checksum.value);
+        write_xml_element(&mut writer, "ChecksumType", checksum.kind);
+    }
 
     writer
         .write_event(Event::End(BytesEnd::new("CompleteMultipartUploadResult")))
@@ -1155,15 +1204,41 @@ pub struct ObjectAttributesRequest {
     pub object_size: bool,
 }
 
+/// The `ObjectParts` of a GetObjectAttributes response: one page of the parts
+/// of a multipart object.
+#[derive(Debug, Clone, Copy)]
+pub struct ObjectPartsPage<'a> {
+    pub total_parts: u32,
+    pub part_number_marker: u32,
+    /// Set when the page is truncated: the marker of the next one.
+    pub next_part_number_marker: Option<u32>,
+    pub max_parts: u32,
+    pub is_truncated: bool,
+    /// The algorithm the part checksums are in, when the object has them.
+    pub checksum_algorithm: Option<&'a str>,
+    /// The parts of this page; empty for an object whose layout was not recorded.
+    pub parts: &'a [crate::types::ObjectPart],
+}
+
+/// What a GetObjectAttributes response reports; every attribute that was not
+/// asked for is `None`.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ObjectAttributesResponse<'a> {
+    pub etag: Option<&'a str>,
+    pub checksum: Option<ResultChecksum<'a>>,
+    pub object_parts: Option<ObjectPartsPage<'a>>,
+    pub storage_class: Option<&'a str>,
+    pub object_size: Option<u64>,
+}
+
+impl Default for ResultChecksum<'_> {
+    fn default() -> Self {
+        ResultChecksum { algorithm: "", value: "", kind: "" }
+    }
+}
+
 /// Build a GetObjectAttributesResponse XML.
-pub fn get_object_attributes_result(
-    etag: Option<&str>,
-    checksum_algorithm: Option<&str>,
-    checksum_value: Option<&str>,
-    parts_count: Option<u32>,
-    storage_class: Option<&str>,
-    object_size: Option<u64>,
-) -> String {
+pub fn get_object_attributes_result(response: &ObjectAttributesResponse<'_>) -> String {
     let mut writer = Writer::new(Vec::new());
     writer
         .write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
@@ -1174,41 +1249,65 @@ pub fn get_object_attributes_result(
     writer.write_event(Event::Start(root)).expect("write root");
 
     // ETag (without quotes, per S3 spec for this API)
-    if let Some(etag) = etag {
+    if let Some(etag) = response.etag {
         let unquoted = etag.trim_matches('"');
         write_xml_element(&mut writer, "ETag", unquoted);
     }
 
     // Checksum
-    if let (Some(algo), Some(val)) = (checksum_algorithm, checksum_value) {
+    if let Some(checksum) = &response.checksum {
         writer
             .write_event(Event::Start(BytesStart::new("Checksum")))
             .expect("write Checksum");
-        let tag = format!("Checksum{}", algo.to_uppercase());
-        write_xml_element(&mut writer, &tag, val);
+        let tag = format!("Checksum{}", checksum.algorithm.to_uppercase());
+        write_xml_element(&mut writer, &tag, checksum.value);
+        write_xml_element(&mut writer, "ChecksumType", checksum.kind);
         writer
             .write_event(Event::End(BytesEnd::new("Checksum")))
             .expect("write Checksum end");
     }
 
     // ObjectParts
-    if let Some(count) = parts_count {
+    if let Some(page) = &response.object_parts {
         writer
             .write_event(Event::Start(BytesStart::new("ObjectParts")))
             .expect("write ObjectParts");
-        write_xml_element(&mut writer, "TotalPartsCount", &count.to_string());
+        // The element is `PartsCount` (SDKs expose it as TotalPartsCount).
+        write_xml_element(&mut writer, "PartsCount", &page.total_parts.to_string());
+        if !page.parts.is_empty() || page.part_number_marker > 0 {
+            write_xml_element(&mut writer, "PartNumberMarker", &page.part_number_marker.to_string());
+            if let Some(next) = page.next_part_number_marker {
+                write_xml_element(&mut writer, "NextPartNumberMarker", &next.to_string());
+            }
+            write_xml_element(&mut writer, "MaxParts", &page.max_parts.to_string());
+            write_xml_element(&mut writer, "IsTruncated", &page.is_truncated.to_string());
+        }
+        for part in page.parts {
+            writer
+                .write_event(Event::Start(BytesStart::new("Part")))
+                .expect("write Part");
+            write_xml_element(&mut writer, "PartNumber", &part.part_number.to_string());
+            write_xml_element(&mut writer, "Size", &part.size.to_string());
+            if let (Some(algorithm), Some(value)) = (page.checksum_algorithm, &part.checksum) {
+                let tag = format!("Checksum{}", algorithm.to_uppercase());
+                write_xml_element(&mut writer, &tag, value);
+            }
+            writer
+                .write_event(Event::End(BytesEnd::new("Part")))
+                .expect("write Part end");
+        }
         writer
             .write_event(Event::End(BytesEnd::new("ObjectParts")))
             .expect("write ObjectParts end");
     }
 
     // StorageClass
-    if let Some(sc) = storage_class {
+    if let Some(sc) = response.storage_class {
         write_xml_element(&mut writer, "StorageClass", sc);
     }
 
     // ObjectSize
-    if let Some(size) = object_size {
+    if let Some(size) = response.object_size {
         write_xml_element(&mut writer, "ObjectSize", &size.to_string());
     }
 
@@ -1445,7 +1544,7 @@ mod tests {
 
     #[test]
     fn complete_multipart_upload_result_basic() {
-        let xml = complete_multipart_upload_result("my-bucket", "my-key", "abc123-2");
+        let xml = complete_multipart_upload_result("my-bucket", "my-key", "abc123-2", None);
 
         assert!(xml.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
         assert!(xml.contains("<CompleteMultipartUploadResult"));
@@ -1644,5 +1743,103 @@ mod tests {
         // Second entry: delete marker with its version ID.
         assert!(xml.contains("<DeleteMarker>true</DeleteMarker>"));
         assert!(xml.contains("<DeleteMarkerVersionId>dm-456</DeleteMarkerVersionId>"));
+    }
+
+    // -- Multipart checksum XML (TD-046) --
+
+    #[test]
+    fn parse_complete_multipart_upload_reads_part_checksums() {
+        let xml = r#"<CompleteMultipartUpload>
+            <Part><PartNumber>1</PartNumber><ETag>"a"</ETag><ChecksumCRC32>JRTCyQ==</ChecksumCRC32></Part>
+            <Part><PartNumber>2</PartNumber><ETag>"b"</ETag><ChecksumSHA256>abc=</ChecksumSHA256></Part>
+            <Part><PartNumber>3</PartNumber><ETag>"c"</ETag></Part>
+        </CompleteMultipartUpload>"#;
+        let body = parse_complete_multipart_upload(xml).unwrap();
+        assert_eq!(body.parts[0].checksum_for("CRC32"), Some("JRTCyQ=="));
+        assert_eq!(body.parts[0].checksum_for("SHA256"), None);
+        assert_eq!(body.parts[1].checksum_for("SHA256"), Some("abc="));
+        assert_eq!(body.parts[2].checksum_for("CRC32"), None);
+        assert_eq!(body.parts[2].checksum_for("crc32c"), None);
+    }
+
+    #[test]
+    fn complete_multipart_upload_result_carries_the_checksum() {
+        let checksum = ResultChecksum { algorithm: "CRC32", value: "WgDhBQ==", kind: "FULL_OBJECT" };
+        let xml = complete_multipart_upload_result("b", "k", "abc-3", Some(&checksum));
+        assert!(xml.contains("<ChecksumCRC32>WgDhBQ==</ChecksumCRC32>"), "{xml}");
+        assert!(xml.contains("<ChecksumType>FULL_OBJECT</ChecksumType>"), "{xml}");
+        let etag = xml.find("<ETag>").unwrap();
+        assert!(xml.find("<ChecksumCRC32>").unwrap() > etag, "checksum follows the ETag");
+        let plain = complete_multipart_upload_result("b", "k", "abc-3", None);
+        assert!(!plain.contains("Checksum"), "{plain}");
+    }
+
+    #[test]
+    fn object_attributes_lists_the_parts_with_their_checksums() {
+        let parts = vec![
+            crate::types::ObjectPart { part_number: 1, size: 5, checksum: Some("aaa=".to_string()) },
+            crate::types::ObjectPart { part_number: 2, size: 7, checksum: None },
+        ];
+        let xml = get_object_attributes_result(&ObjectAttributesResponse {
+            etag: Some("e-2"),
+            checksum: Some(ResultChecksum { algorithm: "SHA256", value: "v=-2", kind: "COMPOSITE" }),
+            object_parts: Some(ObjectPartsPage {
+                total_parts: 2,
+                part_number_marker: 0,
+                next_part_number_marker: None,
+                max_parts: 1000,
+                is_truncated: false,
+                checksum_algorithm: Some("SHA256"),
+                parts: &parts,
+            }),
+            storage_class: Some("STANDARD"),
+            object_size: Some(12),
+        });
+        assert!(xml.contains("<Checksum><ChecksumSHA256>v=-2</ChecksumSHA256><ChecksumType>COMPOSITE</ChecksumType></Checksum>"), "{xml}");
+        assert!(xml.contains("<PartsCount>2</PartsCount>"), "{xml}");
+        assert!(xml.contains("<PartNumberMarker>0</PartNumberMarker>"), "{xml}");
+        assert!(xml.contains("<MaxParts>1000</MaxParts>"), "{xml}");
+        assert!(xml.contains("<IsTruncated>false</IsTruncated>"), "{xml}");
+        assert!(!xml.contains("NextPartNumberMarker"), "{xml}");
+        assert!(xml.contains("<Part><PartNumber>1</PartNumber><Size>5</Size><ChecksumSHA256>aaa=</ChecksumSHA256></Part>"), "{xml}");
+        assert!(xml.contains("<Part><PartNumber>2</PartNumber><Size>7</Size></Part>"), "{xml}");
+    }
+
+    #[test]
+    fn object_attributes_reports_the_next_marker_of_a_truncated_page() {
+        let parts = vec![crate::types::ObjectPart { part_number: 4, size: 5, checksum: None }];
+        let xml = get_object_attributes_result(&ObjectAttributesResponse {
+            object_parts: Some(ObjectPartsPage {
+                total_parts: 6,
+                part_number_marker: 3,
+                next_part_number_marker: Some(4),
+                max_parts: 1,
+                is_truncated: true,
+                checksum_algorithm: None,
+                parts: &parts,
+            }),
+            ..Default::default()
+        });
+        assert!(xml.contains("<NextPartNumberMarker>4</NextPartNumberMarker>"), "{xml}");
+        assert!(xml.contains("<IsTruncated>true</IsTruncated>"), "{xml}");
+        assert!(!xml.contains("<ETag>") && !xml.contains("<ObjectSize>"), "only what was asked: {xml}");
+    }
+
+    #[test]
+    fn object_attributes_without_a_layout_keeps_only_the_part_count() {
+        let xml = get_object_attributes_result(&ObjectAttributesResponse {
+            object_parts: Some(ObjectPartsPage {
+                total_parts: 3,
+                part_number_marker: 0,
+                next_part_number_marker: None,
+                max_parts: 1000,
+                is_truncated: false,
+                checksum_algorithm: None,
+                parts: &[],
+            }),
+            ..Default::default()
+        });
+        assert!(xml.contains("<PartsCount>3</PartsCount>"), "{xml}");
+        assert!(!xml.contains("<Part>"), "{xml}");
     }
 }

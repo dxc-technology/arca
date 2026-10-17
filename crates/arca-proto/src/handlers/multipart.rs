@@ -9,12 +9,14 @@ use md5::{Digest, Md5};
 use arca_core::error::ArcaError;
 use arca_core::s3::xml_types;
 use arca_core::store::{SidecarMeta, WritePrecondition};
-use arca_core::types::{BlobId, MultipartUploadRecord, ObjectRecord, PartRecord};
+use arca_core::types::{BlobId, MultipartUploadRecord, ObjectPart, ObjectRecord, PartRecord};
 use arca_core::{S3Error, S3ErrorCode};
 
 use super::object::extract_metadata;
 use super::sidecar::{part_sidecar, write_sidecar_or_discard};
 
+use super::integrity::ChecksumAlgorithm;
+use super::multipart_checksum::{plan_complete, select_for_upload, ChecksumType};
 use crate::middleware::identity::requester_username;
 use crate::state::AppState;
 use crate::xml::error_response::{internal_error_response, s3_error_response};
@@ -79,14 +81,13 @@ pub async fn create_multipart_upload(
         metadata.insert("_arca_tagging".to_string(), th.clone());
     }
 
-    // x-amz-checksum-algorithm: the algorithm the parts' checksums use
-    // (reported by ListParts). The final object's checksum is not computed,
-    // see TD-046 in complete_multipart_upload.
-    let checksum_algorithm = request
-        .headers()
-        .get("x-amz-checksum-algorithm")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_uppercase());
+    // x-amz-checksum-algorithm and x-amz-checksum-type: the algorithm the
+    // parts' checksums use and how the object's checksum is made from them
+    // (see `multipart_checksum`).
+    let checksum = match select_for_upload(request.headers(), &resource) {
+        Ok(selection) => selection,
+        Err(e) => return s3_error_response(e),
+    };
 
     let upload_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now();
@@ -99,7 +100,8 @@ pub async fn create_multipart_upload(
         content_type,
         initiated_at: now,
         metadata,
-        checksum_algorithm: checksum_algorithm.clone(),
+        checksum_algorithm: checksum.map(|(algorithm, _)| algorithm.name().to_string()),
+        checksum_type: checksum.map(|(_, kind)| kind.as_str().to_string()),
         initiator,
     };
 
@@ -111,8 +113,10 @@ pub async fn create_multipart_upload(
     let mut builder = Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/xml");
-    if let Some(ref algo) = checksum_algorithm {
-        builder = builder.header("x-amz-checksum-algorithm", algo.as_str());
+    if let Some((algorithm, kind)) = checksum {
+        builder = builder
+            .header("x-amz-checksum-algorithm", algorithm.name())
+            .header("x-amz-checksum-type", kind.as_str());
     }
     builder
         .body(Body::from(xml))
@@ -183,8 +187,22 @@ pub async fn upload_part(
     let chunk_verifier = request.extensions().get::<arca_auth::ChunkVerifier>().cloned();
     let headers = request.headers().clone();
     let body = request.into_body();
+    // An upload created with a checksum algorithm needs that checksum on every
+    // part: computed here when the client sends none, refused when it sends
+    // another algorithm's.
+    let required = upload
+        .checksum_algorithm
+        .as_deref()
+        .and_then(ChecksumAlgorithm::from_name);
     let (stream, integrity) =
-        match super::body::verified_body_stream(body, &headers, max_body, &resource, chunk_verifier) {
+        match super::body::verified_body_stream_requiring(
+            body,
+            &headers,
+            max_body,
+            &resource,
+            chunk_verifier,
+            required,
+        ) {
             Ok(r) => r,
             Err(e) => return s3_error_response(e),
         };
@@ -285,8 +303,16 @@ pub async fn complete_multipart_upload(
             // Upload already completed? Return success if object exists.
             if let Ok(Some(obj)) = state.metadata.get_object(&bucket, &key).await {
                 if obj.etag.contains('-') {
+                    let checksum = match (&obj.checksum_algorithm, &obj.checksum_value) {
+                        (Some(algorithm), Some(value)) => Some(xml_types::ResultChecksum {
+                            algorithm,
+                            value,
+                            kind: ChecksumType::of_value(value).as_str(),
+                        }),
+                        _ => None,
+                    };
                     let xml = xml_types::complete_multipart_upload_result(
-                        &bucket, &key, &obj.etag,
+                        &bucket, &key, &obj.etag, checksum.as_ref(),
                     );
                     return Response::builder()
                         .status(StatusCode::OK)
@@ -405,6 +431,20 @@ pub async fn complete_multipart_upload(
         }
     }
 
+    // Checksum and size checks, and the checksum the object gets (TD-046),
+    // before anything is assembled: a refused request leaves the upload as it
+    // was, so the client can fix it and complete again.
+    let object_checksum = match plan_complete(
+        &upload,
+        &matched_parts,
+        &complete_body.parts,
+        &request_headers,
+        &resource,
+    ) {
+        Ok(checksum) => checksum,
+        Err(e) => return s3_error_response(e),
+    };
+
     // Assemble parts into a final blob via filesystem-level concatenation.
     let final_blob_id = BlobId::new();
     let part_blob_ids: Vec<BlobId> = matched_parts.iter().map(|p| p.blob_id.clone()).collect();
@@ -485,12 +525,20 @@ pub async fn complete_multipart_upload(
         retain_until_date: None,
         legal_hold_status: None,
         storage_class: "STANDARD".to_string(),
-        // TECHDEBT(TD-046): no object checksum for multipart uploads; the
-        // composite / full-object checksum is not computed, and neither the
-        // part checksums in the request XML nor its x-amz-checksum-* header
-        // are validated.
-        checksum_algorithm: None,
-        checksum_value: None,
+        checksum_algorithm: object_checksum.as_ref().map(|c| c.algorithm.name().to_string()),
+        checksum_value: object_checksum.as_ref().map(|c| c.value.clone()),
+        // The layout is always kept, with or without a checksum: it is what
+        // `?partNumber` and GetObjectAttributes read.
+        parts: Some(
+            matched_parts
+                .iter()
+                .map(|p| ObjectPart {
+                    part_number: p.part_number,
+                    size: p.size,
+                    checksum: p.checksum_value.clone(),
+                })
+                .collect(),
+        ),
         replication_status: None,
         lock_updated_at: None,
         content_updated_at: None,
@@ -616,7 +664,17 @@ pub async fn complete_multipart_upload(
     )
     .await;
 
-    let xml = xml_types::complete_multipart_upload_result(&bucket, &key, &composite_etag);
+    let result_checksum = object_checksum.as_ref().map(|c| xml_types::ResultChecksum {
+        algorithm: c.algorithm.name(),
+        value: &c.value,
+        kind: c.kind.as_str(),
+    });
+    let xml = xml_types::complete_multipart_upload_result(
+        &bucket,
+        &key,
+        &composite_etag,
+        result_checksum.as_ref(),
+    );
     let mut builder = Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/xml");

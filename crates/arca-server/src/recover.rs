@@ -127,6 +127,7 @@ pub async fn run_recover(config: &Config, dry_run: bool, skip_verify: bool) -> R
             storage_class: "STANDARD".to_string(),
             checksum_algorithm: None,
             checksum_value: None,
+            parts: None,
             replication_status: None,
             lock_updated_at: None,
             content_updated_at: None,

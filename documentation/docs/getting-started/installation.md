@@ -64,6 +64,8 @@ release close to it: a setting newer than the release is silently ignored by it.
 There is no major-only tag while Arca is at `0.x`, where a minor release may
 break compatibility. A prerelease (`X.Y.Z-rc.N`) gets its exact tag only.
 
+Without the repository, plain Docker runs the server:
+
 ```bash
 docker run -d --name arca -p 9000:9000 -v arca-data:/data \
     --ulimit nofile=65536:65536 \
@@ -75,6 +77,31 @@ docker logs arca | grep "Access Key"
 every concurrent request holds file descriptors, so a busy server needs more
 (see [Troubleshooting](../operations/troubleshooting.md#too-many-open-files-under-load)).
 In a Compose file, set `ulimits: nofile:` on the service.
+
+The console runs the same way and needs no volume:
+
+```bash
+docker run -d --name arca-console -p 9080:8080 \
+    -e ARCA_ENDPOINT=http://localhost:9000 \
+    ghcr.io/dxc-technology/arca-console:latest
+```
+
+The console listens on 8080 (HTTP) and 8443 (HTTPS) inside the container, not on
+80/443, and runs as the unprivileged user `10001:10001`; `-p 9080:8080` publishes
+it on host port 9080, as `bin/console` does. `ARCA_ENDPOINT` is the Arca URL the
+**browser** connects to (it must be reachable from the browser, not from the
+container); leave it out to type the endpoint at the login screen. To serve HTTPS,
+mount a directory with the certificate and key PEM files at `/etc/nginx/certs` and
+publish port 8443; the private key is group-readable by Arca's service group, so
+add `--group-add 65532`:
+
+```bash
+docker run -d --name arca-console -p 9443:8443 --group-add 65532 \
+    -v "$PWD/certs:/etc/nginx/certs:ro" \
+    ghcr.io/dxc-technology/arca-console:latest
+```
+
+Stop either with `docker stop arca` or `docker stop arca-console`.
 
 The images carry standard OCI labels (`org.opencontainers.image.version`,
 `.revision`, `.source`, …), so `docker inspect` tells which release and commit

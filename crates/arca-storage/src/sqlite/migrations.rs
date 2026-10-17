@@ -578,6 +578,19 @@ const MIGRATIONS: &[Migration] = &[
             ALTER TABLE multipart_uploads ADD COLUMN initiator TEXT NOT NULL DEFAULT 'root';
         ",
     },
+    Migration {
+        version: 28,
+        description: "Add objects.parts and multipart_uploads.checksum_type (TD-046: multipart checksum and part layout)",
+        // `parts` is the JSON layout of an object assembled by
+        // CompleteMultipartUpload ([{part_number, size, checksum}]); NULL for
+        // any other object and for multipart objects completed earlier.
+        // `checksum_type` is COMPOSITE or FULL_OBJECT as chosen at
+        // CreateMultipartUpload; NULL means the default of the algorithm.
+        sql: "
+            ALTER TABLE objects ADD COLUMN parts TEXT;
+            ALTER TABLE multipart_uploads ADD COLUMN checksum_type TEXT;
+        ",
+    },
 ];
 
 /// Ensures the `_migrations` tracking table exists.
@@ -651,7 +664,7 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 27);
+        assert_eq!(version, 28);
 
         // Verify credentials table exists
         let count: u32 = conn
@@ -701,12 +714,12 @@ mod tests {
         run_migrations(&conn).unwrap();
 
         let version = current_version(&conn).unwrap();
-        assert_eq!(version, 27);
+        assert_eq!(version, 28);
 
         // Twenty-six migration records
         let count: u32 = conn
             .query_row("SELECT COUNT(*) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 27);
+        assert_eq!(count, 28);
     }
 }

@@ -26,13 +26,13 @@ Arca supports native TLS termination, serving HTTPS directly without a reverse p
     curl https://your-domain:9000/admin/health
     ```
 
-    To start the web console alongside TLS:
+    To start the web console alongside TLS (it has no `--tls` flag, it inherits TLS from the running server):
 
     ```bash
-    bin/console start -d --build --tls
+    bin/console start -d --build
     ```
 
-    With `--tls`, the console does not preset an endpoint URL — enter the HTTPS URL (e.g. `https://your-domain:9000`) at the login screen.
+    With TLS, the console does not preset an endpoint URL: enter the HTTPS URL (e.g. `https://your-domain:9000`) at the login screen.
 
 === "No certificates (local CA)"
 
@@ -329,18 +329,18 @@ arca tls generate \
 
 ## Console HTTPS
 
-When using `--tls`, the web console also serves over HTTPS. The console entrypoint auto-detects certificate and key PEM files in its mounted certificate directory (skipping CA files) and switches nginx to TLS mode. That directory is the same one Arca serves from, `${ARCA_CERTS_DIR}` in `docker/docker-compose.tls.yml`: `certs/` when it holds your own certificates, otherwise `certs/local/` (see [Your certificates or the local ones](#your-certificates-or-the-local-ones)).
+When Arca runs with `--tls`, the web console (which inherits it, it has no flag of its own) also serves over HTTPS. The console entrypoint auto-detects certificate and key PEM files in its mounted certificate directory (skipping CA files) and switches nginx to TLS mode. That directory is the same one Arca serves from, `${ARCA_CERTS_DIR}` in `docker/docker-compose.tls.yml`: `certs/` when it holds your own certificates, otherwise `certs/local/` (see [Your certificates or the local ones](#your-certificates-or-the-local-ones)).
 
 The console runs as uid `10001`, not as Arca's `65532`, so it reads the private key through the supplementary group described in [File Permissions](#file-permissions). If the key is there but unreadable, the entrypoint logs a `WARNING` and keeps serving plain HTTP on port 8080 — check `bin/console logs` when port 9443 refuses connections.
 
 ```bash
-bin/console start -d --build --tls
+bin/console start -d --build
 ```
 
 The console is available on **port 9443** (HTTPS). At the login screen, enter the Arca HTTPS endpoint (e.g. `https://your-domain:9000`) and your credentials.
 
 !!! note
-    With `--tls` the console does not preset an endpoint URL, since the HTTPS domain depends on your certificate setup.
+    With TLS the console does not preset an endpoint URL, since the HTTPS domain depends on your certificate setup.
 
 ### Console TLS Indicator
 

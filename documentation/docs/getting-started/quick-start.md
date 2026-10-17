@@ -10,6 +10,24 @@ Get Arca running and perform your first S3 operations.
     bin/arca start -d --build
     ```
 
+=== "Published image"
+
+    No build needed. With the repository checked out:
+
+    ```bash
+    bin/arca start -d --release latest
+    ```
+
+    Or with plain Docker, without even cloning the repository:
+
+    ```bash
+    docker run -d --name arca -p 9000:9000 -v arca-data:/data \
+        ghcr.io/dxc-technology/arca:latest
+    docker logs arca | grep "Access Key"
+    ```
+
+    The image is public and multi-arch. See [Installation](installation.md#pre-built-images) for the available tags.
+
 === "HTTPS"
 
     ```bash
@@ -119,6 +137,24 @@ Arca includes a browser-based web console for managing buckets, objects, and cre
 
     Open [http://localhost:9080](http://localhost:9080), enter the Arca endpoint (`http://localhost:9000`) and your credentials.
 
+=== "Published image"
+
+    No build needed. With the repository checked out:
+
+    ```bash
+    bin/console start -d --release latest
+    ```
+
+    Or with plain Docker, without even cloning the repository:
+
+    ```bash
+    docker run -d --name arca-console -p 9080:8080 \
+        -e ARCA_ENDPOINT=http://localhost:9000 \
+        ghcr.io/dxc-technology/arca-console:latest
+    ```
+
+    The image is public and multi-arch. The container listens on port 8080 (mapped to 9080 here) and runs as the unprivileged user `10001:10001`. `ARCA_ENDPOINT` is the Arca URL the browser connects to. See [Installation](installation.md#pre-built-images) for the available tags.
+
 === "HTTPS"
 
     ```bash
@@ -130,7 +166,7 @@ Arca includes a browser-based web console for managing buckets, objects, and cre
     Open `https://your-domain:9443`, then enter the Arca HTTPS endpoint (e.g. `https://your-domain:9000`) and your credentials.
 
 !!! tip
-    As with `bin/arca`, drop the `-d` flag to see console container logs in real time.
+    As with `bin/arca`, drop the `-d` flag to see console container logs in real time. Stop it with `bin/console stop` (`docker stop arca-console` for the plain Docker run).
 
 Admin credentials unlock additional features like credential management and server stats.
 

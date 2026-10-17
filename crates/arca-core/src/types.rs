@@ -109,9 +109,20 @@ pub struct ObjectRecord {
     /// Checksum algorithm (e.g. "SHA256", "CRC32", "CRC32C", "CRC64NVME").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checksum_algorithm: Option<String>,
-    /// Base64-encoded checksum value.
+    /// Base64-encoded checksum value. For a multipart object this is the
+    /// COMPOSITE value (`<base64>-<parts>`) or the FULL_OBJECT CRC, see
+    /// `handlers::multipart_checksum`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checksum_value: Option<String>,
+    /// Layout of an object assembled by CompleteMultipartUpload: its parts in
+    /// order, with their sizes and checksums. `None` for any other object and
+    /// for multipart objects completed before the layout was recorded.
+    ///
+    /// Filled when a record is built to be written or replicated, and by the
+    /// replication manifest; NOT by the reads that serve S3 requests (it can be
+    /// 10,000 entries): those use `MetadataStore::get_object_parts`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parts: Option<Vec<ObjectPart>>,
     /// Replication status: `PENDING`, `COMPLETED`, `FAILED`, or `REPLICA`.
     /// `None` for objects that have never been subject to replication.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -299,6 +310,16 @@ pub struct ListBucketV1ResultParams<'a> {
     pub encoding_type: Option<&'a str>,
 }
 
+/// One part of an object assembled by CompleteMultipartUpload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObjectPart {
+    pub part_number: u32,
+    pub size: u64,
+    /// Base64 checksum of the part, in the algorithm of the upload.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum: Option<String>,
+}
+
 /// Metadata about an in-progress multipart upload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultipartUploadRecord {
@@ -315,6 +336,10 @@ pub struct MultipartUploadRecord {
     /// Checksum algorithm selected at CreateMultipartUpload time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checksum_algorithm: Option<String>,
+    /// Checksum type selected at CreateMultipartUpload time (`COMPOSITE` or
+    /// `FULL_OBJECT`); `None` means the default of the algorithm.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum_type: Option<String>,
     /// Username of the user that initiated the upload (reported as `Owner` and
     /// `Initiator` by ListParts and ListMultipartUploads). Defaults to `root`
     /// for records written before the field existed.
@@ -466,7 +491,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod initiator_tests {
+mod serde_default_tests {
     use super::*;
 
     #[test]
@@ -476,5 +501,30 @@ mod initiator_tests {
             "initiated_at":"2026-01-01T00:00:00Z"}"#;
         let record: MultipartUploadRecord = serde_json::from_str(json).unwrap();
         assert_eq!(record.initiator, "root");
+    }
+
+    #[test]
+    fn object_record_without_a_layout_defaults_to_none() {
+        // A row replicated by a node older than the part layout.
+        let json = r#"{"bucket":"b","key":"k","blob_id":"00000000-0000-4000-8000-000000000000","size":1,
+            "etag":"e","content_type":null,"last_modified":"2026-01-01T00:00:00Z"}"#;
+        let record: ObjectRecord = serde_json::from_str(json).unwrap();
+        assert_eq!(record.parts, None);
+    }
+
+    #[test]
+    fn object_part_round_trips_and_omits_an_absent_checksum() {
+        let part = ObjectPart { part_number: 3, size: 7, checksum: None };
+        let json = serde_json::to_string(&part).unwrap();
+        assert_eq!(json, r#"{"part_number":3,"size":7}"#);
+        assert_eq!(serde_json::from_str::<ObjectPart>(&json).unwrap(), part);
+    }
+
+    #[test]
+    fn multipart_record_without_a_checksum_type_defaults_to_none() {
+        let json = r#"{"upload_id":"u","bucket":"b","key":"k","content_type":null,
+            "initiated_at":"2026-01-01T00:00:00Z"}"#;
+        let record: MultipartUploadRecord = serde_json::from_str(json).unwrap();
+        assert_eq!(record.checksum_type, None);
     }
 }

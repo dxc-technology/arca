@@ -5,8 +5,8 @@ use arca_core::store::{
     CompletedUpload, DeletePrecondition, MetadataStore, VersionPosition, WritePrecondition,
 };
 use arca_core::types::{
-    BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
-    VersioningState,
+    BlobId, BucketInfo, MultipartUploadRecord, ObjectPart, ObjectRecord, PartRecord,
+    StorageStats, VersioningState,
 };
 use chrono::{DateTime, Utc};
 use sqlx_core::row::Row;
@@ -14,11 +14,23 @@ use std::collections::HashMap;
 
 use super::PgStore;
 
-/// Column list for all object SELECT queries (20 columns).
-const OBJECT_COLUMNS: &str = "bucket, key, blob_id, size, etag, content_type, last_modified, \
+/// Column list of the object SELECT queries that serve S3 requests: every
+/// column except `parts`, the part layout of a multipart object, which can be
+/// 10,000 entries and is read on demand (`get_object_parts`).
+macro_rules! object_columns {
+    () => {
+        "bucket, key, blob_id, size, etag, content_type, last_modified, \
     metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, \
     is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, \
-    checksum_algorithm, checksum_value, replication_status, lock_updated_at, content_updated_at";
+    checksum_algorithm, checksum_value, replication_status, lock_updated_at, content_updated_at"
+    };
+}
+const OBJECT_COLUMNS: &str = object_columns!();
+
+/// [`OBJECT_COLUMNS`] plus the part layout, for the queries that read a row to
+/// write it back or to hand it to a peer (`apply_remote_object`, the
+/// replication manifest): leaving the layout out there would lose it.
+const OBJECT_COLUMNS_FULL: &str = concat!(object_columns!(), ", parts");
 
 /// Reads the bucket versioning state from `bucket_config`.
 /// Called inside a transaction context.
@@ -136,8 +148,8 @@ async fn insert_object_row(
         "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, \
          metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, \
          is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, \
-         checksum_algorithm, checksum_value, seq, lock_updated_at, content_updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)",
+         checksum_algorithm, checksum_value, seq, lock_updated_at, content_updated_at, parts) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)",
     )
     .bind(&record.bucket)
     .bind(&record.key)
@@ -162,9 +174,18 @@ async fn insert_object_row(
     .bind(seq)
     .bind(record.lock_updated_at)
     .bind(record.content_updated_at)
+    .bind(parts_to_json(record))
     .execute(&mut **tx)
     .await?;
     Ok(())
+}
+
+/// The part layout of `record` as the JSONB value stored in `objects.parts`.
+fn parts_to_json(record: &ObjectRecord) -> Option<serde_json::Value> {
+    record
+        .parts
+        .as_ref()
+        .and_then(|parts| serde_json::to_value(parts).ok())
 }
 
 /// Inserts a replicated object row verbatim, including `replication_status`,
@@ -184,9 +205,9 @@ async fn insert_replicated_row(
          metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, \
          is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, \
          checksum_algorithm, checksum_value, replication_status, is_tombstone, seq, lock_updated_at, \
-         content_updated_at) \
+         content_updated_at, parts) \
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, FALSE, $13, $14, $15, $16, \
-         $17, $18, $19, $20, $21, $22, $23, $24)",
+         $17, $18, $19, $20, $21, $22, $23, $24, $25)",
     )
     .bind(&record.bucket)
     .bind(&record.key)
@@ -212,6 +233,7 @@ async fn insert_replicated_row(
     .bind(seq)
     .bind(record.lock_updated_at)
     .bind(record.content_updated_at)
+    .bind(parts_to_json(record))
     .execute(&mut **tx)
     .await?;
     Ok(())
@@ -293,6 +315,10 @@ fn row_to_object_record(row: &sqlx_postgres::PgRow) -> ObjectRecord {
         storage_class: row.get("storage_class"),
         checksum_algorithm: row.get("checksum_algorithm"),
         checksum_value: row.get("checksum_value"),
+        parts: row
+            .try_get::<Option<serde_json::Value>, _>("parts")
+            .unwrap_or(None)
+            .and_then(|v| serde_json::from_value(v).ok()),
         replication_status: row.try_get("replication_status").unwrap_or(None),
         is_tombstone: row.try_get("is_tombstone").unwrap_or(false),
         lock_updated_at: row.try_get("lock_updated_at").unwrap_or(None),
@@ -324,6 +350,7 @@ pub(super) fn row_to_multipart_upload_record(row: &sqlx_postgres::PgRow) -> Mult
         initiated_at: row.get("initiated_at"),
         metadata,
         checksum_algorithm: row.get("checksum_algorithm"),
+        checksum_type: row.get("checksum_type"),
         initiator: row.get("initiator"),
     }
 }
@@ -880,6 +907,7 @@ impl MetadataStore for PgStore {
                     storage_class: "STANDARD".to_string(),
                     checksum_algorithm: None,
                     checksum_value: None,
+                    parts: None,
                     replication_status: None,
                     lock_updated_at: None,
                     content_updated_at: None,
@@ -954,6 +982,29 @@ impl MetadataStore for PgStore {
     }
 
     // -- Versioned object operations --
+
+    async fn get_object_parts(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+    ) -> Result<Option<Vec<ObjectPart>>, ArcaError> {
+        // `IS NOT DISTINCT FROM` matches the null version as well as a named one.
+        let row = sqlx_core::query::query(
+            "SELECT parts FROM objects \
+             WHERE bucket = $1 AND key = $2 AND version_id IS NOT DISTINCT FROM $3 \
+             AND is_tombstone = FALSE",
+        )
+        .bind(bucket)
+        .bind(key)
+        .bind(version_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("get_object_parts: {e}")))?;
+        Ok(row
+            .and_then(|r| r.try_get::<Option<serde_json::Value>, _>("parts").ok().flatten())
+            .and_then(|v| serde_json::from_value(v).ok()))
+    }
 
     async fn get_object_version(
         &self,
@@ -1165,7 +1216,7 @@ impl MetadataStore for PgStore {
         let existing: Option<ObjectRecord> = match &record.version_id {
             Some(vid) => {
                 let sql = format!(
-                    "SELECT {OBJECT_COLUMNS} FROM objects \
+                    "SELECT {OBJECT_COLUMNS_FULL} FROM objects \
                      WHERE bucket = $1 AND key = $2 AND version_id = $3"
                 );
                 sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
@@ -1179,7 +1230,7 @@ impl MetadataStore for PgStore {
             }
             None => {
                 let sql = format!(
-                    "SELECT {OBJECT_COLUMNS} FROM objects \
+                    "SELECT {OBJECT_COLUMNS_FULL} FROM objects \
                      WHERE bucket = $1 AND key = $2 AND version_id IS NULL"
                 );
                 sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
@@ -1344,8 +1395,8 @@ impl MetadataStore for PgStore {
         // Immutable once created (upload_id is the key): re-delivery is a no-op.
         sqlx_core::query::query(
             "INSERT INTO multipart_uploads \
-             (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
+             (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator, checksum_type) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
              ON CONFLICT (upload_id) DO NOTHING",
         )
         .bind(&record.upload_id)
@@ -1356,6 +1407,7 @@ impl MetadataStore for PgStore {
         .bind(&metadata_json)
         .bind(&record.checksum_algorithm)
         .bind(&record.initiator)
+        .bind(&record.checksum_type)
         .execute(&self.pool)
         .await
         .map_err(|e| ArcaError::Internal(format!("apply_remote_multipart_upload: {e}")))?;
@@ -1368,7 +1420,7 @@ impl MetadataStore for PgStore {
         limit: u32,
     ) -> Result<Vec<(u64, ObjectRecord)>, ArcaError> {
         let sql = format!(
-            "SELECT {OBJECT_COLUMNS}, seq FROM objects \
+            "SELECT {OBJECT_COLUMNS_FULL}, seq FROM objects \
              WHERE seq > $1 ORDER BY seq ASC LIMIT $2"
         );
         let rows = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
@@ -1778,8 +1830,8 @@ impl MetadataStore for PgStore {
 
         sqlx_core::query::query(
             "INSERT INTO multipart_uploads \
-             (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+             (upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator, checksum_type) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
         )
         .bind(&record.upload_id)
         .bind(&record.bucket)
@@ -1789,6 +1841,7 @@ impl MetadataStore for PgStore {
         .bind(&metadata_json)
         .bind(&record.checksum_algorithm)
         .bind(&record.initiator)
+        .bind(&record.checksum_type)
         .execute(&self.pool)
         .await
         .map_err(|e| ArcaError::Internal(format!("create_multipart_upload: {e}")))?;
@@ -1801,7 +1854,7 @@ impl MetadataStore for PgStore {
         upload_id: &str,
     ) -> Result<Option<MultipartUploadRecord>, ArcaError> {
         let row = sqlx_core::query::query(
-            "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator \
+            "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator, checksum_type \
              FROM multipart_uploads WHERE upload_id = $1",
         )
         .bind(upload_id)
@@ -1950,7 +2003,7 @@ impl MetadataStore for PgStore {
         max_uploads: u32,
     ) -> Result<Vec<MultipartUploadRecord>, ArcaError> {
         let mut sql = String::from(
-            "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator \
+            "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator, checksum_type \
              FROM multipart_uploads WHERE bucket = $1",
         );
         let mut param_idx = 2u32;
@@ -2409,7 +2462,7 @@ impl MetadataStore for PgStore {
         max_uploads: u32,
     ) -> Result<Vec<MultipartUploadRecord>, ArcaError> {
         let sql = format!(
-            "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator \
+            "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator, checksum_type \
              FROM multipart_uploads \
              WHERE bucket = $1 AND initiated_at < $2 \
              ORDER BY key, upload_id \

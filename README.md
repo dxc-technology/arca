@@ -98,10 +98,19 @@ aws s3 ls s3://my-bucket --endpoint-url http://localhost:9000
 ### Web Console
 
 ```bash
+# Start the console (after the server: it inherits TLS from it)
 bin/console start -d --build
+
+# Or, with no build at all, run the published image (public, linux/amd64 + linux/arm64):
+bin/console start -d --release latest
+# ...or plain Docker, without even cloning:
+docker run -d --name arca-console -p 9080:8080 \
+    -e ARCA_ENDPOINT=http://localhost:9000 ghcr.io/dxc-technology/arca-console:latest
+
+# With HTTPS the console follows the server started with --tls (no flag of its own)
 ```
 
-Open [http://localhost:9080](http://localhost:9080), enter the Arca endpoint (`http://localhost:9000`) and your credentials.
+Open [http://localhost:9080](http://localhost:9080), enter the Arca endpoint (`http://localhost:9000`) and your credentials. The console listens on 8080 (HTTP) and 8443 (HTTPS) inside the container, mapped to 9080 and 9443 on the host by the scripts.
 
 ### Admin API
 
@@ -176,13 +185,14 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 
 | Suite | Tests | Details |
 |-------|------:|---------|
-| Unit tests (Rust) | 1258 | arca-auth: 47, arca-core: 277, arca-proto: 161, arca-server: 394, arca-storage: 379 |
+| Unit tests (Rust) | 1314 | arca-auth: 47, arca-core: 285, arca-proto: 200, arca-server: 394, arca-storage: 388 |
 | Integration — boto3 | 146 | buckets, objects, list, multipart, copy, folders, auth, admin, credentials, conditional ops |
 | Integration — Conditional Writes (CAS) | 15 | sequential If-Match/If-None-Match/CompleteMultipartUpload/DeleteObject preconditions, N=8 racing writers under barrier release (exactly one winner, every run), conditional DELETE racing an unconditional overwrite (never destroys the newer object), DeleteObjects batch precondition checked against the targeted version, not the bucket's latest |
 | Integration — Multipart abort race | 3 | abort after complete leaves the object readable, complete after abort fails and writes nothing, and an abort swept across the whole life of a Complete (whoever wins, a completed object always reads back intact); also run against PostgreSQL |
 | Integration — RBAC | 42 | user/team/grant CRUD, attachments, effective grants, /admin/me (with and without grants), E2E access control |
 | Integration — Object ownership | 18 | the requesting user recorded as owner of objects (PutObject, presigned PUT, CopyObject incl. onto itself, CompleteMultipartUpload by the creator or by another user, versioned and suspended buckets), delete markers (single, batch, suspended), buckets and multipart uploads (`Owner`/`Initiator` of ListParts and ListMultipartUploads), `<Owner>` in ListObjects V1 and V2 `fetch-owner`, root writes still owned by `root`; also run against PostgreSQL |
 | Integration — aws-chunked signatures | 19 | signed aws-chunked bodies (`STREAMING-AWS4-HMAC-SHA256-PAYLOAD`, with and without a signed trailer) built by an independent signer: correctly signed PutObject (multi-chunk, small, empty) and UploadPart stored and completed; a modified data byte, chunk signature or trailer value, stripped signatures, a missing trailer signature, a body cut before the final chunk, inside a chunk or inside a chunk header (the signed final chunk is required), chunks signed for another request and signed chunks under a presigned URL all answer `403 SignatureDoesNotMatch` and store nothing (an existing object is left untouched) |
+| Integration — Multipart checksums | 56 | `COMPOSITE` and `FULL_OBJECT` object checksums for CRC32, CRC32C, CRC64NVME, SHA1 and SHA256 against independent reference values, default types, refused combinations, UploadPart (checksum computed when undeclared, another algorithm refused), Complete validation (whole-object header, part checksums, `x-amz-checksum-type`, `x-amz-mp-object-size`, upload left intact on refusal), `?partNumber` on GET and HEAD (bytes, count, part checksum, out of range, with `Range`, plain objects), GetObjectAttributes `ObjectParts` (parts, checksums, pagination), CopyObject, and a boto3 `upload_file` with the SDK defaults; also run against PostgreSQL |
 | Integration — Copy-source conditions | 16 | `x-amz-copy-source-if-match`/`-if-none-match`/`-if-modified-since`/`-if-unmodified-since`: a passing and a failing case per header on CopyObject and UploadPartCopy (412, nothing copied or stored) |
 | Integration — Virtual-hosted style | 6 | `bucket.<domain>/key` PUT/GET/HEAD/DELETE, bucket root listing, query string, missing bucket (`bin/test virtual-host`, a server started with `server.domain`) |
 | Integration — Versioning | 25 | versioning config, PUT/GET/HEAD/DELETE with versionId, delete markers, batch delete with VersionId, ListVersions (paginated inside a key and past the null version, a vanished marker refused), copy; also run against PostgreSQL |
@@ -219,9 +229,9 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — Migrate DB | 1 | SQLite→PostgreSQL offline metadata migration + row-count verify |
 | Integration — Migrate Topology | 1 | single→cluster config emission + DB ops, then →single round-trip |
 | Connector integrations | 84 | Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Kafka, AMQP, Elasticsearch, Syslog, SMTP, gRPC — each: delivery, custom destination, delete event, multiple events, payload format, connectivity test |
-| **Arca tests** | **2,337** | **All tests written for this project** |
+| **Arca tests** | **2,449** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 825 | 371 pass, 363 fail, 91 skip — 0 unexpected failures (RGW-only extensions excluded; 2 pass on AWS behaviour where RGW differs) |
-| **Total** | **3,162** | |
+| **Total** | **3,274** | |
 
 ## License
 

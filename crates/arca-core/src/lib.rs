@@ -18,5 +18,6 @@ pub use s3::bucket_name::validate_bucket_name;
 pub use store::{AuditEntry, AuditFilter, AuditStore, MetricsSnapshot, MetricsStore, ServerConfigStore};
 pub use types::{
     BlobId, BucketInfo, Credential, Grant, ListBucketResultParams, ListEntry,
-    MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats, Team, User, VersioningState,
+    MultipartUploadRecord, ObjectPart, ObjectRecord, PartRecord, StorageStats, Team, User,
+    VersioningState,
 };

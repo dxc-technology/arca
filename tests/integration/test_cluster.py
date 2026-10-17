@@ -742,6 +742,22 @@ def test_r5_multipart_completes_on_returned_node():
     )
     _wait_object(node3, R5_MP_BUCKET, R5_MP_CATCHUP_KEY, R5_MP_CATCHUP_BODY, timeout=30)
 
+    # The part layout is part of the replicated object row (TD-046): the other
+    # nodes can serve part 1 of it and know it has one part.
+    for node in (1, 2):
+        client = _s3(NODES[node])
+        deadline = time.time() + 60
+        while True:
+            try:
+                got = client.get_object(Bucket=R5_MP_BUCKET, Key=R5_MP_CATCHUP_KEY, PartNumber=1)
+                if got["PartsCount"] == 1 and got["Body"].read() == R5_MP_CATCHUP_BODY:
+                    break
+            except (ClientError, KeyError):
+                pass
+            if time.time() > deadline:
+                pytest.fail(f"node {node} did not learn the part layout of the completed upload in 60s")
+            time.sleep(2)
+
 
 # ── Phase: 507 overlay (arca-3 on a tiny tmpfs) ───────────────────────────────
 

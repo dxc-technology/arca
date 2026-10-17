@@ -20,7 +20,7 @@ use arca_core::store::ByteStream;
 use arca_core::{S3Error, S3ErrorCode};
 use sha2::{Digest, Sha256};
 
-use super::integrity::{BodyIntegrity, IntegrityCheck, Trailers};
+use super::integrity::{BodyIntegrity, ChecksumAlgorithm, IntegrityCheck, Trailers};
 
 /// Message of the I/O error a stream yields when a chunk or trailer signature
 /// does not verify (or the signed body is incomplete). Handlers turn it into
@@ -79,7 +79,25 @@ pub fn verified_body_stream(
     resource: &str,
     chunk_verifier: Option<ChunkVerifier>,
 ) -> Result<(ByteStream, IntegrityCheck), S3Error> {
-    let integrity = BodyIntegrity::from_headers(headers, resource)?;
+    verified_body_stream_requiring(body, headers, max_body_size, resource, chunk_verifier, None)
+}
+
+/// [`verified_body_stream`] for the part of an upload created with a checksum
+/// algorithm (`required`): the part must carry that checksum, which is computed
+/// when the request declares none and refused when it declares another
+/// algorithm (see `BodyIntegrity::require_checksum`).
+pub fn verified_body_stream_requiring(
+    body: Body,
+    headers: &HeaderMap,
+    max_body_size: Option<u64>,
+    resource: &str,
+    chunk_verifier: Option<ChunkVerifier>,
+    required: Option<ChecksumAlgorithm>,
+) -> Result<(ByteStream, IntegrityCheck), S3Error> {
+    let mut integrity = BodyIntegrity::from_headers(headers, resource)?;
+    if let Some(algorithm) = required {
+        integrity.require_checksum(algorithm, resource)?;
+    }
     let signing = match (signed_streaming_mode(headers), chunk_verifier) {
         (Some(with_trailer), Some(verifier)) => Some((verifier, with_trailer)),
         (Some(_), None) => {

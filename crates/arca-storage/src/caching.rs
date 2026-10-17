@@ -172,6 +172,16 @@ impl MetadataStore for CachingMetadataStore {
 
     // -- Versioned object operations --
 
+    async fn get_object_parts(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: Option<&str>,
+    ) -> Result<Option<Vec<arca_core::types::ObjectPart>>, ArcaError> {
+        // Read on demand and never cached: it can be 10,000 entries.
+        self.inner.get_object_parts(bucket, key, version_id).await
+    }
+
     async fn get_object_version(
         &self,
         bucket: &str,

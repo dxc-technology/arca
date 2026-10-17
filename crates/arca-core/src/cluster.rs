@@ -2126,6 +2126,7 @@ mod tests {
                     initiated_at: Utc::now(),
                     metadata: Default::default(),
                     checksum_algorithm: None,
+                    checksum_type: None,
                     initiator: "root".to_string(),
                 },
             },
@@ -2192,6 +2193,7 @@ mod tests {
             storage_class: "STANDARD".to_string(),
             checksum_algorithm: None,
             checksum_value: None,
+            parts: None,
             replication_status: None,
             lock_updated_at: None,
             content_updated_at: None,
@@ -2483,6 +2485,7 @@ mod tests {
             initiated_at: ts(initiated),
             metadata: std::collections::HashMap::new(),
             checksum_algorithm: None,
+            checksum_type: None,
             initiator: "root".to_string(),
         }
     }
