@@ -1,0 +1,28 @@
+# Runner of the performance suite (`bin/perf-test suite`): the boto3 steps,
+# the offline maintenance benchmark and the report generator.
+#
+# It carries the arca binary of the image under test, so the maintenance
+# benchmark times exactly the build the S3 scenarios measured. Python 3.14 is
+# required: report.py reads warp's zstd benchdata with compression.zstd.
+# Test tooling only, never published: the base stays a floating tag.
+ARG ARCA_IMAGE=ghcr.io/dxc-technology/arca:production
+FROM ${ARCA_IMAGE} AS arca
+
+FROM python:3.14-slim
+
+RUN pip install --no-cache-dir boto3
+
+COPY --from=arca /usr/local/bin/arca /usr/local/bin/arca
+
+WORKDIR /perf
+COPY tests/perf/perf_test.py tests/perf/suite.py tests/perf/report.py ./
+
+# The uid of the arca image, so the maintenance commands can read and write
+# its data volume; bin/perf-test runs the steps that write results as the
+# host user instead.
+USER 65532:65532
+
+# A short-lived command runner, not a service: there is nothing to probe.
+HEALTHCHECK NONE
+
+ENTRYPOINT ["python", "/perf/suite.py"]

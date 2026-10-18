@@ -1,0 +1,19 @@
+# Perf suite tmpfs overlay -- `bin/perf-test suite --storage tmpfs`.
+#
+# Puts the data of both servers in memory, so disk latency and fsync cost
+# drop out and CPU-bound differences show. The default (named volumes) keeps
+# a real disk under the servers, which is what deployments see. The size caps
+# what the large-object scenarios can write: keep it below the RAM of the
+# Docker host.
+
+volumes:
+  arca-data:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=${PERF_TMPFS_SIZE:-8g}"
+  minio-data:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=${PERF_TMPFS_SIZE:-8g}"

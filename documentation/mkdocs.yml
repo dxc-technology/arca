@@ -68,6 +68,7 @@ nav:
     - Disaster Recovery: operations/recovery.md
     - Storage Reclamation (GC): operations/gc.md
     - Monitoring & Logging: operations/monitoring.md
+    - Performance Testing: operations/performance.md
     - Production Deployment: operations/deployment.md
     - Troubleshooting: operations/troubleshooting.md
   - Roadmap: roadmap.md

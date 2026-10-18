@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A benchmark suite that compares Arca with MinIO: `bin/perf-test suite`.** It runs the same [warp](https://github.com/minio/warp) scenarios against both servers on the same host and storage: small PUT, GET and HEAD at several concurrencies, 64 MiB PUT and GET, ranged GET, multipart upload, a mixed workload, DeleteObjects, ListObjectsV2 and a versioned workload. Each server runs in three configurations: plain, SSE-S3 and compression. The suite also times ListObjectsV2 walks over a seeded key tree, with and without a delimiter, on both servers, and runs the SDK-side boto3 suite. For Arca it adds the offline maintenance commands (`fsck`, `fsck --verify-checksums`, `gc`, `compress-existing`, `recover`) on a seeded store, with each command's peak memory.
+  - **Isolation.** Every server starts fresh, in a compose project of its own with no fixed host port, so the suite never touches a running `bin/arca start`.
+  - **Output.** Everything goes into one run directory under `perf-results/`, which is git-ignored. It holds the raw warp benchdata and logs, the JSON results, the server metrics and logs, a `summary.json`, and `report.html`, which links every raw file.
+  - **Options.** `--profile quick|full`, `--targets`, `--variants`, `--scenarios`, `--storage volume|tmpfs` and `--release <tag>` (benchmark a published image).
+  - **Documentation and tests.** See the new Performance Testing page under Operations. `bin/test perf-report` tests the report generator and the runner; `bin/test scripts` tests the orchestration.
+  - **Licensing.** warp and MinIO run as separate test-only containers: neither is a dependency of Arca. The default MinIO image is Chainguard's build of upstream MinIO, because MinIO no longer publishes server images on Docker Hub.
+- **`bin/perf-test` reports the aggregate request rate.** Its `ops_per_sec` divides the operations by the sum of their latencies, which is the rate of a single client, not the rate the server sustained under concurrency. A new `wall_ops_per_sec` divides the operations by the elapsed time of the run. `ops_per_sec` keeps its old meaning, so old baselines still compare. `perf_test.py --json-out <path>` writes the JSON results to the given path.
+
 ## [0.33.0] — 2026-10-17
 
 ### Added

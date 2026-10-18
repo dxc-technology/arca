@@ -355,6 +355,14 @@ test_perf_test_self_contained_mode_is_isolated() {
     assert_isolated arca-test-perf
 }
 
+test_perf_test_suite_is_isolated() {
+    script_setup
+    bin/perf-test suite --profile quick --scenarios put-1k-c16 --out "$PWD/perf-out" \
+        > run.log 2>&1 || { cat run.log; return 1; }
+    assert_isolated arca-test-perf-suite &&
+    assert_contains "$(compose_calls | grep ' down ')" "-v"
+}
+
 test_perf_test_against_the_running_server_never_recreates_it() {
     script_setup
     bin/perf-test > run.log 2>&1 || { cat run.log; return 1; }

@@ -18,9 +18,22 @@ set -euo pipefail
 #   bin/perf-test --tls --tls-fqdn myhost.com  TLS with your certs in ./certs/ + FQDN
 #   bin/perf-test --encryption                 Start Arca with encryption
 #   bin/perf-test --tls --encryption           Combine features
+#   bin/perf-test suite [--profile quick|full] Arca vs MinIO with warp, plus listing,
+#                                              boto3 and maintenance timings, and an
+#                                              HTML report (bin/perf-test suite --help)
 
 cd "$(git rev-parse --show-toplevel)"
 source bin/lib/compose.sh
+
+if [[ "${1:-}" == suite ]]; then
+    shift
+    source bin/lib/perf_suite.sh
+    # The suite handles the failure of each step itself: one failing scenario
+    # must not stop the run, and the report is written whatever happened.
+    set +e
+    perf_suite_main "$@"
+    exit $?
+fi
 
 BUILD=false
 WANT_TLS=false
@@ -53,6 +66,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         -h|--help)
             echo "Usage: bin/perf-test [--build] [--tls] [--tls-fqdn FQDN] [--encryption] [<args>]"
+            echo "       bin/perf-test suite [options]   (see bin/perf-test suite --help)"
             echo ""
             echo "Options:"
             echo "  --build          Rebuild the perf-test image first"
@@ -64,6 +78,7 @@ while [[ $# -gt 0 ]]; do
             echo "  -q, --quiet      Show only the summary table"
             echo ""
             echo "Without --tls or --encryption, runs against an already-running Arca."
+            echo "The suite subcommand benchmarks Arca against MinIO in a project of its own."
             echo "Extra arguments are passed to the performance test tool."
             exit 0
             ;;

@@ -32,3 +32,6 @@ config/.tls-permissions.toml
 # Compose V2 loads .env from the project directory (where the compose file
 # lives), not from the shell's CWD — so it must sit next to the compose files.
 docker/.env
+
+# Performance suite runs (bin/perf-test suite): raw outputs and reports
+perf-results/

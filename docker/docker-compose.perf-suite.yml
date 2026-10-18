@@ -1,0 +1,71 @@
+# Perf suite overlay -- the services of `bin/perf-test suite`.
+#
+#   warp         the S3 load generator (benchmarks the server under test)
+#   minio        the reference server Arca is compared with
+#   perf-runner  boto3 steps, maintenance benchmark and report (tests/perf/)
+#
+# warp and MinIO are AGPL-3.0 test tools. They run as separate containers next
+# to Arca and are never linked into, built into or distributed with it, so the
+# dependency licensing policy (AGENTS.md) does not apply to them. Test-only
+# images: floating tags, like the other tooling images. MinIO no longer
+# publishes server images on Docker Hub; the default is Chainguard's build of
+# upstream MinIO, override it with PERF_MINIO_IMAGE.
+#
+# Nothing here publishes a host port: the suite reaches every service over
+# the compose network. Results land in PERF_RESULTS_DIR, written as the host
+# user (PERF_UID/PERF_GID), set by bin/perf-test.
+
+services:
+  warp:
+    image: minio/warp:latest
+    user: "${PERF_UID:-1000}:${PERF_GID:-1000}"
+    volumes:
+      - ${PERF_RESULTS_DIR:-../perf-results}:/results
+    working_dir: /results
+    profiles:
+      - perf-suite
+
+  minio:
+    image: ${PERF_MINIO_IMAGE:-cgr.dev/chainguard/minio:latest}
+    command: ["server", "/data"]
+    environment:
+      - MINIO_ROOT_USER=${ARCA_ROOT_ACCESS_KEY:-AKIA5B6BSHJA8CIHZSVG}
+      - MINIO_ROOT_PASSWORD=${ARCA_ROOT_SECRET_KEY:-hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv}
+      # SSE-S3 with a static test key (the sse variant sends the SSE header).
+      # Test key -- DO NOT use in production.
+      - MINIO_KMS_SECRET_KEY=perf-key:K+GgqdCNLvpsInhk8NWVJtXbfXt78A1zUc7QO343SJA=
+      # The compress variant compresses everything, like an Arca bucket with
+      # compression on (MinIO's default lists only compress text extensions).
+      - MINIO_COMPRESSION_ENABLE=${PERF_MINIO_COMPRESSION:-off}
+      - MINIO_COMPRESSION_EXTENSIONS=*
+      - MINIO_COMPRESSION_MIME_TYPES=*
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    volumes:
+      - minio-data:/data
+    profiles:
+      - perf-suite
+
+  perf-runner:
+    image: arca-perf-runner
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.perf-runner
+      args:
+        ARCA_IMAGE: ghcr.io/dxc-technology/arca:${ARCA_RELEASE:-${BUILD_TARGET:-production}}
+    environment:
+      - ARCA_ENDPOINT=${PERF_ENDPOINT:-http://arca:9000}
+      - AWS_ACCESS_KEY_ID=${ARCA_ROOT_ACCESS_KEY:-AKIA5B6BSHJA8CIHZSVG}
+      - AWS_SECRET_ACCESS_KEY=${ARCA_ROOT_SECRET_KEY:-hQBDe6WnX9umjbSGCrld7YRUoYfaQUhUcJS/UAgv}
+    volumes:
+      - ${PERF_RESULTS_DIR:-../perf-results}:/results
+      # The server's data and config, for the offline maintenance benchmark.
+      - arca-data:/data
+      - ${ARCA_GENERATED_CONFIG:-../config/.generated.toml}:/etc/arca/config.toml:ro
+    profiles:
+      - perf-suite
+
+volumes:
+  minio-data:

@@ -21,6 +21,7 @@ set -euo pipefail
 #   bin/test postgres     Run PostgreSQL backend integration tests
 #   bin/test s3-compat    Run Ceph s3-tests compatibility suite
 #   bin/test s3-report    Run the Ceph report generator tests (docker/s3-tests/report_test.py)
+#   bin/test perf-report  Run the performance suite's Python tests (tests/perf/*_test.py)
 #   bin/test connectors redis        Run Redis connector integration tests
 #   bin/test connectors nats         Run NATS connector integration tests
 #   bin/test connectors mqtt         Run MQTT connector integration tests
@@ -1686,6 +1687,16 @@ run_s3_report() {
         -p no:cacheprovider report_test.py "$@"
 }
 
+run_perf_report() {
+    echo "==> Running performance suite tests..."
+    # The report reads warp's zstd benchdata with the standard library's
+    # compression.zstd, which needs Python 3.14; no server is involved.
+    docker run --rm -v "$PWD/tests/perf:/t:ro" -w /t -e PYTHONDONTWRITEBYTECODE=1 \
+        python:3.14-slim sh -c \
+        'pip install --no-cache-dir -q --root-user-action=ignore pytest >/dev/null &&
+         pytest -p no:cacheprovider "$@" report_test.py suite_test.py' sh "$@"
+}
+
 case "${1:-all}" in
     unit)
         shift
@@ -1774,6 +1785,10 @@ case "${1:-all}" in
         shift
         run_s3_report "$@"
         ;;
+    perf-report)
+        shift
+        run_perf_report "$@"
+        ;;
     all)
         run_unit
         echo ""
@@ -1809,6 +1824,7 @@ case "${1:-all}" in
         echo "  cluster              Run 3-node HA cluster integration tests (phased node up/down)"
         echo "  s3-compat            Run Ceph s3-tests compatibility suite"
         echo "  s3-report            Run the Ceph report generator tests (docker/s3-tests/report_test.py)"
+        echo "  perf-report          Run the performance suite tests (tests/perf/*_test.py, no server)"
         echo ""
         echo "Extra args are passed to the test runner (cargo test or pytest)."
         echo "Example: bin/test unit -p arca-core"

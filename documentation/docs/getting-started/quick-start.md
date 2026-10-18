@@ -184,7 +184,7 @@ Convenience scripts in `bin/` wrap docker compose commands:
 | `bin/test` | Run unit + integration tests (`unit`, `integration`, or both) |
 | `bin/screenshots` | Take automated console screenshots for documentation |
 | `bin/s3-tests` | Run Ceph s3-tests compatibility suite |
-| `bin/perf-test` | Run performance tests |
+| `bin/perf-test` | Run performance tests (`suite` benchmarks Arca against MinIO, see [Performance Testing](../operations/performance.md)) |
 | `bin/docs-build` | Build the documentation site |
 | `bin/docs-serve` | Serve docs locally with live reload |
 | `bin/docs-publish` | Build, commit, and push docs to update GitHub Pages |

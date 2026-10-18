@@ -12,6 +12,7 @@ Usage:
     python perf_test.py [--endpoint URL] [--threads N] [--objects N]
     python perf_test.py --json                         # machine-readable output
     python perf_test.py --json --baseline results.json # compare against baseline
+    python perf_test.py --json-out /results/boto3.json # JSON results to a given path
 """
 
 import argparse
@@ -77,8 +78,15 @@ def percentile(data: list[float], p: float) -> float:
     return data_sorted[f] + (k - f) * (data_sorted[c] - data_sorted[f])
 
 
-def report_latencies(name: str, latencies: list[float], errors: int = 0) -> dict:
-    """Print a formatted latency report and return structured data."""
+def report_latencies(
+    name: str, latencies: list[float], errors: int = 0, wall_s: float | None = None
+) -> dict:
+    """Print a formatted latency report and return structured data.
+
+    `ops_per_sec` is operations over the summed latencies, i.e. the rate of
+    one client; with `wall_s` (the elapsed time of the whole concurrent run)
+    `wall_ops_per_sec` is the aggregate rate the server sustained.
+    """
     if not latencies:
         print(f"  {name}: no successful operations")
         return {"name": name, "ops": 0, "errors": errors, "throughput": 0, "throughput_unit": "ops/s"}
@@ -101,6 +109,8 @@ def report_latencies(name: str, latencies: list[float], errors: int = 0) -> dict
         "max_ms": round(max(latencies) * 1000, 1),
         "avg_ms": round(statistics.mean(latencies) * 1000, 1),
     }
+    if wall_s:
+        result["wall_ops_per_sec"] = round(total / wall_s, 1)
 
     print(f"  {name}:")
     print(f"    Operations: {total} ({errors} errors)")
@@ -149,6 +159,7 @@ def test_small_object_put(client, bucket: str, threads: int, count: int, size: i
         )
         return elapsed
 
+    wall_start = time.monotonic()
     with ThreadPoolExecutor(max_workers=threads) as pool:
         futures = {pool.submit(put_one, i): i for i in range(count)}
         for fut in as_completed(futures):
@@ -157,7 +168,7 @@ def test_small_object_put(client, bucket: str, threads: int, count: int, size: i
             except Exception:
                 errors += 1
 
-    return report_latencies("Small PUT", latencies, errors)
+    return report_latencies("Small PUT", latencies, errors, time.monotonic() - wall_start)
 
 
 def test_small_object_get(client, bucket: str, threads: int, count: int):
@@ -172,6 +183,7 @@ def test_small_object_get(client, bucket: str, threads: int, count: int):
         )
         return elapsed
 
+    wall_start = time.monotonic()
     with ThreadPoolExecutor(max_workers=threads) as pool:
         futures = {pool.submit(get_one, i): i for i in range(count)}
         for fut in as_completed(futures):
@@ -180,7 +192,7 @@ def test_small_object_get(client, bucket: str, threads: int, count: int):
             except Exception:
                 errors += 1
 
-    return report_latencies("Small GET", latencies, errors)
+    return report_latencies("Small GET", latencies, errors, time.monotonic() - wall_start)
 
 
 def test_head_object(client, bucket: str, threads: int, count: int):
@@ -195,6 +207,7 @@ def test_head_object(client, bucket: str, threads: int, count: int):
         )
         return elapsed
 
+    wall_start = time.monotonic()
     with ThreadPoolExecutor(max_workers=threads) as pool:
         futures = {pool.submit(head_one, i): i for i in range(count)}
         for fut in as_completed(futures):
@@ -203,7 +216,7 @@ def test_head_object(client, bucket: str, threads: int, count: int):
             except Exception:
                 errors += 1
 
-    return report_latencies("HEAD", latencies, errors)
+    return report_latencies("HEAD", latencies, errors, time.monotonic() - wall_start)
 
 
 def test_delete_object(client, bucket: str, threads: int, count: int):
@@ -224,6 +237,7 @@ def test_delete_object(client, bucket: str, threads: int, count: int):
         )
         return elapsed
 
+    wall_start = time.monotonic()
     with ThreadPoolExecutor(max_workers=threads) as pool:
         futures = {pool.submit(del_one, i): i for i in range(count)}
         for fut in as_completed(futures):
@@ -232,7 +246,7 @@ def test_delete_object(client, bucket: str, threads: int, count: int):
             except Exception:
                 errors += 1
 
-    return report_latencies("DELETE", latencies, errors)
+    return report_latencies("DELETE", latencies, errors, time.monotonic() - wall_start)
 
 
 def test_large_multipart(client, bucket: str, size_mb: int):
@@ -468,6 +482,7 @@ def test_mixed_workload(client, bucket: str, threads: int, ops: int):
         except Exception:
             return ("error", 0)
 
+    wall_start = time.monotonic()
     with ThreadPoolExecutor(max_workers=threads) as pool:
         futures = [pool.submit(do_op, i) for i in range(ops)]
         for fut in as_completed(futures):
@@ -481,6 +496,7 @@ def test_mixed_workload(client, bucket: str, threads: int, ops: int):
             else:
                 errors += 1
 
+    wall_s = time.monotonic() - wall_start
     report_latencies("GET (70%)", get_lats)
     report_latencies("PUT (20%)", put_lats)
     report_latencies("DELETE (10%)", del_lats)
@@ -498,6 +514,8 @@ def test_mixed_workload(client, bucket: str, threads: int, ops: int):
         "throughput": round(combined_ops_sec, 1),
         "throughput_unit": "ops/s",
     }
+    if wall_s > 0:
+        result["wall_ops_per_sec"] = round(total_ops / wall_s, 1)
     if all_lats:
         result["p50_ms"] = round(percentile(all_lats, 50) * 1000, 1)
         result["p95_ms"] = round(percentile(all_lats, 95) * 1000, 1)
@@ -659,6 +677,10 @@ def main():
         help="MiB per part in the parallel-multipart scenario",
     )
     parser.add_argument("--json", action="store_true", help="Output JSON results")
+    parser.add_argument(
+        "--json-out",
+        help="Write the JSON results to this path (implies --json; default perf_results.json)",
+    )
     parser.add_argument("--baseline", help="Baseline JSON file for comparison")
     parser.add_argument("-q", "--quiet", action="store_true",
                         help="Show only the summary table, suppress per-test details")
@@ -736,8 +758,8 @@ def main():
         "score": score,
     }
 
-    if args.json:
-        json_path = "perf_results.json"
+    if args.json or args.json_out:
+        json_path = args.json_out or "perf_results.json"
         with open(json_path, "w") as f:
             json.dump(output, f, indent=2)
         print(f"\n  JSON results written to {json_path}")

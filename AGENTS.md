@@ -83,6 +83,7 @@ bin/test tls             # TLS integration tests (self-contained)
 bin/test tls-permissions # TLS file-permission tests (named volume, self-contained)
 bin/test scripts         # bin/lib shell library tests (tests/scripts/*_test.sh, docker mocked)
 bin/test s3-report       # Ceph report generator tests (docker/s3-tests/report_test.py, no server)
+bin/test perf-report     # perf suite report + runner tests (tests/perf/*_test.py, no server)
 bin/test encryption      # encryption integration tests
 bin/test per-bucket-encryption   # per-bucket encryption tests
 bin/test virtual-host    # virtual-hosted-style addressing tests (server.domain set, self-contained)
@@ -90,6 +91,12 @@ bin/test kms             # KMS integration tests (with OpenBAO)
 bin/test cluster         # 3-node HA cluster tests (phased node stop/start/partition, self-contained)
 bin/test replication     # replication tests (second instance, self-contained)
 bin/test notifications   # notification delivery tests (webhook receiver, self-contained)
+
+# Performance (documentation/docs/operations/performance.md)
+bin/perf-test            # boto3 check against the running server
+bin/perf-test suite      # Arca vs MinIO with warp + listing/boto3/maintenance timings, self-contained;
+                         # run directory + report.html in perf-results/ (git-ignored, never committed)
+bin/perf-test suite --profile quick --targets arca --variants plain   # a quick look
 
 # Manual S3 CLI verification against running Arca
 aws s3 ls --endpoint-url http://localhost:9000
@@ -100,7 +107,7 @@ bin/docs-serve           # serve locally with live reload (http://localhost:8000
 bin/docs-publish         # build + commit + push docs to update GitHub Pages
 ```
 
-Self-contained test modes (`tls`, `encryption`, `kms`, `postgres`, the connectors, ..., and `bin/perf-test --tls/--encryption`) never touch the developer's stack: `use_test_project <mode>` (`bin/lib/compose.sh`) gives each its own compose project (`arca-test-<mode>`), its own `config/.generated-test-<mode>.toml` and ephemeral loopback host ports, so they can run while `bin/arca start` is up. A new self-contained mode must call `use_test_project` first and get a case in `tests/scripts/test_isolation_test.sh`; a port published in a compose overlay must be a `${<NAME>_HOST_PORT:-<port>}` that `use_test_project` remaps (`bin/test scripts` checks every overlay). Modes that start no server (`integration`, `presigned`, `ssec`) run against the running one with `--no-deps`. The suites that need names only a mode's own compose project defines (`test_cluster.py`, `test_replication.py`, the delivery classes of `test_notifications.py`) skip themselves unless that mode set their environment variable (`ARCA_NODE1_ENDPOINT`, `ARCA_REPLICA_ENDPOINT`, `WEBHOOK_RECEIVER_URL`), so a plain `bin/test integration` has no failing test to learn to ignore; a new suite of that kind must do the same. The cluster mode looks node ports up with `docker compose port` on every poll (an ephemeral port changes when a container restarts) and `bin/cluster partition/heal` follow it through `ARCA_CLUSTER_PROJECT`. `scripts` and `s3-report` need no server at all.
+Self-contained test modes (`tls`, `encryption`, `kms`, `postgres`, the connectors, ..., and `bin/perf-test --tls/--encryption` / `bin/perf-test suite`) never touch the developer's stack: `use_test_project <mode>` (`bin/lib/compose.sh`) gives each its own compose project (`arca-test-<mode>`), its own `config/.generated-test-<mode>.toml` and ephemeral loopback host ports, so they can run while `bin/arca start` is up. A new self-contained mode must call `use_test_project` first and get a case in `tests/scripts/test_isolation_test.sh`; a port published in a compose overlay must be a `${<NAME>_HOST_PORT:-<port>}` that `use_test_project` remaps (`bin/test scripts` checks every overlay). Modes that start no server (`integration`, `presigned`, `ssec`) run against the running one with `--no-deps`. The suites that need names only a mode's own compose project defines (`test_cluster.py`, `test_replication.py`, the delivery classes of `test_notifications.py`) skip themselves unless that mode set their environment variable (`ARCA_NODE1_ENDPOINT`, `ARCA_REPLICA_ENDPOINT`, `WEBHOOK_RECEIVER_URL`), so a plain `bin/test integration` has no failing test to learn to ignore; a new suite of that kind must do the same. The cluster mode looks node ports up with `docker compose port` on every poll (an ephemeral port changes when a container restarts) and `bin/cluster partition/heal` follow it through `ARCA_CLUSTER_PROJECT`. `scripts`, `s3-report` and `perf-report` need no server at all.
 
 ### Build constraints
 
