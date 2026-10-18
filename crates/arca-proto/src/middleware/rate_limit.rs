@@ -75,6 +75,8 @@ pub async fn credential_rate_limit_middleware(
 /// Extracts the client IP address from `X-Forwarded-For` header or `ConnectInfo`.
 fn extract_client_ip(request: &axum::extract::Request) -> String {
     // Check X-Forwarded-For first (for reverse proxy setups).
+    // TECHDEBT(TD-055): trusted from any client, so a direct client can evade
+    // the limit with a fake header; honour it only from configured proxies.
     if let Some(xff) = request.headers().get("x-forwarded-for") {
         if let Ok(val) = xff.to_str() {
             if let Some(first_ip) = val.split(',').next() {

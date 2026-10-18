@@ -212,6 +212,9 @@ async fn serve_http<S>(
     let tower_svc = tower::ServiceBuilder::new()
         .map_request(move |req: http::Request<hyper::body::Incoming>| {
             let mut req = req.map(axum::body::Body::new);
+            // What `into_make_service_with_connect_info` would add: the per-IP
+            // rate limit and the audit log read the client address here.
+            req.extensions_mut().insert(axum::extract::ConnectInfo(remote_addr));
             if peer_cert_verified {
                 req.extensions_mut()
                     .insert(arca_proto::middleware::cluster_auth::ClusterPeerCertVerified);
@@ -401,6 +404,29 @@ mod tests {
         let (accepted, _) = accept(&listener).await.unwrap();
         assert!(accepted.nodelay().unwrap(), "accepted connection must have TCP_NODELAY");
         drop(client.await.unwrap());
+    }
+
+    /// The peer address reaches the handlers as `ConnectInfo`, on both
+    /// transports: the per-IP rate limit and the audit log read it there.
+    #[tokio::test]
+    async fn requests_carry_the_peer_address() {
+        for kind in [Kind::Plain, Kind::Tls] {
+            let router = axum::Router::new().route(
+                "/peer",
+                axum::routing::get(|request: axum::extract::Request| async move {
+                    request
+                        .extensions()
+                        .get::<axum::extract::ConnectInfo<SocketAddr>>()
+                        .map(|info| info.0.ip().to_string())
+                        .unwrap_or_default()
+                }),
+            );
+            let mut server = start_server(kind, router, Duration::from_secs(1)).await;
+            let body = server.client.get(format!("{}/peer", server.base)).send().await.unwrap().text().await.unwrap();
+            assert_eq!(body, "127.0.0.1", "{kind:?}");
+            server.shut_down();
+            server.stopped_within(Duration::from_secs(5)).await;
+        }
     }
 
     /// The task of a closed connection stays in the set until it is joined:

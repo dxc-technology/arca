@@ -284,7 +284,10 @@ When a limit is exceeded, the server returns HTTP 503 with S3 error code `SlowDo
 Rate limiting is **disabled by default** (rate = 0). Enable it for any deployment exposed to the internet or shared by multiple tenants. See the [configuration reference](../guide/configuration.md#rate-limiting) for all settings.
 
 !!! tip
-    Behind a reverse proxy, per-IP limiting uses the `X-Forwarded-For` header (first entry) to identify clients. Make sure your proxy sets this header.
+    Behind a reverse proxy, per-IP limiting uses the `X-Forwarded-For` header (first entry) to identify clients. Make sure your proxy sets this header. Without the header, the client is the TCP peer address.
+
+!!! warning
+    Arca trusts `X-Forwarded-For` from any client (TD-055). If clients can reach Arca without going through the proxy, they can evade the per-IP limit by sending the header themselves: keep Arca reachable only through the proxy, or rely on the per-credential limit.
 
 ## Graceful Shutdown
 

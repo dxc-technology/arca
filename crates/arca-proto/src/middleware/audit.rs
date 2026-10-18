@@ -242,6 +242,22 @@ fn extract_access_key(request: &axum::extract::Request) -> Option<String> {
     None
 }
 
+/// The client address recorded in the audit log: the proxy headers when a
+/// proxy set them, else the address of the TCP peer.
+// TECHDEBT(TD-055): the headers are trusted from any client.
+fn source_ip(request: &axum::extract::Request) -> Option<String> {
+    let header = |name: &str| request.headers().get(name).and_then(|v| v.to_str().ok());
+    header("x-forwarded-for")
+        .or_else(|| header("x-real-ip"))
+        .map(|s| s.to_string())
+        .or_else(|| {
+            request
+                .extensions()
+                .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+                .map(|info| info.0.ip().to_string())
+        })
+}
+
 /// Audit middleware. Runs outermost (before auth) to capture all requests.
 /// Extracts the access key from the Authorization header before auth runs,
 /// then looks up the user asynchronously in the spawned audit task.
@@ -263,17 +279,7 @@ pub async fn audit_middleware(
     // Extract access key from Authorization header BEFORE auth consumes the request
     let access_key_id = if is_options { None } else { extract_access_key(&request) };
 
-    let source_ip = request
-        .headers()
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .or_else(|| {
-            request
-                .headers()
-                .get("x-real-ip")
-                .and_then(|v| v.to_str().ok())
-        })
-        .map(|s| s.to_string());
+    let source_ip = source_ip(&request);
     let user_agent = request
         .headers()
         .get("user-agent")
@@ -436,5 +442,27 @@ mod tests {
             (Some("my-bucket".into()), Some("path/to/key.txt".into()))
         );
         assert_eq!(parse_bucket_key("/my-bucket/"), (Some("my-bucket".into()), None));
+    }
+
+    #[test]
+    fn source_ip_prefers_the_proxy_headers_then_the_peer() {
+        let peer = axum::extract::ConnectInfo(std::net::SocketAddr::from(([192, 0, 2, 7], 50000)));
+        let request = |headers: &[(&str, &str)]| {
+            let mut builder = http::Request::builder().uri("/");
+            for (name, value) in headers {
+                builder = builder.header(*name, *value);
+            }
+            let mut request = builder.body(axum::body::Body::empty()).unwrap();
+            request.extensions_mut().insert(peer);
+            request
+        };
+        assert_eq!(source_ip(&request(&[])).as_deref(), Some("192.0.2.7"));
+        assert_eq!(source_ip(&request(&[("x-real-ip", "198.51.100.1")])).as_deref(), Some("198.51.100.1"));
+        assert_eq!(
+            source_ip(&request(&[("x-real-ip", "198.51.100.1"), ("x-forwarded-for", "203.0.113.9")])).as_deref(),
+            Some("203.0.113.9")
+        );
+        let no_peer = http::Request::builder().uri("/").body(axum::body::Body::empty()).unwrap();
+        assert_eq!(source_ip(&no_peer), None);
     }
 }

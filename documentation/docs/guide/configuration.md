@@ -86,7 +86,7 @@ Compression is **per-bucket and console-managed** — it has no TOML configurati
 |---------|---------|-------------|
 | `server.limits.rate_limit_per_second` | `0` (disabled) | Maximum S3 requests per second per credential. Uses GCRA algorithm. `0` disables per-credential rate limiting. |
 | `server.limits.rate_limit_burst` | `0` | Burst capacity per credential. Must be ≥ `rate_limit_per_second`. |
-| `server.limits.rate_limit_per_ip_per_second` | `0` (disabled) | Maximum requests per second per client IP (or `X-Forwarded-For` first entry). `0` disables per-IP rate limiting. |
+| `server.limits.rate_limit_per_ip_per_second` | `0` (disabled) | Maximum requests per second per client IP: the first `X-Forwarded-For` entry when the request has one, else the address of the TCP peer. The header is trusted from any client, so a client that reaches Arca directly can evade the limit with it (TD-055). `0` disables per-IP rate limiting. |
 | `server.limits.rate_limit_per_ip_burst` | `0` | Burst capacity per IP. Must be ≥ `rate_limit_per_ip_per_second`. |
 
 When a rate limit is exceeded, the server returns HTTP 503 with S3 error code `SlowDown` and a `Retry-After: 1` header. Rate limiting is disabled by default, enable it for production deployments exposed to the internet.
