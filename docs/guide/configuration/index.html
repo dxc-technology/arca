@@ -2113,7 +2113,7 @@
 <tr>
 <td><code>server.limits.rate_limit_per_ip_per_second</code></td>
 <td><code>0</code> (disabled)</td>
-<td>Maximum requests per second per client IP (or <code>X-Forwarded-For</code> first entry). <code>0</code> disables per-IP rate limiting.</td>
+<td>Maximum requests per second per client IP: the first <code>X-Forwarded-For</code> entry when the request has one, else the address of the TCP peer. The header is trusted from any client, so a client that reaches Arca directly can evade the limit with it (TD-055). <code>0</code> disables per-IP rate limiting.</td>
 </tr>
 <tr>
 <td><code>server.limits.rate_limit_per_ip_burst</code></td>

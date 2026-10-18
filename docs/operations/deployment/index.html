@@ -2319,7 +2319,11 @@
 <p>Rate limiting is <strong>disabled by default</strong> (rate = 0). Enable it for any deployment exposed to the internet or shared by multiple tenants. See the <a href="../../guide/configuration/#rate-limiting">configuration reference</a> for all settings.</p>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
-<p>Behind a reverse proxy, per-IP limiting uses the <code>X-Forwarded-For</code> header (first entry) to identify clients. Make sure your proxy sets this header.</p>
+<p>Behind a reverse proxy, per-IP limiting uses the <code>X-Forwarded-For</code> header (first entry) to identify clients. Make sure your proxy sets this header. Without the header, the client is the TCP peer address.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Arca trusts <code>X-Forwarded-For</code> from any client (TD-055). If clients can reach Arca without going through the proxy, they can evade the per-IP limit by sending the header themselves: keep Arca reachable only through the proxy, or rely on the per-credential limit.</p>
 </div>
 <h2 id="graceful-shutdown">Graceful Shutdown<a class="headerlink" href="#graceful-shutdown" title="Permanent link">&para;</a></h2>
 <p>On SIGTERM or SIGINT, Arca enters <strong>drain mode</strong>:</p>

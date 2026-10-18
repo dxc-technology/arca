@@ -1604,6 +1604,22 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td>None</td>
 <td><code>crates/arca-server/src/worker.rs</code> (metrics), <code>console/</code></td>
 </tr>
+<tr>
+<td>TD-055</td>
+<td>Per-IP rate limit trusts <code>X-Forwarded-For</code> from any client</td>
+<td><code>extract_client_ip</code> keys the per-IP limiter on the first <code>X-Forwarded-For</code> address whenever the header is present, and only falls back to the TCP peer (<code>ConnectInfo</code>, inserted by <code>serve.rs</code>) without it. A client that talks to Arca directly can send a different fake address on every request and never be limited; the audit log records the same unverified header</td>
+<td>A <code>[server] trusted_proxies</code> list (addresses or CIDRs): honour <code>X-Forwarded-For</code> / <code>X-Real-IP</code> only when the peer is a trusted proxy, taking the right-most untrusted address; default none, so direct deployments use the peer address</td>
+<td><code>rate_limit.rs</code> / <code>audit.rs</code> unit tests</td>
+<td><code>crates/arca-proto/src/middleware/rate_limit.rs</code>, <code>crates/arca-proto/src/middleware/audit.rs</code></td>
+</tr>
+<tr>
+<td>TD-056</td>
+<td>Lifecycle never removes delete markers</td>
+<td><code>Expiration</code> with <code>ExpiredObjectDeleteMarker</code> is accepted, stored and returned by GetBucketLifecycleConfiguration, but the evaluator skips it, so an expired object delete marker (a marker with no noncurrent version left behind it) stays forever. <code>NoncurrentVersionExpiration</code> hard-deletes noncurrent versions but never noncurrent delete markers. Nothing is lost, the markers only pile up in ListObjectVersions</td>
+<td>Implement ExpiredObjectDeleteMarker (remove a latest delete marker once it is the only version of its key) and include noncurrent delete markers in NoncurrentVersionExpiration, as S3 does; both delete things that are kept today, so release-note the change</td>
+<td><code>test_lifecycle.py</code></td>
+<td><code>crates/arca-server/src/worker.rs</code></td>
+</tr>
 </tbody>
 </table>
 <hr />
