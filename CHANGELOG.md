@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **The tag filter applies to noncurrent versions.** NoncurrentVersionExpiration ignored it and expired the versions without the tag as well.
 
   Each of these deleted data that S3 keeps; after the fix a rule may delete less than before, never more. Two gaps remain, both on the side of deleting less: expired object delete markers and noncurrent delete markers are never removed (TD-056).
+- **ListObjectVersions honours `delimiter`.** It was read and ignored, so a delimited listing returned every version of every key and no `CommonPrefixes`. The versions of the keys that have the delimiter after the prefix now roll up into one common prefix, which counts once towards `max-keys`, the response echoes `Delimiter`, and a page that ends on a common prefix returns it as `NextKeyMarker` with no `NextVersionIdMarker`, as S3 does.
 - **DeleteBucket no longer counts the bucket's objects to see whether it is empty** (nor does enabling Object Lock on an existing bucket). The check was `COUNT(*) ... LIMIT 1`, which counts every row before applying the limit; it is now an `EXISTS` that stops at the first row.
 
 ## [0.33.0] — 2026-10-17

@@ -263,6 +263,51 @@ class TestListObjectVersions:
             s3_client.delete_bucket(Bucket=bucket)
 
 
+    @staticmethod
+    def _walk_with_delimiter(s3_client, bucket, page_size, **kwargs):
+        """Every page of a delimited listing, as versions and prefixes in order."""
+        paginator = s3_client.get_paginator("list_object_versions")
+        items = []
+        for page in paginator.paginate(
+            Bucket=bucket, Delimiter="/", PaginationConfig={"PageSize": page_size}, **kwargs
+        ):
+            assert page["Delimiter"] == "/"
+            entries = page.get("Versions", []) + page.get("DeleteMarkers", [])
+            items += [(v["Key"], v["VersionId"]) for v in entries]
+            items += [(p["Prefix"], None) for p in page.get("CommonPrefixes", [])]
+        return items
+
+    def test_list_versions_groups_by_delimiter(self, s3_client, vbucket):
+        for key in ["a/1", "a/2", "b", "c/x/1"]:
+            for i in range(2):
+                s3_client.put_object(Bucket=vbucket, Key=key, Body=f"{i}".encode())
+        resp = s3_client.list_object_versions(Bucket=vbucket, Delimiter="/")
+        assert [p["Prefix"] for p in resp["CommonPrefixes"]] == ["a/", "c/"]
+        assert [v["Key"] for v in resp["Versions"]] == ["b", "b"]
+        assert resp["IsTruncated"] is False
+
+    def test_list_versions_delimiter_under_a_prefix(self, s3_client, vbucket):
+        for key in ["a/x/1", "a/x/2", "a/y", "b/z/1"]:
+            s3_client.put_object(Bucket=vbucket, Key=key, Body=b"x")
+        resp = s3_client.list_object_versions(Bucket=vbucket, Prefix="a/", Delimiter="/")
+        assert [p["Prefix"] for p in resp["CommonPrefixes"]] == ["a/x/"]
+        assert [v["Key"] for v in resp["Versions"]] == ["a/y"]
+
+    def test_list_versions_delimiter_pages_neither_skip_nor_repeat(self, s3_client, vbucket):
+        versions = {}
+        for key in ["a/1", "a/2", "b", "c/1", "d"]:
+            for i in range(2):
+                r = s3_client.put_object(Bucket=vbucket, Key=key, Body=f"{i}".encode())
+                versions.setdefault(key, []).append(r["VersionId"])
+        marker = s3_client.delete_object(Bucket=vbucket, Key="d")["VersionId"]
+        expected = {("a/", None), ("c/", None), ("d", marker)}
+        expected |= {(key, vid) for key in ("b", "d") for vid in versions[key]}
+        for page_size in (1, 2, 3, 1000):
+            items = self._walk_with_delimiter(s3_client, vbucket, page_size)
+            assert len(items) == len(set(items)), f"repeated at page size {page_size}: {items}"
+            assert set(items) == expected, page_size
+
+
 class TestCopyWithVersion:
     """CopyObject with source versionId."""
 

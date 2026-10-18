@@ -558,15 +558,20 @@ pub fn complete_multipart_upload_result(
 ///
 /// Accepts `ObjectRecord` entries with real version IDs, is_latest flags,
 /// and delete markers. Entries are separated into `<Version>` and
-/// `<DeleteMarker>` elements.
+/// `<DeleteMarker>` elements; `common_prefixes` are the groups a `delimiter`
+/// rolled up. `next_version_id_marker` is omitted when the page ends on a
+/// common prefix (`"null"` names the null version).
+#[allow(clippy::too_many_arguments)]
 pub fn list_versions_result(
     name: &str,
     prefix: Option<&str>,
+    delimiter: Option<&str>,
     key_marker: Option<&str>,
     version_id_marker: Option<&str>,
     max_keys: u32,
     is_truncated: bool,
     entries: &[crate::types::ObjectRecord],
+    common_prefixes: &[String],
     next_key_marker: Option<&str>,
     next_version_id_marker: Option<&str>,
 ) -> String {
@@ -587,6 +592,9 @@ pub fn list_versions_result(
     write_xml_element(&mut writer, "KeyMarker", key_marker.unwrap_or(""));
     write_xml_element(&mut writer, "VersionIdMarker", version_id_marker.unwrap_or(""));
     write_xml_element(&mut writer, "MaxKeys", &max_keys.to_string());
+    if let Some(d) = delimiter {
+        write_xml_element(&mut writer, "Delimiter", d);
+    }
     write_xml_element(
         &mut writer,
         "IsTruncated",
@@ -595,11 +603,9 @@ pub fn list_versions_result(
 
     if let Some(next) = next_key_marker {
         write_xml_element(&mut writer, "NextKeyMarker", next);
-        write_xml_element(
-            &mut writer,
-            "NextVersionIdMarker",
-            next_version_id_marker.unwrap_or("null"),
-        );
+        if let Some(next_version) = next_version_id_marker {
+            write_xml_element(&mut writer, "NextVersionIdMarker", next_version);
+        }
     }
 
     for entry in entries {
@@ -664,6 +670,16 @@ pub fn list_versions_result(
                 .write_event(Event::End(BytesEnd::new("Version")))
                 .expect("write Version end");
         }
+    }
+
+    for cp in common_prefixes {
+        writer
+            .write_event(Event::Start(BytesStart::new("CommonPrefixes")))
+            .expect("write CommonPrefixes start");
+        write_xml_element(&mut writer, "Prefix", cp);
+        writer
+            .write_event(Event::End(BytesEnd::new("CommonPrefixes")))
+            .expect("write CommonPrefixes end");
     }
 
     writer

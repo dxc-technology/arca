@@ -8,7 +8,7 @@ use http::StatusCode;
 use arca_core::error::ArcaError;
 use arca_core::s3::xml_types;
 use arca_core::s3::xml_types::{DeleteErrorEntry, DeletedEntry};
-use arca_core::store::DeletePrecondition;
+use arca_core::store::{DeletePrecondition, VersionPosition};
 use arca_core::types::{ListBucketResultParams, ListBucketV1ResultParams, ListEntry, ObjectRecord};
 use arca_core::{validate_bucket_name, S3Error, S3ErrorCode};
 
@@ -938,7 +938,7 @@ async fn list_object_versions(
     }
 
     let prefix = get_param("prefix");
-    let _delimiter = get_param("delimiter"); // Acknowledged but not grouped for versions.
+    let delimiter = get_param("delimiter").filter(|d| !d.is_empty());
     let key_marker = get_param("key-marker");
     let version_id_marker = get_param("version-id-marker");
 
@@ -957,44 +957,33 @@ async fn list_object_versions(
         None => 1000,
     };
 
-    // Fetch max_keys + 1 to detect truncation.
-    let fetch_limit = max_keys + 1;
-    let records = match state
-        .metadata
-        .list_object_versions(bucket, prefix, key_marker, version_id_marker, fetch_limit)
-        .await
-    {
-        Ok(r) => r,
+    let page = match delimiter {
+        Some(delim) => {
+            list_versions_grouped(&state, bucket, prefix, delim, key_marker, version_id_marker, max_keys)
+                .await
+        }
+        None => list_versions_flat(&state, bucket, prefix, key_marker, version_id_marker, max_keys).await,
+    };
+    let page = match page {
+        Ok(page) => page,
         Err(e) => return internal_error_response(e, resource),
     };
 
-    let is_truncated = records.len() as u32 > max_keys;
-    let entries = if is_truncated {
-        &records[..max_keys as usize]
-    } else {
-        &records[..]
+    let (next_key_marker, next_version_id_marker) = match &page.next {
+        Some(VersionsMarker::Version { key, version_id }) => (Some(key.as_str()), Some(version_id.as_str())),
+        Some(VersionsMarker::Prefix(prefix)) => (Some(prefix.as_str()), None),
+        None => (None, None),
     };
-
-    let next_key_marker = if is_truncated {
-        entries.last().map(|r| r.key.as_str())
-    } else {
-        None
-    };
-
-    let next_version_id_marker = if is_truncated {
-        entries.last().and_then(|r| r.version_id.as_deref())
-    } else {
-        None
-    };
-
     let xml = xml_types::list_versions_result(
         bucket,
         prefix,
+        delimiter,
         key_marker,
         version_id_marker,
         max_keys,
-        is_truncated,
-        entries,
+        page.next.is_some(),
+        &page.entries,
+        &page.common_prefixes,
         next_key_marker,
         next_version_id_marker,
     );
@@ -1003,6 +992,135 @@ async fn list_object_versions(
         .header("Content-Type", "application/xml")
         .body(Body::from(xml))
         .expect("build list_object_versions response")
+}
+
+/// One page of ListObjectVersions.
+struct VersionsPage {
+    entries: Vec<ObjectRecord>,
+    common_prefixes: Vec<String>,
+    /// Where the next page starts; `None` when the listing is complete.
+    next: Option<VersionsMarker>,
+}
+
+/// The NextKeyMarker / NextVersionIdMarker of a truncated page.
+enum VersionsMarker {
+    /// The page ended on a version: `"null"` names the null version.
+    Version { key: String, version_id: String },
+    /// The page ended on a common prefix: the next page starts after every
+    /// key under it, so there is no version id.
+    Prefix(String),
+}
+
+impl VersionsMarker {
+    fn after(record: &ObjectRecord) -> Self {
+        VersionsMarker::Version {
+            key: record.key.clone(),
+            version_id: record.version_id.clone().unwrap_or_else(|| "null".to_string()),
+        }
+    }
+}
+
+/// ListObjectVersions without a delimiter: `max_keys + 1` versions tell
+/// whether the page is truncated.
+async fn list_versions_flat(
+    state: &AppState,
+    bucket: &str,
+    prefix: Option<&str>,
+    key_marker: Option<&str>,
+    version_id_marker: Option<&str>,
+    max_keys: u32,
+) -> Result<VersionsPage, ArcaError> {
+    let mut entries = state
+        .metadata
+        .list_object_versions(bucket, prefix, key_marker, version_id_marker, max_keys + 1)
+        .await?;
+    let next = if entries.len() as u32 > max_keys {
+        entries.truncate(max_keys as usize);
+        entries.last().map(VersionsMarker::after)
+    } else {
+        None
+    };
+    Ok(VersionsPage { entries, common_prefixes: Vec::new(), next })
+}
+
+/// ListObjectVersions with a delimiter: the versions of every key that has
+/// `delim` after `prefix` roll up into one common prefix, which counts once
+/// towards `max_keys`, as in ListObjectsV2.
+///
+/// A page that ends on a common prefix hands it out as the next key marker.
+/// The next page then starts after that key, which still sorts before the
+/// keys under the prefix: the groups at or before the marker are skipped.
+async fn list_versions_grouped(
+    state: &AppState,
+    bucket: &str,
+    prefix: Option<&str>,
+    delim: &str,
+    key_marker: Option<&str>,
+    version_id_marker: Option<&str>,
+    max_keys: u32,
+) -> Result<VersionsPage, ArcaError> {
+    let pfx = prefix.unwrap_or("");
+    let batch_size = (max_keys + 1).max(100);
+    let mut page = VersionsPage { entries: Vec::new(), common_prefixes: Vec::new(), next: None };
+    let mut last: Option<VersionsMarker> = None;
+    let mut cursor: Option<ObjectRecord> = None;
+
+    loop {
+        let records = match &cursor {
+            None => {
+                state
+                    .metadata
+                    .list_object_versions(bucket, prefix, key_marker, version_id_marker, batch_size)
+                    .await?
+            }
+            Some(after) => {
+                state
+                    .metadata
+                    .list_object_versions_from(
+                        bucket,
+                        prefix,
+                        Some(&after.key),
+                        Some(&VersionPosition::of(after)),
+                        batch_size,
+                    )
+                    .await?
+            }
+        };
+        let exhausted = (records.len() as u32) < batch_size;
+
+        for record in &records {
+            let group = record.key[pfx.len()..]
+                .find(delim)
+                .map(|pos| record.key[..pfx.len() + pos + delim.len()].to_string());
+            if let Some(cp) = &group {
+                if key_marker.is_some_and(|km| cp.as_str() <= km) {
+                    continue;
+                }
+                if page.common_prefixes.last() == Some(cp) {
+                    continue;
+                }
+            }
+            if (page.entries.len() + page.common_prefixes.len()) as u32 >= max_keys {
+                page.next = last;
+                return Ok(page);
+            }
+            match group {
+                Some(cp) => {
+                    last = Some(VersionsMarker::Prefix(cp.clone()));
+                    page.common_prefixes.push(cp);
+                }
+                None => {
+                    last = Some(VersionsMarker::after(record));
+                    page.entries.push(record.clone());
+                }
+            }
+        }
+
+        if exhausted {
+            return Ok(page);
+        }
+        cursor = records.last().cloned();
+    }
 }
 
 /// Handles ListMultipartUploads requests (`GET /{bucket}?uploads`).
