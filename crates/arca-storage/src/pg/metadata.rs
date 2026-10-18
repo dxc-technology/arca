@@ -2,7 +2,7 @@
 
 use arca_core::error::{ArcaError, S3Error, S3ErrorCode};
 use arca_core::store::{
-    CompletedUpload, DeletePrecondition, MetadataStore, VersionPosition, WritePrecondition,
+    CompletedUpload, DeletePrecondition, MetadataStore, NoncurrentExpiry, VersionPosition, WritePrecondition,
 };
 use arca_core::types::{
     BlobId, BucketInfo, MultipartUploadRecord, ObjectPart, ObjectRecord, PartRecord,
@@ -2405,45 +2405,84 @@ impl MetadataStore for PgStore {
     async fn list_noncurrent_expired_versions(
         &self,
         bucket: &str,
-        prefix: Option<&str>,
-        cutoff: DateTime<Utc>,
-        start_after: Option<&str>,
+        rule: &NoncurrentExpiry<'_>,
+        after: Option<(&str, &VersionPosition)>,
         max_keys: u32,
     ) -> Result<Vec<ObjectRecord>, ArcaError> {
-        let mut sql = format!(
-            "SELECT {OBJECT_COLUMNS} FROM objects \
-             WHERE bucket = $1 AND is_latest = FALSE AND is_delete_marker = FALSE AND is_tombstone = FALSE \
-             AND last_modified < $2"
+        // The windows run over every version of a key (delete markers
+        // included), so the inner filters must keep whole keys:
+        // `noncurrent_since` is the last_modified of the next newer version,
+        // `noncurrent_rank` counts the noncurrent versions (not delete
+        // markers) of the key, newest first.
+        let mut inner = String::from(
+            "SELECT *, \
+             LAG(last_modified) OVER versions AS noncurrent_since, \
+             ROW_NUMBER() OVER (PARTITION BY key, is_latest, is_delete_marker \
+                 ORDER BY last_modified DESC, COALESCE(version_id, '') DESC) AS noncurrent_rank \
+             FROM objects WHERE bucket = $1 AND is_tombstone = FALSE",
         );
-        let mut param_idx = 3u32;
-
-        let prefix_pattern = prefix.map(|p| {
+        let mut param_idx = 2u32;
+        let prefix_pattern = rule.prefix.map(|p| {
             let idx = param_idx;
             param_idx += 1;
-            sql.push_str(&format!(" AND key LIKE ${idx} ESCAPE '\\'"));
+            inner.push_str(&format!(" AND key LIKE ${idx} ESCAPE '\\'"));
             format!("{}%", escape_like(p))
         });
-
-        let has_start_after = start_after.is_some();
-        if has_start_after {
+        let key_idx = after.map(|_| {
             let idx = param_idx;
-            #[allow(unused_assignments)]
-            {
-                param_idx += 1;
-            }
-            sql.push_str(&format!(" AND key > ${idx}"));
-        }
+            param_idx += 1;
+            inner.push_str(&format!(" AND key >= ${idx}"));
+            idx
+        });
+        inner.push_str(
+            " WINDOW versions AS (PARTITION BY key \
+             ORDER BY last_modified DESC, COALESCE(version_id, '') DESC)",
+        );
 
+        let (cutoff_idx, keep_idx) = (param_idx, param_idx + 1);
+        param_idx += 2;
+        let mut sql = format!(
+            "SELECT {OBJECT_COLUMNS} FROM ({inner}) AS v \
+             WHERE is_latest = FALSE AND is_delete_marker = FALSE \
+             AND noncurrent_since < ${cutoff_idx} AND noncurrent_rank > ${keep_idx}"
+        );
+        if let Some(k) = key_idx {
+            let (l, v) = (param_idx, param_idx + 1);
+            param_idx += 2;
+            sql.push_str(&format!(
+                " AND (key > ${k} OR (key = ${k} AND (last_modified < ${l} \
+                   OR (last_modified = ${l} AND COALESCE(version_id, '') < ${v}))))"
+            ));
+        }
+        for _ in rule.tags {
+            let (k, val) = (param_idx, param_idx + 1);
+            param_idx += 2;
+            sql.push_str(&format!(
+                " AND EXISTS (SELECT 1 FROM object_tags \
+                 WHERE object_tags.bucket = v.bucket \
+                 AND object_tags.key = v.key \
+                 AND object_tags.version_id = COALESCE(v.version_id, '') \
+                 AND object_tags.tag_key = ${k} \
+                 AND object_tags.tag_value = ${val})"
+            ));
+        }
         sql.push_str(&format!(
-            " ORDER BY key, last_modified DESC LIMIT {max_keys}"
+            " ORDER BY key ASC, last_modified DESC, COALESCE(version_id, '') DESC LIMIT {max_keys}"
         ));
 
-        let mut query = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str())).bind(bucket).bind(cutoff);
+        let mut query = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str())).bind(bucket);
         if let Some(ref pattern) = prefix_pattern {
             query = query.bind(pattern.clone());
         }
-        if let Some(sa) = start_after {
-            query = query.bind(sa);
+        if let Some((key, _)) = after {
+            query = query.bind(key);
+        }
+        query = query.bind(rule.cutoff).bind(i64::from(rule.keep_newer));
+        if let Some((_, pos)) = after {
+            query = query.bind(pos.last_modified).bind(pos.version_id.as_str());
+        }
+        for (k, v) in rule.tags {
+            query = query.bind(k).bind(v);
         }
 
         let rows = query
@@ -2459,19 +2498,39 @@ impl MetadataStore for PgStore {
     async fn list_stale_multipart_uploads(
         &self,
         bucket: &str,
+        prefix: Option<&str>,
         cutoff: DateTime<Utc>,
+        after: Option<(&str, &str)>,
         max_uploads: u32,
     ) -> Result<Vec<MultipartUploadRecord>, ArcaError> {
-        let sql = format!(
+        let mut sql = String::from(
             "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator, checksum_type \
              FROM multipart_uploads \
-             WHERE bucket = $1 AND initiated_at < $2 \
-             ORDER BY key, upload_id \
-             LIMIT {max_uploads}"
+             WHERE bucket = $1 AND initiated_at < $2",
         );
-        let rows = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
+        let mut param_idx = 3u32;
+        let prefix_pattern = prefix.map(|p| {
+            let idx = param_idx;
+            param_idx += 1;
+            sql.push_str(&format!(" AND key LIKE ${idx} ESCAPE '\\'"));
+            format!("{}%", escape_like(p))
+        });
+        if after.is_some() {
+            let (k, u) = (param_idx, param_idx + 1);
+            sql.push_str(&format!(" AND (key > ${k} OR (key = ${k} AND upload_id > ${u}))"));
+        }
+        sql.push_str(&format!(" ORDER BY key, upload_id LIMIT {max_uploads}"));
+
+        let mut query = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
             .bind(bucket)
-            .bind(cutoff)
+            .bind(cutoff);
+        if let Some(ref pattern) = prefix_pattern {
+            query = query.bind(pattern.clone());
+        }
+        if let Some((key, upload_id)) = after {
+            query = query.bind(key).bind(upload_id);
+        }
+        let rows = query
             .fetch_all(&self.pool)
             .await
             .map_err(|e| ArcaError::Internal(format!("list_stale_multipart_uploads: {e}")))?;

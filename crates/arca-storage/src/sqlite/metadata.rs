@@ -2,7 +2,7 @@
 
 use arca_core::error::{ArcaError, S3Error, S3ErrorCode};
 use arca_core::store::{
-    CompletedUpload, DeletePrecondition, MetadataStore, VersionPosition, WritePrecondition,
+    CompletedUpload, DeletePrecondition, MetadataStore, NoncurrentExpiry, VersionPosition, WritePrecondition,
 };
 use arca_core::types::{
     BlobId, BucketInfo, MultipartUploadRecord, ObjectPart, ObjectRecord, PartRecord, StorageStats,
@@ -1947,58 +1947,106 @@ impl MetadataStore for SqliteStore {
     async fn list_noncurrent_expired_versions(
         &self,
         bucket: &str,
-        prefix: Option<&str>,
-        cutoff: chrono::DateTime<chrono::Utc>,
-        start_after: Option<&str>,
+        rule: &NoncurrentExpiry<'_>,
+        after: Option<(&str, &VersionPosition)>,
         max_keys: u32,
     ) -> Result<Vec<ObjectRecord>, ArcaError> {
         let bucket = bucket.to_string();
-        let prefix = prefix.map(|s| s.to_string());
-        let cutoff_str = cutoff.to_rfc3339();
-        let start_after = start_after.map(|s| s.to_string());
+        let prefix = rule.prefix.map(|s| s.to_string());
+        let tags = rule.tags.to_vec();
+        let cutoff = rule.cutoff.to_rfc3339();
+        let keep_newer = rule.keep_newer;
+        let after = after.map(|(key, pos)| {
+            (key.to_string(), pos.last_modified.to_rfc3339(), pos.version_id.clone())
+        });
 
         self.read_conn()
             .call(move |conn| {
-                let mut sql = format!(
-                    "SELECT {OBJECT_COLUMNS} FROM objects \
-                     WHERE bucket = ?1 AND is_latest = 0 AND is_delete_marker = 0 AND is_tombstone = 0 AND last_modified < ?2"
+                // The windows run over every version of a key (delete markers
+                // included), so the inner filters must keep whole keys:
+                // `noncurrent_since` is the last_modified of the next newer
+                // version, `noncurrent_rank` counts the noncurrent versions
+                // (not delete markers) of the key, newest first.
+                let mut inner = String::from(
+                    "SELECT *, \
+                     LAG(last_modified) OVER versions AS noncurrent_since, \
+                     ROW_NUMBER() OVER (PARTITION BY key, is_latest, is_delete_marker \
+                         ORDER BY last_modified DESC, COALESCE(version_id, '') DESC) AS noncurrent_rank \
+                     FROM objects WHERE bucket = ?1 AND is_tombstone = 0",
                 );
-                let mut param_idx = 3u32;
-
+                let mut param_idx = 2u32;
                 let prefix_params = prefix
                     .as_deref()
-                    .map(|p| push_prefix_filter(&mut sql, &mut param_idx, p))
+                    .map(|p| push_prefix_filter(&mut inner, &mut param_idx, p))
                     .unwrap_or_default();
-
-                let start_after_idx = start_after.as_ref().map(|_| {
+                let key_idx = after.as_ref().map(|_| {
                     let idx = param_idx;
-                    #[allow(unused_assignments)]
-                    { param_idx += 1; }
-                    sql.push_str(&format!(" AND key > ?{idx}"));
+                    param_idx += 1;
+                    inner.push_str(&format!(" AND key >= ?{idx}"));
                     idx
                 });
+                inner.push_str(
+                    " WINDOW versions AS (PARTITION BY key \
+                     ORDER BY last_modified DESC, COALESCE(version_id, '') DESC)",
+                );
 
-                sql.push_str(&format!(" ORDER BY key, last_modified DESC LIMIT {max_keys}"));
+                let cutoff_idx = param_idx;
+                param_idx += 1;
+                let keep_idx = param_idx;
+                param_idx += 1;
+                let mut sql = format!(
+                    "SELECT {OBJECT_COLUMNS} FROM ({inner}) AS v \
+                     WHERE is_latest = 0 AND is_delete_marker = 0 \
+                     AND noncurrent_since < ?{cutoff_idx} AND noncurrent_rank > ?{keep_idx}"
+                );
+                if let Some(k) = key_idx {
+                    let (l, v) = (param_idx, param_idx + 1);
+                    param_idx += 2;
+                    sql.push_str(&format!(
+                        " AND (key > ?{k} OR (key = ?{k} AND (last_modified < ?{l} \
+                           OR (last_modified = ?{l} AND COALESCE(version_id, '') < ?{v}))))"
+                    ));
+                }
+                for _ in &tags {
+                    let (k, val) = (param_idx, param_idx + 1);
+                    param_idx += 2;
+                    sql.push_str(&format!(
+                        " AND EXISTS (SELECT 1 FROM object_tags \
+                         WHERE object_tags.bucket = v.bucket \
+                         AND object_tags.key = v.key \
+                         AND object_tags.version_id = COALESCE(v.version_id, '') \
+                         AND object_tags.tag_key = ?{k} \
+                         AND object_tags.tag_value = ?{val})"
+                    ));
+                }
+                sql.push_str(&format!(
+                    " ORDER BY key ASC, last_modified DESC, COALESCE(version_id, '') DESC LIMIT {max_keys}"
+                ));
+
+                let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(bucket)];
+                for value in prefix_params {
+                    params_vec.push(Box::new(value));
+                }
+                if let Some((ref key, _, _)) = after {
+                    params_vec.push(Box::new(key.clone()));
+                }
+                params_vec.push(Box::new(cutoff));
+                params_vec.push(Box::new(keep_newer));
+                if let Some((_, lm, vid)) = after {
+                    params_vec.push(Box::new(lm));
+                    params_vec.push(Box::new(vid));
+                }
+                for (k, v) in tags {
+                    params_vec.push(Box::new(k));
+                    params_vec.push(Box::new(v));
+                }
 
                 let mut stmt = conn.prepare(&sql)?;
-
-                let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-                params_vec.push(Box::new(bucket));
-                params_vec.push(Box::new(cutoff_str));
-                for value in &prefix_params {
-                    params_vec.push(Box::new(value.clone()));
-                }
-                if let Some(_) = start_after_idx {
-                    params_vec.push(Box::new(start_after.unwrap()));
-                }
-
                 let params_refs: Vec<&dyn rusqlite::types::ToSql> =
                     params_vec.iter().map(|p| p.as_ref()).collect();
-
                 let rows = stmt.query_map(params_refs.as_slice(), |row| {
                     Ok(row_to_object_record(row))
                 })?;
-
                 let mut records = Vec::new();
                 for row in rows {
                     records.push(row??);
@@ -2012,31 +2060,55 @@ impl MetadataStore for SqliteStore {
     async fn list_stale_multipart_uploads(
         &self,
         bucket: &str,
+        prefix: Option<&str>,
         cutoff: chrono::DateTime<chrono::Utc>,
+        after: Option<(&str, &str)>,
         max_uploads: u32,
     ) -> Result<Vec<MultipartUploadRecord>, ArcaError> {
         let bucket = bucket.to_string();
+        let prefix = prefix.map(|s| s.to_string());
         let cutoff_str = cutoff.to_rfc3339();
+        let after = after.map(|(key, id)| (key.to_string(), id.to_string()));
 
         self.read_conn()
             .call(move |conn| {
-                let sql = format!(
+                let mut sql = String::from(
                     "SELECT upload_id, bucket, key, content_type, initiated_at, metadata, checksum_algorithm, initiator, checksum_type \
                      FROM multipart_uploads \
-                     WHERE bucket = ?1 AND initiated_at < ?2 \
-                     ORDER BY key, upload_id \
-                     LIMIT {max_uploads}"
+                     WHERE bucket = ?1 AND initiated_at < ?2",
                 );
+                let mut param_idx = 3u32;
+                let prefix_params = prefix
+                    .as_deref()
+                    .map(|p| push_prefix_filter(&mut sql, &mut param_idx, p))
+                    .unwrap_or_default();
+                if after.is_some() {
+                    let (k, u) = (param_idx, param_idx + 1);
+                    sql.push_str(&format!(" AND (key > ?{k} OR (key = ?{k} AND upload_id > ?{u}))"));
+                }
+                sql.push_str(&format!(" ORDER BY key, upload_id LIMIT {max_uploads}"));
+
+                let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> =
+                    vec![Box::new(bucket), Box::new(cutoff_str)];
+                for value in prefix_params {
+                    params_vec.push(Box::new(value));
+                }
+                if let Some((key, id)) = after {
+                    params_vec.push(Box::new(key));
+                    params_vec.push(Box::new(id));
+                }
+
                 let mut stmt = conn.prepare(&sql)?;
-                let rows = stmt.query_map(params![bucket, cutoff_str], |row| {
+                let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+                    params_vec.iter().map(|p| p.as_ref()).collect();
+                let rows = stmt.query_map(params_refs.as_slice(), |row| {
                     Ok(row_to_multipart_upload_record(row))
                 })?;
-
-                let mut records = Vec::new();
+                let mut uploads = Vec::new();
                 for row in rows {
-                    records.push(row??);
+                    uploads.push(row??);
                 }
-                Ok(records)
+                Ok(uploads)
             })
             .await
             .map_err(|e: TrError| ArcaError::Internal(format!("list_stale_multipart_uploads: {e}")))
@@ -2960,12 +3032,154 @@ mod tests {
             keys(store.list_expired_objects("b", prefix, &[], now, None, 100).await.unwrap()),
             ["photos/b"]
         );
+        let rule = NoncurrentExpiry { prefix, tags: &[], cutoff: now, keep_newer: 0 };
         assert_eq!(
-            keys(store.list_noncurrent_expired_versions("b", prefix, now, None, 100).await.unwrap()),
+            keys(store.list_noncurrent_expired_versions("b", &rule, None, 100).await.unwrap()),
             ["photos/b"]
         );
         let uploads = store.list_multipart_uploads("b", prefix, None, None, 100).await.unwrap();
         assert_eq!(uploads.iter().map(|u| u.key.as_str()).collect::<Vec<_>>(), ["photos/b"]);
+        let stale = store.list_stale_multipart_uploads("b", prefix, now, None, 100).await.unwrap();
+        assert_eq!(stale.iter().map(|u| u.key.as_str()).collect::<Vec<_>>(), ["photos/b"]);
+    }
+
+    // -- NoncurrentVersionExpiration listing --
+
+    /// Puts versions of `key` in a versioned bucket, `ages` days old each,
+    /// oldest first; blob ids are `{key}-{age}`.
+    async fn put_versions(store: &SqliteStore, key: &str, ages: &[i64]) {
+        let now = chrono::Utc::now();
+        for age in ages {
+            let mut r = make_record("b", key);
+            r.blob_id = BlobId(format!("{key}-{age}"));
+            r.last_modified = now - chrono::Duration::days(*age);
+            store.put_object(&r).await.unwrap();
+        }
+    }
+
+    async fn versioned_store() -> SqliteStore {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+        store
+    }
+
+    /// Lists with the given rule, every page of `page` versions, as blob ids.
+    async fn noncurrent_ids(store: &SqliteStore, rule: &NoncurrentExpiry<'_>, page: u32) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut after: Option<(String, VersionPosition)> = None;
+        loop {
+            let versions = store
+                .list_noncurrent_expired_versions(
+                    "b",
+                    rule,
+                    after.as_ref().map(|(k, p)| (k.as_str(), p)),
+                    page,
+                )
+                .await
+                .unwrap();
+            out.extend(versions.iter().map(|v| v.blob_id.0.clone()));
+            if (versions.len() as u32) < page {
+                return out;
+            }
+            after = versions.last().map(|v| (v.key.clone(), VersionPosition::of(v)));
+        }
+    }
+
+    fn days_ago(days: i64) -> chrono::DateTime<chrono::Utc> {
+        chrono::Utc::now() - chrono::Duration::days(days)
+    }
+
+    #[tokio::test]
+    async fn noncurrent_age_counts_from_the_next_newer_version() {
+        let store = versioned_store().await;
+        // k-365 became noncurrent 100 days ago, k-100 one day ago.
+        put_versions(&store, "k", &[365, 100, 1]).await;
+        let rule = NoncurrentExpiry { prefix: None, tags: &[], cutoff: days_ago(30), keep_newer: 0 };
+        assert_eq!(noncurrent_ids(&store, &rule, 100).await, ["k-365"]);
+    }
+
+    #[tokio::test]
+    async fn noncurrent_age_counts_from_a_delete_marker() {
+        let store = versioned_store().await;
+        put_versions(&store, "k", &[365]).await;
+        // The delete marker, written now, makes k-365 noncurrent from now.
+        store.delete_object("b", "k").await.unwrap();
+        let month = NoncurrentExpiry { prefix: None, tags: &[], cutoff: days_ago(30), keep_newer: 0 };
+        assert!(noncurrent_ids(&store, &month, 100).await.is_empty());
+        let tomorrow = NoncurrentExpiry { cutoff: days_ago(-1), ..month };
+        assert_eq!(noncurrent_ids(&store, &tomorrow, 100).await, ["k-365"]);
+        // A newer version makes the marker noncurrent: it is never listed.
+        let mut r = make_record("b", "k");
+        r.blob_id = BlobId("k-new".to_string());
+        store.put_object(&r).await.unwrap();
+        assert_eq!(noncurrent_ids(&store, &tomorrow, 100).await, ["k-365"]);
+    }
+
+    #[tokio::test]
+    async fn newer_noncurrent_versions_are_kept() {
+        let store = versioned_store().await;
+        put_versions(&store, "k", &[90, 80, 70, 60, 50, 1]).await;
+        let rule = NoncurrentExpiry { prefix: None, tags: &[], cutoff: days_ago(30), keep_newer: 2 };
+        // The two newest noncurrent versions (k-50, k-60) stay.
+        assert_eq!(noncurrent_ids(&store, &rule, 100).await, ["k-70", "k-80", "k-90"]);
+    }
+
+    #[tokio::test]
+    async fn noncurrent_listing_honours_the_tag_filter() {
+        let store = versioned_store().await;
+        put_versions(&store, "k", &[90, 80, 1]).await;
+        let all = store.list_object_versions("b", None, None, None, 10).await.unwrap();
+        let tagged = all.iter().find(|v| v.blob_id.0 == "k-90").unwrap();
+        let tag = vec![("class".to_string(), "temp".to_string())];
+        store.put_object_tags("b", "k", tagged.version_id.as_deref().unwrap(), &tag).await.unwrap();
+        let rule = NoncurrentExpiry { prefix: None, tags: &tag, cutoff: days_ago(30), keep_newer: 0 };
+        assert_eq!(noncurrent_ids(&store, &rule, 100).await, ["k-90"]);
+    }
+
+    #[tokio::test]
+    async fn noncurrent_listing_pages_across_and_within_keys() {
+        let store = versioned_store().await;
+        put_versions(&store, "a", &[90, 80, 70, 40]).await;
+        put_versions(&store, "b", &[90, 40]).await;
+        put_versions(&store, "c", &[90, 80, 40]).await;
+        let rule = NoncurrentExpiry { prefix: None, tags: &[], cutoff: days_ago(30), keep_newer: 0 };
+        let expected = ["a-70", "a-80", "a-90", "b-90", "c-80", "c-90"];
+        for page in [1, 2, 4, 100] {
+            assert_eq!(noncurrent_ids(&store, &rule, page).await, expected, "page {page}");
+        }
+    }
+
+    #[tokio::test]
+    async fn stale_uploads_page_in_key_and_upload_id_order() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        for (id, key) in [("u1", "a"), ("u2", "a"), ("u3", "b"), ("u4", "c")] {
+            let mut upload = make_upload(id, "b", key);
+            upload.initiated_at = days_ago(10);
+            store.create_multipart_upload(&upload).await.unwrap();
+        }
+        let fresh = make_upload("u5", "b", "d");
+        store.create_multipart_upload(&fresh).await.unwrap();
+
+        let mut ids = Vec::new();
+        let mut after: Option<(String, String)> = None;
+        loop {
+            let page = store
+                .list_stale_multipart_uploads(
+                    "b",
+                    None,
+                    days_ago(1),
+                    after.as_ref().map(|(k, u)| (k.as_str(), u.as_str())),
+                    1,
+                )
+                .await
+                .unwrap();
+            let Some(last) = page.last() else { break };
+            ids.push(last.upload_id.clone());
+            after = Some((last.key.clone(), last.upload_id.clone()));
+        }
+        assert_eq!(ids, ["u1", "u2", "u3", "u4"]);
     }
 
     // -- Multipart upload tests --

@@ -11,7 +11,7 @@ use moka::future::Cache;
 
 use arca_core::error::ArcaError;
 use arca_core::store::{
-    CompletedUpload, DeletePrecondition, MetadataStore, VersionPosition, WritePrecondition,
+    CompletedUpload, DeletePrecondition, MetadataStore, NoncurrentExpiry, VersionPosition, WritePrecondition,
 };
 use arca_core::types::{
     BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
@@ -573,24 +573,25 @@ impl MetadataStore for CachingMetadataStore {
     async fn list_noncurrent_expired_versions(
         &self,
         bucket: &str,
-        prefix: Option<&str>,
-        cutoff: chrono::DateTime<chrono::Utc>,
-        start_after: Option<&str>,
+        rule: &NoncurrentExpiry<'_>,
+        after: Option<(&str, &VersionPosition)>,
         max_keys: u32,
     ) -> Result<Vec<ObjectRecord>, ArcaError> {
         self.inner
-            .list_noncurrent_expired_versions(bucket, prefix, cutoff, start_after, max_keys)
+            .list_noncurrent_expired_versions(bucket, rule, after, max_keys)
             .await
     }
 
     async fn list_stale_multipart_uploads(
         &self,
         bucket: &str,
+        prefix: Option<&str>,
         cutoff: chrono::DateTime<chrono::Utc>,
+        after: Option<(&str, &str)>,
         max_uploads: u32,
     ) -> Result<Vec<MultipartUploadRecord>, ArcaError> {
         self.inner
-            .list_stale_multipart_uploads(bucket, cutoff, max_uploads)
+            .list_stale_multipart_uploads(bucket, prefix, cutoff, after, max_uploads)
             .await
     }
 

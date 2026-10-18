@@ -323,7 +323,7 @@ Automated lifecycle management for storage hygiene with configurable expiration 
 - [x] NoncurrentVersionExpiration: hard-delete old versions after N days
 - [x] Abort incomplete multipart uploads after N days
 - [x] Configurable evaluation interval via `lifecycle_evaluation_interval` admin setting (default: 3600s / hourly)
-- [x] Background lifecycle worker using existing `BackgroundWorker::spawn_periodic` framework. Batch processing (100 objects/rule/cycle), audit logging for all lifecycle actions
+- [x] Background lifecycle worker using existing `BackgroundWorker::spawn_periodic` framework. Every match of a rule is processed each cycle, in pages of 100 (before the 2026-10 fix, only the first 100), audit logging for all lifecycle actions
 - [x] (Console) Lifecycle rules editor in bucket settings: add/remove/save rules with prefix filter, expiration days, noncurrent days, abort upload days
 
 **Depends on**: Phase 19 (tagging for tag-based filtering), Phase 18 (background worker framework)
@@ -894,3 +894,4 @@ Remaining items:
 - **Unfinished multipart uploads are unbounded** (TD-052): the parts of an upload a client never completes or aborts stay on disk as live data, and only a lifecycle `AbortIncompleteMultipartUpload` rule reclaims them on its own. A backup job failing on a full disk can keep the disk full for weeks. `arca fsck` and `arca gc` now report them and `arca fsck --repair --abort-uploads-older-than <days>` aborts them; a metric, the console view and a default bound are still missing.
 - ~~**An abort racing CompleteMultipartUpload deletes the completed object's data** (TD-053)~~: **Resolved** — the object row and the consumption of the upload are one transaction that fails with `NoSuchUpload` when the upload is gone, so whichever of Complete and abort commits first wins and the completed object never points at deleted parts. Across HA nodes the race is still arbitrated by anti-entropy, not atomically.
 - ~~**A version-id-marker deleted between two pages skips the rest of its key** (TD-054)~~: **Resolved** — the internal full listing pages by the position of the last row it read, and S3 ListObjectVersions restarts from the beginning of the key when the `version-id-marker` no longer exists (a version may be listed twice, none is skipped, no error).
+- **Lifecycle never removes delete markers** (TD-056): `ExpiredObjectDeleteMarker` is accepted but not acted on, and noncurrent delete markers are never expired. Nothing is lost, the markers only accumulate.

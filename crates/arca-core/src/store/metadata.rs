@@ -51,6 +51,22 @@ impl VersionPosition {
     }
 }
 
+/// The noncurrent versions a NoncurrentVersionExpiration rule expires, as
+/// S3 defines them: the versions under `prefix` carrying every tag of `tags`
+/// that became noncurrent before `cutoff`, except the `keep_newer` newest
+/// noncurrent versions of each key (NewerNoncurrentVersions).
+///
+/// A version becomes noncurrent when a newer version or delete marker of its
+/// key is written, so the time that counts is the `last_modified` of the next
+/// newer version, not the version's own.
+#[derive(Debug, Clone)]
+pub struct NoncurrentExpiry<'a> {
+    pub prefix: Option<&'a str>,
+    pub tags: &'a [(String, String)],
+    pub cutoff: DateTime<Utc>,
+    pub keep_newer: u32,
+}
+
 /// What [`MetadataStore::complete_multipart_object`] committed.
 #[derive(Debug, Clone)]
 pub struct CompletedUpload {
@@ -618,22 +634,28 @@ pub trait MetadataStore: Send + Sync {
         max_keys: u32,
     ) -> Result<Vec<ObjectRecord>, crate::error::ArcaError>;
 
-    /// Lists noncurrent (is_latest=0, is_delete_marker=0) object versions
-    /// whose last_modified is before cutoff. For NoncurrentVersionExpiration.
+    /// Lists the noncurrent versions a NoncurrentVersionExpiration rule
+    /// expires: see [`NoncurrentExpiry`] for which. Delete markers are never
+    /// listed. Pages in the order of [`Self::list_object_versions_from`]
+    /// (key, then newest first) and resumes strictly after `after`, the key
+    /// and position of the last version of the previous page.
     async fn list_noncurrent_expired_versions(
+        &self,
+        bucket: &str,
+        rule: &NoncurrentExpiry<'_>,
+        after: Option<(&str, &VersionPosition)>,
+        max_keys: u32,
+    ) -> Result<Vec<ObjectRecord>, crate::error::ArcaError>;
+
+    /// Lists the multipart uploads under `prefix` initiated before `cutoff`,
+    /// in (key, upload id) order, resuming strictly after `after`: the key and
+    /// upload id of the last upload of the previous page.
+    async fn list_stale_multipart_uploads(
         &self,
         bucket: &str,
         prefix: Option<&str>,
         cutoff: chrono::DateTime<chrono::Utc>,
-        start_after: Option<&str>,
-        max_keys: u32,
-    ) -> Result<Vec<ObjectRecord>, crate::error::ArcaError>;
-
-    /// Lists multipart uploads initiated before the cutoff date.
-    async fn list_stale_multipart_uploads(
-        &self,
-        bucket: &str,
-        cutoff: chrono::DateTime<chrono::Utc>,
+        after: Option<(&str, &str)>,
         max_uploads: u32,
     ) -> Result<Vec<MultipartUploadRecord>, crate::error::ArcaError>;
 

@@ -58,7 +58,7 @@ use std::sync::Arc;
 use arca_core::cluster::{pair_key, quorum_satisfied, ClusterState, ControlOp, WriteGate};
 use arca_core::error::ArcaError;
 use arca_core::store::{
-    CompletedUpload, ControlTombstoneStore, DeletePrecondition, MetadataStore, VersionPosition,
+    CompletedUpload, ControlTombstoneStore, DeletePrecondition, MetadataStore, NoncurrentExpiry, VersionPosition,
     WritePrecondition, TOMBSTONE_BUCKET, TOMBSTONE_BUCKET_CONFIG, TOMBSTONE_BUCKET_TAGS, TOMBSTONE_MULTIPART,
 };
 use arca_core::types::{
@@ -853,24 +853,25 @@ impl MetadataStore for ClusterMetadataStore {
     async fn list_noncurrent_expired_versions(
         &self,
         bucket: &str,
-        prefix: Option<&str>,
-        cutoff: DateTime<Utc>,
-        start_after: Option<&str>,
+        rule: &NoncurrentExpiry<'_>,
+        after: Option<(&str, &VersionPosition)>,
         max_keys: u32,
     ) -> Result<Vec<ObjectRecord>, ArcaError> {
         self.inner
-            .list_noncurrent_expired_versions(bucket, prefix, cutoff, start_after, max_keys)
+            .list_noncurrent_expired_versions(bucket, rule, after, max_keys)
             .await
     }
 
     async fn list_stale_multipart_uploads(
         &self,
         bucket: &str,
+        prefix: Option<&str>,
         cutoff: DateTime<Utc>,
+        after: Option<(&str, &str)>,
         max_uploads: u32,
     ) -> Result<Vec<MultipartUploadRecord>, ArcaError> {
         self.inner
-            .list_stale_multipart_uploads(bucket, cutoff, max_uploads)
+            .list_stale_multipart_uploads(bucket, prefix, cutoff, after, max_uploads)
             .await
     }
 

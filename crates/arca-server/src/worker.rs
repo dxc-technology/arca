@@ -33,7 +33,7 @@ use std::time::Duration;
 
 use arca_core::store::audit::{AuditEntry, AuditStore};
 use arca_core::store::blob::BlobStore;
-use arca_core::store::metadata::MetadataStore;
+use arca_core::store::metadata::{MetadataStore, NoncurrentExpiry, VersionPosition};
 use arca_core::store::metrics::MetricsStore;
 use arca_core::store::server_config::ServerConfigStore;
 use arca_core::store::RawBlobOps;
@@ -422,7 +422,9 @@ pub fn spawn_lifecycle_worker(
     )
 }
 
-/// Maximum objects processed per rule per evaluation cycle.
+/// Page size of the lifecycle listings: every cycle pages through all the
+/// matches of a rule, so a match it cannot act on (a locked version) never
+/// hides the ones after it.
 const LIFECYCLE_BATCH_SIZE: u32 = 100;
 
 /// Check if an object is protected by Object Lock (retention or legal hold).
@@ -512,106 +514,137 @@ async fn evaluate_lifecycle_rules(
                         }
                     }
                     arca_core::s3::lifecycle::Expiration::ExpiredObjectDeleteMarker { .. } => {
-                        // Delete marker cleanup is a separate operation, skip normal expiration
+                        // TECHDEBT(TD-056): expired delete markers are never
+                        // removed, nor are noncurrent ones.
                         continue;
                     }
                 };
                 let cutoff = now - chrono::Duration::days(days);
-                match metadata
-                    .list_expired_objects(bucket, prefix, &tags, cutoff, None, LIFECYCLE_BATCH_SIZE)
-                    .await
-                {
-                    Ok(objects) => {
-                        for obj in &objects {
-                            expire_object(metadata, blob, audit_store, bucket, obj, is_versioned)
-                                .await;
-                        }
-                        if !objects.is_empty() {
-                            tracing::info!(
+                let mut start_after: Option<String> = None;
+                let mut count = 0usize;
+                loop {
+                    let objects = match metadata
+                        .list_expired_objects(bucket, prefix, &tags, cutoff, start_after.as_deref(), LIFECYCLE_BATCH_SIZE)
+                        .await
+                    {
+                        Ok(objects) => objects,
+                        Err(e) => {
+                            tracing::warn!(
+                                error = %e,
                                 bucket = %bucket,
                                 rule = %rule.id,
-                                count = objects.len(),
-                                "lifecycle: expired objects"
+                                "lifecycle: failed to list expired objects"
                             );
+                            break;
                         }
+                    };
+                    for obj in &objects {
+                        expire_object(metadata, blob, audit_store, bucket, obj, is_versioned).await;
                     }
-                    Err(e) => {
-                        tracing::warn!(
-                            error = %e,
-                            bucket = %bucket,
-                            rule = %rule.id,
-                            "lifecycle: failed to list expired objects"
-                        );
+                    count += objects.len();
+                    if (objects.len() as u32) < LIFECYCLE_BATCH_SIZE {
+                        break;
                     }
+                    start_after = objects.last().map(|o| o.key.clone());
+                }
+                if count > 0 {
+                    tracing::info!(bucket = %bucket, rule = %rule.id, count, "lifecycle: expired objects");
                 }
             }
 
             // NoncurrentVersionExpiration: hard-delete old versions
             if let Some(ref nve) = rule.noncurrent_version_expiration {
-                let cutoff = now - chrono::Duration::days(nve.noncurrent_days as i64);
-                match metadata
-                    .list_noncurrent_expired_versions(
-                        bucket,
-                        prefix,
-                        cutoff,
-                        None,
-                        LIFECYCLE_BATCH_SIZE,
-                    )
-                    .await
-                {
-                    Ok(versions) => {
-                        for obj in &versions {
-                            expire_noncurrent_version(metadata, blob, audit_store, bucket, obj)
-                                .await;
-                        }
-                        if !versions.is_empty() {
-                            tracing::info!(
+                let expiry = NoncurrentExpiry {
+                    prefix,
+                    tags: &tags,
+                    cutoff: now - chrono::Duration::days(nve.noncurrent_days as i64),
+                    keep_newer: nve.newer_noncurrent_versions.unwrap_or(0),
+                };
+                let mut after: Option<(String, VersionPosition)> = None;
+                let mut count = 0usize;
+                loop {
+                    let versions = match metadata
+                        .list_noncurrent_expired_versions(
+                            bucket,
+                            &expiry,
+                            after.as_ref().map(|(key, pos)| (key.as_str(), pos)),
+                            LIFECYCLE_BATCH_SIZE,
+                        )
+                        .await
+                    {
+                        Ok(versions) => versions,
+                        Err(e) => {
+                            tracing::warn!(
+                                error = %e,
                                 bucket = %bucket,
                                 rule = %rule.id,
-                                count = versions.len(),
-                                "lifecycle: expired noncurrent versions"
+                                "lifecycle: failed to list noncurrent versions"
                             );
+                            break;
                         }
+                    };
+                    for obj in &versions {
+                        expire_noncurrent_version(metadata, blob, audit_store, bucket, obj).await;
                     }
-                    Err(e) => {
-                        tracing::warn!(
-                            error = %e,
-                            bucket = %bucket,
-                            rule = %rule.id,
-                            "lifecycle: failed to list noncurrent versions"
-                        );
+                    count += versions.len();
+                    if (versions.len() as u32) < LIFECYCLE_BATCH_SIZE {
+                        break;
                     }
+                    after = versions.last().map(|v| (v.key.clone(), VersionPosition::of(v)));
+                }
+                if count > 0 {
+                    tracing::info!(
+                        bucket = %bucket,
+                        rule = %rule.id,
+                        count,
+                        "lifecycle: expired noncurrent versions"
+                    );
                 }
             }
 
-            // AbortIncompleteMultipartUpload
+            // AbortIncompleteMultipartUpload: the rule's prefix scopes it too.
             if let Some(ref abort) = rule.abort_incomplete_multipart_upload {
                 let cutoff = now - chrono::Duration::days(abort.days_after_initiation as i64);
-                match metadata
-                    .list_stale_multipart_uploads(bucket, cutoff, LIFECYCLE_BATCH_SIZE)
-                    .await
-                {
-                    Ok(uploads) => {
-                        for upload in &uploads {
-                            abort_stale_upload(metadata, blob, audit_store, bucket, upload).await;
-                        }
-                        if !uploads.is_empty() {
-                            tracing::info!(
+                let mut after: Option<(String, String)> = None;
+                let mut count = 0usize;
+                loop {
+                    let uploads = match metadata
+                        .list_stale_multipart_uploads(
+                            bucket,
+                            prefix,
+                            cutoff,
+                            after.as_ref().map(|(key, id)| (key.as_str(), id.as_str())),
+                            LIFECYCLE_BATCH_SIZE,
+                        )
+                        .await
+                    {
+                        Ok(uploads) => uploads,
+                        Err(e) => {
+                            tracing::warn!(
+                                error = %e,
                                 bucket = %bucket,
                                 rule = %rule.id,
-                                count = uploads.len(),
-                                "lifecycle: aborted stale multipart uploads"
+                                "lifecycle: failed to list stale uploads"
                             );
+                            break;
                         }
+                    };
+                    for upload in &uploads {
+                        abort_stale_upload(metadata, blob, audit_store, bucket, upload).await;
                     }
-                    Err(e) => {
-                        tracing::warn!(
-                            error = %e,
-                            bucket = %bucket,
-                            rule = %rule.id,
-                            "lifecycle: failed to list stale uploads"
-                        );
+                    count += uploads.len();
+                    if (uploads.len() as u32) < LIFECYCLE_BATCH_SIZE {
+                        break;
                     }
+                    after = uploads.last().map(|u| (u.key.clone(), u.upload_id.clone()));
+                }
+                if count > 0 {
+                    tracing::info!(
+                        bucket = %bucket,
+                        rule = %rule.id,
+                        count,
+                        "lifecycle: aborted stale multipart uploads"
+                    );
                 }
             }
         }
@@ -1102,5 +1135,169 @@ mod tests {
         );
         assert!(reclaimed, "the reclaim metric must be recorded");
         assert_eq!(reclaim_count(), 1, "the orphan must be counted exactly once");
+    }
+
+    // -- Lifecycle evaluation --
+
+    use arca_core::s3::lifecycle::{
+        AbortIncompleteMultipartUpload, Expiration, LifecycleConfiguration, LifecycleFilter,
+        LifecycleRule, NoncurrentVersionExpiration, RuleStatus,
+    };
+    use arca_core::types::{MultipartUploadRecord, ObjectRecord};
+
+    struct Lifecycle {
+        metadata: arca_storage::SqliteStore,
+        blob: arca_storage::FsBlobStore,
+        _dir: tempfile::TempDir,
+    }
+
+    impl Lifecycle {
+        async fn new() -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let blob = arca_storage::FsBlobStore::new(dir.path().join("blobs"), 2).await.unwrap();
+            let metadata = arca_storage::SqliteStore::open_in_memory().await.unwrap();
+            metadata.create_bucket("b").await.unwrap();
+            Lifecycle { metadata, blob, _dir: dir }
+        }
+
+        async fn rule(&self, rule: LifecycleRule) {
+            let config = LifecycleConfiguration { rules: vec![rule] };
+            self.metadata
+                .set_bucket_config("b", "lifecycle_rules", &serde_json::to_string(&config).unwrap())
+                .await
+                .unwrap();
+        }
+
+        async fn put(&self, key: &str, age_days: i64, locked: bool) {
+            self.metadata.put_object(&record(key, age_days, locked)).await.unwrap();
+        }
+
+        async fn evaluate(&self) {
+            evaluate_lifecycle_rules(&self.metadata, &self.blob, None).await;
+        }
+
+        async fn versions(&self, key: &str) -> usize {
+            let all = self.metadata.list_object_versions("b", Some(key), None, None, 1000).await.unwrap();
+            all.iter().filter(|v| v.key == key).count()
+        }
+    }
+
+    fn rule(filter: LifecycleFilter) -> LifecycleRule {
+        LifecycleRule {
+            id: "r".to_string(),
+            status: RuleStatus::Enabled,
+            filter,
+            expiration: None,
+            noncurrent_version_expiration: None,
+            abort_incomplete_multipart_upload: None,
+        }
+    }
+
+    fn record(key: &str, age_days: i64, locked: bool) -> ObjectRecord {
+        ObjectRecord {
+            bucket: "b".to_string(),
+            key: key.to_string(),
+            blob_id: BlobId(uuid::Uuid::new_v4().to_string()),
+            size: 1,
+            etag: "etag".to_string(),
+            content_type: None,
+            last_modified: chrono::Utc::now() - chrono::Duration::days(age_days),
+            metadata: Default::default(),
+            encryption_algorithm: None,
+            encryption_key_id: None,
+            owner: "root".to_string(),
+            version_id: None,
+            is_latest: true,
+            is_delete_marker: false,
+            is_tombstone: false,
+            retention_mode: None,
+            retain_until_date: None,
+            legal_hold_status: locked.then(|| "ON".to_string()),
+            storage_class: "STANDARD".to_string(),
+            checksum_algorithm: None,
+            checksum_value: None,
+            parts: None,
+            replication_status: None,
+            lock_updated_at: None,
+            content_updated_at: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn locked_noncurrent_versions_do_not_hide_the_next_ones() {
+        let lc = Lifecycle::new().await;
+        lc.metadata.set_bucket_config("b", "versioning", "Enabled").await.unwrap();
+        // More locked noncurrent versions than one listing page, before "z".
+        for age in (41..=40 + 2 * LIFECYCLE_BATCH_SIZE as i64).rev() {
+            lc.put("a", age, true).await;
+        }
+        lc.put("a", 40, false).await;
+        lc.put("z", 100, false).await;
+        lc.put("z", 40, false).await;
+        lc.rule(LifecycleRule {
+            noncurrent_version_expiration: Some(NoncurrentVersionExpiration {
+                noncurrent_days: 30,
+                newer_noncurrent_versions: None,
+            }),
+            ..rule(LifecycleFilter::Empty)
+        })
+        .await;
+
+        lc.evaluate().await;
+
+        assert_eq!(lc.versions("a").await, 1 + 2 * LIFECYCLE_BATCH_SIZE as usize, "locked versions stay");
+        assert_eq!(lc.versions("z").await, 1, "z's noncurrent version is expired");
+    }
+
+    #[tokio::test]
+    async fn expiration_covers_every_match_in_one_cycle() {
+        let lc = Lifecycle::new().await;
+        let total = 2 * LIFECYCLE_BATCH_SIZE + 1;
+        for i in 0..total {
+            lc.put(&format!("k{i:04}"), 10, false).await;
+        }
+        lc.rule(LifecycleRule {
+            expiration: Some(Expiration::Days { days: 1 }),
+            ..rule(LifecycleFilter::Empty)
+        })
+        .await;
+
+        lc.evaluate().await;
+
+        assert!(lc.metadata.list_objects("b", None, None, 10).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn abort_incomplete_uploads_stays_within_the_rule_prefix() {
+        let lc = Lifecycle::new().await;
+        let stale = chrono::Utc::now() - chrono::Duration::days(10);
+        let total = 2 * LIFECYCLE_BATCH_SIZE + 1;
+        let keys = (0..total).map(|i| format!("logs/{i:04}")).chain(["keep/x".to_string()]);
+        for (i, key) in keys.enumerate() {
+            let upload = MultipartUploadRecord {
+                upload_id: format!("u{i:04}"),
+                bucket: "b".to_string(),
+                key,
+                content_type: None,
+                initiated_at: stale,
+                metadata: Default::default(),
+                checksum_algorithm: None,
+                checksum_type: None,
+                initiator: "root".to_string(),
+            };
+            lc.metadata.create_multipart_upload(&upload).await.unwrap();
+        }
+        lc.rule(LifecycleRule {
+            abort_incomplete_multipart_upload: Some(AbortIncompleteMultipartUpload {
+                days_after_initiation: 1,
+            }),
+            ..rule(LifecycleFilter::Prefix("logs/".to_string()))
+        })
+        .await;
+
+        lc.evaluate().await;
+
+        let left = lc.metadata.list_multipart_uploads("b", None, None, None, 1000).await.unwrap();
+        assert_eq!(left.iter().map(|u| u.key.as_str()).collect::<Vec<_>>(), ["keep/x"]);
     }
 }
