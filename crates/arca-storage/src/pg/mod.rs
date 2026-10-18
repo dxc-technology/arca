@@ -121,6 +121,11 @@ const MIGRATIONS: &[Migration] = &[
         description: "Add objects.parts and multipart_uploads.checksum_type (TD-046: multipart checksum and part layout)",
         sql: include_str!("migrations/0016_multipart_checksum.sql"),
     },
+    Migration {
+        version: 17,
+        description: "COLLATE \"C\" on bucket names, keys, version ids and upload ids (S3 byte order on any database locale)",
+        sql: include_str!("migrations/0017_byte_order_collation.sql"),
+    },
 ];
 
 impl PgStore {

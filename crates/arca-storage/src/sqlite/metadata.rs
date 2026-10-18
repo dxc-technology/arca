@@ -306,12 +306,13 @@ impl MetadataStore for SqliteStore {
         let name = name.to_string();
         self.read_conn()
             .call(move |conn| {
-                let count: u32 = conn.query_row(
-                    "SELECT COUNT(*) FROM objects WHERE bucket = ?1 LIMIT 1",
+                // EXISTS stops at the first row; COUNT(*) would read them all.
+                let any: bool = conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM objects WHERE bucket = ?1)",
                     params![name],
                     |row| row.get(0),
                 )?;
-                Ok(count == 0)
+                Ok(!any)
             })
             .await
             .map_err(|e: TrError| ArcaError::Internal(format!("bucket_is_empty: {e}")))
@@ -411,12 +412,10 @@ impl MetadataStore for SqliteStore {
                 );
                 let mut param_idx = 2u32;
 
-                let prefix_pattern = prefix.as_ref().map(|p| {
-                    let idx = param_idx;
-                    param_idx += 1;
-                    sql.push_str(&format!(" AND key LIKE ?{idx} ESCAPE '\\'"));
-                    format!("{}%", escape_like(p))
-                });
+                let prefix_params = prefix
+                    .as_deref()
+                    .map(|p| push_prefix_filter(&mut sql, &mut param_idx, p))
+                    .unwrap_or_default();
 
                 if start_after.is_some() {
                     let idx = param_idx;
@@ -433,8 +432,8 @@ impl MetadataStore for SqliteStore {
                 // Bind parameters dynamically.
                 let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
                 params_vec.push(Box::new(bucket));
-                if let Some(ref pattern) = prefix_pattern {
-                    params_vec.push(Box::new(pattern.clone()));
+                for value in &prefix_params {
+                    params_vec.push(Box::new(value.clone()));
                 }
                 if let Some(ref sa) = start_after {
                     params_vec.push(Box::new(sa.clone()));
@@ -1079,8 +1078,10 @@ impl MetadataStore for SqliteStore {
                 let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(bucket)];
 
                 if let Some(ref p) = prefix {
-                    params_vec.push(Box::new(format!("{}%", escape_like(p))));
-                    sql.push_str(&format!(" AND key LIKE ?{} ESCAPE '\\'", params_vec.len()));
+                    let mut idx = params_vec.len() as u32 + 1;
+                    for value in push_prefix_filter(&mut sql, &mut idx, p) {
+                        params_vec.push(Box::new(value));
+                    }
                 }
 
                 if let Some(km) = key_marker {
@@ -1598,12 +1599,10 @@ impl MetadataStore for SqliteStore {
                 );
                 let mut param_idx = 2u32;
 
-                let prefix_pattern = prefix.as_ref().map(|p| {
-                    let idx = param_idx;
-                    param_idx += 1;
-                    sql.push_str(&format!(" AND key LIKE ?{idx} ESCAPE '\\'"));
-                    format!("{}%", escape_like(p))
-                });
+                let prefix_params = prefix
+                    .as_deref()
+                    .map(|p| push_prefix_filter(&mut sql, &mut param_idx, p))
+                    .unwrap_or_default();
 
                 // Pagination: key_marker + upload_id_marker
                 if let Some(ref km) = key_marker {
@@ -1639,8 +1638,8 @@ impl MetadataStore for SqliteStore {
 
                 let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
                 params_vec.push(Box::new(bucket));
-                if let Some(ref pattern) = prefix_pattern {
-                    params_vec.push(Box::new(pattern.clone()));
+                for value in &prefix_params {
+                    params_vec.push(Box::new(value.clone()));
                 }
                 if let Some(ref km) = key_marker {
                     if let Some(ref uim) = upload_id_marker {
@@ -1879,12 +1878,10 @@ impl MetadataStore for SqliteStore {
                 );
                 let mut param_idx = 3u32;
 
-                let prefix_pattern = prefix.as_ref().map(|p| {
-                    let idx = param_idx;
-                    param_idx += 1;
-                    sql.push_str(&format!(" AND key LIKE ?{idx} ESCAPE '\\'"));
-                    format!("{}%", escape_like(p))
-                });
+                let prefix_params = prefix
+                    .as_deref()
+                    .map(|p| push_prefix_filter(&mut sql, &mut param_idx, p))
+                    .unwrap_or_default();
 
                 let start_after_idx = start_after.as_ref().map(|_| {
                     let idx = param_idx;
@@ -1918,8 +1915,8 @@ impl MetadataStore for SqliteStore {
                 let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
                 params_vec.push(Box::new(bucket));
                 params_vec.push(Box::new(cutoff_str));
-                if let Some(ref pattern) = prefix_pattern {
-                    params_vec.push(Box::new(pattern.clone()));
+                for value in &prefix_params {
+                    params_vec.push(Box::new(value.clone()));
                 }
                 if let Some(_) = start_after_idx {
                     params_vec.push(Box::new(start_after.unwrap()));
@@ -1968,12 +1965,10 @@ impl MetadataStore for SqliteStore {
                 );
                 let mut param_idx = 3u32;
 
-                let prefix_pattern = prefix.as_ref().map(|p| {
-                    let idx = param_idx;
-                    param_idx += 1;
-                    sql.push_str(&format!(" AND key LIKE ?{idx} ESCAPE '\\'"));
-                    format!("{}%", escape_like(p))
-                });
+                let prefix_params = prefix
+                    .as_deref()
+                    .map(|p| push_prefix_filter(&mut sql, &mut param_idx, p))
+                    .unwrap_or_default();
 
                 let start_after_idx = start_after.as_ref().map(|_| {
                     let idx = param_idx;
@@ -1990,8 +1985,8 @@ impl MetadataStore for SqliteStore {
                 let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
                 params_vec.push(Box::new(bucket));
                 params_vec.push(Box::new(cutoff_str));
-                if let Some(ref pattern) = prefix_pattern {
-                    params_vec.push(Box::new(pattern.clone()));
+                for value in &prefix_params {
+                    params_vec.push(Box::new(value.clone()));
                 }
                 if let Some(_) = start_after_idx {
                     params_vec.push(Box::new(start_after.unwrap()));
@@ -2251,21 +2246,44 @@ fn insert_replicated_row(
     Ok(())
 }
 
-/// Escapes special characters in a LIKE pattern so they are matched literally.
+/// Appends the filter selecting the keys that start with `prefix` to `sql`,
+/// numbering its parameters from `*param_idx` (advanced past them), and
+/// returns their values in order.
 ///
-/// SQLite LIKE special characters are `%` and `_`. We use `\` as the escape character.
-fn escape_like(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        match ch {
-            '%' | '_' | '\\' => {
-                out.push('\\');
-                out.push(ch);
-            }
-            _ => out.push(ch),
+/// A range, not `LIKE 'prefix%'`: SQLite's LIKE ignores ASCII case, while an
+/// S3 prefix matches exact bytes, and a range on `key` is an index seek.
+fn push_prefix_filter(sql: &mut String, param_idx: &mut u32, prefix: &str) -> Vec<String> {
+    let lower = *param_idx;
+    *param_idx += 1;
+    sql.push_str(&format!(" AND key >= ?{lower}"));
+    let mut values = vec![prefix.to_string()];
+    if let Some(bound) = prefix_upper_bound(prefix) {
+        let upper = *param_idx;
+        *param_idx += 1;
+        sql.push_str(&format!(" AND key < ?{upper}"));
+        values.push(bound);
+    }
+    values
+}
+
+/// The smallest string greater than every string that starts with `prefix`,
+/// so `key >= prefix AND key < bound` selects exactly those keys: SQLite
+/// compares TEXT bytewise, and the byte order of UTF-8 is code point order.
+/// `None` when there is none (an empty prefix, or only `char::MAX`): the lower
+/// bound alone is then exact.
+fn prefix_upper_bound(prefix: &str) -> Option<String> {
+    let mut chars: Vec<char> = prefix.chars().collect();
+    while let Some(last) = chars.pop() {
+        let next = match last {
+            '\u{d7ff}' => Some('\u{e000}'),
+            c => char::from_u32(c as u32 + 1),
+        };
+        if let Some(next) = next {
+            chars.push(next);
+            return Some(chars.into_iter().collect());
         }
     }
-    out
+    None
 }
 
 /// Converts a SQLite row to a `BucketInfo`.
@@ -2892,6 +2910,62 @@ mod tests {
         let records = store.list_objects("b", Some("100%_"), None, 1000).await.unwrap();
         assert_eq!(records.len(), 2);
         assert!(records.iter().all(|r| r.key.starts_with("100%_")));
+    }
+
+    #[test]
+    fn prefix_upper_bound_is_the_next_string_after_every_extension() {
+        assert_eq!(prefix_upper_bound("abc").as_deref(), Some("abd"));
+        assert_eq!(prefix_upper_bound("a/").as_deref(), Some("a0"));
+        assert_eq!(prefix_upper_bound("caf\u{e9}").as_deref(), Some("caf\u{ea}"));
+        // No string falls between U+D7FF and U+E000: surrogates are not chars.
+        assert_eq!(prefix_upper_bound("\u{d7ff}").as_deref(), Some("\u{e000}"));
+        // The largest char cannot grow: the bound moves to the char before it.
+        assert_eq!(prefix_upper_bound("a\u{10ffff}").as_deref(), Some("b"));
+        assert_eq!(prefix_upper_bound("\u{10ffff}"), None);
+        assert_eq!(prefix_upper_bound(""), None);
+    }
+
+    /// Every prefix filter matches the exact bytes of the prefix, as S3 does:
+    /// SQLite's LIKE ignores ASCII case, so `photos/` must not match `Photos/`.
+    #[tokio::test]
+    async fn prefix_filters_are_case_sensitive() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+        let old = chrono::Utc::now() - chrono::Duration::days(10);
+        for key in ["Photos/a", "photos/b", "PHOTOS/c", "photos", "photos0"] {
+            // Two versions each, so every key also has a noncurrent one.
+            for i in 0..2 {
+                let mut r = make_record("b", key);
+                r.blob_id = BlobId(format!("{key}-{i}"));
+                r.last_modified = old + chrono::Duration::seconds(i);
+                store.put_object(&r).await.unwrap();
+            }
+            let mut upload = make_upload(&format!("u-{key}"), "b", key);
+            upload.initiated_at = old;
+            store.create_multipart_upload(&upload).await.unwrap();
+        }
+        let prefix = Some("photos/");
+        let now = chrono::Utc::now();
+        let keys = |records: Vec<ObjectRecord>| -> Vec<String> {
+            records.into_iter().map(|r| r.key).collect()
+        };
+
+        assert_eq!(keys(store.list_objects("b", prefix, None, 100).await.unwrap()), ["photos/b"]);
+        assert_eq!(
+            keys(store.list_object_versions("b", prefix, None, None, 100).await.unwrap()),
+            ["photos/b", "photos/b"]
+        );
+        assert_eq!(
+            keys(store.list_expired_objects("b", prefix, &[], now, None, 100).await.unwrap()),
+            ["photos/b"]
+        );
+        assert_eq!(
+            keys(store.list_noncurrent_expired_versions("b", prefix, now, None, 100).await.unwrap()),
+            ["photos/b"]
+        );
+        let uploads = store.list_multipart_uploads("b", prefix, None, None, 100).await.unwrap();
+        assert_eq!(uploads.iter().map(|u| u.key.as_str()).collect::<Vec<_>>(), ["photos/b"]);
     }
 
     // -- Multipart upload tests --

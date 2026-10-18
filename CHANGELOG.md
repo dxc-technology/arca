@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Licensing.** warp and MinIO run as separate test-only containers: neither is a dependency of Arca. The default MinIO image is Chainguard's build of upstream MinIO, because MinIO no longer publishes server images on Docker Hub.
 - **`bin/perf-test` reports the aggregate request rate.** Its `ops_per_sec` divides the operations by the sum of their latencies, which is the rate of a single client, not the rate the server sustained under concurrency. A new `wall_ops_per_sec` divides the operations by the elapsed time of the run. `ops_per_sec` keeps its old meaning, so old baselines still compare. `perf_test.py --json-out <path>` writes the JSON results to the given path.
 
+### Fixed
+
+- **Prefix filters on SQLite match case exactly.** ListObjects, ListObjectVersions, ListMultipartUploads and the lifecycle rules selected keys with SQL `LIKE 'prefix%'`, which SQLite compares ignoring ASCII case: a listing with prefix `photos/` also returned `Photos/` and `PHOTOS/` keys, and a lifecycle rule for `logs/` also expired `Logs/` objects. The filter is now a key range (`key >= prefix AND key < next`), which matches bytes as S3 does and is an index seek instead of a scan. PostgreSQL's `LIKE` was already case-sensitive.
+- **PostgreSQL lists in S3 byte order whatever the database locale.** On a database initialised with a glibc locale (`en_US.UTF-8`, the default of the Debian-based `postgres` image and of most distribution packages) keys, version ids, upload ids and bucket names sorted by that locale, which ignores case and punctuation at first: `a_c` came before `A/x` and `B`. Listings were out of S3 order, and ListObjects with a delimiter, which compares keys in Arca's own code, could skip or repeat entries across pages. PostgreSQL migration 0017 (applied at startup) sets `COLLATE "C"` on those columns. **On such a database the listing order changes to the S3 one.** The migration rebuilds the indexes of the `objects`, `multipart_uploads` and `buckets` tables, so the first start takes longer on a large database. `bin/test postgres` now runs on the Debian image, where this kind of bug shows up; the Alpine image collates by bytes and hid it.
+- **DeleteBucket no longer counts the bucket's objects to see whether it is empty** (nor does enabling Object Lock on an existing bucket). The check was `COUNT(*) ... LIMIT 1`, which counts every row before applying the limit; it is now an `EXISTS` that stops at the first row.
+
 ## [0.33.0] — 2026-10-17
 
 ### Added

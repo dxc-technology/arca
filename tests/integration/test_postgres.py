@@ -152,6 +152,60 @@ class TestObjectOperations:
         assert resp["Body"].read() == b"v2"
 
 
+
+# ---------- Byte order ----------
+
+# Names that a locale collation (en_US.UTF-8 on a glibc PostgreSQL) sorts
+# differently from S3's byte order: it ignores case and punctuation at first.
+LOCALE_TRAPS = ["a_c", "A/x", "B", "ab", "a-b", "a.c", "Zeta", "zeta", "\u00e9t\u00e9"]
+
+
+class TestByteOrder:
+    """Listings follow S3's byte order whatever the database locale (migration 17)."""
+
+    def test_list_objects_in_byte_order(self, s3_client):
+        for key in LOCALE_TRAPS:
+            s3_client.put_object(Bucket=BUCKET, Key=key, Body=b"x")
+        listed = [o["Key"] for o in s3_client.list_objects_v2(Bucket=BUCKET)["Contents"]]
+        # Python orders str by code point, which is UTF-8 byte order.
+        assert listed == sorted(LOCALE_TRAPS)
+
+    def test_delimiter_pages_neither_skip_nor_repeat(self, s3_client):
+        keys = ["A/1", "a/1", "a/2", "a-b/1", "a_c", "ab/1", "ab/2", "b"]
+        for key in keys:
+            s3_client.put_object(Bucket=BUCKET, Key=key, Body=b"x")
+        seen = []
+        kwargs = {"Bucket": BUCKET, "Delimiter": "/", "MaxKeys": 1}
+        while True:
+            page = s3_client.list_objects_v2(**kwargs)
+            seen += [o["Key"] for o in page.get("Contents", [])]
+            seen += [p["Prefix"] for p in page.get("CommonPrefixes", [])]
+            if not page["IsTruncated"]:
+                break
+            kwargs["ContinuationToken"] = page["NextContinuationToken"]
+        assert seen == ["A/", "a-b/", "a/", "a_c", "ab/", "b"]
+
+    def test_list_multipart_uploads_in_byte_order(self, s3_client):
+        keys = ["a_c", "A/x", "ab", "a-b"]
+        ids = [s3_client.create_multipart_upload(Bucket=BUCKET, Key=k)["UploadId"] for k in keys]
+        try:
+            uploads = s3_client.list_multipart_uploads(Bucket=BUCKET)["Uploads"]
+            assert [u["Key"] for u in uploads] == sorted(keys)
+        finally:
+            for key, upload_id in zip(keys, ids):
+                s3_client.abort_multipart_upload(Bucket=BUCKET, Key=key, UploadId=upload_id)
+
+    def test_list_buckets_in_byte_order(self, s3_client):
+        names = ["test-pg-order-ab", "test-pg-order-a.c", "test-pg-order-a-b"]
+        for name in names:
+            s3_client.create_bucket(Bucket=name)
+        try:
+            listed = [b["Name"] for b in s3_client.list_buckets()["Buckets"]]
+            assert [n for n in listed if n in names] == sorted(names)
+        finally:
+            for name in names:
+                s3_client.delete_bucket(Bucket=name)
+
 # ---------- Multipart upload ----------
 
 

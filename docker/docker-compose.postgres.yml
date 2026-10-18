@@ -5,7 +5,10 @@
 
 services:
   postgres:
-    image: postgres:17-alpine
+    # Debian, not Alpine: glibc collates TEXT by the en_US.UTF-8 locale, as
+    # most real deployments do, while musl compares bytes and would hide any
+    # query that depends on the database locale (see migration 0017).
+    image: postgres:17
     environment:
       POSTGRES_USER: arca
       POSTGRES_PASSWORD: arca

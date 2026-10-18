@@ -640,14 +640,15 @@ impl MetadataStore for PgStore {
     }
 
     async fn bucket_is_empty(&self, name: &str) -> Result<bool, ArcaError> {
-        let row = sqlx_core::query::query("SELECT COUNT(*) FROM objects WHERE bucket = $1 LIMIT 1")
+        // EXISTS stops at the first row; COUNT(*) would read them all.
+        let row = sqlx_core::query::query("SELECT EXISTS(SELECT 1 FROM objects WHERE bucket = $1)")
             .bind(name)
             .fetch_one(&self.pool)
             .await
             .map_err(|e| ArcaError::Internal(format!("bucket_is_empty: {e}")))?;
 
-        let count: i64 = row.get(0);
-        Ok(count == 0)
+        let any: bool = row.get(0);
+        Ok(!any)
     }
 
     // -- Object operations --
