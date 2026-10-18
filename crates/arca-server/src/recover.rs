@@ -706,4 +706,62 @@ mod tests {
         assert_eq!(objs[0].key, "large.bin");
         assert!(objs[0].etag.contains('-'));
     }
+
+    /// A crash leaves `arca.db-wal` and `arca.db-shm` next to the database.
+    /// Recover deletes only the database: the new one starts as an empty
+    /// file, and SQLite discards the WAL of a zero-length database instead of
+    /// replaying it. This guards that the old frames never reappear.
+    #[tokio::test]
+    async fn recover_discards_the_old_wal_and_shm() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = test_config(tmp.path());
+        let blobs_dir = config.storage.blobs_dir();
+        fs::create_dir_all(&blobs_dir).await.unwrap();
+        let db_path = config.storage.db_path();
+
+        // A database whose last commit is still only in its WAL, as after a
+        // crash: copy the WAL and shared-memory files while it is open.
+        let old = tempfile::tempdir().unwrap();
+        let old_db = old.path().join("arca.db");
+        let store = arca_storage::SqliteStore::open(&old_db).await.unwrap();
+        store.create_bucket("stale-bucket").await.unwrap();
+        for suffix in ["-wal", "-shm"] {
+            let mut from = old_db.clone().into_os_string();
+            from.push(suffix);
+            let mut to = db_path.clone().into_os_string();
+            to.push(suffix);
+            fs::copy(&from, &to).await.unwrap();
+        }
+        drop(store);
+        // The database file itself is the damage recover is run for.
+        fs::write(&db_path, vec![0xA5u8; 4096]).await.unwrap();
+
+        let content = b"test";
+        write_blob_and_sidecar(
+            &blobs_dir,
+            "550e8400-e29b-41d4-a716-446655440000",
+            content,
+            &SidecarMeta {
+                bucket: "bucket".into(),
+                key: "key".into(),
+                size: content.len() as u64,
+                etag: md5_hex(content),
+                content_type: None,
+                last_modified: "2024-01-01T00:00:00Z".into(),
+                metadata: HashMap::new(),
+                encryption: None,
+                compression: None,
+                version_id: None,
+                composite: None,
+            },
+        )
+        .await;
+
+        run_recover(&config, false, false).await.unwrap();
+
+        let store = arca_storage::SqliteStore::open(&db_path).await.unwrap();
+        let names: Vec<String> =
+            store.list_buckets().await.unwrap().into_iter().map(|b| b.name).collect();
+        assert_eq!(names, vec!["bucket".to_string()]);
+    }
 }
