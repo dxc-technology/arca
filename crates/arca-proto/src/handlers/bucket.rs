@@ -13,6 +13,7 @@ use arca_core::types::{ListBucketResultParams, ListBucketV1ResultParams, ListEnt
 use arca_core::{validate_bucket_name, S3Error, S3ErrorCode};
 
 use crate::handlers::admin_settings::effective_region;
+use crate::handlers::delimited::{list_delimited, past_prefix, DelimitedPage, ListFrom, Listed, LIST_BATCH};
 use crate::state::AppState;
 use crate::xml::error_response::{
     internal_error_response, not_implemented_response, s3_error_response,
@@ -531,100 +532,19 @@ async fn list_objects_v2(
     // Effective start_after: continuation token takes priority over start-after.
     let effective_start_after = decoded_token.as_deref().or(start_after);
 
-    // When delimiter is set, records collapse into CommonPrefixes, so we can't
-    // simply fetch max_keys+1 raw records. Instead, we fetch in batches and
-    // group until we have enough result items (contents + common_prefixes).
-    //
-    // Key subtleties:
-    // - Multiple raw keys may collapse into one CommonPrefix (only counted once).
-    // - When paginating, the continuation token may point into the middle of a
-    //   CommonPrefix group. We must skip prefix groups already returned on a
-    //   previous page by comparing against the effective_start_after value.
-    // - IsTruncated should only be true if there are genuinely NEW result items
-    //   beyond max_keys (not just duplicate keys in an already-seen prefix group).
+    // With a delimiter the keys collapse into CommonPrefixes: see
+    // `delimited` for the grouping and the paging across groups.
     let (contents, common_prefixes, is_truncated, next_token) = if let Some(delim) = delimiter {
-        let pfx = prefix.unwrap_or("");
-        let mut all_contents = Vec::new();
-        let mut all_prefixes = Vec::new();
-        let mut seen_prefixes = std::collections::HashSet::new();
-        let mut cursor = effective_start_after.map(|s| s.to_string());
-        let skip_prefix_up_to = effective_start_after.map(|s| s.to_string());
-        let mut truncated = false;
-        let batch_size: u32 = (max_keys + 1).max(100);
-
-        loop {
-            let records = match state
-                .metadata
-                .list_objects(bucket, prefix, cursor.as_deref(), batch_size)
-                .await
-            {
-                Ok(r) => r,
-                Err(e) => return internal_error_response(e, resource),
-            };
-            let exhausted = (records.len() as u32) < batch_size;
-
-            for record in &records {
-                let after_prefix = &record.key[pfx.len()..];
-                let common_prefix_opt = after_prefix.find(delim).map(|pos| {
-                    format!("{}{}", pfx, &after_prefix[..pos + delim.len()])
-                });
-
-                // Skip prefix groups already returned on a previous page.
-                if let Some(ref cp) = common_prefix_opt {
-                    if let Some(ref skip) = skip_prefix_up_to {
-                        if cp.as_str() <= skip.as_str() {
-                            continue;
-                        }
-                    }
-                }
-
-                // Check if this record would produce a new result item.
-                let is_new_item = match &common_prefix_opt {
-                    Some(cp) => !seen_prefixes.contains(cp.as_str()),
-                    None => true,
-                };
-
-                if is_new_item {
-                    let result_count = all_contents.len() + all_prefixes.len();
-                    if result_count as u32 >= max_keys {
-                        truncated = true;
-                        break;
-                    }
-                }
-
-                if let Some(cp) = common_prefix_opt {
-                    if seen_prefixes.insert(cp.clone()) {
-                        all_prefixes.push(cp);
-                    }
-                } else {
-                    all_contents.push(record_to_list_entry(record, fetch_owner));
-                }
-            }
-
-            if truncated || exhausted {
-                break;
-            }
-            cursor = records.last().map(|r| r.key.clone());
-        }
-
-        let token = if truncated {
-            // Use the lexicographically greatest result (content key or
-            // CommonPrefix). This ensures the next page's skip_prefix_up_to
-            // correctly skips prefix groups already returned.
-            let last_content = all_contents.last().map(|e| e.key.as_str());
-            let last_prefix = all_prefixes.last().map(|p| p.as_str());
-            let last_key = match (last_content, last_prefix) {
-                (Some(c), Some(p)) => Some(std::cmp::max(c, p)),
-                (Some(c), None) => Some(c),
-                (None, Some(p)) => Some(p),
-                (None, None) => None,
-            };
-            last_key.map(|k| BASE64.encode(k.as_bytes()))
-        } else {
-            None
+        let page = match list_objects_delimited(&state, bucket, prefix, delim, effective_start_after, max_keys).await {
+            Ok(page) => page,
+            Err(e) => return internal_error_response(e, resource),
         };
-
-        (all_contents, all_prefixes, truncated, token)
+        let token = page
+            .truncated
+            .then(|| page.items.last().map(|item| BASE64.encode(listed_key(item).as_bytes())))
+            .flatten();
+        let (contents, prefixes) = split_listed(page.items, fetch_owner);
+        (contents, prefixes, page.truncated, token)
     } else {
         // No delimiter: simple fetch.
         let fetch_limit = max_keys + 1;
@@ -763,88 +683,20 @@ async fn list_objects_v1(
             .expect("build list_objects_v1 response");
     }
 
-    // Delimiter-aware fetch with proper grouping and pagination.
-    // See list_objects_v2 for detailed comments on the algorithm.
+    // Delimiter-aware fetch: see `delimited`.
     let (contents, common_prefixes, is_truncated, next_marker_owned) = if let Some(delim) =
         delimiter
     {
-        let pfx = prefix.unwrap_or("");
-        let mut all_contents = Vec::new();
-        let mut all_prefixes = Vec::new();
-        let mut seen_prefixes = std::collections::HashSet::new();
-        let mut cursor = marker.map(|s| s.to_string());
-        let skip_prefix_up_to = marker.map(|s| s.to_string());
-        let mut truncated = false;
-        let batch_size: u32 = (max_keys + 1).max(100);
-
-        loop {
-            let records = match state
-                .metadata
-                .list_objects(bucket, prefix, cursor.as_deref(), batch_size)
-                .await
-            {
-                Ok(r) => r,
-                Err(e) => return internal_error_response(e, resource),
-            };
-            let exhausted = (records.len() as u32) < batch_size;
-
-            for record in &records {
-                let after_prefix = &record.key[pfx.len()..];
-                let common_prefix_opt = after_prefix.find(delim).map(|pos| {
-                    format!("{}{}", pfx, &after_prefix[..pos + delim.len()])
-                });
-
-                // Skip prefix groups already returned on a previous page.
-                if let Some(ref cp) = common_prefix_opt {
-                    if let Some(ref skip) = skip_prefix_up_to {
-                        if cp.as_str() <= skip.as_str() {
-                            continue;
-                        }
-                    }
-                }
-
-                let is_new_item = match &common_prefix_opt {
-                    Some(cp) => !seen_prefixes.contains(cp.as_str()),
-                    None => true,
-                };
-
-                if is_new_item {
-                    let result_count = all_contents.len() + all_prefixes.len();
-                    if result_count as u32 >= max_keys {
-                        truncated = true;
-                        break;
-                    }
-                }
-
-                if let Some(cp) = common_prefix_opt {
-                    if seen_prefixes.insert(cp.clone()) {
-                        all_prefixes.push(cp);
-                    }
-                } else {
-                    all_contents.push(record_to_list_entry(record, true));
-                }
-            }
-
-            if truncated || exhausted {
-                break;
-            }
-            cursor = records.last().map(|r| r.key.clone());
-        }
-
-        let nm = if truncated {
-            let last_content = all_contents.last().map(|e| e.key.as_str());
-            let last_prefix = all_prefixes.last().map(|p| p.as_str());
-            match (last_content, last_prefix) {
-                (Some(c), Some(p)) => Some(std::cmp::max(c, p).to_string()),
-                (Some(c), None) => Some(c.to_string()),
-                (None, Some(p)) => Some(p.to_string()),
-                (None, None) => None,
-            }
-        } else {
-            None
+        let page = match list_objects_delimited(&state, bucket, prefix, delim, marker, max_keys).await {
+            Ok(page) => page,
+            Err(e) => return internal_error_response(e, resource),
         };
-
-        (all_contents, all_prefixes, truncated, nm)
+        let nm = page
+            .truncated
+            .then(|| page.items.last().map(|item| listed_key(item).to_string()))
+            .flatten();
+        let (contents, prefixes) = split_listed(page.items, true);
+        (contents, prefixes, page.truncated, nm)
     } else {
         // No delimiter: simple fetch.
         let fetch_limit = max_keys + 1;
@@ -1044,12 +896,9 @@ async fn list_versions_flat(
 }
 
 /// ListObjectVersions with a delimiter: the versions of every key that has
-/// `delim` after `prefix` roll up into one common prefix, which counts once
-/// towards `max_keys`, as in ListObjectsV2.
-///
-/// A page that ends on a common prefix hands it out as the next key marker.
-/// The next page then starts after that key, which still sorts before the
-/// keys under the prefix: the groups at or before the marker are skipped.
+/// `delim` after `prefix` roll up into one common prefix, as in ListObjects
+/// (see `delimited`). A page that ends on a common prefix hands it out as the
+/// next key marker, with no version id marker.
 async fn list_versions_grouped(
     state: &AppState,
     bucket: &str,
@@ -1059,68 +908,89 @@ async fn list_versions_grouped(
     version_id_marker: Option<&str>,
     max_keys: u32,
 ) -> Result<VersionsPage, ArcaError> {
-    let pfx = prefix.unwrap_or("");
-    let batch_size = (max_keys + 1).max(100);
-    let mut page = VersionsPage { entries: Vec::new(), common_prefixes: Vec::new(), next: None };
-    let mut last: Option<VersionsMarker> = None;
-    let mut cursor: Option<ObjectRecord> = None;
-
-    loop {
-        let records = match &cursor {
-            None => {
+    let listed = list_delimited(prefix.unwrap_or(""), delim, key_marker, max_keys, |from| async move {
+        match from {
+            ListFrom::Start => {
                 state
                     .metadata
-                    .list_object_versions(bucket, prefix, key_marker, version_id_marker, batch_size)
-                    .await?
+                    .list_object_versions(bucket, prefix, key_marker, version_id_marker, LIST_BATCH)
+                    .await
             }
-            Some(after) => {
+            ListFrom::After(last) => {
+                let position = VersionPosition::of(&last);
                 state
                     .metadata
-                    .list_object_versions_from(
-                        bucket,
-                        prefix,
-                        Some(&after.key),
-                        Some(&VersionPosition::of(after)),
-                        batch_size,
-                    )
-                    .await?
+                    .list_object_versions_from(bucket, prefix, Some(&last.key), Some(&position), LIST_BATCH)
+                    .await
             }
-        };
-        let exhausted = (records.len() as u32) < batch_size;
-
-        for record in &records {
-            let group = record.key[pfx.len()..]
-                .find(delim)
-                .map(|pos| record.key[..pfx.len() + pos + delim.len()].to_string());
-            if let Some(cp) = &group {
-                if key_marker.is_some_and(|km| cp.as_str() <= km) {
-                    continue;
-                }
-                if page.common_prefixes.last() == Some(cp) {
-                    continue;
-                }
-            }
-            if (page.entries.len() + page.common_prefixes.len()) as u32 >= max_keys {
-                page.next = last;
-                return Ok(page);
-            }
-            match group {
-                Some(cp) => {
-                    last = Some(VersionsMarker::Prefix(cp.clone()));
-                    page.common_prefixes.push(cp);
-                }
-                None => {
-                    last = Some(VersionsMarker::after(record));
-                    page.entries.push(record.clone());
-                }
+            ListFrom::PastPrefix(cp) => {
+                state
+                    .metadata
+                    .list_object_versions_from(bucket, prefix, Some(&past_prefix(&cp)), None, LIST_BATCH)
+                    .await
             }
         }
+    })
+    .await?;
 
-        if exhausted {
-            return Ok(page);
+    let next = if listed.truncated {
+        listed.items.last().map(|item| match item {
+            Listed::Record(record) => VersionsMarker::after(record),
+            Listed::Prefix(cp) => VersionsMarker::Prefix(cp.clone()),
+        })
+    } else {
+        None
+    };
+    let mut page = VersionsPage { entries: Vec::new(), common_prefixes: Vec::new(), next };
+    for item in listed.items {
+        match item {
+            Listed::Record(record) => page.entries.push(record),
+            Listed::Prefix(cp) => page.common_prefixes.push(cp),
         }
-        cursor = records.last().cloned();
     }
+    Ok(page)
+}
+
+/// ListObjects (V1 and V2) with a delimiter, grouped by `delimited`.
+async fn list_objects_delimited(
+    state: &AppState,
+    bucket: &str,
+    prefix: Option<&str>,
+    delim: &str,
+    start_after: Option<&str>,
+    max_keys: u32,
+) -> Result<DelimitedPage, ArcaError> {
+    list_delimited(prefix.unwrap_or(""), delim, start_after, max_keys, |from| {
+        let cursor = match from {
+            ListFrom::Start => start_after.map(str::to_string),
+            ListFrom::After(last) => Some(last.key),
+            ListFrom::PastPrefix(cp) => Some(past_prefix(&cp)),
+        };
+        async move { state.metadata.list_objects(bucket, prefix, cursor.as_deref(), LIST_BATCH).await }
+    })
+    .await
+}
+
+/// The key or common prefix of a listed item: what the next page resumes after.
+fn listed_key(item: &Listed) -> &str {
+    match item {
+        Listed::Record(record) => &record.key,
+        Listed::Prefix(cp) => cp,
+    }
+}
+
+/// Splits listed items into the `Contents` and `CommonPrefixes` of a
+/// ListObjects response, each in key order.
+fn split_listed(items: Vec<Listed>, fetch_owner: bool) -> (Vec<ListEntry>, Vec<String>) {
+    let mut contents = Vec::new();
+    let mut prefixes = Vec::new();
+    for item in items {
+        match item {
+            Listed::Record(record) => contents.push(record_to_list_entry(&record, fetch_owner)),
+            Listed::Prefix(cp) => prefixes.push(cp),
+        }
+    }
+    (contents, prefixes)
 }
 
 /// Handles ListMultipartUploads requests (`GET /{bucket}?uploads`).
