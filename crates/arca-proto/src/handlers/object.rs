@@ -1672,13 +1672,14 @@ pub async fn get_object(
         Err(e) => return internal_error_response(e, &resource),
     }
 
-    let record = if let Some(ref vid) = version_id {
+    // The record with its tag count (x-amz-tagging-count), in one query.
+    let (record, tag_count) = if let Some(ref vid) = version_id {
         match state
             .metadata
-            .get_object_version(&bucket, &key, vid)
+            .get_object_version_with_tag_count(&bucket, &key, vid)
             .await
         {
-            Ok(Some(r)) if r.is_delete_marker => {
+            Ok(Some((r, _))) if r.is_delete_marker => {
                 // GetObject on a delete marker returns 405 MethodNotAllowed.
                 let mut builder = Response::builder()
                     .status(StatusCode::METHOD_NOT_ALLOWED)
@@ -1689,15 +1690,15 @@ pub async fn get_object(
                 }
                 return builder.body(Body::empty()).expect("build delete marker 405 response");
             }
-            Ok(Some(r)) => r,
+            Ok(Some(found)) => found,
             Ok(None) => {
                 return s3_error_response(S3Error::new(S3ErrorCode::NoSuchVersion, &resource));
             }
             Err(e) => return internal_error_response(e, &resource),
         }
     } else {
-        match state.metadata.get_object(&bucket, &key).await {
-            Ok(Some(r)) => r,
+        match state.metadata.get_object_with_tag_count(&bucket, &key).await {
+            Ok(Some(found)) => found,
             Ok(None) => {
                 // Check if the latest version is a delete marker.
                 if let Ok(Some(latest)) = state.metadata.get_latest_object(&bucket, &key).await {
@@ -1897,15 +1898,8 @@ pub async fn get_object(
     }
 
     // x-amz-tagging-count: number of tags (only if > 0).
-    let tag_vid = record.version_id.as_deref().unwrap_or("");
-    if let Ok(tags) = state
-        .metadata
-        .get_object_tags(&bucket, &key, tag_vid)
-        .await
-    {
-        if !tags.is_empty() {
-            builder = builder.header("x-amz-tagging-count", tags.len().to_string());
-        }
+    if tag_count > 0 {
+        builder = builder.header("x-amz-tagging-count", tag_count.to_string());
     }
 
     // Object Lock headers
@@ -1976,13 +1970,14 @@ pub async fn head_object(
         Err(e) => return internal_error_response(e, &resource),
     }
 
-    let record = if let Some(ref vid) = version_id {
+    // The record with its tag count (x-amz-tagging-count), in one query.
+    let (record, tag_count) = if let Some(ref vid) = version_id {
         match state
             .metadata
-            .get_object_version(&bucket, &key, vid)
+            .get_object_version_with_tag_count(&bucket, &key, vid)
             .await
         {
-            Ok(Some(r)) if r.is_delete_marker => {
+            Ok(Some((r, _))) if r.is_delete_marker => {
                 // HeadObject on a delete marker returns 404 with marker headers.
                 let mut builder = Response::builder()
                     .status(StatusCode::NOT_FOUND)
@@ -1992,15 +1987,15 @@ pub async fn head_object(
                 }
                 return builder.body(Body::empty()).expect("build delete marker 404 response");
             }
-            Ok(Some(r)) => r,
+            Ok(Some(found)) => found,
             Ok(None) => {
                 return s3_error_response(S3Error::new(S3ErrorCode::NoSuchVersion, &resource));
             }
             Err(e) => return internal_error_response(e, &resource),
         }
     } else {
-        match state.metadata.get_object(&bucket, &key).await {
-            Ok(Some(r)) => r,
+        match state.metadata.get_object_with_tag_count(&bucket, &key).await {
+            Ok(Some(found)) => found,
             Ok(None) => {
                 // Check if the latest version is a delete marker.
                 if let Ok(Some(latest)) = state.metadata.get_latest_object(&bucket, &key).await {
@@ -2115,15 +2110,8 @@ pub async fn head_object(
     }
 
     // x-amz-tagging-count: number of tags (only if > 0).
-    let tag_vid = record.version_id.as_deref().unwrap_or("");
-    if let Ok(tags) = state
-        .metadata
-        .get_object_tags(&bucket, &key, tag_vid)
-        .await
-    {
-        if !tags.is_empty() {
-            builder = builder.header("x-amz-tagging-count", tags.len().to_string());
-        }
+    if tag_count > 0 {
+        builder = builder.header("x-amz-tagging-count", tag_count.to_string());
     }
 
     // Object Lock headers

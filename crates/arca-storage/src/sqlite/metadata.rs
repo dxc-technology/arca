@@ -10,7 +10,7 @@ use arca_core::types::{
 };
 use std::collections::HashMap;
 use chrono::DateTime;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use super::{CachedSql, SqliteStore, TrError};
 
@@ -82,6 +82,20 @@ const OBJECT_COLUMNS: &str = object_columns!();
 /// write it back or to hand it to a peer (`apply_remote_object`, the
 /// replication manifest): leaving the layout out there would lose it.
 const OBJECT_COLUMNS_FULL: &str = concat!(object_columns!(), ", parts");
+
+/// The number of tags of the row's version, selected right after
+/// [`OBJECT_COLUMNS`] (at [`TAG_COUNT_INDEX`]) so a GET or a HEAD gets its
+/// `x-amz-tagging-count` from the object query itself, not from a second one.
+const TAG_COUNT_COLUMN: &str = "(SELECT COUNT(*) FROM object_tags t \
+     WHERE t.bucket = objects.bucket AND t.key = objects.key \
+     AND t.version_id = COALESCE(objects.version_id, ''))";
+const TAG_COUNT_INDEX: usize = 24;
+
+/// Maps a row of `SELECT {OBJECT_COLUMNS}, {TAG_COUNT_COLUMN}`.
+fn row_to_tagged_object(row: &rusqlite::Row) -> Result<(ObjectRecord, usize), rusqlite::Error> {
+    let count: i64 = row.get(TAG_COUNT_INDEX)?;
+    Ok((row_to_object_record(row)?, count as usize))
+}
 
 /// Deletes an upload and its parts inside `tx` and returns the parts that
 /// were deleted (none when the upload is already gone).
@@ -519,6 +533,64 @@ impl MetadataStore for SqliteStore {
             })
             .await
             .map_err(|e: TrError| ArcaError::Internal(format!("get_object_parts: {e}")))
+    }
+
+    async fn get_object_with_tag_count(
+        &self,
+        bucket: &str,
+        key: &str,
+    ) -> Result<Option<(ObjectRecord, usize)>, ArcaError> {
+        let bucket = bucket.to_string();
+        let key = key.to_string();
+        self.read_conn()
+            .call(move |conn| {
+                let sql = format!(
+                    "SELECT {OBJECT_COLUMNS}, {TAG_COUNT_COLUMN} FROM objects \
+                     WHERE bucket = ?1 AND key = ?2 AND is_latest = 1 AND is_delete_marker = 0"
+                );
+                Ok(conn
+                    .prepare_cached(&sql)?
+                    .query_row(params![bucket, key], row_to_tagged_object)
+                    .optional()?)
+            })
+            .await
+            .map_err(|e: TrError| ArcaError::Internal(format!("get_object_with_tag_count: {e}")))
+    }
+
+    async fn get_object_version_with_tag_count(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: &str,
+    ) -> Result<Option<(ObjectRecord, usize)>, ArcaError> {
+        let bucket = bucket.to_string();
+        let key = key.to_string();
+        let version_id = version_id.to_string();
+        self.read_conn()
+            .call(move |conn| {
+                let found = if version_id == "null" {
+                    let sql = format!(
+                        "SELECT {OBJECT_COLUMNS}, {TAG_COUNT_COLUMN} FROM objects \
+                         WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL AND is_tombstone = 0"
+                    );
+                    conn.prepare_cached(&sql)?
+                        .query_row(params![bucket, key], row_to_tagged_object)
+                        .optional()?
+                } else {
+                    let sql = format!(
+                        "SELECT {OBJECT_COLUMNS}, {TAG_COUNT_COLUMN} FROM objects \
+                         WHERE bucket = ?1 AND key = ?2 AND version_id = ?3 AND is_tombstone = 0"
+                    );
+                    conn.prepare_cached(&sql)?
+                        .query_row(params![bucket, key, version_id], row_to_tagged_object)
+                        .optional()?
+                };
+                Ok(found)
+            })
+            .await
+            .map_err(|e: TrError| {
+                ArcaError::Internal(format!("get_object_version_with_tag_count: {e}"))
+            })
     }
 
     async fn get_object_version(
@@ -5183,6 +5255,62 @@ mod tests {
         let deleted = store.delete_object_if("b", "key1", &pre, "root").await.unwrap();
         assert!(deleted.is_some());
         assert!(store.get_object("b", "key1").await.unwrap().is_none());
+    }
+
+    // -- x-amz-tagging-count in the object query --
+
+    fn tags(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    #[test]
+    fn the_tag_count_follows_every_object_column() {
+        assert_eq!(OBJECT_COLUMNS.split(',').count(), TAG_COUNT_INDEX);
+    }
+
+    #[tokio::test]
+    async fn get_object_with_tag_count_counts_the_current_version_tags() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        store.put_object(&make_record("b", "tagged")).await.unwrap();
+        store.put_object(&make_record("b", "plain")).await.unwrap();
+        store
+            .put_object_tags("b", "tagged", "", &tags(&[("a", "1"), ("b", "2")]))
+            .await
+            .unwrap();
+
+        let (record, count) = store.get_object_with_tag_count("b", "tagged").await.unwrap().unwrap();
+        assert_eq!(record.key, "tagged");
+        assert_eq!(count, 2);
+        let (_, count) = store.get_object_with_tag_count("b", "plain").await.unwrap().unwrap();
+        assert_eq!(count, 0);
+        assert!(store.get_object_with_tag_count("b", "missing").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn get_object_version_with_tag_count_counts_that_version_tags() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        // A null version with one tag, then versioning on and a tagged version.
+        store.put_object(&make_record("b", "k")).await.unwrap();
+        store.put_object_tags("b", "k", "", &tags(&[("n", "1")])).await.unwrap();
+        enable_versioning(&store, "b").await;
+        let (_, v2) = store.put_object(&make_record("b", "k")).await.unwrap();
+        let v2 = v2.unwrap();
+        store
+            .put_object_tags("b", "k", &v2, &tags(&[("x", "1"), ("y", "2"), ("z", "3")]))
+            .await
+            .unwrap();
+
+        let (_, count) = store.get_object_version_with_tag_count("b", "k", &v2).await.unwrap().unwrap();
+        assert_eq!(count, 3);
+        let (record, count) =
+            store.get_object_version_with_tag_count("b", "k", "null").await.unwrap().unwrap();
+        assert!(record.version_id.is_none());
+        assert_eq!(count, 1);
+        let (_, count) = store.get_object_with_tag_count("b", "k").await.unwrap().unwrap();
+        assert_eq!(count, 3, "the current version is v2");
+        assert!(store.get_object_version_with_tag_count("b", "k", "nope").await.unwrap().is_none());
     }
 
     // -- DeleteObjects in one transaction --

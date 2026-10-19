@@ -178,6 +178,17 @@ pub struct BatchDeleteEntry {
     pub pre: DeletePrecondition,
 }
 
+/// The tag count of `record`'s version, for the `*_with_tag_count` defaults:
+/// `0` when the lookup fails.
+async fn tag_count_of<S: MetadataStore + ?Sized>(store: &S, record: &ObjectRecord) -> usize {
+    let version_id = record.version_id.as_deref().unwrap_or("");
+    store
+        .get_object_tags(&record.bucket, &record.key, version_id)
+        .await
+        .map(|tags| tags.len())
+        .unwrap_or(0)
+}
+
 /// Trait for metadata storage operations.
 #[async_trait::async_trait]
 pub trait MetadataStore: Send + Sync {
@@ -320,6 +331,37 @@ pub trait MetadataStore: Send + Sync {
         key: &str,
         version_id: Option<&str>,
     ) -> Result<Option<Vec<crate::types::ObjectPart>>, crate::error::ArcaError>;
+
+    /// [`MetadataStore::get_object`] together with the number of tags of the
+    /// version it returns (`x-amz-tagging-count`). The default makes the two
+    /// calls, a failed tag lookup counting as no tag (the header is then left
+    /// out); a backend counts in the same query.
+    async fn get_object_with_tag_count(
+        &self,
+        bucket: &str,
+        key: &str,
+    ) -> Result<Option<(ObjectRecord, usize)>, crate::error::ArcaError> {
+        let Some(record) = self.get_object(bucket, key).await? else {
+            return Ok(None);
+        };
+        let count = tag_count_of(self, &record).await;
+        Ok(Some((record, count)))
+    }
+
+    /// [`MetadataStore::get_object_version`] together with the number of tags
+    /// of that version, like [`MetadataStore::get_object_with_tag_count`].
+    async fn get_object_version_with_tag_count(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: &str,
+    ) -> Result<Option<(ObjectRecord, usize)>, crate::error::ArcaError> {
+        let Some(record) = self.get_object_version(bucket, key, version_id).await? else {
+            return Ok(None);
+        };
+        let count = tag_count_of(self, &record).await;
+        Ok(Some((record, count)))
+    }
 
     /// Returns a specific version of an object, or None if not found.
     async fn get_object_version(

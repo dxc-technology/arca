@@ -339,3 +339,59 @@ class TestTaggingEdgeCases:
         finally:
             s3_client.delete_object(Bucket="tag-edge-5", Key="file.txt")
             s3_client.delete_bucket(Bucket="tag-edge-5")
+
+
+# -- x-amz-tagging-count on GetObject / HeadObject --
+
+def tag_count_header(resp):
+    """The x-amz-tagging-count header of a response, or None when absent."""
+    return resp["ResponseMetadata"]["HTTPHeaders"].get("x-amz-tagging-count")
+
+
+class TestTagCountHeader:
+    def test_get_and_head_report_the_tag_count(self, s3_client):
+        """GET and HEAD carry the number of tags, and no header without tags."""
+        bucket = "tag-count-1"
+        s3_client.create_bucket(Bucket=bucket)
+        try:
+            s3_client.put_object(Bucket=bucket, Key="obj", Body=b"data")
+            assert tag_count_header(s3_client.get_object(Bucket=bucket, Key="obj")) is None
+            assert tag_count_header(s3_client.head_object(Bucket=bucket, Key="obj")) is None
+
+            put_tags(s3_client, bucket, "obj", {"a": "1", "b": "2", "c": "3"})
+            assert s3_client.get_object(Bucket=bucket, Key="obj")["TagCount"] == 3
+            assert tag_count_header(s3_client.head_object(Bucket=bucket, Key="obj")) == "3"
+
+            s3_client.delete_object_tagging(Bucket=bucket, Key="obj")
+            assert tag_count_header(s3_client.get_object(Bucket=bucket, Key="obj")) is None
+        finally:
+            s3_client.delete_object(Bucket=bucket, Key="obj")
+            s3_client.delete_bucket(Bucket=bucket)
+
+    def test_tag_count_of_a_specific_version(self, s3_client):
+        """With a versionId, the count is that version's tags, not the latest's."""
+        bucket = "tag-count-2"
+        s3_client.create_bucket(Bucket=bucket)
+        s3_client.put_bucket_versioning(
+            Bucket=bucket, VersioningConfiguration={"Status": "Enabled"}
+        )
+        versions = []
+        try:
+            v1 = s3_client.put_object(Bucket=bucket, Key="obj", Body=b"one")["VersionId"]
+            versions.append(v1)
+            s3_client.put_object_tagging(
+                Bucket=bucket,
+                Key="obj",
+                VersionId=v1,
+                Tagging={"TagSet": [{"Key": "x", "Value": "1"}, {"Key": "y", "Value": "2"}]},
+            )
+            versions.append(s3_client.put_object(Bucket=bucket, Key="obj", Body=b"two")["VersionId"])
+
+            assert tag_count_header(s3_client.get_object(Bucket=bucket, Key="obj")) is None
+            assert s3_client.get_object(Bucket=bucket, Key="obj", VersionId=v1)["TagCount"] == 2
+            head = s3_client.head_object(Bucket=bucket, Key="obj", VersionId=v1)
+            assert tag_count_header(head) == "2"
+        finally:
+            for v in versions:
+                s3_client.delete_object(Bucket=bucket, Key="obj", VersionId=v)
+            s3_client.delete_bucket(Bucket=bucket)

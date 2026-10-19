@@ -32,6 +32,19 @@ const OBJECT_COLUMNS: &str = object_columns!();
 /// replication manifest): leaving the layout out there would lose it.
 const OBJECT_COLUMNS_FULL: &str = concat!(object_columns!(), ", parts");
 
+/// The number of tags of the row's version, selected next to
+/// [`OBJECT_COLUMNS`] so a GET or a HEAD gets its `x-amz-tagging-count` from
+/// the object query itself, not from a second one.
+const TAG_COUNT_COLUMN: &str = "(SELECT COUNT(*) FROM object_tags t \
+     WHERE t.bucket = objects.bucket AND t.key = objects.key \
+     AND t.version_id = COALESCE(objects.version_id, '')) AS tag_count";
+
+/// Maps a row of `SELECT {OBJECT_COLUMNS}, {TAG_COUNT_COLUMN}`.
+fn row_to_tagged_object(row: &sqlx_postgres::PgRow) -> (ObjectRecord, usize) {
+    let count: i64 = row.get("tag_count");
+    (row_to_object_record(row), count as usize)
+}
+
 /// Reads the bucket versioning state from `bucket_config`.
 /// Called inside a transaction context.
 async fn get_versioning_state(
@@ -1016,6 +1029,57 @@ impl MetadataStore for PgStore {
         Ok(row
             .and_then(|r| r.try_get::<Option<serde_json::Value>, _>("parts").ok().flatten())
             .and_then(|v| serde_json::from_value(v).ok()))
+    }
+
+    async fn get_object_with_tag_count(
+        &self,
+        bucket: &str,
+        key: &str,
+    ) -> Result<Option<(ObjectRecord, usize)>, ArcaError> {
+        let sql = format!(
+            "SELECT {OBJECT_COLUMNS}, {TAG_COUNT_COLUMN} FROM objects \
+             WHERE bucket = $1 AND key = $2 AND is_latest = TRUE AND is_delete_marker = FALSE"
+        );
+        let row = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
+            .bind(bucket)
+            .bind(key)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("get_object_with_tag_count: {e}")))?;
+        Ok(row.as_ref().map(row_to_tagged_object))
+    }
+
+    async fn get_object_version_with_tag_count(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: &str,
+    ) -> Result<Option<(ObjectRecord, usize)>, ArcaError> {
+        let row = if version_id == "null" {
+            let sql = format!(
+                "SELECT {OBJECT_COLUMNS}, {TAG_COUNT_COLUMN} FROM objects \
+                 WHERE bucket = $1 AND key = $2 AND version_id IS NULL AND is_tombstone = FALSE"
+            );
+            sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
+                .bind(bucket)
+                .bind(key)
+                .fetch_optional(&self.pool)
+                .await
+        } else {
+            let sql = format!(
+                "SELECT {OBJECT_COLUMNS}, {TAG_COUNT_COLUMN} FROM objects \
+                 WHERE bucket = $1 AND key = $2 AND version_id = $3 AND is_tombstone = FALSE"
+            );
+            sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
+                .bind(bucket)
+                .bind(key)
+                .bind(version_id)
+                .fetch_optional(&self.pool)
+                .await
+        };
+        let row = row
+            .map_err(|e| ArcaError::Internal(format!("get_object_version_with_tag_count: {e}")))?;
+        Ok(row.as_ref().map(row_to_tagged_object))
     }
 
     async fn get_object_version(

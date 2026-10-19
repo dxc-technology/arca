@@ -129,6 +129,26 @@ impl MetadataStore for CachingMetadataStore {
         self.inner.get_object(bucket, key).await
     }
 
+    async fn get_object_with_tag_count(
+        &self,
+        bucket: &str,
+        key: &str,
+    ) -> Result<Option<(ObjectRecord, usize)>, ArcaError> {
+        // Forwarded so the backend counts the tags in the object query.
+        self.inner.get_object_with_tag_count(bucket, key).await
+    }
+
+    async fn get_object_version_with_tag_count(
+        &self,
+        bucket: &str,
+        key: &str,
+        version_id: &str,
+    ) -> Result<Option<(ObjectRecord, usize)>, ArcaError> {
+        self.inner
+            .get_object_version_with_tag_count(bucket, key, version_id)
+            .await
+    }
+
     async fn get_latest_object(
         &self,
         bucket: &str,

@@ -548,12 +548,15 @@ run_postgres() {
     # and the owner recorded on rows (guards the delete-marker and bucket
     # owner SQL and the multipart initiator column in pg/metadata.rs)
     # and the multipart checksum (guards the objects.parts column and the
-    # multipart_uploads.checksum_type column in pg/metadata.rs)
+    # multipart_uploads.checksum_type column in pg/metadata.rs) and the
+    # tagging suite (guards the tag-count subquery of GET/HEAD in
+    # pg/metadata.rs)
     $COMPOSE run --rm \
         -e ARCA_POSTGRES_BACKEND=1 \
         test integration/test_postgres.py integration/test_conditional_writes.py \
         integration/test_versioning.py integration/test_multipart_abort_race.py \
-        integration/test_object_owner.py integration/test_multipart_checksums.py "$@"
+        integration/test_object_owner.py integration/test_multipart_checksums.py \
+        integration/test_tagging.py "$@"
     local rc=$?
 
     trap - EXIT
