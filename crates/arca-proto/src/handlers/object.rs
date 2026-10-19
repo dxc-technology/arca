@@ -627,18 +627,15 @@ pub async fn put_object(
         .map(|s| s.to_string());
 
     let metadata = extract_metadata(request.headers());
-    let tagging_header = request
-        .headers()
-        .get("x-amz-tagging")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
-
-    // Validate inline tags early, before writing the blob.
-    if let Some(ref th) = tagging_header {
-        if let Err(e) = xml_types::parse_tagging_header(th) {
-            return s3_error_response(e);
-        }
-    }
+    // Inline tags (x-amz-tagging), validated before the blob is written and
+    // stored in the same transaction as the object row.
+    let inline_tags = match request.headers().get("x-amz-tagging").and_then(|v| v.to_str().ok()) {
+        Some(th) => match xml_types::parse_tagging_header(th) {
+            Ok(tags) => tags,
+            Err(e) => return s3_error_response(e),
+        },
+        None => Vec::new(),
+    };
 
     // Fast-reject if Content-Length exceeds the configured body size limit.
     let max_body = if state.max_body_size > 0 {
@@ -823,7 +820,11 @@ pub async fn put_object(
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string()),
     };
-    let (old, version_id) = match state.metadata.put_object_if(&record, &write_pre).await {
+    let (old, version_id) = match state
+        .metadata
+        .put_object_tagged_if(&record, &write_pre, &inline_tags)
+        .await
+    {
         Ok(r) => r,
         Err(ArcaError::S3(e))
             if matches!(
@@ -842,6 +843,8 @@ pub async fn put_object(
             }
             return s3_error_response(e);
         }
+        // TECHDEBT(TD-057): the fresh blob is kept on a database error, which
+        // does not prove that nothing was committed; gc reclaims an orphan.
         Err(e) => return internal_error_response(e, &resource),
     };
 
@@ -853,24 +856,6 @@ pub async fn put_object(
                 tracing::warn!(error = %e, "Failed to delete old blob during overwrite");
             }
         });
-    }
-
-    // Store inline tags from x-amz-tagging header (already validated above).
-    if let Some(ref th) = tagging_header {
-        // parse_tagging_header was already validated before writing the blob,
-        // so Err here is unreachable, but handle defensively.
-        if let Ok(tags) = xml_types::parse_tagging_header(th) {
-            if !tags.is_empty() {
-                let tag_vid = version_id.clone().unwrap_or_default();
-                if let Err(e) = state
-                    .metadata
-                    .put_object_tags(&record.bucket, &record.key, &tag_vid, &tags)
-                    .await
-                {
-                    tracing::warn!(error = %e, "Failed to store inline object tags");
-                }
-            }
-        }
     }
 
     // Emit notification event
@@ -892,16 +877,6 @@ pub async fn put_object(
     // this stamps the object REPLICA and does NOT emit journal entries; on the
     // source side it inserts one journal row per matching rule and stamps
     // PENDING. Returns None when replication is not configured.
-    let current_tags = if tagging_header.is_some() {
-        let tag_vid = version_id.clone().unwrap_or_default();
-        state
-            .metadata
-            .get_object_tags(&record.bucket, &record.key, &tag_vid)
-            .await
-            .unwrap_or_default()
-    } else {
-        Vec::new()
-    };
     let replication_status = crate::replication::emit_and_stamp(
         &state,
         &headers,
@@ -909,7 +884,7 @@ pub async fn put_object(
         &record.key,
         version_id.as_deref(),
         arca_core::store::replication::ReplicationEventType::Put,
-        &current_tags,
+        &inline_tags,
     )
     .await;
 
@@ -1069,6 +1044,24 @@ async fn copy_object(
             &resource,
         ));
     }
+
+    // The destination's tags, resolved before the copy is written: REPLACE
+    // takes the request's x-amz-tagging, COPY (the default) the source
+    // version's tags, read now because a copy onto itself replaces them. They
+    // are stored in the same transaction as the destination row.
+    let dest_tags = if tagging_directive.eq_ignore_ascii_case("REPLACE") {
+        match tagging_header.as_deref().map(xml_types::parse_tagging_header) {
+            Some(Ok(tags)) => tags,
+            Some(Err(e)) => return s3_error_response(e),
+            None => Vec::new(),
+        }
+    } else {
+        let src_tag_vid = src_record.version_id.as_deref().unwrap_or("");
+        match state.metadata.get_object_tags(&src_bucket, &src_key, src_tag_vid).await {
+            Ok(tags) => tags,
+            Err(e) => return internal_error_response(e, &resource),
+        }
+    };
 
     // Determine content-type and metadata based on directive.
     let (content_type, metadata) = if metadata_directive.eq_ignore_ascii_case("REPLACE") {
@@ -1244,8 +1237,14 @@ async fn copy_object(
         lock_updated_at: None,
         content_updated_at: None,
     };
-    let (old, version_id) = match state.metadata.put_object(&record).await {
+    let (old, version_id) = match state
+        .metadata
+        .put_object_tagged_if(&record, &WritePrecondition::default(), &dest_tags)
+        .await
+    {
         Ok(r) => r,
+        // TECHDEBT(TD-057): the fresh blob is kept on a database error, which
+        // does not prove that nothing was committed; gc reclaims an orphan.
         Err(e) => return internal_error_response(e, &resource),
     };
 
@@ -1257,37 +1256,6 @@ async fn copy_object(
                 tracing::warn!(error = %e, "Failed to delete old blob during copy overwrite");
             }
         });
-    }
-
-    // Handle tagging directive: COPY source tags or REPLACE with x-amz-tagging header.
-    let dest_tag_vid = version_id.clone().unwrap_or_default();
-    if tagging_directive.eq_ignore_ascii_case("REPLACE") {
-        // REPLACE: use x-amz-tagging header from copy request.
-        if let Some(ref th) = tagging_header {
-            if let Ok(tags) = xml_types::parse_tagging_header(th) {
-                if !tags.is_empty() {
-                    let _ = state
-                        .metadata
-                        .put_object_tags(&record.bucket, &record.key, &dest_tag_vid, &tags)
-                        .await;
-                }
-            }
-        }
-    } else {
-        // COPY (default): copy source object tags to destination.
-        let src_tag_vid = src_record.version_id.as_deref().unwrap_or("");
-        if let Ok(src_tags) = state
-            .metadata
-            .get_object_tags(&src_bucket, &src_key, src_tag_vid)
-            .await
-        {
-            if !src_tags.is_empty() {
-                let _ = state
-                    .metadata
-                    .put_object_tags(&record.bucket, &record.key, &dest_tag_vid, &src_tags)
-                    .await;
-            }
-        }
     }
 
     // Emit notification event
@@ -1306,14 +1274,6 @@ async fn copy_object(
     });
 
     // Phase 28 — Replication. Treat CopyObject as a Put on the destination.
-    let dest_tags = {
-        let vid = version_id.clone().unwrap_or_default();
-        state
-            .metadata
-            .get_object_tags(&record.bucket, &record.key, &vid)
-            .await
-            .unwrap_or_default()
-    };
     let replication_status = crate::replication::emit_and_stamp(
         &state,
         request.headers(),
@@ -1524,6 +1484,8 @@ async fn upload_part_copy(
     };
     let old_part = match state.metadata.put_part(&part).await {
         Ok(old) => old,
+        // TECHDEBT(TD-057): the fresh blob is kept on a database error, which
+        // does not prove that nothing was committed; gc reclaims an orphan.
         Err(e) => return internal_error_response(e, &resource),
     };
 

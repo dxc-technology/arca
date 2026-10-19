@@ -123,6 +123,30 @@ fn take_upload(
     Ok(parts)
 }
 
+/// Replaces the tags of one object version inside `tx`: `put_object_tags`,
+/// and the tags a write gives its new version (`put_object_tagged_if`,
+/// `complete_multipart_object_tagged`), in the same transaction as the row.
+fn write_object_tags(
+    tx: &rusqlite::Transaction,
+    bucket: &str,
+    key: &str,
+    version_id: &str,
+    tags: &[(String, String)],
+) -> Result<(), rusqlite::Error> {
+    tx.execute_cached(
+        "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
+        params![bucket, key, version_id],
+    )?;
+    for (k, v) in tags {
+        tx.execute_cached(
+            "INSERT INTO object_tags (bucket, key, version_id, tag_key, tag_value)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![bucket, key, version_id, k, v],
+        )?;
+    }
+    Ok(())
+}
+
 /// Installs `record` as the new current version inside `tx`: the
 /// authoritative CAS check, the versioning rules, the row and the `is_latest`
 /// finalisation. Does not commit, so a caller can add statements that must
@@ -348,14 +372,28 @@ impl MetadataStore for SqliteStore {
         record: &ObjectRecord,
         pre: &WritePrecondition,
     ) -> Result<(Option<ObjectRecord>, Option<String>), ArcaError> {
+        self.put_object_tagged_if(record, pre, &[]).await
+    }
+
+    async fn put_object_tagged_if(
+        &self,
+        record: &ObjectRecord,
+        pre: &WritePrecondition,
+        tags: &[(String, String)],
+    ) -> Result<(Option<ObjectRecord>, Option<String>), ArcaError> {
         let mut record = record.clone();
         let pre = pre.clone();
+        let tags = tags.to_vec();
         let resource = format!("/{}/{}", record.bucket, record.key);
         let result = self
             .conn
             .call(move |conn| -> Result<_, CasError> {
                 let tx = conn.transaction()?;
                 let old = install_object(&tx, &mut record, &pre)?;
+                if !tags.is_empty() {
+                    let version_id = record.version_id.as_deref().unwrap_or("");
+                    write_object_tags(&tx, &record.bucket, &record.key, version_id, &tags)?;
+                }
                 tx.commit()?;
                 Ok((old, record.version_id.clone()))
             })
@@ -1293,17 +1331,7 @@ impl MetadataStore for SqliteStore {
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;
-                tx.execute_cached(
-                    "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
-                    params![bucket, key, version_id],
-                )?;
-                for (k, v) in &tags {
-                    tx.execute_cached(
-                        "INSERT INTO object_tags (bucket, key, version_id, tag_key, tag_value)
-                         VALUES (?1, ?2, ?3, ?4, ?5)",
-                        params![bucket, key, version_id, k, v],
-                    )?;
-                }
+                write_object_tags(&tx, &bucket, &key, &version_id, &tags)?;
                 tx.commit()?;
                 Ok(())
             })
@@ -1465,9 +1493,20 @@ impl MetadataStore for SqliteStore {
         record: &ObjectRecord,
         pre: &WritePrecondition,
     ) -> Result<CompletedUpload, ArcaError> {
+        self.complete_multipart_object_tagged(upload_id, record, pre, &[]).await
+    }
+
+    async fn complete_multipart_object_tagged(
+        &self,
+        upload_id: &str,
+        record: &ObjectRecord,
+        pre: &WritePrecondition,
+        tags: &[(String, String)],
+    ) -> Result<CompletedUpload, ArcaError> {
         let upload_id = upload_id.to_string();
         let mut record = record.clone();
         let pre = pre.clone();
+        let tags = tags.to_vec();
         let resource = format!("/{}/{}", record.bucket, record.key);
         let result = self
             .conn
@@ -1488,6 +1527,10 @@ impl MetadataStore for SqliteStore {
                 }
 
                 let old = install_object(&tx, &mut record, &pre)?;
+                if !tags.is_empty() {
+                    let version_id = record.version_id.as_deref().unwrap_or("");
+                    write_object_tags(&tx, &record.bucket, &record.key, version_id, &tags)?;
+                }
                 let parts = take_upload(&tx, &upload_id)?;
                 tx.commit()?;
                 Ok(CompletedUpload {
@@ -5726,5 +5769,86 @@ mod tests {
             .unwrap_err();
         expect_precondition_failed(&err);
         assert!(store.get_object_version("b", "key1", &vid).await.unwrap().is_some());
+    }
+
+    // -- tags written with the object (put_object_tagged_if, complete_multipart_object_tagged) --
+
+    #[tokio::test]
+    async fn put_object_tagged_if_stores_the_tags_of_the_new_version() {
+        let store = versioned_store().await;
+        let (_, vid) = store
+            .put_object_tagged_if(&make_record("b", "k"), &WritePrecondition::default(), &tags(&[("env", "prod")]))
+            .await
+            .unwrap();
+
+        let vid = vid.expect("a versioned bucket returns a version id");
+        assert_eq!(store.get_object_tags("b", "k", &vid).await.unwrap(), tags(&[("env", "prod")]));
+    }
+
+    #[tokio::test]
+    async fn put_object_tagged_if_replaces_the_tags_of_an_unversioned_overwrite() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        let pre = WritePrecondition::default();
+        store.put_object_tagged_if(&make_record("b", "k"), &pre, &tags(&[("a", "1")])).await.unwrap();
+        store.put_object_tagged_if(&make_record("b", "k"), &pre, &tags(&[("b", "2")])).await.unwrap();
+
+        assert_eq!(store.get_object_tags("b", "k", "").await.unwrap(), tags(&[("b", "2")]));
+    }
+
+    #[tokio::test]
+    async fn put_object_tagged_if_writes_the_row_and_the_tags_atomically() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        // A repeated tag key violates the object_tags primary key: the row
+        // must not be committed without its tags.
+        let err = store
+            .put_object_tagged_if(&make_record("b", "k"), &WritePrecondition::default(), &tags(&[("a", "1"), ("a", "2")]))
+            .await;
+
+        assert!(err.is_err());
+        assert!(store.get_object("b", "k").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn put_object_tagged_if_refused_precondition_writes_no_tags() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        store.put_object(&make_record("b", "k")).await.unwrap();
+
+        let err = store
+            .put_object_tagged_if(&make_record("b", "k"), &if_none_match_star(), &tags(&[("a", "1")]))
+            .await;
+
+        assert!(err.is_err());
+        assert!(store.get_object_tags("b", "k", "").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn complete_multipart_object_tagged_stores_the_tags() {
+        let store = test_store().await;
+        upload_with_parts(&store).await;
+
+        store
+            .complete_multipart_object_tagged("up-1", &make_record("b", "key1"), &WritePrecondition::default(), &tags(&[("env", "prod")]))
+            .await
+            .unwrap();
+
+        assert_eq!(store.get_object_tags("b", "key1", "").await.unwrap(), tags(&[("env", "prod")]));
+    }
+
+    #[tokio::test]
+    async fn complete_multipart_object_tagged_failure_keeps_the_upload() {
+        let store = test_store().await;
+        upload_with_parts(&store).await;
+
+        let err = store
+            .complete_multipart_object_tagged("up-1", &make_record("b", "key1"), &WritePrecondition::default(), &tags(&[("a", "1"), ("a", "2")]))
+            .await;
+
+        assert!(err.is_err());
+        assert!(store.get_object("b", "key1").await.unwrap().is_none());
+        assert!(store.get_multipart_upload("up-1").await.unwrap().is_some());
+        assert_eq!(store.list_parts("up-1").await.unwrap().len(), 2);
     }
 }

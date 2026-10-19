@@ -243,6 +243,25 @@ pub trait MetadataStore: Send + Sync {
         pre: &WritePrecondition,
     ) -> Result<(Option<ObjectRecord>, Option<String>), crate::error::ArcaError>;
 
+    /// [`MetadataStore::put_object_if`] that also gives the new version the
+    /// `tags` (none when empty). A backend writes them in the same transaction
+    /// as the row, so the version never exists without its tags. The default
+    /// writes the row, then the tags, which is not atomic: a store that keeps
+    /// it must accept an untagged version when the second write fails.
+    async fn put_object_tagged_if(
+        &self,
+        record: &ObjectRecord,
+        pre: &WritePrecondition,
+        tags: &[(String, String)],
+    ) -> Result<(Option<ObjectRecord>, Option<String>), crate::error::ArcaError> {
+        let written = self.put_object_if(record, pre).await?;
+        if !tags.is_empty() {
+            let version_id = written.1.as_deref().unwrap_or("");
+            self.put_object_tags(&record.bucket, &record.key, version_id, tags).await?;
+        }
+        Ok(written)
+    }
+
     /// Inserts or replaces an object record unconditionally. Returns
     /// `(old_record, version_id)`:
     /// - `old_record`: the overwritten record (if any), so the caller can delete the orphaned blob.
@@ -552,6 +571,24 @@ pub trait MetadataStore: Send + Sync {
         record: &ObjectRecord,
         pre: &WritePrecondition,
     ) -> Result<CompletedUpload, crate::error::ArcaError>;
+
+    /// [`MetadataStore::complete_multipart_object`] that also gives the new
+    /// version the `tags`, like [`MetadataStore::put_object_tagged_if`] (and
+    /// with the same caveat for the default).
+    async fn complete_multipart_object_tagged(
+        &self,
+        upload_id: &str,
+        record: &ObjectRecord,
+        pre: &WritePrecondition,
+        tags: &[(String, String)],
+    ) -> Result<CompletedUpload, crate::error::ArcaError> {
+        let done = self.complete_multipart_object(upload_id, record, pre).await?;
+        if !tags.is_empty() {
+            let version_id = done.version_id.as_deref().unwrap_or("");
+            self.put_object_tags(&record.bucket, &record.key, version_id, tags).await?;
+        }
+        Ok(done)
+    }
 
     /// Deletes a multipart upload and all its parts. Returns the deleted parts
     /// (so the caller can delete the orphaned blobs). Returns no parts when

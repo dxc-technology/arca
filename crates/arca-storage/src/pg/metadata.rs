@@ -520,6 +520,55 @@ async fn install_object(
     Ok(old)
 }
 
+/// Replaces the tags of one object version inside `tx`: `put_object_tags`,
+/// and the tags a write gives its new version (`put_object_tagged_if`,
+/// `complete_multipart_object_tagged`), in the same transaction as the row.
+async fn write_object_tags(
+    tx: &mut PgTx<'_>,
+    bucket: &str,
+    key: &str,
+    version_id: &str,
+    tags: &[(String, String)],
+) -> Result<(), sqlx_core::error::Error> {
+    sqlx_core::query::query(
+        "DELETE FROM object_tags WHERE bucket = $1 AND key = $2 AND version_id = $3",
+    )
+    .bind(bucket)
+    .bind(key)
+    .bind(version_id)
+    .execute(&mut **tx)
+    .await?;
+    for (k, v) in tags {
+        sqlx_core::query::query(
+            "INSERT INTO object_tags (bucket, key, version_id, tag_key, tag_value) \
+             VALUES ($1, $2, $3, $4, $5)",
+        )
+        .bind(bucket)
+        .bind(key)
+        .bind(version_id)
+        .bind(k)
+        .bind(v)
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
+}
+
+/// The tags `install_object` just gave a new version, in its transaction.
+async fn install_tags(
+    tx: &mut PgTx<'_>,
+    record: &ObjectRecord,
+    tags: &[(String, String)],
+) -> Result<(), ArcaError> {
+    if tags.is_empty() {
+        return Ok(());
+    }
+    let version_id = record.version_id.as_deref().unwrap_or("");
+    write_object_tags(tx, &record.bucket, &record.key, version_id, tags)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("object tags: {e}")))
+}
+
 /// Deletes an upload and its parts inside `tx` and returns the parts that were
 /// deleted. The upload row is deleted FIRST: that statement is the lock a
 /// concurrent `complete_multipart_object` also takes (`FOR UPDATE`), so under
@@ -1047,6 +1096,15 @@ impl MetadataStore for PgStore {
         record: &ObjectRecord,
         pre: &WritePrecondition,
     ) -> Result<(Option<ObjectRecord>, Option<String>), ArcaError> {
+        self.put_object_tagged_if(record, pre, &[]).await
+    }
+
+    async fn put_object_tagged_if(
+        &self,
+        record: &ObjectRecord,
+        pre: &WritePrecondition,
+        tags: &[(String, String)],
+    ) -> Result<(Option<ObjectRecord>, Option<String>), ArcaError> {
         let mut record = record.clone();
         let mut tx = self
             .pool
@@ -1054,6 +1112,7 @@ impl MetadataStore for PgStore {
             .await
             .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
         let old = install_object(&mut tx, &mut record, pre, self.cluster_mode()).await?;
+        install_tags(&mut tx, &record, tags).await?;
         tx.commit()
             .await
             .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
@@ -1910,41 +1969,10 @@ impl MetadataStore for PgStore {
         version_id: &str,
         tags: &[(String, String)],
     ) -> Result<(), ArcaError> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| ArcaError::Internal(format!("put_object_tags: {e}")))?;
-
-        sqlx_core::query::query(
-            "DELETE FROM object_tags WHERE bucket = $1 AND key = $2 AND version_id = $3",
-        )
-        .bind(bucket)
-        .bind(key)
-        .bind(version_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| ArcaError::Internal(format!("put_object_tags: {e}")))?;
-
-        for (k, v) in tags {
-            sqlx_core::query::query(
-                "INSERT INTO object_tags (bucket, key, version_id, tag_key, tag_value) \
-                 VALUES ($1, $2, $3, $4, $5)",
-            )
-            .bind(bucket)
-            .bind(key)
-            .bind(version_id)
-            .bind(k)
-            .bind(v)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| ArcaError::Internal(format!("put_object_tags: {e}")))?;
-        }
-
-        tx.commit()
-            .await
-            .map_err(|e| ArcaError::Internal(format!("put_object_tags: {e}")))?;
-
+        let err = |e: sqlx_core::error::Error| ArcaError::Internal(format!("put_object_tags: {e}"));
+        let mut tx = self.pool.begin().await.map_err(err)?;
+        write_object_tags(&mut tx, bucket, key, version_id, tags).await.map_err(err)?;
+        tx.commit().await.map_err(err)?;
         Ok(())
     }
 
@@ -2082,6 +2110,16 @@ impl MetadataStore for PgStore {
         record: &ObjectRecord,
         pre: &WritePrecondition,
     ) -> Result<CompletedUpload, ArcaError> {
+        self.complete_multipart_object_tagged(upload_id, record, pre, &[]).await
+    }
+
+    async fn complete_multipart_object_tagged(
+        &self,
+        upload_id: &str,
+        record: &ObjectRecord,
+        pre: &WritePrecondition,
+        tags: &[(String, String)],
+    ) -> Result<CompletedUpload, ArcaError> {
         let mut record = record.clone();
         let resource = format!("/{}/{}", record.bucket, record.key);
         let mut tx = self
@@ -2110,6 +2148,7 @@ impl MetadataStore for PgStore {
         }
 
         let old = install_object(&mut tx, &mut record, pre, self.cluster_mode()).await?;
+        install_tags(&mut tx, &record, tags).await?;
         let parts = take_upload(&mut tx, upload_id)
             .await
             .map_err(|e| ArcaError::Internal(format!("complete_multipart_object: {e}")))?;

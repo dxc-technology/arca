@@ -119,6 +119,20 @@ impl MetadataStore for CachingMetadataStore {
         result
     }
 
+    async fn put_object_tagged_if(
+        &self,
+        record: &ObjectRecord,
+        pre: &WritePrecondition,
+        tags: &[(String, String)],
+    ) -> Result<(Option<ObjectRecord>, Option<String>), ArcaError> {
+        let result = self.inner.put_object_tagged_if(record, pre, tags).await;
+        if result.is_ok() {
+            let key = Self::object_key(&record.bucket, &record.key);
+            self.object_cache.invalidate(&key).await;
+        }
+        result
+    }
+
     async fn get_object(
         &self,
         bucket: &str,
@@ -394,6 +408,24 @@ impl MetadataStore for CachingMetadataStore {
         result
     }
 
+    async fn complete_multipart_object_tagged(
+        &self,
+        upload_id: &str,
+        record: &ObjectRecord,
+        pre: &WritePrecondition,
+        tags: &[(String, String)],
+    ) -> Result<CompletedUpload, ArcaError> {
+        let result = self
+            .inner
+            .complete_multipart_object_tagged(upload_id, record, pre, tags)
+            .await;
+        if result.is_ok() {
+            let key = Self::object_key(&record.bucket, &record.key);
+            self.object_cache.invalidate(&key).await;
+        }
+        result
+    }
+
     async fn delete_multipart_upload(
         &self,
         upload_id: &str,
@@ -650,17 +682,13 @@ mod tests {
     use super::*;
     use crate::SqliteStore;
 
-    #[tokio::test]
-    async fn batch_delete_drops_the_cached_objects() {
-        let inner = Arc::new(SqliteStore::open_in_memory().await.unwrap());
-        let cache = CachingMetadataStore::new(inner, 100, 60, 100, 60);
-        cache.create_bucket("b").await.unwrap();
-        let record = ObjectRecord {
+    fn record(key: &str, etag: &str) -> ObjectRecord {
+        ObjectRecord {
             bucket: "b".to_string(),
-            key: "k".to_string(),
+            key: key.to_string(),
             blob_id: BlobId("blob".to_string()),
             size: 1,
-            etag: "etag".to_string(),
+            etag: etag.to_string(),
             content_type: None,
             last_modified: chrono::Utc::now(),
             metadata: Default::default(),
@@ -681,7 +709,15 @@ mod tests {
             replication_status: None,
             lock_updated_at: None,
             content_updated_at: None,
-        };
+        }
+    }
+
+    #[tokio::test]
+    async fn batch_delete_drops_the_cached_objects() {
+        let inner = Arc::new(SqliteStore::open_in_memory().await.unwrap());
+        let cache = CachingMetadataStore::new(inner, 100, 60, 100, 60);
+        cache.create_bucket("b").await.unwrap();
+        let record = record("k", "etag");
         cache.put_object(&record).await.unwrap();
         assert!(cache.get_latest_object("b", "k").await.unwrap().is_some());
 
@@ -693,5 +729,76 @@ mod tests {
         let results = cache.delete_objects_if("b", &entries, "root").await;
         assert!(results[0].as_ref().unwrap().is_some());
         assert!(cache.get_latest_object("b", "k").await.unwrap().is_none());
+    }
+
+    fn tags(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    async fn cache_with_bucket() -> CachingMetadataStore {
+        let inner = Arc::new(SqliteStore::open_in_memory().await.unwrap());
+        let cache = CachingMetadataStore::new(inner, 100, 60, 100, 60);
+        cache.create_bucket("b").await.unwrap();
+        cache
+    }
+
+    #[tokio::test]
+    async fn tagged_put_drops_the_cached_object_and_stores_the_tags() {
+        let cache = cache_with_bucket().await;
+        cache.put_object(&record("k", "v1")).await.unwrap();
+        assert_eq!(cache.get_latest_object("b", "k").await.unwrap().unwrap().etag, "v1");
+
+        cache
+            .put_object_tagged_if(&record("k", "v2"), &WritePrecondition::default(), &tags(&[("a", "1")]))
+            .await
+            .unwrap();
+
+        assert_eq!(cache.get_latest_object("b", "k").await.unwrap().unwrap().etag, "v2");
+        assert_eq!(cache.get_object_tags("b", "k", "").await.unwrap(), tags(&[("a", "1")]));
+    }
+
+    #[tokio::test]
+    async fn tagged_put_reaches_the_backend_s_single_transaction() {
+        let cache = cache_with_bucket().await;
+        // A repeated tag key fails the tag insert: through the backend's own
+        // method nothing is committed (the trait default would keep the row).
+        let result = cache
+            .put_object_tagged_if(&record("k", "v1"), &WritePrecondition::default(), &tags(&[("a", "1"), ("a", "2")]))
+            .await;
+
+        assert!(result.is_err());
+        assert!(cache.get_latest_object("b", "k").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn tagged_complete_drops_the_cached_object_and_reaches_the_backend() {
+        let cache = cache_with_bucket().await;
+        cache.put_object(&record("k", "v1")).await.unwrap();
+        assert!(cache.get_latest_object("b", "k").await.unwrap().is_some());
+        let upload = MultipartUploadRecord {
+            upload_id: "up".to_string(),
+            bucket: "b".to_string(),
+            key: "k".to_string(),
+            content_type: None,
+            initiated_at: chrono::Utc::now(),
+            metadata: Default::default(),
+            checksum_algorithm: None,
+            checksum_type: None,
+            initiator: "root".to_string(),
+        };
+        cache.create_multipart_upload(&upload).await.unwrap();
+
+        let refused = cache
+            .complete_multipart_object_tagged("up", &record("k", "mp"), &WritePrecondition::default(), &tags(&[("a", "1"), ("a", "2")]))
+            .await;
+        assert!(refused.is_err());
+        assert!(cache.get_multipart_upload("up").await.unwrap().is_some(), "nothing committed");
+
+        cache
+            .complete_multipart_object_tagged("up", &record("k", "mp"), &WritePrecondition::default(), &tags(&[("a", "1")]))
+            .await
+            .unwrap();
+        assert_eq!(cache.get_latest_object("b", "k").await.unwrap().unwrap().etag, "mp");
+        assert_eq!(cache.get_object_tags("b", "k", "").await.unwrap(), tags(&[("a", "1")]));
     }
 }

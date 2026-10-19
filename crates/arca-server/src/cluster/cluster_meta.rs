@@ -261,6 +261,21 @@ impl ClusterMetadataStore {
         }
     }
 
+    /// Replicates the tags a write gave its new version (none when empty), as
+    /// the `ObjectTags` op a tag change sends.
+    async fn fan_out_tags(&self, record: &ObjectRecord, version_id: Option<&str>, tags: &[(String, String)]) {
+        if tags.is_empty() {
+            return;
+        }
+        self.fan_out_op(&ControlOp::ObjectTags {
+            bucket: record.bucket.clone(),
+            key: record.key.clone(),
+            version_id: version_id.unwrap_or("").to_string(),
+            tags: tags.to_vec(),
+        })
+        .await;
+    }
+
     /// Replicates a control-plane op to every live peer IN PARALLEL.
     /// Best-effort by design (decision H4): control-plane mutations are rare
     /// and reconciled by anti-entropy, so no ACK counting here.
@@ -359,8 +374,17 @@ impl MetadataStore for ClusterMetadataStore {
         record: &ObjectRecord,
         pre: &WritePrecondition,
     ) -> Result<(Option<ObjectRecord>, Option<String>), ArcaError> {
+        self.put_object_tagged_if(record, pre, &[]).await
+    }
+
+    async fn put_object_tagged_if(
+        &self,
+        record: &ObjectRecord,
+        pre: &WritePrecondition,
+        tags: &[(String, String)],
+    ) -> Result<(Option<ObjectRecord>, Option<String>), ArcaError> {
         self.check_write_quorum()?;
-        let (old, version_id) = self.inner.put_object_if(record, pre).await?;
+        let (old, version_id) = self.inner.put_object_tagged_if(record, pre, tags).await?;
 
         // Replicate the row exactly as stored: the input fields plus the
         // canonical version_id the inner store assigned. is_delete_marker is
@@ -371,6 +395,9 @@ impl MetadataStore for ClusterMetadataStore {
         replicated.is_latest = true;
         replicated.is_delete_marker = false;
         let acks = self.fan_out_object(&replicated).await;
+        // The tags travel as their own op, after the row, best-effort like
+        // any tag change (TD-033); locally they committed with the row.
+        self.fan_out_tags(record, version_id.as_deref(), tags).await;
 
         // True quorum (decision H1): local copy + full peer ACKs must reach the
         // threshold, else 503. On failure the local row (and any blob it
@@ -557,10 +584,20 @@ impl MetadataStore for ClusterMetadataStore {
         record: &ObjectRecord,
         pre: &WritePrecondition,
     ) -> Result<CompletedUpload, ArcaError> {
+        self.complete_multipart_object_tagged(upload_id, record, pre, &[]).await
+    }
+
+    async fn complete_multipart_object_tagged(
+        &self,
+        upload_id: &str,
+        record: &ObjectRecord,
+        pre: &WritePrecondition,
+        tags: &[(String, String)],
+    ) -> Result<CompletedUpload, ArcaError> {
         self.check_write_quorum()?;
         let done = self
             .inner
-            .complete_multipart_object(upload_id, record, pre)
+            .complete_multipart_object_tagged(upload_id, record, pre, tags)
             .await?;
 
         // Replicate what the one local transaction did, as the two messages
@@ -575,6 +612,7 @@ impl MetadataStore for ClusterMetadataStore {
         replicated.is_latest = true;
         replicated.is_delete_marker = false;
         let acks = self.fan_out_object(&replicated).await;
+        self.fan_out_tags(record, done.version_id.as_deref(), tags).await;
         record_tombstone(&self.tombstones, TOMBSTONE_MULTIPART, upload_id).await;
         self.fan_out_op(&ControlOp::MultipartDelete {
             upload_id: upload_id.to_string(),
@@ -1265,6 +1303,52 @@ mod tests {
             checksum_type: None,
             initiator: "root".to_string(),
         }
+    }
+
+    fn tag(k: &str, v: &str) -> (String, String) {
+        (k.to_string(), v.to_string())
+    }
+
+    #[tokio::test]
+    async fn tagged_put_reaches_the_backend_s_single_transaction() {
+        let (inner, _dir) = temp_store().await;
+        inner.create_bucket("b").await.unwrap();
+        let cluster = Arc::new(ClusterState::new("self-node", None, None));
+        let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
+
+        // A repeated tag key fails the tag insert: nothing may be committed.
+        let refused = store
+            .put_object_tagged_if(&sample_record(), &WritePrecondition::default(), &[tag("a", "1"), tag("a", "2")])
+            .await;
+        assert!(refused.is_err());
+        assert!(store.get_object("b", "k").await.unwrap().is_none());
+
+        store
+            .put_object_tagged_if(&sample_record(), &WritePrecondition::default(), &[tag("env", "prod")])
+            .await
+            .unwrap();
+        assert_eq!(store.get_object_tags("b", "k", "").await.unwrap(), vec![tag("env", "prod")]);
+    }
+
+    #[tokio::test]
+    async fn tagged_complete_reaches_the_backend_s_single_transaction() {
+        let (inner, _dir) = temp_store().await;
+        inner.create_bucket("b").await.unwrap();
+        let cluster = Arc::new(ClusterState::new("self-node", None, None));
+        let store = ClusterMetadataStore::new(inner, client(), cluster, tombstones().await);
+        store.create_multipart_upload(&sample_upload()).await.unwrap();
+
+        let refused = store
+            .complete_multipart_object_tagged("u1", &sample_record(), &WritePrecondition::default(), &[tag("a", "1"), tag("a", "2")])
+            .await;
+        assert!(refused.is_err());
+        assert!(store.get_multipart_upload("u1").await.unwrap().is_some(), "nothing committed");
+
+        store
+            .complete_multipart_object_tagged("u1", &sample_record(), &WritePrecondition::default(), &[tag("env", "prod")])
+            .await
+            .unwrap();
+        assert_eq!(store.get_object_tags("b", "k", "").await.unwrap(), vec![tag("env", "prod")]);
     }
 
     #[tokio::test]

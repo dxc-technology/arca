@@ -263,6 +263,8 @@ pub async fn upload_part(
     };
     let old_part = match state.metadata.put_part(&part).await {
         Ok(old) => old,
+        // TECHDEBT(TD-057): the fresh blob is kept on a database error, which
+        // does not prove that nothing was committed; gc reclaims an orphan.
         Err(e) => return internal_error_response(e, &resource),
     };
 
@@ -502,7 +504,11 @@ pub async fn complete_multipart_upload(
 
     // Extract inline tags sentinel from upload metadata before building the object record.
     let mut obj_metadata = upload.metadata;
-    let inline_tagging = obj_metadata.remove("_arca_tagging");
+    // Validated at CreateMultipartUpload; stored with the object row.
+    let inline_tags = obj_metadata
+        .remove("_arca_tagging")
+        .and_then(|th| xml_types::parse_tagging_header(&th).ok())
+        .unwrap_or_default();
 
     // Insert object record (returns old for cleanup).
     let record = ObjectRecord {
@@ -557,7 +563,7 @@ pub async fn complete_multipart_upload(
     // comes second finds no parts left to delete.
     let (old, version_id, old_parts) = match state
         .metadata
-        .complete_multipart_object(&upload_id, &record, &write_pre)
+        .complete_multipart_object_tagged(&upload_id, &record, &write_pre, &inline_tags)
         .await
     {
         Ok(done) => (done.old, done.version_id, done.parts),
@@ -585,6 +591,8 @@ pub async fn complete_multipart_upload(
             // ConditionalRequestConflict (no "conflict in flight" state here).
             return s3_error_response(e);
         }
+        // TECHDEBT(TD-057): the fresh blob is kept on a database error, which
+        // does not prove that nothing was committed; gc reclaims an orphan.
         Err(e) => return internal_error_response(e, &resource),
     };
 
@@ -596,22 +604,6 @@ pub async fn complete_multipart_upload(
                 tracing::warn!(error = %e, "Failed to delete old blob during multipart complete");
             }
         });
-    }
-
-    // Store inline tags from CreateMultipartUpload x-amz-tagging header.
-    if let Some(ref th) = inline_tagging {
-        if let Ok(tags) = xml_types::parse_tagging_header(th) {
-            if !tags.is_empty() {
-                let tag_vid = version_id.clone().unwrap_or_default();
-                if let Err(e) = state
-                    .metadata
-                    .put_object_tags(&bucket, &key, &tag_vid, &tags)
-                    .await
-                {
-                    tracing::warn!(error = %e, "Failed to store multipart inline tags");
-                }
-            }
-        }
     }
 
     // The upload and its parts left the DB with the object row. Clean up the
@@ -645,14 +637,6 @@ pub async fn complete_multipart_upload(
     });
 
     // Phase 28 — Replication. Treat a completed multipart upload as a Put.
-    let current_tags = {
-        let vid = version_id.clone().unwrap_or_default();
-        state
-            .metadata
-            .get_object_tags(&bucket, &key, &vid)
-            .await
-            .unwrap_or_default()
-    };
     let replication_status = crate::replication::emit_and_stamp(
         &state,
         &request_headers,
@@ -660,7 +644,7 @@ pub async fn complete_multipart_upload(
         &key,
         version_id.as_deref(),
         arca_core::store::replication::ReplicationEventType::Put,
-        &current_tags,
+        &inline_tags,
     )
     .await;
 

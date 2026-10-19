@@ -269,6 +269,71 @@ class TestCopyObjectTagging:
             s3_client.delete_object(Bucket="tag-copy-2", Key="dst.txt")
             s3_client.delete_bucket(Bucket="tag-copy-2")
 
+    def test_copy_onto_itself_keeps_its_tags(self, s3_client):
+        """A copy of an object onto itself (new metadata, default COPY tagging
+        directive) keeps the object's tags: they are read before the new
+        version replaces the old one and its tags."""
+        s3_client.create_bucket(Bucket="tag-copy-3")
+        try:
+            s3_client.put_object(Bucket="tag-copy-3", Key="self.txt", Body=b"hello")
+            put_tags(s3_client, "tag-copy-3", key="self.txt", tags={"env": "prod"})
+            s3_client.copy_object(
+                Bucket="tag-copy-3", Key="self.txt",
+                CopySource={"Bucket": "tag-copy-3", "Key": "self.txt"},
+                MetadataDirective="REPLACE",
+                Metadata={"rev": "2"},
+            )
+            head = s3_client.head_object(Bucket="tag-copy-3", Key="self.txt")
+            assert head["Metadata"] == {"rev": "2"}
+            assert get_tags_dict(s3_client, "tag-copy-3", key="self.txt") == {"env": "prod"}
+        finally:
+            s3_client.delete_object(Bucket="tag-copy-3", Key="self.txt")
+            s3_client.delete_bucket(Bucket="tag-copy-3")
+
+    def test_copy_replace_with_invalid_tags_is_refused(self, s3_client):
+        """An invalid x-amz-tagging under REPLACE fails the copy with InvalidTag
+        before anything is written, as on PutObject."""
+        s3_client.create_bucket(Bucket="tag-copy-4")
+        try:
+            s3_client.put_object(Bucket="tag-copy-4", Key="src.txt", Body=b"hello")
+            with pytest.raises(ClientError) as exc:
+                s3_client.copy_object(
+                    Bucket="tag-copy-4", Key="dst.txt",
+                    CopySource={"Bucket": "tag-copy-4", "Key": "src.txt"},
+                    TaggingDirective="REPLACE",
+                    Tagging="k" * 129 + "=v",
+                )
+            assert exc.value.response["Error"]["Code"] == "InvalidTag"
+            with pytest.raises(ClientError):
+                s3_client.head_object(Bucket="tag-copy-4", Key="dst.txt")
+        finally:
+            s3_client.delete_object(Bucket="tag-copy-4", Key="src.txt")
+            s3_client.delete_object(Bucket="tag-copy-4", Key="dst.txt")
+            s3_client.delete_bucket(Bucket="tag-copy-4")
+
+
+class TestMultipartInlineTags:
+    def test_tags_given_at_create_land_on_the_completed_object(self, s3_client):
+        s3_client.create_bucket(Bucket="tag-mpu-1")
+        try:
+            upload = s3_client.create_multipart_upload(
+                Bucket="tag-mpu-1", Key="big.bin", Tagging="env=prod&team=ops"
+            )
+            part = s3_client.upload_part(
+                Bucket="tag-mpu-1", Key="big.bin", UploadId=upload["UploadId"],
+                PartNumber=1, Body=b"x" * 1024,
+            )
+            s3_client.complete_multipart_upload(
+                Bucket="tag-mpu-1", Key="big.bin", UploadId=upload["UploadId"],
+                MultipartUpload={"Parts": [{"PartNumber": 1, "ETag": part["ETag"]}]},
+            )
+            assert get_tags_dict(s3_client, "tag-mpu-1", key="big.bin") == {"env": "prod", "team": "ops"}
+            head = s3_client.head_object(Bucket="tag-mpu-1", Key="big.bin")
+            assert "_arca_tagging" not in head["Metadata"]
+        finally:
+            s3_client.delete_object(Bucket="tag-mpu-1", Key="big.bin")
+            s3_client.delete_bucket(Bucket="tag-mpu-1")
+
 
 # -- Edge Cases --
 
