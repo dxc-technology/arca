@@ -8,7 +8,7 @@ use http::StatusCode;
 use arca_core::error::ArcaError;
 use arca_core::s3::xml_types;
 use arca_core::s3::xml_types::{DeleteErrorEntry, DeletedEntry};
-use arca_core::store::{DeletePrecondition, VersionPosition};
+use arca_core::store::{BatchDeleteEntry, DeletePrecondition, VersionPosition};
 use arca_core::types::{ListBucketResultParams, ListBucketV1ResultParams, ListEntry, ObjectRecord};
 use arca_core::{validate_bucket_name, S3Error, S3ErrorCode};
 
@@ -20,6 +20,7 @@ use crate::xml::error_response::{
 };
 
 use base64::Engine;
+use futures_util::StreamExt;
 use base64::engine::general_purpose::STANDARD as BASE64;
 
 /// URL-encode a string for S3's encoding-type=url, preserving '/'.
@@ -1864,6 +1865,9 @@ pub async fn post_bucket(
 /// `Err(())` means a given field was present but failed to parse (bad date,
 /// non-numeric size) — the old inline check treated that as an unconditional
 /// precondition failure rather than silently ignoring it, preserved here.
+/// Orphaned blobs a `DeleteObjects` request removes at the same time.
+const BLOB_DELETE_CONCURRENCY: usize = 16;
+
 fn build_batch_delete_precondition(obj: &xml_types::DeleteObject) -> Result<DeletePrecondition, ()> {
     // boto3 sends RFC 2822 format: "Sun, 09 Mar 2025 16:58:47 GMT".
     let if_match_last_modified = match &obj.last_modified_time {
@@ -1953,149 +1957,135 @@ async fn delete_objects(
     }
 
     let quiet = delete_body.quiet;
-    let mut deleted = Vec::new();
-    let mut errors = Vec::new();
 
+    /// What became of one key of the request, in request order.
+    enum Outcome {
+        Failed(DeleteErrorEntry),
+        /// In the batch: its result comes from there, in the same order.
+        Batched,
+    }
+    let precondition_failed = |obj: &xml_types::DeleteObject| DeleteErrorEntry {
+        key: obj.key.clone(),
+        version_id: obj.version_id.clone(),
+        code: S3ErrorCode::PreconditionFailed.as_str().to_string(),
+        message: "At least one of the pre-conditions you specified did not hold.".to_string(),
+    };
+
+    // Checks that need no write first, then every delete in one batch, which
+    // the metadata backend applies in one transaction.
+    let mut outcomes = Vec::with_capacity(delete_body.objects.len());
+    let mut batch = Vec::new();
     for obj in &delete_body.objects {
         // Per-key conditional checks (ETag, LastModifiedTime, IfMatchSize),
-        // evaluated authoritatively inside delete_object_if /
-        // delete_object_version_if below — no early pre-filter, so a
-        // version-specific delete is checked against that exact version
-        // rather than the bucket's current latest object.
-        let delete_pre = match build_batch_delete_precondition(obj) {
-            Ok(pre) => pre,
-            Err(()) => {
-                errors.push(DeleteErrorEntry {
-                    key: obj.key.clone(),
-                    version_id: obj.version_id.clone(),
-                    code: S3ErrorCode::PreconditionFailed.as_str().to_string(),
-                    message: "At least one of the pre-conditions you specified did not hold.".to_string(),
-                });
-                continue;
-            }
+        // evaluated authoritatively inside the batch below — no early
+        // pre-filter, so a version-specific delete is checked against that
+        // exact version rather than the bucket's current latest object.
+        let Ok(pre) = build_batch_delete_precondition(obj) else {
+            outcomes.push(Outcome::Failed(precondition_failed(obj)));
+            continue;
         };
-
-        // Version-specific delete: hard-remove the exact version or delete marker.
+        // Object Lock enforcement: a locked version is never hard-deleted.
         if let Some(ref vid) = obj.version_id {
-            // Object Lock enforcement: check if version is locked before hard-deleting
             if let Ok(Some(lock_record)) = state.metadata.get_object_version(&bucket, &obj.key, vid).await {
                 if !lock_record.is_delete_marker {
                     if let Err(lock_err) = super::object::check_object_lock_allows_delete_batch(&lock_record) {
-                        errors.push(DeleteErrorEntry {
+                        outcomes.push(Outcome::Failed(DeleteErrorEntry {
                             key: obj.key.clone(),
                             version_id: obj.version_id.clone(),
                             code: lock_err.code.as_str().to_string(),
                             message: lock_err.message,
-                        });
+                        }));
                         continue;
                     }
                 }
             }
-            match state
-                .metadata
-                .delete_object_version_if(&bucket, &obj.key, vid, &delete_pre)
-                .await
-            {
-                Ok(old) => {
-                    if let Some(ref old_record) = old {
-                        if !old_record.is_delete_marker && !old_record.blob_id.0.is_empty() {
-                            if let Err(e) = state.blob.delete(&old_record.blob_id).await {
-                                tracing::warn!(
-                                    error = %e,
-                                    key = %obj.key,
-                                    "Failed to delete blob for versioned object"
-                                );
-                                if let Some(ref m) = state.metrics_registry {
-                                    m.record_blob_delete_failure();
-                                }
-                            }
-                        }
+        }
+        outcomes.push(Outcome::Batched);
+        batch.push(BatchDeleteEntry {
+            key: obj.key.clone(),
+            version_id: obj.version_id.clone(),
+            pre,
+        });
+    }
+    let mut results = state
+        .metadata
+        .delete_objects_if(&bucket, &batch, &marker_owner)
+        .await
+        .into_iter();
+
+    let mut deleted = Vec::new();
+    let mut errors = Vec::new();
+    let mut orphaned_blobs = Vec::new();
+    for (obj, outcome) in delete_body.objects.iter().zip(outcomes) {
+        let result = match outcome {
+            Outcome::Failed(entry) => {
+                errors.push(entry);
+                continue;
+            }
+            Outcome::Batched => results.next().expect("one result per batch entry"),
+        };
+        match result {
+            Ok(old) => {
+                // The removed version's blob is now orphaned; a delete marker
+                // (the record a versioned delete returns) has none.
+                if let Some(ref old_record) = old {
+                    if !old_record.is_delete_marker && !old_record.blob_id.0.is_empty() {
+                        orphaned_blobs.push((obj.key.clone(), old_record.blob_id.clone()));
                     }
-                    let is_dm = old.as_ref().map_or(false, |r| r.is_delete_marker);
-                    deleted.push(DeletedEntry {
+                }
+                let is_dm = old.as_ref().map_or(false, |r| r.is_delete_marker);
+                let entry = match obj.version_id {
+                    // Version-specific delete: hard-removed that exact version.
+                    Some(ref vid) => DeletedEntry {
                         key: obj.key.clone(),
                         version_id: Some(vid.clone()),
                         delete_marker: is_dm,
                         delete_marker_version_id: if is_dm { Some(vid.clone()) } else { None },
-                    });
-                }
-                Err(ArcaError::S3(e)) if e.code == S3ErrorCode::PreconditionFailed => {
-                    errors.push(DeleteErrorEntry {
-                        key: obj.key.clone(),
-                        version_id: obj.version_id.clone(),
-                        code: S3ErrorCode::PreconditionFailed.as_str().to_string(),
-                        message: "At least one of the pre-conditions you specified did not hold.".to_string(),
-                    });
-                }
-                Err(e) => {
-                    tracing::error!(error = %e, key = %obj.key, "Error deleting object version");
-                    errors.push(DeleteErrorEntry {
-                        key: obj.key.clone(),
-                        version_id: obj.version_id.clone(),
-                        code: S3ErrorCode::InternalError.as_str().to_string(),
-                        message: "We encountered an internal error. Please try again."
-                            .to_string(),
-                    });
-                }
-            }
-        } else {
-            // Non-versioned delete: may create a delete marker in versioned buckets.
-            match state
-                .metadata
-                .delete_object_if(&bucket, &obj.key, &delete_pre, &marker_owner)
-                .await
-            {
-                Ok(old) => {
-                    // Delete blob if record existed and is not a delete marker.
-                    if let Some(ref old_record) = old {
-                        if !old_record.is_delete_marker && !old_record.blob_id.0.is_empty() {
-                            if let Err(e) = state.blob.delete(&old_record.blob_id).await {
-                                tracing::warn!(
-                                    error = %e,
-                                    key = %obj.key,
-                                    "Failed to delete blob for deleted object"
-                                );
-                                if let Some(ref m) = state.metrics_registry {
-                                    m.record_blob_delete_failure();
-                                }
-                            }
-                        }
-                    }
-                    // In versioned buckets, delete_object returns the new delete marker.
-                    let is_dm = old.as_ref().map_or(false, |r| r.is_delete_marker);
-                    let dm_vid = if is_dm {
-                        old.as_ref().and_then(|r| r.version_id.clone())
-                    } else {
-                        None
-                    };
-                    deleted.push(DeletedEntry {
+                    },
+                    // In versioned buckets, the delete returns the new delete marker.
+                    None => DeletedEntry {
                         key: obj.key.clone(),
                         version_id: old.as_ref().and_then(|r| r.version_id.clone()),
                         delete_marker: is_dm,
-                        delete_marker_version_id: dm_vid,
-                    });
-                }
-                Err(ArcaError::S3(e)) if e.code == S3ErrorCode::PreconditionFailed => {
-                    errors.push(DeleteErrorEntry {
-                        key: obj.key.clone(),
-                        version_id: obj.version_id.clone(),
-                        code: S3ErrorCode::PreconditionFailed.as_str().to_string(),
-                        message: "At least one of the pre-conditions you specified did not hold.".to_string(),
-                    });
-                }
-                Err(e) => {
-                    tracing::error!(error = %e, key = %obj.key, "Error deleting object");
-                    errors.push(DeleteErrorEntry {
-                        key: obj.key.clone(),
-                        version_id: obj.version_id.clone(),
-                        code: S3ErrorCode::InternalError.as_str().to_string(),
-                        message: "We encountered an internal error. Please try again."
-                            .to_string(),
-                    });
-                }
+                        delete_marker_version_id: if is_dm {
+                            old.as_ref().and_then(|r| r.version_id.clone())
+                        } else {
+                            None
+                        },
+                    },
+                };
+                deleted.push(entry);
+            }
+            Err(ArcaError::S3(e)) if e.code == S3ErrorCode::PreconditionFailed => {
+                errors.push(precondition_failed(obj));
+            }
+            Err(e) => {
+                tracing::error!(error = %e, key = %obj.key, "Error deleting object");
+                errors.push(DeleteErrorEntry {
+                    key: obj.key.clone(),
+                    version_id: obj.version_id.clone(),
+                    code: S3ErrorCode::InternalError.as_str().to_string(),
+                    message: "We encountered an internal error. Please try again.".to_string(),
+                });
             }
         }
     }
+
+    // The metadata is committed: remove the orphaned blobs, a few at a time.
+    // A failure leaves an orphan for `arca gc`, never a client error.
+    futures_util::stream::iter(orphaned_blobs)
+        .for_each_concurrent(BLOB_DELETE_CONCURRENCY, |(key, blob_id)| {
+            let state = &state;
+            async move {
+                if let Err(e) = state.blob.delete(&blob_id).await {
+                    tracing::warn!(error = %e, key = %key, "Failed to delete blob for deleted object");
+                    if let Some(ref m) = state.metrics_registry {
+                        m.record_blob_delete_failure();
+                    }
+                }
+            }
+        })
+        .await;
 
     // Emit notification events for each successfully deleted object
     for entry in &deleted {

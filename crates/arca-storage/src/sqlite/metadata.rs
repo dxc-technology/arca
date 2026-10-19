@@ -2,7 +2,7 @@
 
 use arca_core::error::{ArcaError, S3Error, S3ErrorCode};
 use arca_core::store::{
-    CompletedUpload, DeletePrecondition, MetadataStore, NoncurrentExpiry, VersionPosition, WritePrecondition,
+    BatchDeleteEntry, CompletedUpload, DeletePrecondition, MetadataStore, NoncurrentExpiry, VersionPosition, WritePrecondition,
 };
 use arca_core::types::{
     BlobId, BucketInfo, MultipartUploadRecord, ObjectPart, ObjectRecord, PartRecord, StorageStats,
@@ -42,11 +42,16 @@ fn map_cas_result<T>(
     resource: &str,
 ) -> Result<T, ArcaError> {
     result.map_err(|e| match e {
-        tokio_rusqlite::Error::Error(CasError::Precondition(code)) => {
-            ArcaError::S3(S3Error::new(code, resource))
-        }
+        tokio_rusqlite::Error::Error(e) => cas_error(e, op, resource),
         other => ArcaError::Internal(format!("{op}: {other:?}")),
     })
+}
+
+fn cas_error(e: CasError, op: &str, resource: &str) -> ArcaError {
+    match e {
+        CasError::Precondition(code) => ArcaError::S3(S3Error::new(code, resource)),
+        CasError::Db(e) => ArcaError::Internal(format!("{op}: {e:?}")),
+    }
 }
 
 /// Reads the bucket versioning state from `bucket_config`.
@@ -477,131 +482,10 @@ impl MetadataStore for SqliteStore {
             .conn
             .call(move |conn| -> Result<_, CasError> {
                 let tx = conn.transaction()?;
-
-                // Authoritative CAS check against the object being deleted,
-                // as `MetadataStore::get_latest_object` would see it
-                // (includes a delete marker). An absent object is always
-                // `Ok(())` — DeleteObject on a missing key is a no-op, never
-                // a precondition failure (existing behaviour).
-                if !pre.is_empty() {
-                    let current = fetch_latest_object(&tx, &bucket, &key)?;
-                    if let Err(code) = pre.evaluate(current.as_ref()) {
-                        return Err(CasError::Precondition(code));
-                    }
-                }
-
-                let versioning = get_versioning_state(&tx, &bucket);
-
-                let result = match versioning {
-                    VersioningState::Unversioned => {
-                        let old = fetch_latest_object(&tx, &bucket, &key)?;
-                        if old.is_some() {
-                            // Clustered: leave a tombstone (blob cleared, fresh
-                            // seq) so the deletion propagates via the manifest
-                            // and anti-entropy can't resurrect it. Single-node:
-                            // remove the row outright.
-                            if cluster_mode {
-                                let seq = next_object_seq(&tx)?;
-                                tx.execute_cached(
-                                    "UPDATE objects SET is_tombstone = 1, is_delete_marker = 0, \
-                                     blob_id = '', size = 0, last_modified = ?3, seq = ?4 \
-                                     WHERE bucket = ?1 AND key = ?2",
-                                    params![bucket, key, chrono::Utc::now().to_rfc3339(), seq],
-                                )?;
-                            } else {
-                                tx.execute_cached(
-                                    "DELETE FROM objects WHERE bucket = ?1 AND key = ?2",
-                                    params![bucket, key],
-                                )?;
-                            }
-                            // Clean up tags either way.
-                            tx.execute_cached(
-                                "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2",
-                                params![bucket, key],
-                            )?;
-                            if cluster_mode {
-                                recompute_is_latest(&tx, &bucket, &key)?;
-                            }
-                        }
-                        tx.commit()?;
-                        old // blob to clean up
-                    }
-                    VersioningState::Enabled => {
-                        // Mark current latest as not-latest.
-                        tx.execute_cached(
-                            "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2 AND is_latest = 1",
-                            params![bucket, key],
-                        )?;
-                        // Insert a delete marker.
-                        let version_id = uuid::Uuid::new_v4().to_string();
-                        let now = chrono::Utc::now();
-                        let seq = next_object_seq(&tx)?;
-                        tx.execute_cached(
-                            "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq, is_tombstone)
-                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, ?6, ?4, 1, 1, NULL, NULL, NULL, 'STANDARD', NULL, NULL, ?5, 0)",
-                            params![bucket, key, now.to_rfc3339(), version_id, seq, marker_owner],
-                        )?;
-                        tx.commit()?;
-                        // Return the delete marker so the handler can set response headers.
-                        Some(ObjectRecord {
-                            bucket,
-                            key,
-                            blob_id: BlobId(String::new()),
-                            size: 0,
-                            etag: String::new(),
-                            content_type: None,
-                            last_modified: now,
-                            metadata: HashMap::new(),
-                            encryption_algorithm: None,
-                            encryption_key_id: None,
-                            owner: marker_owner,
-                            version_id: Some(version_id),
-                            is_latest: true,
-                            is_delete_marker: true,
-                            is_tombstone: false,
-                            retention_mode: None,
-                            retain_until_date: None,
-                            legal_hold_status: None,
-                            storage_class: "STANDARD".to_string(),
-                            checksum_algorithm: None,
-                            checksum_value: None,
-                            parts: None,
-                            replication_status: None,
-                            lock_updated_at: None,
-                            content_updated_at: None,
-                        })
-                    }
-                    VersioningState::Suspended => {
-                        // Delete existing null-version for cleanup.
-                        let old_null = fetch_null_version(&tx, &bucket, &key)?;
-                        tx.execute_cached(
-                            "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
-                            params![bucket, key],
-                        )?;
-                        // Clean up tags from old null-version
-                        tx.execute_cached(
-                            "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ''",
-                            params![bucket, key],
-                        )?;
-                        // Mark any remaining latest as not-latest.
-                        tx.execute_cached(
-                            "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2 AND is_latest = 1",
-                            params![bucket, key],
-                        )?;
-                        // Insert delete marker with NULL version_id.
-                        let now = chrono::Utc::now();
-                        let seq = next_object_seq(&tx)?;
-                        tx.execute_cached(
-                            "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq, is_tombstone)
-                             VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, ?5, NULL, 1, 1, NULL, NULL, NULL, 'STANDARD', NULL, NULL, ?4, 0)",
-                            params![bucket, key, now.to_rfc3339(), seq, marker_owner],
-                        )?;
-                        tx.commit()?;
-                        old_null // clean up old null-version blob (if any)
-                    }
-                };
-
-                Ok(result)
+                let deleted =
+                    delete_latest_in_tx(&tx, &bucket, &key, &pre, &marker_owner, cluster_mode)?;
+                tx.commit()?;
+                Ok(deleted)
             })
             .await;
         map_cas_result(result, "delete_object_if", &resource)
@@ -671,6 +555,67 @@ impl MetadataStore for SqliteStore {
             .map_err(|e: TrError| ArcaError::Internal(format!("get_object_version: {e}")))
     }
 
+    /// One transaction for the whole batch, so `DeleteObjects` costs one
+    /// commit (one WAL fsync with `[storage] fsync = true`) instead of one per
+    /// key. Each entry runs under its own savepoint: an entry that fails rolls
+    /// back alone and the others still commit.
+    async fn delete_objects_if(
+        &self,
+        bucket: &str,
+        entries: &[BatchDeleteEntry],
+        marker_owner: &str,
+    ) -> Vec<Result<Option<ObjectRecord>, ArcaError>> {
+        let owned_bucket = bucket.to_string();
+        let owned_entries = entries.to_vec();
+        let marker_owner = marker_owner.to_string();
+        let cluster_mode = self.cluster_mode();
+        let outcome = self
+            .conn
+            .call(move |conn| -> Result<_, rusqlite::Error> {
+                let mut tx = conn.transaction()?;
+                let mut results = Vec::with_capacity(owned_entries.len());
+                for entry in &owned_entries {
+                    // Dropped without commit, a savepoint rolls back.
+                    let sp = tx.savepoint()?;
+                    let result = match entry.version_id {
+                        Some(ref version_id) => delete_version_in_tx(
+                            &sp, &owned_bucket, &entry.key, version_id, &entry.pre, cluster_mode,
+                        ),
+                        None => delete_latest_in_tx(
+                            &sp, &owned_bucket, &entry.key, &entry.pre, &marker_owner, cluster_mode,
+                        ),
+                    };
+                    if result.is_ok() {
+                        sp.commit()?;
+                    }
+                    results.push(result);
+                }
+                tx.commit()?;
+                Ok(results)
+            })
+            .await;
+        match outcome {
+            Ok(results) => results
+                .into_iter()
+                .zip(entries)
+                .map(|(result, entry)| {
+                    result.map_err(|e| {
+                        let resource = match entry.version_id {
+                            Some(ref v) => format!("/{bucket}/{}?versionId={v}", entry.key),
+                            None => format!("/{bucket}/{}", entry.key),
+                        };
+                        cas_error(e, "delete_objects_if", &resource)
+                    })
+                })
+                .collect(),
+            // Nothing committed: every entry failed.
+            Err(e) => entries
+                .iter()
+                .map(|_| Err(ArcaError::Internal(format!("delete_objects_if: {e}"))))
+                .collect(),
+        }
+    }
+
     async fn delete_object_version_if(
         &self,
         bucket: &str,
@@ -688,92 +633,8 @@ impl MetadataStore for SqliteStore {
             .conn
             .call(move |conn| -> Result<_, CasError> {
                 let tx = conn.transaction()?;
-
-                // Fetch the version to delete.
-                let deleted = {
-                    let sql = if version_id == "null" {
-                        format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL AND is_tombstone = 0")
-                    } else {
-                        format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3 AND is_tombstone = 0")
-                    };
-                    let mut stmt = tx.prepare_cached(&sql)?;
-                    let result = if version_id == "null" {
-                        stmt.query_row(params![bucket, key], |row| Ok(row_to_object_record(row)))
-                    } else {
-                        stmt.query_row(params![bucket, key, version_id], |row| {
-                            Ok(row_to_object_record(row))
-                        })
-                    };
-                    match result {
-                        Ok(rec) => Some(rec?),
-                        Err(rusqlite::Error::QueryReturnedNoRows) => None,
-                        Err(e) => return Err(e.into()),
-                    }
-                };
-
-                // Per S3 semantics (and the existing single-version delete
-                // handler), the precondition is skipped entirely — never
-                // evaluated, never refused — when the targeted version is
-                // itself a delete marker.
-                if !pre.is_empty() {
-                    let applies = match &deleted {
-                        Some(rec) => !rec.is_delete_marker,
-                        None => true,
-                    };
-                    if applies {
-                        if let Err(code) = pre.evaluate(deleted.as_ref()) {
-                            return Err(CasError::Precondition(code));
-                        }
-                    }
-                }
-
-                if let Some(ref rec) = deleted {
-                    // Clustered: tombstone the version (blob cleared, fresh seq)
-                    // so the deletion propagates via the manifest and can't be
-                    // resurrected by anti-entropy. Single-node: remove the row.
-                    if cluster_mode {
-                        let seq = next_object_seq(&tx)?;
-                        if version_id == "null" {
-                            tx.execute_cached(
-                                "UPDATE objects SET is_tombstone = 1, is_delete_marker = 0, \
-                                 blob_id = '', size = 0, last_modified = ?3, seq = ?4 \
-                                 WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
-                                params![bucket, key, chrono::Utc::now().to_rfc3339(), seq],
-                            )?;
-                        } else {
-                            tx.execute_cached(
-                                "UPDATE objects SET is_tombstone = 1, is_delete_marker = 0, \
-                                 blob_id = '', size = 0, last_modified = ?4, seq = ?5 \
-                                 WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
-                                params![bucket, key, version_id, chrono::Utc::now().to_rfc3339(), seq],
-                            )?;
-                        }
-                    } else if version_id == "null" {
-                        tx.execute_cached(
-                            "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
-                            params![bucket, key],
-                        )?;
-                    } else {
-                        tx.execute_cached(
-                            "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
-                            params![bucket, key, version_id],
-                        )?;
-                    }
-
-                    // Clean up tags for this version.
-                    let tag_vid = if version_id == "null" { String::new() } else { version_id.clone() };
-                    tx.execute_cached(
-                        "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
-                        params![bucket, key, tag_vid],
-                    )?;
-
-                    // Recompute the latest version deterministically so the
-                    // single-node and cluster (apply_remote_*) paths agree on
-                    // the winner: (last_modified, version_id, blob_id) DESC.
-                    let _ = rec;
-                    recompute_is_latest(&tx, &bucket, &key)?;
-                }
-
+                let deleted =
+                    delete_version_in_tx(&tx, &bucket, &key, &version_id, &pre, cluster_mode)?;
                 tx.commit()?;
                 Ok(deleted)
             })
@@ -2246,6 +2107,240 @@ fn parts_to_json(record: &ObjectRecord) -> Option<String> {
         .parts
         .as_ref()
         .and_then(|parts| serde_json::to_string(parts).ok())
+}
+
+/// [`MetadataStore::delete_object_if`] inside `tx`, without committing: the
+/// authoritative CAS check, then the delete, tombstone or delete marker the
+/// bucket's versioning calls for. Shared with the batch delete.
+fn delete_latest_in_tx(
+    tx: &Connection,
+    bucket: &str,
+    key: &str,
+    pre: &DeletePrecondition,
+    marker_owner: &str,
+    cluster_mode: bool,
+) -> Result<Option<ObjectRecord>, CasError> {
+    // Authoritative CAS check against the object being deleted,
+    // as `MetadataStore::get_latest_object` would see it
+    // (includes a delete marker). An absent object is always
+    // `Ok(())` — DeleteObject on a missing key is a no-op, never
+    // a precondition failure (existing behaviour).
+    if !pre.is_empty() {
+        let current = fetch_latest_object(tx, bucket, key)?;
+        if let Err(code) = pre.evaluate(current.as_ref()) {
+            return Err(CasError::Precondition(code));
+        }
+    }
+
+    let versioning = get_versioning_state(tx, bucket);
+
+    let result = match versioning {
+        VersioningState::Unversioned => {
+            let old = fetch_latest_object(tx, bucket, key)?;
+            if old.is_some() {
+                // Clustered: leave a tombstone (blob cleared, fresh
+                // seq) so the deletion propagates via the manifest
+                // and anti-entropy can't resurrect it. Single-node:
+                // remove the row outright.
+                if cluster_mode {
+                    let seq = next_object_seq(tx)?;
+                    tx.execute_cached(
+                        "UPDATE objects SET is_tombstone = 1, is_delete_marker = 0, \
+                         blob_id = '', size = 0, last_modified = ?3, seq = ?4 \
+                         WHERE bucket = ?1 AND key = ?2",
+                        params![bucket, key, chrono::Utc::now().to_rfc3339(), seq],
+                    )?;
+                } else {
+                    tx.execute_cached(
+                        "DELETE FROM objects WHERE bucket = ?1 AND key = ?2",
+                        params![bucket, key],
+                    )?;
+                }
+                // Clean up tags either way.
+                tx.execute_cached(
+                    "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2",
+                    params![bucket, key],
+                )?;
+                if cluster_mode {
+                    recompute_is_latest(tx, bucket, key)?;
+                }
+            }
+            old // blob to clean up
+        }
+        VersioningState::Enabled => {
+            // Mark current latest as not-latest.
+            tx.execute_cached(
+                "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2 AND is_latest = 1",
+                params![bucket, key],
+            )?;
+            // Insert a delete marker.
+            let version_id = uuid::Uuid::new_v4().to_string();
+            let now = chrono::Utc::now();
+            let seq = next_object_seq(tx)?;
+            tx.execute_cached(
+                "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq, is_tombstone)
+                 VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, ?6, ?4, 1, 1, NULL, NULL, NULL, 'STANDARD', NULL, NULL, ?5, 0)",
+                params![bucket, key, now.to_rfc3339(), version_id, seq, marker_owner],
+            )?;
+            // Return the delete marker so the handler can set response headers.
+            Some(ObjectRecord {
+                bucket: bucket.to_string(),
+                key: key.to_string(),
+                blob_id: BlobId(String::new()),
+                size: 0,
+                etag: String::new(),
+                content_type: None,
+                last_modified: now,
+                metadata: HashMap::new(),
+                encryption_algorithm: None,
+                encryption_key_id: None,
+                owner: marker_owner.to_string(),
+                version_id: Some(version_id),
+                is_latest: true,
+                is_delete_marker: true,
+                is_tombstone: false,
+                retention_mode: None,
+                retain_until_date: None,
+                legal_hold_status: None,
+                storage_class: "STANDARD".to_string(),
+                checksum_algorithm: None,
+                checksum_value: None,
+                parts: None,
+                replication_status: None,
+                lock_updated_at: None,
+                content_updated_at: None,
+            })
+        }
+        VersioningState::Suspended => {
+            // Delete existing null-version for cleanup.
+            let old_null = fetch_null_version(tx, bucket, key)?;
+            tx.execute_cached(
+                "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
+                params![bucket, key],
+            )?;
+            // Clean up tags from old null-version
+            tx.execute_cached(
+                "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ''",
+                params![bucket, key],
+            )?;
+            // Mark any remaining latest as not-latest.
+            tx.execute_cached(
+                "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2 AND is_latest = 1",
+                params![bucket, key],
+            )?;
+            // Insert delete marker with NULL version_id.
+            let now = chrono::Utc::now();
+            let seq = next_object_seq(tx)?;
+            tx.execute_cached(
+                "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, last_modified, metadata, encryption_algorithm, encryption_key_id, owner, version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq, is_tombstone)
+                 VALUES (?1, ?2, '', 0, '', NULL, ?3, '{}', NULL, NULL, ?5, NULL, 1, 1, NULL, NULL, NULL, 'STANDARD', NULL, NULL, ?4, 0)",
+                params![bucket, key, now.to_rfc3339(), seq, marker_owner],
+            )?;
+            old_null // clean up old null-version blob (if any)
+        }
+    };
+
+
+    Ok(result)
+}
+
+/// [`MetadataStore::delete_object_version_if`] inside `tx`, without
+/// committing. Shared with the batch delete.
+fn delete_version_in_tx(
+    tx: &Connection,
+    bucket: &str,
+    key: &str,
+    version_id: &str,
+    pre: &DeletePrecondition,
+    cluster_mode: bool,
+) -> Result<Option<ObjectRecord>, CasError> {
+    // Fetch the version to delete.
+    let deleted = {
+        let sql = if version_id == "null" {
+            format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL AND is_tombstone = 0")
+        } else {
+            format!("SELECT {OBJECT_COLUMNS} FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3 AND is_tombstone = 0")
+        };
+        let mut stmt = tx.prepare_cached(&sql)?;
+        let result = if version_id == "null" {
+            stmt.query_row(params![bucket, key], |row| Ok(row_to_object_record(row)))
+        } else {
+            stmt.query_row(params![bucket, key, version_id], |row| {
+                Ok(row_to_object_record(row))
+            })
+        };
+        match result {
+            Ok(rec) => Some(rec?),
+            Err(rusqlite::Error::QueryReturnedNoRows) => None,
+            Err(e) => return Err(e.into()),
+        }
+    };
+
+    // Per S3 semantics (and the existing single-version delete
+    // handler), the precondition is skipped entirely — never
+    // evaluated, never refused — when the targeted version is
+    // itself a delete marker.
+    if !pre.is_empty() {
+        let applies = match &deleted {
+            Some(rec) => !rec.is_delete_marker,
+            None => true,
+        };
+        if applies {
+            if let Err(code) = pre.evaluate(deleted.as_ref()) {
+                return Err(CasError::Precondition(code));
+            }
+        }
+    }
+
+    if let Some(ref rec) = deleted {
+        // Clustered: tombstone the version (blob cleared, fresh seq)
+        // so the deletion propagates via the manifest and can't be
+        // resurrected by anti-entropy. Single-node: remove the row.
+        if cluster_mode {
+            let seq = next_object_seq(tx)?;
+            if version_id == "null" {
+                tx.execute_cached(
+                    "UPDATE objects SET is_tombstone = 1, is_delete_marker = 0, \
+                     blob_id = '', size = 0, last_modified = ?3, seq = ?4 \
+                     WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
+                    params![bucket, key, chrono::Utc::now().to_rfc3339(), seq],
+                )?;
+            } else {
+                tx.execute_cached(
+                    "UPDATE objects SET is_tombstone = 1, is_delete_marker = 0, \
+                     blob_id = '', size = 0, last_modified = ?4, seq = ?5 \
+                     WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
+                    params![bucket, key, version_id, chrono::Utc::now().to_rfc3339(), seq],
+                )?;
+            }
+        } else if version_id == "null" {
+            tx.execute_cached(
+                "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id IS NULL",
+                params![bucket, key],
+            )?;
+        } else {
+            tx.execute_cached(
+                "DELETE FROM objects WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
+                params![bucket, key, version_id],
+            )?;
+        }
+
+        // Clean up tags for this version.
+        let tag_vid = if version_id == "null" { String::new() } else { version_id.to_string() };
+        tx.execute_cached(
+            "DELETE FROM object_tags WHERE bucket = ?1 AND key = ?2 AND version_id = ?3",
+            params![bucket, key, tag_vid],
+        )?;
+
+        // Recompute the latest version deterministically so the
+        // single-node and cluster (apply_remote_*) paths agree on
+        // the winner: (last_modified, version_id, blob_id) DESC.
+        let _ = rec;
+        recompute_is_latest(tx, bucket, key)?;
+    }
+
+
+    Ok(deleted)
 }
 
 /// Recomputes `is_latest` for a key deterministically: exactly the row with the
@@ -5088,6 +5183,89 @@ mod tests {
         let deleted = store.delete_object_if("b", "key1", &pre, "root").await.unwrap();
         assert!(deleted.is_some());
         assert!(store.get_object("b", "key1").await.unwrap().is_none());
+    }
+
+    // -- DeleteObjects in one transaction --
+
+    fn batch_entry(key: &str, version_id: Option<&str>, if_match: Option<&str>) -> BatchDeleteEntry {
+        BatchDeleteEntry {
+            key: key.to_string(),
+            version_id: version_id.map(str::to_string),
+            pre: DeletePrecondition {
+                if_match: if_match.map(str::to_string),
+                ..Default::default()
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn delete_objects_if_applies_each_entry_like_the_single_key_calls() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        store.put_object(&make_record("b", "k1")).await.unwrap();
+        store.put_object(&make_record("b", "k2")).await.unwrap();
+
+        let entries = [
+            batch_entry("k1", None, None),
+            batch_entry("missing", None, None),
+            batch_entry("k2", None, None),
+        ];
+        let results = store.delete_objects_if("b", &entries, "root").await;
+
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[0].as_ref().unwrap().as_ref().unwrap().key, "k1");
+        assert!(results[1].as_ref().unwrap().is_none());
+        assert_eq!(results[2].as_ref().unwrap().as_ref().unwrap().key, "k2");
+        assert!(store.get_object("b", "k1").await.unwrap().is_none());
+        assert!(store.get_object("b", "k2").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn delete_objects_if_a_failed_precondition_fails_only_its_entry() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        store.put_object(&make_record("b", "k1")).await.unwrap();
+        store.put_object(&make_record("b", "k2")).await.unwrap();
+
+        let entries = [
+            batch_entry("k1", None, Some("\"not-the-etag\"")),
+            batch_entry("k2", None, None),
+        ];
+        let results = store.delete_objects_if("b", &entries, "root").await;
+
+        assert!(matches!(
+            &results[0],
+            Err(ArcaError::S3(e)) if e.code == S3ErrorCode::PreconditionFailed
+        ));
+        assert!(results[1].as_ref().unwrap().is_some());
+        assert!(store.get_object("b", "k1").await.unwrap().is_some());
+        assert!(store.get_object("b", "k2").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn delete_objects_if_creates_markers_and_removes_versions() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+        store.put_object(&make_record("b", "k1")).await.unwrap();
+        let (_, k2_version) = store.put_object(&make_record("b", "k2")).await.unwrap();
+        let k2_version = k2_version.unwrap();
+
+        let entries = [
+            batch_entry("k1", None, None),
+            batch_entry("k2", Some(&k2_version), None),
+        ];
+        let results = store.delete_objects_if("b", &entries, "alice").await;
+
+        let marker = results[0].as_ref().unwrap().as_ref().unwrap();
+        assert!(marker.is_delete_marker);
+        assert_eq!(marker.owner, "alice");
+        let removed = results[1].as_ref().unwrap().as_ref().unwrap();
+        assert_eq!(removed.version_id.as_deref(), Some(k2_version.as_str()));
+
+        // k1 now reads as deleted (marker on top), k2 has no version left.
+        assert!(store.get_object("b", "k1").await.unwrap().is_none());
+        assert!(store.get_object_version("b", "k2", &k2_version).await.unwrap().is_none());
     }
 
     // -- owner recorded on the rows (TD-042) --

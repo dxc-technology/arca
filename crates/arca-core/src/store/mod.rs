@@ -38,7 +38,7 @@ pub use maintenance::{
     DEFAULT_MAX_JOB_LOGS,
 };
 pub use metadata::{
-    CompletedUpload, DeletePrecondition, MetadataStore, NoncurrentExpiry, VersionPosition, WritePrecondition,
+    BatchDeleteEntry, CompletedUpload, DeletePrecondition, MetadataStore, NoncurrentExpiry, VersionPosition, WritePrecondition,
 };
 pub use metrics::{MetricsSnapshot, MetricsStore};
 pub use notification::{NotificationEventFilter, NotificationEventRecord, NotificationStore};

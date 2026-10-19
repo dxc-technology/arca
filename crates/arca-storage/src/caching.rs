@@ -11,7 +11,7 @@ use moka::future::Cache;
 
 use arca_core::error::ArcaError;
 use arca_core::store::{
-    CompletedUpload, DeletePrecondition, MetadataStore, NoncurrentExpiry, VersionPosition, WritePrecondition,
+    BatchDeleteEntry, CompletedUpload, DeletePrecondition, MetadataStore, NoncurrentExpiry, VersionPosition, WritePrecondition,
 };
 use arca_core::types::{
     BlobId, BucketInfo, MultipartUploadRecord, ObjectRecord, PartRecord, StorageStats,
@@ -189,6 +189,22 @@ impl MetadataStore for CachingMetadataStore {
         version_id: &str,
     ) -> Result<Option<ObjectRecord>, ArcaError> {
         self.inner.get_object_version(bucket, key, version_id).await
+    }
+
+    async fn delete_objects_if(
+        &self,
+        bucket: &str,
+        entries: &[BatchDeleteEntry],
+        marker_owner: &str,
+    ) -> Vec<Result<Option<ObjectRecord>, ArcaError>> {
+        // Forwarded so the backend can apply the batch in one transaction.
+        let results = self.inner.delete_objects_if(bucket, entries, marker_owner).await;
+        for entry in entries {
+            self.object_cache
+                .invalidate(&Self::object_key(bucket, &entry.key))
+                .await;
+        }
+        results
     }
 
     async fn delete_object_version_if(
@@ -606,5 +622,56 @@ impl MetadataStore for CachingMetadataStore {
         self.inner
             .list_multipart_uploads(bucket, prefix, key_marker, upload_id_marker, max_uploads)
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::SqliteStore;
+
+    #[tokio::test]
+    async fn batch_delete_drops_the_cached_objects() {
+        let inner = Arc::new(SqliteStore::open_in_memory().await.unwrap());
+        let cache = CachingMetadataStore::new(inner, 100, 60, 100, 60);
+        cache.create_bucket("b").await.unwrap();
+        let record = ObjectRecord {
+            bucket: "b".to_string(),
+            key: "k".to_string(),
+            blob_id: BlobId("blob".to_string()),
+            size: 1,
+            etag: "etag".to_string(),
+            content_type: None,
+            last_modified: chrono::Utc::now(),
+            metadata: Default::default(),
+            encryption_algorithm: None,
+            encryption_key_id: None,
+            owner: "root".to_string(),
+            version_id: None,
+            is_latest: true,
+            is_delete_marker: false,
+            is_tombstone: false,
+            retention_mode: None,
+            retain_until_date: None,
+            legal_hold_status: None,
+            storage_class: "STANDARD".to_string(),
+            checksum_algorithm: None,
+            checksum_value: None,
+            parts: None,
+            replication_status: None,
+            lock_updated_at: None,
+            content_updated_at: None,
+        };
+        cache.put_object(&record).await.unwrap();
+        assert!(cache.get_latest_object("b", "k").await.unwrap().is_some());
+
+        let entries = [BatchDeleteEntry {
+            key: "k".to_string(),
+            version_id: None,
+            pre: DeletePrecondition::default(),
+        }];
+        let results = cache.delete_objects_if("b", &entries, "root").await;
+        assert!(results[0].as_ref().unwrap().is_some());
+        assert!(cache.get_latest_object("b", "k").await.unwrap().is_none());
     }
 }

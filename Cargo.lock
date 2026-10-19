@@ -234,6 +234,7 @@ dependencies = [
  "crc",
  "form_urlencoded",
  "futures-core",
+ "futures-util",
  "governor",
  "hex",
  "http",

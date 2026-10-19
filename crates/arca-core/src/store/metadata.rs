@@ -168,6 +168,16 @@ impl DeletePrecondition {
     }
 }
 
+/// One key of a batch delete (`DeleteObjects`): the current version of `key`
+/// when `version_id` is `None` (as [`MetadataStore::delete_object_if`]),
+/// otherwise that exact version (as [`MetadataStore::delete_object_version_if`]).
+#[derive(Debug, Clone)]
+pub struct BatchDeleteEntry {
+    pub key: String,
+    pub version_id: Option<String>,
+    pub pre: DeletePrecondition,
+}
+
 /// Trait for metadata storage operations.
 #[async_trait::async_trait]
 pub trait MetadataStore: Send + Sync {
@@ -331,6 +341,39 @@ pub trait MetadataStore: Send + Sync {
         version_id: &str,
         pre: &DeletePrecondition,
     ) -> Result<Option<ObjectRecord>, crate::error::ArcaError>;
+
+    /// Deletes every entry, each exactly as [`MetadataStore::delete_object_if`]
+    /// or [`MetadataStore::delete_object_version_if`] would, and returns one
+    /// result per entry, in order: an entry that fails (a precondition, an
+    /// error) fails alone, the others still apply.
+    ///
+    /// The default runs those single-key methods one by one, so a decorator
+    /// that adds per-key work to them (the cluster fan-out) stays correct
+    /// without overriding this. A backend overrides it to apply the whole
+    /// batch in one transaction, one commit instead of one per key; a
+    /// decorator that forwards to its inner store's batch must redo its own
+    /// per-key work for every entry.
+    async fn delete_objects_if(
+        &self,
+        bucket: &str,
+        entries: &[BatchDeleteEntry],
+        marker_owner: &str,
+    ) -> Vec<Result<Option<ObjectRecord>, crate::error::ArcaError>> {
+        let mut results = Vec::with_capacity(entries.len());
+        for entry in entries {
+            results.push(match entry.version_id {
+                Some(ref version_id) => {
+                    self.delete_object_version_if(bucket, &entry.key, version_id, &entry.pre)
+                        .await
+                }
+                None => {
+                    self.delete_object_if(bucket, &entry.key, &entry.pre, marker_owner)
+                        .await
+                }
+            });
+        }
+        results
+    }
 
     /// Hard-deletes a specific object version unconditionally. Returns the
     /// deleted record. If the deleted version was `is_latest`, promotes the
