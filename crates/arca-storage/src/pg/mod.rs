@@ -17,6 +17,7 @@ mod replication;
 mod server_config;
 mod team;
 pub(crate) mod user;
+mod write_gate;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -28,7 +29,8 @@ pub struct PgStore {
     pool: sqlx_postgres::PgPool,
     /// When true (clustered deployments), a hard delete leaves a tombstone row
     /// instead of removing it (see [`crate::sqlite::SqliteStore`] for rationale).
-    /// Set once at startup via [`PgStore::set_cluster_mode`].
+    /// Also selects the write gate ([`write_gate`]). Set once at startup via
+    /// [`PgStore::set_cluster_mode`].
     cluster_mode: AtomicBool,
 }
 
@@ -126,6 +128,11 @@ const MIGRATIONS: &[Migration] = &[
         description: "COLLATE \"C\" on bucket names, keys, version ids and upload ids (S3 byte order on any database locale)",
         sql: include_str!("migrations/0017_byte_order_collation.sql"),
     },
+    Migration {
+        version: 18,
+        description: "Add the object_seq_local sequence (single-node write gate, decision H13)",
+        sql: include_str!("migrations/0018_local_object_seq.sql"),
+    },
 ];
 
 impl PgStore {
@@ -138,13 +145,16 @@ impl PgStore {
             .map_err(|e| ArcaError::Internal(format!("connecting to PostgreSQL: {e}")))?;
 
         run_migrations(&pool).await?;
+        write_gate::reconcile_object_seq(&pool).await?;
 
         tracing::info!("PostgreSQL database ready");
         Ok(Self { pool, cluster_mode: AtomicBool::new(false) })
     }
 
     /// Enables cluster mode: hard deletes leave tombstone rows instead of
-    /// removing them. Called once at startup when `[cluster].enabled`.
+    /// removing them, and object writes take the commit-ordered seq counter
+    /// instead of the per-key gate ([`write_gate`]). Called once at startup
+    /// when `[cluster].enabled`, by the server and by the offline tools alike.
     pub fn set_cluster_mode(&self, on: bool) {
         self.cluster_mode.store(on, Ordering::Relaxed);
     }

@@ -559,6 +559,22 @@ run_postgres() {
         integration/test_tagging.py "$@"
     local rc=$?
 
+    # Step 6: the seq reconciliation runs when the store opens, so it needs a
+    # restart: plant a row above both seq generators, restart Arca, check
+    # that both were raised above it (guards pg/write_gate.rs).
+    if [[ $rc -eq 0 ]]; then
+        $COMPOSE run --rm -e ARCA_POSTGRES_BACKEND=1 -e ARCA_PG_SEQ_PHASE=plant \
+            test integration/test_postgres.py::TestSeqReconciliation
+        rc=$?
+    fi
+    if [[ $rc -eq 0 ]]; then
+        $COMPOSE restart arca
+        wait_for_arca "$COMPOSE"
+        $COMPOSE run --rm -e ARCA_POSTGRES_BACKEND=1 -e ARCA_PG_SEQ_PHASE=verify \
+            test integration/test_postgres.py::TestSeqReconciliation
+        rc=$?
+    fi
+
     trap - EXIT
     cleanup_pg
     return $rc

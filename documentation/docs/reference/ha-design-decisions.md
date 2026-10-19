@@ -1,6 +1,6 @@
 # HA Design Decisions
 
-These are the design decisions behind Arca's HA clustering, taken during the HA hardening that shipped in **v0.26.0** (Phase 29.1, the remediation of the Phase 29 review). Code comments cite them as "decision H*n*" (for example `decision H4` in `cluster_meta.rs`); each section below has a stable anchor (`#h1` to `#h12`) so those citations stay resolvable.
+These are the design decisions behind Arca's HA clustering, taken during the HA hardening that shipped in **v0.26.0** (Phase 29.1, the remediation of the Phase 29 review). Code comments cite them as "decision H*n*" (for example `decision H4` in `cluster_meta.rs`); each section below has a stable anchor (`#h1` to `#h13`) so those citations stay resolvable.
 
 Each decision states what the code does **today**, which is not always what was first planned: where a decision was refined later, the section says so.
 
@@ -22,6 +22,7 @@ Each decision states what the code does **today**, which is not always what was 
 | [H10](#h10) | Rolling upgrades: additive wire changes | v0.26.0 (broken once by v0.29.0) |
 | [H11](#h11) | One release for the whole hardening plan | v0.26.0 (release history) |
 | [H12](#h12) | Authenticate the peer, not just the request | v0.26.0 |
+| [H13](#h13) | PostgreSQL single node: a per-key write gate instead of the counter | Unreleased |
 
 ## H1: True write quorum {#h1}
 
@@ -58,11 +59,11 @@ The local copy is **not rolled back** on a shortfall. The error means "not ackno
 
 **Rationale.** The original PostgreSQL `SEQUENCE` is not transactional: a transaction holding `seq = 100` could still be in flight while `seq = 101` committed. A peer pulling the manifest saw 101, moved its high-water mark past 100, and the row committed later with 100 was never delivered by the incremental sync: silent replication loss under concurrent writes.
 
-**Cost.** Concurrent object writes on PostgreSQL serialize on the counter row for the final stretch of their transaction (from taking the `seq` to commit). Accepted: it is no worse than SQLite, whose single write connection serializes every write entirely.
+**Cost.** Concurrent object writes on PostgreSQL serialize on the counter row for the final stretch of their transaction (from taking the `seq` to commit). Accepted: it is no worse than SQLite, whose single write connection serializes every write entirely. Since [H13](#h13) the cost is paid in cluster mode only.
 
 **Alternatives rejected.** A probabilistic guard window (do not return the newest N rows, or the last T milliseconds, or read only up to a snapshot-safe watermark). It closes most of the window but not all of it, and makes correctness depend on a tuning value. A commit-ordered cursor is exact.
 
-**Where in the code.** Migration `crates/arca-storage/src/pg/migrations/0009_commit_ordered_seq.sql` (creates `object_seq`, seeded from the larger of `MAX(seq)` and the old sequence, and drops the sequence); `next_object_seq` in `crates/arca-storage/src/pg/metadata.rs`, called by every write path.
+**Where in the code.** Migration `crates/arca-storage/src/pg/migrations/0009_commit_ordered_seq.sql` (creates `object_seq`, seeded from the larger of `MAX(seq)` and the old sequence, and drops the sequence); `next_object_seq` in `crates/arca-storage/src/pg/write_gate.rs`, called by every write path in cluster mode.
 
 **Since.** v0.26.0.
 
@@ -204,6 +205,25 @@ Around these layers: a `±15` minute `x-amz-date` replay window on cluster reque
 **Where in the code.** `ping_nonce_mac`, `verify_ping_nonce_mac`, `ClusterPingResponse` and `PeerNode::eligible` in `crates/arca-core/src/cluster.rs`; `probe_peer` in `crates/arca-server/src/cluster/membership.rs`; `ping` and `health` in `crates/arca-proto/src/handlers/cluster.rs`; `cluster_auth_middleware` and `ClusterPeerCertVerified` in `crates/arca-proto/src/middleware/cluster_auth.rs`; the client-certificate verifier in `crates/arca-server/src/tls.rs`; `ClusterTlsConfig` and `validate_cluster_transport` in `crates/arca-server/src/config.rs`; `generate_cluster` in `crates/arca-server/src/tls_generate.rs`; `REPLAY_WINDOW_SECS` in `crates/arca-proto/src/middleware/mod.rs`.
 
 **Since.** v0.26.0.
+
+## H13: PostgreSQL single node: a per-key write gate {#h13}
+
+**Decision.** On a single node (no `[cluster]`, or `enabled = false`) the PostgreSQL write gate of [H3](#h3), the `object_seq` counter row, is replaced by two things:
+
+1. **A per-key gate.** The first statement of every objects-writing transaction takes `pg_advisory_xact_lock` on a 64-bit FNV-1a hash of `bucket NUL key`, released with the transaction. The writers of one key still serialize, so the CAS read that follows sees every earlier writer's commit, exactly as with the counter; writers of different keys no longer wait for each other. A DeleteObjects batch takes the locks of all its keys first, in ascending order (two overlapping batches cannot deadlock), then applies every entry in one transaction, each under its own savepoint.
+2. **A non-transactional seq.** `objects.seq` comes from the `object_seq_local` SEQUENCE (migration 0018): unique and monotonic, not commit-ordered, which nothing on a single node needs. The rows still carry a `seq`, so the node can join a cluster later without rewriting them.
+
+Cluster mode is unchanged. When the store opens (server or offline tool, both modes), the counter and the sequence are raised to the highest `seq` in use, never lowered, so whichever generator the run uses starts above every stored row. The offline tools open the store in the node's mode, so a tool running next to the server takes the same gate.
+
+**Rationale.** The counter serialized every object write in the database, single node included, for a guarantee only the anti-entropy cursor uses. Measured on PostgreSQL 17 (PUT 1 KiB, fsync on): 790 objects/s with 16 clients and 780 with 64, with about 95% of the active backends waiting on the counter row. The CAS gate needs serialization per key, not global.
+
+**Failure paths.** A hash collision only makes two unrelated keys wait for each other. A crash releases the transaction's advisory locks. A deadlock PostgreSQL still detects fails the transaction like any database error (every entry of a batch reports `InternalError`). A configuration switched to cluster by hand, without `migrate-topology`, starts with the counter already above every single-node `seq`.
+
+**Alternatives rejected.** *SERIALIZABLE isolation*: retries on every conflict, and every caller would need a retry loop. *`SELECT ... FOR UPDATE` on the current row*: there is no row to lock when the key does not exist yet (`If-None-Match: *`), which is exactly the race to close. *Keeping the counter and shortening its hold*: the hold already starts at the first statement, by design (it is the gate).
+
+**Where in the code.** `crates/arca-storage/src/pg/write_gate.rs` (`begin_object_write`, `lock_keys`, `reconcile_object_seq`); `delete_objects_if` in `crates/arca-storage/src/pg/metadata.rs`; migration `0018_local_object_seq.sql`; `open_metadata_store` in `crates/arca-server/src/offline_store.rs`.
+
+**Since.** Unreleased.
 
 ## Other named mechanisms
 

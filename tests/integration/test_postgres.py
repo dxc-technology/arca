@@ -13,6 +13,7 @@ import json
 import os
 import time
 
+import psycopg2
 import pytest
 import requests
 from botocore.exceptions import ClientError
@@ -28,6 +29,16 @@ pytestmark = pytest.mark.skipif(
 BUCKET = "test-pg-bucket"
 BUCKET2 = "test-pg-bucket-2"
 ADMIN_BUCKET = "test-pg-admin"
+
+# The database Arca runs on, reached from the test container.
+PG_DSN = os.environ.get("ARCA_PG_DSN", "postgresql://arca:arca@postgres:5432/arca")
+
+# Set by `bin/test postgres` around an Arca restart (TestSeqReconciliation).
+SEQ_PHASE = os.environ.get("ARCA_PG_SEQ_PHASE")
+SEQ_BUCKET = "test-pg-seq"
+SEQ_KEY = "raised.txt"
+# A seq far above anything the suite writes, planted before the restart.
+RAISED_SEQ = 10_000_000
 
 # 5 MB minimum part size for multipart uploads.
 PART_SIZE = 5 * 1024 * 1024
@@ -405,15 +416,15 @@ class TestRangeRead:
 
 
 class TestConcurrentWrites:
-    """Concurrency smoke test for the commit-ordered object_seq counter
-    (decision H3, pg migration 0009).
+    """Concurrency smoke test for the write gate (pg/write_gate.rs).
 
-    Every object write serializes its final stretch on the single-row counter;
-    this exercises many concurrent writers (puts, overwrites and deletes mixed,
-    matching the put/tombstone lock paths) to catch deadlocks or lost writes in
-    the counter locking. The cross-node manifest ordering itself is covered by
-    the cluster suite; here we pin that the counter cannot wedge or drop rows
-    under the connection pool's parallelism.
+    On a single node every object write takes an advisory lock on its key
+    (decision H13); in a cluster, the commit-ordered object_seq counter
+    (decision H3). This exercises many concurrent writers (puts, overwrites
+    and deletes mixed, matching the put/delete lock paths) to catch deadlocks
+    or lost writes in the gate. The cross-node manifest ordering itself is
+    covered by the cluster suite; here we pin that the gate cannot wedge or
+    drop rows under the connection pool's parallelism.
     """
 
     def test_parallel_puts_and_deletes_all_land(self, s3_client):
@@ -453,3 +464,152 @@ class TestConcurrentWrites:
         for key in keys[:20]:
             body = s3_client.get_object(Bucket=BUCKET, Key=key)["Body"].read()
             assert body == b"v2:" + key.encode()
+
+
+def _pg_query(sql, params=()):
+    """Runs one statement against Arca's database and returns its rows."""
+    conn = psycopg2.connect(PG_DSN)
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.fetchall() if cur.description else []
+    finally:
+        conn.close()
+
+
+def _local_seq():
+    """The last value issued by the single-node seq sequence (0 if none)."""
+    is_called, last_value = _pg_query(
+        "SELECT is_called, last_value FROM object_seq_local"
+    )[0]
+    return last_value if is_called else 0
+
+
+# ---------- Single-node write gate ----------
+
+
+class TestSingleNodeWriteGate:
+    """The single-node write gate (decision H13): an advisory lock per key and
+    seq from the object_seq_local sequence, instead of the commit-ordered
+    counter every write in the database used to wait for."""
+
+    def test_writes_take_the_sequence_not_the_counter(self, s3_client):
+        counter_before = _pg_query("SELECT value FROM object_seq")[0][0]
+        seq_before = _local_seq()
+
+        s3_client.put_object(Bucket=BUCKET, Key="gate/one.txt", Body=b"x")
+
+        assert _pg_query("SELECT value FROM object_seq")[0][0] == counter_before
+        row_seq = _pg_query(
+            "SELECT seq FROM objects WHERE bucket = %s AND key = %s",
+            (BUCKET, "gate/one.txt"),
+        )[0][0]
+        assert row_seq > seq_before
+        assert _local_seq() >= row_seq
+
+    def test_concurrent_writes_get_distinct_seqs(self, s3_client):
+        from concurrent.futures import ThreadPoolExecutor
+
+        keys = [f"gate/seq-{i:03d}" for i in range(64)]
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            list(pool.map(lambda k: s3_client.put_object(Bucket=BUCKET, Key=k, Body=b"s"), keys))
+
+        total, distinct = _pg_query("SELECT COUNT(seq), COUNT(DISTINCT seq) FROM objects")[0]
+        assert total == distinct
+
+    def test_overlapping_delete_objects_batches(self, s3_client):
+        """Batches that share keys, in different orders, all complete: the
+        locks are taken in one global order, so they cannot deadlock."""
+        import random
+        from concurrent.futures import ThreadPoolExecutor
+
+        keys = [f"gate/batch-{i:03d}" for i in range(200)]
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            list(pool.map(lambda k: s3_client.put_object(Bucket=BUCKET, Key=k, Body=b"b"), keys))
+
+        def delete_all(seed):
+            order = keys[:]
+            random.Random(seed).shuffle(order)
+            return s3_client.delete_objects(
+                Bucket=BUCKET,
+                Delete={"Objects": [{"Key": k} for k in order], "Quiet": True},
+            )
+
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            responses = list(pool.map(delete_all, range(6)))
+
+        for resp in responses:
+            assert resp.get("Errors", []) == []
+        listed = s3_client.list_objects_v2(Bucket=BUCKET, Prefix="gate/batch-")
+        assert listed.get("KeyCount", 0) == 0
+
+    def test_delete_objects_failed_precondition_fails_only_its_entry(self, s3_client):
+        for key in ("gate/keep.txt", "gate/drop-a.txt", "gate/drop-b.txt"):
+            s3_client.put_object(Bucket=BUCKET, Key=key, Body=key.encode())
+
+        resp = s3_client.delete_objects(
+            Bucket=BUCKET,
+            Delete={
+                "Objects": [
+                    {"Key": "gate/drop-a.txt"},
+                    {"Key": "gate/keep.txt", "ETag": '"00000000000000000000000000000000"'},
+                    {"Key": "gate/drop-b.txt"},
+                ],
+            },
+        )
+
+        errors = resp.get("Errors", [])
+        assert [(e["Key"], e["Code"]) for e in errors] == [("gate/keep.txt", "PreconditionFailed")]
+        assert sorted(d["Key"] for d in resp.get("Deleted", [])) == [
+            "gate/drop-a.txt",
+            "gate/drop-b.txt",
+        ]
+        assert s3_client.get_object(Bucket=BUCKET, Key="gate/keep.txt")["Body"].read() == b"gate/keep.txt"
+        for key in ("gate/drop-a.txt", "gate/drop-b.txt"):
+            with pytest.raises(ClientError):
+                s3_client.head_object(Bucket=BUCKET, Key=key)
+
+
+# ---------- Seq reconciliation at startup ----------
+
+
+@pytest.mark.skipif(
+    SEQ_PHASE not in ("plant", "verify"),
+    reason="runs around an Arca restart in `bin/test postgres` (sets ARCA_PG_SEQ_PHASE)",
+)
+class TestSeqReconciliation:
+    """When the store opens, the counter and the sequence are raised to the
+    highest seq in use, so whichever generator the next run uses never issues
+    a seq that is already stored (a mode switch, a migrate-db copy)."""
+
+    @pytest.mark.skipif(SEQ_PHASE != "plant", reason="plant phase only")
+    def test_plant_a_row_above_both_generators(self, s3_client):
+        try:
+            s3_client.create_bucket(Bucket=SEQ_BUCKET)
+        except ClientError:
+            pass
+        s3_client.put_object(Bucket=SEQ_BUCKET, Key=SEQ_KEY, Body=b"raised")
+        # What a row stamped by the other mode's generator looks like.
+        _pg_query(
+            "UPDATE objects SET seq = %s WHERE bucket = %s AND key = %s",
+            (RAISED_SEQ, SEQ_BUCKET, SEQ_KEY),
+        )
+        assert _pg_query("SELECT value FROM object_seq")[0][0] < RAISED_SEQ
+        assert _local_seq() < RAISED_SEQ
+
+    @pytest.mark.skipif(SEQ_PHASE != "verify", reason="verify phase only")
+    def test_both_generators_were_raised(self, s3_client):
+        try:
+            assert _pg_query("SELECT value FROM object_seq")[0][0] >= RAISED_SEQ
+            assert _local_seq() >= RAISED_SEQ
+
+            s3_client.put_object(Bucket=SEQ_BUCKET, Key="after.txt", Body=b"after")
+            new_seq = _pg_query(
+                "SELECT seq FROM objects WHERE bucket = %s AND key = %s",
+                (SEQ_BUCKET, "after.txt"),
+            )[0][0]
+            assert new_seq > RAISED_SEQ
+        finally:
+            for key in (SEQ_KEY, "after.txt"):
+                s3_client.delete_object(Bucket=SEQ_BUCKET, Key=key)
+            s3_client.delete_bucket(Bucket=SEQ_BUCKET)

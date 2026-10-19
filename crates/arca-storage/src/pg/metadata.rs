@@ -2,7 +2,7 @@
 
 use arca_core::error::{ArcaError, S3Error, S3ErrorCode};
 use arca_core::store::{
-    CompletedUpload, DeletePrecondition, MetadataStore, NoncurrentExpiry, VersionPosition, WritePrecondition,
+    BatchDeleteEntry, CompletedUpload, DeletePrecondition, MetadataStore, NoncurrentExpiry, VersionPosition, WritePrecondition,
 };
 use arca_core::types::{
     BlobId, BucketInfo, MultipartUploadRecord, ObjectPart, ObjectRecord, PartRecord,
@@ -12,7 +12,10 @@ use chrono::{DateTime, Utc};
 use sqlx_core::row::Row;
 use std::collections::HashMap;
 
+use super::write_gate::{self, next_object_seq};
 use super::PgStore;
+
+type PgTx<'c> = sqlx_core::transaction::Transaction<'c, sqlx_postgres::Postgres>;
 
 /// Column list of the object SELECT queries that serve S3 requests: every
 /// column except `parts`, the part layout of a multipart object, which can be
@@ -127,30 +130,8 @@ async fn fetch_null_version(
     Ok(row.as_ref().map(row_to_object_record))
 }
 
-/// Returns the next node-local monotonic `seq`, advancing the single-row
-/// `object_seq` counter INSIDE the caller's transaction (migration 0009).
-///
-/// The `UPDATE ... RETURNING` takes the counter's row lock until commit, which
-/// serializes the assignment: seq order = commit order, so a peer's
-/// changed-since manifest cursor can never skip a row still in flight
-/// (commit-ordered seq cursor, decision H3: the previous SEQUENCE was not
-/// transactional and lost rows). Mirrors the SQLite `next_object_seq`.
-///
-/// LOCK-ORDER RULE: every objects-writing transaction must call this BEFORE
-/// its first row-mutating statement (uniform seq → rows order). Bulk paths
-/// that never take a seq (such as `purge_tombstones`) only lock rows and cannot
-/// form a cycle with seq holders over the single counter resource.
-async fn next_object_seq(
-    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
-) -> Result<i64, sqlx_core::error::Error> {
-    let row = sqlx_core::query::query("UPDATE object_seq SET value = value + 1 RETURNING value")
-        .fetch_one(&mut **tx)
-        .await?;
-    Ok(row.get::<i64, _>("value"))
-}
-
 /// Inserts a new object row into the `objects` table, stamping the given
-/// node-local `seq` (from [`next_object_seq`], same transaction).
+/// node-local `seq` (from the write gate, same transaction).
 async fn insert_object_row(
     tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
     record: &ObjectRecord,
@@ -392,21 +373,19 @@ pub(super) fn row_to_part_record(row: &sqlx_postgres::PgRow) -> PartRecord {
 /// (`complete_multipart_object`). Returns the overwritten object, whose blob
 /// the caller must delete after the commit.
 async fn install_object(
-    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    tx: &mut PgTx<'_>,
     record: &mut ObjectRecord,
     pre: &WritePrecondition,
+    cluster_mode: bool,
 ) -> Result<Option<ObjectRecord>, ArcaError> {
     let resource = format!("/{}/{}", record.bucket, record.key);
-    // Commit-ordered seq, taken as the FIRST statement of the
-    // transaction. `next_object_seq` is the only statement here that
-    // actually contends under PostgreSQL's default READ COMMITTED
-    // isolation (a plain SELECT does not block concurrent transactions):
-    // taking it before the authoritative CAS-check SELECT below turns it
-    // into a serialization gate — by the time this transaction is
-    // granted the lock, every previously-serialized writer has already
-    // committed, so the CAS-check SELECT is guaranteed to see genuinely
-    // current state instead of a stale pre-write snapshot.
-    let seq = next_object_seq(tx)
+    // The write gate, taken as the FIRST statement of the transaction
+    // (pg/write_gate.rs). Under PostgreSQL's default READ COMMITTED isolation
+    // a plain SELECT does not block concurrent transactions, so the gate is
+    // what makes the CAS-check SELECT below see current state: by the time
+    // this transaction holds it, every earlier writer of this key (of every
+    // key, in cluster mode) has committed.
+    let seq = write_gate::begin_object_write(tx, cluster_mode, &record.bucket, &record.key)
         .await
         .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
 
@@ -566,6 +545,392 @@ async fn take_upload(
     Ok(rows.iter().map(row_to_part_record).collect())
 }
 
+/// The body of `delete_object_if`, inside a transaction that has already
+/// passed the write gate and taken `seq`. Shared with `delete_objects_if`.
+async fn delete_latest_in_tx(
+    tx: &mut PgTx<'_>,
+    bucket: &str,
+    key: &str,
+    pre: &DeletePrecondition,
+    marker_owner: &str,
+    cluster_mode: bool,
+    seq: i64,
+) -> Result<Option<ObjectRecord>, ArcaError> {
+    let resource = format!("/{bucket}/{key}");
+
+    // Authoritative CAS check against the object being deleted, as
+    // `MetadataStore::get_latest_object` would see it (includes a delete
+    // marker). An absent object is always `Ok(())` — DeleteObject on a
+    // missing key is a no-op, never a precondition failure (existing
+    // behaviour).
+    if !pre.is_empty() {
+        let current = fetch_latest_object(tx, bucket, key)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
+        if let Err(code) = pre.evaluate(current.as_ref()) {
+            return Err(ArcaError::S3(S3Error::new(code, &resource)));
+        }
+    }
+
+    let versioning = get_versioning_state(tx, bucket).await;
+
+    let result = match versioning {
+        VersioningState::Unversioned => {
+            let old = fetch_latest_object(tx, bucket, key)
+                .await
+                .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
+
+            if old.is_some() {
+                // Clustered: tombstone (blob cleared) so the deletion
+                // converges via the manifest and isn't resurrected by
+                // anti-entropy. Single-node: remove the row. One seq for
+                // the single row of this key (an unversioned bucket was
+                // never versioned -> at most one row matches).
+                if cluster_mode {
+                    sqlx_core::query::query(
+                        "UPDATE objects SET seq = $4, is_tombstone = TRUE, is_delete_marker = FALSE, \
+                         blob_id = '', size = 0, last_modified = $3 \
+                         WHERE bucket = $1 AND key = $2",
+                    )
+                    .bind(bucket)
+                    .bind(key)
+                    .bind(Utc::now())
+                    .bind(seq)
+                    .execute(&mut **tx)
+                    .await
+                    .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
+                } else {
+                    sqlx_core::query::query("DELETE FROM objects WHERE bucket = $1 AND key = $2")
+                        .bind(bucket)
+                        .bind(key)
+                        .execute(&mut **tx)
+                        .await
+                        .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
+                }
+
+                // Clean up tags either way.
+                sqlx_core::query::query("DELETE FROM object_tags WHERE bucket = $1 AND key = $2")
+                    .bind(bucket)
+                    .bind(key)
+                    .execute(&mut **tx)
+                    .await
+                    .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
+
+                if cluster_mode {
+                    recompute_is_latest(tx, bucket, key)
+                        .await
+                        .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
+                }
+            }
+
+            old // blob to clean up
+        }
+        VersioningState::Enabled => {
+            // Mark current latest as not-latest.
+            sqlx_core::query::query(
+                "UPDATE objects SET is_latest = FALSE \
+                 WHERE bucket = $1 AND key = $2 AND is_latest = TRUE",
+            )
+            .bind(bucket)
+            .bind(key)
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
+
+            // Insert a delete marker.
+            let version_id = uuid::Uuid::new_v4().to_string();
+            let now = Utc::now();
+            let empty_metadata = serde_json::json!({});
+            sqlx_core::query::query(
+                "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, \
+                 last_modified, metadata, encryption_algorithm, encryption_key_id, owner, \
+                 version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, \
+                 legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq) \
+                 VALUES ($1, $2, '', 0, '', NULL, $3, $4, NULL, NULL, $7, $5, TRUE, TRUE, \
+                 NULL, NULL, NULL, 'STANDARD', NULL, NULL, $6)",
+            )
+            .bind(bucket)
+            .bind(key)
+            .bind(now)
+            .bind(&empty_metadata)
+            .bind(&version_id)
+            .bind(seq)
+            .bind(marker_owner)
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
+
+            // Return the delete marker so the handler can set response headers.
+            Some(ObjectRecord {
+                bucket: bucket.to_string(),
+                key: key.to_string(),
+                blob_id: BlobId(String::new()),
+                size: 0,
+                etag: String::new(),
+                content_type: None,
+                last_modified: now,
+                metadata: HashMap::new(),
+                encryption_algorithm: None,
+                encryption_key_id: None,
+                owner: marker_owner.to_string(),
+                version_id: Some(version_id),
+                is_latest: true,
+                is_delete_marker: true,
+                is_tombstone: false,
+                retention_mode: None,
+                retain_until_date: None,
+                legal_hold_status: None,
+                storage_class: "STANDARD".to_string(),
+                checksum_algorithm: None,
+                checksum_value: None,
+                parts: None,
+                replication_status: None,
+                lock_updated_at: None,
+                content_updated_at: None,
+            })
+        }
+        VersioningState::Suspended => {
+            // Delete existing null-version for cleanup.
+            let old_null = fetch_null_version(tx, bucket, key)
+                .await
+                .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
+
+            sqlx_core::query::query(
+                "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id IS NULL",
+            )
+            .bind(bucket)
+            .bind(key)
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
+
+            // Clean up tags from old null-version.
+            sqlx_core::query::query(
+                "DELETE FROM object_tags WHERE bucket = $1 AND key = $2 AND version_id = ''",
+            )
+            .bind(bucket)
+            .bind(key)
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
+
+            // Mark any remaining latest as not-latest.
+            sqlx_core::query::query(
+                "UPDATE objects SET is_latest = FALSE \
+                 WHERE bucket = $1 AND key = $2 AND is_latest = TRUE",
+            )
+            .bind(bucket)
+            .bind(key)
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
+
+            // Insert delete marker with NULL version_id.
+            let now = Utc::now();
+            let empty_metadata = serde_json::json!({});
+            sqlx_core::query::query(
+                "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, \
+                 last_modified, metadata, encryption_algorithm, encryption_key_id, owner, \
+                 version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, \
+                 legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq) \
+                 VALUES ($1, $2, '', 0, '', NULL, $3, $4, NULL, NULL, $6, NULL, TRUE, TRUE, \
+                 NULL, NULL, NULL, 'STANDARD', NULL, NULL, $5)",
+            )
+            .bind(bucket)
+            .bind(key)
+            .bind(now)
+            .bind(&empty_metadata)
+            .bind(seq)
+            .bind(marker_owner)
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
+
+            old_null // clean up old null-version blob (if any)
+        }
+    };
+
+    Ok(result)
+}
+
+/// The body of `delete_object_version_if`, inside a transaction that has
+/// already passed the write gate and taken `seq`. Shared with
+/// `delete_objects_if`.
+async fn delete_version_in_tx(
+    tx: &mut PgTx<'_>,
+    bucket: &str,
+    key: &str,
+    version_id: &str,
+    pre: &DeletePrecondition,
+    cluster_mode: bool,
+    seq: i64,
+) -> Result<Option<ObjectRecord>, ArcaError> {
+    let resource = format!("/{bucket}/{key}?versionId={version_id}");
+
+    // Fetch the version to delete.
+    let deleted = if version_id == "null" {
+        let sql = format!(
+            "SELECT {OBJECT_COLUMNS} FROM objects \
+             WHERE bucket = $1 AND key = $2 AND version_id IS NULL AND is_tombstone = FALSE"
+        );
+        let row = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
+            .bind(bucket)
+            .bind(key)
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
+        row.as_ref().map(row_to_object_record)
+    } else {
+        let sql = format!(
+            "SELECT {OBJECT_COLUMNS} FROM objects \
+             WHERE bucket = $1 AND key = $2 AND version_id = $3 AND is_tombstone = FALSE"
+        );
+        let row = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
+            .bind(bucket)
+            .bind(key)
+            .bind(version_id)
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
+        row.as_ref().map(row_to_object_record)
+    };
+
+    // Per S3 semantics (and the existing single-version delete handler),
+    // the precondition is skipped entirely — never evaluated, never
+    // refused — when the targeted version is itself a delete marker.
+    if !pre.is_empty() {
+        let applies = match &deleted {
+            Some(rec) => !rec.is_delete_marker,
+            None => true,
+        };
+        if applies {
+            if let Err(code) = pre.evaluate(deleted.as_ref()) {
+                return Err(ArcaError::S3(S3Error::new(code, &resource)));
+            }
+        }
+    }
+
+    if deleted.is_some() {
+        // Clustered: tombstone the version (blob cleared) so the deletion
+        // converges via the manifest and isn't resurrected by anti-entropy.
+        // Single-node: remove the row.
+        if cluster_mode {
+            // seq already taken above. The WHERE targets one version row.
+            let now = Utc::now();
+            if version_id == "null" {
+                sqlx_core::query::query(
+                    "UPDATE objects SET seq = $4, is_tombstone = TRUE, is_delete_marker = FALSE, \
+                     blob_id = '', size = 0, last_modified = $3 \
+                     WHERE bucket = $1 AND key = $2 AND version_id IS NULL",
+                )
+                .bind(bucket)
+                .bind(key)
+                .bind(now)
+                .bind(seq)
+                .execute(&mut **tx)
+                .await
+                .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
+            } else {
+                sqlx_core::query::query(
+                    "UPDATE objects SET seq = $5, is_tombstone = TRUE, is_delete_marker = FALSE, \
+                     blob_id = '', size = 0, last_modified = $4 \
+                     WHERE bucket = $1 AND key = $2 AND version_id = $3",
+                )
+                .bind(bucket)
+                .bind(key)
+                .bind(version_id)
+                .bind(now)
+                .bind(seq)
+                .execute(&mut **tx)
+                .await
+                .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
+            }
+        } else if version_id == "null" {
+            sqlx_core::query::query(
+                "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id IS NULL",
+            )
+            .bind(bucket)
+            .bind(key)
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
+        } else {
+            sqlx_core::query::query(
+                "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id = $3",
+            )
+            .bind(bucket)
+            .bind(key)
+            .bind(version_id)
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
+        }
+
+        // Clean up tags for this version.
+        let tag_vid = if version_id == "null" {
+            String::new()
+        } else {
+            version_id.to_string()
+        };
+        sqlx_core::query::query(
+            "DELETE FROM object_tags WHERE bucket = $1 AND key = $2 AND version_id = $3",
+        )
+        .bind(bucket)
+        .bind(key)
+        .bind(&tag_vid)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
+
+        // Recompute is_latest deterministically (full tiebreak: last_modified
+        // DESC, version_id DESC NULLS LAST, blob_id DESC), matching SQLite and
+        // apply_remote_* so every node agrees on the current version. Replaces
+        // the previous ORDER BY last_modified DESC promotion, which lacked the
+        // tiebreak and could diverge from peers (Phase 29, Risk #1).
+        recompute_is_latest(tx, bucket, key)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
+    }
+
+    Ok(deleted)
+}
+
+/// The single-node `delete_objects_if` transaction. An `Err` is a batch-level
+/// failure (nothing committed); a failed entry is an `Err` in the vector.
+async fn delete_batch_single_node(
+    pool: &sqlx_postgres::PgPool,
+    bucket: &str,
+    entries: &[BatchDeleteEntry],
+    marker_owner: &str,
+) -> Result<Vec<Result<Option<ObjectRecord>, ArcaError>>, sqlx_core::error::Error> {
+    let mut tx = pool.begin().await?;
+    let ids = write_gate::sorted_key_lock_ids(bucket, entries.iter().map(|e| e.key.as_str()));
+    write_gate::lock_keys(&mut tx, &ids).await?;
+    let mut results = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let mut sp = sqlx_core::acquire::Acquire::begin(&mut tx).await?;
+        let seq = write_gate::next_seq(&mut sp, false).await?;
+        let result = match entry.version_id {
+            Some(ref version_id) => {
+                delete_version_in_tx(&mut sp, bucket, &entry.key, version_id, &entry.pre, false, seq)
+                    .await
+            }
+            None => {
+                delete_latest_in_tx(&mut sp, bucket, &entry.key, &entry.pre, marker_owner, false, seq)
+                    .await
+            }
+        };
+        if result.is_ok() {
+            sp.commit().await?;
+        } else {
+            sp.rollback().await?;
+        }
+        results.push(result);
+    }
+    tx.commit().await?;
+    Ok(results)
+}
+
 #[async_trait::async_trait]
 impl MetadataStore for PgStore {
     async fn get_stats(&self) -> Result<StorageStats, ArcaError> {
@@ -688,7 +1053,7 @@ impl MetadataStore for PgStore {
             .begin()
             .await
             .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
-        let old = install_object(&mut tx, &mut record, pre).await?;
+        let old = install_object(&mut tx, &mut record, pre, self.cluster_mode()).await?;
         tx.commit()
             .await
             .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
@@ -790,214 +1155,19 @@ impl MetadataStore for PgStore {
         marker_owner: &str,
     ) -> Result<Option<ObjectRecord>, ArcaError> {
         let cluster_mode = self.cluster_mode();
-        let resource = format!("/{bucket}/{key}");
         let mut tx = self
             .pool
             .begin()
             .await
             .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
 
-        // Commit-ordered seq, taken as the FIRST statement of the
-        // transaction — see put_object_if for why this must precede the
-        // CAS-check SELECT below (it's the only statement that contends
-        // under READ COMMITTED, so it acts as the serialization gate). Taken
-        // unconditionally, even for the non-cluster Unversioned branch below
-        // which doesn't persist it, purely to gate the CAS check.
-        let seq = next_object_seq(&mut tx)
+        // The write gate, the FIRST statement of the transaction
+        // (pg/write_gate.rs): the CAS read below must come after it. Taken
+        // even where the branch below does not persist the seq.
+        let seq = write_gate::begin_object_write(&mut tx, cluster_mode, bucket, key)
             .await
             .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
-
-        // Authoritative CAS check against the object being deleted, as
-        // `MetadataStore::get_latest_object` would see it (includes a delete
-        // marker). An absent object is always `Ok(())` — DeleteObject on a
-        // missing key is a no-op, never a precondition failure (existing
-        // behaviour).
-        if !pre.is_empty() {
-            let current = fetch_latest_object(&mut tx, bucket, key)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
-            if let Err(code) = pre.evaluate(current.as_ref()) {
-                return Err(ArcaError::S3(S3Error::new(code, &resource)));
-            }
-        }
-
-        let versioning = get_versioning_state(&mut tx, bucket).await;
-
-        let result = match versioning {
-            VersioningState::Unversioned => {
-                let old = fetch_latest_object(&mut tx, bucket, key)
-                    .await
-                    .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
-
-                if old.is_some() {
-                    // Clustered: tombstone (blob cleared) so the deletion
-                    // converges via the manifest and isn't resurrected by
-                    // anti-entropy. Single-node: remove the row. One seq for
-                    // the single row of this key (an unversioned bucket was
-                    // never versioned -> at most one row matches).
-                    if cluster_mode {
-                        sqlx_core::query::query(
-                            "UPDATE objects SET seq = $4, is_tombstone = TRUE, is_delete_marker = FALSE, \
-                             blob_id = '', size = 0, last_modified = $3 \
-                             WHERE bucket = $1 AND key = $2",
-                        )
-                        .bind(bucket)
-                        .bind(key)
-                        .bind(Utc::now())
-                        .bind(seq)
-                        .execute(&mut *tx)
-                        .await
-                        .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
-                    } else {
-                        sqlx_core::query::query("DELETE FROM objects WHERE bucket = $1 AND key = $2")
-                            .bind(bucket)
-                            .bind(key)
-                            .execute(&mut *tx)
-                            .await
-                            .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
-                    }
-
-                    // Clean up tags either way.
-                    sqlx_core::query::query("DELETE FROM object_tags WHERE bucket = $1 AND key = $2")
-                        .bind(bucket)
-                        .bind(key)
-                        .execute(&mut *tx)
-                        .await
-                        .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
-
-                    if cluster_mode {
-                        recompute_is_latest(&mut tx, bucket, key)
-                            .await
-                            .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
-                    }
-                }
-
-                old // blob to clean up
-            }
-            VersioningState::Enabled => {
-                // Mark current latest as not-latest.
-                sqlx_core::query::query(
-                    "UPDATE objects SET is_latest = FALSE \
-                     WHERE bucket = $1 AND key = $2 AND is_latest = TRUE",
-                )
-                .bind(bucket)
-                .bind(key)
-                .execute(&mut *tx)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
-
-                // Insert a delete marker.
-                let version_id = uuid::Uuid::new_v4().to_string();
-                let now = Utc::now();
-                let empty_metadata = serde_json::json!({});
-                sqlx_core::query::query(
-                    "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, \
-                     last_modified, metadata, encryption_algorithm, encryption_key_id, owner, \
-                     version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, \
-                     legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq) \
-                     VALUES ($1, $2, '', 0, '', NULL, $3, $4, NULL, NULL, $7, $5, TRUE, TRUE, \
-                     NULL, NULL, NULL, 'STANDARD', NULL, NULL, $6)",
-                )
-                .bind(bucket)
-                .bind(key)
-                .bind(now)
-                .bind(&empty_metadata)
-                .bind(&version_id)
-                .bind(seq)
-                .bind(marker_owner)
-                .execute(&mut *tx)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
-
-                // Return the delete marker so the handler can set response headers.
-                Some(ObjectRecord {
-                    bucket: bucket.to_string(),
-                    key: key.to_string(),
-                    blob_id: BlobId(String::new()),
-                    size: 0,
-                    etag: String::new(),
-                    content_type: None,
-                    last_modified: now,
-                    metadata: HashMap::new(),
-                    encryption_algorithm: None,
-                    encryption_key_id: None,
-                    owner: marker_owner.to_string(),
-                    version_id: Some(version_id),
-                    is_latest: true,
-                    is_delete_marker: true,
-                    is_tombstone: false,
-                    retention_mode: None,
-                    retain_until_date: None,
-                    legal_hold_status: None,
-                    storage_class: "STANDARD".to_string(),
-                    checksum_algorithm: None,
-                    checksum_value: None,
-                    parts: None,
-                    replication_status: None,
-                    lock_updated_at: None,
-                    content_updated_at: None,
-                })
-            }
-            VersioningState::Suspended => {
-                // Delete existing null-version for cleanup.
-                let old_null = fetch_null_version(&mut tx, bucket, key)
-                    .await
-                    .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
-
-                sqlx_core::query::query(
-                    "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id IS NULL",
-                )
-                .bind(bucket)
-                .bind(key)
-                .execute(&mut *tx)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
-
-                // Clean up tags from old null-version.
-                sqlx_core::query::query(
-                    "DELETE FROM object_tags WHERE bucket = $1 AND key = $2 AND version_id = ''",
-                )
-                .bind(bucket)
-                .bind(key)
-                .execute(&mut *tx)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
-
-                // Mark any remaining latest as not-latest.
-                sqlx_core::query::query(
-                    "UPDATE objects SET is_latest = FALSE \
-                     WHERE bucket = $1 AND key = $2 AND is_latest = TRUE",
-                )
-                .bind(bucket)
-                .bind(key)
-                .execute(&mut *tx)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
-
-                // Insert delete marker with NULL version_id.
-                let now = Utc::now();
-                let empty_metadata = serde_json::json!({});
-                sqlx_core::query::query(
-                    "INSERT INTO objects (bucket, key, blob_id, size, etag, content_type, \
-                     last_modified, metadata, encryption_algorithm, encryption_key_id, owner, \
-                     version_id, is_latest, is_delete_marker, retention_mode, retain_until_date, \
-                     legal_hold_status, storage_class, checksum_algorithm, checksum_value, seq) \
-                     VALUES ($1, $2, '', 0, '', NULL, $3, $4, NULL, NULL, $6, NULL, TRUE, TRUE, \
-                     NULL, NULL, NULL, 'STANDARD', NULL, NULL, $5)",
-                )
-                .bind(bucket)
-                .bind(key)
-                .bind(now)
-                .bind(&empty_metadata)
-                .bind(seq)
-                .bind(marker_owner)
-                .execute(&mut *tx)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object_if: {e}")))?;
-
-                old_null // clean up old null-version blob (if any)
-            }
-        };
+        let result = delete_latest_in_tx(&mut tx, bucket, key, pre, marker_owner, cluster_mode, seq).await?;
 
         tx.commit()
             .await
@@ -1123,153 +1293,63 @@ impl MetadataStore for PgStore {
         pre: &DeletePrecondition,
     ) -> Result<Option<ObjectRecord>, ArcaError> {
         let cluster_mode = self.cluster_mode();
-        let resource = format!("/{bucket}/{key}?versionId={version_id}");
         let mut tx = self
             .pool
             .begin()
             .await
             .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
 
-        // Commit-ordered seq, taken as the FIRST statement of the
-        // transaction — see put_object_if for why this must precede the
-        // CAS-check SELECT below (it's the only statement that contends
-        // under READ COMMITTED, so it acts as the serialization gate). Taken
-        // unconditionally, even for the non-cluster branches below which
-        // don't persist it, purely to gate the CAS check.
-        let seq = next_object_seq(&mut tx)
+        // The write gate, the FIRST statement of the transaction
+        // (pg/write_gate.rs): the CAS read below must come after it. Taken
+        // even where the branch below does not persist the seq.
+        let seq = write_gate::begin_object_write(&mut tx, cluster_mode, bucket, key)
             .await
             .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
-
-        // Fetch the version to delete.
-        let deleted = if version_id == "null" {
-            let sql = format!(
-                "SELECT {OBJECT_COLUMNS} FROM objects \
-                 WHERE bucket = $1 AND key = $2 AND version_id IS NULL AND is_tombstone = FALSE"
-            );
-            let row = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
-                .bind(bucket)
-                .bind(key)
-                .fetch_optional(&mut *tx)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
-            row.as_ref().map(row_to_object_record)
-        } else {
-            let sql = format!(
-                "SELECT {OBJECT_COLUMNS} FROM objects \
-                 WHERE bucket = $1 AND key = $2 AND version_id = $3 AND is_tombstone = FALSE"
-            );
-            let row = sqlx_core::query::query(sqlx_core::sql_str::AssertSqlSafe(sql.as_str()))
-                .bind(bucket)
-                .bind(key)
-                .bind(version_id)
-                .fetch_optional(&mut *tx)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
-            row.as_ref().map(row_to_object_record)
-        };
-
-        // Per S3 semantics (and the existing single-version delete handler),
-        // the precondition is skipped entirely — never evaluated, never
-        // refused — when the targeted version is itself a delete marker.
-        if !pre.is_empty() {
-            let applies = match &deleted {
-                Some(rec) => !rec.is_delete_marker,
-                None => true,
-            };
-            if applies {
-                if let Err(code) = pre.evaluate(deleted.as_ref()) {
-                    return Err(ArcaError::S3(S3Error::new(code, &resource)));
-                }
-            }
-        }
-
-        if deleted.is_some() {
-            // Clustered: tombstone the version (blob cleared) so the deletion
-            // converges via the manifest and isn't resurrected by anti-entropy.
-            // Single-node: remove the row.
-            if cluster_mode {
-                // seq already taken above. The WHERE targets one version row.
-                let now = Utc::now();
-                if version_id == "null" {
-                    sqlx_core::query::query(
-                        "UPDATE objects SET seq = $4, is_tombstone = TRUE, is_delete_marker = FALSE, \
-                         blob_id = '', size = 0, last_modified = $3 \
-                         WHERE bucket = $1 AND key = $2 AND version_id IS NULL",
-                    )
-                    .bind(bucket)
-                    .bind(key)
-                    .bind(now)
-                    .bind(seq)
-                    .execute(&mut *tx)
-                    .await
-                    .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
-                } else {
-                    sqlx_core::query::query(
-                        "UPDATE objects SET seq = $5, is_tombstone = TRUE, is_delete_marker = FALSE, \
-                         blob_id = '', size = 0, last_modified = $4 \
-                         WHERE bucket = $1 AND key = $2 AND version_id = $3",
-                    )
-                    .bind(bucket)
-                    .bind(key)
-                    .bind(version_id)
-                    .bind(now)
-                    .bind(seq)
-                    .execute(&mut *tx)
-                    .await
-                    .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
-                }
-            } else if version_id == "null" {
-                sqlx_core::query::query(
-                    "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id IS NULL",
-                )
-                .bind(bucket)
-                .bind(key)
-                .execute(&mut *tx)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
-            } else {
-                sqlx_core::query::query(
-                    "DELETE FROM objects WHERE bucket = $1 AND key = $2 AND version_id = $3",
-                )
-                .bind(bucket)
-                .bind(key)
-                .bind(version_id)
-                .execute(&mut *tx)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
-            }
-
-            // Clean up tags for this version.
-            let tag_vid = if version_id == "null" {
-                String::new()
-            } else {
-                version_id.to_string()
-            };
-            sqlx_core::query::query(
-                "DELETE FROM object_tags WHERE bucket = $1 AND key = $2 AND version_id = $3",
-            )
-            .bind(bucket)
-            .bind(key)
-            .bind(&tag_vid)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
-
-            // Recompute is_latest deterministically (full tiebreak: last_modified
-            // DESC, version_id DESC NULLS LAST, blob_id DESC), matching SQLite and
-            // apply_remote_* so every node agrees on the current version. Replaces
-            // the previous ORDER BY last_modified DESC promotion, which lacked the
-            // tiebreak and could diverge from peers (Phase 29, Risk #1).
-            recompute_is_latest(&mut tx, bucket, key)
-                .await
-                .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
-        }
+        let deleted = delete_version_in_tx(&mut tx, bucket, key, version_id, pre, cluster_mode, seq).await?;
 
         tx.commit()
             .await
             .map_err(|e| ArcaError::Internal(format!("delete_object_version_if: {e}")))?;
 
         Ok(deleted)
+    }
+
+    /// Single node: one transaction for the whole batch, so `DeleteObjects`
+    /// costs one commit instead of one per key. The write gate of every key is
+    /// taken first, in ascending lock-id order, so two overlapping batches
+    /// cannot deadlock; each entry then runs under its own savepoint, so an
+    /// entry that fails rolls back alone and the others still commit.
+    ///
+    /// Cluster mode runs the per-key methods: the gate there is the counter's
+    /// row lock, which a rolled-back savepoint would release mid-transaction.
+    /// (The cluster decorator never forwards a batch anyway.)
+    async fn delete_objects_if(
+        &self,
+        bucket: &str,
+        entries: &[BatchDeleteEntry],
+        marker_owner: &str,
+    ) -> Vec<Result<Option<ObjectRecord>, ArcaError>> {
+        if self.cluster_mode() {
+            let mut results = Vec::with_capacity(entries.len());
+            for entry in entries {
+                results.push(match entry.version_id {
+                    Some(ref version_id) => {
+                        self.delete_object_version_if(bucket, &entry.key, version_id, &entry.pre)
+                            .await
+                    }
+                    None => self.delete_object_if(bucket, &entry.key, &entry.pre, marker_owner).await,
+                });
+            }
+            return results;
+        }
+        match delete_batch_single_node(&self.pool, bucket, entries, marker_owner).await {
+            Ok(results) => results,
+            // Nothing committed: every entry failed.
+            Err(e) => entries
+                .iter()
+                .map(|_| Err(ArcaError::Internal(format!("delete_objects_if: {e}"))))
+                .collect(),
+        }
     }
 
     async fn apply_remote_object(&self, record: &ObjectRecord) -> Result<(), ArcaError> {
@@ -1536,18 +1616,10 @@ impl MetadataStore for PgStore {
     }
 
     async fn seed_object_seq_to_max(&self) -> Result<u64, ArcaError> {
-        // Bump the counter UP to MAX(seq) when it lags; never rewind it (a
-        // rewind would trip peer cursor rewind detection). A single statement
-        // does the conditional update atomically.
-        let row = sqlx_core::query::query(
-            "UPDATE object_seq \
-             SET value = GREATEST(value, (SELECT COALESCE(MAX(seq), 0) FROM objects)) \
-             RETURNING value",
-        )
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| ArcaError::Internal(format!("seed_object_seq_to_max: {e}")))?;
-        Ok(row.get::<i64, _>("value") as u64)
+        // Raise the counter (and the single-node sequence) to the highest seq
+        // in use; never rewind it (a rewind would trip peer cursor rewind
+        // detection). Also run when the store opens.
+        Ok(write_gate::reconcile_object_seq(&self.pool).await? as u64)
     }
 
     async fn list_referenced_blob_ids(&self) -> Result<Vec<BlobId>, ArcaError> {
@@ -2037,7 +2109,7 @@ impl MetadataStore for PgStore {
             )));
         }
 
-        let old = install_object(&mut tx, &mut record, pre).await?;
+        let old = install_object(&mut tx, &mut record, pre, self.cluster_mode()).await?;
         let parts = take_upload(&mut tx, upload_id)
             .await
             .map_err(|e| ArcaError::Internal(format!("complete_multipart_object: {e}")))?;
@@ -2184,11 +2256,11 @@ impl MetadataStore for PgStore {
             .map_err(|e| ArcaError::Internal(format!("set_object_retention: {e}")))?;
         // Fresh seq so the lock change travels via the changed-since manifest
         // to peers that miss the real-time fan-out. Taken before the row
-        // UPDATE per the next_object_seq lock-order rule. lock_updated_at
+        // UPDATE per the write-gate lock-order rule. lock_updated_at
         // orders the lock state across nodes: last_modified does not
         // change here, so without it a stale equal-timestamp copy applied
         // later would clobber this.
-        let seq = next_object_seq(&mut tx)
+        let seq = write_gate::begin_object_write(&mut tx, self.cluster_mode(), bucket, key)
             .await
             .map_err(|e| ArcaError::Internal(format!("set_object_retention: {e}")))?;
         let lock_updated_at = Utc::now();
@@ -2243,7 +2315,7 @@ impl MetadataStore for PgStore {
             .map_err(|e| ArcaError::Internal(format!("set_object_legal_hold: {e}")))?;
         // Fresh seq for manifest visibility and lock_updated_at for the
         // lock-state LWW — see set_object_retention.
-        let seq = next_object_seq(&mut tx)
+        let seq = write_gate::begin_object_write(&mut tx, self.cluster_mode(), bucket, key)
             .await
             .map_err(|e| ArcaError::Internal(format!("set_object_legal_hold: {e}")))?;
         let lock_updated_at = Utc::now();
@@ -2303,7 +2375,7 @@ impl MetadataStore for PgStore {
         // and a concurrent lock change merge independently instead of clobbering
         // each other (TD-021 — see apply_remote_object). Seq before the row
         // UPDATE per the lock-order rule.
-        let seq = next_object_seq(&mut tx)
+        let seq = write_gate::begin_object_write(&mut tx, self.cluster_mode(), bucket, key)
             .await
             .map_err(|e| ArcaError::Internal(format!("update_object_encryption: {e}")))?;
         let content_updated_at = Utc::now();
@@ -2358,7 +2430,7 @@ impl MetadataStore for PgStore {
             .begin()
             .await
             .map_err(|e| ArcaError::Internal(format!("update_object_encryption_cas: {e}")))?;
-        let seq = next_object_seq(&mut tx)
+        let seq = write_gate::begin_object_write(&mut tx, self.cluster_mode(), bucket, key)
             .await
             .map_err(|e| ArcaError::Internal(format!("update_object_encryption_cas: {e}")))?;
         // CAS guard on blob_id: 0 rows means a concurrent client overwrite

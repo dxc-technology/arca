@@ -1,0 +1,13 @@
+-- Single-node write gate (decision H13): the seq generator of single-node mode.
+--
+-- In cluster mode every objects-writing transaction takes the object_seq
+-- counter row (0009), which makes seq commit-ordered for the anti-entropy
+-- cursor but runs every object write in the database one at a time. A single
+-- node has no cursor to feed: it serializes the writers of each key with a
+-- transaction-level advisory lock and takes seq from this sequence, which no
+-- transaction holds. Unique and monotonic, not commit-ordered.
+--
+-- MINVALUE 0 lets the startup reconciliation (pg/write_gate.rs) set it to 0 on
+-- an empty database. It starts below every existing row and is raised to the
+-- highest seq in use when the store opens, before it serves.
+CREATE SEQUENCE object_seq_local MINVALUE 0 START WITH 1;
