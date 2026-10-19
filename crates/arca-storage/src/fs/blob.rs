@@ -610,12 +610,20 @@ impl BlobStore for FsBlobStore {
         blob_id: &BlobId,
         range: Option<ByteRange>,
     ) -> Result<BlobGetResult, ArcaError> {
+        let sidecar = self.read_sidecar(blob_id).await.ok().flatten();
+        self.get_known(blob_id, range, sidecar.as_ref()).await
+    }
+
+    async fn get_known(
+        &self,
+        blob_id: &BlobId,
+        range: Option<ByteRange>,
+        sidecar: Option<&SidecarMeta>,
+    ) -> Result<BlobGetResult, ArcaError> {
         // Composite blob: no on-disk file at this blob_id, parts live
         // separately. Stream from them in order.
-        if let Ok(Some(sidecar)) = self.read_sidecar(blob_id).await {
-            if let Some(parts) = sidecar.composite.as_ref() {
-                return self.get_composite(parts, range).await;
-            }
+        if let Some(parts) = sidecar.and_then(|s| s.composite.as_ref()) {
+            return self.get_composite(parts, range).await;
         }
         let blob_path = self.blob_path(blob_id);
 
@@ -1492,6 +1500,26 @@ mod tests {
         };
         store.write_sidecar(&output_id, &sidecar).await.unwrap();
         output_id
+    }
+
+    /// `get_known` trusts the sidecar it is handed: a composite is served
+    /// from its parts even with its sidecar file gone.
+    #[tokio::test]
+    async fn get_known_serves_a_composite_from_the_given_sidecar() {
+        let (store, _dir) = test_store(2).await;
+        let (a, b) = (BlobId::new(), BlobId::new());
+        store.put(&a, bytes_to_stream(b"first part,")).await.unwrap();
+        store.put(&b, bytes_to_stream(b" second part")).await.unwrap();
+        let composite = make_plain_composite(&store, &[a, b]).await;
+        let sidecar_path = store.sidecar_path(&composite);
+        let meta: SidecarMeta =
+            serde_json::from_str(&std::fs::read_to_string(&sidecar_path).unwrap()).unwrap();
+        std::fs::remove_file(&sidecar_path).unwrap();
+
+        let got = store.get_known(&composite, None, Some(&meta)).await.unwrap();
+        let (body, failed) = collect_until_error(got.stream).await;
+        assert!(!failed);
+        assert_eq!(body, b"first part, second part");
     }
 
     /// Collects a stream until its first error: the bytes read before it, and

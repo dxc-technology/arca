@@ -263,11 +263,14 @@ impl BlobStore for ClusterBlobStore {
         // Only when it is absent do we attempt a read-repair from a peer.
         match self.raw.read_sidecar(blob_id).await {
             Ok(None) => {
+                // The repair writes a sidecar: the inner store reads it anew.
                 self.try_repair(blob_id).await;
                 self.inner.get(blob_id, range).await
             }
-            // Present, or sidecar probe failed: let the inner store handle it.
-            Ok(Some(_)) | Err(_) => self.inner.get(blob_id, range).await,
+            // Present: hand it down, so the stack below does not read it again.
+            Ok(Some(sidecar)) => self.inner.get_known(blob_id, range, Some(&sidecar)).await,
+            // The probe failed: let the inner store handle it.
+            Err(_) => self.inner.get(blob_id, range).await,
         }
     }
 

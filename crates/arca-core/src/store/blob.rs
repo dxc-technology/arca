@@ -380,6 +380,20 @@ pub trait BlobStore: Send + Sync {
         range: Option<ByteRange>,
     ) -> Result<BlobGetResult, crate::error::ArcaError>;
 
+    /// [`BlobStore::get`] for a caller that has already read this blob's
+    /// sidecar (`None`: the blob has none), so this store does not read it
+    /// again. A stack of stores reads the sidecar once, at the top, and each
+    /// layer hands it down through this method. The default ignores it.
+    async fn get_known(
+        &self,
+        blob_id: &BlobId,
+        range: Option<ByteRange>,
+        sidecar: Option<&SidecarMeta>,
+    ) -> Result<BlobGetResult, crate::error::ArcaError> {
+        let _ = sidecar;
+        self.get(blob_id, range).await
+    }
+
     /// Deletes a blob and its sidecar. Ignores not-found errors.
     async fn delete(&self, blob_id: &BlobId) -> Result<(), crate::error::ArcaError>;
 

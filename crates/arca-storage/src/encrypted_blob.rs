@@ -331,23 +331,29 @@ impl BlobStore for EncryptingBlobStore {
     ) -> Result<BlobGetResult, ArcaError> {
         // Read sidecar to check if the blob is encrypted.
         let sidecar = self.read_sidecar(blob_id).await?;
+        self.get_known(blob_id, range, sidecar.as_ref()).await
+    }
 
+    async fn get_known(
+        &self,
+        blob_id: &BlobId,
+        range: Option<ByteRange>,
+        sidecar: Option<&SidecarMeta>,
+    ) -> Result<BlobGetResult, ArcaError> {
         // Composite blob (result of an encrypted CompleteMultipartUpload):
         // no on-disk file at this blob_id, parts live separately and are
         // streamed through.
-        if let Some(parts) = sidecar.as_ref().and_then(|s| s.composite.as_ref()) {
+        if let Some(parts) = sidecar.and_then(|s| s.composite.as_ref()) {
             return self.get_composite(parts, range).await;
         }
 
-        let enc_info = sidecar.as_ref().and_then(|s| s.encryption.as_ref());
-
-        match enc_info {
+        match sidecar.and_then(|s| s.encryption.as_ref().map(|e| (s, e))) {
             None => {
                 // Unencrypted blob — delegate directly.
-                self.inner.get(blob_id, range).await
+                self.inner.get_known(blob_id, range, sidecar).await
             }
-            Some(enc_info) => {
-                let payload_size = payload_size(sidecar.as_ref().unwrap());
+            Some((sidecar, enc_info)) => {
+                let payload_size = payload_size(sidecar);
                 match range {
                     None => {
                         self.get_encrypted_full(blob_id, enc_info, payload_size)

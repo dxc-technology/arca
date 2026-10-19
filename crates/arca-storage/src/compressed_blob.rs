@@ -221,6 +221,7 @@ impl CompressingBlobStore {
         blob_id: &BlobId,
         info: &BlobCompressionInfo,
         plaintext_size: u64,
+        sidecar: Option<&SidecarMeta>,
     ) -> Result<BlobGetResult, ArcaError> {
         // Empty plaintext: no chunks to read, yield an empty stream.
         if info.original_size == 0 {
@@ -241,12 +242,13 @@ impl CompressingBlobStore {
         // Fetch footer count first to know full footer size.
         let count_bytes = self
             .inner
-            .get(
+            .get_known(
                 blob_id,
                 Some(ByteRange {
                     start: footer_count_offset,
                     end: Some(file_size - 1),
                 }),
+                sidecar,
             )
             .await?;
         let count_buf = collect_stream(count_bytes.stream).await?;
@@ -266,12 +268,13 @@ impl CompressingBlobStore {
         // Read the data region [HEADER_SIZE .. footer_start).
         let data = self
             .inner
-            .get(
+            .get_known(
                 blob_id,
                 Some(ByteRange {
                     start: HEADER_SIZE as u64,
                     end: Some(footer_start - 1),
                 }),
+                sidecar,
             )
             .await?;
         let dec_stream = DecompressingStream::new(data.stream, info.algorithm);
@@ -288,6 +291,7 @@ impl CompressingBlobStore {
         blob_id: &BlobId,
         info: &BlobCompressionInfo,
         range: ByteRange,
+        sidecar: Option<&SidecarMeta>,
     ) -> Result<BlobGetResult, ArcaError> {
         let plaintext_size = info.original_size;
         let file_size = info.compressed_size;
@@ -296,12 +300,13 @@ impl CompressingBlobStore {
         let count_start = file_size - FOOTER_COUNT_SIZE as u64;
         let tail = self
             .inner
-            .get(
+            .get_known(
                 blob_id,
                 Some(ByteRange {
                     start: count_start,
                     end: Some(file_size - 1),
                 }),
+                sidecar,
             )
             .await?;
         let count_buf = collect_stream(tail.stream).await?;
@@ -313,12 +318,13 @@ impl CompressingBlobStore {
         let index_buf = if n > 0 {
             let got = self
                 .inner
-                .get(
+                .get_known(
                     blob_id,
                     Some(ByteRange {
                         start: index_start,
                         end: Some(count_start - 1),
                     }),
+                    sidecar,
                 )
                 .await?;
             collect_stream(got.stream).await?
@@ -357,12 +363,13 @@ impl CompressingBlobStore {
 
         let data = self
             .inner
-            .get(
+            .get_known(
                 blob_id,
                 Some(ByteRange {
                     start: disk_start,
                     end: Some(disk_end - 1),
                 }),
+                sidecar,
             )
             .await?;
         let data_buf = collect_stream(data.stream).await?;
@@ -467,19 +474,26 @@ impl BlobStore for CompressingBlobStore {
         blob_id: &BlobId,
         range: Option<ByteRange>,
     ) -> Result<BlobGetResult, ArcaError> {
+        // The one sidecar read of a GET: the layers below get it handed down.
         let sidecar = self.read_sidecar(blob_id).await?;
-        let comp_info = sidecar.as_ref().and_then(|s| s.compression.as_ref());
+        self.get_known(blob_id, range, sidecar.as_ref()).await
+    }
+
+    async fn get_known(
+        &self,
+        blob_id: &BlobId,
+        range: Option<ByteRange>,
+        sidecar: Option<&SidecarMeta>,
+    ) -> Result<BlobGetResult, ArcaError> {
+        let comp_info = sidecar.and_then(|s| s.compression.as_ref());
         match comp_info {
-            None => self.inner.get(blob_id, range).await,
+            None => self.inner.get_known(blob_id, range, sidecar).await,
             Some(info) => match range {
                 None => {
-                    let plaintext_size = sidecar
-                        .as_ref()
-                        .map(|s| s.size)
-                        .unwrap_or(info.original_size);
-                    self.get_compressed_full(blob_id, info, plaintext_size).await
+                    let plaintext_size = sidecar.map(|s| s.size).unwrap_or(info.original_size);
+                    self.get_compressed_full(blob_id, info, plaintext_size, sidecar).await
                 }
-                Some(range) => self.get_compressed_range(blob_id, info, range).await,
+                Some(range) => self.get_compressed_range(blob_id, info, range, sidecar).await,
             },
         }
     }
@@ -784,6 +798,27 @@ mod tests {
                 (x >> 24) as u8
             })
             .collect()
+    }
+
+    /// A GET reads the sidecar once, at the top of the stack: every layer
+    /// below decodes the blob from the sidecar handed down. With the file
+    /// gone after that first read, the whole stack still serves the object.
+    #[tokio::test]
+    async fn get_known_hands_the_sidecar_down_the_stack() {
+        let (store, dir) = make_encrypted_store("b").await;
+        let data = compressible_data();
+        let (blob_id, _) = put_like_handler(&store, "b", &data).await;
+        let fs = FsBlobStore::new(dir.path().join("blobs"), 2).await.unwrap();
+        let sidecar_path = fs.sidecar_path(&blob_id);
+        let meta: SidecarMeta =
+            serde_json::from_str(&std::fs::read_to_string(&sidecar_path).unwrap()).unwrap();
+        std::fs::remove_file(&sidecar_path).unwrap();
+
+        let full = store.get_known(&blob_id, None, Some(&meta)).await.unwrap();
+        assert_eq!(collect(full.stream).await, data);
+        let range = ByteRange { start: 100_000, end: Some(200_000) };
+        let part = store.get_known(&blob_id, Some(range), Some(&meta)).await.unwrap();
+        assert_eq!(collect(part.stream).await, &data[100_000..=200_000]);
     }
 
     #[tokio::test]
