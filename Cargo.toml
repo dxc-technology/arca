@@ -100,6 +100,10 @@ tempfile = "3"
 # System
 libc = "0.2"
 
+# Global allocator: musl's malloc serialises every allocation on one global
+# lock, which dominated the CPU of small requests under concurrency.
+mimalloc = "0.1"
+
 # Cluster / service discovery (HA, Phase 29) — pure-Rust mDNS, no system daemon
 mdns-sd = "0.20"
 

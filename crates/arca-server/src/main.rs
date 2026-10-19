@@ -46,6 +46,12 @@ use cli::{Cli, ClusterAction, Command, CredentialAction, EncryptionAction, LogFo
 /// behind the layers that must run outside it.
 pub type ServerApp = CloseOnUnreadBodyService<NormalizeService<Router>>;
 
+/// The binary is linked statically against musl, whose malloc serialises every
+/// allocation on one global lock: under concurrent small requests the threads
+/// spent most of their time contending for it. mimalloc keeps per-thread heaps.
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn main() -> Result<()> {
     // Install the `ring` rustls crypto provider as the process-wide default
     // (see crates/arca-server/src/crypto.rs — the TLS-building constructors

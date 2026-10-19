@@ -34,3 +34,19 @@ accepted = [
 # Ignore the workspace's own unpublished crates (arca-*); this file is for third parties.
 [private]
 ignore = true
+
+# libmimalloc-sys vendors Microsoft's mimalloc C sources (statically linked into
+# the binary as the global allocator), which carry their own MIT copyright next
+# to the crate's: attribute both.
+[libmimalloc-sys.clarify]
+license = "MIT"
+
+[[libmimalloc-sys.clarify.files]]
+path = "LICENSE.txt"
+license = "MIT"
+checksum = "a08554fab028af3af047e8588d32d019662c1b1bf07959a195a2f75fe340726b"
+
+[[libmimalloc-sys.clarify.files]]
+path = "c_src/mimalloc/v2/LICENSE"
+license = "MIT"
+checksum = "82ade5d7d9b029044b5fbbc326207fc47c2d44ee4dd71e8a559c36d728217de9"
