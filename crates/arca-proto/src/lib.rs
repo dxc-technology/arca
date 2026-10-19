@@ -14,7 +14,7 @@ pub mod state;
 pub mod xml;
 
 pub use router::build_router;
-pub use state::{AppState, ClusterInnerStores};
+pub use state::{AppState, AppStateInner, ClusterInnerStores};
 
 /// Decode an HTTP header value to a String, handling non-ASCII bytes.
 ///

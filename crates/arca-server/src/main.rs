@@ -37,7 +37,7 @@ use tower::Layer;
 use tracing_subscriber::EnvFilter;
 
 use arca_core::store::CredentialStore;
-use arca_proto::AppState;
+use arca_proto::{AppState, AppStateInner};
 use arca_proto::middleware::normalize::NormalizeService;
 use arca_proto::middleware::unread_body::CloseOnUnreadBodyService;
 use cli::{Cli, ClusterAction, Command, CredentialAction, EncryptionAction, LogFormat, TlsAction, UserAction};
@@ -570,7 +570,7 @@ async fn async_main(cli: Cli) -> Result<()> {
                 (blob, plain_blob, metadata)
             };
 
-            let mut state = AppState {
+            let mut state = AppStateInner {
                 metadata,
                 blob,
                 plain_blob,
@@ -757,6 +757,8 @@ async fn async_main(cli: Cli) -> Result<()> {
                 Arc::new(registry)
             };
             state.connector_registry = Some(connector_registry.clone());
+            // Fully configured: freeze it into the cheap shared handle.
+            let state = AppState::new(state);
 
             // Spawn background workers
             let metrics_interval = config

@@ -4,7 +4,7 @@
 //! does NOT resolve a stored credential, user, or grants: every authenticated
 //! peer shares one fixed cluster credential — access key
 //! [`arca_core::cluster::CLUSTER_ACCESS_KEY`], secret `[cluster].secret` (held
-//! in [`AppState::cluster_secret`]). On top of the signature check it enforces
+//! in [`AppStateInner::cluster_secret`](crate::state::AppStateInner::cluster_secret)). On top of the signature check it enforces
 //! loop prevention: the request must carry the sender's id in the
 //! `x-amz-arca-replication-source` header, and that id must not be this node's
 //! own (a node never applies its own replication back to itself).

@@ -62,7 +62,7 @@ pub struct MigrateDbCtx {
 const TICK_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Spawns the maintenance-jobs worker. `drain_tx` is the maintenance-drain
-/// channel whose receiver lives in [`AppState::maintenance_draining`].
+/// channel whose receiver lives in [`AppStateInner::maintenance_draining`](arca_proto::AppStateInner::maintenance_draining).
 pub fn spawn_maintenance_worker(
     state: &AppState,
     drain_tx: Arc<watch::Sender<bool>>,

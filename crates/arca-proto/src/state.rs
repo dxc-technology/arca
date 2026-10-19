@@ -41,8 +41,30 @@ pub struct ClusterInnerStores {
 }
 
 /// Application state shared across all handlers.
+///
+/// A cheap handle: every `from_fn_with_state` middleware and `State` extractor
+/// clones it on every request, so a clone must be one refcount increment, not
+/// a copy of the fields. Fields are read through `Deref`; [`AppStateInner`] is
+/// built (and adjusted) once at startup, then frozen by [`AppState::new`].
 #[derive(Clone)]
-pub struct AppState {
+pub struct AppState(Arc<AppStateInner>);
+
+impl AppState {
+    pub fn new(inner: AppStateInner) -> Self {
+        Self(Arc::new(inner))
+    }
+}
+
+impl std::ops::Deref for AppState {
+    type Target = AppStateInner;
+
+    fn deref(&self) -> &AppStateInner {
+        &self.0
+    }
+}
+
+/// The fields of [`AppState`].
+pub struct AppStateInner {
     pub metadata: Arc<dyn MetadataStore>,
     /// Primary blob store — EncryptingBlobStore when a master key is configured
     /// (handles mixed-mode reads: auto-detects encrypted vs plain blobs),
@@ -213,7 +235,7 @@ fn cache_bucket_flag(
     }
 }
 
-impl AppState {
+impl AppStateInner {
     /// Emit an S3 event to the notification channel (non-blocking, fire-and-forget).
     /// If the channel is full, the event is silently dropped (S3 best-effort semantics).
     pub fn emit_event(&self, event: arca_core::s3::notification::S3Event) {
@@ -265,7 +287,7 @@ impl AppState {
 
     /// Returns whether `bucket` has a replication configuration, caching the
     /// result for 30s to avoid a `bucket_config` read on every write. Mirrors
-    /// the per-bucket encryption cache in [`AppState::blob_for_write`]; buckets
+    /// the per-bucket encryption cache in [`AppStateInner::blob_for_write`]; buckets
     /// without replication (the common case) skip the DB query entirely.
     pub async fn replication_enabled_for(&self, bucket: &str) -> bool {
         let now = Instant::now();
@@ -436,6 +458,17 @@ mod tests {
         let later = now + Duration::from_secs(5);
         cache_bucket_flag(&cache, "b", false, later);
         assert_eq!(cached_bucket_flag(&cache, "b", later), Some(false));
+    }
+
+    /// Every `from_fn_with_state` middleware and `State` extractor clones the
+    /// state on every request: the handle must stay one pointer, so a clone is
+    /// a single refcount increment, never a copy of the fields.
+    #[test]
+    fn app_state_is_a_single_pointer_handle() {
+        assert_eq!(
+            std::mem::size_of::<super::AppState>(),
+            std::mem::size_of::<usize>()
+        );
     }
 }
 

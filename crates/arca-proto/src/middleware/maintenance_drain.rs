@@ -7,7 +7,7 @@
 //! admin API and the maintenance worker stay live (this layer is applied to the
 //! S3 router only).
 //!
-//! This is distinct from the graceful-shutdown drain (`AppState::draining`),
+//! This is distinct from the graceful-shutdown drain (`AppStateInner::draining`),
 //! which is intentionally NOT hard-blocking: shutdown lets in-flight requests
 //! finish while the load balancer drains via the health check. Maintenance mode
 //! instead needs a hard quiescence on the node, so it refuses S3 outright.
