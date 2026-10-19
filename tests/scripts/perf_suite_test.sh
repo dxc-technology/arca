@@ -317,6 +317,72 @@ test_unknown_options_are_rejected() {
     assert_eq "" "$(compose_calls || true)" "nothing may start on bad input"
 }
 
+# --- baseline and report ------------------------------------------------------
+
+# A finished run directory, as `bin/perf-test report` and --baseline read it.
+make_run() {   # make_run <dir>
+    mkdir -p "$1/arca-plain/warp"
+    echo '{"run_id": "x"}' > "$1/run.json"
+}
+
+test_a_baseline_is_mounted_read_only_under_its_own_name() {
+    script_setup
+    make_run "$PWD/runs/base-run"
+    run_suite --profile quick --targets arca --variants plain --scenarios put-1k-c16 \
+        --baseline runs/base-run --out "$PWD/out" || { cat run.log; return 1; }
+    # bin/perf-test runs from the git toplevel, a resolved path (/private/var on macOS).
+    local call
+    call="$(compose_calls | grep 'perf-runner report')"
+    assert_contains "$call" "-v $(pwd -P)/runs/base-run:/baselines/base-run:ro" &&
+    assert_contains "$call" "perf-runner report /results --baseline /baselines/base-run"
+}
+
+test_a_baseline_that_is_not_a_run_is_rejected_before_anything_starts() {
+    script_setup
+    mkdir -p not-a-run
+    run_suite --profile quick --baseline not-a-run --out "$PWD/out" && return 1
+    assert_contains "$(cat run.log)" "not a run directory" &&
+    assert_eq "" "$(compose_calls || true)" "nothing may start on bad input"
+}
+
+# The report of an existing run: a plain container, no compose project,
+# no server, no volume, so it can run next to a suite in progress.
+test_report_regenerates_a_run_in_a_plain_container() {
+    script_setup
+    make_run "$PWD/runs/now"
+    make_run "$PWD/runs/then"
+    bin/perf-test report runs/now --baseline runs/then > run.log 2>&1 || { cat run.log; return 1; }
+    local call
+    call="$(grep '^run ' "$DOCKER_LOG")"
+    assert_eq "" "$(compose_calls || true)" "the report must not use compose" &&
+    assert_contains "$call" "-v $(pwd -P)/runs/now:/results " &&
+    assert_contains "$call" "-v $(pwd -P)/runs/then:/baselines/then:ro " &&
+    assert_contains "$call" "-u $(id -u):$(id -g)" &&
+    assert_contains "$call" "/perf/report.py /results --baseline /baselines/then"
+}
+
+test_report_without_a_baseline() {
+    script_setup
+    make_run "$PWD/runs/now"
+    bin/perf-test report runs/now > run.log 2>&1 || { cat run.log; return 1; }
+    assert_contains "$(grep '^run ' "$DOCKER_LOG")" "/perf/report.py /results" &&
+    assert_not_contains "$(cat "$DOCKER_LOG")" "--baseline"
+}
+
+test_report_rejects_a_directory_that_is_not_a_run() {
+    script_setup
+    mkdir -p runs/empty
+    bin/perf-test report runs/empty > run.log 2>&1 && return 1
+    assert_contains "$(cat run.log)" "not a run directory" &&
+    assert_eq "" "$(cat "$DOCKER_LOG")" "nothing may run on bad input"
+}
+
+test_report_needs_a_run_directory() {
+    script_setup
+    bin/perf-test report > run.log 2>&1 && return 1
+    assert_contains "$(cat run.log)" "Usage: bin/perf-test report"
+}
+
 test_the_results_directory_is_ignored_by_git() {
     assert_contains "$(cat "$REPO/.gitignore")" "perf-results/"
 }

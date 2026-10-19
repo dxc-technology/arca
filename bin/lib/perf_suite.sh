@@ -121,13 +121,14 @@ Options:
   --no-boto3               Skip the boto3 suite
   --no-listing             Skip the listing walks
   --out DIR                Run directory (default: perf-results/<UTC time>-<commit>)
+  --baseline DIR           Compare the report with an earlier run directory
   --list                   Print the scenarios of the profile and exit
 EOF
 }
 
 perf_suite_main() {
     local profile=full targets="arca,minio" variants="plain,sse,compress" only=""
-    local build=false maintenance=true boto3=true listing=true out="" list=false
+    local build=false maintenance=true boto3=true listing=true out="" list=false baseline=""
     PERF_STORAGE=volume
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -142,12 +143,16 @@ perf_suite_main() {
             --no-boto3)  boto3=false; shift ;;
             --no-listing) listing=false; shift ;;
             --out)       out="${2:?--out needs a directory}"; shift 2 ;;
+            --baseline)  baseline="${2:?--baseline needs a directory}"; shift 2 ;;
             --list)      list=true; shift ;;
             -h|--help)   _perf_usage; return 0 ;;
             *) echo "Error: unknown option '$1'" >&2; _perf_usage >&2; return 1 ;;
         esac
     done
     _perf_profile_settings "$profile" || return 1
+    if [[ -n "$baseline" ]]; then
+        baseline="$(_perf_run_dir "$baseline")" || return 1
+    fi
     case "$PERF_STORAGE" in volume|tmpfs) ;; *)
         echo "Error: --storage must be volume or tmpfs" >&2; return 1 ;; esac
     local t v
@@ -210,7 +215,12 @@ perf_suite_main() {
     _perf_finish_run_json
     echo "==> Generating the report..."
     COMPOSE="$(perf_compose_cmd)"
-    _perf_runner_as_user perf-runner report /results || failed+=(report)
+    if [[ -n "$baseline" ]]; then
+        _perf_runner_as_user -v "$baseline:$(_perf_baseline_mount "$baseline"):ro" \
+            perf-runner report /results --baseline "$(_perf_baseline_mount "$baseline")"
+    else
+        _perf_runner_as_user perf-runner report /results
+    fi || failed+=(report)
     # The runner mounts the suite's data volume: remove it again.
     $COMPOSE --profile perf-suite down -v >/dev/null 2>&1 || true
 
@@ -220,6 +230,56 @@ perf_suite_main() {
         echo "Steps with failures: ${failed[*]} (see the logs in the run directory)" >&2
         return 1
     fi
+}
+
+# _perf_run_dir <dir>: the absolute path of a finished run directory, or an
+# error when <dir> holds no run.json.
+_perf_run_dir() {
+    if [[ ! -f "$1/run.json" ]]; then
+        echo "Error: $1 is not a run directory (no run.json)" >&2
+        return 1
+    fi
+    (cd "$1" && pwd)
+}
+
+# Where a baseline run is mounted: under its own name, which the report shows
+# and links (../<name>/report.html, the runs being siblings in perf-results/).
+_perf_baseline_mount() {
+    echo "/baselines/${1##*/}"
+}
+
+# bin/perf-test report <run-dir> [--baseline DIR]: regenerate the report of a
+# finished run. A plain Python container (the report needs only the standard
+# library): no compose project, no server and no volume, so it can run while a
+# suite is in progress.
+perf_report_main() {
+    local run="" baseline=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --baseline) baseline="${2:?--baseline needs a directory}"; shift 2 ;;
+            -h|--help)  run=""; break ;;
+            -*) echo "Error: unknown option '$1'" >&2; run=""; break ;;
+            *)  run="$1"; shift ;;
+        esac
+    done
+    if [[ -z "$run" ]]; then
+        echo "Usage: bin/perf-test report <run-dir> [--baseline <run-dir>]" >&2
+        return 1
+    fi
+    run="$(_perf_run_dir "$run")" || return 1
+    local -a cmd=(docker run --rm -u "$(id -u):$(id -g)" -e PYTHONDONTWRITEBYTECODE=1
+                  -v "$REPO_ROOT/tests/perf:/perf:ro" -v "$run:/results")
+    if [[ -n "$baseline" ]]; then
+        baseline="$(_perf_run_dir "$baseline")" || return 1
+        local mount
+        mount="$(_perf_baseline_mount "$baseline")"
+        cmd+=(-v "$baseline:$mount:ro" python:3.14-slim python /perf/report.py /results
+              --baseline "$mount")
+    else
+        cmd+=(python:3.14-slim python /perf/report.py /results)
+    fi
+    "${cmd[@]}" || return 1
+    echo "Report: $run/report.html"
 }
 
 # Run metadata: what was measured, where and with what.

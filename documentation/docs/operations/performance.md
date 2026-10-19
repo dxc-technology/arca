@@ -34,6 +34,7 @@ disk. For a baseline, stop everything else on the machine first.
 | `--build` | | Rebuild the local Arca image first |
 | `--no-maintenance`, `--no-boto3`, `--no-listing` | | Skip a part |
 | `--out DIR` | `perf-results/<UTC time>-<commit>` | Run directory (git-ignored) |
+| `--baseline DIR` | | Compare the report with an earlier run (see [Comparing with a baseline](#comparing-with-a-baseline)) |
 
 Arca runs its production image with its default configuration, so `[storage] fsync = true`.
 The suite speaks plain HTTP: TLS cost is measured by `bin/perf-test --tls`.
@@ -83,14 +84,46 @@ perf-results/20261018T090000Z-08c53c4/
 ```
 
 Nothing is discarded: the report links every raw file, and `bin/test perf-report` covers
-the report generator (`tests/perf/report.py`). Regenerate a report after editing the
-generator with:
+the report generator (`tests/perf/report.py`). Regenerate the report of a finished run,
+for instance after editing the generator, with:
 
 ```bash
-docker compose -p arca-test-perf-suite -f docker/docker-compose.yml \
-    -f docker/docker-compose.perf-suite.yml --profile perf-suite run --rm --no-deps \
-    -u "$(id -u):$(id -g)" -v "$PWD/perf-results/<run>:/results" perf-runner report /results
+bin/perf-test report perf-results/<run>
 ```
+
+It runs the generator in a plain Python container: no server, no compose project and no
+volume, so it is safe to run while a suite is in progress.
+
+### Comparing with a baseline
+
+A targeted run (`--targets arca --variants plain --scenarios list-c16`, say, to measure
+one change) has no MinIO of its own and nothing to compare its figures with. Give it an
+earlier run as a baseline, either when the run is made or afterwards:
+
+```bash
+bin/perf-test suite --targets arca --variants plain --scenarios list-c16 \
+    --baseline perf-results/<earlier-run>
+bin/perf-test report perf-results/<run> --baseline perf-results/<earlier-run>
+```
+
+The report still covers only the run's own scenarios and servers. For each of them it adds:
+
+- **a third bar**, Arca in the baseline, between Arca and MinIO, and under the ratio to
+  MinIO the change since the baseline. A change within ±3% is shown as noise, not as a
+  gain or a loss;
+- **MinIO from the baseline** when the run did not measure it, labelled *MinIO
+  (baseline)*. The headline share of MinIO then uses those figures too, and says so;
+- **the baseline's rows** in the scenario details, and its figures and the change in the
+  listing, maintenance and boto3 tables (shorter is better for seconds, higher for
+  throughput);
+- **a warning** when the two runs were not made the same way: host, Docker resources,
+  profile, duration, storage, MinIO image or dataset sizes. The changes are then not like
+  for like.
+
+The baseline is only read. It is mounted under its own name, and the report links its
+`report.html` as `../<earlier-run>/report.html`, which resolves when both runs are in
+`perf-results/`. `summary.json` records the comparison in `baseline`,
+`baseline_comparisons`, `baseline_headline` and `baseline_mismatches`.
 
 ### Reading the numbers
 

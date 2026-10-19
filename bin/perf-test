@@ -21,6 +21,8 @@ set -euo pipefail
 #   bin/perf-test suite [--profile quick|full] Arca vs MinIO with warp, plus listing,
 #                                              boto3 and maintenance timings, and an
 #                                              HTML report (bin/perf-test suite --help)
+#   bin/perf-test report <run> [--baseline <run>]  Regenerate a run's report, compared
+#                                              with an earlier run when given one
 
 cd "$(git rev-parse --show-toplevel)"
 source bin/lib/compose.sh
@@ -32,6 +34,13 @@ if [[ "${1:-}" == suite ]]; then
     # must not stop the run, and the report is written whatever happened.
     set +e
     perf_suite_main "$@"
+    exit $?
+fi
+
+if [[ "${1:-}" == report ]]; then
+    shift
+    source bin/lib/perf_suite.sh
+    perf_report_main "$@"
     exit $?
 fi
 

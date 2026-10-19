@@ -145,3 +145,14 @@ def test_maintenance_without_a_store_has_no_rates(tmp_path):
     doc = json.loads(out.read_text())
     assert doc["objects"] == 0
     assert not any("objects_per_s" in s for s in doc["steps"])
+
+
+# --- report --------------------------------------------------------------------
+
+def test_report_passes_the_baseline_through(monkeypatch):
+    import report
+    seen = []
+    monkeypatch.setattr(report, "main", lambda argv: seen.append(argv) or 0)
+    assert suite.main(["report", "/results", "--baseline", "/baseline"]) == 0
+    assert suite.main(["report", "/results"]) == 0
+    assert seen == [["/results", "--baseline", "/baseline"], ["/results"]]

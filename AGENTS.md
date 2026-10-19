@@ -97,6 +97,8 @@ bin/perf-test            # boto3 check against the running server
 bin/perf-test suite      # Arca vs MinIO with warp + listing/boto3/maintenance timings, self-contained;
                          # run directory + report.html in perf-results/ (git-ignored, never committed)
 bin/perf-test suite --profile quick --targets arca --variants plain   # a quick look
+bin/perf-test report perf-results/<run> --baseline perf-results/<earlier>   # regenerate a report,
+                         # compared with an earlier run (plain container, no server)
 
 # Manual S3 CLI verification against running Arca
 aws s3 ls --endpoint-url http://localhost:9000

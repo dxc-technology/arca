@@ -213,6 +213,120 @@ def test_a_corrupt_side_file_does_not_break_the_report(run_dir):
     assert "error" in s["maintenance"]["arca-plain"]
 
 
+# --- baseline ------------------------------------------------------------------
+
+BASELINE_TSV = SCENARIOS_TSV + "get-1k-c16\tSmall GET\tGET 1 KiB, 16 clients\tget --obj.size 1KiB\n"
+
+
+@pytest.fixture
+def baseline_dir(tmp_path):
+    """An earlier, wider run: one more scenario and a compress variant."""
+    base = tmp_path / "20261017T080000Z-aaaaaaa"
+    base.mkdir()
+    (base / "run.json").write_text(json.dumps({
+        "run_id": "20261017T080000Z-aaaaaaa", "git_sha": "aaaaaaa", "profile": "quick",
+        "targets": ["arca", "minio"], "variants": ["plain", "sse", "compress"],
+        "storage": "volume", "duration": "10s"}))
+    (base / "scenarios.tsv").write_text(BASELINE_TSV)
+    speeds = {"arca-plain": 800, "minio-plain": 2500, "arca-sse": 1000, "minio-sse": 1600,
+              "arca-compress": 700, "minio-compress": 1900}
+    for combo, ops in speeds.items():
+        d = base / combo / "warp"
+        for name in ("put-1k-c16", "get-1k-c16"):
+            write_zst(d / f"{name}.json.zst",
+                      warp_doc({"PUT": op_block(ops * 2, ops * 2 * 1024, 2000)}))
+    return base
+
+
+def only_arca_plain(run_dir):
+    """The run narrowed to Arca plain, the shape of a targeted run."""
+    import shutil
+    for combo in ("minio-plain", "minio-sse", "arca-sse"):
+        shutil.rmtree(run_dir / combo)
+    return run_dir
+
+
+def test_without_a_baseline_the_summary_says_so(run_dir):
+    s = report.build_summary(run_dir)
+    assert s["baseline"] is None
+    assert s["baseline_comparisons"] == []
+    assert s["baseline_headline"] == {}
+
+
+def test_each_scenario_is_compared_with_the_baseline(run_dir, baseline_dir):
+    s = report.build_summary(run_dir, baseline_dir)
+    cmp = {(c["scenario"], c["combo"]): c for c in s["baseline_comparisons"]}
+    c = cmp[("put-1k-c16", "arca-plain")]
+    assert (c["current_obj_per_s"], c["baseline_obj_per_s"]) == (pytest.approx(1000), pytest.approx(800))
+    assert c["ratio"] == pytest.approx(1.25)
+    assert cmp[("put-1k-c16", "arca-sse")]["ratio"] == pytest.approx(0.5)
+    assert s["baseline_headline"]["arca-plain"] == pytest.approx(1.25)
+    assert s["baseline"]["label"] == "20261017T080000Z-aaaaaaa"
+
+
+def test_only_the_scenarios_and_servers_of_the_run_are_compared(run_dir, baseline_dir):
+    s = report.build_summary(only_arca_plain(run_dir), baseline_dir)
+    assert {(c["scenario"], c["combo"]) for c in s["baseline_comparisons"]} == {("put-1k-c16", "arca-plain")}
+    # The baseline keeps the run's own scenarios, plus MinIO for the run's variants.
+    assert set(s["baseline"]["results"]) == {"put-1k-c16", "mixed-64k-c32"}
+    assert set(s["baseline"]["results"]["put-1k-c16"]) == {"arca-plain", "minio-plain"}
+
+
+def test_a_scenario_missing_from_the_baseline_has_no_baseline_figure(run_dir, baseline_dir):
+    s = report.build_summary(run_dir, baseline_dir)
+    assert "mixed-64k-c32" not in {c["scenario"] for c in s["baseline_comparisons"]}
+
+
+def test_minio_comes_from_the_baseline_when_the_run_has_none(run_dir, baseline_dir):
+    s = report.build_summary(only_arca_plain(run_dir), baseline_dir)
+    [c] = s["comparisons"]
+    assert (c["scenario"], c["variant"]) == ("put-1k-c16", "plain")
+    assert c["reference_obj_per_s"] == pytest.approx(2500)
+    assert c["ratio"] == pytest.approx(0.4)
+    assert c["reference_from_baseline"] is True
+    assert s["headline"]["plain"] == pytest.approx(0.4)
+
+
+def test_the_run_own_minio_wins_over_the_baseline(run_dir, baseline_dir):
+    s = report.build_summary(run_dir, baseline_dir)
+    c = next(c for c in s["comparisons"] if (c["scenario"], c["variant"]) == ("put-1k-c16", "plain"))
+    assert c["reference_obj_per_s"] == pytest.approx(2000)
+    assert c["reference_from_baseline"] is False
+
+
+def test_differences_in_how_the_runs_were_made_are_listed(run_dir, baseline_dir):
+    assert report.build_summary(run_dir, baseline_dir)["baseline_mismatches"] == []
+    run = json.loads((baseline_dir / "run.json").read_text())
+    run.update({"duration": "60s", "host": "Linux x86_64", "docker": {"NCPU": 8}})
+    (baseline_dir / "run.json").write_text(json.dumps(run))
+    (run_dir / "run.json").write_text(json.dumps({
+        **json.loads((run_dir / "run.json").read_text()), "docker": {"NCPU": 14}}))
+    mism = {m["field"]: (m["current"], m["baseline"])
+            for m in report.build_summary(run_dir, baseline_dir)["baseline_mismatches"]}
+    assert mism == {"duration": ("10s", "60s"), "host": (None, "Linux x86_64"),
+                    "docker.NCPU": (14, 8)}
+
+
+def test_side_files_of_the_baseline_are_kept_for_the_run_servers(run_dir, baseline_dir):
+    walks = lambda secs: {"objects": 10, "walks": [{"name": "flat", "seconds": secs}]}
+    (run_dir / "arca-plain" / "listing.json").write_text(json.dumps(walks(1.0)))
+    (baseline_dir / "arca-plain" / "listing.json").write_text(json.dumps(walks(2.0)))
+    (baseline_dir / "arca-compress" / "listing.json").write_text(json.dumps(walks(3.0)))
+    s = report.build_summary(run_dir, baseline_dir)
+    assert set(s["baseline"]["listing"]) == {"arca-plain"}
+
+
+def test_a_delta_is_good_or_bad_by_the_direction_of_the_figure():
+    assert report._delta(66, 80) == pytest.approx(-0.175)
+    assert report._delta_class(-0.175, higher_is_better=True) == "bad"
+    # Seconds: less is better, so a shorter walk is good.
+    assert report._delta_class(-0.99, higher_is_better=False) == "good"
+    # Within the noise band neither good nor bad.
+    assert report._delta_class(0.02, higher_is_better=True) == "flat"
+    assert report._delta(1, 0) is None
+    assert report._delta(None, 1) is None
+
+
 # --- HTML ----------------------------------------------------------------------
 
 def test_html_names_every_scenario_and_links_the_raw_files(run_dir):
@@ -250,3 +364,52 @@ def test_whole_run_figures_are_marked_in_the_html(run_dir):
     html = report.render_html(report.build_summary(run_dir))
     assert "MinIO: whole-run average" in html
     assert "†</span>" in html
+
+
+# --- HTML with a baseline -------------------------------------------------------
+
+def test_html_shows_the_baseline_next_to_the_run(run_dir, baseline_dir):
+    html = report.render_html(report.build_summary(only_arca_plain(run_dir), baseline_dir))
+    assert 'class="fill base"' in html
+    assert "Arca (baseline)" in html
+    assert "MinIO (baseline)" in html
+    # 1000 now against 800 then: +25%, an improvement.
+    assert '<span class="delta good">+25%</span>' in html
+    assert "20261017T080000Z-aaaaaaa" in html
+    assert 'href="../20261017T080000Z-aaaaaaa/report.html"' in html
+
+
+def test_html_has_the_baseline_rows_in_the_scenario_details(run_dir, baseline_dir):
+    html = report.render_html(report.build_summary(only_arca_plain(run_dir), baseline_dir))
+    assert "Arca · Plain (baseline)" in html
+    assert "MinIO · Plain (baseline)" in html
+
+
+def test_html_compares_listing_walks_with_the_baseline(run_dir, baseline_dir):
+    walks = lambda secs: {"objects": 10, "walks": [{"name": "delimiter-root", "seconds": secs}]}
+    (run_dir / "arca-plain" / "listing.json").write_text(json.dumps(walks(0.002)))
+    (baseline_dir / "arca-plain" / "listing.json").write_text(json.dumps(walks(0.2)))
+    html = report.render_html(report.build_summary(run_dir, baseline_dir))
+    assert '<span class="delta good">−99%</span>' in html
+
+
+def test_html_warns_when_the_runs_are_not_alike(run_dir, baseline_dir):
+    run = json.loads((baseline_dir / "run.json").read_text())
+    (baseline_dir / "run.json").write_text(json.dumps({**run, "duration": "60s"}))
+    html = report.render_html(report.build_summary(run_dir, baseline_dir))
+    assert "not made the same way" in html
+    assert "duration" in html
+
+
+def test_html_without_a_baseline_has_no_baseline_markup(run_dir):
+    html = report.render_html(report.build_summary(run_dir))
+    assert 'class="fill base"' not in html
+    assert "(baseline)" not in html
+    assert 'class="delta' not in html
+
+
+def test_main_takes_a_baseline(run_dir, baseline_dir):
+    assert report.main([str(run_dir), "--baseline", str(baseline_dir)]) == 0
+    summary = json.loads((run_dir / "summary.json").read_text())
+    assert summary["baseline"]["run"]["run_id"] == "20261017T080000Z-aaaaaaa"
+    assert "Arca (baseline)" in (run_dir / "report.html").read_text()

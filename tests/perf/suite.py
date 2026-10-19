@@ -324,7 +324,7 @@ def cmd_maintenance(args) -> int:
 
 def cmd_report(args) -> int:
     import report
-    return report.main([args.run_dir])
+    return report.main([args.run_dir] + (["--baseline", args.baseline] if args.baseline else []))
 
 
 def parse_args(argv: list[str]):
@@ -375,6 +375,7 @@ def parse_args(argv: list[str]):
 
     s = sub.add_parser("report")
     s.add_argument("run_dir")
+    s.add_argument("--baseline", help="an earlier run directory to compare with")
     s.set_defaults(fn=cmd_report)
     return p.parse_args(argv)
 
