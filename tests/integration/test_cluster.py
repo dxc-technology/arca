@@ -297,6 +297,57 @@ def test_write_replicates_to_all_nodes():
 
 
 @pytest.mark.cluster_full
+def test_revoked_credential_is_refused_at_once_on_every_node():
+    """A credential deactivated through node 1 is refused at once by nodes 2
+    and 3, which had just used it and so had it cached: the replicated
+    control-plane op must invalidate their identity cache, not leave the
+    revocation to the cache's expiry (5 s; the check allows 2)."""
+    created = _admin_post(NODES[1], "/admin/credentials", {"description": "cl-revoke"})
+    ak, sk = created["access_key_id"], created["secret_access_key"]
+    clients = {
+        n: boto3.client(
+            "s3",
+            endpoint_url=NODES[n],
+            aws_access_key_id=ak,
+            aws_secret_access_key=sk,
+            region_name=REGION,
+            config=Config(retries={"max_attempts": 1, "mode": "standard"}),
+        )
+        for n in NODES
+    }
+    try:
+        # The credential reaches every node; using it there caches it.
+        deadline = time.time() + 30
+        pending = set(NODES)
+        while pending and time.time() < deadline:
+            for n in list(pending):
+                try:
+                    clients[n].list_buckets()
+                    pending.discard(n)
+                except ClientError:
+                    pass
+            time.sleep(0.2)
+        assert not pending, f"credential never usable on nodes {sorted(pending)}"
+        for n in (2, 3):
+            clients[n].list_buckets()
+
+        _admin_request("PUT", NODES[1], f"/admin/credentials/{ak}", {"active": False})
+
+        for n in (2, 3):
+            deadline = time.time() + 2
+            while True:
+                try:
+                    clients[n].list_buckets()
+                except ClientError as e:
+                    assert e.response["Error"]["Code"] == "InvalidAccessKeyId"
+                    break
+                assert time.time() < deadline, f"node {n} still accepts the revoked key"
+                time.sleep(0.1)
+    finally:
+        _admin_request("DELETE", NODES[1], f"/admin/credentials/{ak}")
+
+
+@pytest.mark.cluster_full
 def test_read_after_write_via_lb():
     """An object is immediately readable through the LB after the write returns."""
     lb = _s3(LB)

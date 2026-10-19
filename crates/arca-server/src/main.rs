@@ -1399,19 +1399,25 @@ where
         + arca_core::store::MaintenanceStore
         + 'static,
 {
+    // Every request resolves its credential, user and policies through these:
+    // the identity faces of the backend share one cache, invalidated by any
+    // write through any of them (see `CachingIdentityStore`). Below the
+    // cluster decorators, so replicated ops and the anti-entropy merge, which
+    // write through the inner stores, invalidate it too.
+    let identity = Arc::new(arca_storage::CachingIdentityStore::new(store.clone()));
     StoreSet {
         metadata: store.clone() as Arc<dyn arca_core::store::MetadataStore>,
-        credentials: store.clone() as Arc<dyn CredentialStore>,
-        users: store.clone() as Arc<dyn arca_core::store::UserStore>,
-        teams: store.clone() as Arc<dyn arca_core::store::TeamStore>,
-        grants: store.clone() as Arc<dyn arca_core::store::GrantStore>,
+        credentials: identity.clone() as Arc<dyn CredentialStore>,
+        users: identity.clone() as Arc<dyn arca_core::store::UserStore>,
+        teams: identity.clone() as Arc<dyn arca_core::store::TeamStore>,
+        grants: identity.clone() as Arc<dyn arca_core::store::GrantStore>,
         server_config: store.clone() as Arc<dyn arca_core::store::ServerConfigStore>,
         audit: Some(store.clone() as Arc<dyn arca_core::store::AuditStore>),
         metrics: Some(store.clone() as Arc<dyn arca_core::store::MetricsStore>),
         notification: Some(store.clone() as Arc<dyn arca_core::store::NotificationStore>),
         presigned_url: Some(store.clone() as Arc<dyn arca_core::store::PresignedUrlStore>),
-        control_tombstone: store.clone() as Arc<dyn arca_core::store::ControlTombstoneStore>,
-        control_snapshot: store.clone() as Arc<dyn arca_core::store::ControlSnapshotStore>,
+        control_tombstone: identity.clone() as Arc<dyn arca_core::store::ControlTombstoneStore>,
+        control_snapshot: identity as Arc<dyn arca_core::store::ControlSnapshotStore>,
         maintenance: store.clone() as Arc<dyn arca_core::store::MaintenanceStore>,
         replication: store as Arc<dyn arca_core::store::ReplicationStore>,
     }

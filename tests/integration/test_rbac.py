@@ -1217,6 +1217,111 @@ class TestAccessControlE2E:
             signed_request("DELETE", f"{endpoint}/admin/teams/{team_id}", creds)
             signed_request("DELETE", f"{endpoint}/admin/users/{user_id}", creds)
 
+    # -- Revocation takes effect on the very next request --
+    #
+    # Each test first uses the identity, so the server has it cached, then
+    # revokes it through the admin API and expects the next S3 request to be
+    # refused: the identity cache must be invalidated by the write, not left
+    # to expire.
+
+    def _user_s3(self, endpoint, user_cred):
+        return boto3.client(
+            "s3",
+            endpoint_url=endpoint,
+            aws_access_key_id=user_cred["access_key_id"],
+            aws_secret_access_key=user_cred["secret_access_key"],
+            region_name="us-east-1",
+        )
+
+    def _assert_refused(self, user_s3, code):
+        with pytest.raises(ClientError) as exc:
+            user_s3.list_buckets()
+        assert exc.value.response["Error"]["Code"] == code
+
+    def test_deactivated_credential_is_refused_at_once(self, endpoint, creds):
+        grant_id = self._get_grant_id(endpoint, creds, "S3FullAccess")
+        uname = f"revoke-key-{uuid.uuid4().hex[:8]}"
+        user_id, user_cred = self._setup_user_with_grants(
+            endpoint, creds, uname, [grant_id]
+        )
+        key_url = f"{endpoint}/admin/credentials/{user_cred['access_key_id']}"
+        try:
+            user_s3 = self._user_s3(endpoint, user_cred)
+            user_s3.list_buckets()
+
+            resp = signed_request("PUT", key_url, creds, data={"active": False})
+            assert resp.status_code in (200, 204)
+            self._assert_refused(user_s3, "InvalidAccessKeyId")
+
+            resp = signed_request("PUT", key_url, creds, data={"active": True})
+            assert resp.status_code in (200, 204)
+            user_s3.list_buckets()
+        finally:
+            self._cleanup_user(endpoint, creds, user_id, user_cred["access_key_id"])
+
+    def test_deleted_credential_is_refused_at_once(self, endpoint, creds):
+        grant_id = self._get_grant_id(endpoint, creds, "S3FullAccess")
+        uname = f"delete-key-{uuid.uuid4().hex[:8]}"
+        user_id, user_cred = self._setup_user_with_grants(
+            endpoint, creds, uname, [grant_id]
+        )
+        try:
+            user_s3 = self._user_s3(endpoint, user_cred)
+            user_s3.list_buckets()
+
+            resp = signed_request(
+                "DELETE",
+                f"{endpoint}/admin/credentials/{user_cred['access_key_id']}",
+                creds,
+            )
+            assert resp.status_code in (200, 204)
+            self._assert_refused(user_s3, "InvalidAccessKeyId")
+        finally:
+            self._cleanup_user(endpoint, creds, user_id, user_cred["access_key_id"])
+
+    def test_detached_grant_is_refused_at_once(self, endpoint, creds):
+        grant_id = self._get_grant_id(endpoint, creds, "S3FullAccess")
+        uname = f"revoke-grant-{uuid.uuid4().hex[:8]}"
+        user_id, user_cred = self._setup_user_with_grants(
+            endpoint, creds, uname, [grant_id]
+        )
+        try:
+            user_s3 = self._user_s3(endpoint, user_cred)
+            user_s3.list_buckets()
+
+            resp = signed_request(
+                "DELETE", f"{endpoint}/admin/users/{user_id}/grants/{grant_id}", creds
+            )
+            assert resp.status_code in (200, 204)
+            self._assert_refused(user_s3, "AccessDenied")
+        finally:
+            self._cleanup_user(endpoint, creds, user_id, user_cred["access_key_id"])
+
+    def test_leaving_the_granting_team_is_refused_at_once(self, endpoint, creds):
+        grant_id = self._get_grant_id(endpoint, creds, "S3FullAccess")
+        uname = f"revoke-team-{uuid.uuid4().hex[:8]}"
+        user_id, user_cred = self._setup_user_with_grants(endpoint, creds, uname, [])
+        resp = signed_request(
+            "POST",
+            f"{endpoint}/admin/teams",
+            creds,
+            data={"name": f"revoke-team-{uuid.uuid4().hex[:8]}"},
+        )
+        team_id = resp.json()["team_id"]
+        member_url = f"{endpoint}/admin/teams/{team_id}/members/{user_id}"
+        try:
+            signed_request("PUT", f"{endpoint}/admin/teams/{team_id}/grants/{grant_id}", creds)
+            signed_request("PUT", member_url, creds)
+            user_s3 = self._user_s3(endpoint, user_cred)
+            user_s3.list_buckets()
+
+            resp = signed_request("DELETE", member_url, creds)
+            assert resp.status_code in (200, 204)
+            self._assert_refused(user_s3, "AccessDenied")
+        finally:
+            signed_request("DELETE", f"{endpoint}/admin/teams/{team_id}", creds)
+            self._cleanup_user(endpoint, creds, user_id, user_cred["access_key_id"])
+
     def test_custom_policy_restricts_to_bucket(self, endpoint, creds):
         """Custom grant limiting to a specific bucket should work."""
         bucket = f"restricted-{uuid.uuid4().hex[:8]}"

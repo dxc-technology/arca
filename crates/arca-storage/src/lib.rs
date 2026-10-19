@@ -13,6 +13,7 @@ pub mod compression;
 pub mod encrypted_blob;
 pub mod encryption;
 pub mod fs;
+pub mod identity_cache;
 pub mod inplace;
 pub mod migration;
 #[cfg(feature = "postgres")]
@@ -25,6 +26,7 @@ pub use caching::CachingMetadataStore;
 pub use compressed_blob::{BucketCompressionConfig, CompressingBlobStore};
 pub use encrypted_blob::EncryptingBlobStore;
 pub use fs::FsBlobStore;
+pub use identity_cache::CachingIdentityStore;
 #[cfg(feature = "postgres")]
 pub use pg::PgStore;
 pub use sqlite::SqliteStore;
