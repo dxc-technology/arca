@@ -185,7 +185,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 
 | Suite | Tests | Details |
 |-------|------:|---------|
-| Unit tests (Rust) | 1364 | arca-auth: 47, arca-core: 285, arca-proto: 207, arca-server: 401, arca-storage: 424 |
+| Unit tests (Rust) | 1375 | arca-auth: 47, arca-core: 285, arca-proto: 207, arca-server: 403, arca-storage: 433 |
 | Integration — boto3 | 146 | buckets, objects, list, multipart, copy, folders, auth, admin, credentials, conditional ops |
 | Integration — Conditional Writes (CAS) | 15 | sequential If-Match/If-None-Match/CompleteMultipartUpload/DeleteObject preconditions, N=8 racing writers under barrier release (exactly one winner, every run), conditional DELETE racing an unconditional overwrite (never destroys the newer object), DeleteObjects batch precondition checked against the targeted version, not the bucket's latest |
 | Integration — Multipart abort race | 3 | abort after complete leaves the object readable, complete after abort fails and writes nothing, and an abort swept across the whole life of a Complete (whoever wins, a completed object always reads back intact); also run against PostgreSQL |
@@ -196,7 +196,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Integration — Copy-source conditions | 16 | `x-amz-copy-source-if-match`/`-if-none-match`/`-if-modified-since`/`-if-unmodified-since`: a passing and a failing case per header on CopyObject and UploadPartCopy (412, nothing copied or stored) |
 | Integration — Virtual-hosted style | 6 | `bucket.<domain>/key` PUT/GET/HEAD/DELETE, bucket root listing, query string, missing bucket (`bin/test virtual-host`, a server started with `server.domain`) |
 | Integration — Versioning | 28 | versioning config, PUT/GET/HEAD/DELETE with versionId, delete markers, batch delete with VersionId, ListVersions (paginated inside a key and past the null version, a vanished marker refused, grouped by a delimiter with and without a prefix, delimited pages that neither skip nor repeat), copy; also run against PostgreSQL |
-| Integration — Tagging | 25 | Put/Get/Delete object tags, tag limits and validation, tagging on versioned objects, tag-directive on copy, `x-amz-tagging-count` on GET and HEAD (latest and specific versions); also run against PostgreSQL |
+| Integration — Tagging | 28 | Put/Get/Delete object tags, tag limits and validation, tagging on versioned objects, tag-directive on copy (including a copy onto itself and an invalid `REPLACE` tag set), inline tags of a multipart upload, `x-amz-tagging-count` on GET and HEAD (latest and specific versions); also run against PostgreSQL |
 | Integration — Monitoring | 29 | Prometheus metrics, audit log, metrics history, instance settings, preview limits, region (TD-004) |
 | Integration — Lifecycle | 17 | Put/Get/Delete lifecycle config, expiration rules, noncurrent version, abort upload, tag/and filters |
 | Integration — Object Lock | 19 | Put/Get config (at creation, on empty existing buckets, rejection on non-empty), retention, legal hold, COMPLIANCE/GOVERNANCE enforcement, bypass, delete markers |
@@ -233,7 +233,7 @@ bin/docs-serve           # serve documentation locally (http://localhost:8000)
 | Connector integrations | 84 | Redis, NATS, MQTT, PostgreSQL, MySQL, MongoDB, Kafka, AMQP, Elasticsearch, Syslog, SMTP, gRPC — each: delivery, custom destination, delete event, multiple events, payload format, connectivity test |
 | **Arca tests** | **2,564** | **All tests written for this project** |
 | [Ceph s3-tests](https://dxc-technology.github.io/arca/s3-compatibility/) | 825 | 385 pass, 349 fail, 91 skip — 0 unexpected failures (RGW-only extensions excluded; 2 pass on AWS behaviour where RGW differs) |
-| **Total** | **3,433** | |
+| **Total** | **3,447** | |
 
 ## License
 

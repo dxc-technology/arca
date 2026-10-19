@@ -1620,6 +1620,14 @@ comments. Run <code>grep -r 'TECHDEBT' crates/</code> to find all markers.</p>
 <td><code>test_lifecycle.py</code></td>
 <td><code>crates/arca-server/src/worker.rs</code></td>
 </tr>
+<tr>
+<td>TD-057</td>
+<td>Fresh blob orphaned after a failed metadata write</td>
+<td>PutObject, CopyObject, UploadPart, UploadPartCopy and CompleteMultipartUpload write the blob and its sidecar, then the metadata row. When that write fails with a database error, the handler answers 500 and keeps the blob: only a refused precondition (412, <code>NoSuchKey</code>, <code>NoSuchUpload</code>), which is known to have written nothing, deletes it. Deleting on every error would be unsafe: a cluster quorum shortfall (503) comes after the local commit, which is not rolled back (decision H1), and an error at COMMIT itself (a dropped PostgreSQL connection, a SQLite I/O error) leaves the outcome unknown, so the row may exist. The orphan wastes space until <code>gc</code> reclaims it after its grace period, and until then <code>arca recover</code>, which rebuilds rows from sidecars, would bring the failed write back as an object</td>
+<td>The stores report a definite "not committed" (an error raised before COMMIT, with the transaction rolled back) as its own error kind, through the cache and cluster decorators, and the five handlers delete the fresh blob (the assembled one for Complete, never its parts) only on that kind</td>
+<td>none yet: needs a store that fails on demand</td>
+<td><code>crates/arca-proto/src/handlers/object.rs</code>, <code>crates/arca-proto/src/handlers/multipart.rs</code></td>
+</tr>
 </tbody>
 </table>
 <hr />
