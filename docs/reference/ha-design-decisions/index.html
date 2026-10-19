@@ -1048,6 +1048,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#h13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H13: PostgreSQL single node: a per-key write gate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#other-named-mechanisms" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1597,6 +1608,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#h13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H13: PostgreSQL single node: a per-key write gate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#other-named-mechanisms" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1628,7 +1650,7 @@
 
 
 <h1 id="ha-design-decisions">HA Design Decisions<a class="headerlink" href="#ha-design-decisions" title="Permanent link">&para;</a></h1>
-<p>These are the design decisions behind Arca's HA clustering, taken during the HA hardening that shipped in <strong>v0.26.0</strong> (Phase 29.1, the remediation of the Phase 29 review). Code comments cite them as "decision H<em>n</em>" (for example <code>decision H4</code> in <code>cluster_meta.rs</code>); each section below has a stable anchor (<code>#h1</code> to <code>#h12</code>) so those citations stay resolvable.</p>
+<p>These are the design decisions behind Arca's HA clustering, taken during the HA hardening that shipped in <strong>v0.26.0</strong> (Phase 29.1, the remediation of the Phase 29 review). Code comments cite them as "decision H<em>n</em>" (for example <code>decision H4</code> in <code>cluster_meta.rs</code>); each section below has a stable anchor (<code>#h1</code> to <code>#h13</code>) so those citations stay resolvable.</p>
 <p>Each decision states what the code does <strong>today</strong>, which is not always what was first planned: where a decision was refined later, the section says so.</p>
 <ul>
 <li>For how to run a cluster, see the operator guide: <a href="../../guide/ha/">High Availability</a>.</li>
@@ -1704,6 +1726,11 @@
 <td>Authenticate the peer, not just the request</td>
 <td>v0.26.0</td>
 </tr>
+<tr>
+<td><a href="#h13">H13</a></td>
+<td>PostgreSQL single node: a per-key write gate instead of the counter</td>
+<td>Unreleased</td>
+</tr>
 </tbody>
 </table>
 <h2 id="h1">H1: True write quorum<a class="headerlink" href="#h1" title="Permanent link">&para;</a></h2>
@@ -1726,9 +1753,9 @@
 <h2 id="h3">H3: PostgreSQL commit-ordered <code>seq</code> cursor<a class="headerlink" href="#h3" title="Permanent link">&para;</a></h2>
 <p><strong>Decision.</strong> On PostgreSQL the node-local object write cursor (<code>seq</code>, the key of the changed-since manifest that anti-entropy pulls) comes from a single-row counter table, <code>object_seq</code>, advanced with <code>UPDATE object_seq SET value = value + 1 RETURNING value</code> <strong>inside the same transaction as the row</strong>. The counter's row lock is held until commit, so <code>seq</code> order equals commit order: by the time a reader sees <code>seq = N+1</code> committed, <code>N</code> is either committed and visible or aborted for good (a harmless gap). This mirrors the SQLite backend, which already used a counter table. Every objects-writing transaction takes the <code>seq</code> before its first row-mutating statement (a uniform lock order that rules out deadlocks).</p>
 <p><strong>Rationale.</strong> The original PostgreSQL <code>SEQUENCE</code> is not transactional: a transaction holding <code>seq = 100</code> could still be in flight while <code>seq = 101</code> committed. A peer pulling the manifest saw 101, moved its high-water mark past 100, and the row committed later with 100 was never delivered by the incremental sync: silent replication loss under concurrent writes.</p>
-<p><strong>Cost.</strong> Concurrent object writes on PostgreSQL serialize on the counter row for the final stretch of their transaction (from taking the <code>seq</code> to commit). Accepted: it is no worse than SQLite, whose single write connection serializes every write entirely.</p>
+<p><strong>Cost.</strong> Concurrent object writes on PostgreSQL serialize on the counter row for the final stretch of their transaction (from taking the <code>seq</code> to commit). Accepted: it is no worse than SQLite, whose single write connection serializes every write entirely. Since <a href="#h13">H13</a> the cost is paid in cluster mode only.</p>
 <p><strong>Alternatives rejected.</strong> A probabilistic guard window (do not return the newest N rows, or the last T milliseconds, or read only up to a snapshot-safe watermark). It closes most of the window but not all of it, and makes correctness depend on a tuning value. A commit-ordered cursor is exact.</p>
-<p><strong>Where in the code.</strong> Migration <code>crates/arca-storage/src/pg/migrations/0009_commit_ordered_seq.sql</code> (creates <code>object_seq</code>, seeded from the larger of <code>MAX(seq)</code> and the old sequence, and drops the sequence); <code>next_object_seq</code> in <code>crates/arca-storage/src/pg/metadata.rs</code>, called by every write path.</p>
+<p><strong>Where in the code.</strong> Migration <code>crates/arca-storage/src/pg/migrations/0009_commit_ordered_seq.sql</code> (creates <code>object_seq</code>, seeded from the larger of <code>MAX(seq)</code> and the old sequence, and drops the sequence); <code>next_object_seq</code> in <code>crates/arca-storage/src/pg/write_gate.rs</code>, called by every write path in cluster mode.</p>
 <p><strong>Since.</strong> v0.26.0.</p>
 <h2 id="h4">H4: Scope of ACK counting<a class="headerlink" href="#h4" title="Permanent link">&para;</a></h2>
 <p><strong>Decision.</strong> <a href="#h1">H1</a> ACK counting covers <strong>object data-plane mutations only</strong>: <code>PutObject</code> (and every path that writes an object row), the versioned delete marker, and version hard deletes (tombstones in cluster mode). Everything else passes <strong>only the admission gate</strong> and then fans out <strong>best-effort</strong> (the ACKs are not counted):</p>
@@ -1816,6 +1843,18 @@
 <p><strong>Alternatives rejected.</strong> <em>Kubernetes-style auto-enrollment</em> (the first node generates a CA and joining peers get their certificate requests signed over a channel authenticated by the cluster secret). Issuance gated by the standing secret would collapse mTLS to the strength of the secret: whoever has the secret could mint a certificate. An operator-distributed CA is an independent second factor: pushing or pulling cluster data requires the secret <strong>and</strong> a CA-signed key. (Kubernetes mitigates the same problem with short-lived join tokens; that remains a possible future evolution.)</p>
 <p><strong>Where in the code.</strong> <code>ping_nonce_mac</code>, <code>verify_ping_nonce_mac</code>, <code>ClusterPingResponse</code> and <code>PeerNode::eligible</code> in <code>crates/arca-core/src/cluster.rs</code>; <code>probe_peer</code> in <code>crates/arca-server/src/cluster/membership.rs</code>; <code>ping</code> and <code>health</code> in <code>crates/arca-proto/src/handlers/cluster.rs</code>; <code>cluster_auth_middleware</code> and <code>ClusterPeerCertVerified</code> in <code>crates/arca-proto/src/middleware/cluster_auth.rs</code>; the client-certificate verifier in <code>crates/arca-server/src/tls.rs</code>; <code>ClusterTlsConfig</code> and <code>validate_cluster_transport</code> in <code>crates/arca-server/src/config.rs</code>; <code>generate_cluster</code> in <code>crates/arca-server/src/tls_generate.rs</code>; <code>REPLAY_WINDOW_SECS</code> in <code>crates/arca-proto/src/middleware/mod.rs</code>.</p>
 <p><strong>Since.</strong> v0.26.0.</p>
+<h2 id="h13">H13: PostgreSQL single node: a per-key write gate<a class="headerlink" href="#h13" title="Permanent link">&para;</a></h2>
+<p><strong>Decision.</strong> On a single node (no <code>[cluster]</code>, or <code>enabled = false</code>) the PostgreSQL write gate of <a href="#h3">H3</a>, the <code>object_seq</code> counter row, is replaced by two things:</p>
+<ol>
+<li><strong>A per-key gate.</strong> The first statement of every objects-writing transaction takes <code>pg_advisory_xact_lock</code> on a 64-bit FNV-1a hash of <code>bucket NUL key</code>, released with the transaction. The writers of one key still serialize, so the CAS read that follows sees every earlier writer's commit, exactly as with the counter; writers of different keys no longer wait for each other. A DeleteObjects batch takes the locks of all its keys first, in ascending order (two overlapping batches cannot deadlock), then applies every entry in one transaction, each under its own savepoint.</li>
+<li><strong>A non-transactional seq.</strong> <code>objects.seq</code> comes from the <code>object_seq_local</code> SEQUENCE (migration 0018): unique and monotonic, not commit-ordered, which nothing on a single node needs. The rows still carry a <code>seq</code>, so the node can join a cluster later without rewriting them.</li>
+</ol>
+<p>Cluster mode is unchanged. When the store opens (server or offline tool, both modes), the counter and the sequence are raised to the highest <code>seq</code> in use, never lowered, so whichever generator the run uses starts above every stored row. The offline tools open the store in the node's mode, so a tool running next to the server takes the same gate.</p>
+<p><strong>Rationale.</strong> The counter serialized every object write in the database, single node included, for a guarantee only the anti-entropy cursor uses. Measured on PostgreSQL 17 (PUT 1 KiB, fsync on): 790 objects/s with 16 clients and 780 with 64, with about 95% of the active backends waiting on the counter row. The CAS gate needs serialization per key, not global.</p>
+<p><strong>Failure paths.</strong> A hash collision only makes two unrelated keys wait for each other. A crash releases the transaction's advisory locks. A deadlock PostgreSQL still detects fails the transaction like any database error (every entry of a batch reports <code>InternalError</code>). A configuration switched to cluster by hand, without <code>migrate-topology</code>, starts with the counter already above every single-node <code>seq</code>.</p>
+<p><strong>Alternatives rejected.</strong> <em>SERIALIZABLE isolation</em>: retries on every conflict, and every caller would need a retry loop. <em><code>SELECT ... FOR UPDATE</code> on the current row</em>: there is no row to lock when the key does not exist yet (<code>If-None-Match: *</code>), which is exactly the race to close. <em>Keeping the counter and shortening its hold</em>: the hold already starts at the first statement, by design (it is the gate).</p>
+<p><strong>Where in the code.</strong> <code>crates/arca-storage/src/pg/write_gate.rs</code> (<code>begin_object_write</code>, <code>lock_keys</code>, <code>reconcile_object_seq</code>); <code>delete_objects_if</code> in <code>crates/arca-storage/src/pg/metadata.rs</code>; migration <code>0018_local_object_seq.sql</code>; <code>open_metadata_store</code> in <code>crates/arca-server/src/offline_store.rs</code>.</p>
+<p><strong>Since.</strong> Unreleased.</p>
 <h2 id="other-named-mechanisms">Other named mechanisms<a class="headerlink" href="#other-named-mechanisms" title="Permanent link">&para;</a></h2>
 <p>The review and the hardening plan labelled findings with section numbers and short IDs. Code comments and the changelog still use some of them; this glossary gives each a plain name. All shipped in v0.26.0.</p>
 <table>

@@ -2433,6 +2433,11 @@
 <td><code>MetadataStore</code> decorator: in-memory LRU + TTL cache of bucket lookups and latest-object lookups, invalidated on writes</td>
 </tr>
 <tr>
+<td><code>CachingIdentityStore</code></td>
+<td>arca-storage (<code>identity_cache.rs</code>)</td>
+<td>Decorator of the credential, user, team and grant stores (and the control snapshot and tombstones): caches the lookups every authenticated request makes; any write through it empties the whole cache, and entries expire after 5 seconds, which bounds the delay of a change written by another process</td>
+</tr>
+<tr>
 <td><code>FsBlobStore</code></td>
 <td>arca-storage</td>
 <td><code>BlobStore</code> and <code>RawBlobOps</code> on the local filesystem</td>
@@ -2500,7 +2505,11 @@
 <td><code>FsBlobStore</code> as <code>RawBlobOps</code></td>
 </tr>
 <tr>
-<td><code>credentials</code>, <code>users</code>, <code>grants</code>, <code>teams</code>, <code>server_config</code></td>
+<td><code>credentials</code>, <code>users</code>, <code>grants</code>, <code>teams</code></td>
+<td>[cluster decorator, cluster] → <code>CachingIdentityStore</code> (one shared instance) → backend store</td>
+</tr>
+<tr>
+<td><code>server_config</code></td>
 <td>[cluster decorator, cluster] → backend store</td>
 </tr>
 <tr>
@@ -2513,11 +2522,12 @@
 <ul>
 <li><strong>Compression sits above encryption</strong>: plaintext is compressed, then the compressed bytes are encrypted.</li>
 <li><strong>Write routing</strong>: <code>AppState::blob_for_write(bucket)</code> returns <code>blob</code> when encryption is on globally or for that bucket (a <code>bucket_config</code> lookup cached for 30 seconds), otherwise <code>plain_blob</code>. Reads always go through <code>blob</code>; the encryption layer reads the sidecar to tell encrypted blobs from plain ones, so mixed content coexists.</li>
-<li><strong>Cluster decorators sit on top</strong>, above cache, compression and encryption, so they ship already-encoded bytes and canonical rows verbatim. The receive endpoints and anti-entropy apply through the inner (pre-decorator) stores, so a replicated write is never fanned out again.</li>
+<li><strong>Cluster decorators sit on top</strong>, above cache, compression and encryption, so they ship already-encoded bytes and canonical rows verbatim. The receive endpoints and anti-entropy apply through the inner (pre-decorator) stores, so a replicated write is never fanned out again. The identity cache sits below them, so those applies invalidate it too.</li>
+<li><strong>A read parses the sidecar once.</strong> Each blob layer's <code>get</code> reads the <code>.meta</code> sidecar and hands it down through <code>BlobStore::get_known</code> (the cluster decorator hands down the one its read-repair probe read), instead of every layer, and every inner range read of a compressed payload, reading it again.</li>
 </ul>
 <h3 id="metadata-backends">Metadata backends<a class="headerlink" href="#metadata-backends" title="Permanent link">&para;</a></h3>
-<p><strong>SQLite</strong> (<code>arca-storage/src/sqlite/</code>, via <code>tokio-rusqlite</code>): one write connection serialises every mutation, and a pool of read-only connections (<code>PRAGMA query_only</code>) serves SELECTs round-robin. Every connection runs in WAL mode, which lets readers proceed during a write. The database is <code>{data_dir}/arca.db</code>.</p>
-<p><strong>PostgreSQL</strong> (<code>arca-storage/src/pg/</code>, via <code>sqlx</code>): an async connection pool, with the server's default READ COMMITTED isolation (Arca does not raise it). Enabled with <code>metadata_backend = "postgres"</code> and a <code>[storage.postgres]</code> section.</p>
+<p><strong>SQLite</strong> (<code>arca-storage/src/sqlite/</code>, via <code>tokio-rusqlite</code>): one write connection serialises every mutation, and a pool of read-only connections (<code>PRAGMA query_only</code>) serves SELECTs round-robin. Every connection runs in WAL mode, which lets readers proceed during a write, and keeps up to 256 prepared statements (<code>prepare_cached</code>; SQL that varies per call, such as a page size, is a bound parameter so one statement serves every call). DeleteObjects applies its whole batch in one write transaction, a savepoint per key (<code>delete_objects_if</code>). The database is <code>{data_dir}/arca.db</code>.</p>
+<p><strong>PostgreSQL</strong> (<code>arca-storage/src/pg/</code>, via <code>sqlx</code>): an async connection pool, with the server's default READ COMMITTED isolation (Arca does not raise it). Enabled with <code>metadata_backend = "postgres"</code> and a <code>[storage.postgres]</code> section. Object writes are serialised per key on a single node and per node in a cluster (the write gate, see <a href="#conditional-writes">Conditional Writes</a>).</p>
 <p>Both backends keep a version-tracked <code>_migrations</code> table and apply pending migrations at startup. The two migration sequences are numbered independently (<code>sqlite/migrations.rs</code>, <code>pg/migrations/*.sql</code>) but converge on the same logical schema. Switching backend in place is <code>arca migrate-db</code> (see <a href="#configuration-migration-without-data-migration">Configuration migration</a>).</p>
 <h3 id="database-tables">Database tables<a class="headerlink" href="#database-tables" title="Permanent link">&para;</a></h3>
 <p>The same tables exist in both backends:</p>
@@ -2552,7 +2562,7 @@
 </tr>
 <tr>
 <td><code>object_seq</code></td>
-<td>Single-row node-local counter that stamps <code>objects.seq</code></td>
+<td>Single-row node-local counter that stamps <code>objects.seq</code> (PostgreSQL: cluster mode only; a single node uses the <code>object_seq_local</code> sequence)</td>
 <td>Node-local</td>
 </tr>
 <tr>
@@ -2752,7 +2762,11 @@
 <li><strong>The authoritative check is inside the metadata transaction.</strong> <code>put_object_if</code>, <code>delete_object_if</code> and <code>delete_object_version_if</code> (<code>arca-core/src/store/metadata.rs</code>) take a <code>WritePrecondition</code> / <code>DeletePrecondition</code> and evaluate it, with the same <code>evaluate</code> function, inside the transaction that installs the new version, delete marker or tombstone. On a mismatch nothing is written and the store returns <code>PreconditionFailed</code> (or <code>NoSuchKey</code> for <code>If-Match</code> on a missing object). The unconditional <code>put_object</code> / <code>delete_object</code> / <code>delete_object_version</code> are default methods that pass an empty precondition.</li>
 <li><strong>Handler checks are only an optimisation.</strong> Handlers may reject a stale request before reading its body; that early check cannot decide a race, the commit-time check does.</li>
 <li><strong>SQLite</strong> is atomic by construction: every write runs on the single writer connection, so no other writer can commit between the check and the write (<code>sqlite/metadata.rs</code>).</li>
-<li><strong>PostgreSQL</strong> runs at READ COMMITTED, where a plain SELECT never blocks. Each objects-writing transaction therefore takes its first lock with <code>next_object_seq</code> (an <code>UPDATE ... RETURNING</code> on the <code>object_seq</code> row) and only then runs the CAS read. Once the lock is granted, every previously serialised writer has committed, so the read sees current state. A CAS read placed before that statement would read a stale snapshot and let two conflicting writers both succeed (<code>pg/metadata.rs</code>; regression coverage is missing, TD-039).</li>
+<li><strong>PostgreSQL</strong> runs at READ COMMITTED, where a plain SELECT never blocks. Each objects-writing transaction therefore takes a lock first, the write gate (<code>pg/write_gate.rs</code>), and only then runs the CAS read. Once the gate is granted, every earlier writer of the key has committed, so the read sees current state. A CAS read placed before the gate would read a stale snapshot and let two conflicting writers both succeed (<code>bin/test postgres</code> runs the conditional-write suite against it). The gate depends on the mode:<ul>
+<li><strong>Single node</strong>: a transaction-level advisory lock on a hash of <code>(bucket, key)</code> (<code>pg_advisory_xact_lock</code>, FNV-1a 64), so writes to different keys run in parallel and only the writers of one key wait for each other. A DeleteObjects batch takes the locks of all its keys first, in ascending order, so overlapping batches cannot deadlock; it then applies the whole batch in one transaction, one savepoint per entry. A hash collision only adds a wait. Decision <a href="../ha-design-decisions/#h13">H13</a>.</li>
+<li><strong>Cluster</strong>: the <code>object_seq</code> counter row (<code>UPDATE ... RETURNING</code>), which serialises every object write of the node until commit, because the <code>seq</code> cursor must be commit-ordered (next section).</li>
+</ul>
+</li>
 <li><strong>A losing writer has already uploaded its whole body.</strong> The blob is written before the commit, so on refusal the handler deletes it and answers <code>412</code> (Arca never returns AWS's <code>409 ConditionalRequestConflict</code>).</li>
 <li><strong>In a cluster the CAS is exact per node only (TD-025).</strong> The serving node commits locally and then fans out; two conditional writes for the same key on two different nodes can both succeed and are then resolved by last-writer-wins. See <a href="../../guide/ha/">High Availability</a> for the operational mitigation.</li>
 </ul>
@@ -2819,7 +2833,7 @@
 <p>Every write to <code>objects</code> on a node, including rows applied from a peer, stamps a fresh value of a node-local, commit-ordered counter into <code>objects.seq</code>. A peer pulls <code>POST /cluster/v1/manifest</code> with "everything after <code>seq</code> N" and advances its per-peer high-water mark (in memory; it restarts from zero after a restart, which costs one idempotent full pass).</p>
 <ul>
 <li><strong>SQLite</strong>: the <code>object_seq</code> counter is incremented on the single writer connection, inside the row's transaction.</li>
-<li><strong>PostgreSQL</strong>: the <code>object_seq</code> counter row is updated with <code>UPDATE ... RETURNING</code> inside the row's transaction. Its row lock is held until commit, so seq order equals commit order. A PostgreSQL SEQUENCE (used before) is not transactional: a row holding seq N could commit after seq N+1, and a peer that had already advanced past N would never receive it.</li>
+<li><strong>PostgreSQL</strong>: in cluster mode the <code>object_seq</code> counter row is updated with <code>UPDATE ... RETURNING</code> inside the row's transaction. Its row lock is held until commit, so seq order equals commit order. A PostgreSQL SEQUENCE is not transactional: a row holding seq N could commit after seq N+1, and a peer that had already advanced past N would never receive it. A single node has no peer to feed, so it takes <code>seq</code> from such a sequence, <code>object_seq_local</code>, unique and monotonic but not commit-ordered, and avoids serialising every write on the counter (<a href="../ha-design-decisions/#h13">H13</a>). When the store opens, both generators are raised to the highest <code>seq</code> in use (the counter, the sequence, every row; never lowered), so a switch between modes, by <code>migrate-topology</code> or by editing the config, or a <code>migrate-db</code> copy never issues a <code>seq</code> that is already stored.</li>
 <li><strong>Why not <code>last_modified</code></strong>: a wall-clock cursor breaks under clock skew between nodes and under several writes sharing a timestamp, and either case makes the cursor skip rows. A counter written in commit order cannot skip.</li>
 </ul>
 <h3 id="deletes-and-conflict-resolution">Deletes and conflict resolution<a class="headerlink" href="#deletes-and-conflict-resolution" title="Permanent link">&para;</a></h3>
