@@ -147,10 +147,14 @@ fn install_object(
             record.is_latest = true;
             record.is_delete_marker = false;
             insert_object_row(tx, &record, &metadata_json)?;
-            // Finalize is_latest deterministically so the origin and
-            // cluster replicas (which run recompute in apply_remote_object)
-            // always agree on the current version (Phase 29, Risk #1).
-            recompute_is_latest(tx, &record.bucket, &record.key)?;
+            // The DELETE above removed every row of the key, so the new row
+            // is its only one and already latest: exactly what
+            // recompute_is_latest would pick (it keeps the origin and the
+            // cluster replicas agreeing, Phase 29 Risk #1), unless the row
+            // is a tombstone, which never is latest.
+            if record.is_tombstone {
+                recompute_is_latest(tx, &record.bucket, &record.key)?;
+            }
             old // old blob to clean up
         }
         VersioningState::Enabled => {
@@ -2257,8 +2261,10 @@ fn parts_to_json(record: &ObjectRecord) -> Option<String> {
 /// the latest version thus promotes the next live version; deleting the only
 /// version leaves no `is_latest` row (the key reads as absent).
 fn recompute_is_latest(conn: &Connection, bucket: &str, key: &str) -> Result<(), rusqlite::Error> {
+    // `AND is_latest = 1`: SQLite rewrites every row an UPDATE matches, so
+    // without it every version of the key would be rewritten.
     conn.execute_cached(
-        "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2",
+        "UPDATE objects SET is_latest = 0 WHERE bucket = ?1 AND key = ?2 AND is_latest = 1",
         params![bucket, key],
     )?;
     conn.execute_cached(
@@ -4016,6 +4022,60 @@ mod tests {
 
         // Bucket is NOT empty (still has versions + delete marker).
         assert!(!store.bucket_is_empty("b").await.unwrap());
+    }
+
+    /// Rows written by SQLite on the store's writer connection so far.
+    async fn total_changes(store: &SqliteStore) -> u64 {
+        store
+            .write_conn()
+            .call(|c| Ok(c.total_changes()))
+            .await
+            .map_err(|e: TrError| e)
+            .unwrap()
+    }
+
+    /// An unversioned overwrite deletes every row of the key before inserting
+    /// the new one, so the new row is the key's only row and already the
+    /// latest: the PUT must not pay for an `is_latest` fix-up. Rows written:
+    /// the old object (deleted), the seq counter and the new object.
+    #[tokio::test]
+    async fn unversioned_overwrite_writes_no_is_latest_fixup() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        store.put_object(&make_record("b", "key1")).await.unwrap();
+
+        let before = total_changes(&store).await;
+        let (old, _) = store.put_object(&make_record("b", "key1")).await.unwrap();
+        assert!(old.is_some());
+        assert_eq!(total_changes(&store).await - before, 3);
+
+        let got = store.get_object("b", "key1").await.unwrap().unwrap();
+        assert!(got.is_latest);
+    }
+
+    /// `recompute_is_latest` touches the old and the new latest row only, not
+    /// every version of the key (SQLite rewrites each row an UPDATE matches,
+    /// even when the value does not change).
+    #[tokio::test]
+    async fn recompute_is_latest_touches_two_rows_whatever_the_version_count() {
+        let store = test_store().await;
+        store.create_bucket("b").await.unwrap();
+        enable_versioning(&store, "b").await;
+        for _ in 0..20 {
+            store.put_object(&make_record("b", "key1")).await.unwrap();
+        }
+
+        let changed = store
+            .write_conn()
+            .call(|c| {
+                let before = c.total_changes();
+                recompute_is_latest(c, "b", "key1")?;
+                Ok(c.total_changes() - before)
+            })
+            .await
+            .map_err(|e: TrError| e)
+            .unwrap();
+        assert_eq!(changed, 2);
     }
 
     #[tokio::test]

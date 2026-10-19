@@ -253,7 +253,10 @@ async fn recompute_is_latest(
     bucket: &str,
     key: &str,
 ) -> Result<(), sqlx_core::error::Error> {
-    sqlx_core::query::query("UPDATE objects SET is_latest = FALSE WHERE bucket = $1 AND key = $2")
+    // `AND is_latest = TRUE`: otherwise every version of the key is rewritten.
+    sqlx_core::query::query(
+        "UPDATE objects SET is_latest = FALSE WHERE bucket = $1 AND key = $2 AND is_latest = TRUE",
+    )
         .bind(bucket)
         .bind(key)
         .execute(&mut **tx)
@@ -411,6 +414,12 @@ async fn install_object(
     let metadata_json = serde_json::to_value(&record.metadata)
         .unwrap_or_else(|_| serde_json::json!({}));
 
+    // An unversioned PUT deletes every row of the key before inserting the
+    // new one, which is then the key's only row and already latest: exactly
+    // what recompute_is_latest would pick, unless it is a tombstone.
+    let needs_latest_fixup =
+        !matches!(versioning, VersioningState::Unversioned) || record.is_tombstone;
+
     let old = match versioning {
         VersioningState::Unversioned => {
             // Find old, DELETE + INSERT.
@@ -510,9 +519,11 @@ async fn install_object(
     // Finalize is_latest deterministically so the origin and cluster replicas
     // (which run recompute in apply_remote_object) always agree on the current
     // version (Phase 29, Risk #1). Matches the SQLite backend.
-    recompute_is_latest(tx, &record.bucket, &record.key)
-        .await
-        .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
+    if needs_latest_fixup {
+        recompute_is_latest(tx, &record.bucket, &record.key)
+            .await
+            .map_err(|e| ArcaError::Internal(format!("put_object_if: {e}")))?;
+    }
 
     Ok(old)
 }
